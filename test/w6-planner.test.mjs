@@ -622,3 +622,177 @@ test("a pending client search cannot block selected-client or open-tour refresh"
     assert.equal(app.doc.querySelector("dialog").open, true);
   } finally { pending.resolve([]); await refreshing; app.close(); }
 });
+
+test("T02 Research reviews a packet without a client during a client-list outage", async () => {
+  const app = harness({ clients: async () => { throw Error("Synthetic outage"); } });
+  try {
+    await app.view.ready;
+    const purpose = app.doc.querySelector("#plan-purpose");
+    assert.ok(purpose, "tour planning offers an explicit Research purpose");
+    purpose.value = "research"; purpose.dispatchEvent(new app.dom.window.Event("change"));
+    app.change("#plan-name", "Synthetic research tour");
+    app.doc.querySelector("#review-packet").click();
+    assert.equal(app.doc.querySelector("#tour-dialog").open, true);
+    assert.equal(app.doc.querySelector("#detail-title").textContent, "Synthetic research tour");
+    assert.match(app.doc.querySelector("#detail-content").textContent, /Research/);
+    assert.equal(app.doc.querySelector("#plan-client").value, "");
+    assert.equal(app.doc.querySelector("#plan-client-picker").hidden, true);
+  } finally { app.close(); }
+});
+
+test("T02 returning to a client restores its search criteria and Research stays independent", async () => {
+  const app = harness();
+  try {
+    await app.view.ready;
+    app.change("#space-area", "Synthetic research region");
+    app.change("#space-client", clientA); await settle();
+    app.change("#space-area", "Synthetic client A region"); app.change("#space-minSize", "2100");
+    app.change("#space-requirements", "Synthetic ground floor requirement");
+    app.change("#space-client", clientB); await settle(); app.change("#space-area", "Synthetic client B region");
+    app.change("#space-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#space-area").value, "Synthetic client A region");
+    assert.equal(app.doc.querySelector("#space-minSize").value, "2100");
+    assert.equal(app.doc.querySelector("#space-requirements").value, "Synthetic ground floor requirement");
+    app.change("#space-client", ""); await settle();
+    assert.equal(app.doc.querySelector("#space-area").value, "Synthetic research region");
+    const stored = app.dom.window.sessionStorage.getItem("doctorcre-tour-planning-drafts-v1");
+    const reloaded = harness({}, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", stored));
+    try {
+      await reloaded.view.ready; reloaded.change("#space-client", clientA); await settle();
+      assert.equal(reloaded.doc.querySelector("#space-area").value, "Synthetic client A region");
+      assert.equal(reloaded.doc.querySelector("#space-minSize").value, "2100");
+      reloaded.service.scope = "other-session"; await reloaded.view.refresh();
+      reloaded.change("#space-client", clientA); await settle();
+      assert.equal(reloaded.doc.querySelector("#space-minSize").value, "");
+    } finally { reloaded.close(); }
+  } finally { app.close(); }
+});
+
+test("T02 selecting a known client carries its saved search area into the plan without asking twice", async () => {
+  const app = harness();
+  try {
+    await app.view.ready; app.change("#space-client", clientA); await settle();
+    app.change("#space-area", "Synthetic preferred region"); app.change("#space-use", "Synthetic saved space type");
+    app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic preferred region");
+    assert.equal(app.doc.querySelector("#plan-use").value, "Synthetic saved space type");
+    app.change("#plan-name", "Synthetic edited tour");
+    app.change("#plan-client", clientB); await settle(); app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic edited tour");
+    assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic preferred region");
+  } finally { app.close(); }
+});
+
+test("T02 a failed client detail read keeps selection and retries without erasing edits or files", async () => {
+  let unavailable = true;
+  const app = harness({ client: async id => { if (unavailable) throw Error("Synthetic outage"); return record(id); } });
+  try {
+    await app.view.ready; app.change("#plan-client", clientA); await settle();
+    app.change("#plan-name", "Synthetic retained tour"); stageFile(app);
+    app.doc.querySelector("#review-packet").click();
+    assert.equal(app.doc.querySelector("#tour-dialog").open, false, "unloaded client cannot be reviewed as if ready");
+    assert.match(app.doc.querySelector("#plan-message").textContent, /Client details temporarily unavailable/);
+    assert.equal(app.doc.querySelector("#plan-client").value, clientA);
+    const retry = app.doc.querySelector("#plan-client-retry");
+    assert.ok(retry); assert.equal(retry.hidden, false);
+    unavailable = false; retry.click(); await settle();
+    assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic retained tour");
+    assert.equal(app.view.files.length, 1); assert.equal(retry.hidden, true);
+    app.doc.querySelector("#review-packet").click();
+    assert.equal(app.doc.querySelector("#tour-dialog").open, true);
+    assert.match(app.doc.querySelector("#detail-content").textContent, /Synthetic original entry/);
+  } finally { app.close(); }
+});
+
+test("T02 client search preferences and deliberately cleared fields survive refresh and reselection", async () => {
+  const app = harness();
+  try {
+    await app.view.ready; app.change("#space-client", clientA); await settle();
+    app.change("#space-area", "Synthetic preferred region"); app.change("#space-use", "");
+    app.change("#plan-client", clientA); await settle(); await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic preferred region");
+    app.change("#space-client", clientB); await settle(); app.change("#space-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#space-use").value, "", "a deliberate blank is not filled again");
+  } finally { app.close(); }
+});
+
+test("T02 a cleared plan field is not filled again from the saved search after switching or reload", async () => {
+  const app = harness();
+  try {
+    await app.view.ready; app.change("#space-client", clientA); await settle();
+    app.change("#space-area", "Synthetic saved region"); app.change("#plan-client", clientA); await settle();
+    app.change("#plan-area", ""); app.change("#plan-client", clientB); await settle();
+    app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-area").value, "");
+    const stored = app.dom.window.sessionStorage.getItem("doctorcre-tour-planning-drafts-v1");
+    const reloaded = harness({}, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", stored));
+    try { await reloaded.view.ready; assert.equal(reloaded.doc.querySelector("#plan-area").value, ""); }
+    finally { reloaded.close(); }
+  } finally { app.close(); }
+});
+
+test("T02 retry refreshes prior client suggestions while preserving typed fields", async () => {
+  let unavailable = false, notes = "Synthetic prior notes";
+  const app = harness({ client: async id => { if (unavailable) throw Error("Synthetic outage"); return { ...record(id), notes }; } });
+  try {
+    await app.view.ready; app.change("#plan-client", clientA); await settle();
+    app.change("#plan-name", "Synthetic typed tour");
+    unavailable = true; await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic prior notes");
+    notes = "Synthetic refreshed notes"; unavailable = false;
+    app.doc.querySelector("#plan-client-retry").click(); await settle();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic refreshed notes");
+    assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic typed tour");
+  } finally { app.close(); }
+});
+
+for (const reload of [false, true]) test(`T02 managed suggestions refresh after client reselection${reload ? " and reload" : ""} while typed overrides survive`, async () => {
+  let notes = "Synthetic original notes";
+  let app = harness({ client: async id => ({ ...record(id), notes }) });
+  try {
+    await app.view.ready; app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-notes").value, notes);
+    app.change("#plan-name", "Synthetic typed override");
+    app.change("#plan-client", clientB); await settle();
+    notes = "Synthetic updated notes";
+    app.change("#plan-client", clientA); await settle();
+    if (reload) {
+      const stored = app.dom.window.sessionStorage.getItem("doctorcre-tour-planning-drafts-v1");
+      app.close();
+      app = harness({ client: async id => ({ ...record(id), notes }) }, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", stored));
+      await app.view.ready;
+      notes = "Synthetic notes after reload";
+    }
+    await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, notes);
+    assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic typed override");
+    app.change("#plan-notes", "Synthetic typed notes");
+    app.change("#plan-client", clientB); await settle();
+    notes = "Synthetic newest source notes";
+    app.change("#plan-client", clientA); await settle(); await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic typed notes");
+  } finally { app.close(); }
+});
+
+for (const existing of ["first selection", "managed suggestion", "explicit edit"]) test(`T02 Search cleared fields survive Plan prefill and refresh with ${existing}`, async () => {
+  const app = harness();
+  try {
+    await app.view.ready;
+    if (existing !== "first selection") {
+      app.change("#plan-client", clientA); await settle();
+      if (existing === "explicit edit") app.change("#plan-use", "Synthetic plan override");
+      app.change("#plan-client", clientB); await settle();
+    }
+    app.change("#space-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#space-use").value, "Demo specialty");
+    app.change("#space-use", "");
+    app.change("#plan-client", clientA); await settle();
+    const expected = existing === "explicit edit" ? "Synthetic plan override" : "";
+    assert.equal(app.doc.querySelector("#space-use").value, "");
+    assert.equal(app.doc.querySelector("#plan-use").value, expected);
+    await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-use").value, expected);
+    app.change("#plan-client", clientB); await settle(); app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-use").value, expected);
+  } finally { app.close(); }
+});
