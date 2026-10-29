@@ -18,8 +18,8 @@ for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fi
  await page.getByRole('button',{name:'Gulf Breeze, FL: 1 leads',exact:true}).click();
  await page.locator('#closeDetail').click();
  await page.waitForFunction(()=>{const root=document.getElementById('territoryMap');return root.querySelector('canvas').clientWidth===root.clientWidth});
- assert.equal(await page.locator('#marketFilter').inputValue(),'Gulf Breeze, FL');assert.equal(await page.locator('.lead-card').count(),1);
- const position=await page.getByRole('button',{name:'Gulf Breeze, FL: 1 leads',exact:true}).evaluate(e=>e.style.transform);const canvas=await page.locator('#territoryMap canvas').elementHandle();await page.locator('#marketFilter').selectOption('');assert.equal(await page.locator('.lead-card').count(),10);
+ assert.equal(await page.locator('#marketFilter').inputValue(),'','opening a record preserves filters');assert.equal(await page.locator('.lead-card').count(),10);assert.equal(await page.locator('.lead-card[data-selected="true"]').getAttribute('data-lead-id'),id(8));
+ const position=await page.getByRole('button',{name:'Gulf Breeze, FL: 1 leads',exact:true}).evaluate(e=>e.style.transform);const canvas=await page.locator('#territoryMap canvas').elementHandle();await page.locator('#marketFilter').selectOption('Gulf Breeze, FL');assert.equal(await page.locator('.lead-card').count(),1);await page.locator('#marketFilter').selectOption('');assert.equal(await page.locator('.lead-card').count(),10);
  assert.ok(await canvas.evaluate(e=>e.isConnected),'filter updates preserve the map instance');assert.equal(await page.getByRole('button',{name:'Gulf Breeze, FL: 1 leads',exact:true}).evaluate(e=>e.style.transform),position,'filter updates preserve the zoomed territory');
  await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();const box=await page.locator('#leadDetail').boundingBox();assert.ok(box.width>=Math.min(1100,width-32));
  await page.locator('#detailBody details').first().locator('summary').click();assert.match(await page.locator('#detailBody').innerText(),/Original synthetic entry/);
