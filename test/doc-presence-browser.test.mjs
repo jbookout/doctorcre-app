@@ -253,12 +253,13 @@ test('held Leads collection recovers in the current local filter before opening 
  await goto('/leads?mode=live');await entered;
  await page.locator('#appSidebarToggle').click();
  await page.locator('#leadSearch').fill('no matches');
- release();await page.waitForFunction(()=>document.querySelectorAll('#hotLeads [data-lead-id]').length>0);
+ release();await page.locator('#leadBoard[aria-busy="false"]').waitFor();
  assert.equal(await page.locator('.lead-card').count(),0);
  const filtered=await readContext(page);
  assert.equal(filtered.ready,true,JSON.stringify(filtered));assert.deepEqual(filtered.records,[]);
  assert.equal(filtered.filters.search,'no matches');assert.ok(filtered.observedAt);
- await page.locator('#hotLeads [data-lead-id]').first().click();
+ await page.locator('#leadSearch').fill('');
+ await page.locator('#leadBoard .lead-open').first().click();
  await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));
  const opened=await readContext(page);assert.equal(opened.ready,true);assert.equal(opened.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');

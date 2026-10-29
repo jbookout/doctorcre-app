@@ -49,7 +49,7 @@ test('aborting a territory mount before its first painted frame removes the rend
     remove() { this.removed = true; events.clear(); }
   } };
   const pending = mountTerritoryMap(dom.window.document.querySelector('div'), () => {}, () => {}, {
-    signal: controller.signal, loadMapLibre: async () => gl,
+    signal: controller.signal, markets: [], loadMapLibre: async () => gl,
     fetchImpl: async path => ({ ok: true, json: async () => path.endsWith('.json') ? [] : { type: 'FeatureCollection', features: [] } }),
   });
   while (!events.has('idle')) await new Promise(resolve => setTimeout(resolve, 0));
