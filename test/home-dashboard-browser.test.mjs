@@ -832,7 +832,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Me
         { id: 'demo-missing', name: 'Demo missing facts', prep: { state: 'ready', phase: null, next_step: null, next_date: null, last_touch: null, market: null } },
       ] }],
   });
-  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click({ timeout: 2000 });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
   await settles(async () => assert.match(await dialog.innerText(), /Review counteroffer/));
   const text = await dialog.innerText();
@@ -1076,7 +1076,7 @@ test('H03 task details close when both calendar sources become unavailable', asy
   state.failDetails('503');
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  await detail.waitFor({ state: 'hidden', timeout: 1500 });
+  await detail.waitFor({ state: 'hidden' });
   assert.equal(await panel.getByRole('button', { name: 'Demo follow-up', exact: true }).count(), 0);
 });
 

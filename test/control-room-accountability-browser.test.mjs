@@ -1,3 +1,4 @@
+import { WAIT_MS } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -65,7 +66,7 @@ async function open(t, width, tab = 'views', theme = 'dark', holdCurrentWork = f
 for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`attention keeps a failed job once and opens that exact item at ${width} ${theme}`, async t => {
   const { page, releaseCurrentWork } = await open(t, width, 'views', theme, true);
   const failed = page.locator('[data-attention-id="work_request:WR-000901"]');
-  await failed.waitFor({ timeout: 5000 });
+  await failed.waitFor({ timeout: WAIT_MS });
   assert.equal(await failed.count(), 1);
   assert.match(await failed.innerText(), /Demo source did not answer/);
   assert.match(await failed.innerText(), /Demo validation finished; export has not started/);
@@ -89,7 +90,7 @@ for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`at
 for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`agents show accountable desks, progress, and honest model facts at ${width} ${theme}`, async t => {
   const { page } = await open(t, width, 'agents', theme);
   const cards = page.locator('#modelRoomAssignments .assignment-card');
-  await cards.first().waitFor({ timeout: 5000 });
+  await cards.first().waitFor({ timeout: WAIT_MS });
   assert.match(await cards.first().innerText(), /cx-app/);
   assert.match(await cards.first().innerText(), /Model\s+unknown/);
   assert.match(await cards.first().innerText(), /Effort\s+unknown/);

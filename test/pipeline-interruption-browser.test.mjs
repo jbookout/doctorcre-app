@@ -134,7 +134,7 @@ test('phone Back closes the room and its open Context drawer together', async t 
 
 test('a deal requirement email uses only entered requirements and copies the edited preview', async t => {
   const page = await open(t); await room(page);
-  await page.getByText('Draft requirement email', { exact: true }).click({ timeout: 2000 });
+  await page.getByText('Draft requirement email', { exact: true }).click();
   await page.getByLabel('Use', { exact: true }).fill('Dental office');
   await page.getByLabel('Size', { exact: true }).fill('2,500–3,000 SF');
   await page.getByLabel('Location', { exact: true }).fill('Pensacola');

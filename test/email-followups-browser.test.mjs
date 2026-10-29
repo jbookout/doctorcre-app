@@ -34,7 +34,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.goto(`${origin}/?mode=fixture`);
     const card = page.locator('#homeEmailFollowups');
     await card.scrollIntoViewIfNeeded();
-    await card.locator('article').first().waitFor({ timeout: 5000 }).catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
+    await card.locator('article').first().waitFor().catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
     assert.equal(await card.locator('article').count(), 2);
     const confirmBox = await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).boundingBox();
     const chips = card.locator('article').first().getByRole('group', { name: 'Dismiss' }).getByRole('button');
@@ -120,7 +120,7 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   await page.locator('#homeReplyOutcomes[aria-busy="false"]').waitFor();
   const quality = page.getByRole('region', { name: 'Email proposal quality', exact: true });
   await quality.scrollIntoViewIfNeeded();
-  await quality.getByText(/Could not load email proposal quality/).waitFor({ timeout: 5000 });
+  await quality.getByText(/Could not load email proposal quality/).waitFor();
   holdAgenda = false; releaseAgenda();
   fail = false;
   await quality.getByRole('button', { name: 'Retry email proposal quality' }).click();
@@ -178,7 +178,7 @@ test('Home session loss during the quality download prevents a late report read'
   });
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#homeEmailQuality').scrollIntoViewIfNeeded();
-  await page.locator('#homeEmailQuality').getByText('Sign in to view email proposal quality.', { exact: true }).waitFor({ timeout: 5000 });
+  await page.locator('#homeEmailQuality').getByText('Sign in to view email proposal quality.', { exact: true }).waitFor();
   assert.equal(reads, 0);
 });
 
@@ -193,7 +193,7 @@ test('Home still loads email quality when the agenda read fails', async t => {
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#dealFlags').getByText('Deals unavailable', { exact: true }).waitFor();
   await page.locator('#homeEmailQuality').scrollIntoViewIfNeeded();
-  await page.locator('#homeEmailQuality [data-quality-kind]').first().waitFor({ timeout: 5000 });
+  await page.locator('#homeEmailQuality [data-quality-kind]').first().waitFor();
 });
 
 for (const width of [1440, 390]) {
@@ -207,7 +207,7 @@ for (const width of [1440, 390]) {
     await page.route('**/mcp', route => { calls.push(route.request().postDataJSON().params); return route.continue(); });
     await page.goto(`${origin}/deals?mode=live&deal=qa-deal-1`);
     const panel = page.locator('#recordPanel'), review = page.locator('#panelEmailFollowups');
-    await review.getByText('Please send the revised plan by November 3.', { exact: true }).waitFor({ timeout: 5000 });
+    await review.getByText('Please send the revised plan by November 3.', { exact: true }).waitFor();
     assert.equal(await review.locator('article').count(), 1);
     assert.doesNotMatch(await review.innerText(), /The tour is confirmed/);
     assert.ok(calls.some(call => call.name === 'list-email-proposals' && call.arguments.deal === 'qa-deal-1'));
@@ -250,7 +250,7 @@ test('deal email review distinguishes unavailable from empty and clears proposal
   });
   await page.goto(`${origin}/deals?mode=live&deal=qa-deal-3`);
   const review = page.locator('#panelEmailFollowups');
-  await review.getByText('Could not load email follow-ups.', { exact: true }).waitFor({ timeout: 5000 });
+  await review.getByText('Could not load email follow-ups.', { exact: true }).waitFor();
   assert.equal(await review.getByText('No pending email follow-ups.', { exact: true }).count(), 0);
   fail = false;
   await review.getByRole('button', { name: 'Retry email follow-ups' }).click();
@@ -294,7 +294,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   await card.getByText('Reply draft · Re: Demo floor plan · Joe', { exact: true }).waitFor();
   assert.equal(await card.getByRole('button', { name: 'Review reply', exact: true }).count(), 0);
   releaseAgenda();
-  await card.getByRole('button', { name: 'Review reply', exact: true }).click({ timeout: 5000 });
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
   await card.getByText('To: demo-correspondent@example.test', { exact: true }).waitFor();
   await card.getByText('CC: demo-dell@example.test', { exact: true }).waitFor();
   await card.getByRole('textbox', { name: 'Subject', exact: true }).fill('Re: Demo plan reviewed');

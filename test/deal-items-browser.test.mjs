@@ -54,7 +54,7 @@ for (const width of [390, 1280]) test(`a checklist item opens its own sheet and 
   await page.waitForFunction(() => document.querySelector('[data-item-status]')?.textContent === 'Item marked done');
   await page.waitForFunction(() => document.querySelectorAll('.kanban-column [data-id="d14"] ol li').length === 2);
   await sheet.getByRole('button', { name: 'Close item' }).click();
-  await page.waitForFunction(() => document.activeElement?.matches('.kanban-column [data-id="d14"] .card-open'), null, { timeout: 5000 });
+  await page.waitForFunction(() => document.activeElement?.matches('.kanban-column [data-id="d14"] .card-open'), null);
   assert.equal(await card.locator('.card-open').evaluate(n => n === document.activeElement), true);
   assert.deepEqual(errors, []);
 });

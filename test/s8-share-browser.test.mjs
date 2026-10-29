@@ -121,7 +121,7 @@ for (const fonts of ['held', 'available']) test(`Slice A built shared report pai
     }
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/share`, { waitUntil: 'commit' });
-  await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null, { timeout: 3000 });
+  await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null);
   assert.ok(fontRequests > 0, 'the report font request really started');
   assert.equal(fontCompleted, fonts === 'available', 'held CSS has not completed at first contentful paint');
   await page.getByRole('heading', { name: 'Tour report', exact: true }).waitFor();

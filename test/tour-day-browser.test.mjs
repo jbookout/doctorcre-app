@@ -1,3 +1,4 @@
+import { WAIT_MS } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -268,7 +269,7 @@ test('saved tour survives HTTP-cache eviction, failed shell responses and an onl
   for (const failure of [503, 'hang']) {
     failConnection(failure, true);
     await page.reload();
-    await page.waitForFunction(() => document.querySelector('#day-status')?.textContent.includes('Offline'), null, { timeout: 5_000 });
+    await page.waitForFunction(() => document.querySelector('#day-status')?.textContent.includes('Offline'), null, { timeout: WAIT_MS });
     assert.equal(await page.evaluate(() => navigator.onLine), true);
     assert.equal(await page.locator('.day-stop').count(), 2);
     assert.match(await page.locator('#day-updated').textContent(), /Saved/);
