@@ -43,7 +43,7 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
     assert.equal(visible, true, 'date and partner initial are outside the clamped text');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     if ([390, 1440].includes(width)) {
-      const dir = '.github/pr-evidence/WR586.S1.J6/round-1';
+      const dir = 'out/test-artifacts/deal-board-summary';
       await mkdir(dir, { recursive: true });
       await page.screenshot({ path: `${dir}/${national ? 'national-accounts' : 'local-deals'}-${width}-${theme}.png` });
     }
