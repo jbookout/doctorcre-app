@@ -29,16 +29,16 @@ for (const width of [390, 800, 1280]) for (const theme of ['dark', 'light']) {
     });
     assert.equal(controlsFit, true, 'filters fit the available main-column width');
     {
-      const positions = await page.evaluate(() => Object.fromEntries(['#leadSearch', '.lead-card', '.top-grid'].map(selector => [selector, document.querySelector(selector).getBoundingClientRect().top])));
+      const positions = await page.evaluate(() => Object.fromEntries(['#leadSearch', '.lead-card', '.territory'].map(selector => [selector, document.querySelector(selector).getBoundingClientRect().top])));
       assert.ok(positions['#leadSearch'] < positions['.lead-card'], JSON.stringify(positions));
       assert.ok(positions['.lead-card'] < 700, 'matching records start on the first screen');
-      assert.ok(positions['.lead-card'] < positions['.top-grid'], 'matching records precede territory and global candidates');
+      assert.ok(positions['.lead-card'] < positions['.territory'], 'matching records precede territory');
     }
 
     await page.locator('#stageFilter').selectOption('qualified');
     assert.equal(await page.locator('#leadCount').innerText(), '14 total');
     assert.equal(await page.locator('#filterSummary').innerText(), '1 matching lead');
-    assert.match(await page.locator('#hotSummary').innerText(), /Across all markets and filters/);
+    assert.equal(await page.locator('#hotLeads').count(), 0);
     if (process.env.UI_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/qualified-${width}-${theme}.png`, fullPage: true });
     await page.locator('.lead-card:visible').first().click();
     await page.locator('#detailStage').waitFor();

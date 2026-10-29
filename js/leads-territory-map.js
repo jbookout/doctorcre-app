@@ -25,7 +25,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   // The map paints from the page's colour tokens so it follows the theme; with no
   // stylesheet it paints nothing rather than inventing a colour.
   const doc = root.ownerDocument, view = doc.defaultView;
-  const token = (name) => view?.getComputedStyle(doc.documentElement).getPropertyValue(name).trim() || "transparent";
+  const token = (name) => view?.getComputedStyle(root).getPropertyValue(name).trim() || "transparent";
   // Only the background is water. Territory states are land; neighbouring states
   // are muted context land, so nothing outside the Gulf and Atlantic reads as sea.
   const paint = [["ground", "background-color", "--map-water"], ["context", "fill-color", "--map-context"], ["land", "fill-color", "--map-land"], ["borders", "line-color", "--hairline-strong"]];
@@ -88,7 +88,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
     const clusters = [];
     for (const feature of marketFeatures(latest).features.sort((a,b) => b.properties.count-a.properties.count)) {
       const position = map.project(feature.geometry.coordinates);
-      const cluster = clusters.find(c => Math.hypot(c.position.x-position.x,c.position.y-position.y)<34);
+      const cluster = clusters.find(c => Math.abs(c.position.x-position.x)<48 && Math.abs(c.position.y-position.y)<48);
       if (cluster) cluster.features.push(feature);
       else clusters.push({ position, features: [feature] });
     }

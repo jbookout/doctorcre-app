@@ -56,14 +56,14 @@ test('Lead opening and actions are separate accessible keyboard controls', async
   const violations = await page.evaluate(async () => (await axe.run('.leads-workspace', { runOnly: ['nested-interactive'] })).violations);
   await capture(page, '1440-accessibility', violations);
   assert.deepEqual(violations, [], 'axe reports zero nested-interactive violations including Claim, Link and Undo');
-  const opener = page.locator('.hot-row').first().getByRole('button', { name: 'Dr. Example 1', exact: true });
+  const opener = page.locator('.lead-card').first().getByRole('button', { name: 'Dr. Example 1', exact: true });
   await opener.focus();
   await page.keyboard.press('Enter');
   await page.locator('#detailStage').waitFor();
   await page.locator('#closeDetail').click();
   await settles(async () => assert.equal(await opener.evaluate(node => node === document.activeElement), true, 'closing details restores the opening control'));
   await page.keyboard.press('Tab');
-  assert.equal(await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.locator('.lead-card').first().getByRole('button', { name: 'Claim', exact: true }).evaluate(node => node === document.activeElement), true);
   await page.keyboard.press('Space');
   await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Lead claimed');
   assert.equal(writes.length, 1);
@@ -111,7 +111,7 @@ for (const action of ['Claim', 'Undo']) test(`Delayed native detail close preser
   await page.locator('.market-marker').first().waitFor();
   await page.locator('[data-expand-stage="new"]').click();
   if (action === 'Undo') {
-    await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).focus();
+    await page.locator('.lead-card').first().getByRole('button', { name: 'Claim', exact: true }).focus();
     await page.keyboard.press('Space');
     await held;
     const link = page.getByRole('button', { name: 'Link Dr. Example 19 to Example Client Match', exact: true });
@@ -121,12 +121,12 @@ for (const action of ['Claim', 'Undo']) test(`Delayed native detail close preser
     await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Client linked');
     await settles(async () => assert.equal(await page.getByRole('button', { name: 'Undo', exact: true }).isEnabled(), true));
   }
-  await page.locator('.hot-row .lead-open').first().focus();
+  await page.locator('.lead-card .lead-open').first().focus();
   await page.keyboard.press('Enter');
   await page.locator('#detailStage').waitFor();
   const closed = await page.evaluate(async action => {
     const dialog = document.querySelector('#leadDetail');
-    const control = document.querySelector(action === 'Claim' ? '#hotLeads [data-claim]' : '[data-undo]');
+    const control = document.querySelector(action === 'Claim' ? '#leadBoard [data-claim]' : '[data-undo]');
     const closed = new Promise(resolve => dialog.addEventListener('close', event => resolve(event.isTrusted), { once: true }));
     document.querySelector('#closeDetail').click();
     control.focus();
@@ -169,7 +169,7 @@ test('Lead actions stay disabled until Claim refresh completes, then one Link cl
   await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   await page.locator('[data-expand-stage="new"]').click();
-  await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).click();
+  await page.locator('.lead-card').first().getByRole('button', { name: 'Claim', exact: true }).click();
   await held;
   await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Lead claimed');
   const link = page.getByRole('button', { name: 'Link Dr. Example 19 to Example Client Match', exact: true });
@@ -199,8 +199,8 @@ for (const width of [768, 1280, 1440]) for (const theme of ['light', 'dark']) {
       const box = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, bottom: r.bottom }; };
       return {
         stages: [...document.querySelectorAll('.stage-column')].map(box).filter(r => r.width),
-        names: [...document.querySelectorAll('.hot-row h3')].map(box),
-        hot: box(document.querySelector('.hot-section')), territory: box(document.querySelector('.territory')),
+        names: [...document.querySelectorAll('.lead-card h3')].map(box),
+        territory: box(document.querySelector('.territory')),
         todayHidden: document.querySelector('#appToday').inert,
         overflow: document.documentElement.scrollWidth > innerWidth,
       };
@@ -216,7 +216,7 @@ for (const width of [768, 1280, 1440]) for (const theme of ['light', 'dark']) {
     }
     if (width === 768) {
       assert.equal(layout.todayHidden, true, 'Today collapses for a mouse at tablet width');
-      assert.ok(layout.territory.y >= layout.hot.bottom, 'supporting panels stack');
+      assert.equal(await page.locator('.hot-section').count(), 0, 'territory is the only supporting section');
       await page.locator('#appTodayToggle').click();
       assert.equal(await page.locator('#appToday').evaluate(node => node.inert), false, 'Today remains reachable');
       await page.keyboard.press('Escape');
@@ -245,7 +245,7 @@ test('Filtered-empty Leads explains the result and resets every filter without a
   assert.deepEqual(writes, []);
 });
 
-for (const width of [768, 1280, 1440]) test(`Leads loading uses board, ranked-row and map skeletons at ${width}px`, async t => {
+for (const width of [768, 1280, 1440]) test(`Leads loading uses board and map skeletons at ${width}px`, async t => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1024 }, reducedMotion: 'reduce' });
@@ -262,12 +262,11 @@ for (const width of [768, 1280, 1440]) test(`Leads loading uses board, ranked-ro
   await page.locator('#appSidebarToggle').waitFor();
   await capture(page, `${width}-loading`);
   assert.ok(await page.locator('#leadBoard .lead-skeleton').count() >= 6, 'loading reserves stage and card shapes');
-  assert.equal(await page.locator('#hotLeads .hot-skeleton').count(), 5);
   assert.equal(await page.locator('#territoryMap').getAttribute('aria-busy'), 'true');
   const loading = await loadingLayout(page);
   release();
   await page.locator('.lead-card').first().waitFor();
-  assert.equal(await page.locator('#leadBoard .lead-skeleton, #hotLeads .hot-skeleton').count(), 0);
+  assert.equal(await page.locator('#leadBoard .lead-skeleton').count(), 0);
   const loaded = await loadingLayout(page);
   assert.ok(Math.abs(loading.stages[0].width - loaded.stages[0].width) < 2,
     `loading and final stage widths match: ${JSON.stringify({ loading, loaded })}`);

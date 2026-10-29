@@ -284,6 +284,14 @@ for (const width of [1440, 390]) test(`Leads opens the Mobile to Tallahassee wor
   await page.locator('#leadBoard[aria-busy="false"]').waitFor();
   assert.equal(await canvas.evaluate(node => node.isConnected), true);
   assert.deepEqual(await page.evaluate(() => ({ center: leadsRenderer.getCenter().toArray(), zoom: leadsRenderer.getZoom() })), camera);
+  await page.evaluate(() => leadsRenderer.jumpTo({ center: [-87.2, 30.38], zoom: 8.5 }));
+  const targets = await page.locator('.market-marker').evaluateAll(nodes => nodes.map(node => {
+    const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }));
+  assert.ok(targets.every((a, index) => targets.slice(index + 1).every(b =>
+    a.right + 4 <= b.left || b.right + 4 <= a.left || a.bottom + 4 <= b.top || b.bottom + 4 <= a.top)),
+    `map marker targets keep separation at intermediate zoom: ${JSON.stringify(targets)}`);
+  await page.evaluate(camera => leadsRenderer.jumpTo(camera), camera);
   if (process.env.UI_SCREENSHOT_DIR) for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await mkdir(process.env.UI_SCREENSHOT_DIR, { recursive: true });
