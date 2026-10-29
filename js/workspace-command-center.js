@@ -14,6 +14,7 @@ import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
 import { mountHomeMeetingReviews } from './home-meeting-reviews.js';
 import { mountHomeWeek } from './home-week-view.js';
+import { meetingDate, meetingTime } from './home-week.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -93,8 +94,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const warnings = (meetings.notes || []).map(note => `<p class="home-meeting-warning">${E(note)}</p>`).join('');
     const rows = meetings.items.map(meeting => {
       const time = meeting.all_day
-        ? new Date(`${meeting.start.slice(0, 10)}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' })
-        : new Date(meeting.start).toLocaleString(undefined, { timeZone: meetingTimeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+        ? meetingDate(meeting.start)
+        : meetingTime(meeting.start, meetingTimeZone, true);
       const detail = `${meeting.location || 'Place not provided'} · ${meeting.attendee_count} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}`;
       return `<div class="home-meeting"><time datetime="${E(meeting.start)}">${E(time)}${meeting.all_day ? ' · All day' : ''}</time><strong>${E(meeting.title)}</strong><span>${E(detail)}</span></div>`;
     }).join('');
@@ -301,7 +302,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const { mountMeetingPreparation } = await import('./meeting-preparation.js');
       if (disposed || epoch !== prepEpoch) return;
       meetingPrep ||= mountMeetingPreparation({ document, window, client });
-      meetingPrep.open(button);
+      meetingPrep.open(button, meetingTimeZone);
     } catch { if (!disposed && epoch === prepEpoch) { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Meeting preparation unavailable. Try Prepare meetings again.'; } }
   });
   const clearCalendar = () => {
