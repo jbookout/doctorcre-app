@@ -52,9 +52,9 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       state.client.getDeal = async id => {
         const detail = await read(id);
         return { ...detail,
-          deal: { ...detail.deal, name: 'Demo Workspace Practice', client_name: 'Demo Workspace Client', phase: 'Legal', owner: 'joe', phase_started_on: { legal: '2026-10-01' } },
+          deal: { ...detail.deal, name: 'Demo Workspace Practice', client_name: 'Demo Long Client Name Medical Practice Associates', next_step: 'Demo unique next step', next_date: '2026-11-20', phase: 'Legal', owner: 'joe', phase_started_on: { legal: '2026-10-01' } },
           items: [{id:'demo-item',title:'Vendor Introductions',due_on:'2026-02-01',status:'open'}],
-          next_actions: [{id:'demo-next',description:'Demo next action',status:'open',due_on:'2026-10-01',hold_until:'2027-01-01'}],
+          next_actions: [{id:'demo-next',description:'Demo next action',status:'open',due_on:'2026-10-01',hold_until:'2027-01-01'}, ...(window.duplicateNextStep ? [{id:'demo-duplicate',description:'Demo unique next step',status:'open',due_on:'2026-11-20'}] : [])],
           history: [{id:'demo-change',field:'owner',new_value:'dell',recorded_at:'2026-10-02T15:00:00Z',summary:'Demo owner changed'}],
           critical_dates: [{ id: 'demo-loi', kind: 'loi_expiry', due_on: '2026-10-09', note: 'Demo LOI deadline' }],
           thread: [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-02T12:00:00Z', text: 'Demo recorded deal note' }],
@@ -67,7 +67,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     const header = page.locator('.workspace-header');
     await expect(page.locator('#workspaceFacts')).toBeVisible();
     await expect(header).toContainText('Demo Workspace Practice');
-    await expect(header).toContainText('Demo Workspace Client');
+    await expect(header).toContainText('Demo Long Client Name Medical Practice Associates');
     await expect(header).toContainText('Legal');
     await expect(header).toContainText('Joe');
     await expect(header).toContainText('Oct 9, 2026');
@@ -81,14 +81,29 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       await page.getByRole('tab', { name: label, exact: true }).click();
       await expect(page.locator(`#workspace-${tab}`)).toBeVisible();
       await expect(header).toBeVisible();
-      for (const value of ['Demo Workspace Client', 'Legal', 'Joe', 'Oct 9, 2026']) await expect(page.locator('#workspaceFacts').getByText(value, {exact:false}).first()).toBeVisible();
+      for (const value of ['Demo Long Client Name Medical Practice Associates', 'Legal', 'Joe', 'Oct 9, 2026']) await expect(page.locator('#workspaceFacts').getByText(value, {exact:false}).first()).toBeVisible();
       if (width === 390) {
         const facts = page.locator('#workspaceFacts');
-        expect(await facts.evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(24);
+        expect(await facts.evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(48);
+        const clip = await header.boundingBox();
+        for (const fact of await facts.locator('.workspace-facts > div').all()) {
+          const box = await fact.boundingBox();
+          expect(box.x).toBeGreaterThanOrEqual(clip.x);
+          expect(box.x + box.width).toBeLessThanOrEqual(clip.x + clip.width);
+        }
+        await expect(facts.locator('dd').first()).toHaveAttribute('title', 'Demo Long Client Name Medical Practice Associates');
         expect(await facts.locator('.workspace-facts').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       if (tab === 'timeline') {
         await expect(page.locator('.phase-rail')).toBeVisible();
+        const nextStep = page.locator('.workspace-events li').filter({hasText:'Demo unique next step'});
+        await expect(nextStep).toHaveCount(1);
+        await expect(nextStep).toContainText('Nov 20, 2026');
+        await page.evaluate(() => { window.duplicateNextStep = true; });
+        await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+        await expect(nextStep).toHaveCount(1);
+        await expect(nextStep).toContainText('Nov 20, 2026');
+        await page.evaluate(() => { window.duplicateNextStep = false; });
         await expect(page.locator('.workspace-events li').filter({hasText:'Demo next action'})).toHaveCount(2);
         await expect(page.locator('.workspace-events li').filter({hasText:'Demo next action'})).toContainText(['Jan 1, 2027', 'Oct 1, 2026']);
         for (const text of ['Demo lease document','Demo next action','Demo owner changed','Demo discovery meeting','Demo recorded deal note','Demo LOI deadline','Vendor Introductions']) await expect(page.locator('.workspace-events')).toContainText(text);

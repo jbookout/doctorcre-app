@@ -1002,7 +1002,7 @@ function renderWorkspaceFacts(detail) {
   const dates = dealTimeline(detail).dates;
   const active = dates.filter(date => !['cleared','passed'].includes(date.status));
   const next = active.find(date => date.day >= todayIso()) || active[0] || dates[0];
-  $('workspaceFacts').innerHTML = `<dl class="workspace-facts"><div><dt>Client</dt><dd>${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div><div><dt>Phase</dt><dd>${esc(columnByValue(d.phase)?.label || d.phase || 'Not recorded')}</dd></div><div><dt>Owner</dt><dd>${esc(actorName(d.owner) || 'Unassigned')}</dd></div><div><dt>Next critical date</dt><dd>${next ? `<span class="workspace-date-label">${esc(next.label)} · </span><time datetime="${esc(next.day)}">${esc(dateCaption(next.day))}</time>${['cleared','passed'].includes(next.status) ? ` · ${esc(next.status)}` : next.day < todayIso() ? ' · overdue' : ''}` : 'Not recorded'}</dd></div></dl>`;
+  $('workspaceFacts').innerHTML = `<dl class="workspace-facts"><div><dt>Client</dt><dd title="${esc(d.client_name || d.client_ref || 'Not recorded')}">${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div><div><dt>Phase</dt><dd>${esc(columnByValue(d.phase)?.label || d.phase || 'Not recorded')}</dd></div><div><dt>Owner</dt><dd>${esc(actorName(d.owner) || 'Unassigned')}</dd></div><div><dt>Next critical date</dt><dd>${next ? `<span class="workspace-date-label">${esc(next.label)} · </span><time datetime="${esc(next.day)}">${esc(dateCaption(next.day))}</time>${['cleared','passed'].includes(next.status) ? ` · ${esc(next.status)}` : next.day < todayIso() ? ' · overdue' : ''}` : 'Not recorded'}</dd></div></dl>`;
 }
 function selectWorkspaceTab(id) {
   workspaceTab = id;
@@ -1027,6 +1027,7 @@ function workspaceEventsHtml(detail) {
     ...(detail.items || detail.deal.items || []).filter(e => calendarDay(e.due_on)).map(e => ({type:'Deal item', day:calendarDay(e.due_on), text:noteText(e.title)})),
     ...view.dates.map(e => ({type:'Critical date', day:e.day, text:[e.label,e.original].filter(Boolean).join(' · ')})),
     ...view.phases.filter(e => e.day).map(e => ({type:'Phase', day:e.day, text:e.label})),
+    ...(calendarDay(detail.deal.next_date) && noteText(detail.deal.next_step) && !(detail.next_actions || []).some(e => calendarDay(e.due_on) === calendarDay(detail.deal.next_date) && noteText(e.description) === noteText(detail.deal.next_step)) ? [{type:'Action', day:calendarDay(detail.deal.next_date), text:`Due · ${noteText(detail.deal.next_step)}`}] : []),
     ...(detail.next_actions || []).flatMap(e => [['due_on','Due'],['hold_until','Held until']].filter(([key]) => calendarDay(e[key])).map(([key,label]) => ({type:'Action', day:calendarDay(e[key]), text:`${label} · ${noteText(e.description)}`}))),
     ...(detail.history || []).filter(e => calendarDay(e.recorded_at) && !view.entries.some(entry => entry.id === e.id)).map(e => ({type:'Change', day:calendarDay(e.recorded_at), text:noteText(e.summary) || `${fieldLabel(e.field)} · ${readableValue(e.field, e.new_value)}`})),
   ].sort((a,b) => b.day.localeCompare(a.day));
