@@ -32,13 +32,13 @@ test('W16 the By phase chart draws its bars in proportion to the board', async (
 });
 
 // W16: the territory pins are DOM markers over a canvas map, so the screenshot shows where they sit.
-test('W16 the territory map pins every lead market on the Gulf Coast', async ({ app, browser, agent }) => {
+test('W16 the territory map pins every lead market on the Gulf Coast', async ({ app, browser, screen, agent }) => {
   test.skip(noKey, 'TYPESAFE_API_KEY is not set');
   await serveFixtures(browser);
   await app.open('/leads?mode=live');
   await browser.locator('#showTerritory').tap();
   await expect(browser.locator('.market-marker')).toHaveCount(2);
-  await expect(browser.getByRole('button', { name: 'Mobile, AL: 1 leads', exact: true })).toHaveText('1');
+  await expect(screen.getByRole('button', 'Mobile, AL: 1 leads', { exact: true })).toHaveText('1');
   const coastalMarker = browser.locator('.market-marker').filter({ hasText: '13' });
   await expect(coastalMarker).toHaveCount(1);
   await expect(coastalMarker).toHaveAttribute('aria-label', /Pensacola, FL: 12/);
