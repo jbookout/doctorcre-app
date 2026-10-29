@@ -13,7 +13,7 @@ test('W9 deal timeline shows recorded phase dates and expandable update history'
   await browser.locator('.updates-history > summary').tap();
   await expect(browser.locator('.deal-note').first()).toBeVisible();
 
-  await screen.getByLabel('Close deal', { exact: true }).tap();
+  await screen.getByRole('button', { name: 'Back to deals', exact: true }).tap();
   await expect(browser.locator('#recordPanel')).toBeHidden();
   await browser.waitForURL(/\/deals$/);
 });

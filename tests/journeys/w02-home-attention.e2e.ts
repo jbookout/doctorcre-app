@@ -21,6 +21,6 @@ test('W2 Home lists overdue local deals, scopes to the viewer and opens the exac
   await browser.waitForURL(/\/deals\?deal=d23$/);
   await expect(browser.locator('#panelTitle')).toContainText('Demo Specialty Clinic');
   await expect(browser.locator('#detailUpdateForm')).toBeVisible();
-  await browser.locator('#recordPanel [aria-label="Close deal"]').tap();
+  await browser.locator('#panelClose').tap();
   await expect(browser.locator('#recordPanel')).toBeHidden();
 });

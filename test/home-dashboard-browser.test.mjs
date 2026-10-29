@@ -183,8 +183,8 @@ test('PR124 R1 generated Home flag and task links open the requested record thro
     const id = new URL(await link.getAttribute('href'), page.url()).searchParams.get('deal');
     assert.ok(id);
     await link.click();
-    await page.locator('.kanban-card').first().waitFor();
-    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm') && document.querySelector('#detailOwner'), id);
+    await page.locator('.kanban-card').first().waitFor({state:'attached'});
+    await page.waitForFunction(id => !document.querySelector('#recordPanel')?.hidden && document.querySelector('#detailUpdateForm') && document.querySelector('#detailOwner'), id);
     const detail = await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail);
     assert.equal(detail.deal.id, id);
     assert.equal(await page.locator('#panelTitle').textContent(), detail.deal.name);
@@ -313,7 +313,7 @@ test('a flagged Home deal opens that exact Deals record; unknown IDs show a fail
   assert.equal(href, '/deals?deal=d14');
   // Keep this synthetic test on the fixture adapter on the receiving page.
   await page.locator('.home-flag h3 a').first().click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
+  await page.waitForFunction(() => !document.querySelector('#recordPanel')?.hidden && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd14');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Surgical Practice/);
   await page.goto('http://localhost/deals?deal=unknown');
@@ -407,14 +407,14 @@ test('R7 linked Deals detail refusal or timeout cannot prevent board and feed po
       && request.postDataJSON()?.params?.name === 'get-deal-room'
       && new URL(request.frame().url()).pathname === '/deals');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
-    await page.locator('.kanban-card').first().waitFor();
+    await page.locator('.kanban-card').first().waitFor({state:'attached'});
     await firstFeed;
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
     await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
     assert.match(await page.locator('#panelBody').textContent(), /Updates temporarily unavailable/);
-    assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Close deal', exact: true }).isVisible(), true);
+    assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Back to deals', exact: true }).isVisible(), true);
     const before = [state.boardReads, state.feedReads];
     const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'deal-room-board');
@@ -495,7 +495,7 @@ test('R14 a task with no critical dates opens its exact deal with its next actio
   await task.waitFor();
   assert.equal(await task.getAttribute('href'), '/deals?deal=d01');
   await task.click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
+  await page.waitForFunction(() => !document.querySelector('#recordPanel')?.hidden && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
   assert.equal(await page.locator('.deal-current-action strong').textContent(), 'Confirm fictional requirements');
