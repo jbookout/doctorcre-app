@@ -130,6 +130,8 @@
   .planner-header { padding: var(--space-4) var(--space-4) var(--space-3); }
   .planner-grid { grid-template-columns: minmax(0, 1fr); padding: 0 var(--space-4) var(--space-6); }
   .planner-grid > .card { padding: var(--space-4); }
+  .form-pair:has(#plan-area, #space-area, #space-transaction) { grid-template-columns: minmax(0, 1fr); }
+  #plan-area, #space-area { text-overflow: ellipsis; }
   .drop-heading { flex-wrap: wrap; }
   .territory-map { aspect-ratio: 2 / 1; }
   /* Phone: tighter pills, and a long market name may wrap to two lines. */
