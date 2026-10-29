@@ -20,18 +20,66 @@ function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
-  const browser=await chromium.launch();
-  const page=await browser.newPage({viewport:{width,height:900}});
-  let cancelReads;
-  const cancelled = Symbol('cancelled');
-  const teardown = new Promise(resolve => { cancelReads = () => resolve(cancelled); });
+const fixtureScopes = new WeakMap();
+function fixtureScope(t) {
+  if (fixtureScopes.has(t)) return fixtureScopes.get(t);
+  const held = new Set(), pending = new Set(), failures = [];
+  let closing = false;
+  const scope = {
+    hold() {
+      let resolve;
+      const promise = new Promise(done => { resolve = done; });
+      const release = () => { held.delete(release); resolve(); };
+      if (closing) release(); else held.add(release);
+      return {promise, release};
+    },
+    async delay(ms) {
+      const {promise, release} = scope.hold();
+      const timer = setTimeout(release, ms);
+      try { await promise; } finally { clearTimeout(timer); }
+    },
+    async route(page, reply) {
+      await page.route('**/*', route => {
+        const task = (async () => {
+          let response = null;
+          try {
+            if (!closing) response = await reply(route.request());
+          } catch (error) { failures.push(error); }
+          if (closing || response === null) await route.abort();
+          else await route.fulfill(response);
+        })();
+        pending.add(task);
+        return task.then(() => pending.delete(task), error => {
+          pending.delete(task);
+          failures.push(error);
+        });
+      });
+    },
+  };
+  fixtureScopes.set(t, scope);
   t.after(async () => {
-    cancelReads();
-    await page.unrouteAll({behavior:'wait'});
-    await page.goto('about:blank');
-    await browser.close();
+    closing = true;
+    for (const release of held) release();
+    try {
+      while (pending.size) await Promise.allSettled([...pending]);
+      if (scope.page) {
+        await scope.page.goto('about:blank');
+        await scope.page.unrouteAll({behavior:'wait'});
+      }
+      while (pending.size) await Promise.allSettled([...pending]);
+    } finally {
+      await scope.browser?.close();
+    }
+    assert.deepEqual(failures, [], 'Every fixture route must complete before context teardown');
+    assert.equal(held.size, 0, 'Every held read must be released');
   });
+  return scope;
+}
+
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
+  const scope = fixtureScope(t);
+  const browser = scope.browser = await chromium.launch();
+  const page = scope.page = await browser.newPage({viewport:{width,height:900}});
   await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
@@ -54,13 +102,13 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     add('system',`WORKER SPAWNED — seat dot, a backend worker. Mission: research ${taskId}. Executor: synthetic isolated worker.`,'dot');
     for(let i=0;i<history;i++)add('turn',`Unrelated synthetic historical turn ${i}`,'human');
   }
-  await page.route('**/*',async route=>{
-    const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
-    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
+  await scope.route(page,async request=>{
+    const url=new URL(request.url());if(url.origin!=='http://localhost')return null;
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return ({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if(url.pathname==='/mcp'){
-      const rpc=route.request().postDataJSON().params;calls.push(rpc);
-      if(state.authLost)return route.fulfill({status:401,body:'{}'});
-      if(state.offline)return route.fulfill({status:503,body:'Synthetic offline'});
+      const rpc=request.postDataJSON().params;calls.push(rpc);
+      if(state.authLost)return ({status:401,body:'{}'});
+      if(state.offline)return ({status:503,body:'Synthetic offline'});
       let payload=rpc.name==='read-progress-board'?{ok:true,snapshot:{board_id:rpc.arguments.board_id,version:1,updated_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),snapshot_json:{title:rpc.arguments.board_id==='carr-v5'?'System progress':'Demo project',tasks:empty?{}:{[taskId]:{title:'Demo work detail',status:'review',work_request:'WR-900'}}}},questions:[]}
         :rpc.name==='list-progress-boards'?{schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System progress',updated_at:NOW.toISOString(),task_counts:{}},{board_id:'demo-project',title:'Demo project',updated_at:NOW.toISOString(),task_counts:{review:1}}]}
         :rpc.name==='read-session-identity'?{sessions:sessions || (empty?[]:[{canonical_session_id:'session:fresh',display_name:'Demo builder',surface:'codex',work_state:'working'},{canonical_session_id:'session:other',display_name:'Other builder',surface:'codex'}]),permission_filtered:false}
@@ -69,36 +117,35 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
         :rpc.name==='work-request-card'?{ok:true,human_ref:'WR-900',title:'Demo work request',state:'needs_revision',version:1,desired_outcome:'Synthetic acceptance',acting_identity:[{act:'review',performed_by:'actor:builder'}]}
         :rpc.name==='unfinished-work'?{schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true}:{};
       if (state.rpcReply) {
-        payload=await Promise.race([state.rpcReply(rpc,payload),teardown]);
-        if(payload===cancelled)return route.abort();
+        payload=await state.rpcReply(rpc,payload);
       }
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
+      return ({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
     }
     if(url.pathname==='/api/room/turns'){
-      state.turnReads++;if(state.offline)return route.fulfill({status:503,body:'{}'});
+      state.turnReads++;if(state.offline)return ({status:503,body:'{}'});
       const from=Number(url.searchParams.get('after_seq')||0),limit=Number(url.searchParams.get('limit')||200);
       const turns=state.turns.filter(turn=>turn.seq>from).slice(0,limit);
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
+      return ({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     }
     if(url.pathname==='/api/room/queue'){
-      state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
-      if(state.queueWait && await Promise.race([state.queueWait,teardown])===cancelled)return route.abort();
+      state.queueReads++;if(state.authLost)return ({status:401,body:'{}'});if(state.offline)return ({status:503,body:'{}'});
+      if(state.queueWait)await state.queueWait;
       const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':await page.evaluate(()=>new Date().toISOString()),events})});
+      return ({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':await page.evaluate(()=>new Date().toISOString()),events})});
     }
     if(url.pathname==='/api/room/turn'){
-      if(state.postDelay && await Promise.race([new Promise(resolve=>setTimeout(resolve,state.postDelay)),teardown])===cancelled)return route.abort();
-      posts.push({body:route.request().postDataJSON(),csrf:route.request().headers()['x-carr-csrf']});
-      if(state.postFailure)return route.fulfill({status:502,contentType:'application/json',body:'{}'});
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
+      if(state.postDelay)await scope.delay(state.postDelay);
+      posts.push({body:request.postDataJSON(),csrf:request.headers()['x-carr-csrf']});
+      if(state.postFailure)return ({status:502,contentType:'application/json',body:'{}'});
+      return ({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
     }
-    if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
+    if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return ({contentType:'application/json',body:'{}'});
     // Legacy deep links take the Worker's own 308 Location, as in production. Chromium does not
     // re-intercept a fulfilled redirect, so the page follows that Location itself, keeping the
     // fragment the browser never sends, exactly as an HTTP redirect without one does.
-    if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return route.fulfill({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
+    if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return ({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
     const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
-    try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+    try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return ({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return ({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
@@ -117,23 +164,23 @@ function reboundPassport() {
 
 test('teardown cancels a held queue read before closing the page', async t => {
   let release;
-  const held = new Promise(resolve => { release = resolve; });
   await t.test('page with a pending queue read', async t => {
+    const held = fixtureScope(t).hold();
+    release = held.release;
     const {page,state} = await open(t);
-    state.queueWait = held;
+    state.queueWait = held.promise;
     const reads = state.queueReads;
     await page.clock.runFor(60_100);
     await assertEventually(() => state.queueReads > reads);
   });
   release();
-  await new Promise(resolve => setTimeout(resolve, 100));
+  await fixtureScope(t).delay(100);
 });
 
 test('teardown finishes held RPC callbacks before closing their context', async t => {
   let page, completed = false, started = false;
-  let release;
-  const gate = new Promise(resolve => { release = resolve; });
   await t.test('page with a pending RPC callback', async t => {
+    const {promise:gate} = fixtureScope(t).hold();
     ({page} = await open(t, {rpcReply:async (rpc,payload) => {
       if (rpc.name === 'engineering-passport') {
         started = true;
@@ -144,7 +191,6 @@ test('teardown finishes held RPC callbacks before closing their context', async 
       return payload;
     }}));
     await assertEventually(() => started);
-    t.after(() => release());
   });
   assert.equal(completed, true, 'Teardown awaits the entire held callback');
 });
@@ -189,7 +235,7 @@ test('fresh publication reconciles delivery and derived request evidence and rem
 for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{
   const {page,state} = await open(t);
   await page.waitForSelector('[data-session-id="session:fresh"]');
-  let release,started=false; const gate=new Promise(resolve=>release=resolve);
+  let started=false; const {promise:gate,release}=fixtureScope(t).hold();
   state.rpcReply=async(rpc,payload)=>{
     if(rpc.name===late&&!started){started=true;await gate;return late==='read-session-identity'?{sessions:[{canonical_session_id:'session:fresh',display_name:'Obsolete held session'}]}:{events:[{event_id:99,session_id:'session:fresh',stage:'Obsolete held dispatch'}],more:false};}
     if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Unbound publication',status:'review'};
@@ -200,7 +246,7 @@ for(const late of ['read-session-identity','read-dispatch-history'])test(`public
   await assertEventually(()=>started);
   await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Unbound publication');
-  release(); await new Promise(resolve=>setTimeout(resolve,100));
+  release(); await fixtureScope(t).delay(100);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Obsolete held session/);
   assert.doesNotMatch(await page.locator('#workDispatchHistory').textContent(),/Obsolete held dispatch/);
 });
@@ -488,11 +534,11 @@ test('native adapter reference joins its exact producer host id',async t=>{
 });
 
 test('late Engineering success stays withheld after another protected read loses authentication',async t=>{
-  let release,started=false;const gate=new Promise(resolve=>release=resolve);
+  let started=false;const {promise:gate,release}=fixtureScope(t).hold();
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
   await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(60_100);
   await page.waitForURL('**/public-shell/session-ended.html');
-  release();await new Promise(resolve=>setTimeout(resolve,100));
+  release();await fixtureScope(t).delay(100);
   assert.equal(await page.locator('.passport-card').count(),0);
   assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic|Demo/);
 });
@@ -500,8 +546,8 @@ test('late Engineering success stays withheld after another protected read loses
 test('latest session lookup wins and refresh retains its query',async t=>{
   const {page,state,calls}=await open(t);
   await page.waitForSelector('[data-session-id="session:fresh"]');
-  let release, oldStarted=false;
-  const old=new Promise(resolve=>release=resolve);
+  let oldStarted=false;
+  const {promise:old,release}=fixtureScope(t).hold();
   state.rpcReply=async (rpc,payload)=>{
     if(rpc.name!=='read-session-identity')return payload;
     if(rpc.arguments.query==='old'){oldStarted=true;await old;}
@@ -511,7 +557,7 @@ test('latest session lookup wins and refresh retains its query',async t=>{
   await assertEventually(()=>oldStarted);
   await page.locator('#workSessionQuery').fill('new');await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
   await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Result new'));
-  release();await new Promise(resolve=>setTimeout(resolve,100));
+  release();await fixtureScope(t).delay(100);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Result old/);
   await page.clock.runFor(60_100);await assertEventually(()=>calls.filter(call=>call.name==='read-session-identity'&&call.arguments.query==='new').length>=2);
   assert.match(await page.locator('#workSessionList').textContent(),/Result new/);
@@ -519,7 +565,7 @@ test('latest session lookup wins and refresh retains its query',async t=>{
 
 for (const stalled of ['engineering-passport','read-session-identity'])test(`stalled ${stalled} expires, labels evidence stale and resumes refresh`,async t=>{
   let stalledReads=0;
-  const never=new Promise(()=>{});
+  const {promise:never}=fixtureScope(t).hold();
   const {page,calls}=await open(t,{rpcReply:(rpc,payload)=>rpc.name===stalled?(stalledReads++,never):payload});
   await assertEventually(()=>stalledReads>0);
   await page.clock.runFor(11000);
@@ -531,7 +577,7 @@ for (const stalled of ['engineering-passport','read-session-identity'])test(`sta
 
 test('stalled queue expires and recovers instead of remaining live',async t=>{
   const {page,state}=await open(t);await page.waitForSelector('.queue-card',{state:'attached'});
-  state.queueWait=new Promise(()=>{});
+  state.queueWait=fixtureScope(t).hold().promise;
   await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>1);
   await page.clock.runFor(11000);
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');
@@ -543,11 +589,10 @@ test('stalled queue expires and recovers instead of remaining live',async t=>{
 test('concurrent Earlier dispatches clicks append one stable event and preserve cursor',async t=>{
   const {page,state,calls}=await open(t);await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
-  let release, pending=0;const gate=new Promise(resolve=>release=resolve);
+  let pending=0;const {promise:gate,release}=fixtureScope(t).hold();
   state.rpcReply=async(rpc,payload)=>{if(rpc.name==='read-dispatch-history'&&rpc.arguments.cursor){pending++;await gate;return {...payload,events:[...payload.events,...payload.events]};}return payload;};
   await page.locator('#workDispatchMore').evaluate(button=>{button.click();button.click();});
   await assertEventually(()=>pending>0);
-  t.after(()=>release());
   const actedEvent=page.locator('#workDispatchHistory .work-record > h3').filter({hasText:/^acted$/});
   assert.equal(await actedEvent.count(),0);
   assert.equal(await page.locator('#workDispatchMore').isDisabled(),true);
@@ -573,13 +618,13 @@ test('fresh queue absence removes projected task metadata and sequence binding',
 });
 
 test('late canonical binding restores receipts discarded before the rescan',async t=>{
-  let release;const gate=new Promise(resolve=>release=resolve);
+  const {promise:gate,release}=fixtureScope(t).hold();
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport')await gate;return payload;}});
   await assertEventually(()=>state.turnReads>=1);
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
     const before=state.turnReads;await page.clock.runFor(60_100);await assertEventually(()=>state.turnReads>before);
-    await new Promise(resolve=>setTimeout(resolve,100));
+    await fixtureScope(t).delay(100);
   }
   assert.equal(await page.locator('.passport-card').count(),0);
   release();await page.clock.runFor(60_100);
@@ -733,8 +778,7 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
-  let releaseSessions;
-  const sessionsReady = new Promise(resolve => { releaseSessions = resolve; });
+  const {promise:sessionsReady,release:releaseSessions} = fixtureScope(t).hold();
   const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks',
     rpcReply: async (rpc,payload) => { if (rpc.name === 'read-session-identity') await sessionsReady; return payload; }});
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Stale');
