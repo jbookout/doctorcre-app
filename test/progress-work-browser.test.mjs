@@ -129,6 +129,26 @@ test('teardown cancels a held queue read before closing the page', async t => {
   await new Promise(resolve => setTimeout(resolve, 100));
 });
 
+test('teardown finishes held RPC callbacks before closing their context', async t => {
+  let page, completed = false, started = false;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await t.test('page with a pending RPC callback', async t => {
+    ({page} = await open(t, {rpcReply:async (rpc,payload) => {
+      if (rpc.name === 'engineering-passport') {
+        started = true;
+        await gate;
+        assert.equal(page.isClosed(), false, 'Held callbacks finish while their page is open');
+        completed = true;
+      }
+      return payload;
+    }}));
+    await assertEventually(() => started);
+    t.after(() => release());
+  });
+  assert.equal(completed, true, 'Teardown awaits the entire held callback');
+});
+
 test('fresh publication reconciles delivery and derived request evidence and removes obsolete references',async t=>{
   let request = 'WR-900';
   const next = reboundPassport();
