@@ -457,6 +457,29 @@ test('Recent moves describe feed changes without internal data', async t => {
  }
 });
 
+test('Recent moves show labels and partner text while withholding structured IDs', async t => {
+ const cases = [
+  ['phase','due_diligence','Phase → Due diligence'],
+  ['owner','dell','Owner → Dell'],
+  ['attention',true,'Attention flag → Flagged'],
+  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked — Client paused activity'],
+  ['next_step','Open id 12345','Next step → Open id 12345'],
+  ['next_step','Review {draft} and follow_up: tomorrow','Next step → Review {draft} and follow_up: tomorrow'],
+  ['next_action',12345,'Next action'],
+ ];
+ const {page,goto}=await open(t,{clock:true,events:[]});
+ for (const [field,new_value,expected] of cases) {
+  const event={id:'event-1',subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:'2026-10-01T14:00:00Z'};
+  await page.route('**/pipeline/changes*',route=>route.fulfill({json:{events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]}}));
+  await goto('/leads?mode=live');
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  const row=await page.locator('#appTodayMoves').innerText();
+  assert.ok(row.includes(expected), `${field}: ${row}`);
+  if (field === 'next_action') assert.doesNotMatch(row,/12345/);
+  await page.unroute('**/pipeline/changes*');
+ }
+});
+
 test('Recent moves screenshot evidence', async t => {
  if (!process.env.MOVES_SCREENSHOT_DIR) return;
  for (const [width,height] of [[390,844],[1440,900]]) for (const theme of ['light','dark']) {
