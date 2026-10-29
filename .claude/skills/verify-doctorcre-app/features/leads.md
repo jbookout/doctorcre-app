@@ -17,6 +17,7 @@ Existing coverage: `tests/fixtures/staging-leads.spec.mjs` runs the staging asse
 - Require visible `#leadBoard .lead-card` and hidden `#leadBoardError` before starting.
 - Search for a unique nonmatching string; require zero board cards. Clear Search leads and require the board restored. Scope assertions to `#leadBoard`; the Hottest leads section has separate cards.
 - Choose an owner present in `#ownerFilter`, then clear it with the empty option. Choose a populated Board stage in `#stageFilter`, require matching visible cards and `#filterSummary`, then clear it. Never assume staging has owner `joe`.
+- Choose Show territory and require the default frame to cover Mobile, Tallahassee and Dothan. Filters and refresh keep the same camera and canvas.
 - Choose a Specialty and require the board, map member list and matching count to narrow together. Clear it with All specialties. A refreshed snapshot with no matching specialty keeps the filter and shows zero matches.
 - Each stage starts with at most five cards. Choose Show all in its heading to scroll the full lane beneath the heading and Collapse control. Counts and search include every matching lead.
 - Use the selected card's `.lead-open` button. Compare `#detailTitle` to that lead's title and require visible `#leadDetail`. Use Close lead details and require it hidden.

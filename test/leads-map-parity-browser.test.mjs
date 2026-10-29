@@ -284,9 +284,9 @@ for (const width of [1440, 390]) test(`Leads opens the Mobile to Tallahassee wor
   await page.locator('#leadBoard[aria-busy="false"]').waitFor();
   assert.equal(await canvas.evaluate(node => node.isConnected), true);
   assert.deepEqual(await page.evaluate(() => ({ center: leadsRenderer.getCenter().toArray(), zoom: leadsRenderer.getZoom() })), camera);
-  for (const theme of ['light', 'dark']) {
+  if (process.env.UI_SCREENSHOT_DIR) for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-    await mkdir('/tmp/wr221-territory-captures', { recursive: true });
-    await page.locator('.territory').screenshot({ path: `/tmp/wr221-territory-captures/leads-${width}-${theme}.png` });
+    await mkdir(process.env.UI_SCREENSHOT_DIR, { recursive: true });
+    await page.locator('.territory').screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/leads-${width}-${theme}.png` });
   }
 });
