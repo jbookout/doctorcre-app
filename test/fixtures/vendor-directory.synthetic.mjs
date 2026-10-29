@@ -14,7 +14,19 @@ export function directoryFixture(url, { now = Date.now(), overrides = new Map() 
   }));
   const allowed=(row,keys,optional)=>Object.fromEntries([...keys,...optional].map(key=>[key,row[key]??null]));
   const optional=dataset==='vendors'?['relationship','vertical','deal_type','last_deal_at','territory']:['deal_type','last_deal_at'];
-  if(recordId){const row=records.find(row=>row.id===recordId);return {viewer:'joe',dataset,record:allowed(row,RECORD_KEYS[dataset],dataset==='vendors'?['relationship','loan_programs']:['deal_type','last_deal_at']),partial:null,not_in_this_read:[],recorded_field_note:'Synthetic',source};}
+  if(recordId){
+    const row=records.find(row=>row.id===recordId);
+    const record=allowed(row,RECORD_KEYS[dataset],dataset==='vendors'?['relationship','loan_programs']:['deal_type','last_deal_at']);
+    if(dataset==='vendors' && u.searchParams.get('contract')==='vendor-directory.v2') {
+      const office={street_address:'1 Demo Plaza',city:'Demo Office City',state:'FL',finding_id:id(9001),source:'Synthetic office evidence',observed_at:'2026-10-01T12:00:00Z',expires_on:null};
+      record.people=['Alpha','Beta','Gamma'].map((name,n)=>({
+        company:{id:row.id,name:row.name},contact:{id:id(1000+Number(recordId.slice(-4))*3+n),name:`Demo Contact ${name}`,email:null,phone:null,cell:null},
+        office:n===0?office:null,
+        research:n===0?{status:'office_verified',finding_id:office.finding_id,observed_at:office.observed_at,expires_on:null}:n===1?{status:'needs_review',finding_id:id(9002),observed_at:office.observed_at,expires_on:null}:{status:'not_researched',finding_id:null,observed_at:null,expires_on:null},
+      }));
+    }
+    return {viewer:'joe',dataset,record,partial:null,not_in_this_read:[],recorded_field_note:'Synthetic',source};
+  }
   const parsed=parseViewState('/'+dataset,u.search), query={...parsed.query,q:parsed.query.q||null,page_size:PAGE_SIZE};
   for(const key of ['category','stage','disposition','status','type','territory']) if(key in query && !query[key]) query[key]=null;
   let filtered=records.filter(row=>(!query.q||row.name.toLowerCase().includes(query.q.toLowerCase()))&&(query.owner==='all'||row.owner_label.toLowerCase()===query.owner)&&(!query.territory||row.territory===query.territory));

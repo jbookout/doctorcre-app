@@ -19,6 +19,7 @@
 .search-dock { position: sticky; top: calc(var(--tabbar-height) + var(--space-4)); z-index: 20; margin-bottom: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-3); }
 .business-controls { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
 /* One card: the sticky search. The filters sit under it as a plain row. */
+#secondaryFilters > summary { display: none; }
 .filter-form { display: grid; gap: var(--space-3); padding: 0 var(--space-1); }
 .filter-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); align-items: end; }
 .filter-row-actions { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
@@ -135,11 +136,18 @@ body.record-open { overflow: hidden; }
 .record-panel[hidden] { display: none; }
 .record-panel-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin: 0 calc(var(--space-6) * -1) var(--space-5); padding: var(--space-5) var(--space-6) var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); background: var(--surface-1); }
 .record-panel-head .eyebrow { margin-bottom: var(--space-1); }
+.record-panel-head > div:first-child { flex: 1; min-width: 0; }
+.record-panel-actions { display: flex; flex: none; gap: var(--space-2); }
+.record-panel-actions > .doc-presence { position: static; margin: 0; }
 .record-panel-head h2 { margin: 0; font-size: var(--font-size-4); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); overflow-wrap: anywhere; }
 .record-panel-head h2:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--space-1); }
 .panel-close { flex: none; min-width: var(--touch); min-height: var(--touch); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font: inherit; font-size: var(--font-size-3); line-height: 1; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), color var(--duration-hover) var(--ease-out); }
 .panel-close:hover { background: var(--surface-2); color: var(--fg); }
 .record-panel-body { display: grid; gap: var(--space-5); }
+.vendor-contacts { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.vendor-contacts > li { padding-block: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.vendor-contacts h4 { margin: 0 0 var(--space-1); font-size: var(--font-size-2); }
+.vendor-contacts dd, .vendor-contacts .observed { overflow-wrap: anywhere; }
 .record-tone { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .record-owner { margin: 0; font-size: var(--font-size-1); }
 .record-note { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
@@ -158,7 +166,7 @@ body.record-open { overflow: hidden; }
 .entry-detail { color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Vendor relationship summary. */
-.relationship-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--surface-2); overflow: hidden; }
+.relationship-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .relationship-metric { display: grid; align-content: start; gap: var(--space-1); padding: var(--space-4); }
 .relationship-metric + .relationship-metric { border-left: var(--hairline-width) solid var(--hairline); }
 .relationship-metric strong { display: block; font-size: var(--font-size-4); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); font-variant-numeric: tabular-nums; }
@@ -166,9 +174,9 @@ body.record-open { overflow: hidden; }
 .relationship-metric:last-child strong { font-size: var(--font-size-2); }
 .network-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
 .network-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.network-list li { padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); font-size: var(--font-size-1); }
+.network-list li { padding: var(--space-2) 0; font-size: var(--font-size-1); }
+.network-list li + li { border-top: var(--hairline-width) solid var(--hairline); }
 .network-list time { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-.trust-editor { padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); }
 .trust-editor > summary { display: flex; align-items: center; min-height: var(--touch); font-size: var(--font-size-1); cursor: pointer; }
 .trust-form { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; align-items: end; gap: var(--space-3); padding: var(--space-3) 0; }
 .trust-form label { display: grid; gap: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
@@ -224,4 +232,15 @@ body.record-open { overflow: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
   .record-row, .activity-row, .chip, .refresh-icon, .panel-close, .field input, .field select { transition: none; }
+}
+
+@media (max-width: 767px) {
+  body[data-directory="vendors"] #secondaryFilters > summary { display: list-item; min-height: var(--touch); align-content: center; color: var(--fg-muted); cursor: pointer; font-size: var(--font-size-1); }
+  body[data-directory="vendors"] #secondaryFilters[open] > summary { margin-bottom: var(--space-2); }
+  body[data-directory="vendors"].has-app-layout { --layout-bottom: calc(var(--tabbar-height) + var(--space-6)); }
+  body[data-directory="vendors"] .app-layout-status { height: var(--space-6); }
+  body[data-directory="vendors"] .record-row { grid-template-areas: "head" "facts" "tier" "foot"; gap: var(--space-1); padding-block: var(--space-2); }
+  body[data-directory="vendors"] .record-row > .contact-note,
+  body[data-directory="vendors"] .record-row .row-last-contact,
+  body[data-directory="vendors"] .record-row .row-updated { display: none; }
 }

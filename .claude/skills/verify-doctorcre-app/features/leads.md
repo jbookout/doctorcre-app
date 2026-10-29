@@ -15,9 +15,11 @@ Choose Leads in Primary navigation or open `/leads`. Use Search leads, Owner, Ma
 Existing coverage: `tests/fixtures/staging-leads.spec.mjs` runs the staging assertions through `test/leads-browser-fixture.mjs` and its synthetic HTTP adapter. The Node suite also runs `test/leads-workspace.test.mjs` and the Leads browser tests.
 
 - Require visible `#leadBoard .lead-card` and hidden `#leadBoardError` before starting.
-- Search for a unique nonmatching string; require zero board cards. Clear Search leads and require the board restored. Scope assertions to `#leadBoard`; the Hottest leads section has separate cards.
+- Search for a unique nonmatching string; require zero board cards. Clear Search leads and require the board restored. Scope assertions to `#leadBoard`; the board is the only ranked lead list.
 - Choose an owner present in `#ownerFilter`, then clear it with the empty option. Choose a populated Board stage in `#stageFilter`, require matching visible cards and `#filterSummary`, then clear it. Never assume staging has owner `joe`.
+- Choose Show territory and require the default frame to cover Mobile, Tallahassee and Dothan. Filters and refresh keep the same camera and canvas.
 - Choose a Specialty and require the board, map member list and matching count to narrow together. Clear it with All specialties. A refreshed snapshot with no matching specialty keeps the filter and shows zero matches.
+- The Territory link beside the page title jumps to the market map and chips. Show territory loads the map on demand.
 - Each stage starts with at most five cards. Choose Show all in its heading to scroll the full lane beneath the heading and Collapse control. Counts and search include every matching lead.
 - Use the selected card's `.lead-open` button. Compare `#detailTitle` to that lead's title and require visible `#leadDetail`. Use Close lead details and require it hidden.
 
