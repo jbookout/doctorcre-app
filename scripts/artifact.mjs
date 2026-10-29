@@ -84,9 +84,9 @@ async function assembleArtifact(commit, paths, readSource) {
   const files = new Map();
   for (const path of paths) {
     let content = await readSource(path);
-    if (path === "js/pipeline.js") {
+    if (path.startsWith("js/") && /\.m?js$/.test(path)) {
       const result = await transform(content.toString("utf8"), {
-        format: "esm", target: "es2022", legalComments: "none", minifyWhitespace: true,
+        target: "es2022", legalComments: "none", minify: true,
       });
       content = Buffer.from(result.code);
     }
