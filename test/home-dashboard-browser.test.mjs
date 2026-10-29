@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -25,7 +25,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   // Virtual time pauses CSS transitions. Data journeys use reduced motion so
   // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW });
-  if (!firstOpen) await page.addInitScript(() => {
+  if (!firstOpen && !freshBrief) await page.addInitScript(() => {
     if (!localStorage.getItem('doctorcre:morning:joe')) localStorage.setItem('doctorcre:morning:joe', JSON.stringify({ day: '2026-10-01', lastShownAt: '2026-10-01T14:00:00Z', since: '2026-09-30T17:00:00Z' }));
   });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
@@ -976,7 +976,7 @@ for (const calendar of [{ state: 'empty', items: [] }, null]) test(`Meeting prep
 });
 
 test('Your brief stays visible across Home visits and removes completed tasks on readback', async t => {
-  const { page, completeTask } = await open(t, { tasksOnly: true });
+  const { page, completeTask } = await open(t, { tasksOnly: true, freshBrief: true });
   const brief = page.getByRole('complementary', { name: 'Your brief' });
   await brief.getByText('Demo follow-up').first().waitFor();
   const titles = await brief.locator('a').allTextContents();
@@ -989,6 +989,9 @@ test('Your brief stays visible across Home visits and removes completed tasks on
   const before = await brief.getByText('Demo follow-up').count();
   completeTask();
   await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await brief.getByText('Demo follow-up').count(), before - 1);
+  await page.reload();
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await brief.getByText('Demo follow-up').count(), before - 1);
 });
