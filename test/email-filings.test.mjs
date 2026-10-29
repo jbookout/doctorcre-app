@@ -92,6 +92,34 @@ test('a background filing read failure preserves focus outside its panel', async
   assert.equal(document.activeElement, trigger);
 });
 
+test('a failed retry returns focus to the new Retry button', async () => {
+  const { container, view } = setup({ listEmailThreadFilings: async () => { throw Error('Synthetic read unavailable'); } });
+  await view.refresh();
+  const retry = container.querySelector('[data-filing-retry]');
+  retry.focus();
+  await view.click({ target: retry });
+  assert.equal(container.ownerDocument.activeElement, container.querySelector('[data-filing-retry]'));
+});
+
+test('a failed retry does not reclaim focus moved elsewhere while pending', async () => {
+  let reject;
+  let calls = 0;
+  const { container, view } = setup({ listEmailThreadFilings: () => {
+    if (++calls === 1) return Promise.reject(Error('Synthetic read unavailable'));
+    return new Promise((_, fail) => { reject = fail; });
+  } });
+  await view.refresh();
+  const retry = container.querySelector('[data-filing-retry]');
+  retry.focus();
+  const pending = view.click({ target: retry });
+  const outside = container.ownerDocument.createElement('button');
+  container.ownerDocument.body.append(outside);
+  outside.focus();
+  reject(Error('Synthetic read unavailable'));
+  await pending;
+  assert.equal(container.ownerDocument.activeElement, outside);
+});
+
 test('a failed refresh preserves focus on a filing control within its panel', async () => {
   let fail = false;
   const { container, view } = setup({ listEmailThreadFilings: async () => {

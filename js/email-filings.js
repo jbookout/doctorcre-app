@@ -16,7 +16,7 @@ export function mountEmailFilings({ container, client }) {
   const win = container.ownerDocument.defaultView;
   let rows = [], loadState = 'loading', epoch = 0, disposed = false;
   const outcomes = new Map();
-  function render() {
+  function render(restoreFocus = false) {
     if (disposed) return;
     const ownedFocus = container.contains(container.ownerDocument.activeElement);
     const focusId = ownedFocus ? container.ownerDocument.activeElement.closest('[data-filing-id]')?.dataset.filingId : null;
@@ -32,7 +32,7 @@ export function mountEmailFilings({ container, client }) {
           : `${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>Undo</button>`}</article>`;
     }).join('')}`;
     const item = focusId && [...container.querySelectorAll('[data-filing-id]')].find(node => node.dataset.filingId === focusId);
-    if (ownedFocus) (item?.querySelector('[role="status"], button') || container.querySelector('[data-filing-retry]'))?.focus?.({ preventScroll: true });
+    if (ownedFocus || restoreFocus) (item?.querySelector('[role="status"], button') || container.querySelector('[data-filing-retry], button'))?.focus?.({ preventScroll: true });
   }
   function retire() {
     epoch++; rows = []; loadState = 'denied'; render();
@@ -40,6 +40,7 @@ export function mountEmailFilings({ container, client }) {
   async function refresh() {
     if (disposed || loadState === 'denied') return;
     const ticket = ++epoch;
+    const hadFocus = container.contains(container.ownerDocument.activeElement);
     loadState = 'loading'; render();
     try {
       const result = await readWithDeadline(() => client.listEmailThreadFilings(), { timeoutMs: 10_000 });
@@ -53,7 +54,7 @@ export function mountEmailFilings({ container, client }) {
       if (denied(error)) return retire();
       loadState = 'error';
     }
-    render();
+    render(loadState === 'error' && hadFocus && container.ownerDocument.activeElement === container.ownerDocument.body);
   }
   async function undo(row) {
     if (outcomes.get(row.event_id)?.status === 'submitting') return;
