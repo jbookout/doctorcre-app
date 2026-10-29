@@ -90,6 +90,14 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
     preview.item.button.removeAttribute("aria-describedby");
     preview.element.remove(); preview = null;
   }
+  function leavePreview() {
+    if (preview && doc.activeElement !== preview.item.button) closePreview();
+  }
+  function dismissPreview(event) {
+    if (event.key === "Escape" && preview) { event.preventDefault(); event.stopPropagation(); closePreview(); }
+  }
+  root.addEventListener("mouseleave", leavePreview);
+  doc.addEventListener("keydown", dismissPreview);
   function updatePreview() {
     if (!preview) return;
     const { item, element } = preview;
@@ -175,10 +183,9 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
         item={button,features:cluster.features,marker:new gl.Marker({element:button}).setLngLat(cluster.features[0].geometry.coordinates).addTo(map)};
         button.addEventListener("mouseenter", () => openPreview(item));
         button.addEventListener("focus", () => openPreview(item));
-        button.addEventListener("mouseleave", event => { if (preview?.item === item && !preview.element.contains(event.relatedTarget) && doc.activeElement !== button) closePreview(); });
         button.addEventListener("blur", () => { if (preview?.item === item && !preview.element.matches(":hover")) closePreview(); });
-        button.addEventListener("keydown", event => { if (event.key === "Escape" && preview?.item === item) { event.preventDefault(); event.stopPropagation(); closePreview(); } });
         button.addEventListener("click",()=>{
+          button.focus({ preventScroll: true });
           closePreview();
           if(new Set(item.features.map(feature => feature.id)).size===1 || map.getZoom() >= 11) {
             const leadIds = [...new Set(item.features.flatMap(feature => feature.properties.leadIds))];
@@ -213,9 +220,9 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       map.on("idle", ready); map.on("error", failed); signal?.addEventListener("abort", aborted, { once: true });
       if (signal?.aborted) aborted();
     });
-  } catch (error) { map.off("moveend", draw); map.off("resize", placeLabels); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
+  } catch (error) { root.removeEventListener("mouseleave", leavePreview); doc.removeEventListener("keydown", dismissPreview); closePreview(); map.off("movestart", closePreview); map.off("moveend", draw); map.off("resize", placeLabels); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
   return { resize() { map.resize(); }, locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
     select(key) { for (const { button } of areaMarkers) button.setAttribute("aria-pressed", String(button.dataset.market === key)); placeLabels(); },
-    dispose() {closePreview();closePicker(false);map.off("movestart",closePreview);map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
+    dispose() {root.removeEventListener("mouseleave",leavePreview);doc.removeEventListener("keydown",dismissPreview);closePreview();closePicker(false);map.off("movestart",closePreview);map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
 }
