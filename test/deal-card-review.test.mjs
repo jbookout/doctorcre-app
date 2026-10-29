@@ -4,7 +4,7 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false,denseBoard=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -12,6 +12,10 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
  Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:nextStep,closed_on:closedOn,workspace_kind:'team',account_client_id:null,operating_state:'active',phase_started_on:{pending:'2026-08-10',research:'2026-08-31',site_selection:'2026-09-08',negotiation:'2026-09-20'}});
  seed.deals.find(d=>d.id==='d20').next_step=longestNextStep;
+ if(denseBoard) {
+  seed.deals.forEach(deal=>{if(deal.phase==='Research') deal.phase='Negotiation';});
+  seed.deals.push(...Array.from({length:100},(_,i)=>({...seed.deals.find(d=>d.id==='d14'),id:`demo-dense-${i}`,phase:'Research',name:`Demo multidisciplinary healthcare practice with a deliberately long full name number ${i}`,short_name:`Demo short ${i}`})));
+ }
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
@@ -319,4 +323,57 @@ test('readable phone phase labels stay inside their rail columns',async t=>{
   return [...range.getClientRects()].filter(line=>line.right>box.right+1).map(()=>n.textContent);
  }));
  assert.deepEqual(overflow,[]);
+});
+
+for (const width of [390,1280]) test(`board cards show the full practice name without clipping at ${width}px`,async t=>{
+ const {page}=await open(t,width,{showDetail:false,denseBoard:true});
+ const title=page.locator('[data-id="demo-dense-0"] .card-open');
+ assert.equal(await title.textContent(),'Demo multidisciplinary healthcare practice with a deliberately long full name number 0');
+ const visible=await title.evaluate(button=>{
+  const range=document.createRange();range.selectNodeContents(button);
+  const bounds=button.closest('h4').getBoundingClientRect();
+  return [...range.getClientRects()].every(rect=>rect.bottom<=bounds.bottom+1&&rect.right<=bounds.right+1);
+ });
+ assert.equal(visible,true,'every line of the full name is visible');
+});
+
+for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-card stage keeps its heading and collapse preview at ${width}px in ${theme}`,async t=>{
+ const {page,errors}=await open(t,width,{theme,showDetail:false,denseBoard:true});
+ await mkdir(new URL('out/test-artifacts/d02-stages/',root),{recursive:true});
+ const capture=state=>page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}-${state}.png`,root).pathname,animations:'disabled'});
+ const lane=page.locator('[data-column="research"]');
+ const heading=lane.locator('h3');
+ assert.equal(await heading.locator('small').textContent(),'100');
+ await lane.scrollIntoViewIfNeeded();
+ await page.locator('#kanban').evaluate(board=>{board.scrollTop=4500;});
+ assert.ok(await page.locator('#kanban').evaluate(board=>board.scrollTop)>=1000,'the populated board scrolls');
+ assert.equal(await heading.evaluate(h=>{
+  const r=h.getBoundingClientRect(),board=document.querySelector('#kanban').getBoundingClientRect();
+  const hit=document.elementFromPoint(r.left+10,r.top+r.height/2);
+  return r.top>=board.top-1&&r.bottom<=innerHeight&&h.contains(hit);
+ }),true,'the stage heading remains visible above scrolled cards');
+ await capture('scrolled');
+ const collapse=lane.getByRole('button',{name:'Collapse Research',exact:true});
+ await collapse.focus();await page.keyboard.press('Enter');
+ assert.equal(await lane.locator('.kanban-card:visible').count(),0);
+ assert.equal(await lane.getByRole('button',{name:'Expand Research',exact:true}).getAttribute('aria-expanded'),'false');
+ assert.match(await lane.locator('.stage-preview').textContent(),/Demo multidisciplinary healthcare practice/);
+ assert.match(await lane.locator('.stage-preview').textContent(),/98 more/);
+ assert.equal(await lane.locator('.stage-preview').evaluate(preview=>{
+  const names=[...preview.querySelectorAll('span')].slice(0,2);
+  return names.length===2&&names[0].getBoundingClientRect().bottom<names[1].getBoundingClientRect().top;
+ }),true,'wrapped practice names occupy separate rows with a visible gap');
+ assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Expand Research');
+ assert.equal(await heading.evaluate(h=>{
+  const r=h.getBoundingClientRect(),board=document.querySelector('#kanban').getBoundingClientRect();
+  const hit=document.elementFromPoint(r.left+10,r.top+r.height/2);
+  return r.top>=board.top-1&&r.bottom<=innerHeight&&h.contains(hit);
+ }),true,'collapse keeps its focused heading in view');
+ await capture('collapsed');
+ await page.locator('#listView').click();await page.locator('#boardView').click();
+ await lane.getByRole('button',{name:'Expand Research',exact:true}).click();
+ assert.equal(await lane.locator('.kanban-card').count(),100);
+ await mkdir(new URL('out/test-artifacts/d02-stages/',root),{recursive:true});
+ await page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}.png`,root).pathname,animations:'disabled'});
+ assert.deepEqual(errors,[]);
 });
