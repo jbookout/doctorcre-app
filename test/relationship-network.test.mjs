@@ -7,6 +7,7 @@ import {
   validNetwork,
   filterNetwork,
   introductionSuggestions,
+  introductionRouteLabel,
   focusedNetwork,
   escapeHtml,
 } from "../js/relationship-network-model.js";
@@ -121,4 +122,10 @@ test("introduction paths retain the known person and recorded connector in order
   assert.deepEqual(introductionSuggestions(value)[0].path.map(node => node.name), [
     "Demo Healthcare Lending", "Demo Dental Expansion",
   ]);
+});
+
+
+test("introduction route labels preserve ordered names as plain text", () => {
+  assert.equal(introductionRouteLabel([{ name: 'Source <team> & partners' }, { name: 'Connector' }, { name: 'Destination' }]), 'Source <team> & partners → Connector → Destination');
+  assert.equal(introductionRouteLabel([{ name: 'Source' }, { name: 'Destination' }]), 'Source → Destination');
 });

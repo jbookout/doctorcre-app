@@ -11,6 +11,7 @@ import {
   validNetwork,
   filterNetwork,
   introductionSuggestions,
+  introductionRouteLabel,
   focusedNetwork,
   escapeHtml as E,
 } from "./relationship-network-model.js";
@@ -163,7 +164,7 @@ export function mountRelationshipNetwork({
       intros
         .map(
           (s) =>
-            `<button type="button" class="relationship-card" data-node="${E(s.to)}"><span class="intro-route">${s.path.map(node => E(node.name)).join(" → ")}</span><strong>${E(s.reason)}</strong><small>Willingness unconfirmed</small></button>`,
+            `<button type="button" class="relationship-card" data-node="${E(s.to)}"><span class="intro-route">${E(introductionRouteLabel(s.path))}</span><strong>${E(s.reason)}</strong><small>Willingness unconfirmed</small></button>`,
         )
         .join("") ||
       '<p class="relationship-empty">No offered introductions</p>';
