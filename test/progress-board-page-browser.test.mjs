@@ -97,7 +97,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   assert.equal(await board.locator('#board-stages [data-card-id="build"]').count(), 1, 'published task remains visible');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
   assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)), ['build']);
-  assert.equal(await board.locator('.directory-panel').isVisible(), false);
+  assert.equal(await board.locator('.directory-panel').isVisible(), true, 'the canonical board retains its project selector');
   if (!unfinished) {
     assert.match(await board.locator('#system-work-error').textContent(), /System work updates unavailable/);
     assert.equal(await board.locator('#system-work-retry').isVisible(), true);
@@ -118,7 +118,7 @@ for (const boardRead of ['missing', 'failed']) test(`${boardRead} board read sta
   await page.locator('#board-error').waitFor();
   assert.match(await page.locator('#board-error').textContent(), boardRead === 'missing' ? /not been published/ : /Could not load board/);
   assert.equal(new URL(page.url()).pathname, '/control-room/progress/board/demo-project');
-  assert.equal(await page.locator('.directory-panel').isVisible(), false);
+  assert.equal(await page.locator('.directory-panel').isVisible(), true, 'other published boards remain reachable when this read fails');
   recover();
   await page.locator('#board-retry').click();
   await page.locator('#board-stages [data-card-id="build"]').waitFor();
@@ -784,6 +784,10 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
       assetRoot:process.env.ORCHESTRATOR_BUILT_ROOT ? new URL(`file://${process.env.ORCHESTRATOR_BUILT_ROOT}/`) : undefined});
     await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
     const first=page.locator('[data-orchestrator-card]').first();await first.waitFor();
+    if (width === 1280) {
+      const position = await page.evaluate(() => ({main:document.querySelector('.progress-main').getBoundingClientRect().left, pipeline:document.querySelector('.pipeline-panel').getBoundingClientRect().left}));
+      assert.ok(Math.abs(position.main-position.pipeline) < 2, 'a hidden directory reserves no left column');
+    }
     const box=await first.locator('.orchestrator-progress').boundingBox();
     if(width===390) assert.ok(box && box.y+box.height<820,'first title, status and progress fit above phone navigation');
     await mkdir('test-artifacts/orchestrator',{recursive:true});
