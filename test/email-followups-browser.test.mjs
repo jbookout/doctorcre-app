@@ -221,8 +221,8 @@ for (const width of [1440, 390]) {
     const preview = calls.find(call => call.name === 'preview-email-next-step');
     const confirm = calls.find(call => call.name === 'confirm-email-next-step');
     assert.deepEqual(Object.fromEntries(Object.entries(confirm.arguments).filter(([key]) => !['proposal_digest', 'idempotency_key'].includes(key))), preview.arguments);
-    await page.getByRole('button', { name: 'Close deal', exact: true }).click();
-    await page.waitForFunction(() => !document.querySelector('#recordPanel').open);
+    await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#recordPanel').hidden);
     await page.locator('.kanban-column [data-id="qa-deal-2"] .card-open').click();
     await review.getByText('The tour is confirmed for November 3.', { exact: true }).waitFor();
     assert.doesNotMatch(await review.innerText(), /Please send the revised plan/);

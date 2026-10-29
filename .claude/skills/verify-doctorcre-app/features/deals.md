@@ -1,6 +1,6 @@
 # Deals
 
-Local Deals lets a partner review Board or List, open a deal room and return to the same record.
+Local Deals lets a partner review Board or List, open a full-page Deal Workspace and return to the same record and board scroll position.
 
 ## Sub-features
 
@@ -15,8 +15,8 @@ Choose Local Deals in Primary navigation or open `/deals`. Open a visible deal h
 Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptance-browser.test.mjs` and the Home link tests. The fixture Playwright project also runs the parked-deal journey in `tests/fixtures/staging-controls.spec.mjs`.
 
 - Board stage headings stay above the cards while scrolling. Collapse a stage to see its count and two-name preview, then expand it with Enter. The choice survives Board/List switches for the current page. `test/deal-card-review.test.mjs` covers 100 cards, full practice names, focus visibility, and both themes at phone and desktop widths. Captures stay under `out/test-artifacts/d02-stages/`.
-- Require a visible `.card-open`. Save its title, click, and require visible `#recordPanel`, matching `#panelTitle` and visible `#detailUpdateForm`.
-- Use Close deal, require the panel hidden, then reopen that same heading and compare the title.
+- Require a visible `.card-open`. Save its title, click, and require visible `main#recordPanel`, matching `#panelTitle` and visible `#detailUpdateForm`.
+- Use Back to deals or browser Back, require the workspace hidden, then reopen that same heading and compare the title.
 - A missing or blank next step shows Next step missing on active Board and List cards and in the deal room. Refresh removes the gap when a recorded step arrives and restores it when cleared. Parked and closed deal rooms do not show the gap. `test/local-deals-browser.test.mjs` covers both widths and the existing string and text-object values.
 - Choose List; require `#listView[aria-pressed="true"]`. Open a **visible** `.card-open` in that view and compare the room title. Return to Board and require `#boardView[aria-pressed="true"]`.
 - Open the local direct URL above and compare Demo Surgical Practice. Separately follow the Home flag and navigation link; Board opening does not cover either path.
@@ -31,9 +31,12 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Email follow-ups appears inside each deal room. Review the quoted evidence, choose Confirm, inspect the fresh replacement preview, then Confirm change. Dismiss requires a reason. Refresh deal reloads the pending list. `test/email-followups-browser.test.mjs` covers the scoped deal flow, unavailable reads and empty states at phone and desktop widths. The shared module tests cover pagination, stale preview refusal and uncertain-write recovery.
 
+- Deal Workspace defaults to Overview with snapshot, actions, critical dates, updates, vendors and phase/owner controls. Timeline contains the phase rail and dated events with a type filter. Correspondence & notes loads the existing evidence threads and meetings and shows recorded deal notes. On phones, deal facts appear on one line and the header scrolls away; desktop keeps the header visible across tabs. `tests/fixtures/deal-workspace.spec.mjs` covers direct links, history, scroll restoration, tab content and 390×844 / 1440×900 captures in both themes. Screenshots and traces are retained in the fixture Playwright output directory.
+
+
 ## Gotchas
 
-Use actual synthetic staging IDs when verifying staging. Deep-link close changes the URL, so check URL and dialog independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.
+Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.
 
 ## Call Mode consent and review
 

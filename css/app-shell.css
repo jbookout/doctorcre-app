@@ -184,7 +184,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .has-app-layout .pipeline h1 { font-size: var(--font-size-4); }
 .has-app-layout .lead-card { transition: border-color var(--duration-hover) var(--ease-out); }
 .has-app-layout dialog { max-width: none; width: min(1100px, calc(100vw - 32px)); box-sizing: border-box; }
-.has-app-layout #recordPanel { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(1100px, calc(100vw - 32px)); max-height: 85dvh; z-index: 1300; overflow: auto; background: var(--surface-1); color: var(--fg); box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-overlay); }
+.has-app-layout #recordPanel:not(main) { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(1100px, calc(100vw - 32px)); max-height: 85dvh; z-index: 1300; overflow: auto; background: var(--surface-1); color: var(--fg); box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-overlay); }
 .has-app-layout #recordPanel h2, .has-app-layout #recordPanel h3 { color: var(--fg); }
 .has-app-layout #recordPanel summary { color: var(--fg); }
 .has-app-layout #panelBody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }

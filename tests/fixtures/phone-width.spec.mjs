@@ -12,7 +12,7 @@ for (const { label, href } of navigationItems) for (const theme of ['light', 'da
   test(`${label} fits a phone in ${theme}`, async ({ page }) => {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.url}${href}`);
-    await expect(page.locator('main')).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
     await expect(page.locator('#appShell')).toBeAttached();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await page.locator('body').evaluate(() => document.fonts.ready);

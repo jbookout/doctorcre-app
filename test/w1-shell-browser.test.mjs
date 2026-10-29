@@ -214,16 +214,16 @@ test('an open Deal detail updates automatically without closing its popup', asyn
   const { page, errors } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/deals');
   await page.locator('.card-open').first().click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open);
+  await page.waitForFunction(() => !document.querySelector('#recordPanel')?.hidden);
   const name = await page.locator('#panelTitle').textContent();
   const before = await page.locator('#recordPanel').getAttribute('data-updated');
   await page.clock.fastForward(61_000);
   await page.waitForFunction(before => document.querySelector('#recordPanel')?.dataset.updated !== before, before);
   assert.equal(await page.locator('#panelTitle').textContent(), name);
-  assert.equal(await page.locator('#recordPanel').evaluate(e => e.open), true);
-  await page.getByLabel('Close deal', {exact:true}).click();
+  assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden), true);
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await page.clock.fastForward(61_000);
-  assert.equal(await page.locator('#recordPanel').evaluate(e => e.open), false);
+  assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden), false);
   assert.deepEqual(errors, []);
 });
 

@@ -73,9 +73,9 @@ test('a partner registers the portal from the deal panel, a taken name is refuse
  await page.waitForFunction(()=>document.getElementById('detailClientPortalStatus')?.textContent.includes('That portal name is already taken'));
  assert.equal(await card.count(),0);
  await submit('demo-practice','simple-pw');
- await card.waitFor();
+ await card.waitFor({state:'attached'});
  assert.equal(await card.getAttribute('href'),PORTAL);
- await page.locator('#recordPanel .client-portal-link').waitFor();
+ await page.locator('#recordPanel .client-portal-link').waitFor({state:'attached'});
  assert.equal(await page.locator('#detailClientPortalForm').count(),0,'a registered deal offers no second registration');
  assert.equal(await page.locator('#clientPortalPassword').count(),0);
  assert.equal(await page.locator('input').evaluateAll(inputs=>inputs.some(input=>input.value==='simple-pw')),false);
@@ -112,7 +112,7 @@ test('an unanswered registration can be checked with its original request',async
  await page.getByRole('button',{name:'Register portal'}).click();
  await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'Check outcome'}).click({timeout:2000});
- await page.locator('.kanban-card[data-id="d14"] .client-portal-link').waitFor({timeout:2000});
+ await page.locator('.kanban-card[data-id="d14"] .client-portal-link').waitFor({state:'attached',timeout:2000});
 });
 
 test('the command dock keeps no portal password once a registration settles',async t=>{
@@ -129,6 +129,6 @@ test('the command dock keeps no portal password once a registration settles',asy
  await page.getByLabel('Portal name').fill('demo-practice');
  await page.locator('#clientPortalPassword').fill('secret-pw-1');
  await page.getByRole('button',{name:'Register portal'}).click();
- await page.locator('.kanban-card[data-id="d14"] .client-portal-link').waitFor();
+ await page.locator('.kanban-card[data-id="d14"] .client-portal-link').waitFor({state:'attached'});
  assert.equal(await retained(),false,'a confirmed registration leaves no password in the dock');
 });

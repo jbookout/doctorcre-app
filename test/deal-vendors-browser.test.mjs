@@ -152,7 +152,7 @@ test('parked Board cards still open by body click, Enter and Space around vendor
     else await card.press(action);
     await page.locator('#detailUpdateForm').waitFor();
     assert.equal(await page.locator('#recordPanel').isVisible(), true, action);
-    await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+    await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   }
 });
 

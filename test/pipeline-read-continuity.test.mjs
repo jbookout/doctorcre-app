@@ -42,8 +42,9 @@ test('one card-body tap reads one detail and leaves unopened supporting sections
   await page.locator('.kanban-card[data-id="d14"]').click({position:{x:5,y:5}});
   await page.locator('#detailUpdateForm').waitFor();
   assert.deepEqual(await page.evaluate(() => window.panelReads), { getDeal: 1, correspondenceReadiness: 0, getRelationshipNetwork: 0, getPartyRecord: 0 });
-  await page.locator('#panelEvidenceSection > summary').click();
+  await page.getByRole('tab', {name:'Correspondence & notes'}).click();
   await page.waitForFunction(() => window.panelReads.correspondenceReadiness === 1);
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('#panelContextOpen').click();
   await page.waitForFunction(() => window.panelReads.getRelationshipNetwork === 1);
 });
@@ -121,7 +122,7 @@ test('closing an evidence disclosure cannot hide a pending authorization denial'
       window.refuseEvidence = () => reject(Object.assign(new Error('Synthetic authorization denial'), { status: 401 }));
     });
   });
-  await page.locator('#panelEvidenceSection > summary').click();
+  await page.getByRole('tab', {name:'Correspondence & notes'}).click();
   await page.waitForFunction(() => typeof window.refuseEvidence === 'function');
   await page.locator('#panelEvidenceSection > summary').click();
   await page.evaluate(() => window.refuseEvidence());
@@ -129,6 +130,7 @@ test('closing an evidence disclosure cannot hide a pending authorization denial'
   assert.equal(await page.locator('#detailUpdateForm').count(), 0);
   assert.equal(await page.locator('#panelTitle').textContent(), 'Deal');
   await page.locator('[data-refresh-detail]').click();
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('#dealUpdate').waitFor();
   assert.equal(await page.locator('#dealUpdate').inputValue(), '', 'denied session revokes the unsent draft');
 });
@@ -138,7 +140,7 @@ test('Evidence Retry still works after closing and reopening unchanged evidence'
   await page.locator('.kanban-card[data-id="d14"] .card-open').click();
   await page.locator('#detailUpdateForm').waitFor();
   const summary = page.locator('#panelEvidenceSection > summary');
-  await summary.click();
+  await page.getByRole('tab',{name:'Correspondence & notes',exact:true}).click();
   await page.locator('[data-evidence-retry]').first().waitFor();
   await summary.click();
   await summary.click();

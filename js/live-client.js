@@ -365,6 +365,7 @@ export function createLiveClient(opts = {}) {
         return res.json();
       }, { signal, timeoutMs:opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
+        if (e.field === 'client_id') e.move_name = e.new_value?.client_name || e.new_value?.name;
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.
         for (const side of ['old_value', 'new_value']) {

@@ -42,19 +42,22 @@ test('every deal snapshot opens with an empty Update above a concise overview an
   assert.equal(await page.locator('#detailUpdateForm').count(),1);
   assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
   const form=await page.locator('#detailUpdateForm').boundingBox(),notes=await page.locator('.deal-updates').boundingBox();
-  assert.ok(form.y+form.height<notes.y);assert.ok(form.y+form.height<960);
+  assert.ok(form.y+form.height<notes.y);
+  await page.locator('#detailUpdateForm button[type="submit"]').scrollIntoViewIfNeeded();
+  assert.equal(await page.locator('#detailUpdateForm button[type="submit"]').isVisible(),true);
   await page.locator('.updates-history > summary').click();
   assert.equal(await page.locator('.deal-note').first().getAttribute('data-id'),'demo-new');
   assert.match(await page.locator('.deal-note').first().textContent(),/Dell/);
   assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
   assert.equal(await page.locator('.timeline-chart').count(),0);
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(),1);
-  await page.locator('#panelEvidenceSection > summary').click();
+  await page.getByRole('tab', {name:'Correspondence & notes'}).click();
   await page.locator('[data-evidence-retry]').first().waitFor();
   assert.match(await page.locator('#recordPanel').textContent(),/Threads unavailable/);
   assert.equal(await page.locator('[data-evidence-retry]').count()>0,true);
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
   await page.screenshot({path:new URL(`out/test-artifacts/deal-card-review/${width}-after.png`,root).pathname,animations:'disabled'});
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('.deal-updates').scrollIntoViewIfNeeded();
   await page.screenshot({path:new URL(`out/test-artifacts/deal-card-review/${width}-notes-after.png`,root).pathname,animations:'disabled'});
   assert.deepEqual(errors,[]);
@@ -64,7 +67,7 @@ test('every deal snapshot opens with an empty Update above a concise overview an
 test('lost deals have a searchable view and open the shared snapshot',async t=>{
  const {page}=await open(t);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,outcome:'lost'}};};state.lostDeals=[{id:'d14',name:'Demo Lost Practice',client_name:'Demo Lost Client',type:'Relocation',outcome:'lost',phase:'Closed'}];});
- await page.getByRole('button',{name:'Close deal',exact:true}).click();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.getByRole('button',{name:'Lost deals',exact:true}).click();
  assert.equal(await page.locator('#closedCount').textContent(),'1 lost deals');
  await page.getByLabel('Search lost deals').fill('Demo Lost Client');
@@ -83,7 +86,7 @@ test('archive-only snapshots hide board mutation controls',async t=>{
   state.closedDeals=[deal];
   state.client.getDeal=async()=>({deal,thread:[],history:[],participants:[],critical_dates:[]});
  });
- await page.getByRole('button',{name:'Close deal',exact:true}).click();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.getByRole('button',{name:'Closed deals',exact:true}).click();
  await page.locator('[data-open-deal="demo-archived"]').click();
  await page.locator('#detailUpdateForm').waitFor();
@@ -116,9 +119,11 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   await evidence('board');
   await page.locator('[data-id="d14"] .card-open').click();await page.locator('#detailUpdateForm').waitFor();
 
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   const rails=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(rails).size,width===390?2:1,'phase dates fit without horizontal scrolling');
   assert.ok((await page.locator('.deal-timeline').boundingBox()).height<(width===390?330:200),'phase timeline stays compact');
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   assert.equal(await page.locator('#panelContextOpen').isVisible(),true,'linked context loads only when opened');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   assert.deepEqual(errors,[]);
@@ -131,10 +136,12 @@ test('phone timeline has one rail and unlinked context opens an explicit empty s
  const {page}=await open(t,390);
 
  await t.test('compact rail',async()=>{
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   const tops=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(tops).size,2);
  });
  await t.test('explicit empty context',async()=>{
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('#panelContextOpen').click();
   await page.getByText('No linked context recorded.',{exact:true}).waitFor();
  });
@@ -157,12 +164,12 @@ test('an open snapshot removes board controls when a refresh records closure',as
 
 test('phone deal title stays clear of Doc through the full timeline scroll',async t=>{
  const {page}=await open(t,390,{height:844});
- await page.locator('#recordPanel > #docPresence').waitFor();
+ await page.locator('#recordPanel #docPresence').waitFor();
  await animationsSettled(page);
- const maxScroll=await page.locator('#recordPanel').evaluate(n=>n.scrollHeight-n.clientHeight);
+ const maxScroll=await page.evaluate(()=>document.documentElement.scrollHeight-innerHeight);
  assert.ok(maxScroll>0,'fixture exercises a scrolling snapshot');
  for(const top of [...new Set([0,44,...Array.from({length:Math.ceil(maxScroll/16)},(_,i)=>i*16),maxScroll])]){
-  await page.locator('#recordPanel').evaluate((n,top)=>{n.scrollTop=top;},top);
+  await page.evaluate(top=>scrollTo(0,top),top);
   const obscured=await page.locator('#panelTitle').evaluate(title=>{
    const box=title.getBoundingClientRect(),hits=[];
    for(let y=box.top+1;y<box.bottom;y+=4)for(let x=box.left+1;x<box.right;x+=4){
@@ -173,6 +180,7 @@ test('phone deal title stays clear of Doc through the full timeline scroll',asyn
   });
   assert.deepEqual(obscured,[],`title remains hit-testable at scroll ${top}`);
  }
+ await page.getByRole('tab',{name:'Timeline',exact:true}).click();
  await page.locator('.deal-timeline').scrollIntoViewIfNeeded();
  await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/390-d14-scrolled.png',root).pathname,animations:'disabled'});
@@ -229,14 +237,16 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   assert.equal(await page.locator('.deal-note:visible').count(),0);
   assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
   assert.doesNotMatch(await page.locator('.updates-overview').textContent(),/Older demo update/);
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   assert.equal(await page.locator('.phase-rail time:visible').count(),4);
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   assert.equal(await page.locator('.phase-rail time[datetime="2026-08-31"]').textContent(),'Aug 31, 2026');
   assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   await page.screenshot({path:new URL(`${width}-${theme}.png`,dir).pathname,animations:'disabled'});
   await page.locator('.updates-overview').scrollIntoViewIfNeeded();
-  const title=await page.locator('#panelTitle').boundingBox(),doc=await page.locator('#recordPanel > #docPresence').boundingBox();
-  assert.ok(title.x>=doc.x+doc.width,'the scrolled title clears Doc');
+  const title=await page.locator('#panelTitle').boundingBox(),doc=await page.locator('#recordPanel #docPresence').boundingBox();
+  assert.ok(title.y>=doc.y+doc.height || title.x>=doc.x+doc.width,'the scrolled title clears Doc');
   await page.screenshot({path:new URL(`${width}-${theme}-summary.png`,dir).pathname,animations:'disabled'});
   await page.locator('.updates-history > summary').click();
   assert.equal(await page.locator('.deal-note:visible').count()>1,true);

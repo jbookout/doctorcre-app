@@ -7,7 +7,7 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:900}});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.route('**/js/client.js',route=>route.fulfill({contentType:'text/javascript',body:'export async function createClient(){return window.exampleClient}'}));
+  await page.route('**/js/client.js',route=>route.fulfill({contentType:'text/javascript',body:'export const ACTOR_LABEL={}; export const PHASE_BY_SLUG={}; export function phaseLabel(value){return value} export async function createClient(){return window.exampleClient}'}));
   await page.route('**/brief-owner-test',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/morning-brief.css"></head><body><nav id="host"></nav><main><h1>Example</h1></main><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button><script type="module">
     import {mountAppLayout} from '/js/app-layout.js';
     import {mountMorningBrief} from '/js/morning-brief.js';
