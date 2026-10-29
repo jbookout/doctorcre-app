@@ -41,6 +41,7 @@
         <div data-layout-slot="status" class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button data-layout-refresh id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
       </div>
     </section>
+    <div class="home-columns"><div class="home-main">
     <p id="homeNotice" class="home-notice" role="status" hidden></p>
     <section id="homeMeetings" class="home-panel" aria-label="Upcoming meetings" hidden></section>
     <section id="homeMeetingReviews" class="home-panel" aria-label="Meetings to confirm" hidden></section>
@@ -61,6 +62,7 @@
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>
       <section id="homeLeads" class="home-panel" aria-label="New leads" hidden></section>
     </div>
+    </div><aside id="homeBrief" class="home-panel home-brief" aria-label="Your brief" aria-live="polite"><header class="home-panel-head"><h2>Your brief</h2></header><p class="home-empty">Updating tasks…</p></aside></div>
   </main>
   <dialog id="homeDetail" class="home-detail" aria-labelledby="homeDetailTitle"><article id="homeDetailBody"></article></dialog>
   <script type="module" src="/js/workspace-command-center.js"></script>

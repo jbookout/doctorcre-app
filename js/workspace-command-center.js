@@ -99,6 +99,9 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
+    const tasks = agenda?.briefTasks || [];
+    const briefMessage = signedOut ? 'Sign in to view tasks' : !agenda ? 'Tasks unavailable' : agenda.failed.length ? 'Some tasks unavailable' : !tasks.length ? 'No open tasks' : '';
+    widget('homeBrief', `<header class="home-panel-head"><h2>Your brief</h2>${agenda && !signedOut ? `<span class="home-period">${tasks.length} open</span>` : ''}</header>${tasks.map(task => `<a class="home-brief-card" data-home-key="brief:${E(task.key)}" href="${E(dealHref(task.deal_id))}"><strong>${E(task.label)}</strong><span>${E(task.deal_name)}</span><span>${task.day ? `Due ${E(dateLabel(task.day))}` : 'No due date'}</span></a>`).join('')}${briefMessage ? `<p class="home-empty" role="status">${briefMessage}</p>` : ''}`);
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;

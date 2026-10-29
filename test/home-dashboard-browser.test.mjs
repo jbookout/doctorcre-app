@@ -30,7 +30,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
-  let boardMalformed = malformedBoard, briefFailure = initialBriefFailure;
+  let boardMalformed = malformedBoard, briefFailure = initialBriefFailure, completedTask = false, lastAgenda;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
   t.after(async () => {
@@ -45,11 +45,11 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'get-deal-room': async args => { if (detailFailure === '503' || (detailFailure === 'partial' && args.deal === 'd01')) throw Error('Unavailable'); if ([401, 403].includes(detailFailure)) throw Object.assign(Error('Refused'), { status: detailFailure }); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
-      next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: ['d14', 'd20', 'd23'].includes(args.deal) ? '2026-09-30' : '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
+      next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: ['d14', 'd20', 'd23'].includes(args.deal) ? '2026-09-30' : '2026-10-01', status: completedTask && args.deal === 'd01' ? 'done' : 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
-      return { schema_version: 'home-agenda.v1', ...board, deals: await Promise.all(board.deals.map(async deal => ({
+      return lastAgenda = { schema_version: 'home-agenda.v1', ...board, deals: await Promise.all(board.deals.map(async deal => ({
         ...deal, ...await handlers['get-deal-room']({ deal: deal.id }).catch(error => { if (detailFailure === 'partial') return { critical_dates: null, next_actions: null }; throw error; }),
       }))) };
     },
@@ -97,7 +97,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialFeed, responses, get lastAgenda() { return lastAgenda; }, completeTask() { completedTask = true; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -973,4 +973,43 @@ for (const calendar of [{ state: 'empty', items: [] }, null]) test(`Meeting prep
   const target = calendar ? page.getByRole('button', { name: 'Prepare meetings', exact: true }) : page.locator('#homePrimaryAction');
   await settles(async () => assert.equal(await target.evaluate(button => button === document.activeElement), true));
   assert.deepEqual(errors, []);
+});
+
+test('Your brief stays visible across Home visits and removes completed tasks on readback', async t => {
+  const { page, completeTask } = await open(t, { tasksOnly: true });
+  const brief = page.getByRole('complementary', { name: 'Your brief' });
+  await brief.getByText('Demo follow-up').first().waitFor();
+  const titles = await brief.locator('a').allTextContents();
+  assert.ok(titles.length > 0);
+  assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
+  await page.reload();
+  await brief.getByText('Demo follow-up').first().waitFor();
+  assert.deepEqual(await brief.locator('a').allTextContents(), titles);
+  assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
+  const before = await brief.getByText('Demo follow-up').count();
+  completeTask();
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await brief.getByText('Demo follow-up').count(), before - 1);
+});
+
+
+test('An older Home read cannot restore a completed task', async t => {
+  const home = await open(t, { tasksOnly: true });
+  const { page, responses } = home;
+  const brief = page.getByRole('complementary', { name: 'Your brief' });
+  const before = await brief.getByText('Demo follow-up').count();
+  const old = structuredClone(home.lastAgenda);
+  const completed = structuredClone(old);
+  completed.deals.find(deal => deal.id === 'd01').next_actions[0].status = 'done';
+  let release;
+  responses.set('read-home-agenda', new Promise(resolve => { release = resolve; }));
+  const request = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-agenda');
+  await page.locator('#refreshHome').click();
+  await request;
+  responses.set('read-home-agenda', completed);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  release(old);
+  await page.waitForFunction(expected => document.querySelectorAll('#homeBrief .home-brief-card').length === expected, before - 1);
+  assert.equal(await brief.getByText('Demo follow-up').count(), before - 1);
 });
