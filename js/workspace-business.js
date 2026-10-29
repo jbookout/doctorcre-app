@@ -40,6 +40,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 const dom = {
   title: document.querySelector("#pageTitle"),
+  footer: document.querySelector("#pageFooter"),
   resultsTitle: document.querySelector("#resultsTitle"),
   intro: document.querySelector("#pageIntro"),
   viewer: document.querySelector("#viewerWorkspace"),
@@ -80,6 +81,11 @@ const dom = {
 // have no ids, so they are addressed the way a reader addresses them — by where
 // they go.
 const phoneNavLinks = [...document.querySelectorAll(".mobile-nav a[href]")];
+
+const phoneFilters = window.matchMedia("(max-width: 767px)");
+phoneFilters.addEventListener("change", event => {
+  if (!event.matches) document.querySelector("#secondaryFilters").open = true;
+});
 
 const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[data-owner]")] : [];
 
@@ -494,7 +500,7 @@ function rowHtml(dataset, row, selectedId) {
   const allFacts = rowFacts(dataset, row);
   const missing = allFacts.filter((fact) => !fact.known).map((fact) => fact.label.toLowerCase());
   const facts = allFacts.filter((fact) => fact.known).map((fact) =>
-    `<span class="row-fact${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("")
+    `<span class="row-fact${fact.unresolved ? " unresolved" : ""}${fact.label === "Last contacted" ? " row-last-contact" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("")
     + (missing.length ? `<span class="row-missing">${NOT_RECORDED}: ${escapeHtml(missing.join(", "))}</span>` : "");
   return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span>${dataset === "vendors" ? tierHtml(row.relationship) + `<span class="contact-note">${escapeHtml(shortNote(row.relationship?.last_contact_note))}</span>` : ""}<span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
 }
@@ -937,11 +943,16 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   const hadRecord = Boolean(view.recordId);
   capturePanelState();
   if (recordChanged) { view.panelState = null; delete dom.panelBody.dataset.recordId; }
+  document.body.dataset.directory = parsed.dataset;
+  if (reason === "initial" || datasetChanged) {
+    document.querySelector("#secondaryFilters").open = parsed.dataset !== "vendors" || !phoneFilters.matches;
+  }
   view.dataset = parsed.dataset;
   view.query = parsed.query;
   view.recordId = parsed.recordId;
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
+  if (dom.footer) dom.footer.textContent = `DoctorCRE · ${DATASET_LABEL[parsed.dataset]}`;
   if (dom.resultsTitle) dom.resultsTitle.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
     dom.intro.textContent = "";
