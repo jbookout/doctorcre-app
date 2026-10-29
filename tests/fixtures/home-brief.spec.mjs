@@ -44,6 +44,20 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Ho
   const brief = page.getByRole('complementary', { name: 'Your brief' });
   await expect(brief.locator('a')).toHaveCount(2);
   await expect(page.locator('#refreshHome')).toHaveAttribute('aria-busy', 'false');
+  if (width === 1440) {
+    const days = page.locator('.home-week .home-day');
+    await expect(days).toHaveCount(7);
+    const columns = await days.evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      return { date: node.getAttribute('data-home-week-date'), top: box.top, left: box.left, width: box.width };
+    }));
+    expect(columns.map(day => day.date)).toEqual(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07']);
+    for (const [index, day] of columns.entries()) {
+      expect(day.top).toBeCloseTo(columns[0].top, 0);
+      expect(day.width).toBeCloseTo(columns[0].width, 0);
+      if (index) expect(day.left).toBeGreaterThan(columns[index - 1].left);
+    }
+  }
   if (width === 390) {
     const briefBox = await brief.boundingBox();
     const header = await page.locator('.app-layout-tabbar').boundingBox();
