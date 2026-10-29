@@ -78,18 +78,37 @@
 .home-grid > .home-panel + .home-panel { margin-top: 0; }
 .home-grid #homeCalendar, .home-grid #homeInvoices, .home-grid #homeLeads, .home-grid #homePastClients { grid-column: 1 / -1; }
 
-/* Calendar: a quiet week strip, no tiles. */
-.home-calendar-link { display: block; color: inherit; text-decoration: none; border-radius: var(--radius-2); }
-.home-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); padding-bottom: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
-.home-day { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) 0; border-radius: var(--radius-2); }
-.home-day > span:first-child { color: var(--fg-muted); font-size: var(--font-size-1); }
-.home-day strong { font: var(--font-weight-regular) var(--font-size-3)/1.2 var(--font-text); font-variant-numeric: tabular-nums; color: var(--fg); }
-.home-day.today { background: var(--surface-2); }
-.home-day.today strong { font-weight: var(--font-weight-strong); }
-.home-calendar-link:hover .home-day { background: var(--surface-2); }
-.home-day-marks { display: flex; justify-content: center; gap: 3px; height: 6px; }
-.home-day-marks i { display: block; width: 6px; height: 6px; border-radius: var(--radius-round); background: var(--data-1); }
-.home-day-marks .task { border-radius: 1px; background: var(--data-2); }
+.home-week-zone { margin: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-week-strip { display: none; }
+.home-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.home-day { min-width: 0; max-block-size: min(65svh, 32rem); overflow-y: auto; padding: var(--space-2); border-left: var(--hairline-width) solid var(--hairline); scroll-snap-align: start; }
+.home-day:first-child { border-left: 0; }
+.home-day > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); }
+.home-day > header > span:first-child { color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-day > header > strong { font: var(--font-weight-regular) var(--font-size-3)/1.2 var(--font-text); font-variant-numeric: tabular-nums; color: var(--fg); }
+.home-day.today { background: var(--surface-2); border-radius: var(--radius-2); }
+.home-day.today > header > strong { font-weight: var(--font-weight-strong); }
+.home-week-today { color: var(--accent); font-size: var(--font-size-1); }
+.home-week-all-day { border-bottom: var(--hairline-width) solid var(--hairline); margin-bottom: var(--space-2); padding-bottom: var(--space-2); }
+.home-week-all-day h3 { margin: 0 0 var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); }
+.home-week-entry { display: grid; gap: var(--space-1); width: 100%; min-height: var(--touch); padding: var(--space-2) 0; border: 0; border-top: var(--hairline-width) solid var(--hairline); background: transparent; color: var(--fg); text-align: left; font: inherit; cursor: pointer; }
+.home-week-entry:first-of-type { border-top: 0; }
+.home-week-entry:hover { background: var(--surface-3); }
+.home-week-entry time { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-week-entry strong { min-width: 0; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); line-height: var(--line-height-body); overflow-wrap: anywhere; }
+.home-day:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: -2px; }
+.home-week-empty { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-week-detail .home-panel-head { align-items: flex-start; }
+.home-week-detail .home-panel-head button { margin-top: 0; background: transparent; cursor: pointer; }
+@container (max-width: 700px) {
+  .home-week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); margin-bottom: var(--space-3); }
+  .home-week-strip button { display: grid; justify-items: center; min-width: 0; min-height: var(--touch); padding: var(--space-1) 0; border: 0; border-radius: var(--radius-2); background: transparent; color: var(--fg); font: inherit; cursor: pointer; }
+  .home-week-strip button[aria-current="date"] { background: var(--surface-2); }
+  .home-week-strip span { color: var(--fg-muted); font-size: var(--font-size-1); }
+  .home-week { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; gap: var(--space-3); }
+  .home-day { flex: 0 0 100%; box-sizing: border-box; border-left: 0; padding: var(--space-3); }
+  .home-week-entry strong { font-size: var(--font-size-2); }
+}
 .home-agenda { display: grid; margin: var(--space-2) calc(var(--space-3) * -1) 0; }
 .home-agenda a { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); border-radius: var(--radius-2); color: inherit; text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
 .home-agenda-more { margin-top: var(--space-3); background: transparent; cursor: pointer; }

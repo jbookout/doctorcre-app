@@ -1014,8 +1014,12 @@ test('H03 phone keeps the chosen day through a meeting update', async t => {
     assert.ok(inner.x >= outer.x && inner.x + inner.width <= outer.x + outer.width + 1, 'chosen day stays within Calendar width');
   };
   await position();
+  await day.evaluate(node => { node.scrollTop = 120; });
+  const previousScroll = await day.evaluate(node => node.scrollTop);
+  assert.ok(previousScroll > 0, 'fixture has vertically scrollable day content');
   await page.evaluate(meeting => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: { state: 'ready', items: [{ ...meeting, title: 'Synthetic updated Saturday meeting' }] } })), meeting);
   await position();
+  assert.equal(await day.evaluate(node => node.scrollTop), previousScroll);
 });
 
 test('H03 task details close when both calendar sources become unavailable', async t => {
