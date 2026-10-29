@@ -247,3 +247,46 @@ for (const width of [1440,390]) test(`marker selection survives matching filters
   assert.equal(await page.locator('.lead-card:visible').count(), 1);
   assert.equal(await page.locator('#mapLeadMembers [data-lead-id]').getAttribute('data-lead-id'), id(2));
 });
+
+for (const width of [1440, 390]) test(`Leads opens the Mobile to Tallahassee working frame through Dothan at ${width}px`, async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  await routeLeads(page);
+  await page.route('**/maplibre-gl.mjs', route => route.fulfill({ contentType: 'text/javascript', body: `
+    export * from './maplibre-gl.mjs?provider';
+    import { Map as ProviderMap } from './maplibre-gl.mjs?provider';
+    export class Map extends ProviderMap {
+      constructor(options) { super(options); globalThis.leadsRenderer = this; }
+      fitBounds(bounds, options) {
+        globalThis.leadsInitialBounds ??= bounds.toArray ? bounds.toArray() : bounds;
+        return super.fitBounds(bounds, options);
+      }
+    }
+  ` }));
+  await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.locator('.market-marker').first().waitFor({ state: 'attached' });
+  assert.deepEqual(await page.evaluate(() => leadsInitialBounds), [[-88.107853, 30.453529], [-84.252272, 31.233698]]);
+  const frame = await page.evaluate(() => ({ bounds: leadsRenderer.getBounds().toArray(),
+    places: [[-88.107853, 30.668246], [-84.252272, 30.453529], [-85.406823, 31.233698]]
+      .map(point => { const p = leadsRenderer.project(point); return { x: p.x, y: p.y }; }),
+    width: leadsRenderer.getContainer().clientWidth, height: leadsRenderer.getContainer().clientHeight }));
+  assert.ok(frame.places.every(p => p.x >= 20 && p.x <= frame.width - 20 && p.y >= 20 && p.y <= frame.height - 20), JSON.stringify(frame));
+  assert.ok(frame.bounds[1][1] < 34, 'the working frame does not default to northern Alabama and Georgia');
+  const canvas = await page.locator('#territoryMap canvas').elementHandle();
+  const camera = await page.evaluate(() => ({ center: leadsRenderer.getCenter().toArray(), zoom: leadsRenderer.getZoom() }));
+  await page.locator('#specialtyFilter').selectOption('Dental');
+  await page.locator('#marketFilter').selectOption('Mobile, AL');
+  await page.locator('#marketFilter').selectOption('');
+  await page.locator('#specialtyFilter').selectOption('');
+  await page.locator('#refreshBoard').click();
+  await page.locator('#leadBoard[aria-busy="false"]').waitFor();
+  assert.equal(await canvas.evaluate(node => node.isConnected), true);
+  assert.deepEqual(await page.evaluate(() => ({ center: leadsRenderer.getCenter().toArray(), zoom: leadsRenderer.getZoom() })), camera);
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    await mkdir('/tmp/wr221-territory-captures', { recursive: true });
+    await page.locator('.territory').screenshot({ path: `/tmp/wr221-territory-captures/leads-${width}-${theme}.png` });
+  }
+});
