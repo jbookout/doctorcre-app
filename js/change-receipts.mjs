@@ -581,7 +581,7 @@ export function moveSentence(move) {
     const status = value?.sent_status;
     return typeof status === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(status) ? `${action} → ${humanizeSlug(status)}` : action;
   }
-  if (!move.field.endsWith('_id') && move.field !== 'notes_path' && typeof value === 'string' && SLUG.test(value) && !/\d/.test(value)) return `${action} → ${humanizeSlug(value)}`;
+  if (typeof move.field === 'string' && !move.field.endsWith('_id') && move.field !== 'notes_path' && typeof value === 'string' && SLUG.test(value) && !/\d/.test(value)) return `${action} → ${humanizeSlug(value)}`;
   return action;
 }
 

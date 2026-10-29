@@ -471,6 +471,7 @@ test('Recent moves show labels and partner text while withholding structured IDs
   ['phase','due_diligence','Phase → Due Diligence'],
   ['owner','dell','Owner → Dell'],
   ['attention',true,'Attention flag → Flagged'],
+  [null,{name:'Synthetic deal'},'Change recorded'],
   ['status','open','Status → Open'],
   ['status','done','Status → Done'],
   ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',client_name:'Synthetic Client'},'Client changed to Synthetic Client'],
