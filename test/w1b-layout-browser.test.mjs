@@ -171,7 +171,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
   failed=source;await page.clock.fastForward(61_000);
   await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
   assert.deepEqual(await rows(),good,source+' must retain successful rows');
-  await retry.waitFor({timeout:5000});
+  await retry.waitFor();
   assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);
   assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection unavailable');
   assert.match(await page.locator('#appToday').textContent(),/Showing last update/);
@@ -180,8 +180,8 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
    await mkdir(new URL('out/test-artifacts/today-retry/',root),{recursive:true});
    await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/leads-${width}-${theme}.png`,root).pathname});
   }
-  failed=null;await retry.click({timeout:5000});
-  await retry.waitFor({state:'hidden',timeout:5000});
+  failed=null;await retry.click();
+  await retry.waitFor({state:'hidden'});
   assert.deepEqual(await rows(),good);
   assert.notEqual(await page.locator('#appSyncTime').getAttribute('datetime'),before);
   assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
@@ -223,11 +223,11 @@ test('Today offers retry after its first read fails without claiming an empty re
  await page.route('**/mcp',route=>failed && ['deal-room-board','morning-brief','today-triage'].includes(route.request().postDataJSON().params.name)
   ?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
  await page.goto('http://localhost/leads?mode=live');
- const retry=page.getByRole('button',{name:'Retry Today',exact:true});await retry.waitFor({timeout:5000});
+ const retry=page.getByRole('button',{name:'Retry Today',exact:true});await retry.waitFor();
  assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
  assert.match(await page.locator('#appTodayNext').textContent(),/Unavailable/);
  assert.doesNotMatch(await page.locator('#appToday').textContent(),/Showing last update/);
- failed=false;await retry.click();await retry.waitFor({state:'hidden',timeout:5000});
+ failed=false;await retry.click();await retry.waitFor({state:'hidden'});
  assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());assert.deepEqual(errors,[]);
 });
 

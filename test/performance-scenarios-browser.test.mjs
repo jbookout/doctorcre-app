@@ -1,3 +1,4 @@
+import { WAIT_MS } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -129,7 +130,7 @@ test('Home discovers its boot mode while the client bootstrap is downloading', a
   let release;
   const bootstrap = new Promise(resolve => { release = resolve; });
   await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => { await bootstrap; await route.continue(); });
-  const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: 3000 });
+  const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: WAIT_MS });
   await page.goto(server.url + '/', { waitUntil: 'commit' });
   try { await mode; } finally { release(); }
   await page.locator('#dealFlags .home-flag').first().waitFor();

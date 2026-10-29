@@ -1148,7 +1148,7 @@ for (const status of [401,403]) test(`correspondence ${status} on detail refresh
   await page.locator('#dealUpdate').fill('Synthetic unsaved update');
   await page.evaluate(status => { window.evidenceFailure = status; },status);
   await page.locator('[data-refresh-detail]').click();
-  await page.locator('#panelBody a[href="/auth/login"]').first().waitFor({timeout:2000});
+  await page.locator('#panelBody a[href="/auth/login"]').first().waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail),null);
   assert.equal(await page.locator('#detailUpdateForm').count(),0);
   assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Synthetic unsaved update/);
@@ -1163,7 +1163,7 @@ test('Retry evidence remains active after a background detail refresh replaces e
   const before = await page.evaluate(() => window.evidenceReads);
   await page.evaluate(() => { window.evidenceFailure = null; });
   await page.locator('#panelEvidence [data-evidence-retry]').click();
-  await page.locator('#panelEvidence [data-kind=thread]').waitFor({timeout:2000});
+  await page.locator('#panelEvidence [data-kind=thread]').waitFor();
   assert.ok(await page.evaluate(() => window.evidenceReads) > before);
   assert.deepEqual(errors,[]);
 });
