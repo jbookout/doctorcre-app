@@ -278,7 +278,7 @@ for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} re
 for(const width of [1440,390])test(`current schedule owners open unknown job details at ${width}px`,async t=>{
  const {page,errors}=await open(t,{width,path:'/control-room?tab=automations',unobservedSchedule:true});
  const job=page.locator('#automationUndated').getByRole('button',{name:'Demo unobserved automation',exact:true});
- await job.waitFor({timeout:5000});
+ await job.waitFor();
  assert.match(await job.textContent(),/Next time unavailable/);
  assert.match(await page.locator('#automationState').textContent(),/unavailable/i);
  await job.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);

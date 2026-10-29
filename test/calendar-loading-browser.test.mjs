@@ -4,10 +4,13 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect } from '@playwright/test';
+import { expect as baseExpect } from '@playwright/test';
 import { buildArtifact } from '../scripts/artifact.mjs';
+
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
-import { chromium } from './browser-harness.mjs';
+import { chromium, WAIT_MS } from './browser-harness.mjs';
+
+const expect = baseExpect.configure({ timeout: WAIT_MS });
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -61,7 +64,7 @@ test('Calendar opens confirmed dates while another deal is pending and clears th
       await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `calendar-${status}`, reset: true } });
       await page.goto('https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/calendar');
       const agenda = page.locator('.cal-agenda-item');
-      await expect(agenda).toHaveCount(1, { timeout: 1000 });
+      await expect(agenda).toHaveCount(1);
       await expect(page.locator('#calAgenda')).toHaveAttribute('aria-busy', 'true');
       await expect(page.locator('#calStatusLabel')).toHaveText(`Reading 1 of ${status === 401 ? 3 : 2} deals…`);
       await agenda.click();
@@ -79,7 +82,7 @@ test('Calendar opens confirmed dates while another deal is pending and clears th
         await expect(page.getByRole('heading',{name:'Session ended'})).toBeVisible();
         await expect(agenda).toHaveCount(0);
         releaseLate();
-        await expect(page.locator('body')).not.toContainText('Synthetic fast date');
+        await expect(page.locator('body')).not.toContainText('Synthetic fast date', { timeout: 5000 });
 
       }
     } finally {

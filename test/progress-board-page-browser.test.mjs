@@ -588,7 +588,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     changed.work_queue.revision++;
     setSnapshot(changed);
     await page.clock.runFor(60_300);
-    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
+    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR14"]').waitFor();
     assert.deepEqual(await page.locator('[data-queue-root] > section').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
     assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
     assert.equal(await job.evaluate(node => node.closest('.app-layout-center').scrollTop), scroll);
@@ -599,7 +599,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     changed.work_queue.board.order.reverse(); changed.work_queue.revision++;
     setSnapshot(structuredClone(changed));
     await page.clock.runFor(60_300);
-    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
+    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR20"]').waitFor();
     assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);
     await page.evaluate(axe.source);
@@ -615,7 +615,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
 
 test('an unreviewed fixture preview renders queue details without calling the live board', async t => {
   const { page, calls, errors } = await open(t, {path:'/control-room/progress/board/carr-v5?mode=fixture&card=WR14.S1.J1', boardRead:'failed'});
-  await page.locator('[data-queue-id="WR14.S1.J1"][open]').waitFor({ timeout: 3000 });
+  await page.locator('[data-queue-id="WR14.S1.J1"][open]').waitFor();
   assert.equal(calls.filter(call => call.name === 'read-progress-board').length, 0);
   assert.match(await page.locator('#board-stages').textContent(), /Demo queue ordering/);
   assert.deepEqual(errors, []);

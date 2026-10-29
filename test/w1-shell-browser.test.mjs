@@ -473,7 +473,7 @@ test('background controls and Doc shortcuts retire the walkthrough without inter
 for (const actor of ['joe', 'dell']) test(`first verified ${actor} sign-in opens the walkthrough once in this browser and Help replays it`, async t => {
   const { page, errors } = await open(t, { actor, live: true, minimal: true, firstSignIn: true, width: actor === 'joe' ? 390 : 1280 });
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
-  await guide.waitFor({ timeout: 5000 });
+  await guide.waitFor();
   await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
   await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
   await page.waitForFunction(() => document.querySelector('[data-walkthrough] [data-progress]')?.textContent === '1 of 6');

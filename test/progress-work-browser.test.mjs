@@ -842,7 +842,7 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   await page.locator('.work-lineage a').filter({hasText:'WR-900'}).click();
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('work_request')==='WR-900');
   assert.equal(new URL(page.url()).searchParams.has('task'),false);
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null);
   assert.deepEqual(errors,[]);
 });
 
