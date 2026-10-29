@@ -786,6 +786,37 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
 
 const prepCalendar = { state: 'ready', items: [{ title: 'Demo preparation entry', start: '2026-10-01T16:00:00Z', attendee_count: 2 }] };
 
+test('Meeting preparation follows the selected zone and preserves all-day source dates across DST', async t => {
+  const { page, responses } = await open(t, { calendar: prepCalendar });
+  responses.set('calendar-meeting-prep', { state: 'ready', observed_at: '2026-10-01T14:00:00Z', items: [
+    { title: 'Timed meeting', start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', all_day: false, possible_deals: [] },
+    { title: 'Spring all-day', start: '2026-03-08T00:00:00Z', end: '2026-03-09T00:00:00Z', all_day: true, possible_deals: [] },
+    { title: 'Fall all-day', start: '2026-11-01T00:00:00Z', end: '2026-11-02T00:00:00Z', all_day: true, possible_deals: [] },
+  ] });
+  const zone = page.getByRole('combobox', { name: 'Meeting timezone', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  for (const [value, time, observed] of [
+    ['America/New_York', '12:00 PM EDT', '10:00 AM EDT'],
+    ['America/Chicago', '11:00 AM CDT', '9:00 AM CDT'],
+    ['America/Denver', '10:00 AM MDT', '8:00 AM MDT'],
+    ['America/Los_Angeles', '9:00 AM PDT', '7:00 AM PDT'],
+    ['UTC', '4:00 PM UTC', '2:00 PM UTC'],
+  ]) {
+    await zone.selectOption(value);
+    await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+    await settles(async () => assert.match(await dialog.innerText(), /Timed meeting/));
+    assert.ok((await dialog.locator('article').filter({ hasText: 'Timed meeting' }).innerText()).includes(time));
+    assert.ok((await dialog.innerText()).includes(observed));
+    for (const [title, start, end] of [['Spring all-day', 'Mar 8', 'Mar 9'], ['Fall all-day', 'Nov 1', 'Nov 2']]) {
+      const row = await dialog.locator('article').filter({ hasText: title }).innerText();
+      assert.ok(row.includes(`${start} to ${end}`), `${value}: ${row}`);
+      assert.match(row, /All day/);
+    }
+    await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  }
+});
+
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Meeting preparation opens possible deal context on demand at ${width}px ${theme}`, async t => {
   const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
     { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
@@ -1047,4 +1078,69 @@ test('H03 task details close when both calendar sources become unavailable', asy
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await detail.waitFor({ state: 'hidden', timeout: 1500 });
   assert.equal(await panel.getByRole('button', { name: 'Demo follow-up', exact: true }).count(), 0);
+});
+
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H03 meeting timezone updates Home without changing commitments at ${width} ${theme}`, async t => {
+  const calendar = { state: 'ready', items: [
+    { title: 'Synthetic midnight meeting', start: '2026-10-02T05:30:00Z', all_day: false, location: 'Synthetic meeting room', attendee_count: 2 },
+    { title: 'Synthetic later meeting', start: '2026-10-02T06:15:00Z', all_day: false, location: null, attendee_count: 1 },
+    { title: 'Synthetic all-day commitment', start: '2026-10-03T00:00:00Z', all_day: true, location: null, attendee_count: 0 },
+  ] };
+  const { page, calls, errors } = await open(t, { width, height: width === 390 ? 844 : 1000, theme, calendar });
+  const panel = page.getByRole('region', { name: 'Calendar', exact: true });
+  await panel.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).waitFor();
+  const zone = panel.getByRole('combobox', { name: 'Meeting timezone', exact: true });
+  assert.equal(await zone.count(), 1);
+  assert.equal(await zone.inputValue(), 'America/Chicago');
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const sourceReads = () => calls.filter(name => ['read-home-agenda', 'morning-brief'].includes(name)).length;
+  const reads = sourceReads();
+  await zone.focus();
+  await zone.selectOption('America/Los_Angeles');
+  assert.equal(await zone.evaluate(node => node === document.activeElement), true);
+  const thursday = panel.getByRole('region', { name: 'Thursday, October 1, 2026', exact: true });
+  assert.deepEqual(await thursday.getByRole('button').filter({ hasText: 'Synthetic' }).evaluateAll(nodes => nodes.map(node => node.textContent)), [
+    '10:30 PM PDTSynthetic midnight meeting', '11:15 PM PDTSynthetic later meeting',
+  ]);
+  assert.match(await page.locator('#homeMeetings .home-meeting').filter({ hasText: 'Synthetic midnight meeting' }).innerText(), /Oct 1, 10:30 PM PDT/);
+  assert.equal(sourceReads(), reads);
+  assert.ok(await thursday.getByRole('button', { name: 'Demo follow-up', exact: true }).count());
+  const saturday = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
+  assert.equal(await saturday.getByRole('button', { name: 'Synthetic all-day commitment', exact: true }).count(), 1);
+  const chip = thursday.getByRole('button', { name: 'Synthetic midnight meeting', exact: true });
+  await chip.focus();
+  await page.keyboard.press('Enter');
+  const detail = page.getByRole('dialog', { name: 'Synthetic midnight meeting', exact: true });
+  await detail.waitFor();
+  assert.match(await detail.innerText(), /Thursday, October 1, 2026 · 10:30 PM PDT/);
+  const dir = new URL('../out/test-artifacts/home-timezone/', import.meta.url);
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: `${dir.pathname}detail-${width}-${theme}.png` });
+  await page.keyboard.press('Escape');
+  await detail.waitFor({ state: 'hidden' });
+  assert.equal(await chip.evaluate(node => node === document.activeElement), true);
+  await zone.selectOption('America/New_York');
+  const friday = panel.getByRole('region', { name: 'Friday, October 2, 2026', exact: true });
+  assert.match(await friday.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).innerText(), /1:30 AM EDT/);
+  assert.match(await page.locator('#homeMeetings .home-meeting').filter({ hasText: 'Synthetic midnight meeting' }).innerText(), /Oct 2, 1:30 AM EDT/);
+  assert.equal(sourceReads(), reads);
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await zone.inputValue(), 'America/New_York');
+  assert.match(await friday.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).innerText(), /1:30 AM EDT/);
+  if (width === 390) await panel.getByRole('button', { name: 'Friday, October 2, 2026', exact: true }).click();
+  await panel.evaluate(node => { node.scrollIntoView({ block: 'start' }); window.scrollBy(0, -160); });
+  await zone.focus();
+  const bounds = await zone.boundingBox();
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width, 'timezone control fits the viewport');
+  assert.equal(await zone.evaluate(node => node.scrollWidth <= node.clientWidth), true, 'timezone label is not clipped');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: `${dir.pathname}home-${width}-${theme}.png` });
+  await page.locator('#homeMeetings').evaluate(node => { node.scrollIntoView({ block: 'start' }); window.scrollBy(0, -160); });
+  await page.screenshot({ path: `${dir.pathname}meetings-${width}-${theme}.png` });
+  await page.reload();
+  await panel.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).waitFor();
+  assert.equal(await zone.inputValue(), 'America/Chicago', 'reload starts a new display choice');
+  assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
+  assert.deepEqual(errors, []);
 });
