@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  checks:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -60,10 +60,6 @@ jobs:
         run: |
           printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
       - run: npx playwright install --with-deps chromium webkit
-      # PRs test the merge candidate under the strict required `test` context.
-      # Main retains build/input checks; tag releases still run the full suite.
-      - run: npm test
-        if: ${{ github.event_name == 'pull_request' }}
       - name: Verify Control Room attention and title behavior
         if: ${{ github.event_name == 'pull_request' }}
         run: npx playwright test --project=fixtures tests/fixtures/control-room-c3.spec.mjs tests/fixtures/control-room-queue.spec.mjs
@@ -71,18 +67,76 @@ jobs:
         if: ${{ github.event_name == 'push' }}
       - run: npm run build
       - run: npm run artifact:verify
-      # Lives inside the existing required test context; no ruleset change needed.
+
+  shards:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        working-directory: doctorcre-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: doctorcre-app
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.4
+          cache: npm
+          cache-dependency-path: doctorcre-app/package-lock.json
+      - run: npm ci
+      - run: npm run privacy:check
+        env:
+          DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
+      - name: Prefer Ubuntu archives for browser dependencies
+        run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm test -- --test-shard=${{ matrix.shard }}/4
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deal-items-${{ github.sha }}-${{ matrix.shard }}
+          path: doctorcre-app/out/test-artifacts/deal-items/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  performance:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: doctorcre-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: doctorcre-app
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.4
+          cache: npm
+          cache-dependency-path: doctorcre-app/package-lock.json
+      - run: npm ci
+      - run: npm run privacy:check
+        env:
+          DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
+      - name: Prefer Ubuntu archives for browser dependencies
+        run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run performance:check
         if: ${{ github.event_name == 'pull_request' }}
         env:
           PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: deal-items-${{ github.sha }}
-          path: doctorcre-app/out/test-artifacts/deal-items/*.png
-          if-no-files-found: error
-          retention-days: 14
       - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -96,6 +150,23 @@ jobs:
       - name: Publish performance summary
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: cat test-artifacts/performance/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    if: ${{ always() }}
+    needs: [checks, shards, performance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all applicable jobs to pass
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          SHARDS: ${{ needs.shards.result }}
+          PERFORMANCE: ${{ needs.performance.result }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          test "$CHECKS" = success
+          if [ "$EVENT" = pull_request ]; then
+            test "$SHARDS" = success && test "$PERFORMANCE" = success
+          fi
 
   preview:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
