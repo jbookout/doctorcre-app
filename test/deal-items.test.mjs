@@ -76,21 +76,43 @@ test('an overdue alert states how many days it is overdue', () => {
   assert.equal(many.querySelector('.deal-overdue').textContent, '21 days overdue');
 });
 
-test('board cards show the earliest action, favoring the viewer on a tie, and latest activity', () => {
-  const doc = new JSDOM(renderDealAlert({ id: 'demo', next_actions: [
-    { status: 'open', owner: 'dell', description: 'Call the lender', due_on: '2026-10-30' },
-    { status: 'open', owner: 'joe', description: 'Tour the property', due_on: '2026-10-30' },
-  ], activities: [
-    { summary: 'Sent the proposal', occurred_at: '2026-10-20T10:00:00Z' },
-    { summary: 'Met the client', occurred_at: '2026-10-22T10:00:00Z' },
-  ] }, { today: '2026-10-29', viewer: 'joe', buttons: true, board: true })).window.document;
-  assert.match(doc.body.textContent, /Next: Tour the property · Fri Oct 30/);
-  assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
+test('board summaries use the real fixture and live adapters for detail-only actions and recorded steps', async () => {
+  const { createFixtureClient } = await import('../js/fixture-client.js');
+  const { createLiveClient } = await import('../js/live-client.js');
+  const { readFile } = await import('node:fs/promises');
+  const seed = JSON.parse(await readFile(new URL('../data/board-seed.json', import.meta.url), 'utf8'));
+  Object.assign(seed.deals[0], { next_step: '', next_date: null, email_actions: [
+    { id: 'later', status: 'open', owner: 'joe', description: 'Call the lender', due_on: '2026-10-30' },
+    { id: 'earlier', status: 'open', owner: 'dell', description: 'Tour the property', due_on: '2026-10-12' },
+    { id: 'done', status: 'done', owner: 'joe', description: 'Old action', due_on: '2026-10-01' },
+  ] });
+  seed.history = { [seed.deals[0].id]: [
+    { id: 'old', summary: 'Sent the proposal', recorded_at: '2026-10-20T10:00:00Z' },
+    { id: 'new', summary: 'Met the client', recorded_at: '2026-10-22T10:00:00Z' },
+  ] };
+  const fixture = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(JSON.stringify(seed)).toString('base64')}`, docContext: false });
+  const detail = await fixture.getDeal(seed.deals[0].id);
+  assert.equal(detail.next_actions[1].description, 'Tour the property');
+  const board = await fixture.getBoard();
+  assert.equal(board.schema_version, 'local-deals-board.v2');
+  const row = board.deals.find(row => row.id === seed.deals[0].id);
+  assert.deepEqual(row.open_actions, [
+    { id: 'earlier', owner: 'dell', description: 'Tour the property', due_on: '2026-10-12' },
+    { id: 'later', owner: 'joe', description: 'Call the lender', due_on: '2026-10-30' },
+  ]);
+  assert.deepEqual(row.last_step, { kind: 'note', summary: 'Met the client', occurred_at: '2026-10-22T10:00:00Z' });
+  const live = createLiveClient({ fetchImpl: async () => Response.json({ result: { content: [{ text: JSON.stringify(board) }] } }) });
+  for (const client of [fixture, live]) {
+    const deal = (await client.getBoard()).deals.find(row => row.id === seed.deals[0].id);
+    const doc = new JSDOM(renderDealAlert(deal, { today: '2026-10-29', viewer: 'joe', buttons: true, board: true })).window.document;
+    assert.match(doc.body.textContent, /Next: Tour the property · overdue Oct 12 · D/);
+    assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
+    assert.doesNotMatch(doc.body.textContent, /Old action|No next step/);
+  }
 });
 
-
-test('board cards show another owner and an overdue date, or an empty prompt', () => {
-  const html = renderDealAlert({ id: 'demo', next_actions: [{ status: 'open', owner: 'dell', description: 'Call the lender', due_on: '2026-10-12' }] }, { board: true, viewer: 'joe', today: '2026-10-29' });
-  assert.match(new JSDOM(html).window.document.body.textContent, /Next: Call the lender · overdue Oct 12 · D/);
-  assert.match(new JSDOM(renderDealAlert({ id: 'empty' }, { board: true })).window.document.body.textContent, /No next step set/);
+test('a field edit date never becomes a recorded last step', () => {
+  const doc = new JSDOM(renderDealAlert({ id: 'empty', last_touch: '2026-10-22' }, { board: true })).window.document;
+  assert.match(doc.body.textContent, /No next step set/);
+  assert.doesNotMatch(doc.body.textContent, /Last:|Contact recorded/);
 });

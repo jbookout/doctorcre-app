@@ -121,7 +121,8 @@ test('national account deals show the next action and latest activity', async t 
   await page.route('**/data/board-seed.json', async route => {
     const seed = await (await route.fetch()).json();
     const deal = seed.deals[0];
-    Object.assign(deal, { next_actions: [{ status: 'open', owner: 'joe', description: 'Tour the sample property', due_on: '2026-10-30' }], activities: [{ summary: 'Sent the sample proposal', occurred_at: '2026-10-22T12:00:00Z' }] });
+    Object.assign(deal, { next_step: '', next_date: null, email_actions: [{ id: 'detail-only', status: 'open', owner: 'joe', description: 'Tour the sample property', due_on: '2026-10-30' }] });
+    seed.history = { ...seed.history, [deal.id]: [{ id: 'sent-proposal', summary: 'Sent the sample proposal', recorded_at: '2026-10-22T12:00:00Z' }] };
     await route.fulfill({ json: seed });
   });
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
