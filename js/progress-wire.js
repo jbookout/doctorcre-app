@@ -63,8 +63,6 @@ export const BODY_MAX = 20000;
 export const COUNTER_FROM = 18000;
 export const DOM_TURN_CAP = 300;
 export const PAGE_SIZE = 60;
-export const POLL_VISIBLE_MS = 5000;
-export const POLL_BACKOFF_CEILING_MS = 60000;
 
 // Thresholds, all from the specification, all in one place so the panel and its
 // tests can never disagree about what "attention" means.
@@ -712,8 +710,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     missed: 0,
     lagStreak: 0,
     lastErrors: null,
-    pollMs: POLL_VISIBLE_MS,
-    backoffMs: null,
+    offline: false,
     filters: { seats: new Set(), turns: true, system: true, receipts: true, heartbeats: false, text: "", conversation: true },
     focusSeat: null,
     counted: new Map(),
@@ -2028,10 +2025,10 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
       const fresh = absorb(payload);
       pageDocContext?.finish(docTicket, { turns:state.turns },{at:state.docObservedAt});
-      if (state.backoffMs) {
+      if (state.offline) {
         // Recovery announces itself by counting the missed turns in, rather
         // than silently resuming as if nothing had happened.
-        state.backoffMs = null;
+        state.offline = false;
         banner(`Wire back — ${fresh.length} turn${fresh.length === 1 ? "" : "s"} caught up.`, false);
       } else {
         $("roomBanner").hidden = true;
@@ -2047,7 +2044,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     } catch (error) {
       pageDocContext?.fail(docTicket, error);
       if (!authReadable(epoch) || String(error?.message) === "sign_in_required") return;
-      state.backoffMs = Math.min(POLL_BACKOFF_CEILING_MS, (state.backoffMs || POLL_VISIBLE_MS) * 2);
+      state.offline = true;
       setState($("healthCycleDot"), "urgent");
       banner("Wire offline — last-known activity; retrying.");
       $('roomHealth').dataset.stale = 'true';
@@ -2190,7 +2187,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   updateCounter();
   render();
   // Hidden or idle, the wire makes no reads; a return reads at once.
-  const wirePoll = mountVisibilityPoll({ poll, intervalMs: () => state.backoffMs || POLL_VISIBLE_MS });
+  const wirePoll = mountVisibilityPoll({ poll });
   wirePoll.refresh();
   let scopeSignature = JSON.stringify(scope);
   return { refreshScope: () => {

@@ -87,7 +87,7 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  await page.locator('#panelContextOpen').click();
  await page.waitForFunction(()=>document.querySelector('#contextDrawer').open);
  reads.status=status;
- await page.clock.fastForward(15000);
+ await page.clock.fastForward(60_000);
  await page.waitForFunction(()=>!document.querySelector('#panelBody .deal-opening-snapshot'));
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
@@ -119,11 +119,14 @@ for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR
      else {const error=Error('Synthetic refusal');error.payload={error:'synthetic_refusal'};reject(error);}
    });
  });
+ // The one-minute poll must land while the write is pending, before the
+ // write's 30-second outcome deadline: spend most of the minute first.
+ await page.clock.fastForward(40_000);
  await page.locator('#detailUpdateForm textarea').fill('Pending synthetic next step');
  await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>typeof finishNext==='function');
  reads.status=status;
- await page.clock.fastForward(15000);
+ await page.clock.fastForward(21_000);
  await page.waitForFunction(()=>!document.querySelector('#detailUpdateForm'));
  // A completion must not implicitly reopen a detail, even if later reads succeed.
  reads.status=200;
@@ -289,7 +292,7 @@ test('R7 detail outages recover automatically and late failure cannot replace an
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.originalRead=state.client.getDeal.bind(state.client);state.client.getDeal=async()=>{throw Error('offline');};});
  await page.locator('.kanban-column [data-id="d14"] .card-open').click();await page.waitForTimeout(30);
  assert.match(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
- await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.client.getDeal=originalRead;});await page.clock.fastForward(16_000);await page.waitForSelector('#detailUpdateForm');
+ await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.client.getDeal=originalRead;});await page.clock.fastForward(61_000);await page.waitForSelector('#detailUpdateForm');
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});await readPanel(page);
  assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=id=>id==='d14'?new Promise((_,reject)=>window.failOld=()=>reject(Error('old'))):originalRead(id);dispatchEvent(new Event('online'));});

@@ -217,7 +217,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
     }
   };
   readIdentity();
-  mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity, intervalMs: 60_000 });
+  mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity });
   panel.querySelector("#accountSignOut").onclick = async (event) => {
     if (boot.mode === "fixture") { panel.querySelector("#accountStatus").textContent = "Demo account"; return; }
     if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }

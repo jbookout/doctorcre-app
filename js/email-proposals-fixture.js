@@ -83,14 +83,19 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
         corrections: rows.filter(row => row.status === 'dismissed').sort((a, b) => b.resolved_at.localeCompare(a.resolved_at) || a.id.localeCompare(b.id)).slice(0, 20)
           .map(row => ({ id: row.id, kind: row.kind, deal_name: row.deal_name, reason: row.resolution_reason, resolved_at: row.resolved_at })), send: false };
     },
-    async listEmailProposals({ deal, limit, cursor } = {}) {
+    async listEmailProposals({ deal, limit, cursor, mode, status } = {}) {
+      if (mode === 'recent_outcomes') {
+        if (status !== undefined || limit > 50) fail('email_outcomes_arguments_invalid');
+        if (cursor) fail('email_proposals_cursor_invalid');
+        return { schema_version: 'email-reply-outcomes.v1', proposals: [], send: false, more: false, next_cursor: null };
+      }
       const proposals = [];
       const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
       if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
-      const pending = rows.slice(start).filter(item => item.status === 'pending' && (!deal || item.deal === deal));
+      const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!deal || item.deal === deal));
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
-        if (row.kind === 'reply_draft') { proposals.push(structuredClone(item)); continue; }
+        if (row.kind === 'reply_draft') { proposals.push(structuredClone({ ...item, status })); continue; }
         try { item.preview = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
           text: 'Send the revised plan', next_date: '2026-11-03', owner: 'joe' }, row.kind); }
         catch (error) { item.preview = null; item.preview_error = error.payload?.error || 'preview_failed'; }
@@ -129,6 +134,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       row.status = 'approved_to_send'; row.version++;
       const receipt = { ok: true, proposal_id: row.id, status: row.status, version: row.version, subject: args.subject, body: args.body,
         sha256: (await digest({ subject: args.subject, body: args.body })).slice(7), to: [...row.reply_draft.to], cc: [...row.reply_draft.cc] };
+      row.submitted_email = structuredClone({ subject: args.subject, body: args.body }); row.send_result = null; row.result_recorded_at = null;
       receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
     },
     async dismissEmailProposal(args) {

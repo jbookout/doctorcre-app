@@ -19,7 +19,7 @@ test('Home keeps every open call action with its own owner, date and deal', () =
   assert.equal(undated.owner, 'dell');
   assert.equal(undated.deal_name, 'Demo clinic');
   assert.equal(dealHref(undated.deal_id), '/deals?deal=demo-deal');
-  assert.equal(agenda.week[0].entries.length, 1, 'undated actions never acquire a calendar day');
+  assert.equal(agenda.entries.filter(row => row.day === '2026-10-01').length, 1, 'undated actions never acquire a calendar day');
   assert.equal(agenda.undated.length, 0, 'an intentionally undated task is not a failed date read');
   assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).entries.map(row => row.key), [
     'task:overdue', 'task:today', 'task:also-undated', 'task:future',

@@ -333,6 +333,8 @@ export function createLiveClient(opts = {}) {
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },
     async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
+    async listEmailThreadFilings() { return rpc('list-email-thread-filings', {}); },
+    async undoEmailThreadFiling(args) { return write('undo-email-thread-filing', args); },
 
     async readCallOutcomes() {
       return rpc('read-call-outcomes', {});
@@ -436,6 +438,8 @@ export function createLiveClient(opts = {}) {
     async addDealNote(args) {
       return write('add-deal-note', args);
     },
+
+    async logActivity(args) { return write('log-activity', args); },
 
     async setNextStep(args) {
       return write('set-next-step', args);

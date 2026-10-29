@@ -251,4 +251,4 @@ document.querySelectorAll('[data-focus]').forEach((item) => item.addEventListene
 $('refreshButton').addEventListener('click', refresh);
 $('loadOlder').addEventListener('click', loadOlder);
 refresh();
-mountVisibilityPoll({ poll: refresh, intervalMs: 10_000 });
+mountVisibilityPoll({ poll: refresh });

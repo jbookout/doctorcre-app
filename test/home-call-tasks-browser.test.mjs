@@ -116,7 +116,7 @@ test('Home adds a reviewed call task and reads its exact owner, date and text th
   await page.locator('#dealAttention').screenshot({ path: join(root, 'out/test-artifacts/home-call-tasks/desktop-review.png') });
   await proposal.getByRole('button', { name: 'Add Joe task', exact: true }).click();
   await page.getByText('Task added', { exact: true }).waitFor();
-  await page.locator('#homeAgenda').getByText('Demo proposal-joe lender follow-up', { exact: true }).waitFor();
+  await page.locator('#homeBrief').getByText('Demo proposal-joe lender follow-up', { exact: true }).waitFor();
   assert.deepEqual(actions, [{ id: 'action-proposal-joe', owner: 'joe', description: 'Demo proposal-joe lender follow-up', due_on: '2026-10-02', status: 'open', hold_until: null }]);
   assert.deepEqual(writes.map(({ candidate_id, accept }) => ({ candidate_id, accept })), [{ candidate_id: 'proposal-joe', accept: true }]);
   assert.match(writes[0].idempotency_key, /^[0-9a-f-]{36}$/);
@@ -143,7 +143,7 @@ test('phone Home scopes by proposed assignee and skipping a sibling creates no t
   await page.getByText('Task skipped', { exact: true }).waitFor();
   assert.deepEqual(actions, []);
   assert.deepEqual(writes.map(({ candidate_id, accept }) => ({ candidate_id, accept })), [{ candidate_id: 'proposal-dell', accept: false }]);
-  assert.equal(await page.locator('#homeAgenda').getByText('Demo proposal-dell lender follow-up', { exact: true }).count(), 0);
+  assert.equal(await page.locator('#homeBrief').getByText('Demo proposal-dell lender follow-up', { exact: true }).count(), 0);
   assert.deepEqual(errors, []);
 });
 

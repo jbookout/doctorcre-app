@@ -29,7 +29,7 @@ function createGate({ document, window, name, read, drop }) {
   const listeners = new Set();
   let enabled = false, epoch = 0, accepted = -1, disposed = false;
   const set = value => { enabled = value; for (const listener of [...listeners]) listener(value); };
-  const auto = mountAutoRefresh({ document, window, intervalMs: 30_000, onResume: () => { ++epoch; set(false); },
+  const auto = mountAutoRefresh({ document, window, onResume: () => { ++epoch; set(false); },
     refresh: async ({ signal } = {}) => {
       const started = epoch;
       let next = false;

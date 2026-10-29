@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOARD_STAGES,FILTER_STAGES,eligibleLead,leadTitle,visibleLeads,hotLeadPanel,marketCounts,stageReview,undoReview } from '../js/leads-model.js';
+import { BOARD_STAGES,FILTER_STAGES,eligibleLead,leadTitle,visibleLeads,marketCounts,stageReview,undoReview } from '../js/leads-model.js';
 import {marketFeatures,marketLocation} from '../js/leads-territory-map.js';
 import {lead,leads,detail} from './leads-workspace-fixture.mjs';
 const projectMarkets = (rows, places) => marketFeatures(marketCounts(rows, {}, row => marketLocation(row, places)));
@@ -18,20 +18,6 @@ test('title priority and smart titles discard referral decorations',()=>{
  assert.equal(leadTitle({practice_name:'Example Practice',entity_name:'Entity'}),'Example Practice');
  assert.equal(leadTitle({entity_name:'Example Entity'}),'Example Entity');
  assert.equal(leadTitle({specialty:'Dental',city:'Gulf Breeze'}),'Dental startup in Gulf Breeze');
-});
-test('hottest five are unclaimed New sorted by existing score; no manufactured scores',()=>{
- assert.deepEqual(hotLeadPanel(leads).rows.map(l=>l.id),[1,2,3,4,5].map(n=>lead(n).id));
- assert.equal(hotLeadPanel([lead(1,{score:null}),lead(2,{score:0})]).rows[0].id,lead(2).id);
-});
-test('hottest panel never says there are no New leads while the New column holds claimed ones',()=>{
- const open=hotLeadPanel(leads);
- assert.equal(open.claimable,true);assert.equal(open.rows.length,5);assert.equal(open.newTotal,9);assert.equal(open.claimed,1);
- const claimed=leads.map(l=>l.stage==='new'?{...l,owner:'joe'}:l);
- const all=hotLeadPanel(claimed);
- assert.equal(all.claimable,false);assert.equal(all.newTotal,9);assert.equal(all.claimed,9);
- assert.deepEqual(all.rows.map(l=>l.id),[1,2,3,4,5].map(n=>lead(n).id));
- const none=hotLeadPanel(leads.filter(l=>l.stage!=='new'));
- assert.deepEqual(none,{claimable:false,rows:[],newTotal:0,claimed:0});
 });
 test('filters and market counts share exact eligibility; archive never adds to active figures',()=>{
  assert.equal(visibleLeads(leads,{market:'Mobile, AL'}).length,1);

@@ -70,3 +70,19 @@ test('active backfilled and newly created prospects retain board membership, inc
  const explicitlyInactive=rows.map(d=>d.id==='existing-0'?{...d,prospect_engagement_status:'inactive'}:d);
  assert.deepEqual(localDeals(explicitlyInactive).map(d=>d.id),rows.slice(1).map(d=>d.id));
 });
+
+test('each overdue Today action is labelled and ranked by its own due date, not its deal\'s oldest item', async () => {
+  const { overdueActionRows, overdueLabel, overdueSince } = await import('../js/deal-review-model.js');
+  const today = '2026-10-10';
+  const deal = { id: 'demo-two', name: 'Demo Two Actions', operating_state: 'active', phase: 'Research', next_step: 'Old step', next_date: '2026-09-01',
+    items: [{ id: 'old', status: 'open', due_on: '2026-09-01' }] };
+  const other = { id: 'demo-other', name: 'Demo Other', operating_state: 'active', phase: 'Legal', next_step: 'Other step', next_date: '2026-10-05' };
+  const actions = [
+    { subject_type: 'deal', subject_id: 'demo-two', what: 'Send the plan', due_on: '2026-10-08' },
+    { subject_type: 'deal', subject_id: 'demo-two', what: 'Call the lender', due_on: '2026-10-01' },
+    { subject_type: 'deal', subject_id: 'demo-two', what: 'Not due yet', due_on: '2026-10-12' },
+  ];
+  const rows = overdueActionRows([deal, other], actions, today);
+  assert.deepEqual(rows.map(row => [row.next_step, overdueLabel(overdueSince(row, today), today)]),
+    [['Call the lender', '9 days overdue'], ['Other step', '5 days overdue'], ['Send the plan', '2 days overdue']]);
+});

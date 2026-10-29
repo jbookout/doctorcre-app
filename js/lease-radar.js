@@ -46,7 +46,7 @@ function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}
   };
   return { paint, open(id, target) { selected=id; opener=target; paintSelected(); if (selected) dialog.showModal(); }, close(){selected=null;dialog.replaceChildren();if(dialog.open)dialog.close();} };
 }
-export function mountLeaseRadar({document, window, client, now = () => new Date(), intervalMs = 30_000}) {
+export function mountLeaseRadar({document, window, client, now = () => new Date(), intervalMs}) {
   const $ = id => document.getElementById(id);
   let payload = null, model = null, sequence=0, disposed=false;
   let {view,scope,search,quarter,lease} = parseLeaseRadarAddress(window.location?.search);

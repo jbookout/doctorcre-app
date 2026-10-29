@@ -10,7 +10,7 @@ import {
 } from "../js/workspace-command-center-model.js";
 
 const OBSERVED = "2099-08-24T15:00:00.000Z";
-const EXPIRES = "2099-08-24T15:01:00.000Z";
+const EXPIRES = "2099-08-24T15:02:00.000Z";
 const INSIDE = () => Date.parse("2099-08-24T15:00:30.000Z");
 const OUTSIDE = () => Date.parse("2099-08-24T15:02:00.000Z");
 const cardSource = (overrides = {}) => ({ source: "v_deal_room_board", observed_at: OBSERVED, valid_until: EXPIRES, freshness: "fresh", correlation_id: "corr-test", ...overrides });
@@ -30,7 +30,7 @@ const payload = (overrides = {}) => ({
   recent_calls: [],
   doc_at_work: [{ kind: "active_nonhuman_work", count: 2, source: workSource() }],
   recent_activity: [{ kind: "changed_work", count: 3, observed_at: "2099-08-24T14:30:00.000Z", source: workSource() }],
-  source: { source: "command_center", source_ref: "v_deal_room_board+ops.work_request", observed_at: OBSERVED, valid_until: EXPIRES, freshness: "fresh", correlation_id: "corr-test", safe_explanation: "Fresh because this is a no-store request-time canonical database aggregate; valid for 60 seconds." },
+  source: { source: "command_center", source_ref: "v_deal_room_board+ops.work_request", observed_at: OBSERVED, valid_until: EXPIRES, freshness: "fresh", correlation_id: "corr-test", safe_explanation: "Fresh because this is a no-store request-time canonical database aggregate; valid for 120 seconds." },
   ...overrides,
 });
 

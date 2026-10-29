@@ -74,9 +74,12 @@
 /* Columns are a tonal step below the cards, so a card is not a box inside a box. */
 .kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(7,minmax(0,1fr)); overflow: visible; gap: var(--space-2); }
 .kanban-column { min-width: 0; padding: var(--space-2); background: var(--ground); }
-.kanban-column > h3 { min-height: var(--space-7); gap: var(--space-1); }
+.kanban-column > h3 { position: sticky; top: 0; z-index: 2; margin: 0; min-height: var(--space-7); gap: var(--space-1); background: var(--ground); }
+.kanban-column > h3 button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--touch); padding: var(--space-2) 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.kanban-column > h3 button small { margin-left: auto; }
+.stage-preview { display: grid; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 .kanban-card { height: auto; min-width: 0; grid-template-rows: none; align-content: start; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
-.kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.kanban-card h4 { overflow-wrap: anywhere; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }
 .kanban-lane-label { display: none; }
 .next-line { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; overflow-wrap: anywhere; margin: 0; font-size: var(--font-size-1); color: var(--fg-muted); }
@@ -179,7 +182,8 @@
 .app-section-tabs { display:flex; align-items:center; gap:var(--space-4); border-bottom:var(--hairline-width) solid var(--hairline); }
 .app-section-tabs a { display:flex; align-items:center; min-height:var(--touch); padding:var(--space-2) 0; color:var(--fg-muted); text-decoration:none; border-bottom:2px solid transparent; font-weight:var(--font-weight-strong); }
 .app-section-tabs a[aria-current=page] { color:var(--fg); border-bottom-color:var(--fg); }
-.dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(300px,1fr)); overflow-x:auto; }
+.dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(300px,1fr)); overflow:auto; }
+.dealroom-page.has-app-layout .kanban:has(.kanban-column) { max-height:65dvh; }
 @media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); } }
 .deal-detail#recordPanel > .doc-presence { width:max-content; }
 .deal-detail#recordPanel > header { padding-inline-start:calc(var(--space-5) + var(--touch) + var(--space-3)); }
@@ -188,7 +192,7 @@
  .deal-detail#recordPanel > header { padding-block:var(--space-3); padding-inline:calc(var(--space-4) + var(--touch) + var(--space-3)) var(--space-4); }
  .deal-detail#recordPanel > header h2 { font-size:var(--font-size-3); }
  .dealroom-page.has-app-layout .kanban { grid-template-columns:minmax(0,1fr); }
- .dealroom-page .kanban-column:not(:has(.kanban-card)) { display:none; }
+ .dealroom-page .kanban-column:not(:has(.kanban-card)):not([data-collapsed="true"]) { display:none; }
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }
@@ -205,3 +209,9 @@
 .client-portal-form label { flex: 1 0 100%; }
 .client-portal-form input { flex: 1 1 14rem; min-width: 0; min-height: 2.75rem; }
 .client-portal-form p { flex: 1 0 100%; margin: 0; }
+
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .app-layout-tabs:has(.board-toolbar) { overflow: visible; }
+  .app-layout-tabs > .board-toolbar[data-layout-slot] { flex: 1 1 0; min-width: 0; flex-wrap: wrap; max-width: 100%; }
+  .app-layout-tabs .board-toolbar .chip-bar { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
+}

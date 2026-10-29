@@ -68,3 +68,10 @@ test('an empty structured item list states the gap without restoring legacy pros
   assert.match(doc.body.textContent, /No action items recorded/);
   assert.doesNotMatch(doc.body.textContent, /legacy paragraph/);
 });
+
+test('an overdue alert states how many days it is overdue', () => {
+  const one = new JSDOM(renderDealAlert({ ...deal, overdue_since: '2026-10-21' }, { today: '2026-10-22' })).window.document;
+  assert.equal(one.querySelector('.deal-overdue').textContent, '1 day overdue');
+  const many = new JSDOM(renderDealAlert({ ...deal, overdue_since: '2026-10-01' }, { today: '2026-10-22' })).window.document;
+  assert.equal(many.querySelector('.deal-overdue').textContent, '21 days overdue');
+});

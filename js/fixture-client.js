@@ -76,7 +76,7 @@ export async function createFixtureClient(opts = {}) {
     for (const id of ['d06', 'd07', 'd08']) {
       const deal = deals.get(id);
       if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
-        parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
+        parking_note:'No reason given yet', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
     }
     // Keep the local demo representative of the production information model:
     // one national-account portfolio, many market deals, no duplicate deal rows.
@@ -1475,6 +1475,15 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        getDealOrThrow(ref);
+        if (kind !== 'meeting' || !String(summary || '').trim() || !Number.isFinite(Date.parse(occurred_at))) throw new Error('Invalid activity');
+        pushHistory(ref, selfActor, `logged meeting: ${String(summary).trim()}`, nowIso());
+        return { ok: true, activity_id: `a-${dealStore.noteSeq++}`, subject: { type: 'deal', id: ref } };
+      });
+    },
+
     async addDealNote({ deal, text, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         getDealOrThrow(deal);
@@ -2620,11 +2629,11 @@ export async function createFixtureClient(opts = {}) {
     },
 
     // Derive Home counts from the same fixture board. Mint timestamps with the contract
-    // 60-second window so ordinary runs exercise fresh data.
+    // 120-second window so ordinary runs exercise fresh data.
     async commandCenter() {
       const now = Date.now();
       const observed_at = new Date(now).toISOString();
-      const valid_until = new Date(now + 60_000).toISOString();
+      const valid_until = new Date(now + 120_000).toISOString();
       const source = (name) => ({
         source: name,
         source_ref: name === 'command_center' ? 'fixture:command-center' : `fixture:${name}`,

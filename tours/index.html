@@ -23,10 +23,14 @@
     <section class="card plan-card" aria-labelledby="plan-title">
       <div class="widget-heading"><h2 id="plan-title">Plan a tour</h2><button id="plan-undo" aria-label="Undo tour edit" title="Undo tour edit" disabled type="button">↶</button></div>
       <form id="plan-form">
+        <label for="plan-purpose">For<select id="plan-purpose"><option value="client">Client</option><option value="research">Research</option></select></label>
+        <div id="plan-client-picker">
         <label for="plan-client-query">Find clients<input id="plan-client-query" type="search" maxlength="80" aria-describedby="plan-client-state"></label>
         <button id="plan-client-find" type="button">Find clients</button>
         <p id="plan-client-state" class="capability-note" role="status">Clients are loading.</p>
-        <label for="plan-client">For<select id="plan-client"><option value="">Choose a client</option></select></label>
+        <label for="plan-client">Client<select id="plan-client"><option value="">Choose a client</option></select></label>
+        <button id="plan-client-retry" type="button" hidden>Retry client details</button>
+        </div>
         <label for="plan-name">Tour name<input id="plan-name" maxlength="240"></label>
         <div class="form-pair"><label for="plan-date">Date<input id="plan-date" type="date"></label><label for="plan-time">Start time<input id="plan-time" type="time"></label></div>
         <div class="form-pair"><label for="plan-area">Area<input id="plan-area" maxlength="200"></label><label for="plan-use">Space type<input id="plan-use" maxlength="120"></label></div>
@@ -47,13 +51,14 @@
         <button id="space-client-find" type="button">Find clients</button>
         <p id="space-client-state" class="capability-note" role="status">Clients are loading.</p>
         <label for="space-client">For<select id="space-client"><option value="">Research only</option></select></label>
+        <button id="space-client-retry" type="button" hidden>Retry client details</button>
         <div class="form-pair"><label for="space-area">Area<input id="space-area" maxlength="200" required></label><label for="space-use">Space type<input id="space-use" maxlength="120"></label></div>
         <div class="form-pair"><label for="space-minSize">Minimum SF<input id="space-minSize" type="number" min="0"></label><label for="space-maxSize">Maximum SF<input id="space-maxSize" type="number" min="0"></label></div>
         <div class="form-pair"><label for="space-budget">Maximum budget<input id="space-budget" type="number" min="0" step="any"></label><label for="space-rentBasis">Budget basis<select id="space-rentBasis"><option value="">Choose basis</option><option value="sf_year">$/SF/year</option><option value="month">$/month</option><option value="purchase">Purchase price</option></select></label></div>
         <div class="form-pair"><label for="space-transaction">Transaction<select id="space-transaction"><option value="">Choose transaction</option><option>Lease</option><option>Purchase</option><option>Lease or purchase</option></select></label><label for="space-availableBy">Available by<input id="space-availableBy" type="date"></label></div>
         <label for="space-parking">Parking<input id="space-parking" maxlength="240"></label>
         <label for="space-requirements">Must-haves<textarea id="space-requirements" rows="3" maxlength="4000"></textarea></label>
-        <div class="widget-actions"><button id="save-search" type="submit">Save search draft</button><button type="button" disabled aria-describedby="find-spaces-reason">Find spaces</button></div>
+        <div class="widget-actions"><button id="save-search" type="submit">Save search draft</button><button id="plan-from-search" type="button">Plan from search</button><button type="button" disabled aria-describedby="find-spaces-reason">Find spaces</button></div>
         <p id="find-spaces-reason" class="capability-note">Find spaces needs the licensed MLS feed, which is not connected yet. Save the search draft to keep these needs for a client.</p>
         <div id="space-message" class="form-message" role="status" aria-live="polite"></div>
       </form>

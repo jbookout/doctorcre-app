@@ -5,13 +5,14 @@ import { chromium, waitForAsync } from './browser-harness.mjs';
 import { identity, found, readiness, meeting } from './fixtures/correspondence.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
   Object.assign(seed.deals.find(d => d.id === 'd14'), {phase:'Negotiation',next_date:'2026-10-02'});
+  if (legalDestination) seed.deals.push({ ...seed.deals.find(d => d.id === 'd14'), id: 'demo-legal', name: 'Demo Legal Practice', phase: 'Legal' });
   Object.assign(seed.deals.find(d => d.id === 'd20'),{phase:'Closed',outcome:'won'});
   Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
@@ -257,6 +258,26 @@ test('W4 drag and keyboard phase writes, manual phase, park, revive and undo rec
   assert.deepEqual(errors, []);
 });
 
+for (const width of [1440, 390]) test(`keyboard move into a collapsed stage restores heading focus at ${width}px`, async t => {
+  const { page, errors } = await open(t, { width, legalDestination: true });
+  const destination = page.locator('[data-column="legal"]');
+  await destination.getByRole('button', { name: 'Collapse Legal', exact: true }).click();
+  const name = await page.locator('.kanban-column [data-id="d14"] .card-open').textContent();
+  await page.locator('.kanban-column [data-id="d14"]').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await page.locator('#completionConfirm').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#completionDialog').waitFor({ state: 'hidden' });
+  assert.equal(await destination.getAttribute('data-collapsed'), 'true');
+  assert.equal(await destination.locator('.kanban-card').count(), 0);
+  assert.ok((await destination.locator('.stage-preview').textContent()).includes(name));
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-collapse-stage')), 'legal');
+  assert.equal(await page.locator('#dragLive').textContent(), `${name} moved to Legal.`);
+  assert.deepEqual(errors, []);
+});
+
 test('W4 list attention order, whole-row detail, timed scroll and draft preservation, failure recovery', async t => {
   const { page, errors } = await open(t, { many: true });
   await page.locator('#listView').click();
@@ -265,13 +286,13 @@ test('W4 list attention order, whole-row detail, timed scroll and draft preserva
   await page.locator('#parkedToggle').click();
   await page.locator('[data-id="demo-50"]').click(); await page.waitForSelector('#detailUpdateForm');
   await page.locator('#detailUpdateForm textarea').fill('Unsaved demo next step'); await page.locator('#detailUpdateForm textarea').focus();
-  await page.clock.fastForward(16000); assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Unsaved demo next step');
+  await page.clock.fastForward(61_000); assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Unsaved demo next step');
   await page.getByLabel('Close deal', { exact: true }).click();
   await page.locator('[data-id="demo-50"]').focus(); await page.evaluate(() => scrollBy(0, 350)); const before = await page.evaluate(() => scrollY);
   await refresh(page); assert.equal(await page.evaluate(() => scrollY), before);
-  await page.clock.fastForward(16000); assert.equal(await page.evaluate(() => scrollY), before);
+  await page.clock.fastForward(61_000); assert.equal(await page.evaluate(() => scrollY), before);
   await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); const get = state.client.getBoard; let fail = true; state.client.getBoard = async (...a) => { if (fail) { fail = false; throw new Error('synthetic outage'); } return get(...a); }; });
-  await refresh(page); await page.clock.fastForward(16000);
+  await refresh(page); await page.clock.fastForward(61_000);
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.boardSync.status().state === 'ready');
   assert.deepEqual(errors, []);
 });
@@ -321,7 +342,7 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
       return { ...detail, deal: { ...detail.deal, phase: 'Legal', operating_state: 'parked', parking_note: 'Demo reviewed import', phase_change: {event_id:'demo-auto',prior_phase:'Negotiation',automatic:true,reason:'Draft prepared',evidence_date:'2026-10-04'} }, critical_dates:[{label:'Demo deadline',date:'2026-10-09'}],participants:[{name:'Demo advisor'}],activities:[{id:'demo-meeting',kind:'meeting',source:'synthetic calendar',summary:'Demo scheduled tour',occurred_at:'2026-10-05T17:00:00Z'}] };
     };
   });
-  await page.clock.fastForward(16000);
+  await page.clock.fastForward(61_000);
   await page.waitForFunction(() => document.querySelector('[data-detail-read="parking"]')?.textContent.includes('Demo reviewed import'));
   assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
   assert.match(await page.locator('.phase-rail [aria-current]').textContent(), /Legal/);
@@ -357,7 +378,7 @@ test('W4 a long automatic reason keeps its date visible without persistent card 
   await card.hover();
   await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
   // Attention reads in words with a glyph, never a bare colour dot (S8).
-  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ Overdue');
+  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ 245 days overdue');
 });
 
 
@@ -366,10 +387,10 @@ test('detail reads recover without losing an update draft', async t => {
  await page.locator('[data-id="d14"] .card-open').click();
  await page.locator('#detailUpdateForm textarea').fill('Unsaved demo update');
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;window.restoreRead=()=>state.client.getDeal=read;state.client.getDeal=async()=>{throw Error('Synthetic outage');};});
- await page.clock.fastForward(16000);
+ await page.clock.fastForward(61_000);
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Unsaved demo update');
- await page.evaluate(()=>restoreRead());await page.clock.fastForward(16000);
+ await page.evaluate(()=>restoreRead());await page.clock.fastForward(61_000);
  await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Unsaved demo update'));
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
@@ -464,9 +485,16 @@ for (const theme of ['dark', 'light']) {
     await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
     await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-${width}-${theme}.png`, root).pathname });
     await undo.click();
-    await page.clock.runFor(5001);
-    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
+    // Let the Undo write settle in real time before the clock jumps past its
+    // 30-second outcome deadline to the next one-minute feed poll.
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    // The fixture feed pages two events per one-minute poll; catch it up.
+    const feedPages = async () => page.evaluate(async () => (await import('/js/pipeline.js')).state.feed);
+    for (let feed = await feedPages(); !feed.caught_up; feed = await feedPages()) {
+      await page.clock.runFor(60_001);
+      await waitForAsync(page, async pages => { const { state } = await import('/js/pipeline.js'); return state.feed.caught_up || state.feed.pages > pages; }, feed.pages);
+    }
+    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
     const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));
     assert.equal(reverted.length, 1);
     await refresh(page);
@@ -1138,4 +1166,65 @@ test('Retry evidence remains active after a background detail refresh replaces e
   await page.locator('#panelEvidence [data-kind=thread]').waitFor({timeout:2000});
   assert.ok(await page.evaluate(() => window.evidenceReads) > before);
   assert.deepEqual(errors,[]);
+});
+
+test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps view controls visible', async t => {
+  for (const width of [390, 1440]) await t.test(String(width), async t => {
+    const { page, errors } = await open(t, { width, height: 844 });
+    await page.evaluate(async () => {
+      const { state } = await import('/js/pipeline.js');
+      const get = state.client.getBoard;
+      state.client.getBoard = async (...args) => {
+        const result = await get(...args);
+        const template = result.deals.find(d => d.workspace_kind !== 'national_account' && !d.account_client_id);
+        return { ...result, deals: [
+          { ...template, id: 'demo-parked-on-deck', name: 'Demo Parked On Deck', phase: 'On Deck', operating_state: 'parked', parking_reason: 'other', parking_note: null },
+          { ...template, id: 'demo-research', name: 'Demo Research', phase: 'Research', operating_state: 'active' },
+        ] };
+      };
+    });
+    await refresh(page);
+    const parked = page.locator('[data-id="demo-parked-on-deck"]');
+    const lane = page.locator('.parked-lane');
+    if (width === 390) {
+      assert.equal(await page.locator('[data-column="pending"] [data-id="demo-parked-on-deck"]').count(), 0);
+      assert.equal(await lane.locator('[data-id="demo-parked-on-deck"]').count(), 1);
+      assert.equal(await lane.evaluate(node => node.open), false);
+      assert.equal(await parked.isVisible(), false);
+      assert.match(await lane.locator('summary').textContent(), /Parked · 1/);
+      const shown = await page.locator('.kanban-column').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length).map(n => n.dataset.column));
+      assert.deepEqual(shown, ['research']);
+      const tabs = await page.locator('#appTabsSlot').evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const buttons = [...node.querySelectorAll('button')].filter(button => button.getClientRects().length);
+        return {
+          overflowX: getComputedStyle(node).overflowX,
+          fits: buttons.every(button => {
+            const rect = button.getBoundingClientRect();
+            return rect.left >= bounds.left && rect.right <= bounds.right;
+          }),
+        };
+      });
+      assert.deepEqual(tabs, { overflowX: 'visible', fits: true });
+      await lane.locator('summary').click();
+      assert.equal(await parked.isVisible(), true);
+    } else {
+      assert.equal(await page.locator('[data-column="pending"] [data-id="demo-parked-on-deck"]').count(), 1);
+    }
+    assert.deepEqual(errors, []);
+  });
+});
+
+test('the status band shows one clock and one refresh, and that refresh also updates the rails', async t => {
+  const { page, errors } = await open(t, { width: 1440 });
+  const band = await page.locator('.app-layout-status').evaluate(node => {
+    const visible = [...node.querySelectorAll('button, time, .as-of')].filter(n => n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden');
+    return { refresh: visible.filter(n => n.textContent.trim() === '↻').length, clocks: visible.filter(n => /\d:\d\d/.test(n.textContent)).length };
+  });
+  assert.deepEqual(band, { refresh: 1, clocks: 1 });
+  const before = await page.locator('#appSyncTime').getAttribute('datetime');
+  await page.clock.fastForward(2_000);
+  await page.locator('#retryRead').click();
+  await page.waitForFunction(before => document.querySelector('#appSyncTime').getAttribute('datetime') !== before, before);
+  assert.deepEqual(errors, []);
 });

@@ -69,15 +69,15 @@ test('refresh preserves expanded updates, focus, dates and draft through an outa
  const {page,errors}=await open(t);
  await page.locator('.updates-history > summary').click();
  const summary=page.locator('.deal-note[data-id="mail"] summary');await summary.click();await summary.focus();
- await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(16000);
+ await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Demo updated allowance received'));
  assert.equal(await page.locator('.deal-note[data-id="mail"] details').evaluate(e=>e.open),true);
  assert.equal(await summary.evaluate(e=>document.activeElement===e),true);
  await page.locator('#detailUpdateForm textarea').fill('Demo unsaved update');
- await page.evaluate(()=>window.timelineProbe.fail=true);await page.clock.fastForward(16000);
+ await page.evaluate(()=>window.timelineProbe.fail=true);await page.clock.fastForward(61_000);
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Demo unsaved update');
- await page.evaluate(()=>window.timelineProbe.fail=false);await page.clock.fastForward(16000);
+ await page.evaluate(()=>window.timelineProbe.fail=false);await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>!document.querySelector('#detailReadStatus').textContent);
  assert.deepEqual(errors,[]);
 });

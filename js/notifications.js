@@ -27,7 +27,6 @@
 //      person decides again. A suppressed row is MARKED, never hidden.
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -177,10 +176,6 @@ function renderPreference() {
   $("prefVersion").textContent = model ? `Version ${model.version}` : "";
   const form = $("prefForm");
   form.hidden = !model;
-  if (model && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
-    preferenceAnchorRevealed = true;
-    requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
-  }
   form.setAttribute("data-disabled", String(saving));
   form.setAttribute("data-quiet", model?.quietHoursSet ? "set" : "off");
   const retained = commandState[PREFERENCE_OPERATION_KEY];
@@ -290,8 +285,15 @@ async function takeActivity() {
 }
 
 async function load() {
-  view.sequence += 1;
+  const sequence = ++view.sequence;
   await Promise.all([takeFeed(), takeActivity(), takePreference()]);
+  if (view.sequence !== sequence) return;
+  const form = $("prefForm");
+  // Feed and activity reads can change the target's position before anchoring.
+  if (!form.hidden && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
+    preferenceAnchorRevealed = true;
+    requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
+  }
   const state = feedState(view.feed, { after: view.after, limit: LIMIT });
   announce(state.sentence || unreadLine(view.feed.payload));
 }
@@ -526,7 +528,7 @@ async function boot() {
   const outage = params.get("outage");
   client = boot_.mode === "live"
     ? createLiveClient()
-    : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+    : await (await import("./fixture-client.js")).createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: load });
   await load();

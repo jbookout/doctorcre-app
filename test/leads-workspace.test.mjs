@@ -13,7 +13,7 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
-test('specialty filters board, territory membership and counts together without narrowing hottest leads',async()=>{
+test('specialty filters board, territory membership and counts together without a duplicate ranking',async()=>{
  const b=workspace();b.leads=b.leads.filter(l=>[id(1),id(2),id(3),id(8)].includes(l.id));
  b.leads[0].specialty='Dental';b.leads[1].specialty='Veterinary';b.leads[2].specialty='Dental';b.leads[2].owner='other-partner';b.leads[3].specialty='Dental';
  const updates=[];let mapLoads=0;
@@ -24,7 +24,7 @@ test('specialty filters board, territory membership and counts together without 
   assert.equal(s.d.activeElement,select);assert.equal(select.value,'Dental');
   assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(n=>n.dataset.leadId),[id(1),id(3),id(8)]);
   assert.equal(s.d.getElementById('filterSummary').textContent,'3 matching leads');
-  assert.equal(s.d.querySelectorAll('#hotLeads .hot-row').length,2,'hottest leads remain global');
+  assert.equal(s.d.querySelectorAll('#hotLeads .hot-row').length,0,'the board is the only lead ranking');
   s.d.getElementById('showTerritory').click();await tick();
   assert.deepEqual(updates.at(-1).flatMap(g=>g.unlocatedIds).sort(),[id(1),id(3),id(8)]);
   const owner=s.d.getElementById('ownerFilter');owner.value='other-partner';owner.dispatchEvent(new s.w.Event('change'));
@@ -93,17 +93,16 @@ test('a remounted workspace reveals territory without starting the disposed work
   assert.equal(oldCalls,0);assert.equal(newCalls,1);
  }finally{remounted?.dispose();s.close()}
 });
-test('board renders six bounded columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
- const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,10);
+test('board renders six bounded columns, no duplicate ranking, quiet IDs/scores and timestamps; filter-only archive',async()=>{
+ const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,0);assert.equal(s.d.querySelectorAll('.lead-card').length,10);
  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.lead-card .lead-market').textContent,/Pensacola, FL/);assert.equal(s.d.querySelector('.lead-card .party-id'),null);assert.match(s.d.querySelector('.stage-column[data-stage="opportunity"]').textContent,/Opportunity/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
  const select=s.d.getElementById('stageFilter');select.value='archived';select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('[data-stage]').length,0);assert.equal(s.d.querySelectorAll('.lead-card').length,1);
  }finally{s.close()}
 });
-test('all New leads claimed: the panel names the claimed count and owners, never "No New leads"',async()=>{
+test('all New leads claimed stay on the board without Claim actions or a duplicate ranking',async()=>{
  const s=await setup({getWorkspace:async()=>{const b=workspace();for(const l of b.leads)if(l.stage==='new')l.owner='joe';return b}});
- try{assert.equal(s.d.getElementById('hotTitle').textContent,'Top new leads');assert.match(s.d.getElementById('hotSummary').textContent,/All 9 New leads are claimed/);
- assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('#hotLeads [data-claim]').length,0);assert.equal(s.d.querySelector('.hot-owner').textContent,'Joe');
- assert.doesNotMatch(s.d.querySelector('.top-grid').textContent,/No New leads/);
+ try{assert.equal(s.d.querySelectorAll('.stage-column[data-stage="new"] .lead-card').length,5);
+ assert.equal(s.d.querySelectorAll('[data-claim], .hot-row').length,0);
  }finally{s.close()}
 });
 test('empty stage columns say so in words',async()=>{
@@ -208,7 +207,7 @@ test('Undo collects a human quote; Link removes card and Claim preserves New sta
  await s.app.refresh();assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic reply was attributed to the wrong lead');
  submit();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review,{reason:'Undo automatic stage move',evidence_ids:[],undo_event_id:id(500),human_quote:'Synthetic reply was attributed to the wrong lead'});
  s.d.querySelector('[data-expand-stage="new"]').click();s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
- s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#hotLeads [data-lead-id="${id(1)}"]`),null);
+ s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#leadBoard [data-claim="${id(1)}"]`),null);
  }finally{s.close()}
 });
 for (const connected of [false, null, true]) test(`Engaged submits only connected call evidence: ${connected}`, async () => {
@@ -594,10 +593,11 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });
-test('a failed first read reconnects within seconds without waiting a full poll',async()=>{
+test('a failed first read waits the one-minute floor before reconnecting',async()=>{
  let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
  try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
-  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,1);
+  await new Promise(r=>setTimeout(r,59_000));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 

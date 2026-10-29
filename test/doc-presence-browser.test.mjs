@@ -62,7 +62,7 @@ test('closed Doc skips suggestion reads and opens with fresh suggestions after c
  const closedReads=calls.filter(call=>call.name==='list-doc-suggestions').length;
  const closedPermissions=calls.filter(call=>call.name==='list-feature-switches').length;
  await page.evaluate(()=>window.docContext.select('deal','d14'));
- await page.clock.fastForward(31_000);
+ await page.clock.fastForward(61_000);
  await page.waitForLoadState('networkidle');
  assert.equal(calls.filter(call=>call.name==='list-doc-suggestions').length,closedReads);
  assert.equal(calls.filter(call=>call.name==='list-feature-switches').length,closedPermissions);
@@ -164,7 +164,7 @@ test('selection/filter changes cancel context, auto-refresh recovers and no writ
   const ticket=pageDocContext.begin('getBoard');pageDocContext.fail(ticket,{status:401});return pageDocContext.snapshot();
  });assert.equal(result.ready,false);
  assert.match(await page.locator('#docSuggestions').innerText(),/Unavailable/);
- await page.clock.fastForward(31_000);
+ await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
 });
@@ -253,12 +253,13 @@ test('held Leads collection recovers in the current local filter before opening 
  await goto('/leads?mode=live');await entered;
  await page.locator('#appSidebarToggle').click();
  await page.locator('#leadSearch').fill('no matches');
- release();await page.waitForFunction(()=>document.querySelectorAll('#hotLeads [data-lead-id]').length>0);
+ release();await page.locator('#leadBoard[aria-busy="false"]').waitFor();
  assert.equal(await page.locator('.lead-card').count(),0);
  const filtered=await readContext(page);
  assert.equal(filtered.ready,true,JSON.stringify(filtered));assert.deepEqual(filtered.records,[]);
  assert.equal(filtered.filters.search,'no matches');assert.ok(filtered.observedAt);
- await page.locator('#hotLeads [data-lead-id]').first().click();
+ await page.locator('#leadSearch').fill('');
+ await page.locator('#leadBoard .lead-open').first().click();
  await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));
  const opened=await readContext(page);assert.equal(opened.ready,true);assert.equal(opened.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');
@@ -334,7 +335,7 @@ test('R5 failed Wire read stays unavailable when filtering retained turns',async
  let denied=false;const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
   if(denied&&env.url.pathname==='/api/room/turns'){await route.fulfill({status:503,json:{}});return true;}return producerRoute(route,env);
  }});await page.clock.install();await goto('/control-room/progress/work');await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Sample turn'));
- assert.equal((await readContext(page)).ready,true);denied=true;await page.clock.fastForward(6000);await page.waitForFunction(()=>document.querySelector('#roomBanner').textContent.includes('offline'));
+ assert.equal((await readContext(page)).ready,true);denied=true;await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#roomBanner').textContent.includes('offline'));
  assert.equal((await readContext(page)).ready,false);await page.locator('#wireSearch').fill('Sample');assert.equal((await readContext(page)).ready,false);
 });
 for(const dataset of ['clients','vendors'])test(`R12/R13/R18 ${dataset} facts and unsorted activity use the real directory seam`,async t=>{
@@ -424,7 +425,7 @@ test('R18 closed Deal detail cannot survive an empty board projection',async t=>
  await page.waitForFunction(()=>window.docContext?.snapshot().active?.id==='d14');
  await page.locator('#panelClose').click();
  await page.waitForFunction(()=>window.docContext?.snapshot().selected===null);
- empty=true;await page.clock.fastForward(31_000);
+ empty=true;await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelectorAll('.kanban-card').length===0);
  const c=await readContext(page);assert.equal(c.ready,true);assert.deepEqual(c.records,[]);
 });
