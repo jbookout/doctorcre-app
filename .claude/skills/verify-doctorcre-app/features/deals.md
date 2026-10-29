@@ -34,6 +34,9 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 - Deal Workspace defaults to Overview with snapshot, actions, critical dates, updates, vendors and phase/owner controls. Timeline contains the phase rail and dated events with a type filter. Correspondence & notes loads the existing evidence threads and meetings and shows recorded deal notes. On phones, deal facts appear on one line and the header scrolls away; desktop keeps the header visible across tabs. `tests/fixtures/deal-workspace.spec.mjs` covers direct links, history, scroll restoration, tab content and 390×844 / 1440×900 captures in both themes. Screenshots and traces are retained in the fixture Playwright output directory.
 
 
+- Board cards read Next from the earliest `open_actions` row and Last from a dated `last_step`. Fixture boards derive these fields from the same actions and history as deal detail. `test/deal-items.test.mjs` crosses both adapters; `test/deal-board-summary-browser.test.mjs` verifies visible dates and partner initials at 390, 1280 and 1440 in both themes. Synthetic board captures are retained under `.github/pr-evidence/WR586.S1.J6/round-1/`.
+
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.

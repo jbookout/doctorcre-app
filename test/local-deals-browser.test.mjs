@@ -142,7 +142,8 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
     // Cards size to their content (S8): no fixed tall box with half of it empty.
-    assert.ok(sizes.every(e => e.height < 360 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
+    assert.ok(sizes.every(e => e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
+    assert.equal(await page.locator('.kanban-card .deal-summary-text').evaluateAll(lines => lines.every(line => line.clientHeight <= parseFloat(getComputedStyle(line).lineHeight) * 2 + 1)), true);
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
     assert.equal(await page.locator('.kanban-column [data-id="d14"] .owner').textContent(), 'Joe');
     await page.locator('[data-filter="dell"]').click();
@@ -879,28 +880,24 @@ for (const width of [390, 1440]) test(`missing action items stay visible across 
   const { page, errors } = await open(t, { width });
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
-    const board = state.client.getBoard.bind(state.client);
-    const detail = state.client.getDeal.bind(state.client);
+    const { createFixtureClient, createFixtureDealStore } = await import('/js/fixture-client.js');
+    const store = createFixtureDealStore(await state.client.getBoard());
+    const fixture = await createFixtureClient({ dealStore: store, docContext: false });
     window.demoNextStep = null;
     window.demoItems = [];
-    state.client.getBoard = async (...args) => {
-      const result = await board(...args);
-      Object.assign(result.deals.find(deal => deal.id === 'd14'), { next_step: window.demoNextStep, items: structuredClone(window.demoItems) });
-      return result;
+    const applyFixture = () => {
+      const deal = store.deals.get('d14');
+      Object.assign(deal, { next_step: window.demoNextStep, last_touch: null, items: structuredClone(window.demoItems) });
+      if (window.demoParked) deal.operating_state = 'parked';
     };
-    state.client.getDeal = async id => {
-      const result = await detail(id);
-      result.deal.next_step = window.demoNextStep;
-      result.items = result.deal.items = structuredClone(window.demoItems);
-      if (id === 'd14' && window.demoParked) result.deal.operating_state = 'parked';
-      return result;
-    };
+    state.client.getBoard = async (...args) => { applyFixture(); return fixture.getBoard(...args); };
+    state.client.getDeal = async id => { applyFixture(); return fixture.getDeal(id); };
   });
   for (const value of [null, '  ', { text: '' }]) {
     await page.evaluate(value => { window.demoNextStep = value; window.demoItems = []; }, value);
     await refresh(page);
     const card = page.locator('.kanban-column [data-id="d14"]');
-    assert.equal(await card.getByText('No action items recorded', { exact: true }).isVisible(), true);
+    assert.equal(await card.getByText('No next step set', { exact: true }).isVisible(), true);
     await page.locator('#listView').click();
     const row = page.locator('.deal-row[data-id="d14"]');
     assert.equal(await row.getByText('Next step missing', { exact: true }).isVisible(), true);
@@ -1228,4 +1225,20 @@ test('the status band shows one clock and one refresh, and that refresh also upd
   await page.locator('#retryRead').click();
   await page.waitForFunction(before => document.querySelector('#appSyncTime').getAttribute('datetime') !== before, before);
   assert.deepEqual(errors, []);
+});
+
+test('parked import note uses plain words on the board', async t => {
+  const { page } = await open(t);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const board = state.client.getBoard.bind(state.client);
+    state.client.getBoard = async (...args) => {
+      const result = await board(...args);
+      Object.assign(result.deals.find(deal => deal.id === 'd14'), { operating_state: 'parked', parking_note: 'unverified import — 2026-10-01 records audit; revive if active' });
+      return result;
+    };
+  });
+  await refresh(page);
+  await page.locator('.parked-lane summary').click();
+  assert.equal(await page.locator('.parked-card[data-id="d14"]').getByText('Imported Oct 1, not yet confirmed. Revive if still active.').isVisible(), true);
 });

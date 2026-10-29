@@ -1,3 +1,4 @@
+import { renderDealSummary, renderDealItems } from './deal-items.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
@@ -449,6 +450,7 @@ function renderBoardOnly() {
   renderFocus(deals);
   const rows = $('#rows');
   rows.innerHTML = deals.map(rowHtml).join('');
+  $('#tableFrame').classList.toggle('has-deal-summaries', deals.length > 0 && deals.every(deal => deal.workspace_kind === 'national_account'));
   const emptySearch = Boolean(state.query && !deals.length);
   $('#stats').hidden = emptySearch;
   $('#tableFrame table').hidden = emptySearch;
@@ -525,7 +527,7 @@ function rowHtml(deal) {
       <div><button type="button" class="deal-link" data-open-deal="${esc(deal.id)}">${esc(deal.name)}</button>
       <div class="deal-meta">${meta.map((item) => `<span>${esc(item)}</span>`).join('<span>·</span>')}</div></div></div></td>
     <td><select class="cell-select" data-phase="${esc(deal.id)}" aria-label="Phase for ${esc(deal.name)}"${parked ? ' disabled' : ''}>${phaseOptions(deal.phase)}</select></td>
-    <td><button type="button" class="step-button ${deal.next_step ? '' : 'empty'}" data-next-step="${esc(deal.id)}"${parked ? ' disabled' : ''}>${esc(deal.next_step || 'Set the next step…')}</button></td>
+    <td>${deal.workspace_kind === 'national_account' ? `<button type="button" class="step-button" data-next-step="${esc(deal.id)}"${parked ? ' disabled' : ''}>${renderDealSummary(deal, { today: new Date().toLocaleDateString('en-CA'), viewer: state.selfActor })}</button>${renderDealItems(deal, { today: new Date().toLocaleDateString('en-CA'), empty: false, board: true })}` : `<button type="button" class="step-button ${deal.next_step ? '' : 'empty'}" data-next-step="${esc(deal.id)}"${parked ? ' disabled' : ''}>${esc(deal.next_step || 'Set the next step…')}</button>`}</td>
     <td><span class="due ${days !== null && days < 0 ? 'over' : days !== null && days <= 3 ? 'soon' : ''}">${esc(dateLabel(deal.next_date))}</span></td>
     <td>${deal.workspace_kind === 'national_account'
       ? `<button type="button" class="agent-button" data-market-agent="${esc(deal.id)}"${parked ? ' disabled' : ''}>${esc(deal.market_agent || 'Assign agent…')}</button>`

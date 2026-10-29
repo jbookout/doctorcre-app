@@ -49,7 +49,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
-      return { schema_version: 'home-agenda.v1', ...board, deals: await Promise.all(board.deals.map(async deal => ({
+      return { ...board, schema_version: 'home-agenda.v1', deals: await Promise.all(board.deals.map(async deal => ({
         ...deal, ...await handlers['get-deal-room']({ deal: deal.id }).catch(error => { if (detailFailure === 'partial') return { critical_dates: null, next_actions: null }; throw error; }),
       }))) };
     },

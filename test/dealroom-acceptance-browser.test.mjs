@@ -37,7 +37,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   const response = await page.request.post(`${origin}/mcp`, { data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'deal-room-board', arguments: {} } } });
   const envelope = await response.json();
   const board = JSON.parse(envelope.result.content[0].text);
-  assert.equal(board.schema_version, 'local-deals-board.v1');
+  assert.equal(board.schema_version, 'local-deals-board.v2');
   assert.equal(board.actor, 'joe');
   assert.equal(board.deals.length, 16);
   assert.deepEqual(board.closed_deals, []);

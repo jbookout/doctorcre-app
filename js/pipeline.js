@@ -1,4 +1,4 @@
-import { renderDealAlert, renderDealItems } from './deal-items.js';
+import { renderDealAlert, renderDealItems, renderDealSummary } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
 import { OWNER_FILTERS } from './owner-filters.js';
 import { engagementWriterFor } from './prospect-engagement.mjs';
@@ -106,7 +106,7 @@ function cardHtml(deal) {
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? `<span class="attention-flag"><span aria-hidden="true">◆</span> ${overdue}</span>` : ''}</div>
-    <div class="deal-alert">${renderDealAlert({...deal,short_name:dealTitle(deal)},{today,heading:'h4',buttons:true})}</div>
+    <div class="deal-alert">${renderDealAlert({...deal,short_name:dealTitle(deal)},{today,heading:'h4',buttons:true,board:true,viewer:state.selfActor})}</div>
     ${renderDealVendors(deal.vendors)}
     ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
@@ -119,7 +119,8 @@ function rowHtml(deal) {
     ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : '<p class="next-line">Next step missing</p>'}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
-  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
+  const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
+  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), viewer: state.selfActor })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
 let dealCreation = null;
@@ -876,7 +877,7 @@ function syncUpdateForm() {
   button.textContent = pending || pendingStep ? 'Check outcome' : 'Add update';
   form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
   form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !updateDraft.text;
-  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
+  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : updateDraft.message || '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
 function validateDetail(detail, id) {
@@ -950,7 +951,10 @@ async function saveUpdate(id) {
     if (changed) state.boardSync.requestRefresh('deal-update');
     if (state.panelDeal === id) {
       await refreshPanel();
-      if ($('detailUpdateStatus')) $('detailUpdateStatus').textContent = 'Update added';
+      if (actor === state.selfActor && updateDraft?.id === id) {
+        updateDraft.message = 'Update added';
+        syncUpdateForm();
+      }
     }
   } finally { draft.sending = false; }
 }

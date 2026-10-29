@@ -53,7 +53,7 @@ for (const { label, href } of navigationItems) for (const theme of ['light', 'da
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
   test(`Local Deals layout at ${width} in ${theme}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 844 });
+    await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.url}/deals`);
     await expect(page.locator('#boardView')).toHaveAttribute('aria-pressed', 'true');

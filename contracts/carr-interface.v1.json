@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.65.0",
+  "version": "1.66.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -547,11 +547,11 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
+        "source_commit": "b281ef8c69dad3c1dab98229074de1b167f06e02",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2670"
       },
       "response": {
-        "schema_version": "local-deals-board.v1",
+        "schema_version": "local-deals-board.v2",
         "deal_keys": [
           "operating_state",
           "parking_note",
@@ -565,7 +565,9 @@
           "vendors",
           "short_name",
           "items",
-          "client_portal_url"
+          "client_portal_url",
+          "open_actions",
+          "last_step"
         ],
         "phase_change_keys": [
           "event_id",
@@ -680,7 +682,26 @@
           "suggestion",
           "status"
         ],
-        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+        "open_actions": {
+          "item_keys": [
+            "id",
+            "owner",
+            "description",
+            "due_on"
+          ],
+          "membership": "Up to three open unstructured actions.",
+          "order": "Due date ascending, missing dates last, then id."
+        },
+        "last_step": {
+          "nullable": true,
+          "keys": [
+            "kind",
+            "summary",
+            "occurred_at"
+          ],
+          "source": "Newest recorded activity or completed action, ordered by occurred_at descending then id descending. Never inferred from last_touch."
+        }
       }
     },
     "get-deal-room": {

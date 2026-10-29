@@ -7,13 +7,47 @@ export const dealItemHref = (deal, item) => `/deals?deal=${encodeURIComponent(de
 export function shortDealName(deal) {
   return deal.short_name || deal.name || 'Deal';
 }
-export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = false } = {}) {
+export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = false, viewer = '', board = false } = {}) {
   const overdue = overdueLabel(deal.overdue_since, today);
-  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue ? `<p class="deal-overdue">${overdue}</p>` : ''}${renderDealItems(deal,{today,buttons})}`;
+  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue && !board ? `<p class="deal-overdue">${overdue}</p>` : ''}${board ? renderDealSummary(deal, { today, viewer }) : ''}${renderDealItems(deal,{today,buttons, empty: !board,board})}`;
 }
-export function renderDealItems(deal, { today = '', buttons = false } = {}) {
-  const items = openDealItems(deal);
-  return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : '<p class="deal-items-empty">No action items recorded</p>';
+export function renderDealItems(deal, { today = '', buttons = false, empty = true, board = false } = {}) {
+  const next = board ? nextOpenAction(deal) : null;
+  const items = openDealItems(deal).filter(item => !next || item.title.trim() !== next.description.trim() || (item.due_on || null) !== (next.due_on || null));
+  return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : empty ? '<p class="deal-items-empty">No action items recorded</p>' : '';
+}
+
+function shortDate(value, today) {
+  const day = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return '';
+  const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  const options = { month: 'short', day: 'numeric', timeZone: 'UTC' };
+  if (!today || day >= today) options.weekday = 'short';
+  return date.toLocaleDateString('en-US', options).replace(',', '');
+}
+
+function nextOpenAction(deal) {
+  return (deal.open_actions || []).filter(action => typeof action.description === 'string' && action.description.trim())
+    .sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.id.localeCompare(b.id))[0];
+}
+
+export function renderDealSummary(deal, { today = '', viewer = '' } = {}) {
+  const next = nextOpenAction(deal);
+  const lines = [];
+  if (next) {
+    const date = shortDate(next.due_on, today);
+    const owner = next.owner && viewer && next.owner !== viewer ? ` · ${next.owner.slice(0, 1).toUpperCase()}` : '';
+    lines.push(`<span class="deal-summary-line"><span class="deal-summary-label">Next: </span><span class="deal-summary-text">${esc(next.description.trim())}</span><span class="deal-summary-facts">${date ? ` · <time data-overdue="${Boolean(next.due_on && next.due_on < today)}" datetime="${esc(next.due_on)}">${esc(date)}</time>` : ''}${esc(owner)}</span></span>`);
+  } else {
+    lines.push('<span class="deal-summary-line">No next step set</span>');
+  }
+  const last = deal.last_step;
+  const lastDate = shortDate(last?.occurred_at, '');
+  if (last?.summary?.trim() && lastDate) {
+    lines.push(`<span class="deal-summary-line deal-summary-last"><span class="deal-summary-label">Last: </span><span class="deal-summary-text">${esc(last.summary.trim())}</span><span class="deal-summary-facts"> · <time datetime="${esc(last.occurred_at)}">${esc(lastDate)}</time></span></span>`);
+  }
+  return lines.join('');
 }
 
 export function renderDealItemDetail(item, { today = '' } = {}) {
