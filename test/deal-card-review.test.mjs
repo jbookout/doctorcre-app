@@ -359,6 +359,10 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-
  assert.equal(await lane.getByRole('button',{name:'Expand Research',exact:true}).getAttribute('aria-expanded'),'false');
  assert.match(await lane.locator('.stage-preview').textContent(),/Demo multidisciplinary healthcare practice/);
  assert.match(await lane.locator('.stage-preview').textContent(),/98 more/);
+ assert.equal(await lane.locator('.stage-preview').evaluate(preview=>{
+  const names=[...preview.querySelectorAll('span')].slice(0,2);
+  return names.length===2&&names[0].getBoundingClientRect().bottom<names[1].getBoundingClientRect().top;
+ }),true,'wrapped practice names occupy separate rows with a visible gap');
  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Expand Research');
  assert.equal(await heading.evaluate(h=>{
   const r=h.getBoundingClientRect(),board=document.querySelector('#kanban').getBoundingClientRect();
