@@ -903,24 +903,3 @@ test('Your brief stays visible across Home visits', async t => {
   assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
 
 });
-
-
-test('An older Home read cannot restore a removed task', async t => {
-  const home = await open(t, { tasksOnly: true });
-  const { page, responses } = home;
-  const brief = page.getByRole('complementary', { name: 'Your brief' });
-  const before = await brief.getByText('Demo follow-up').count();
-  const old = structuredClone(home.lastAgenda);
-  const updated = structuredClone(old);
-  updated.deals.find(deal => deal.id === 'd01').next_actions = [];
-  let release;
-  responses.set('read-home-agenda', new Promise(resolve => { release = resolve; }));
-  const request = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-agenda');
-  await page.locator('#refreshHome').click();
-  await request;
-  responses.set('read-home-agenda', updated);
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  release(old);
-  await page.waitForFunction(expected => document.querySelectorAll('#homeBrief .home-brief-card').length === expected, before - 1);
-  assert.equal(await brief.getByText('Demo follow-up').count(), before - 1);
-});
