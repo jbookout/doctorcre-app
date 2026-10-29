@@ -16,7 +16,6 @@ import { assuranceHealthRequest, assuranceHealthState, loadAssuranceHealth } fro
 import { READS, READ_LABEL } from "./control-room-model.js";
 import { WORK_INVENTORY_ENDPOINT } from "./work-inventory-model.js";
 import { acceptsResponse } from "./workspace-command-center-model.js";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountPrefs } from "./shell.js";
@@ -249,7 +248,7 @@ async function boot() {
   view.outage = resolved.mode === "live" ? null : outage;
   if (resolved.mode === "live") client = createLiveClient();
   else if (view.outage === "all") client = allDownClient();
-  else client = await createFixtureClient({ ...resolved.options, ...(view.outage ? { outage: view.outage } : {}) });
+  else client = await (await import("./fixture-client.js")).createFixtureClient({ ...resolved.options, ...(view.outage ? { outage: view.outage } : {}) });
   const params = new URLSearchParams(location.search || "");
   for (const [key, id] of [["workflow_key", "assuranceWorkflow"], ["workflow_version", "assuranceVersion"], ["work_request_id", "assuranceWorkRequest"]]) {
     $(id).value = params.get(key) || "";

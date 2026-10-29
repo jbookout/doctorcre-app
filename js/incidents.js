@@ -22,7 +22,6 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 //      it here.
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -265,7 +264,7 @@ async function boot() {
   const outage = new URLSearchParams(location.search || "").get("outage");
   client = boot_.mode === "live"
     ? createLiveClient()
-    : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+    : await (await import("./fixture-client.js")).createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
   mountAutoRefresh({ document, window: globalThis.window, refresh: load });

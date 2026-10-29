@@ -5,13 +5,14 @@ import { chromium, waitForAsync } from './browser-harness.mjs';
 import { identity, found, readiness, meeting } from './fixtures/correspondence.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
   Object.assign(seed.deals.find(d => d.id === 'd14'), {phase:'Negotiation',next_date:'2026-10-02'});
+  if (legalDestination) seed.deals.push({ ...seed.deals.find(d => d.id === 'd14'), id: 'demo-legal', name: 'Demo Legal Practice', phase: 'Legal' });
   Object.assign(seed.deals.find(d => d.id === 'd20'),{phase:'Closed',outcome:'won'});
   Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
@@ -254,6 +255,26 @@ test('W4 drag and keyboard phase writes, manual phase, park, revive and undo rec
   assert.equal(revived.actor, 'joe'); assert.equal(revived.new_value.state, 'active');
   await page.locator('[data-id="d14"]').focus(); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter'); await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+  assert.deepEqual(errors, []);
+});
+
+for (const width of [1440, 390]) test(`keyboard move into a collapsed stage restores heading focus at ${width}px`, async t => {
+  const { page, errors } = await open(t, { width, legalDestination: true });
+  const destination = page.locator('[data-column="legal"]');
+  await destination.getByRole('button', { name: 'Collapse Legal', exact: true }).click();
+  const name = await page.locator('.kanban-column [data-id="d14"] .card-open').textContent();
+  await page.locator('.kanban-column [data-id="d14"]').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await page.locator('#completionConfirm').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#completionDialog').waitFor({ state: 'hidden' });
+  assert.equal(await destination.getAttribute('data-collapsed'), 'true');
+  assert.equal(await destination.locator('.kanban-card').count(), 0);
+  assert.ok((await destination.locator('.stage-preview').textContent()).includes(name));
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-collapse-stage')), 'legal');
+  assert.equal(await page.locator('#dragLive').textContent(), `${name} moved to Legal.`);
   assert.deepEqual(errors, []);
 });
 
@@ -1147,7 +1168,7 @@ test('Retry evidence remains active after a background detail refresh replaces e
   assert.deepEqual(errors,[]);
 });
 
-test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps tabs on one scrolling row', async t => {
+test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps view controls visible', async t => {
   for (const width of [390, 1440]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, height: 844 });
     await page.evaluate(async () => {
@@ -1174,10 +1195,17 @@ test('phone board folds parked deals behind the Parked toggle, hides empty phase
       const shown = await page.locator('.kanban-column').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length).map(n => n.dataset.column));
       assert.deepEqual(shown, ['research']);
       const tabs = await page.locator('#appTabsSlot').evaluate(node => {
-        const tops = new Set([...node.querySelectorAll('button')].filter(b => b.getClientRects().length).map(b => Math.round(b.getBoundingClientRect().top)));
-        return { rows: tops.size, overflowX: getComputedStyle(node).overflowX, fits: node.getBoundingClientRect().right <= innerWidth };
+        const bounds = node.getBoundingClientRect();
+        const buttons = [...node.querySelectorAll('button')].filter(button => button.getClientRects().length);
+        return {
+          overflowX: getComputedStyle(node).overflowX,
+          fits: buttons.every(button => {
+            const rect = button.getBoundingClientRect();
+            return rect.left >= bounds.left && rect.right <= bounds.right;
+          }),
+        };
       });
-      assert.deepEqual(tabs, { rows: 1, overflowX: 'auto', fits: true });
+      assert.deepEqual(tabs, { overflowX: 'visible', fits: true });
       await lane.locator('summary').click();
       assert.equal(await parked.isVisible(), true);
     } else {

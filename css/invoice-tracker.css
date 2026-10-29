@@ -164,8 +164,8 @@ body { background: var(--ground); color: var(--fg); }
   .invoice-total strong { font-size: var(--font-size-4); }
   .invoice-aging-bars { grid-template-columns: 1fr 1fr; }
   .invoice-age strong { font-size: var(--font-size-2); }
-  .app-layout-tabs > .invoice-tabs { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .invoice-tabs button { flex: none; white-space: nowrap; font-size: var(--font-size-1); padding: var(--space-2); }
+  .app-layout-tabs > .invoice-tabs { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; gap: 0; }
+  .app-layout-tabs .invoice-tabs button { flex: none; white-space: nowrap; font-size: var(--font-size-1); padding-inline: var(--space-1); }
   :where(.invoice-workspace, .invoice-controls, .invoice-detail) :is(input, select) { font-size: var(--font-size-2); }
   .invoice-row { padding: var(--space-3) var(--space-4) !important; }
   .invoice-detail { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); border-radius: var(--radius-3); }

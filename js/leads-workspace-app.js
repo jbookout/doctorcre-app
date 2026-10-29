@@ -6,7 +6,7 @@ import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '
 import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead, leadTitle, marketKey, specialtyKey,
-  visibleLeads, hotLeadPanel, marketCounts, stageReview, automaticMove, undoReview } from "./leads-model.js";
+  visibleLeads, marketCounts, stageReview, automaticMove, undoReview } from "./leads-model.js";
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -44,9 +44,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     </article>`;
   }
   function focusIdentity(node) {
-    const container = node?.closest?.("#leadBoard, #hotLeads, #marketCounts, #mapLeadMembers");
+    const container = node?.closest?.("#leadBoard, #marketCounts, #mapLeadMembers, #territoryMap");
     if (container) {
-      for (const attr of ["data-claim", "data-undo", "data-link", "data-open", "data-lead-id", "data-market", "data-expand-stage"]) {
+      for (const attr of ["data-claim", "data-undo", "data-link", "data-open", "data-lead-id", "data-market", "data-expand-stage", "data-map-lead", "data-map-marker"]) {
         if (node.hasAttribute(attr)) return { container: container.id, attr, value: node.getAttribute(attr), client: node.dataset.clientId };
       }
     }
@@ -84,20 +84,12 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const unlocated = state.map ? groups.reduce((count, group) => count + group.unlocatedIds.length, 0) : 0;
     $("mapLeadMembers").querySelector("summary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"} · ${state.map ? `${unlocated} no location` : "locations not checked"}`;
     $("mapLeadMembers").querySelector("div").innerHTML = shown.map(lead => `<button data-lead-id="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}<small>${esc(marketKey(lead))} · ${locationLabel(lead)}</small></button>`).join("") || '<p class="empty">No matching leads</p>';
-    const hot = hotLeadPanel(leads);
-    $("hotTitle").textContent = hot.claimable || !hot.newTotal ? "Top new leads to claim" : "Top new leads";
-    $("hotSummary").textContent = !state.board ? "The hottest leads appear once the lead board loads." : hot.claimable ? `Across all markets and filters: ${hot.newTotal - hot.claimed} of ${hot.newTotal} New leads unclaimed`
-      : hot.newTotal ? `Across all markets and filters: All ${hot.newTotal} New leads are claimed` : "No New leads yet. The next new-lead search adds them here.";
-    $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}"><span class="hot-rank">${i + 1}</span><div><h3><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button></h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
-    $("hotLeads").setAttribute("aria-busy", "false");
     const currentStage = state.filters.stage;
     $("stageFilter").innerHTML = `<option value="">All stages · ${visibleLeads(leads, { ...state.filters, stage: "" }).length}</option>` + FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
     const loading = !state.board && !state.readFailed;
     $("territoryMap").setAttribute("aria-busy", String(loading));
     if (loading) {
       $("leadBoard").innerHTML = '<span class="sr-only" role="status">Loading leads…</span><div class="stage-columns" aria-hidden="true">' + BOARD_STAGES.map(() => `<section class="stage-column"><div class="stage-head"><span class="skeleton-line"></span></div><div class="lead-stack">${skeletonCard.repeat(2)}</div></section>`).join("") + '</div>';
-      $("hotLeads").innerHTML = '<div aria-hidden="true">' + Array.from({ length: 5 }, () => '<div class="hot-row hot-skeleton"><span class="skeleton-line"></span><div><span class="skeleton-line"></span><span class="skeleton-line"></span></div><span class="skeleton-line"></span><span class="skeleton-line"></span></div>').join("") + '</div>';
-      $("hotLeads").setAttribute("aria-busy", "true");
     } else if (state.board && !shown.length && Object.values(state.filters).some(Boolean)) {
       $("leadBoard").innerHTML = '<div class="filtered-empty"><p>No leads match these filters.</p><button id="resetFilters">Reset filters</button></div>';
       $("resetFilters").addEventListener("click", () => {
@@ -543,7 +535,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const claim = event.target.closest("[data-claim]"); if (claim) { const lead = leadById(claim.dataset.claim); if (lead) command({ kind: "claim", lead }); return; }
     const card = event.target.closest("[data-lead-id]"); if (card && !event.target.closest("[data-drag-handle]")) readDetail(card.dataset.leadId);
   }
-  for (const id of ["leadBoard", "hotLeads", "mapLeadMembers"]) {
+  for (const id of ["leadBoard", "mapLeadMembers"]) {
     $(id).addEventListener("click", clickLead);
     $(id).addEventListener("keydown", event => {
       if (event.target.closest("button:not([data-open])")) return;
@@ -611,13 +603,13 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     button.disabled = true; button.textContent = "Loading territory…";
     button.setAttribute("aria-expanded", "true"); root.hidden = false;
     try {
-      const map = await mapFactory(root, selectMarket, readDetail);
+      const map = await mapFactory(root, selectMarket, readDetail, { describeLead: id => leadTitle(leadById(id) || {}) });
       if (disposed) { map.dispose(); return; }
-      state.map = map; button.textContent = "Territory shown";
+      state.map = map; button.hidden = true;
       if (!state.drag && !touch) render();
     } catch {
       if (disposed) return;
-      button.textContent = "Territory unavailable";
+      button.hidden = true;
       root.innerHTML = '<p class="empty" role="status">Map unavailable. Use the market filters and lead list.</p>';
     }
   }, { once: true });
@@ -642,4 +634,4 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   auto.refresh();
   return { state, refresh, openReview, readDetail, dispose() { disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
 }
-if (typeof document !== "undefined" && document.getElementById("hotLeads")) mountLeadsWorkspace();
+if (typeof document !== "undefined" && document.getElementById("leadBoard")) mountLeadsWorkspace();

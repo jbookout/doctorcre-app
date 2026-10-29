@@ -36,7 +36,7 @@ function setup(dataset, locale = 'en-US') {
   const dom = openDom(page, { url: `https://example.test/${dataset}`, runScripts: 'outside-only' });
   const { window } = dom;
   Object.assign(window, model, { activityCopy, updatedLabel, renderEvidence, resolveDealroomBoot: () => ({ mode: 'fixture' }) });
-  window.matchMedia = () => ({ matches: false });
+  window.matchMedia = () => Object.assign(new window.EventTarget(), { matches: false });
   // Emulate a browser whose default clock is 24-hour without changing the
   // renderer. Explicit locales and clock options still reach native Intl.
   const nativeLocaleString = window.Date.prototype.toLocaleString;

@@ -112,13 +112,16 @@ test('Home email quality loads separately, retries a failed report, and refreshe
     return route.continue();
   });
   await page.goto(`${origin}/?mode=live`);
+  const review = page.locator('#homeEmailFollowups');
+  await review.scrollIntoViewIfNeeded();
+  await review.locator('article').first().waitFor();
+  const replies = page.locator('#homeReplyOutcomes');
+  await replies.scrollIntoViewIfNeeded();
+  await page.locator('#homeReplyOutcomes[aria-busy="false"]').waitFor();
   const quality = page.getByRole('region', { name: 'Email proposal quality', exact: true });
   await quality.scrollIntoViewIfNeeded();
   await quality.getByText(/Could not load email proposal quality/).waitFor({ timeout: 5000 });
   holdAgenda = false; releaseAgenda();
-  const review = page.locator('#homeEmailFollowups');
-  await review.scrollIntoViewIfNeeded();
-  await review.locator('article').first().waitFor();
   fail = false;
   await quality.getByRole('button', { name: 'Retry email proposal quality' }).click();
   await quality.getByText('Next steps', { exact: true }).waitFor();
@@ -338,6 +341,7 @@ test('Home creates a new deal and files its email through the live client at pho
   });
   await page.goto(`${origin}/?mode=live`);
   const card = page.locator('#homeEmailFollowups');
+  await card.scrollIntoViewIfNeeded();
   await card.getByText('Possible new demo practice').waitFor();
   await card.getByRole('button', { name: 'Review filing' }).click();
   await card.getByRole('textbox', { name: 'Deal name' }).fill('Demo office');

@@ -10,7 +10,6 @@ import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { performCommand, pendingCommand } from './command-feedback.mjs';
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
@@ -67,6 +66,7 @@ const state = {
   closedDeals: null,
   lostDeals: null,
   parkedOpen: false,
+  collapsedColumns: new Set(),
   /** Ids, never rows: a lifted card, a chosen column, an open panel, a move in hand. */
   lifted: null,
   target: null,
@@ -106,7 +106,7 @@ function cardHtml(deal) {
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? `<span class="attention-flag"><span aria-hidden="true">◆</span> ${overdue}</span>` : ''}</div>
-    <div class="deal-alert">${renderDealAlert(deal,{today,heading:'h4',buttons:true})}</div>
+    <div class="deal-alert">${renderDealAlert({...deal,short_name:dealTitle(deal)},{today,heading:'h4',buttons:true})}</div>
     ${renderDealVendors(deal.vendors)}
     ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
@@ -230,14 +230,18 @@ function renderBoard() {
   renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
+  const focusedStage = board.contains(document.activeElement) ? document.activeElement?.dataset?.collapseStage : null;
   preserveBoardFocus({ board, document, announce, paint() {
     board.innerHTML = state.view === 'list' ? `<div class="deal-list">${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
       const cards = urgencyOrder(column.slug === 'pending' ? prospects : column.deals);
-      const content = cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
+      const collapsed = state.collapsedColumns.has(column.slug);
+      const content = collapsed
+        ? `<p class="stage-preview">${cards.slice(0,2).map(d => `<span>${esc(dealTitle(d))}</span>`).join('')}${cards.length > 2 ? `<span>${cards.length - 2} more</span>` : ''}</p>`
+        : cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
       const chosen = state.lifted && state.target === column.slug;
-      return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
+      return `<section class="kanban-column glass" data-column="${esc(column.slug)}" data-collapsed="${collapsed}"${chosen ? ' data-drop="true"' : ''}
         aria-label="${esc(column.label)}, ${cards.length} cards">
-        <h3 title="${esc(PHASE_TRIGGERS[column.slug])}">${esc(column.label)}<small>${cards.length}</small></h3>
+        <h3 title="${esc(PHASE_TRIGGERS[column.slug])}"><button type="button" data-collapse-stage="${esc(column.slug)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${esc(column.label)}">${esc(column.label)}<small>${cards.length}</small><span aria-hidden="true">${collapsed ? '+' : '−'}</span></button></h3>
         ${content}
       </section>`;
     }).join('') + `<details class="parked-lane"${state.parkedOpen ? ' open' : ''}><summary>Parked · ${parked.length}</summary><div class="parked-cards">${parked.map(parkedHtml).join('')}</div></details>`;
@@ -249,6 +253,7 @@ function renderBoard() {
       ? `${state.unplaced} deals need a phase`
       : '';
   }
+  if (focusedStage) board.querySelector(`[data-collapse-stage="${CSS.escape(focusedStage)}"]`)?.focus();
   renderPendingWrites();
 }
 
@@ -728,10 +733,12 @@ function closeCompletion({ cancelled }) {
   renderBoard();
   if (cancelled && intent) announce(`Move cancelled. ${intent.name} stays in ${intent.from_label}.`);
   if (intent) {
+    const phase = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
     const returnTo = state.panelDeal === intent.deal && $('recordPanel')?.open
-      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`);
-    if (returnTo?.id === 'detailPhase') returnTo.value = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
-    returnTo?.focus({ preventScroll: true });
+      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`)
+        || document.querySelector(`[data-collapse-stage="${CSS.escape(phase)}"]`);
+    if (returnTo?.id === 'detailPhase') returnTo.value = phase;
+    returnTo?.focus({ preventScroll: !returnTo.dataset.collapseStage });
   }
 }
 
@@ -1255,6 +1262,15 @@ function wireBoard() {
   const board = $('kanban');
   if (!board) return;
 
+  board.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-collapse-stage]');
+    if (!toggle) return;
+    const slug = toggle.dataset.collapseStage;
+    if (state.collapsedColumns.has(slug)) state.collapsedColumns.delete(slug);
+    else state.collapsedColumns.add(slug);
+    renderBoard();
+  });
+
   board.addEventListener('pointerdown', (event) => {
     if (event.target.closest('.kanban-card')) board.dataset.pressed = 'true';
   });
@@ -1560,7 +1576,7 @@ async function boot() {
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
-  state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  state.client = resolved.mode === 'live' ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(state.client);
   itemSheet = mountDealItemSheet({document,today:todayIso,read:readDealDetail,send:runFollowUp,pending:key => pendingCommand(commandState,key),refresh:() => {state.boardSync.requestRefresh('deal-item');refreshPanel();}});
   state.mode = state.client.mode;

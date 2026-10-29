@@ -4,6 +4,7 @@ import { expect } from 'e2e';
 const test = reproTest();
 test('QA-018 Ask Doc failure states submission status and recovery', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
   await app.open('/');
+  if (await browser.evaluate(() => innerWidth < 760)) await browser.locator('#selfAvatar').tap();
   await screen.getByRole('button', 'Open Doc', { exact: true }).tap();
   const input = screen.getByRole('combobox', 'Search anything or ask Doc', { exact: true });
   await input.fill('Ask Doc: What lease terms should a fictional dental practice review?');

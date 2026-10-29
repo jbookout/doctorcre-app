@@ -11,12 +11,20 @@ export default {
   trace: 'on',
   video: 'on',
   output: process.env.QA_OUTPUT ?? '.e2e/regressions',
-  targets: [{
-    name: 'app-desktop',
-    engine: web({ viewport: { width: 1440, height: 960 } }),
+  targets: [1440, 390].flatMap(width => (['dark', 'light'] as const).map(theme => ({
+    name: `app-${width === 390 ? 'phone' : 'desktop'}-${theme}`,
+    engine: web({
+      // Header routing blocks service workers, whose requests bypass fixture routes.
+      headers: {},
+      viewport: { width, height: width === 390 ? 844 : 960 },
+      colorScheme: theme,
+      initScripts: [() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({
+        theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+      }))],
+    }),
     app: {
       url: 'http://127.0.0.1:0',
-      command: { executable: 'node', args: ['scripts/qa-fixture-server.mjs'], env: { PORT: '{port}' }, log: '.e2e/logs/regression-fixtures.log' },
+      command: { executable: 'node', args: ['scripts/qa-fixture-server.mjs'], env: { PORT: '{port}' }, log: `.e2e/logs/regression-fixtures-${width}-${theme}.log` },
     },
-  }],
+  }))),
 } satisfies E2EConfig;
