@@ -28,6 +28,37 @@ async function routePlanner(page, state) {
   });
 }
 
+for (const theme of ['light', 'dark']) {
+  test(`Search field values remain readable at 390 ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await routePlanner(page, { failDetail: false, client: { ...client } });
+    await page.goto('http://localhost/tours');
+    await expect(page.locator('#planner-updated')).toContainText('Updated');
+    await page.locator('#space-client').selectOption(clientId);
+    const area = page.locator('#space-area');
+    const transaction = page.locator('#space-transaction');
+    await expect(area).toHaveValue('Synthetic City, FL');
+    for (const control of [area, transaction]) {
+      const fits = await control.evaluate(element => {
+        const style = getComputedStyle(element);
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        const text = element instanceof HTMLSelectElement ? element.selectedOptions[0].textContent : element.value;
+        const available = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - (element instanceof HTMLSelectElement ? 20 : 0);
+        return context.measureText(text).width <= available;
+      });
+      expect(fits, `${await control.getAttribute('id')} text fits`).toBe(true);
+    }
+    await area.fill('A deliberately long synthetic area name that cannot fit in a phone field');
+    await expect(area).toHaveAttribute('title', 'A deliberately long synthetic area name that cannot fit in a phone field');
+    await expect(area).toHaveCSS('text-overflow', 'ellipsis');
+    await page.locator('#space-title').click();
+    await page.screenshot({ path: testInfo.outputPath('planner.png'), fullPage: true });
+  });
+}
+
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`Tour client drafts and Research work at ${width} ${theme}`, async ({ page }, testInfo) => {
     const state = { failDetail: false, client: { ...client } };
