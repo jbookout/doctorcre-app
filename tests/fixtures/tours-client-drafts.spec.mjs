@@ -152,6 +152,8 @@ test('Tour managed notes refresh after client reselection while typed notes surv
   await page.locator('#plan-client').selectOption(clientId);
   await expect(page.locator('#plan-message')).toHaveText('');
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+  await page.getByRole('button', { name: 'Use current name', exact: true }).click();
   await expect(page.locator('#plan-name')).toHaveValue('Synthetic refreshed practice · Tour');
   await expect(page.locator('#plan-notes')).toHaveValue('Synthetic typed notes');
 });
@@ -233,5 +235,63 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await expect(criteria).toContainText('800');
     await expect(criteria).not.toContainText('2100');
     await page.screenshot({ path: testInfo.outputPath('research-search-packet.png'), fullPage: true });
+  });
+}
+
+for (const theme of ['light', 'dark']) {
+  test(`Client record updates and name choices fit a phone in ${theme}`, async ({ page }, testInfo) => {
+    const state = { failDetail: false, client: { ...client } };
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await routePlanner(page, state);
+    await page.goto('http://localhost/tours');
+    await expect(page.locator('#planner-updated')).toContainText('Updated');
+    await page.locator('#plan-client').selectOption(clientId);
+    await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+    await page.locator('#space-client').selectOption(clientId);
+    await expect(page.locator('#space-area')).toHaveValue('Synthetic City, FL');
+    await page.locator('#plan-area').fill('Synthetic chosen region');
+    state.client = { ...state.client, name: 'Synthetic updated practice', city: 'Synthetic refreshed city', notes: 'Synthetic refreshed notes <script>inert</script>' };
+    await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+    await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+    await expect(page.locator('#plan-notes')).toHaveValue(state.client.notes);
+    await expect(page.locator('#plan-area')).toHaveValue('Synthetic chosen region');
+    await page.locator('#review-packet').click();
+    await expect(page.locator('#tour-dialog')).not.toBeVisible();
+    await expect(page.locator('#keep-client-name')).toBeFocused();
+    await page.locator('#plan-client-name-review').evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await page.screenshot({ path: testInfo.outputPath('client-name-compare-390.png') });
+    for (const id of ['plan', 'space']) {
+      const updates = page.locator(`#${id}-client-updates`);
+      await updates.getByText('Review field changes', { exact: true }).click();
+      await expect(updates.locator('script')).toHaveCount(0);
+      await updates.evaluate(element => element.scrollIntoView({ block: 'center' }));
+      const box = await updates.boundingBox();
+      expect(box.y).toBeGreaterThanOrEqual(60);
+      expect(box.y + box.height).toBeLessThanOrEqual(732);
+      await page.screenshot({ path: testInfo.outputPath(`${id}-client-updates-390.png`) });
+    }
+    const controls = page.locator('#plan-client-name-review button');
+    for (const control of await controls.all()) {
+      const box = await control.boundingBox();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+      const lines = await control.evaluate(element => { const range = document.createRange(); range.selectNodeContents(element); return range.getClientRects().length; });
+      expect(lines).toBe(1);
+    }
+    await page.getByRole('button', { name: 'Keep draft name', exact: true }).click();
+    await expect(page.locator('#plan-client-name-review')).toBeHidden();
+    await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+    await page.reload();
+    await expect(page.locator('#planner-updated')).toContainText('Updated');
+    await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+    await expect(page.locator('#plan-client-name-review')).toBeHidden();
+    state.client.name = 'Synthetic latest practice';
+    await page.locator('#plan-client').selectOption(otherClientId);
+    await expect(page.locator('#plan-name')).toHaveValue('Synthetic Other Practice · Tour');
+    await expect(page.locator('#plan-client-updates')).toBeHidden();
+    await page.locator('#plan-client').selectOption(clientId);
+    await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
