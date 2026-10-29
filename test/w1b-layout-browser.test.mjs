@@ -442,7 +442,7 @@ test('Recent moves describe feed changes without internal data', async t => {
   ['market_agent',{market_agent:'Example Agent'}], ['account_owner',{owner:'joe'}], ['next_action',{next_action_id:'critical-date:0558'}],
   ['deal_items_conversion',{next_action_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}], ['email_draft_metadata',{draft_id:'abc'}],
   ['call_change_undo',{candidate_id:'abc'}], ['unknown_field',{internal_key:'secret'}],
-  ['next_step','{\"internal_key\":\"hidden\"}'], ['next_step',['internal_key']], ['next_step','0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'], ['next_step','critical-date:0558'],
+  ['next_step',['internal_key']], ['next_action','critical-date:0558'], ['next_action',12345],
  ];
  const events=fields.map(([field,new_value],i)=>({id:`event-${i}`,subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`}));
  const {page,goto}=await open(t,{clock:true,events:[]});
@@ -459,9 +459,12 @@ test('Recent moves describe feed changes without internal data', async t => {
 
 test('Recent moves show labels and partner text while withholding structured IDs', async t => {
  const cases = [
-  ['phase','due_diligence','Phase → Due diligence'],
+  ['phase','due_diligence','Phase → Due Diligence'],
   ['owner','dell','Owner → Dell'],
   ['attention',true,'Attention flag → Flagged'],
+  ['status','open','Status → Open'],
+  ['lane','national','Lane → National'],
+  ['note','Call id 12345','Note added → Call id 12345'],
   ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked — Client paused activity'],
   ['next_step','Open id 12345','Next step → Open id 12345'],
   ['next_step','Review {draft} and follow_up: tomorrow','Next step → Review {draft} and follow_up: tomorrow'],

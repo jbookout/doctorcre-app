@@ -1,3 +1,5 @@
+import { ACTOR_LABEL, PHASE_BY_SLUG, phaseLabel } from './client.js';
+
 /**
  * Recent change receipts for the Deal Room board.
  *
@@ -545,14 +547,35 @@ export function moveSentence(move) {
     const kind = typeof value?.checklist_item_id === 'string' && value.checklist_item_id.startsWith('critical-date:') ? 'critical date' : null;
     return recipient && date && kind ? `Reminder sent to ${recipient}: ${kind} due ${date}` : 'Reminder sent';
   }
-  const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone' };
+  const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', status:'Status', lane:'Lane', summary:'Summary', description:'Description', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone' };
   const action = Object.hasOwn(actions, move.field) ? actions[move.field] : 'Change recorded';
-  const after = move.after;
-  if (move.field === 'operating_state' && value && typeof value === 'object' && !['active', 'parked'].includes(value.state)) return action;
-  if (!Object.hasOwn(actions, move.field) || (typeof value === 'object' && value !== null && move.field !== 'operating_state')) return action;
-  if (typeof value === 'string' && /[{}\[\]\"\\]|\b[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b|\b[a-z]+(?:-[a-z]+)*:[^\s]+/i.test(value)) return action;
-  if (typeof after !== 'string' || !after || /[{}\[\]"\\]|\b[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b|\b[a-z]+(?:-[a-z]+)*:[^\s]+/i.test(after)) return action;
-  return `${action} → ${moveDate(after) || after}`;
+  if (!Object.hasOwn(actions, move.field)) return action;
+  if (['next_step', 'note', 'summary', 'description'].includes(move.field)) {
+    return typeof value === 'string' && value ? `${action} → ${value}` : action;
+  }
+  const labels = {
+    owner: ACTOR_LABEL,
+    status: { open:'Open', closed:'Closed', active:'Active', inactive:'Inactive' },
+    lane: { territory:'Local', national:'National' },
+  };
+  if (move.field === 'phase' && typeof value === 'string') {
+    const phase = Object.hasOwn(PHASE_BY_SLUG, value) ? PHASE_BY_SLUG[value] : (Object.values(PHASE_BY_SLUG).includes(value) ? value : null);
+    return phase ? `${action} → ${phaseLabel(phase)}` : action;
+  }
+  if (Object.hasOwn(labels, move.field)) {
+    const label = typeof value === 'string' && Object.hasOwn(labels[move.field], value) ? labels[move.field][value] : null;
+    return label ? `${action} → ${label}` : action;
+  }
+  if (move.field === 'operating_state') {
+    if (!value || typeof value !== 'object' || !['active', 'parked'].includes(value.state)) return action;
+    return `${action} → ${move.after}`;
+  }
+  if (move.field === 'attention' && typeof value === 'boolean') return `${action} → ${move.after}`;
+  if (move.field === 'next_date') {
+    const date = moveDate(value);
+    return date ? `${action} → ${date}` : action;
+  }
+  return action;
 }
 
 /** One row. Every value from the feed passes through escapeText on the way in. */
