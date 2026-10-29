@@ -80,7 +80,7 @@
 
 .home-week-zone { margin: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-week-strip, .home-week-selected-day { display: none; }
-.home-week { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.home-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
 .home-day { min-width: 0; max-block-size: min(65svh, 32rem); overflow-y: auto; padding: var(--space-2); border-left: var(--hairline-width) solid var(--hairline); scroll-snap-align: start; }
 .home-day:first-child { border-left: 0; }
 .home-day > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); }
