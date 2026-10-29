@@ -433,3 +433,87 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
  assert.deepEqual(errors,[]);
 });
+
+test('Recent moves describe feed changes without internal data', async t => {
+ // carr-system ec7aaa6b3e8a31659afe49a4b2ba23b0c4827831: tools.js 2412-2424, 2472-2493, 2557-2562, 2649-2655, 4599-4601, 4652-4660, 4771-4772, 4805-4809, 4936-4941, 4970-4973, 6186-6189, 6302-6305, 9287-9290, 9486-9488, 9637-9639, 9664-9666, 9932-9933, 9980-9984, 10013-10016, 10243-10245; dealroom.ts 122.
+ const fields = [
+  ['deal_type','renewal','Deal type → Renewal'], ['phase','due_diligence','Phase → Due Diligence'],
+  ['segment','medical_office','Segment → Medical office'], ['outcome','won','Outcome → Won'],
+  ['closed_on','2026-08-20','Closed on → Aug 20'], ['won_value',100,'Won value'], ['notes_path','internal:key','Notes path'],
+  ['salesforce_id','abc123','Salesforce'], ['city','Austin','City → Austin'], ['lane','national','Lane → National'],
+  ['invoiced_on','2026-08-20','Invoiced on → Aug 20'], ['sf_close_date_placeholder','2026-08-20','Salesforce close date → Aug 20'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',name:'Synthetic Client'},'Client changed to Synthetic Client'],
+  ['owner','dell','Owner → Dell'], ['attention',true,'Attention flag → Flagged'], ['next_date','2026-08-20','Next date → Aug 20'],
+  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked'], ['next_step','Review terms','Next step → Review terms'],
+  ['note',{note:'Synthetic note'},'Note added → Synthetic note'], ['market_agent',{market_agent:'Example Agent'},'Market agent → Example Agent'],
+  ['account_owner',{owner:'joe'},'Account owner'], ['status',{status:'done'},'Status → Done'],
+  ['document',{template:'internal',document_id:'abc'},'Document'], ['document.sent_status',{sent_status:'draft'},'Document status → Draft'],
+  ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},'Reminder sent to Joe'],
+  ['next_action',{next_action_id:'critical-date:0558',description:'Call the client',assignee:'joe',due_on:'2026-08-20'},'Next action for Joe: Call the client · due Aug 20'], ['deal_items_conversion',{next_action_id:'abc'},'Deal items updated'],
+  ['email_draft_metadata',{draft_id:'abc'},'Email draft updated'], ['call_change_undo',{candidate_id:'abc'},'Call change undone'],
+  ['unknown_field',{internal_key:'secret'},'Unknown field'],
+ ];
+ const events=fields.map(([field,new_value],i)=>({id:`event-${i}`,subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`}));
+ const {page,goto}=await open(t,{clock:true,events:[]});
+ for (const event of events) {
+  await page.route('**/pipeline/changes*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]})}));
+  await goto('/leads?mode=live');
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  const text=await page.locator('#appTodayMoves').innerText();
+  assert.doesNotMatch(text, /[{}]|":|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b/i, event.field);
+  assert.ok(text.includes(fields[events.indexOf(event)][2]), `${event.field}: ${text}`);
+  await page.unroute('**/pipeline/changes*');
+ }
+});
+
+test('Recent moves show labels and partner text while withholding structured IDs', async t => {
+ const cases = [
+  ['phase','due_diligence','Phase → Due Diligence'],
+  ['owner','dell','Owner → Dell'],
+  ['attention',true,'Attention flag → Flagged'],
+  [null,{name:'Synthetic deal'},'Change recorded'],
+  ['status','open','Status → Open'],
+  ['status','done','Status → Done'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',client_name:'Synthetic Client'},'Client changed to Synthetic Client'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},'Client changed'],
+  ['status','brand_new','Status → Brand new'],
+  ['unknown_field','due_diligence','Unknown field → Due diligence'],
+  ['unknown_field','critical-date:0558','Unknown field'],
+  ['lane','national','Lane → National'],
+  ['note','Call id 12345','Note added → Call id 12345'],
+  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked — Client paused activity'],
+  ['next_step','Open id 12345','Next step → Open id 12345'],
+  ['next_step','Review {draft} and follow_up: tomorrow','Next step → Review {draft} and follow_up: tomorrow'],
+  ['next_action',12345,'Next action'],
+  ['next_action',{next_action_id:'critical-date:0558'},'Next action'],
+  ['unknown_field',{title:'Review proposal',id:'secret-id'},'Unknown field: Review proposal'],
+ ];
+ const {page,goto}=await open(t,{clock:true,events:[]});
+ for (const [field,new_value,expected] of cases) {
+  const event={id:'event-1',subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:'2026-10-01T14:00:00Z'};
+  await page.route('**/pipeline/changes*',route=>route.fulfill({json:{events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]}}));
+  await goto('/leads?mode=live');
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  const row=await page.locator('#appTodayMoves').innerText();
+  assert.ok(row.includes(expected), `${field}: ${row}`);
+  if (field === 'next_action') assert.doesNotMatch(row, /12345|critical-date:0558/);
+  if (field === 'unknown_field' && typeof new_value === 'object') assert.doesNotMatch(row, /secret-id/);
+  await page.unroute('**/pipeline/changes*');
+ }
+});
+
+test('Recent moves screenshot evidence', async t => {
+ if (!process.env.MOVES_SCREENSHOT_DIR) return;
+ for (const [width,height] of [[390,844],[1440,900]]) for (const theme of ['light','dark']) {
+  const events=[{id:'event-1',subject_type:'deal',subject_id:'d23',field:'checklist_ping',actor:'joe',new_value:{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},recorded_at:'2026-10-01T14:00:00Z'}];
+  const {page,goto}=await open(t,{width,height,clock:true,events});
+  await goto('/leads?mode=live');
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  if(width===390) await page.locator('#appTodayToggle').click();
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  await page.locator('#appTodayMoves').scrollIntoViewIfNeeded();
+  await mkdir(process.env.MOVES_SCREENSHOT_DIR,{recursive:true});
+  await page.screenshot({animations:'disabled',path:`${process.env.MOVES_SCREENSHOT_DIR}/${width}-${theme}.png`});
+  await page.close();
+ }
+});
