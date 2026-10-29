@@ -1068,7 +1068,21 @@ export function mountBoard(deps = {}) {
     byId("board-title").textContent = view.hierarchy ? "Work Requests" : deps.openTask ? "System Job Board" : view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "All repositories" : "Progress board";
     doc.title = "Control Room · DoctorCRE";
-    byId("board-meta").textContent = orchestratorView ? `Published ${formatTime(view.updated_at)}` : `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+    const publication = byId("board-publication");
+    byId("board-meta").textContent = publication ? view.board_id : orchestratorView
+      ? `Published ${formatTime(view.updated_at)}`
+      : `${view.board_id} · Published ${formatTime(view.updated_at)} · Snapshot generation ${view.version}`;
+    if (publication) {
+      const published = formatTime(view.updated_at);
+      const time = el("time", "", published || "Not supplied");
+      if (published) time.dateTime = view.updated_at;
+      publication.replaceChildren(el("span", "", `Snapshot generation ${view.version}`),
+        el("span", "", "Source revision not supplied"));
+      const publish = el("span", "", "Last successful publish · ");
+      publish.append(time);
+      publication.append(publish);
+      publication.hidden = false;
+    }
     byId("board-meta").hidden = orchestratorView;
     byId("board-freshness").hidden = orchestratorView;
     byId("orchestrator-link")?.toggleAttribute("aria-current", orchestratorView);
@@ -1109,6 +1123,8 @@ export function mountBoard(deps = {}) {
 
   // A confirmed unpublished or denied read removes the protected board.
   function clearBoard(state) {
+    const publication = byId("board-publication");
+    if (publication) { publication.replaceChildren(); publication.hidden = true; }
     orchestratorUI?.dispose();
     orchestratorUI = null;
     queueUI?.dispose();

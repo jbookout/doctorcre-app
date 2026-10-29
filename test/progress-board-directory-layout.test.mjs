@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
+const outcomeTitle = 'Let partners compare every synthetic delivery outcome and understand the next action before opening the complete work record or its supporting history, including the current stage, the expected result, the documented handoff, and the evidence that each synthetic release reached its intended destination with the right verification';
 const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: `demo-${i}`, title: `Demo repository ${i}`, project: i === 165 ? 'Synthetic Focus' : 'Demo delivery' }));
 for (const [width, height] of [[1440, 960], [390, 844]]) {
   for (const file of ['progress-board.html', 'control-room.html']) {
@@ -20,7 +21,7 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
         await route.fulfill({ body, contentType: path.endsWith('.css') ? 'text/css' : /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.svg') ? 'image/svg+xml' : 'text/html' });
       });
       await page.goto(file === 'progress-board.html' ? 'http://board.test/control-room/progress/board/demo-0' : 'http://board.test/');
-      await page.evaluate(async boards => {
+      await page.evaluate(async ({boards, outcomeTitle}) => {
         window.__BOARD_NO_AUTOMOUNT = true;
         const { mountBoard } = await import('/js/progress-board.js');
         window.directoryTestBoard = mountBoard({ window, document, search: '?board=demo-0', storage: null,
@@ -31,10 +32,10 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
             },
             readProgressBoard: async () => ({ snapshot: { board_id: 'demo-0', version: 1,
               snapshot_json: { title: 'Demo delivery', tasks: { build: { title: 'Demo task', status: 'running', updated_at: new Date().toISOString() },
-                ...Object.fromEntries(Array.from({length:100}, (_,i) => [`queue-${i}`, {title:`Demo queued outcome ${i}`,status:'queued'}])) } } }, questions: [] }),
+                ...Object.fromEntries(Array.from({length:100}, (_,i) => [`queue-${i}`, {title:i === 0 ? outcomeTitle : `Demo queued outcome ${i}`,status:'queued'}])) } } }, questions: [] }),
           }, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
         await window.directoryTestBoard.refresh();
-      }, boards);
+      }, {boards, outcomeTitle});
       await page.waitForFunction(() => document.querySelectorAll('#board-directory a').length === 166);
       if (file === 'progress-board.html') {
         assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 0, 'Active leaves queued work in its own view');
@@ -42,6 +43,17 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
         assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 20);
         assert.equal(await page.locator('.stage-count').textContent(), '100');
       } else assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 100);
+      const title = page.locator('[data-card-id="queue-0"] .card-title').first();
+      assert.equal(await title.textContent(), outcomeTitle);
+      await page.evaluate(() => document.fonts.ready);
+      const clippedTitle = await title.evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return [...range.getClientRects()].some(rect => rect.top < bounds.top - 1
+          || rect.bottom > bounds.bottom + 1 || rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
+      });
+      assert.equal(clippedTitle, false, 'the full outcome title is readable without clipping');
       const directory = page.locator('.directory-panel');
       const lanesTop = await page.locator('#board-filters').evaluate(node => node.getBoundingClientRect().top);
       if (file === 'progress-board.html') {

@@ -121,6 +121,18 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
         await expect(option).toHaveAttribute('aria-pressed', 'true');
         await expect(page.locator('#board-stages .board-card').first()).toBeVisible();
         await capture(page, `progress-view-${label.toLowerCase().replaceAll(' ', '-')}`);
+        const publication = page.locator('#board-publication');
+        await expect(publication).toBeVisible();
+        await expect(publication).toContainText('Snapshot generation 1');
+        await expect(publication).toContainText('Source revision not supplied');
+        await expect(publication.locator('time')).toHaveAttribute('datetime', at);
+        await publication.evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        expect(await publication.evaluate(node => {
+          const rect = node.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight;
+        })).toBe(true);
+        await capture(page, `progress-publication-${label.toLowerCase().replaceAll(' ', '-')}`);
+        await menu.evaluate(node => node.scrollIntoView({ block: 'start', behavior: 'instant' }));
       }
     });
 
