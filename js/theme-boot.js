@@ -1,6 +1,12 @@
 // Runs in <head> before first paint: put the saved theme and Color Assist on <html>
 // so css/tokens.css paints the right ground at once. js/shell.js keeps them current.
 (() => {
+  document.addEventListener("load", event => {
+    const link = event.target;
+    if (link instanceof HTMLLinkElement && link.matches('link[data-font-stylesheet][rel="preload"][as="style"]')) {
+      link.rel = "stylesheet";
+    }
+  }, true);
   const root = document.documentElement;
   let theme = "dark", assist = false;
   try {
