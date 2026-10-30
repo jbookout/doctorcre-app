@@ -103,7 +103,7 @@
 .card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-1); }
 .card-actions { display: flex; align-items: center; gap: var(--space-3); }
 .lead-market { min-width: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
-.drag-handle { position: absolute; top: var(--space-2); right: var(--space-2); padding: 2px; color: var(--fg-quiet); cursor: grab; touch-action: none; }
+.drag-handle { position: absolute; top: 0; right: 0; display: flex; align-items: center; justify-content: center; min-width: var(--touch); min-height: var(--touch); color: var(--fg-quiet); cursor: grab; touch-action: none; }
 .auto-move { color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
 .auto-move::before { content: "↻"; margin-right: var(--space-1); color: var(--status-info-ink); }
 :is(.auto-move, .client-hint) button { min-height: 32px; margin-left: var(--space-1); padding: 0 var(--space-2); }
@@ -176,7 +176,6 @@ dialog::backdrop { background: var(--scrim); }
   .stage-column[data-expanded="true"] .stage-head { top: calc(var(--leads-header-offset, 0px) + var(--touch) + 2 * var(--space-2) + var(--hairline-width)); }
   .stage-nav select { flex: 1; scroll-margin-top: calc(var(--leads-header-offset, 0px) + var(--space-2)); }
   #leadBoard:not([data-touch-dragging]) .stage-column[data-mobile-current="false"] { display: none; }
-  #leadBoard:not([data-touch-dragging]):not(:has(.dragging)) .stage-column:not(:has(.lead-card)) { display: none; }
   .page-heading { margin-bottom: var(--space-3); }
   #territoryMap { height: 180px; }
   #territoryMap:has(.map-place-members) { height: 640px; }

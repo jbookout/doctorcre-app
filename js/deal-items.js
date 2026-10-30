@@ -7,6 +7,12 @@ export const dealItemHref = (deal, item) => `/deals?deal=${encodeURIComponent(de
 export function shortDealName(deal) {
   return deal.short_name || deal.name || 'Deal';
 }
+export const monthDay = value => {
+  const day = String(value || '').slice(0, 10), date = new Date(`${day}T12:00:00Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '';
+};
+/** The one overdue treatment on board cards and list rows: a tappable age that opens the deal. */
+export const renderOverdueFlag = (id, name, label) => label ? `<button type="button" class="attention-flag" data-open="${esc(id)}" aria-label="${esc(label)}, open ${esc(name)}">${esc(label)}</button>` : '';
 export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = false, viewer = '', board = false } = {}) {
   const overdue = overdueLabel(deal.overdue_since, today);
   return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue && !board ? `<p class="deal-overdue">${overdue}</p>` : ''}${board ? renderDealSummary(deal, { today, viewer }) : ''}${renderDealItems(deal,{today,buttons, empty: !board,board})}`;
@@ -14,7 +20,7 @@ export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = fa
 export function renderDealItems(deal, { today = '', buttons = false, empty = true, board = false } = {}) {
   const next = board ? nextOpenAction(deal) : null;
   const items = openDealItems(deal).filter(item => !next || item.title.trim() !== next.description.trim() || (item.due_on || null) !== (next.due_on || null));
-  return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : empty ? '<p class="deal-items-empty">No action items recorded</p>' : '';
+  return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(monthDay(item.due_on) || item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : empty ? '<p class="deal-items-empty">No action items recorded</p>' : '';
 }
 
 function shortDate(value, today) {
@@ -36,7 +42,7 @@ export function renderDealSummary(deal, { today = '', viewer = '' } = {}) {
   const next = nextOpenAction(deal);
   const lines = [];
   if (next) {
-    const date = shortDate(next.due_on, today);
+    const date = next.due_on && next.due_on < today ? '' : shortDate(next.due_on, today);
     const owner = next.owner && viewer && next.owner !== viewer ? ` · ${next.owner.slice(0, 1).toUpperCase()}` : '';
     lines.push(`<span class="deal-summary-line"><span class="deal-summary-label">Next: </span><span class="deal-summary-text">${esc(next.description.trim())}</span><span class="deal-summary-facts">${date ? ` · <time data-overdue="${Boolean(next.due_on && next.due_on < today)}" datetime="${esc(next.due_on)}">${esc(date)}</time>` : ''}${esc(owner)}</span></span>`);
   } else {
@@ -53,7 +59,7 @@ export function renderDealSummary(deal, { today = '', viewer = '' } = {}) {
 export function renderDealItemDetail(item, { today = '' } = {}) {
   const overdue = item.status === 'open' && item.due_on && item.due_on < today;
   const sections = [['promised', 'What was promised'], ['call', 'From the call'], ['suggestion', 'Suggested next steps'], ['status', 'Status']];
-  return `<div class="deal-item-date" data-overdue="${Boolean(overdue)}">${overdue ? 'Overdue' : 'Due'} ${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : 'date not recorded'}</div>${sections.map(([kind, label]) => {
+  return `<div class="deal-item-date" data-overdue="${Boolean(overdue)}">${overdue ? 'Overdue' : 'Due'} ${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(monthDay(item.due_on) || item.due_on)}</time>` : 'date not recorded'}</div>${sections.map(([kind, label]) => {
     const bullets = (item.bullets || []).filter(bullet => bullet.kind === kind);
     return bullets.length ? `<section><h3>${label}</h3><ul>${bullets.map(bullet => `<li>${bullet.date ? `<time datetime="${esc(bullet.date)}">${esc(bullet.date)}</time> · ` : ''}${esc(bullet.text)}</li>`).join('')}</ul></section>` : '';
   }).join('')}<form data-item-instruction><label for="dealItemInstruction">Tell Dr. CRE</label><textarea id="dealItemInstruction" name="text" aria-label="Tell Dr. CRE" rows="3" maxlength="240" required></textarea><button type="submit" class="btn btn-primary">Save instruction</button></form><button type="button" class="btn" data-complete-item${item.status === 'done' ? ' disabled' : ''}>${item.status === 'done' ? 'Done' : 'Mark done'}</button><p role="status" data-item-status></p>`;

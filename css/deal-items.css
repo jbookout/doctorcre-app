@@ -5,10 +5,10 @@
 .deal-items-label { margin: var(--space-3) 0 var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
 .deal-items { margin: 0; padding-left: 1.5em; }
 .deal-items li { padding-left: var(--space-1); }
-.deal-items a, .deal-items button { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 4px; cursor: pointer; }
+.deal-items a, .deal-items button { display: inline-flex; align-items: center; min-height: 44px; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 4px; cursor: pointer; }
 .deal-items a:hover, .deal-items button:hover { text-decoration-color: currentColor; }
-.deal-item-due { display: inline-block; margin-left: var(--space-2); padding: 2px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-1); color: var(--fg-muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.deal-items [data-overdue="true"] .deal-item-due { color: var(--status-warn); border-color: currentColor; }
+.deal-item-due { display: inline-block; margin-left: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.deal-items [data-overdue="true"] .deal-item-due { color: var(--status-warn-ink); }
 .has-app-layout dialog.deal-item-sheet { max-width: min(560px, calc(100vw - 24px)); width: 100%; max-height: calc(100dvh - 24px); overflow-y: auto; }
 .deal-item-sheet > header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-3); }
 .deal-item-sheet h2 { overflow-wrap: anywhere; }
