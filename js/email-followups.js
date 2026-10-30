@@ -1,4 +1,5 @@
 import { workCard } from './work-card.js';
+import { homeListLimit } from './home-list-limit.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';
 import { uuidv4 } from './uuid.js';
@@ -44,7 +45,7 @@ const denied = error => [401, 403].includes(error.status) || error.code === 'ses
 
 export function mountEmailFollowups({ container, client, deal, onChange = () => {} }) {
   const win = container.ownerDocument.defaultView;
-  let visibleCount = deal ? Infinity : win?.matchMedia?.('(max-width: 700px)').matches ? 1 : 2;
+  const limit = homeListLimit(win, Boolean(deal));
   let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
   const refusedCreations = new Map();
@@ -59,7 +60,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const notice = loadState === 'denied' ? '<p role="status">Sign in to review email follow-ups.</p>'
       : loadState === 'error' ? `<p role="status">Could not load email follow-ups.${loaded && rows.length ? ' Showing the last successful read.' : ''}</p>${button('retry', 'Retry email follow-ups')}`
         : loadState === 'loading' && !loaded ? '<div class="home-followup-skeleton" role="status">Loading email follow-ups…</div>' : '';
-    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && rows.length > visibleCount ? `<span class="home-list-count">Showing ${visibleCount} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${loaded && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && limit.remaining(rows) > 0 ? `<span class="home-list-count">Showing ${limit.count(rows)} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${loaded && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${limit.visible(rows).map(row => {
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
@@ -84,7 +85,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : 'Possible new deal'}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
         status: state.status === 'done' ? 'Reviewed' : '',
         body: `<q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Open the deal to review it or dismiss it with a reason.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
-    }).join('')}${rows.length > visibleCount ? button('show', `Show ${rows.length - visibleCount} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
+    }).join('')}${limit.remaining(rows) > 0 ? button('show', `Show ${limit.remaining(rows)} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
     for (const article of container.querySelectorAll('[data-email-id]')) {
       const { source } = rows.find(row => row.id === article.dataset.emailId);
       article.querySelector('.email-source').textContent = emailSource(source);
@@ -173,7 +174,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const button = event.target?.closest('[data-email-action]');
     if (!button || button.disabled || !container.contains(button) || disposed || loadState === 'denied') return;
     const action = button.dataset.emailAction;
-    if (action === 'show') { visibleCount = rows.length; render(); return; }
+    if (action === 'show') { limit.showAll(rows); render(); return; }
     if (action === 'retry') return refresh(retryCursor);
     if (action === 'more' && cursor) { pages++; return refresh(cursor); }
     const row = rows.find(item => item.id === button.closest('[data-email-id]')?.dataset.emailId);

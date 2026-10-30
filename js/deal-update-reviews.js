@@ -1,4 +1,6 @@
 import { workCard } from './work-card.js';
+import { homeListLimit } from './home-list-limit.js';
+import { sourceTime } from './email-source-line.js';
 import { escapeText as E } from './change-receipts.mjs';
 import { readWithDeadline } from './current-read.mjs';
 import { uuidv4 } from './uuid.js';
@@ -7,20 +9,23 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
   let rows = [], state = 'loading', epoch = 0, disposed = false;
   const decisions = new Map();
   const win = container.ownerDocument.defaultView;
+  const limit = homeListLimit(win);
+  const refusals = { overdue_action_changed: 'The task changed. Refresh overdue reviews before deciding again.', assessment_already_reviewed: 'This was already reviewed by the other partner.', partner_required: 'A partner is required to review this task.', assessment_not_found: 'The assessment was not found.', not_action_owner: 'Only the task owner can review this task.' };
   const button = (action, label, disabled = false) => `<button type="button" class="btn home-outline" data-update-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
   function render() {
     const focused = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
     const focusId = focused?.closest('[data-update-id]')?.dataset.updateId, focusAction = focused?.dataset.updateAction;
     container.setAttribute('aria-busy', String(state === 'loading'));
-    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2></header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${rows.map(row => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${limit.remaining(rows) > 0 ? `<span class="home-list-count">Showing ${limit.count(rows)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${limit.visible(rows).map(row => {
       const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
       const disabled = state !== 'ready' || pending;
+      const assessing = row.assessment.reason === 'awaiting_assessment' || row.assessment.reason === 'assessment_in_progress';
       return workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
         title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
-        meta: `<p>Overdue task · ${E(row.assessment.action.description)}</p>`,
-        body: `<q>${E(row.assessment.quote || row.assessment.update)}</q><p class="email-change">Mark this overdue task as done.</p>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
-        actions: `<div class="email-controls">${decision?.state === 'done' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : `${button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}${button('dismiss', 'Dismiss', disabled)}`}</div>` });
-    }).join('')}`;
+        meta: `<p>Overdue task · ${E(row.assessment.action.description)}</p><p>Update · ${E(sourceTime(row.recorded_at, undefined, 'Date unavailable'))}</p>`,
+        body: `<q>${E(row.assessment.quote || row.assessment.update)}</q><p class="email-change">${assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
+        actions: `<div class="email-controls">${assessing || decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : `${button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}${button('dismiss', 'Dismiss', disabled)}`}</div>` });
+    }).join('')}${limit.remaining(rows) > 0 ? button('show', `Show ${limit.remaining(rows)} more`) : ''}`;
     if (focused) {
       const article = [...container.querySelectorAll('[data-update-id]')].find(node => node.dataset.updateId === focusId);
       const target = [...(article || container).querySelectorAll('button:not(:disabled)')].find(node => node.dataset.updateAction === focusAction) || article?.querySelector('button:not(:disabled), a') || container.querySelector('button:not(:disabled)');
@@ -37,15 +42,15 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       initialResult = undefined;
       if (disposed || ticket !== epoch) return;
       const ids = new Set();
-      if (result?.schema_version !== 'deal-update-reviews.v1' || !Array.isArray(result.proposals) || result.proposals.length > 200
-        || result.proposals.some(row => {
-          const invalid = !row?.assessment_id || ids.has(row.assessment_id) || !row.deal_id || !row.deal_name
-            || row.confirm_verb !== 'review-deal-update' || row.assessment?.review_required !== true
-            || !row.assessment.action?.id || typeof row.assessment.action.description !== 'string'
-            || typeof row.assessment.update !== 'string' || !(row.assessment.quote === null || typeof row.assessment.quote === 'string');
-          ids.add(row?.assessment_id); return invalid;
-        })) throw Error('Invalid overdue reviews');
-      const next = [...result.proposals];
+      if (result?.schema_version !== 'deal-update-reviews.v1' || !Array.isArray(result.proposals) || result.proposals.length > 200) throw Error('Invalid overdue reviews');
+      const next = result.proposals.filter(row => {
+        const valid = row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name
+          && row.confirm_verb === 'review-deal-update' && row.assessment?.review_required === true
+          && row.assessment.action?.id && typeof row.assessment.action.description === 'string'
+          && typeof row.assessment.update === 'string' && (row.assessment.quote == null || typeof row.assessment.quote === 'string');
+        if (valid) ids.add(row.assessment_id);
+        return valid;
+      });
       for (const row of rows) if (!ids.has(row.assessment_id) && ['unknown', 'submitting'].includes(decisions.get(row.assessment_id)?.state)) next.push(row);
       for (const [id, decision] of decisions) if (decision.state === 'refused') decisions.delete(id);
       rows = next; state = 'ready';
@@ -60,6 +65,7 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
     const control = event.target?.closest('[data-update-action]');
     if (!control || control.disabled || disposed || state === 'denied') return;
     if (control.dataset.updateAction === 'refresh') return refresh();
+    if (control.dataset.updateAction === 'show') { limit.showAll(rows); render(); return; }
     if (state !== 'ready') return;
     const row = rows.find(item => item.assessment_id === control.closest('[data-update-id]')?.dataset.updateId);
     if (!row) return;
@@ -76,10 +82,10 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       render(); onChange();
     } catch (error) {
       if (disposed || state === 'denied') return;
-      if ([401, 403].includes(error.status) || error.code === 'session_changed') return retire();
+      if (error.code === 'session_changed' || error.status === 401 || (error.status === 403 && !['partner_required', 'not_action_owner'].includes(error.payload?.error))) return retire();
       if (error.payload?.error && error.payload.error !== 'offline') {
-        decisions.set(row.assessment_id, { state: 'refused', message: error.payload.error === 'overdue_action_changed'
-          ? 'The task changed. Refresh overdue reviews before deciding again.' : 'Review was refused. Refresh overdue reviews before deciding again.' });
+        const code = error.payload.error;
+        decisions.set(row.assessment_id, { state: code === 'not_action_owner' ? 'not-owner' : 'refused', message: refusals[code] || 'Review was refused. Refresh overdue reviews before deciding again.' });
         render(); return;
       }
       decisions.set(row.assessment_id, { state: 'unknown', request, message: 'Review outcome unconfirmed. Check outcome to retry the original decision.' });

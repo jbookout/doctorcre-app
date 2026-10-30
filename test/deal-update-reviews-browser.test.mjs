@@ -52,10 +52,15 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await panel.scrollIntoViewIfNeeded();
     assert.match(await panel.innerText(), /Demo Harbor expansion.*Request revised terms.*The landlord sent the revised terms today.*Mark this overdue task as done/s);
     assert.equal(await panel.locator('a').first().getAttribute('href'), `/deals?deal=${row.deal_id}`);
+    assert.equal(await panel.locator('article').count(), width === 390 ? 1 : 2);
+    await panel.screenshot({ path: `out/test-artifacts/overdue-reviews/${width}-${theme}.png`, animations: 'disabled' });
+    if (width === 390) {
+      assert.match(await panel.innerText(), /Show 1 more/);
+      await panel.getByRole('button', { name: 'Show 1 more' }).click();
+    }
     assert.match(await panel.locator('q').last().innerText(), /The floor plan may be ready/);
     for (const box of await Promise.all((await panel.getByRole('button').all()).map(b => b.boundingBox()))) assert.ok(box.height >= 44);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
-    await panel.screenshot({ path: `out/test-artifacts/overdue-reviews/${width}-${theme}.png`, animations: 'disabled' });
     await panel.getByRole('button', { name: 'Confirm', exact: true }).first().click();
     await panel.getByText('Task marked done.', { exact: true }).waitFor();
     await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();

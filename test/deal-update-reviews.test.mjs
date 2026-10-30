@@ -73,3 +73,23 @@ test('session loss clears evidence and rejects a late read', async t => {
   resolve(response([proposal()])); await pending;
   assert.match(container.textContent, /Sign in/); assert.doesNotMatch(container.textContent, /Demo Harbor/);
 });
+
+for (const [code, message] of [
+  ['assessment_already_reviewed', /already reviewed by the other partner/i],
+  ['partner_required', /partner.*required/i],
+  ['assessment_not_found', /assessment.*not found/i],
+  ['not_action_owner', /only the task owner/i],
+  ['unexpected', /Review was refused/i],
+]) test(`review refusal ${code} explains the outcome`, async t => {
+  const { view, action, container } = setup(t, { readDealUpdateReviews: async () => response([proposal()]), reviewDealUpdate: async () => { throw Object.assign(Error('refused'), { payload: { error: code } }); } });
+  await view.refresh(); await action('Confirm');
+  assert.match(container.textContent, message);
+  if (code === 'not_action_owner') assert.equal(container.querySelectorAll('article button').length, 0);
+});
+test('unknown rows are skipped and pending assessments stay visible without decisions', async t => {
+  const pending = { ...proposal(), assessment_id: 'pending', assessment: { ...proposal().assessment, reason: 'awaiting_assessment', quote: undefined } };
+  const { view, container } = setup(t, { readDealUpdateReviews: async () => response([null, pending]) });
+  await view.refresh();
+  assert.match(container.textContent, /still assessing/i);
+  assert.equal(container.querySelectorAll('article button').length, 0);
+});
