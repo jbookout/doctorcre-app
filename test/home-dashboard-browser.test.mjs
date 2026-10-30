@@ -307,6 +307,33 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
   assert.deepEqual(state.errors, []);
 });
 
+test('a Home flag opens from its row at phone width', async t => {
+  const { page } = await open(t, { width: 390, height: 844 });
+  const flag = page.locator('#dealFlags .home-flag').first();
+  const href = await flag.locator('h3 a').getAttribute('href');
+  await flag.scrollIntoViewIfNeeded();
+  const box = await flag.locator('.work-card-meta').boundingBox();
+  await page.mouse.click(box.x + box.width - 5, box.y + box.height / 2);
+  await page.waitForURL(`http://localhost${href}`, { timeout: 3000 });
+});
+
+test('Home flag link opens with Enter and Space, and item links keep their destination', async t => {
+  for (const key of ['Enter', 'Space']) {
+    const { page } = await open(t, { width: 390, height: 844 });
+    const flag = page.locator('#dealFlags .home-flag').first();
+    const link = flag.locator('h3 a');
+    const href = await link.getAttribute('href');
+    await link.focus();
+    await page.keyboard.press(key);
+    await page.waitForURL(`http://localhost${href}`);
+  }
+  const { page } = await open(t, { width: 390, height: 844 });
+  const item = page.locator('#dealFlags .home-flag .deal-items a').first();
+  const href = await item.getAttribute('href');
+  await item.click();
+  await page.waitForURL(`http://localhost${href}`);
+});
+
 test('a flagged Home deal opens that exact Deals record; unknown IDs show a failed detail instead of another deal', async t => {
   const { page, errors } = await open(t);
   const href = await page.locator('.home-flag h3 a').first().getAttribute('href');
@@ -1179,4 +1206,17 @@ test('session loss during the meeting-confirmation download prevents late contro
   await page.waitForLoadState('networkidle');
   assert.equal(await page.locator('#homeMeetingReviews').isVisible(), false);
   assert.equal(await page.getByText('Demo retired meeting', { exact: true }).count(), 0);
+});
+
+test('Deals panel ends with muted counts and a plain All deals link', async t => {
+  for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+    const { page } = await open(t, { width, theme });
+    await screenshot(page, `deals-footer-${width}-${theme}`);
+    const panel = page.locator('#dealAttention');
+    const link = panel.getByRole('link', { name: 'All deals', exact: true });
+    assert.equal(await link.getAttribute('href'), '/deals');
+    assert.equal(await panel.locator('footer #dealCounts').isVisible(), true);
+    assert.equal(await page.locator('main > footer #dealCounts').count(), 0);
+    assert.equal(await link.evaluate(el => getComputedStyle(el).borderTopStyle), 'none');
+  }
 });
