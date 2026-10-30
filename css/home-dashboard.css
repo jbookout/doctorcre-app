@@ -17,6 +17,7 @@
 .home-panel[hidden] { display: none; }
 .home-panel + .home-panel, .home-panel + .home-grid { margin-top: var(--space-4); }
 .home-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-3); }
+.home-list-count { color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
 .home-panel-head h2 { margin: 0; min-width: 0; font: var(--font-weight-strong) var(--font-size-3)/var(--line-height-heading) var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
 
 /* Deal attention. */
