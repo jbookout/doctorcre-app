@@ -220,3 +220,65 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ex
   assert.equal(await page.locator('audio').count(), 0);
   assert.equal(state.writes.filter(r => r.method === 'PUT').length, 2);
 });
+
+for (const locked of [false, true]) test(`phone recording handles hidden page with wake lock ${locked}`, async t => {
+  const { page } = await open(t);
+  await page.evaluate(locked => {
+    window.wakeRequests = 0;
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { async request() {
+      window.wakeRequests++;
+      if (!locked) throw new Error('unavailable');
+      return { released: false, addEventListener() {}, async release() { this.released = true; } };
+    } } });
+    navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop() {} }] });
+    window.MediaRecorder = class {
+      static isTypeSupported() { return true; }
+      constructor() { this.mimeType = 'audio/mp4'; }
+      start() { this.state = 'recording'; window.syntheticRecorder = this; }
+      stop() { this.state = 'inactive'; this.ondataavailable({ data: new Blob(['synthetic audio'], { type: 'audio/mp4' }) }); void this.onstop(); }
+    };
+  }, locked);
+  await page.getByLabel('Everyone was told').check();
+  await page.getByRole('button', { name: 'Record microphone' }).click();
+  await page.waitForFunction(() => window.syntheticRecorder?.state === 'recording');
+  assert.equal(await page.evaluate(() => window.wakeRequests), 1);
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  if (locked) {
+    assert.equal(await page.evaluate(() => window.syntheticRecorder.state), 'recording');
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => window.wakeRequests === 2);
+    await page.getByRole('button', { name: 'Stop recording' }).click();
+  } else {
+    await page.getByText(/Recording paused when the phone locked.*saved up to/).waitFor();
+    await page.reload();
+    await page.getByText(/Recording paused when the phone locked.*saved up to/).waitFor();
+  }
+  await page.getByRole('button', { name: 'Transfer recording' }).waitFor();
+});
+
+for (const theme of ['light', 'dark']) test(`duration limit says saved at phone width ${theme}`, async t => {
+  const { page } = await open(t, { theme });
+  await page.evaluate(() => {
+    const original = window.setTimeout;
+    window.setTimeout = (fn, ms, ...args) => ms === 3600000 ? (window.stopAtLimit = fn, 0) : original(fn, ms, ...args);
+    navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [] });
+    window.MediaRecorder = class {
+      static isTypeSupported() { return true; }
+      constructor() { this.mimeType = 'audio/mp4'; }
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable({ data: new Blob(['synthetic audio'], { type: 'audio/mp4' }) }); void this.onstop(); }
+    };
+  });
+  await page.getByLabel('Everyone was told').check();
+  await page.getByRole('button', { name: 'Record microphone' }).click();
+  await page.waitForFunction(() => Boolean(window.stopAtLimit));
+  await page.evaluate(() => window.stopAtLimit());
+  await page.getByText('Stopped at 60 minutes — saved', { exact: true }).waitFor();
+  await page.reload();
+  await page.getByText('Stopped at 60 minutes — saved', { exact: true }).waitFor();
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await animationsSettled(page);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await mkdir('out/test-artifacts/phone-calls', { recursive: true });
+  await page.screenshot({ path: `out/test-artifacts/phone-calls/limit-390-${theme}.png`, fullPage: true });
+});

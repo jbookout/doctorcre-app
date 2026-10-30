@@ -1,4 +1,4 @@
-export function createDayRecorder({ window, store, onChange = () => {}, onError = () => {} }) {
+export function createDayRecorder({ window, store, onChange = () => {}, onError = () => {}, maxDurationMs = 10 * 60_000, maxBytes = 25 * 1024 * 1024 }) {
   let active = null, disposed = false, generation = 0;
   const release = stream => stream?.getTracks().forEach(track => track.stop());
   const lockName = note => `doctorcre-tour-capture:${JSON.stringify([note.scope, note.id])}`;
@@ -49,30 +49,35 @@ export function createDayRecorder({ window, store, onChange = () => {}, onError 
       state.recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       state.recorder.ondataavailable = event => {
         if (!event.data?.size) return;
+        if (state.bytes + event.data.size > maxBytes) { stopState(state, "bytes"); return; }
         state.chunks.push(event.data); state.bytes += event.data.size;
         const audio = new window.Blob(state.chunks, { type: state.recorder.mimeType || event.data.type });
         state.note.audio = audio;
+        const duration_seconds = Math.max(1, Math.min(maxDurationMs, Date.now() - state.startedAt) / 1000);
+        state.note.duration_seconds = duration_seconds;
         state.pending = state.pending.then(async () => {
-          if (!await store.patch(note.scope, note.id, { audio })) throw new Error("note_missing");
+          if (!await store.patch(note.scope, note.id, { audio, duration_seconds })) throw new Error("note_missing");
           state.savedBytes = audio.size;
         }).catch(() => {
           state.note.storage_error = true; notify(state, onError, "Audio not saved · Phone storage unavailable", state.note); stopState(state);
         });
-        if (state.bytes >= 25 * 1024 * 1024) stopState(state);
+        if (state.bytes >= maxBytes) stopState(state, "bytes");
       };
       state.recorder.onstop = async () => {
         window.clearTimeout(state.timer); release(stream);
+        if (!state.stopping) state.note.stop_reason = "locked";
         await state.pending;
         state.note.status = state.note.storage_error ? "failed" : state.savedBytes && state.savedBytes === state.note.audio?.size ? "local" : "empty";
-        try { await store.patch(note.scope, note.id, { status: state.note.status, storage_error: Boolean(state.note.storage_error) }); }
+        try { await store.patch(note.scope, note.id, { status: state.note.status, storage_error: Boolean(state.note.storage_error), stop_reason: state.note.stop_reason, duration_seconds: state.note.duration_seconds }); }
         catch { state.note.status = "failed"; state.note.storage_error = true; notify(state, onError, "Audio not saved · Download audio", state.note); }
         if (active === state) active = null;
         state.unlock(); notify(state, onChange, state.note);
       };
-      state.recorder.onerror = () => { notify(state, onError, "Recording interrupted", state.note); stopState(state); };
+      state.recorder.onerror = () => { notify(state, onError, "Recording interrupted", state.note); stopState(state, "error"); };
+      state.startedAt = Date.now();
       state.recorder.start(1000);
       state.note.phase = "recording";
-      state.timer = window.setTimeout(() => stopState(state), 10 * 60_000);
+      state.timer = window.setTimeout(() => stopState(state, "duration"), maxDurationMs);
       notify(state, onChange, state.note);
     } catch (error) {
       release(state.stream); if (active === state) active = null;
@@ -80,13 +85,15 @@ export function createDayRecorder({ window, store, onChange = () => {}, onError 
       state.unlock?.(); notify(state, onChange, null); throw error;
     }
   }
-  function stopState(state) {
+  function stopState(state, reason) {
     if (!state || state.stopping) return;
     state.stopping = true;
+    state.note.stop_reason = reason;
+    state.note.duration_seconds = Math.max(1, Math.min(maxDurationMs, Date.now() - state.startedAt) / 1000);
     if (state.recorder?.state !== "inactive" && state.recorder) state.recorder.stop();
     else { if (active === state) active = null; release(state.stream); notify(state, onChange, null); }
   }
-  const stop = () => stopState(active);
+  const stop = reason => stopState(active, reason);
   function invalidate() { ++generation; stop(); active = null; }
   return { start, stop, recover, invalidate, get active() { return active?.note || null; }, dispose() { disposed = true; invalidate(); } };
 }

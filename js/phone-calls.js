@@ -11,6 +11,37 @@ const notice = message => { if (!disposed) $('phoneNotice').textContent = messag
 const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
 const tour_id = 'calls';
+let wakeLock = null, wakeGeneration = 0, transferringId = null;
+async function acquireWakeLock() {
+  const generation = ++wakeGeneration;
+  try {
+    const lock = await navigator.wakeLock?.request('screen');
+    if (!recorder?.active || generation !== wakeGeneration) { await lock?.release(); return; }
+    const previous = wakeLock;
+    wakeLock = lock;
+    if (previous !== lock) await previous?.release();
+    lock?.addEventListener('release', () => {
+      if (wakeLock !== lock) return;
+      wakeLock = null;
+      if (document.hidden) recorder?.stop('locked');
+    });
+  } catch { notice('Keep the screen on and this page open while recording.'); }
+}
+function releaseWakeLock() {
+  ++wakeGeneration;
+  const lock = wakeLock; wakeLock = null;
+  void lock?.release();
+}
+function stopMessage(row) {
+  if (row.status !== 'local') return '';
+  if (row.stop_reason === 'duration') return 'Stopped at 60 minutes — saved';
+  if (row.stop_reason === 'bytes') return 'Stopped at 50 MiB — saved';
+  if (row.stop_reason === 'locked' || (row.interrupted && !row.stop_reason)) {
+    const seconds = Math.floor(row.duration_seconds || 0);
+    return `Recording paused when the phone locked — saved up to ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+  return '';
+}
 const mimeTypes = new Set(['audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mpeg', 'audio/webm']);
 const uploadLabels = { queued: 'Waiting for the Studio', transferred: 'Received by the Studio', expired: 'Expired — upload again' };
 const labels = { pending: 'Pending transfer', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
@@ -38,7 +69,7 @@ async function metadata(audio, started_at, consent_announced_at, seconds) {
 }
 async function pending() {
   const rows = await recorder.recover(await store.list(scope, tour_id));
-  for (const row of rows.filter(r => r.session_id && r.audio?.size && r.status !== 'failed')) {
+  for (const row of rows.filter(r => r.session_id && r.audio?.size && r.status !== 'failed' && r.id !== transferringId)) {
     let confirmed;
     try { confirmed = await api.status(row.session_id); }
     catch (error) { notice(error.message); continue; }
@@ -48,7 +79,7 @@ async function pending() {
       Object.assign(row, await store.patch(scope, row.id, { audio: null, status: 'transferred' }));
   }
   if (disposed) return;
-  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${uploadLabels[r.upload_state] || (r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer')}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${r.interrupted ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.upload_state === 'expired' ? 'Upload again' : r.upload_state === 'queued' ? 'Check upload' : 'Transfer recording'}</button>` : ''}</article>`).join('');
+  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : uploadLabels[r.upload_state] || (r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer')}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.upload_state === 'expired' ? 'Upload again' : r.upload_state === 'queued' ? 'Check upload' : 'Transfer recording'}</button>` : ''}</article>`).join('');
   for (const player of $('phonePending').querySelectorAll('audio')) {
     const url = URL.createObjectURL(rows.find(r => r.id === player.dataset.audio).audio);
     player.src = url; player.onloadeddata = () => URL.revokeObjectURL(url);
@@ -66,6 +97,7 @@ async function transfer(id) {
   }
   const admitted = row.session_id && row.upload_state !== 'expired' ? { session_id: row.session_id } : await api.admit(meta);
   await store.patch(scope, id, { session_id: admitted.session_id });
+  notice('Transferring…');
   const receipt = await api.transfer(admitted.session_id, row.audio, meta.mime_type);
   if (receipt.sha256 && receipt.sha256 !== meta.sha256) throw new Error('Transfer could not be verified. Saved audio has been kept.');
   const confirmed = await api.status(admitted.session_id);
@@ -86,7 +118,7 @@ async function review(id) {
   $('phoneSession').value = id;
   $('phoneOpen').hidden = true;
   const held = [...(result.actions || []), ...(result.deal_updates || [])].some(r => r.status === 'pending');
-  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(labels[result.state])}</span><p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
+  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(labels[result.state])}</span><p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
   if (result.report) {
     try {
       const answer = await client.readCallOutcomes();
@@ -107,13 +139,13 @@ async function start() {
   scope = JSON.stringify([location.origin, session.actor.slug]);
   store = createDayStore(indexedDB, 'doctorcre-call-audio-v1');
   client = createLiveClient({ selfActor: session.actor.slug });
-  recorder = createDayRecorder({ window, store, onChange: note => {
+  recorder = createDayRecorder({ window, store, maxDurationMs: 60 * 60_000, maxBytes: 50 * 1024 * 1024, onChange: note => {
     if (disposed) return;
     $('phoneStop').hidden = !recorder.active;
     $('phoneRecord').disabled = Boolean(recorder.active);
-    if (note?.status === 'local') void store.patch(scope, note.id, { duration_seconds: Math.max(1, (Date.now() - Date.parse(note.captured_at)) / 1000) }).then(pending).catch(error => notice(error.message));
-    else void pending().catch(error => notice(error.message));
-  }, onError: (message, note) => { notice(message); if (note) void store.patch(scope, note.id, { interrupted: true }).catch(() => {}); } });
+    if (!recorder.active) releaseWakeLock();
+    void pending().catch(error => notice(error.message));
+  }, onError: (message, note) => { notice(message); if (note) void store.patch(scope, note.id, { interrupted: true, stop_reason: 'error' }).catch(() => {}); } });
   $('phoneSave').disabled = false; $('phoneRecord').disabled = false; notice('');
   await pending();
   $('phoneImport').onsubmit = event => { event.preventDefault(); void run(async () => {
@@ -126,14 +158,16 @@ async function start() {
     await store.put({ scope, tour_id, id: crypto.randomUUID(), name: audio.name, audio, metadata: meta, status: 'local', captured_at: timestamp });
     notice('Recording saved on this device. Transfer when ready.'); $('phoneFile').value = ''; $('phoneConsent').checked = false;
   }); };
-  $('phoneRecord').onclick = () => { if (!$('phoneConsent').checked) { notice('Confirm that everyone was told before recording.'); return; } void run(async () => { await recorder.start({ scope, tour_id, consent_announced_at: new Date().toISOString() }); $('phoneConsent').checked = false; }); };
+  $('phoneRecord').onclick = () => { if (!$('phoneConsent').checked) { notice('Confirm that everyone was told before recording.'); return; } void run(async () => { await recorder.start({ scope, tour_id, consent_announced_at: new Date().toISOString() }); await acquireWakeLock(); $('phoneConsent').checked = false; }); };
   $('phoneStop').onclick = () => { recorder.stop(); notice('Recording stopped. Review the saved audio before transferring.'); };
   $('phoneOpen').onsubmit = event => { event.preventDefault(); void run(() => review(reviewId($('phoneSession').value.trim()))); };
   $('phoneCalls').addEventListener('click', event => {
     const button = event.target.closest('button'); if (!button) return;
     if (button.dataset.transfer) void run(async () => {
+      transferringId = button.dataset.transfer; await pending();
       try { await transfer(button.dataset.transfer); }
       catch (error) { await store.patch(scope, button.dataset.transfer, { status: 'failed' }); throw error; }
+      finally { transferringId = null; }
     });
     if (button.id === 'phoneAnother') { $('phoneOpen').hidden = false; $('phoneSession').focus(); }
     if (button.id === 'phoneRefresh') void run(() => review(currentId));
@@ -151,13 +185,12 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
-  const note = recorder?.active;
-  if (document.hidden && note) {
-    void store.patch(scope, note.id, { interrupted: true }).catch(error => notice(error.message));
-    recorder.stop(); notice('Recording interrupted while this page was away. Review the saved audio before continuing.');
-  }
+  if (!recorder?.active) return;
+  if (!document.hidden) void acquireWakeLock();
+  else if (!wakeLock || wakeLock.released) recorder.stop('locked');
 });
-window.addEventListener('pagehide', () => recorder?.dispose(), { once: true });
+document.addEventListener('freeze', () => recorder?.stop('locked'));
+window.addEventListener('pagehide', () => { recorder?.stop('locked'); releaseWakeLock(); }, { once: true });
 void start().catch(error => notice(error.message));
