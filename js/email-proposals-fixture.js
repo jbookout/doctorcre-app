@@ -66,23 +66,6 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
   }
   return {
-    async getEmailProposalQuality() {
-      const kinds = [...(filingProposals ? ['file_to_deal', 'possible_new_deal'] : []), 'phase_move', 'next_step', ...(replyDrafts ? ['reply_draft'] : [])].map(kind => {
-        const cohort = rows.filter(row => row.kind === kind);
-        const confirmed = cohort.filter(row => row.status === 'confirmed');
-        const dismissed = cohort.filter(row => row.status === 'dismissed');
-        const resolved = confirmed.length + dismissed.length;
-        const average = items => items.length ? items.reduce((sum, row) => sum + row.confidence, 0) / items.length : null;
-        const rate = resolved ? dismissed.length / resolved : null;
-        return { kind, proposed: cohort.length, pending: cohort.filter(row => row.status === 'pending').length,
-          confirmed: confirmed.length, dismissed: dismissed.length, dismiss_rate: rate,
-          confirmed_confidence: average(confirmed), dismissed_confidence: average(dismissed),
-          over_threshold: resolved >= 10 && rate > 0.05 };
-      });
-      return { schema_version: 'email-proposal-quality.v1', days: 7, kinds,
-        corrections: rows.filter(row => row.status === 'dismissed').sort((a, b) => b.resolved_at.localeCompare(a.resolved_at) || a.id.localeCompare(b.id)).slice(0, 20)
-          .map(row => ({ id: row.id, kind: row.kind, deal_name: row.deal_name, reason: row.resolution_reason, resolved_at: row.resolved_at })), send: false };
-    },
     async listEmailProposals({ deal, limit, cursor, mode, status } = {}) {
       if (mode === 'recent_outcomes') {
         if (status !== undefined || limit > 50) fail('email_outcomes_arguments_invalid');

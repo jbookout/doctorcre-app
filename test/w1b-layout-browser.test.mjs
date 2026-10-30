@@ -32,7 +32,6 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       else if(name==='update-lead') {writes.push(name);const lead=liveBoard.leads.find(l=>l.registry_ref===args.lead);Object.assign(lead,args.fields,{base_version:lead.base_version+1});body={ok:true};}
       else if(name==='deal-room-board') body=await fixture.getBoard();
       else if(name==='read-home-agenda') body=await fixture.getHomeAgenda();
-      else if(name==='email-proposal-quality') body=await fixture.getEmailProposalQuality();
       else if(name==='today-triage') body=await fixture.todayTriage();
       else if(name==='get-deal-room') body=await fixture.getDeal(args.deal || args.deal_id);
       else if(name==='deal-room-changes') body=await fixture.getChanges(args.cursor);
