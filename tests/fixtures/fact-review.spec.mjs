@@ -185,7 +185,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       const field = value => ({ value, source: { page: 1, region_id: 'row-1', method: 'ocr' } });
       state.client.listFactReview = async args => {
         const result = await list(args);
-        result.items.push({ entity_ref: 'd14', fact_key: 'rent_schedule', canonical_version: 0, review_version: '0'.repeat(64), pending: true, priority: 'high', reasons: ['ocr_disagreement'], review_history: [], canonical_fact: null,
+        result.items.push({ entity_ref: 'd14', fact_key: 'rent_schedule', canonical_version: 0, review_version: '0'.repeat(64), pending: true, priority: 'normal', reasons: ['human_review'], review_history: [], canonical_fact: null,
           observations: [{ id: 'schedule', method: 'ocr', confidence_tier: 'human_review', unit: 'schedule', source: { document_ref: '00000000-0000-4000-8000-000000000030', page_start: 1, page_end: 1, cited_text: 'Year 1 | $24 | NNN. Year 2 | $24.72 | NNN | 3%.', cited_text_expires_at: '2099-01-01T00:00:00Z' }, value: [
             { start_month: field(1), end_month: field(12), rate: field('24'), unit: field('USD/SF/year'), expense_basis: field('nnn'), escalation_percent: field(null) },
             { start_month: field(13), end_month: field(24), rate: field('24.72'), unit: field('USD/SF/year'), expense_basis: field('nnn'), escalation_percent: field('3') },
@@ -198,7 +198,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(schedule).toContainText('$24.72/SF/yr');
     await expect(schedule).toContainText('OCR · verify');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await schedule.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top - 220));
+    await schedule.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top - 300));
     await page.screenshot({ path: `.github/pr-evidence/WR39.S3.J7/schedule-${width}-${theme}.png`, animations: 'disabled' });
   });
 }

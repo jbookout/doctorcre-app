@@ -22,7 +22,7 @@ function readLabel(observation) {
 }
 function reviewLabel(item) {
   if (!item.pending) return 'Reviewed';
-  return `${item.priority === 'high' ? 'High priority · ' : ''}${item.reasons.map(reason => ({ ocr_disagreement: 'OCR disagreement', conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' }[reason] || 'Review required')).join(' · ') || 'Review required'}`;
+  return `${item.priority === 'high' ? 'High priority · ' : ''}${[...new Set(item.reasons.map(reason => ({ ocr_disagreement: 'OCR disagreement', unsupported_ocr: 'OCR could not read this', no_text_layer: 'No text layer', ambiguous: 'Ambiguous value', absent: 'Value not found', conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' }[reason] || 'Review required')))].join(' · ') || 'Review required'}`;
 }
 function documentName(observation, documents) {
   return documents.find(doc => doc.id === observation.source.document_ref)?.display_name || 'Document name unavailable';
@@ -52,8 +52,8 @@ function reviewHtml(item, documents, index, scheduleHtml) {
     <div class="fact-observations">${item.observations.map(o => `<section class="fact-observation">${schedule ? scheduleHtml(o.value, true) : `<strong>${esc(valueText(o))}</strong>`}${item.canonical_fact?.observation_ids?.includes(o.id) ? '<span class="fact-state"> · Settled value</span>' : ''}<p class="fact-read">${esc(readLabel(o))}</p>${sourceHtml(o, documents)}</section>`).join('')}</div>
     <button type="button" class="btn" data-review-term${item.pending ? ' hidden' : ''}>Review term</button>
     <form data-fact-review="${index}"${item.pending ? '' : ' hidden'}>
-      <label>Decision<select aria-label="Decision" name="decision"><option value="approve">Approve a sourced value</option><option value="correct"${documents.length && !schedule ? '' : ' disabled'}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
-      <label data-choose-value>Choose a value<select aria-label="Choose a value" name="observation_id" required><option value="">Choose a sourced value</option>${item.observations.map(o => `<option value="${esc(o.id)}">${esc(valueText(o))} · ${esc(documentName(o, documents))}</option>`).join('')}</select></label>
+      <label>Decision<select aria-label="Decision" name="decision"><option value="approve"${item.observations.length ? '' : ' disabled'}>Approve a sourced value</option><option value="correct"${documents.length && !schedule ? '' : ' disabled'}>Correct with a source</option><option value="reject"${item.observations.length ? '' : ' selected'}>Reject this review</option></select></label>
+      <label data-choose-value${item.observations.length ? '' : ' hidden'}>Choose a value<select aria-label="Choose a value" name="observation_id" required${item.observations.length ? '' : ' disabled'}><option value="">Choose a sourced value</option>${item.observations.map(o => `<option value="${esc(o.id)}">${esc(valueText(o))} · ${esc(documentName(o, documents))}${schedule ? ` · ${esc(o.method === 'ocr' ? 'OCR' : o.method === 'text_layer' ? 'Text' : o.method)} · Page ${esc(o.source.page_start)}${o.source.page_start === o.source.page_end ? '' : `–${esc(o.source.page_end)}`}` : ''}</option>`).join('')}</select></label>
       <fieldset data-correction hidden disabled><legend>Corrected term</legend>${schedule ? '' : entryHtml(documents, item.fact_key, `correction-${index}`)}</fieldset>
       <label>Reason<textarea name="reason" rows="2" maxlength="2000" required></textarea></label><button type="submit" class="btn btn-primary">Save review</button><p role="status" data-write-status></p>
     </form>

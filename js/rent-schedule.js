@@ -10,10 +10,9 @@ function money(value) {
 
 export function scheduleHtml(periods, sourced) {
   const value = field => sourced ? field.value : field;
-  const label = (...fields) => sourced && fields.some(field => field.source.method === 'ocr') ? '<small class="fact-read">OCR · verify</small>' : '';
   return `<table class="fact-schedule"><thead><tr><th>Period</th><th>Rate</th><th>Escalation</th><th>Expense basis</th></tr></thead><tbody>${periods.map(p => `<tr>
-    <td data-label="Period"><span>${esc(value(p.start_month))}–${esc(value(p.end_month))} months${label(p.start_month, p.end_month)}</span></td>
-    <td data-label="Rate"><span>${esc(money(value(p.rate)))}${esc(units[value(p.unit)] ?? ` ${value(p.unit)}`)}${label(p.rate, p.unit)}</span></td>
-    <td data-label="Escalation"><span>${esc(value(p.escalation_percent) == null ? '—' : `${value(p.escalation_percent)}%`)}${label(p.escalation_percent)}</span></td>
-    <td data-label="Expense basis"><span>${esc(bases[value(p.expense_basis)] ?? value(p.expense_basis))}${label(p.expense_basis)}</span></td></tr>`).join('')}</tbody></table>`;
+    <td data-label="Period"><span>${esc(value(p.start_month))}–${esc(value(p.end_month))} months</span></td>
+    <td data-label="Rate"><span>${esc(money(value(p.rate)))}${esc(units[value(p.unit)] ?? ` ${value(p.unit)}`)}</span></td>
+    <td data-label="Escalation"><span>${esc(value(p.escalation_percent) == null ? '—' : `${value(p.escalation_percent)}%`)}</span></td>
+    <td data-label="Expense basis"><span>${esc(bases[value(p.expense_basis)] ?? value(p.expense_basis))}</span></td></tr>`).join('')}</tbody></table>`;
 }
