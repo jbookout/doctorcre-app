@@ -16,11 +16,11 @@ export async function checkUiCopy(paths) {
     } else if (extensions.has(extname(path))) {
       const source = await readFile(path, 'utf8');
       if (basename(path) === 'today-moves.mjs') {
-        const { todayMoveSentence } = await import(pathToFileURL(resolve(path)).href);
-        for (const field of ['unknown_internal_field', 'phase', 'owner', 'status', 'client_id', 'document.sent_status']) {
-          const sentinel = 'internal_value_123';
-          const sentence = todayMoveSentence({ deal_name:'Example Deal', field, move_value:sentinel, recorded_at:null, verb:'internal-verb-name' });
-          if (/internal[_-]|\b(?:[a-z]+_)+[a-z0-9]+\b|internal-verb-name|123/.test(sentence)) violations.push(`${path}: unsafe Today move copy`);
+        const { MOVE_FIELDS, todayMove } = await import(pathToFileURL(resolve(path)).href);
+        const sentinel = 'internal_value_123';
+        for (const field of [...MOVE_FIELDS, 'unknown_internal_field']) for (const value of [sentinel, { internal_key:sentinel, id:'abc' }]) {
+          const { action } = todayMove({ deal_name:'Example Deal', field, move_value:value, move_name:sentinel, actor:sentinel, recorded_at:null, verb:'internal-verb-name' });
+          if (/internal|\b(?:[a-z]+_)+[a-z0-9]+\b|123|abc/i.test(action)) violations.push(`${path}: unsafe Today move copy for ${field}`);
         }
       }
       const match = banned.exec(source);

@@ -109,9 +109,9 @@ test('recent moves catch up through history and update read-only on pages withou
  const events=[{id:'demo-event-1',subject_type:'deal',subject_id:'d23',field:'attention',actor:'doc',old_value:false,new_value:true,recorded_at:'2026-10-01T14:00:00Z'}];
  const{page,goto,writes,errors}=await open(t,{clock:true,events});await goto('/leads?mode=live');
  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
- assert.match(await page.locator('#appTodayMoves').textContent(),/Flagged Demo Specialty Clinic for attention/);assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
+ assert.match(await page.locator('#appTodayMoves').textContent(),/Demo Specialty Clinic.*Flagged for attention by Doc/);assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
  events.push({id:'demo-event-2',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Review synthetic terms',recorded_at:'2026-10-01T15:00:00Z'});
- await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Updated the next step for Demo Specialty Clinic'));
+ await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Set the next step to Review synthetic terms'));
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
@@ -161,9 +161,9 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
  await goto('/leads?mode=live');
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  if(width===390)await page.locator('#appTodayToggle').click();
- await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Updated the next step for Demo Specialty Clinic'));
+ await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Set the next step to Review synthetic terms'));
  const sections=['#appTodayNeeds','#appTodayNext','#appTodayMoves'];
- const rows=async()=>Promise.all(sections.map(async selector=>(await page.locator(selector+' [data-layout-deal]').allTextContents()).map(text=>selector==='#appTodayMoves'?text.replace(/, (?:just now|\d+ (?:minute|hour|day)s? ago)$/, ''):text)));
+ const rows=async()=>Promise.all(sections.map(async selector=>(await page.locator(selector+' [data-layout-deal]').allTextContents()).map(text=>selector==='#appTodayMoves'?text.replace(/ · (?:just now|\d+ (?:minute|hour|day)s? ago)$/, ''):text)));
  const good=await rows();assert.ok(good.every(items=>items.length));
  const retry=page.getByRole('button',{name:'Retry Today',exact:true});
  for(const source of ['deal-room-board','today-triage','morning-brief','feed']){
@@ -434,23 +434,77 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  assert.deepEqual(errors,[]);
 });
 
-test('Recent moves show one plain sentence and hide internal data', async t => {
- const events = [{id:'event-1',subject_type:'deal',subject_id:'d23',field:'phase',actor:'joe',new_value:'due_diligence',recorded_at:'2026-10-01T13:00:00Z'}];
- const {page,goto}=await open(t,{clock:true,events});
- await goto('/leads?mode=live');
- await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
- assert.equal((await page.locator('#appTodayMoves').innerText()).trim(),'Moved Demo Specialty Clinic to Due Diligence, 2 hours ago');
+// Several moves of different types, people and ages, recorded relative to the fixture clock (15:00:00Z).
+const ago=ms=>new Date(Date.parse('2026-10-01T15:00:00Z')-ms).toISOString();
+const MIN=60_000,HOUR=60*MIN,DAY=24*HOUR;
+const manyMoves=()=>[
+ {id:'m1',subject_type:'deal',subject_id:'d01',field:'phase',actor:'joe',new_value:'due_diligence',recorded_at:ago(2*HOUR)},
+ {id:'m2',subject_type:'deal',subject_id:'d02',field:'attention',actor:'doc',new_value:true,recorded_at:ago(20_000)},
+ {id:'m3',subject_type:'deal',subject_id:'d03',field:'next_step',actor:'dell',new_value:'Review terms',recorded_at:ago(MIN)},
+ {id:'m4',subject_type:'deal',subject_id:'d04',field:'next_date',actor:'joe',new_value:'2026-10-05',recorded_at:ago(HOUR)},
+ {id:'m5',subject_type:'deal',subject_id:'d05',field:'owner',actor:'doc',new_value:'dell',recorded_at:ago(3*DAY)},
+ {id:'m6',subject_type:'deal',subject_id:'d06',field:'client_id',actor:'dell',new_value:{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},recorded_at:ago(12*MIN)},
+];
+const movesOpen=async(t,{width=1440,height=960,events=manyMoves()}={})=>{
+ const opened=await open(t,{width,height,clock:true,events});await opened.goto('/leads?mode=live');
+ if(width===390)await opened.page.locator('#appTodayToggle').click();
+ await opened.page.waitForFunction(()=>document.querySelectorAll('#appTodayMoves [data-layout-deal]').length>=6);
+ return opened;
+};
+const moveRow=(page,deal)=>page.locator(`#appTodayMoves [data-layout-deal="${deal}"]`);
+
+test('Recent moves lead with the deal name and say what changed, who did it and when',async t=>{
+ const {page,errors}=await movesOpen(t);
+ for(const [deal,name,detail] of [
+  ['d01','Demo Dental North','Moved to Due Diligence by Joe · 2 hours ago'],
+  ['d02','Demo Pediatrics East','Flagged for attention by Doc · just now'],
+  ['d03','Demo Therapy Group','Set the next step to Review terms by Dell · 1 minute ago'],
+  ['d04','Demo Vision Center','Set the next date to Oct 5 by Joe · 1 hour ago'],
+  ['d05','Demo Family Clinic','Assigned to Dell by Doc · 3 days ago'],
+  ['d06','Demo Orthodontics South','Changed the client by Dell · 12 minutes ago'],
+ ]){
+  const row=moveRow(page,deal);
+  assert.equal(await row.locator('strong').innerText(),name);
+  assert.equal((await row.locator('span').first().innerText()).replace(/\s+/g,' ').trim(),detail);
+ }
+ const text=await page.locator('#appTodayMoves').innerText();
+ assert.doesNotMatch(text,/[{}]|→|\b[a-z]+_[a-z0-9_]+\b|\b[0-9a-f]{8}-[0-9a-f]{4}-/i);
+ assert.deepEqual(errors,[]);
+});
+
+test('Recent moves rows match the Next up row style',async t=>{
+ const {page}=await movesOpen(t);
+ const style=selector=>page.locator(`${selector} .app-layout-item`).first().evaluate(node=>{const strong=getComputedStyle(node.querySelector('strong')),span=getComputedStyle(node.querySelector('span'));return[strong.fontWeight,span.color,node.firstElementChild.tagName];});
+ assert.deepEqual(await style('#appTodayMoves'),await style('#appTodayNext'));
+});
+
+test('Recent move ages follow the clock without a reload',async t=>{
+ const {page,errors}=await movesOpen(t);
+ assert.match(await moveRow(page,'d02').innerText(),/just now/);
+ await page.clock.fastForward(2*MIN);
+ await page.waitForFunction(()=>/Flagged for attention by Doc · 2 minutes ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ await page.clock.fastForward(HOUR);
+ await page.waitForFunction(()=>/Flagged for attention by Doc · 1 hour ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ assert.deepEqual(errors,[]);
+});
+
+test('Recent move times never wrap apart at 390px',async t=>{
+ const {page}=await movesOpen(t,{width:390,height:844});
+ const ages=page.locator('#appTodayMoves .app-layout-age');
+ assert.equal(await ages.count(),6);
+ assert.deepEqual(await ages.evaluateAll(nodes=>nodes.map(node=>node.getClientRects().length)),[1,1,1,1,1,1]);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
 });
 
 test('Recent moves screenshot evidence', async t => {
  if (!process.env.MOVES_SCREENSHOT_DIR) return;
  for (const [width,height] of [[390,844],[1440,900]]) for (const theme of ['light','dark']) {
-  const events=[{id:'event-1',subject_type:'deal',subject_id:'d23',field:'checklist_ping',actor:'joe',new_value:{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},recorded_at:'2026-10-01T14:00:00Z'}];
+  const events=manyMoves();
   const {page,goto}=await open(t,{width,height,clock:true,events});
   await goto('/leads?mode=live');
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
   if(width===390) await page.locator('#appTodayToggle').click();
-  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  await page.waitForFunction(()=>document.querySelectorAll('#appTodayMoves [data-layout-deal]').length>=6);
   await page.locator('#appTodayMoves').scrollIntoViewIfNeeded();
   await mkdir(process.env.MOVES_SCREENSHOT_DIR,{recursive:true});
   await page.screenshot({animations:'disabled',path:`${process.env.MOVES_SCREENSHOT_DIR}/${width}-${theme}.png`});

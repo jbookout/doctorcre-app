@@ -59,7 +59,7 @@ test('UI copy lint rejects internal values in Today move sentences', async t => 
   const dir = await mkdtemp(join(tmpdir(), 'doctorcre-moves-copy-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'today-moves.mjs');
-  await writeFile(path, 'export function todayMoveSentence(move) { return `Updated ${move.field} ${move.move_value}`; }');
+  await writeFile(path, 'export const MOVE_FIELDS = ["next_step"]; export function todayMove(move) { return { action: `Updated ${move.field} ${move.move_value}` }; }');
   const result = spawnSync(process.execPath, [checker.pathname, path], { encoding: 'utf8' });
   assert.equal(result.status, 1, result.stdout + result.stderr);
   assert.match(result.stderr, /UI copy/);
