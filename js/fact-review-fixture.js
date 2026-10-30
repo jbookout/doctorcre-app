@@ -1,4 +1,4 @@
-import { FACT_TERMS } from './fact-review.js';
+import { FACT_TERMS } from './client.js';
 import { uuidv4 } from './uuid.js';
 
 export function createFactReviewFixture() {

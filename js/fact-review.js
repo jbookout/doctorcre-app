@@ -1,12 +1,8 @@
 import { escapeText as esc } from './change-receipts.mjs';
 import { uuidv4 } from './uuid.js';
 
-export const FACT_TERMS = {
-  base_rent_per_sf: { label: 'Base rent', units: { 'USD/SF/year': 1, 'USD/SF/month': 12 } },
-  landlord_ti_per_sf: { label: 'Landlord improvement allowance', units: { 'USD/SF': 1 } },
-  term_months: { label: 'Lease term', units: { months: 1, years: 12 } },
-  free_rent_months: { label: 'Free rent', units: { months: 1 } },
-};
+import { FACT_TERMS } from './client.js';
+
 const BASES = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
 
 function valueText(value) {

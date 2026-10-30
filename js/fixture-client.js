@@ -1,4 +1,3 @@
-import { createFactReviewFixture } from './fact-review-fixture.js';
 import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
@@ -55,7 +54,8 @@ export function createFixtureDealStore(seed) {
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
 export async function createFixtureClient(opts = {}) {
-  const factReview = createFactReviewFixture();
+  let factReview;
+  const factReviews = () => factReview ||= import('./fact-review-fixture.js').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
@@ -1262,9 +1262,9 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
-    listFactReview: factReview.listFactReview,
-    recordHumanFact: factReview.recordHumanFact,
-    resolveFactReview: factReview.resolveFactReview,
+    async listFactReview(args) { return (await factReviews()).listFactReview(args); },
+    async recordHumanFact(args) { return (await factReviews()).recordHumanFact(args); },
+    async resolveFactReview(args) { return (await factReviews()).resolveFactReview(args); },
 
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
@@ -1287,7 +1287,7 @@ export async function createFixtureClient(opts = {}) {
         activities: activitiesFor(dealId).slice(0, 4),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], attachments: factReview.attachments(dealId), documents: [], lease: null, schema_version: 'deal-timeline.v1' };
+        premises: [], negotiation_rounds: [], attachments: (await factReviews()).attachments(dealId), documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {

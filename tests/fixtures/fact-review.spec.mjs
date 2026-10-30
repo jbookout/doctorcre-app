@@ -19,8 +19,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await terms.scrollIntoViewIfNeeded();
     await page.evaluate(() => document.fonts.ready);
     const path = testInfo.outputPath(`terms-${width}-${theme}.png`);
-    await page.evaluate(() => scrollTo(0, 0));
-    await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+    await page.evaluate(() => {
+      const terms = document.querySelector('#panelTerms');
+      const header = document.querySelector('.workspace-header');
+      const offset = getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().height : 0;
+      const topbar = document.querySelector('.app-layout-tabbar').getBoundingClientRect().height;
+      scrollTo({ top: scrollY + terms.getBoundingClientRect().top - offset - topbar - 16, behavior: 'instant' });
+    });
+    expect(await terms.getByRole('heading', { name: 'Terms', exact: true }).evaluate(node => node.getBoundingClientRect().top)).toBeGreaterThan(56);
+    await page.screenshot({ path, animations: 'disabled' });
     await testInfo.attach('Three sourced values', { path, contentType: 'image/png' });
     const review = terms.locator('form[data-fact-review]');
     await review.getByLabel('Choose a value').selectOption({ label: '26 USD/SF/year · NNN · Demo Amendment.pdf' });
@@ -52,7 +59,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(terms.locator('.fact-canonical')).toContainText('27 USD/SF/year');
     await expect(terms).toContainText('Review saved');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`terms-${width}-${theme}-resolved.png`), fullPage: true, animations: 'disabled' });
+    await page.screenshot({ path: testInfo.outputPath(`terms-${width}-${theme}-resolved.png`), animations: 'disabled' });
   });
 }
 

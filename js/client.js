@@ -415,3 +415,10 @@ export async function createClient(mode = 'fixture', opts = {}) {
   const { createFixtureClient } = await import('./fixture-client.js');
   return createFixtureClient(opts);
 }
+
+export const FACT_TERMS = {
+  base_rent_per_sf: { label: 'Base rent', units: { 'USD/SF/year': 1, 'USD/SF/month': 12 } },
+  landlord_ti_per_sf: { label: 'Landlord improvement allowance', units: { 'USD/SF': 1 } },
+  term_months: { label: 'Lease term', units: { months: 1, years: 12 } },
+  free_rent_months: { label: 'Free rent', units: { months: 1 } },
+};
