@@ -5,9 +5,9 @@ import { chromium, waitForAsync } from './browser-harness.mjs';
 import { identity, found, readiness, meeting } from './fixtures/correspondence.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false, timezoneId } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
+  const page = await browser.newPage({ viewport: { width, height }, reducedMotion, timezoneId });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
@@ -1241,4 +1241,33 @@ test('parked import note uses plain words on the board', async t => {
   await refresh(page);
   await page.locator('.parked-lane summary').click();
   assert.equal(await page.locator('.parked-card[data-id="d14"]').getByText('Imported Oct 1, not yet confirmed. Revive if still active.').isVisible(), true);
+});
+
+test('deal email threads show latest message dates and escape subjects', async t => {
+  for (const width of [390, 1440]) for (const theme of ['light', 'dark']) await t.test(`${width} ${theme}`, async t => {
+    const {page, errors} = await open(t, {width, timezoneId:'America/Chicago'});
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await page.evaluate(async ({identity, found, readiness, meeting}) => {
+      const {state} = await import('/js/pipeline.js');
+      const getDeal = state.client.getDeal.bind(state.client);
+      state.client.correspondenceReadiness = async () => readiness;
+      state.client.readCorrespondenceThread = async () => found;
+      state.client.getDeal = async (...args) => ({...await getDeal(...args), activities:[{...meeting, kind:'correspondence', detail:{native_identity:identity}}], email_threads: [
+        {conversation_id:'demo-new', subject:'Demo <b>newest</b>', latest_message_at:'2026-10-01T12:00:00Z'},
+        {conversation_id:'demo-old', subject:'Demo older', latest_message_at:'2026-09-30T12:00:00Z'},
+      ]});
+    }, {identity, found, readiness, meeting});
+    await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+    await page.getByRole('tab', {name:'Correspondence & notes'}).click();
+    await page.locator('#panelEvidence [data-kind=thread]').first().waitFor();
+    await mkdir(new URL('out/test-artifacts/thread-dates/',root),{recursive:true});
+    await page.locator('#panelEvidence').screenshot({path:new URL(`out/test-artifacts/thread-dates/${width}-${theme}.png`,root).pathname});
+    const rows = page.locator('#panelEvidence [data-kind=thread]');
+    assert.equal(await rows.count(), 2);
+    assert.deepEqual(await rows.locator('summary span').allTextContents(), ['Demo <b>newest</b>', 'Demo older']);
+    assert.equal(await rows.locator('b').count(), 0);
+    assert.match(await rows.first().locator('time').textContent(), /Oct 1, 7:00 AM CDT/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.deepEqual(errors, []);
+  });
 });

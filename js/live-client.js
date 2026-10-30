@@ -260,6 +260,7 @@ export function createLiveClient(opts = {}) {
         items: page.items || [],
         item_schema_version: page.item_schema_version,
         activities: page.activities || [],
+        ...(Object.hasOwn(page, 'email_threads') ? { email_threads: page.email_threads } : {}),
         participants: page.participants || [],
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],

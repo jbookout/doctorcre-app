@@ -29,3 +29,14 @@ test('the current recorded status stays in the feed when the Update composer is 
 test('dates alone stay in the deal snapshot and do not advertise client or vendor context',()=>{
  assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],vendors:[],criticalDates:[{label:'Next date',date:'2026-10-05'}]}),[]);
 });
+
+test('deal room passes filed email threads through and preserves older-server absence', async () => {
+ const {createLiveClient}=await import('../js/live-client.js');
+ for (const email_threads of [undefined, [{conversation_id:'demo',subject:'Demo subject',latest_message_at:'2026-10-01T12:00:00Z'}]]) {
+  const response={deal_id:'demo',name:'Demo',...(email_threads ? {email_threads} : {})};
+  const client=createLiveClient({fetchImpl:async()=>new Response(JSON.stringify({result:{content:[{text:JSON.stringify(response)}]}}),{status:200})});
+  const detail=await client.getDeal('demo');
+  assert.equal(Object.hasOwn(detail,'email_threads'),email_threads !== undefined);
+  if (email_threads) assert.deepEqual(detail.email_threads,email_threads);
+ }
+});
