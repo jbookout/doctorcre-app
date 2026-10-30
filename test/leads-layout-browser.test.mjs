@@ -178,4 +178,16 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) test(`lead
  for(const control of await controls.all()) { const box=await control.boundingBox(); assert.ok(box.width>=44 && box.height>=44, await control.evaluate(n=>n.className||n.outerHTML)); }
  await mkdir('out/test-artifacts/WR572.S6.J1',{recursive:true});
  await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/leads-${width}-${theme}.png`});
+ if(width===390) {
+  assert.equal(await page.locator('.stage-column:not(:has(.lead-card)):visible').count(),0);
+  const note=page.locator('.stages-hidden'); assert.match(await note.innerText(),/\d+ stages? hidden/);
+  await note.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/stages-hidden-leads-390-${theme}.png`});
+  await note.getByRole('button').click();
+  assert.ok(await page.locator('.stage-column:not(:has(.lead-card)):visible').count()>0);
+  await note.getByRole('button').click();
+  await page.locator('#stageFilter').selectOption('qualified');
+  assert.equal(await page.locator('.filtered-empty').isVisible(),true);
+  assert.equal(await page.locator('.stages-hidden').count(),0);
+ }
 });

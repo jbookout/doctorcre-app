@@ -410,6 +410,7 @@ for (const width of [390, 1440]) for (const theme of ['light','dark']) test(`dea
  for(const control of await controls.all()) { const box=await control.boundingBox(); assert.ok(box.width>=44 && box.height>=44); }
  await mkdir('out/test-artifacts/WR572.S6.J1',{recursive:true});
  await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/deals-${width}-${theme}.png`});
+ if(width===390) { const note=page.locator('.stages-hidden'); await note.scrollIntoViewIfNeeded(); await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/stages-hidden-deals-390-${theme}.png`}); }
  await page.getByRole('button',{name:'List',exact:true}).click();
  await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/deals-list-${width}-${theme}.png`});
 });
