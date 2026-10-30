@@ -24,6 +24,7 @@ test('fixture provides dated synthetic routes and explicit source coverage with 
   const first = await client.listPracticeOrigination({limit:2});
   assert.equal(first.contract, 'practice-origination.v1');
   assert.equal(first.cards.length, 2);
+  assert.equal(first.cards[0].why_now, 'NPI enumerated on 2026-10-26');
   assert.equal(first.next_cursor, '5');
   const rest = await client.listPracticeOrigination({before_id:first.next_cursor});
   const rows = [...first.cards, ...rest.cards];

@@ -17,7 +17,7 @@ export function practiceOriginationFixture({limit = 25, before_id} = {}) {
       published_on:'2026-10-26',recorded_at:'2026-10-26T12:00:00Z',route,
       client_ids:route === 'relationship_follow_up' ? ['demo-client'] : [],
       client_refs:route === 'relationship_follow_up' ? ['DEMO-CLIENT'] : [],
-      why_now:`${source === 'pecos' ? 'Public PECOS enrollment observed' : 'NPPES registry updated'} on ${evidence_date}`};
+      why_now:`${({enumeration:'NPI enumerated',registry_update:'NPPES registry updated',pecos_correction:'Public PECOS evidence corrected',pecos_observation:'Public PECOS enrollment observed'})[kind]} on ${evidence_date}`};
   }).filter(card => !before_id || Number(card.id) < Number(before_id));
   return {ok:true,contract:'practice-origination.v1',cards:cards.slice(0,limit),
     next_cursor:cards.length > limit ? cards[limit-1].id : null, outreach_started:false,
