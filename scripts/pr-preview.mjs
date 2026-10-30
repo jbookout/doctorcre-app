@@ -1,6 +1,6 @@
+import { temporaryDirectory } from './temp-directory.mjs';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { credentialFreeEnv } from './release-environment.mjs';
@@ -130,7 +130,7 @@ function deploy(number, dryRun) {
   if (pr.isCrossRepository) throw new Error(`PR ${number} comes from a fork; previews require same-repository PRs`);
   const sha = pr.headRefOid;
 
-  const scratch = mkdtempSync(join(tmpdir(), `doctorcre-pr-${number}-`));
+  const scratch = temporaryDirectory(`doctorcre-pr-${number}-`);
   const stage = join(scratch, 'stage');
   const site = join(stage, 'dist/site');
   mkdirSync(site, { recursive: true });

@@ -1,14 +1,14 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, settles } from './browser-harness.mjs';
 import { createDocActivityFixture } from '../js/doc-activity-fixture.js';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 const root=new URL('../',import.meta.url);
-const artifactDir=await mkdtemp(join(tmpdir(),'doctorcre-activity-browser-'));
+const artifactDir=await temporaryDirectory('doctorcre-activity-browser-');
 await buildArtifact({root:fileURLToPath(root),outDir:artifactDir,commit:'1'.repeat(40)});
 const site=pathToFileURL(join(artifactDir,'site')+'/');
 const routes=(await import("../js/routes.js")).routeContract;

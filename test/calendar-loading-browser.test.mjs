@@ -1,7 +1,7 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect as baseExpect } from '@playwright/test';
@@ -15,7 +15,7 @@ const expect = baseExpect.configure({ timeout: WAIT_MS });
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 test('Calendar opens confirmed dates while another deal is pending and clears them on session expiry', async t => {
-  const outDir = await mkdtemp(join(tmpdir(), 'calendar-loading-'));
+  const outDir = await temporaryDirectory('calendar-loading-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
   const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
