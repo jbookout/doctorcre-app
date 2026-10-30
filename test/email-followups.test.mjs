@@ -112,11 +112,11 @@ test('Dismiss requires a reason and sends the proposal version the user read', a
   assert.match(container.textContent, /Dismissed/);
 });
 
-test('provenance names the sender and subject as text, never markup', async () => {
+test('mailbox display names use the prefix as text when sender metadata contains markup', async () => {
   const row = proposal(); row.source.sender = 'Dana <b>Demo</b> <dana@example.test>'; row.source.subject = '<img src=x onerror=alert(1)>Plan';
   const { container, view } = setup({ listEmailProposals: async () => response([row]) });
   await view.refresh();
-  assert.match(container.querySelector('.email-source').textContent, /^From Dana Demo's email, .* ago$/);
+  assert.match(container.querySelector('.email-source').textContent, /^From Dana's email, .* ago$/);
   assert.equal(container.querySelector('.email-source img, .email-source b'), null);
 });
 
