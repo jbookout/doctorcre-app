@@ -1,18 +1,18 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { WAIT_MS } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { profile, screens } from '../scripts/performance-scenarios.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
 test('the phone Relationships performance scenario opens the visible connection detail', async t => {
-  const outDir=await mkdtemp(join(tmpdir(),'doctorcre-perf-artifact-'));
+  const outDir=await temporaryDirectory('doctorcre-perf-artifact-');
   t.after(()=>rm(outDir,{recursive:true,force:true}));
   await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir});
   const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:join(outDir,'site')}});
@@ -46,7 +46,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
   const scenarios = await import('../scripts/performance-scenarios.mjs');
   const expected = ['task-agenda', 'task-leads', 'task-deal-link', 'task-deal-draft', 'task-tour-library', 'task-tour-offline'];
   assert.deepEqual(scenarios.tasks?.map(task => task.id), expected);
-  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-task-artifact-'));
+  const outDir = await temporaryDirectory('doctorcre-task-artifact-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
@@ -76,7 +76,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
         assert.equal(result.reads.filter(name => name === 'getHomeAgenda').length, 1);
         assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
         assert.ok(result.reads.includes('getLeadBoard'), 'count the lead board read assigned during home boot');
-        assert.ok(result.reads.includes('readLeaseRadar'), 'count the lease radar read assigned during home boot');
+        assert.equal(result.reads.includes('readLeaseRadar'), false, 'past-client reads wait for the secondary Home grid');
       }
       if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
       if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
@@ -87,7 +87,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
 
 
 test('built Home keeps its data paint compact and preserves overdue deal navigation', async t => {
-  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-paint-'));
+  const outDir = await temporaryDirectory('doctorcre-home-paint-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
@@ -115,11 +115,14 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   const bytes = (await Promise.all(reads)).reduce((total, size) => total + size, 0);
   assert.ok(bytes < 400000, `Home transferred ${bytes} JavaScript bytes`);
   t.diagnostic(`Home transferred ${bytes} JavaScript bytes`);
+  await page.locator('.home-grid').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Refresh past-client touches', exact: true }).waitFor();
+  await page.locator('#homeIntroductions button:not([disabled])').first().waitFor();
   assert.deepEqual(errors, []);
 });
 
 test('Home discovers its boot mode while the client bootstrap is downloading', async t => {
-  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-boot-'));
+  const outDir = await temporaryDirectory('doctorcre-home-boot-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });

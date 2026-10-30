@@ -20,7 +20,7 @@ export async function mountGlobalCallMode(root = document) {
     const eligible = state === "available";
     button.hidden = !eligible;
     availability.hidden = eligible;
-    availability.textContent = state === "checking" ? "Checking the call recorder…" : "Call recording runs on the Mac";
+    availability.textContent = state === "checking" ? "Checking the call recorder…" : "Call recorder offline";
     retry.hidden = eligible || state === "checking";
     retry.disabled = state === "checking";
     return true;

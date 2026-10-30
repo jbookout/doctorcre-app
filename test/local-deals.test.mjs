@@ -86,3 +86,9 @@ test('each overdue Today action is labelled and ranked by its own due date, not 
   assert.deepEqual(rows.map(row => [row.next_step, overdueLabel(overdueSince(row, today), today)]),
     [['Call the lender', '9 days overdue'], ['Other step', '5 days overdue'], ['Send the plan', '2 days overdue']]);
 });
+
+test('orders overdue deals by their oldest open item', () => {
+  const now = Date.parse('2026-10-10T12:00:00Z');
+  const deal = (id, due, next) => ({id, name:id, phase:'Research', next_step:'Follow up', next_date:next, items:[{status:'open', due_on:due}]});
+  assert.deepEqual(urgencyOrder([deal('recent','2026-10-09','2026-01-01'), deal('old','2026-10-01','2026-10-09')], now).map(d => d.id), ['old','recent']);
+});

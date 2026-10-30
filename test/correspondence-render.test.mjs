@@ -2,7 +2,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { JSDOM } from 'jsdom';
 import { renderEvidence, loadEvidence, mountEvidence } from '../js/correspondence.js';
 import { correspondenceState, meetingEvidence } from '../js/correspondence-model.js';
@@ -120,7 +120,7 @@ test('a disposed mount cannot paint a previous deal after its read resolves', as
 
 test('meeting disclosure and keyboard focus survive delayed read settlement and timeout', async t => {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
-  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs', 'business-date.js', 'client.js'].map(async name =>
+  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs', 'business-date.js', 'today-moves.mjs', 'client.js'].map(async name =>
     [`/js/${name}`, await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8')])));
   for (const phase of ['readiness', 'thread']) {
     for (const outcome of ['settled', 'timeout']) {
@@ -204,4 +204,18 @@ test('evidence renders what it is given and shows a Central zone label, with thr
   assert.equal(root.querySelector('[data-kind="thread"] time').textContent, 'Read Sep 30, 2026, 7:00 AM CDT');
   assert.equal(root.querySelector('[data-kind="meeting"] time').textContent, 'Dec 1, 2026, 6:00 AM CST');
   assert.equal(root.querySelector('[data-kind="meeting"] time').dateTime, '2026-12-01T12:00:00Z');
+});
+
+
+test('latest email threads keep email classification and message times in newest-first order', async () => {
+  const view = await loadEvidence({}, { email_threads: [
+    { subject: 'Older email', latest_message_at: '2026-12-01T12:00:00Z' },
+    { subject: 'Newer email', latest_message_at: '2026-12-02T12:00:00Z' },
+  ] });
+  assert.deepEqual(view.threads.items.map(item => item.title), ['Newer email', 'Older email']);
+  const doc = new JSDOM(renderEvidence(view)).window.document;
+  const rows = [...doc.querySelectorAll('[data-kind="thread"]')];
+  assert.deepEqual(rows.map(row => row.querySelector('summary span').textContent), ['Newer email', 'Older email']);
+  assert.ok(rows.every(row => row.querySelector('p').textContent === 'Email'));
+  assert.equal(rows[0].querySelector('time').textContent, 'Dec 2, 2026, 6:00 AM CST');
 });

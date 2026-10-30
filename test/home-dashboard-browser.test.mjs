@@ -28,6 +28,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   if (!firstOpen && !freshBrief) await page.addInitScript(() => {
     if (!localStorage.getItem('doctorcre:morning:joe')) localStorage.setItem('doctorcre:morning:joe', JSON.stringify({ day: '2026-10-01', lastShownAt: '2026-10-01T14:00:00Z', since: '2026-09-30T17:00:00Z' }));
   });
+  const resources = []; page.on('request', request => resources.push(new URL(request.url()).pathname));
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
   let boardMalformed = malformedBoard, briefFailure = initialBriefFailure;
@@ -65,7 +66,6 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
     'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }),
-    'email-proposal-quality': () => client.getEmailProposalQuality(),
     'list-email-proposals': async args => ({ schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'list-email-thread-filings': async () => ({ filings: [] }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
@@ -97,7 +97,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, resources, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -161,7 +161,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
       if (name === 'read-home-agenda') {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: —/);
         assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
-        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|No overdue local next steps/);
+        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|No overdue next steps/);
         assert.equal(await page.locator('#homeLeads').isVisible(), true);
       } else {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
@@ -236,7 +236,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1, 'email-proposal-quality': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -506,8 +506,8 @@ test('R12 malformed tasks retain independent widgets and settled agenda reports 
   const { page, errors } = await open(t, { malformedTasks: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
-  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: —/);
-  assert.match(await page.locator('#dealFlags').textContent(), /Overdue local deals unavailable/);
+  assert.match(await page.locator('#dealCounts').textContent(), /Overdue deals: —/);
+  assert.match(await page.locator('#dealFlags').textContent(), /Overdue deals unavailable/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.match(await page.locator('#homeCalendar').textContent(), /unavailable|missing/i);
   assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /updating/i);
@@ -1143,4 +1143,40 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H0
   assert.equal(await zone.inputValue(), 'America/Chicago', 'reload starts a new display choice');
   assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
   assert.deepEqual(errors, []);
+});
+
+test('Home downloads meeting confirmation only when the calendar returns reviews', async t => {
+  const { page, errors, resources } = await open(t, { calendar: { state: 'empty', items: [], follow_up_reviews: [] } });
+  await page.locator('#homeMeetings').getByText('No upcoming meetings', { exact: true }).waitFor();
+  assert.equal(resources.includes('/js/home-meeting-reviews.js'), false);
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
+    state: 'partial', items: [], notes: [], follow_up_reviews: [{ key: 'aaaaaaaaaaaaaaaa', state: 'needs_review', title: 'Demo lender meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
+  } })));
+  const panel = page.locator('#homeMeetingReviews');
+  await panel.getByRole('heading', { name: 'Did these meetings happen?' }).waitFor();
+  await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await panel.waitFor({ state: 'hidden' });
+  assert.deepEqual(errors, []);
+});
+
+test('session loss during the meeting-confirmation download prevents late controls', async t => {
+  const { page } = await open(t, { calendar: { state: 'empty', items: [], follow_up_reviews: [] } });
+  await page.locator('#homeMeetings').getByText('No upcoming meetings', { exact: true }).waitFor();
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { requested = resolve; });
+  t.after(() => release());
+  await page.route('**/js/home-meeting-reviews.js', async route => {
+    requested(); await gate;
+    await route.fulfill({ body: await readFile(new URL('../js/home-meeting-reviews.js', import.meta.url)), contentType: 'text/javascript' });
+  });
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
+    state: 'partial', items: [], follow_up_reviews: [{ key: 'bbbbbbbbbbbbbbbb', state: 'needs_review', title: 'Demo retired meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
+  } })));
+  await started;
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  release();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('#homeMeetingReviews').isVisible(), false);
+  assert.equal(await page.getByText('Demo retired meeting', { exact: true }).count(), 0);
 });

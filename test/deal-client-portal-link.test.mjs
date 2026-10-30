@@ -59,7 +59,7 @@ test('a deal without a link shows none on its card',async t=>{
 test('a partner registers the portal from the deal panel, a taken name is refused, and the password is never shown again',async t=>{
  const {page,errors}=await open(t);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.registerClientPortal({deal:'d20',slug:'taken',password:'other',idempotency_key:'seed-taken'});});
- await page.locator('.kanban-card[data-id="d14"] [data-open]').click();
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
  const submit=async(slug,password)=>{
   await page.locator('#detailClientPortalForm').waitFor({state:'attached'});
   if(!await page.locator('#clientPortalSlug').isVisible())await page.locator('.client-portal-register summary').click();
@@ -94,7 +94,7 @@ test('a closed deal shows its portal link without board controls',async t=>{
 test('a different password refusal explains the existing portal password',async t=>{
  const {page}=await open(t);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.registerClientPortal=async()=>{const error=new Error('fixture refusal');error.payload={error:'portal_password_differs'};throw error;};});
- await page.locator('.kanban-card[data-id="d14"] [data-open]').click();
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
  await page.locator('.client-portal-register summary').click();
  await page.getByLabel('Portal name').fill('demo-practice');
  await page.locator('#clientPortalPassword').fill('different-password');
@@ -105,7 +105,7 @@ test('a different password refusal explains the existing portal password',async 
 test('an unanswered registration can be checked with its original request',async t=>{
  const {page}=await open(t);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const send=state.client.registerClientPortal.bind(state.client);let first=true;state.client.registerClientPortal=async request=>{if(first){first=false;throw new Error('offline');}return send(request);};});
- await page.locator('.kanban-card[data-id="d14"] [data-open]').click();
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
  await page.locator('.client-portal-register summary').click();
  await page.getByLabel('Portal name').fill('demo-practice');
  await page.locator('#clientPortalPassword').fill('simple-pw');
@@ -119,7 +119,7 @@ test('the command dock keeps no portal password once a registration settles',asy
  const {page}=await open(t);
  const retained=()=>page.evaluate(async()=>{const {dockEntries}=await import('/js/pipeline.js');return JSON.stringify([...dockEntries().values()].map(entry=>entry.request||null)).includes('secret-pw-1');});
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.registerClientPortal({deal:'d20',slug:'taken',password:'other',idempotency_key:'seed-taken'});});
- await page.locator('.kanban-card[data-id="d14"] [data-open]').click();
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
  await page.locator('.client-portal-register summary').click();
  await page.getByLabel('Portal name').fill('taken');
  await page.locator('#clientPortalPassword').fill('secret-pw-1');

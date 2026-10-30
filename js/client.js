@@ -116,7 +116,6 @@
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
  * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,to:string[],cc:string[],idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
- * @property {() => Promise<Object>} getEmailProposalQuality read-only seven-day email-proposal-quality.v1 report
  * @property {(args?:{deal?:string,limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
  * @property {(args:{proposal_id:string,base_version:number,proposal_digest:string,deal?:string,idempotency_key:string}) => Promise<Object>} confirmEmailFiling partner confirmation of a filing proposal
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
@@ -124,7 +123,7 @@
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailDealProgress Joe-only, exact displayed preview
  * @property {(args:{proposal_id:string,base_version:number,reason:string,idempotency_key:string}) => Promise<Object>} dismissEmailProposal Joe or Dell, observed version and reason
- * @property {() => Promise<{filings:{event_id:string,deal:string,activity_id:string,recorded_at:string,summary:string,subject:string|null,sender_name:string|null,occurred_at:string,activity_version:number|null}[]}>} [listEmailThreadFilings] automatic email filings the partner can undo
+ * @property {() => Promise<{filings:{event_id:string,deal:string,activity_id:string,recorded_at:string,summary:string,subject:string|null,sender_name:string|null,occurred_at:string,activity_version:number|null}[]}>} [listEmailThreadFilings] filed emails the partner can undo
  * @property {(args:{event_id:string,idempotency_key:string}) => Promise<{ok:true,activity_id:string}>} [undoEmailThreadFiling] undo one automatic filing
  * @property {() => Promise<{calls:Object[]}>} [readCallOutcomes] unreviewed pipeline-call outcomes: applied changes with evidence and open cards
  * @property {(args:{candidate_id:string, base_version:number}) => Promise<Object>} [undoCallChange] revert one automatically applied change

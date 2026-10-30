@@ -51,19 +51,23 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
 
-    test('Deals lists size to content and keep owner beside the stage', async ({ page }) => {
+    test('Deals lists keep touch targets and metadata readable', async ({ page }) => {
       await page.goto('http://localhost/deals');
       await expect(page.locator('.kanban-card').first()).toBeVisible();
       await page.locator('#listView').click();
       await capture(page, 'deals-list');
       const row = page.locator('.deal-row').filter({ hasNot: page.locator('.auto-move') }).first();
-      expect((await row.boundingBox()).height).toBeLessThanOrEqual(width === 390 ? 108 : 64);
-      if (width === 390) {
-        const stage = await row.locator(':scope > span').first().boundingBox();
-        const owner = await row.locator(':scope > span').last().boundingBox();
-        expect(Math.abs(stage.y - owner.y)).toBeLessThan(2);
+      const target = row.getByRole('button').first();
+      expect((await target.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      await expect(row.locator('.next-line')).toBeVisible();
+      const bounds = await row.boundingBox();
+      for (const slot of await row.locator('.work-card-title, .work-card-meta, .deal-stage, .deal-row-next').all()) {
+        const box = await slot.boundingBox();
+        expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+        expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
       }
-      await row.click();
+      await target.click();
       await expect(page.locator('#recordPanel')).toBeVisible();
     });
 

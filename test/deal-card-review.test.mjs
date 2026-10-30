@@ -387,3 +387,64 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-
  await page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}.png`,root).pathname,animations:'disabled'});
  assert.deepEqual(errors,[]);
 });
+
+test('phone hides empty collapsed stages and keeps populated collapsed stages', async t => {
+ const {page}=await open(t,390,{showDetail:false,sparse:true});
+ const empty=page.locator('.kanban-column').filter({has:page.locator('h3 small:text-is("0")')}).first();
+ assert.ok(await empty.count());
+ await page.setViewportSize({width:1280,height:960});
+ await empty.locator('button').click();
+ await page.setViewportSize({width:390,height:960});
+ assert.equal(await empty.isVisible(),false);
+ const slug=await page.locator('.kanban-column:has(.kanban-card)').first().getAttribute('data-column');
+ const populated=page.locator(`[data-column="${slug}"]`);
+ await populated.locator('h3 button').click();
+ assert.equal(await populated.isVisible(),true);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light','dark']) test(`deal board targets and evidence ${width} ${theme}`, async t => {
+ const {page}=await open(t,width,{theme,showDetail:false,height:900});
+ const controls=page.locator('.kanban-card :is(.card-open, .attention-flag, .deal-items button):visible');
+ assert.ok(await page.locator('.kanban-card .attention-flag:visible').count());
+ assert.ok(await controls.count());
+ for(const control of await controls.all()) { const box=await control.boundingBox(); assert.ok(box.width>=44 && box.height>=44); }
+ await mkdir('out/test-artifacts/WR572.S6.J1',{recursive:true});
+ await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/deals-${width}-${theme}.png`});
+ if(width===390) { const note=page.locator('.stages-hidden'); await note.scrollIntoViewIfNeeded(); await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/stages-hidden-deals-390-${theme}.png`}); }
+ await page.getByRole('button',{name:'List',exact:true}).click();
+ await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/deals-list-${width}-${theme}.png`});
+});
+
+test('deal list shows overdue age in its rows', async t => {
+ const {page}=await open(t,390,{showDetail:false});
+ await page.getByRole('button',{name:'List',exact:true}).click();
+ const row=page.locator('.deal-row[data-id="d14"]');
+ assert.match(await row.textContent(), /\d+ days overdue/);
+});
+
+test('overdue flag is one tappable age with no bullet, and due dates read as Feb 1', async t => {
+ const {page}=await open(t,390,{showDetail:false});
+ const flag=page.locator('.kanban-card .attention-flag').first();
+ assert.match(await flag.innerText(), /^\d+ days? overdue$/);
+ assert.equal(await flag.evaluate(n=>n.tagName), 'BUTTON');
+ assert.equal(await flag.evaluate(n=>getComputedStyle(n).whiteSpace), 'nowrap');
+ assert.equal(await page.locator('.kanban-card').filter({has:flag}).first().locator('.deal-summary-facts time[data-overdue="true"]').count(), 0);
+ for(const due of await page.locator('.deal-item-due').all()) assert.match(await due.innerText(), /^[A-Z][a-z]{2} \d{1,2}$/);
+ await page.getByRole('button',{name:'List',exact:true}).click();
+ const rowFlag=page.locator('.deal-row .attention-flag').first();
+ assert.equal(await rowFlag.evaluate(n=>n.tagName), 'BUTTON');
+ const box=await rowFlag.boundingBox(); assert.ok(box.width>=44 && box.height>=44);
+});
+
+test('phone says how many empty stages are hidden and can show them', async t => {
+ const {page}=await open(t,390,{showDetail:false,sparse:true});
+ const note=page.locator('.stages-hidden');
+ assert.match(await note.innerText(), /\d+ stages? hidden/);
+ const hidden=Number((await note.innerText()).match(/(\d+) stage/)[1]);
+ assert.equal(await page.locator('.kanban-column[data-hide-empty="true"]:visible').count(),0);
+ await note.getByRole('button').click();
+ assert.equal(await page.locator('.kanban-column[data-hide-empty="true"]').count(),0);
+ assert.ok(await page.locator('.kanban-column:has(h3 small:text-is("0")):visible').count()>=hidden);
+ await page.setViewportSize({width:1440,height:900});
+ assert.equal(await page.locator('.stages-hidden').isVisible(),false);
+});

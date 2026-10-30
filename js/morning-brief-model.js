@@ -1,5 +1,6 @@
 import { filterBriefOwners } from './brief-owner-filter.js';
-import { normalizeChangeEvent, compareReceipts, moveSentence } from './change-receipts.mjs';
+import { normalizeChangeEvent, compareReceipts } from './change-receipts.mjs';
+import { todayMove } from './today-moves.mjs';
 import { toDay } from './calendar-model.js';
 
 export { businessDay as localDay } from './business-date.js';
@@ -53,7 +54,7 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   const first = unique[0] || null, teamFirst = ranked[0] || null;
   const receipts = caughtUp ? events.map(event => normalizeChangeEvent(event, { dealName:id => deals.get(id)?.name })).filter(row => row && Date.parse(row.recorded_at) >= Date.parse(since) && Date.parse(row.recorded_at) <= now.valueOf()).sort(compareReceipts) : [];
   const change = receipts.find(row => ['phase','next_step','next_date','note','attention','operating_state'].includes(row.field) && !(teamFirst?.kind === 'deal' && row.deal_id === teamFirst.id));
-  const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : moveSentence(change), due:null } : null;
+  const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : todayMove(change).action, due:null } : null;
   const remaining = unique.find(row => row.key !== first?.key && !(row.kind === 'deal' && row.id === overnight?.id)) || null;
   const groups = [ ['first','Do first',first], ['overnight','Overnight',overnight], ['today','Today',remaining] ]
     .filter(([, ,row]) => row).map(([key,label,row]) => {

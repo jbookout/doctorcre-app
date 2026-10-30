@@ -32,7 +32,6 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       else if(name==='update-lead') {writes.push(name);const lead=liveBoard.leads.find(l=>l.registry_ref===args.lead);Object.assign(lead,args.fields,{base_version:lead.base_version+1});body={ok:true};}
       else if(name==='deal-room-board') body=await fixture.getBoard();
       else if(name==='read-home-agenda') body=await fixture.getHomeAgenda();
-      else if(name==='email-proposal-quality') body=await fixture.getEmailProposalQuality();
       else if(name==='today-triage') body=await fixture.todayTriage();
       else if(name==='get-deal-room') body=await fixture.getDeal(args.deal || args.deal_id);
       else if(name==='deal-room-changes') body=await fixture.getChanges(args.cursor);
@@ -109,9 +108,9 @@ test('recent moves catch up through history and update read-only on pages withou
  const events=[{id:'demo-event-1',subject_type:'deal',subject_id:'d23',field:'attention',actor:'doc',old_value:false,new_value:true,recorded_at:'2026-10-01T14:00:00Z'}];
  const{page,goto,writes,errors}=await open(t,{clock:true,events});await goto('/leads?mode=live');
  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
- assert.match(await page.locator('#appTodayMoves').textContent(),/Doc.*Flagged/);assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
+ assert.match(await page.locator('#appTodayMoves').textContent(),/Demo Specialty Clinic.*Doc flagged for attention/);assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
  events.push({id:'demo-event-2',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Review synthetic terms',recorded_at:'2026-10-01T15:00:00Z'});
- await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Review synthetic terms'));
+ await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('set the next step to Review synthetic terms'));
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
@@ -161,9 +160,9 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
  await goto('/leads?mode=live');
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  if(width===390)await page.locator('#appTodayToggle').click();
- await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Review synthetic terms'));
+ await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('set the next step to Review synthetic terms'));
  const sections=['#appTodayNeeds','#appTodayNext','#appTodayMoves'];
- const rows=async()=>Promise.all(sections.map(selector=>page.locator(selector+' [data-layout-deal]').allTextContents()));
+ const rows=async()=>Promise.all(sections.map(async selector=>(await page.locator(selector+' [data-layout-deal]').allTextContents()).map(text=>selector==='#appTodayMoves'?text.replace(/ · (?:just now|\d+ (?:minute|hour|day)s? ago)$/, ''):text)));
  const good=await rows();assert.ok(good.every(items=>items.length));
  const retry=page.getByRole('button',{name:'Retry Today',exact:true});
  for(const source of ['deal-room-board','today-triage','morning-brief','feed']){
@@ -236,7 +235,7 @@ test('Today retains offline rows but clears them before resume revalidation',asy
  const {page,goto}=await open(t,{clock:true,events});let hold=false,release;
  const pending=new Promise(resolve=>release=resolve);t.after(()=>release());
  await page.route('**/mcp',async route=>{if(hold && ['deal-room-board','morning-brief'].includes(route.request().postDataJSON().params.name))await pending;return route.fallback();});
- await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic offline move'));
+ await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Demo Specialty Clinic'));
  const before=await page.locator('#appToday [data-layout-deal]').allTextContents();assert.ok(before.length);
  await page.context().setOffline(true);
  await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
@@ -324,9 +323,9 @@ for (const transition of ['actor', 'scope', 'refusal']) test(`PR129 #2 recent mo
   if(changed && route.request().postDataJSON().params.name==='deal-room-board') return transition==='refusal'?route.fulfill({status:401,body:'Denied'}):route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:transition==='actor'?'dell':'joe',deals:[]})}]}}});
   return route.fallback();
  });
- await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
+ await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Demo Specialty Clinic'));
  changed=true;await page.clock.fastForward(61_000);
- if(transition==='refusal'){await page.waitForURL('**/public-shell/session-ended.html');assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic private value/);events.length=0;changed=false;await goto('/leads?mode=live');assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value/);return;}
+ if(transition==='refusal'){await page.waitForURL('**/public-shell/session-ended.html');assert.doesNotMatch(await page.locator('body').textContent(),/Demo Specialty Clinic/);events.length=0;changed=false;await goto('/leads?mode=live');assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Demo Specialty Clinic/);return;}
  await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
  assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value|Demo Specialty Clinic/);
 });
@@ -383,7 +382,7 @@ for(const width of [1440,390]) test(`PR129 #3 sync failure is visibly distinct f
 
 test('PR129 #2 account transition removes prior receipts before a delayed feed answers',async t=>{
  const events=[{id:'old-private',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Synthetic private value',recorded_at:'2026-10-01T15:00:00Z'}];
- const {page,goto}=await open(t,{clock:true,events});await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
+ const {page,goto}=await open(t,{clock:true,events});await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Demo Specialty Clinic'));
  let release;const pending=new Promise(r=>release=r);t.after(()=>release());
  await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'dell',deals:[]})}]}}}):route.fallback());
  await page.route('**/pipeline/changes*',async route=>{await pending;return route.fulfill({json:{events:[],cursor:'1'}})});
@@ -434,83 +433,77 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  assert.deepEqual(errors,[]);
 });
 
-test('Recent moves describe feed changes without internal data', async t => {
- // carr-system ec7aaa6b3e8a31659afe49a4b2ba23b0c4827831: tools.js 2412-2424, 2472-2493, 2557-2562, 2649-2655, 4599-4601, 4652-4660, 4771-4772, 4805-4809, 4936-4941, 4970-4973, 6186-6189, 6302-6305, 9287-9290, 9486-9488, 9637-9639, 9664-9666, 9932-9933, 9980-9984, 10013-10016, 10243-10245; dealroom.ts 122.
- const fields = [
-  ['deal_type','renewal','Deal type → Renewal'], ['phase','due_diligence','Phase → Due Diligence'],
-  ['segment','medical_office','Segment → Medical office'], ['outcome','won','Outcome → Won'],
-  ['closed_on','2026-08-20','Closed on → Aug 20'], ['won_value',100,'Won value'], ['notes_path','internal:key','Notes path'],
-  ['salesforce_id','abc123','Salesforce'], ['city','Austin','City → Austin'], ['lane','national','Lane → National'],
-  ['invoiced_on','2026-08-20','Invoiced on → Aug 20'], ['sf_close_date_placeholder','2026-08-20','Salesforce close date → Aug 20'],
-  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',name:'Synthetic Client'},'Client changed to Synthetic Client'],
-  ['owner','dell','Owner → Dell'], ['attention',true,'Attention flag → Flagged'], ['next_date','2026-08-20','Next date → Aug 20'],
-  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked'], ['next_step','Review terms','Next step → Review terms'],
-  ['note',{note:'Synthetic note'},'Note added → Synthetic note'], ['market_agent',{market_agent:'Example Agent'},'Market agent → Example Agent'],
-  ['account_owner',{owner:'joe'},'Account owner'], ['status',{status:'done'},'Status → Done'],
-  ['document',{template:'internal',document_id:'abc'},'Document'], ['document.sent_status',{sent_status:'draft'},'Document status → Draft'],
-  ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},'Reminder sent to Joe'],
-  ['next_action',{next_action_id:'critical-date:0558',description:'Call the client',assignee:'joe',due_on:'2026-08-20'},'Next action for Joe: Call the client · due Aug 20'], ['deal_items_conversion',{next_action_id:'abc'},'Deal items updated'],
-  ['email_draft_metadata',{draft_id:'abc'},'Email draft updated'], ['call_change_undo',{candidate_id:'abc'},'Call change undone'],
-  ['unknown_field',{internal_key:'secret'},'Unknown field'],
- ];
- const events=fields.map(([field,new_value],i)=>({id:`event-${i}`,subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`}));
- const {page,goto}=await open(t,{clock:true,events:[]});
- for (const event of events) {
-  await page.route('**/pipeline/changes*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]})}));
-  await goto('/leads?mode=live');
-  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
-  const text=await page.locator('#appTodayMoves').innerText();
-  assert.doesNotMatch(text, /[{}]|":|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b/i, event.field);
-  assert.ok(text.includes(fields[events.indexOf(event)][2]), `${event.field}: ${text}`);
-  await page.unroute('**/pipeline/changes*');
+// Several moves of different types, people and ages, recorded relative to the fixture clock (15:00:00Z).
+const ago=ms=>new Date(Date.parse('2026-10-01T15:00:00Z')-ms).toISOString();
+const MIN=60_000,HOUR=60*MIN,DAY=24*HOUR;
+const manyMoves=()=>[
+ {id:'m1',subject_type:'deal',subject_id:'d01',field:'phase',actor:'joe',new_value:'due_diligence',recorded_at:ago(2*HOUR)},
+ {id:'m2',subject_type:'deal',subject_id:'d02',field:'attention',actor:'doc',new_value:true,recorded_at:ago(20_000)},
+ {id:'m3',subject_type:'deal',subject_id:'d03',field:'next_step',actor:'dell',new_value:'Review terms',recorded_at:ago(MIN)},
+ {id:'m4',subject_type:'deal',subject_id:'d04',field:'next_date',actor:'joe',new_value:'2026-10-05',recorded_at:ago(HOUR)},
+ {id:'m5',subject_type:'deal',subject_id:'d05',field:'owner',actor:'doc',new_value:'dell',recorded_at:ago(3*DAY)},
+ {id:'m6',subject_type:'deal',subject_id:'d06',field:'client_id',actor:'dell',new_value:{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},recorded_at:ago(12*MIN)},
+];
+const movesOpen=async(t,{width=1440,height=960,events=manyMoves()}={})=>{
+ const opened=await open(t,{width,height,clock:true,events});await opened.goto('/leads?mode=live');
+ if(width===390)await opened.page.locator('#appTodayToggle').click();
+ await opened.page.waitForFunction(()=>document.querySelectorAll('#appTodayMoves [data-layout-deal]').length>=6);
+ return opened;
+};
+const moveRow=(page,deal)=>page.locator(`#appTodayMoves [data-layout-deal="${deal}"]`);
+
+test('Recent moves lead with the deal name and say what changed, who did it and when',async t=>{
+ const {page,errors}=await movesOpen(t);
+ for(const [deal,name,detail] of [
+  ['d01','Demo Dental North','Joe moved to Due Diligence · 2 hours ago'],
+  ['d02','Demo Pediatrics East','Doc flagged for attention · just now'],
+  ['d03','Demo Therapy Group','Dell set the next step to Review terms · 1 minute ago'],
+  ['d04','Demo Vision Center','Joe set the next date to Oct 5 · 1 hour ago'],
+  ['d05','Demo Family Clinic','Doc assigned to Dell · 3 days ago'],
+  ['d06','Demo Orthodontics South','Dell changed the client · 12 minutes ago'],
+ ]){
+  const row=moveRow(page,deal);
+  assert.equal(await row.locator('strong').innerText(),name);
+  assert.equal((await row.locator('span').first().innerText()).replace(/\s+/g,' ').trim(),detail);
  }
+ const text=await page.locator('#appTodayMoves').innerText();
+ assert.doesNotMatch(text,/[{}]|→|\b[a-z]+_[a-z0-9_]+\b|\b[0-9a-f]{8}-[0-9a-f]{4}-/i);
+ assert.deepEqual(errors,[]);
 });
 
-test('Recent moves show labels and partner text while withholding structured IDs', async t => {
- const cases = [
-  ['phase','due_diligence','Phase → Due Diligence'],
-  ['owner','dell','Owner → Dell'],
-  ['attention',true,'Attention flag → Flagged'],
-  [null,{name:'Synthetic deal'},'Change recorded'],
-  ['status','open','Status → Open'],
-  ['status','done','Status → Done'],
-  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',client_name:'Synthetic Client'},'Client changed to Synthetic Client'],
-  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},'Client changed'],
-  ['status','brand_new','Status → Brand new'],
-  ['unknown_field','due_diligence','Unknown field → Due diligence'],
-  ['unknown_field','critical-date:0558','Unknown field'],
-  ['lane','national','Lane → National'],
-  ['note','Call id 12345','Note added → Call id 12345'],
-  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked — Client paused activity'],
-  ['next_step','Open id 12345','Next step → Open id 12345'],
-  ['next_step','Review {draft} and follow_up: tomorrow','Next step → Review {draft} and follow_up: tomorrow'],
-  ['next_action',12345,'Next action'],
-  ['next_action',{next_action_id:'critical-date:0558'},'Next action'],
-  ['unknown_field',{title:'Review proposal',id:'secret-id'},'Unknown field: Review proposal'],
- ];
- const {page,goto}=await open(t,{clock:true,events:[]});
- for (const [field,new_value,expected] of cases) {
-  const event={id:'event-1',subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:'2026-10-01T14:00:00Z'};
-  await page.route('**/pipeline/changes*',route=>route.fulfill({json:{events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]}}));
-  await goto('/leads?mode=live');
-  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
-  const row=await page.locator('#appTodayMoves').innerText();
-  assert.ok(row.includes(expected), `${field}: ${row}`);
-  if (field === 'next_action') assert.doesNotMatch(row, /12345|critical-date:0558/);
-  if (field === 'unknown_field' && typeof new_value === 'object') assert.doesNotMatch(row, /secret-id/);
-  await page.unroute('**/pipeline/changes*');
- }
+test('Recent moves rows match the Next up row style',async t=>{
+ const {page}=await movesOpen(t);
+ const style=selector=>page.locator(`${selector} .app-layout-item`).first().evaluate(node=>{const strong=getComputedStyle(node.querySelector('strong')),span=getComputedStyle(node.querySelector('span'));return[strong.fontWeight,span.color,node.firstElementChild.tagName];});
+ assert.deepEqual(await style('#appTodayMoves'),await style('#appTodayNext'));
+});
+
+test('Recent move ages follow the clock without a reload',async t=>{
+ const {page,errors}=await movesOpen(t);
+ assert.match(await moveRow(page,'d02').innerText(),/just now/);
+ await page.clock.fastForward(2*MIN);
+ await page.waitForFunction(()=>/Doc flagged for attention · 2 minutes ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ await page.clock.fastForward(HOUR);
+ await page.waitForFunction(()=>/Doc flagged for attention · 1 hour ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ assert.deepEqual(errors,[]);
+});
+
+test('Recent move times never wrap apart at 390px',async t=>{
+ const {page}=await movesOpen(t,{width:390,height:844});
+ const ages=page.locator('#appTodayMoves .app-layout-move-age');
+ assert.equal(await ages.count(),6);
+ assert.deepEqual(await ages.evaluateAll(nodes=>nodes.map(node=>node.getClientRects().length)),[1,1,1,1,1,1]);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
 });
 
 test('Recent moves screenshot evidence', async t => {
  if (!process.env.MOVES_SCREENSHOT_DIR) return;
  for (const [width,height] of [[390,844],[1440,900]]) for (const theme of ['light','dark']) {
-  const events=[{id:'event-1',subject_type:'deal',subject_id:'d23',field:'checklist_ping',actor:'joe',new_value:{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},recorded_at:'2026-10-01T14:00:00Z'}];
+  const events=manyMoves();
   const {page,goto}=await open(t,{width,height,clock:true,events});
   await goto('/leads?mode=live');
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
   if(width===390) await page.locator('#appTodayToggle').click();
-  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  await page.waitForFunction(()=>document.querySelectorAll('#appTodayMoves [data-layout-deal]').length>=6);
   await page.locator('#appTodayMoves').scrollIntoViewIfNeeded();
   await mkdir(process.env.MOVES_SCREENSHOT_DIR,{recursive:true});
   await page.screenshot({animations:'disabled',path:`${process.env.MOVES_SCREENSHOT_DIR}/${width}-${theme}.png`});

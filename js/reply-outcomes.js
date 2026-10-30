@@ -47,7 +47,7 @@ export function mountReplyOutcomes({ container, client }) {
       const title = name === 'recent' ? 'recent reply outcomes' : 'pending replies';
       return `<section aria-label="${name === 'recent' ? 'Recent reply outcomes' : 'Pending replies'}">
         <h3>${name === 'recent' ? 'Recent outcomes' : 'Pending replies'}</h3>
-        ${state.status === 'loading' ? '<p role="status">Updating reply delivery…</p>' : ''}
+        ${state.status === 'loading' ? '<p role="status">Updating sent replies…</p>' : ''}
         ${state.status === 'error' ? `<p role="status">Could not load ${title}.${state.loaded ? ' Showing the last successful read.' : ''}</p><button type="button" class="home-outline" data-reply-retry="${name}">Retry ${title}</button>` : ''}
         ${state.loaded && state.status === 'ready' && !rows.length ? `<p class="home-empty">${state.more ? 'No matching replies on this page. More replies are available.' : name === 'recent' ? 'No recorded reply outcomes.' : 'No replies pending delivery.'}</p>` : ''}
         ${rows.map(row => `<article class="email-proposal" data-reply-outcome="${E(row.id)}">
@@ -59,9 +59,9 @@ export function mountReplyOutcomes({ container, client }) {
         ${state.more && state.status !== 'error' ? `<button type="button" class="home-outline" data-reply-more="${name}"${state.status === 'loading' ? ' disabled' : ''}>Load more ${name === 'recent' ? 'outcomes' : 'pending replies'}</button>` : ''}
       </section>`;
     }).join('');
-    container.innerHTML = `<header class="home-panel-head"><h2 tabindex="-1">Reply delivery</h2></header>
-      ${retired || !partner(actor) ? '<p role="status">Sign in as a partner to view reply delivery.</p>'
-        : `<p>Your submitted replies. Sent records a send outcome, not recipient delivery or a read receipt.</p>${sections}`}`;
+    container.innerHTML = `<header class="home-panel-head"><h2 tabindex="-1">Sent replies</h2></header>
+      ${retired || !partner(actor) ? '<p role="status">Sign in as a partner to view sent replies.</p>'
+        : `<p>Replies submitted for sending. Sent means your email app sent the reply. It does not mean the recipient has read it.</p>${sections}`}`;
     if (focused) {
       const replyLink = focusReply && [...container.querySelectorAll('[data-reply-outcome]')].find(node => node.dataset.replyOutcome === focusReply)?.querySelector('a');
       (replyLink?.getAttribute('href') === focusHref ? replyLink : container.querySelector(`[data-reply-retry="${focusStream}"], [data-reply-more="${focusStream}"]`) || container.querySelector('h2'))?.focus();

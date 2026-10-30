@@ -260,6 +260,7 @@ export function createLiveClient(opts = {}) {
         items: page.items || [],
         item_schema_version: page.item_schema_version,
         activities: page.activities || [],
+        ...(Object.hasOwn(page, 'email_threads') ? { email_threads: page.email_threads } : {}),
         participants: page.participants || [],
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],
@@ -324,7 +325,6 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
-    async getEmailProposalQuality() { return rpc('email-proposal-quality', {}); },
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },

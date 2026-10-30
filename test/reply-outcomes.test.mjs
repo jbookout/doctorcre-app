@@ -26,7 +26,7 @@ function setup(t, read = () => page(), selfActor = 'joe', pendingRead = waiting)
   return { dom, container, view, client, requests, async actor(value) { actor = value; await client.getBoard(); view.syncActor(); await tick(); } };
 }
 
-test('reply delivery labels all public failure reasons without rendering remote text as HTML', async t => {
+test('sent replies labels all public failure reasons without rendering remote text as HTML', async t => {
   const reasons = {
     invalid_submission: 'The submitted reply was invalid.',
     submission_hash_mismatch: 'The submitted reply did not match the approved content.',

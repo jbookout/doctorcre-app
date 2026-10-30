@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { renderDealAlert, renderDealItemDetail } from '../js/deal-items.js';
+import { renderDealAlert, renderDealItemDetail, renderDealSummary, renderDealItems } from '../js/deal-items.js';
 
 const deal = { id: 'synthetic-deal', short_name: "Dr. Demo's Sample Deal", next_step: 'A legacy paragraph that must not appear.',
   items: [
@@ -71,9 +71,9 @@ test('an empty structured item list states the gap without restoring legacy pros
 
 test('an overdue alert states how many days it is overdue', () => {
   const one = new JSDOM(renderDealAlert({ ...deal, overdue_since: '2026-10-21' }, { today: '2026-10-22' })).window.document;
-  assert.equal(one.querySelector('.deal-overdue').textContent, '1 day overdue');
+  assert.equal(one.querySelector('.work-card-status').textContent, '1 day overdue');
   const many = new JSDOM(renderDealAlert({ ...deal, overdue_since: '2026-10-01' }, { today: '2026-10-22' })).window.document;
-  assert.equal(many.querySelector('.deal-overdue').textContent, '21 days overdue');
+  assert.equal(many.querySelector('.work-card-status').textContent, '21 days overdue');
 });
 
 test('board summaries use the real fixture and live adapters for detail-only actions and recorded steps', async () => {
@@ -104,8 +104,9 @@ test('board summaries use the real fixture and live adapters for detail-only act
   const live = createLiveClient({ fetchImpl: async () => Response.json({ result: { content: [{ text: JSON.stringify(board) }] } }) });
   for (const client of [fixture, live]) {
     const deal = (await client.getBoard()).deals.find(row => row.id === seed.deals[0].id);
-    const doc = new JSDOM(renderDealAlert(deal, { today: '2026-10-29', viewer: 'joe', buttons: true, board: true })).window.document;
-    assert.match(doc.body.textContent, /Next: Tour the property · Oct 12 · D/);
+    const doc = new JSDOM(renderDealSummary(deal, { today: '2026-10-29', viewer: 'joe', board: true }) + renderDealItems(deal, { today: '2026-10-29', buttons: true, board: true })).window.document;
+    assert.match(doc.body.textContent, /Next: Tour the property/);
+    assert.doesNotMatch(doc.body.textContent, /· D/);
     assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
     assert.doesNotMatch(doc.body.textContent, /Old action|No next step/);
   }
@@ -133,13 +134,13 @@ test('field audit writes preserve the recorded Last step and stay off board card
   const detail = await fixture.getDeal('d14');
   assert.ok(detail.history.some(entry => /attention/.test(entry.summary)));
   assert.ok(detail.activities.every(entry => !/attention/.test(entry.summary)));
-  const doc = new JSDOM(renderDealAlert(after, { board: true, today: '2026-10-29' })).window.document;
+  const doc = new JSDOM(renderDealSummary(after, { today: '2026-10-29' })).window.document;
   assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
   assert.doesNotMatch(doc.body.textContent, /attention|false|true/);
 });
 
 test('a field edit date never becomes a recorded last step', () => {
-  const doc = new JSDOM(renderDealAlert({ id: 'empty', last_touch: '2026-10-22' }, { board: true })).window.document;
+  const doc = new JSDOM(renderDealSummary({ id: 'empty', last_touch: '2026-10-22' })).window.document;
   assert.match(doc.body.textContent, /No next step set/);
   assert.doesNotMatch(doc.body.textContent, /Last:|Contact recorded/);
 });
@@ -147,7 +148,7 @@ test('a field edit date never becomes a recorded last step', () => {
 test('board summaries state a repeated action and its due date only once', () => {
   const row = { id: 'demo', open_actions: [{ id: 'action', description: 'Review sample documents', due_on: '2026-10-12', owner: 'joe' }],
     items: [{ id: 'item', title: 'Review sample documents', due_on: '2026-10-12', status: 'open' }] };
-  const doc = new JSDOM(renderDealAlert(row, { board: true, today: '2026-10-29' })).window.document;
+  const doc = new JSDOM(renderDealSummary(row, { today: '2026-10-01' }) + renderDealItems(row, { board: true, today: '2026-10-01' })).window.document;
   assert.equal(doc.body.textContent.match(/Review sample documents/g).length, 1);
   assert.equal(doc.querySelectorAll('time').length, 1);
   assert.doesNotMatch(doc.body.textContent, /Still needed/);

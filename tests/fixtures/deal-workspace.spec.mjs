@@ -16,7 +16,8 @@ test('opening a deal replaces the board with a workspace and Back restores its s
   await page.locator('#listView').click();
   const deal = page.locator('.card-open:visible').last();
   const name = await deal.innerText();
-  await deal.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready);
+  await deal.evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
   const scroll = await page.evaluate(() => scrollY);
   const boardScroll = await page.locator('#kanban').evaluate(board => ({top:board.scrollTop,left:board.scrollLeft}));
   expect(scroll + boardScroll.top).toBeGreaterThan(0);

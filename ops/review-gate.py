@@ -32,7 +32,7 @@ def approved(pr, files, comments):
                 if len(lines) >= 3 and lines[0] in ("VERDICT: APPROVE", "VERDICT: CHANGES")
                 and lines[1] == sha_line and lines[2].startswith("Reviewer: ")
                 and lines[2][10:].strip()]
-    if verdicts[-1:] == ["VERDICT: CHANGES"]:
+    if "VERDICT: CHANGES" in verdicts:
         return False
     risky = any(f.get("status") == "added" and f.get("filename", "").startswith(("scripts/", ".github/workflows/")) for f in files)
     risky = risky or any(fnmatch.fnmatchcase(f.get(key, "").lower(), pattern)

@@ -1,3 +1,4 @@
+import { workCard } from './work-card.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 
 // Meetings that ended in the last day, from the partner's own Outlook calendar
@@ -60,7 +61,10 @@ export function mountHomeMeetingReviews({ document, client, host, storage, now =
       const select = options.length
         ? `<label>Deal <select data-review-deal="${E(review.key)}" data-home-key="review:${E(review.key)}:deal"${busy || uncertain ? ' disabled' : ''}><option value="">Choose a deal</option>${options.map(deal => `<option value="${E(deal.id)}"${deal.id === chosen ? ' selected' : ''}>${E(deal.name)}</option>`).join('')}</select></label>`
         : '<span>No open deals to log this meeting on.</span>';
-      return `<article class="home-call-task home-meeting-review" data-review="${E(review.key)}"><div><strong>${E(review.title)}</strong><p><time datetime="${E(review.start)}">${E(when(review))}</time></p>${select}${decision?.error ? `<p class="home-call-task-error" role="alert">${E(decision.error)}</p>` : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-review-log="${E(review.key)}" data-home-key="review:${E(review.key)}:log"${busy || !chosen ? ' disabled' : ''}>${uncertain ? 'Check meeting log' : busy ? 'Logging…' : 'It happened'}</button><button type="button" class="home-outline" data-review-dismiss="${E(review.key)}" data-home-key="review:${E(review.key)}:dismiss"${busy || uncertain ? ' disabled' : ''}>Dismiss</button></div></article>`;
+      return workCard({ className: 'home-call-task home-meeting-review', attributes: `data-review="${E(review.key)}"`,
+        title: E(review.title), meta: `<time datetime="${E(review.start)}">${E(when(review))}</time>`, status: uncertain ? 'Unconfirmed' : '',
+        body: `${decision?.error ? `<p class="home-call-task-error" role="alert">${E(decision.error)}</p>` : ''}`,
+        actions: `${select}<button type="button" class="home-outline" data-review-log="${E(review.key)}" data-home-key="review:${E(review.key)}:log"${busy || !chosen ? ' disabled' : ''}>${uncertain ? 'Check meeting log' : busy ? 'Logging…' : 'It happened'}</button><button type="button" class="home-outline" data-review-dismiss="${E(review.key)}" data-home-key="review:${E(review.key)}:dismiss"${busy || uncertain ? ' disabled' : ''}>Dismiss</button>` });
     }).join('');
     host.innerHTML = `<header class="home-panel-head"><h2>Did these meetings happen?</h2><span class="home-period">Last 24 hours</span></header><p class="home-empty">From your Outlook calendar. Pick the deal and log the meeting, or dismiss it.</p>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${rows}`;
     if (focused) ([...host.querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === focused) || document.getElementById('homePrimaryAction'))?.focus();

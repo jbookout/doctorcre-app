@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
 for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark']) for (const national of [false, true]) {
-  test(`${national ? 'National Accounts' : 'Local Deals'} keeps summary dates and owner visible at ${width}px ${theme}`, async t => {
+  test(`${national ? 'National Accounts' : 'Local Deals'} keeps summary dates visible at ${width}px ${theme}`, async t => {
     const server = await fixtureServer();
     t.after(() => server.close());
     const browser = await chromium.launch();
@@ -28,7 +28,19 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
     await card.waitFor();
     await card.scrollIntoViewIfNeeded();
     const facts = card.locator('.deal-summary-facts').first();
-    assert.match(await facts.innerText(), /Fri Oct 30 · D/);
+    assert.match(await facts.innerText(), national ? /Fri Oct 30 · D/ : /Fri Oct 30/);
+    if (!national) assert.doesNotMatch(await facts.innerText(), /· D/);
+    const spaced = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.filter(node => node.textContent.includes('·')).map(node => {
+      const range = document.createRange();
+      range.setStart(node.firstChild, 0);
+      range.setEnd(node.firstChild, 1);
+      return { text: node.textContent, space: range.getBoundingClientRect().width };
+    }));
+    assert.ok(spaced.length > 0, 'a dated summary line is rendered');
+    for (const fact of spaced) {
+      assert.match(fact.text, /^ · /, 'the dot keeps a space before it');
+      assert.ok(fact.space > 1, 'the space before the dot is rendered, not collapsed');
+    }
     const visible = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.every(node => {
       const box = node.getBoundingClientRect();
       for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
@@ -40,7 +52,7 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
       }
       return box.width > 0 && box.right <= innerWidth;
     }));
-    assert.equal(visible, true, 'date and partner initial are outside the clamped text');
+    assert.equal(visible, true, 'summary facts are outside the clamped text');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     if ([390, 1440].includes(width)) {
       const dir = 'out/test-artifacts/deal-board-summary';

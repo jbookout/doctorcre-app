@@ -1,8 +1,8 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { normalizeTokens, scanText, validateCorpus, changedFiles } from '../scripts/privacy/client-data-check.mjs';
@@ -15,7 +15,7 @@ const corpus = { schema: 'doctorcre-private-name-hashes.v1', salt, maxTokens: 4,
   hashes: [digest('Planted Fictional Dental'), digest('Imaginary Practitioner'), digest('C-987654')] };
 
 function cliFixture(t, files, input = corpus, options = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'privacy-cli-'));
+  const root = temporaryDirectory('privacy-cli-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const [path, bytes] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), { recursive: true });
@@ -201,7 +201,7 @@ test('invalid and empty corpora fail closed', () => {
 });
 
 test('CLI scans changed whole files, omits deleted files, and never prints matched content', () => {
-  const root = mkdtempSync(join(tmpdir(), 'privacy-check-'));
+  const root = temporaryDirectory('privacy-check-');
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   try {
     git('init', '-q'); git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'Synthetic Test');
