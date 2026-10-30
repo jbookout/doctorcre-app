@@ -10,6 +10,7 @@ test('source line names the sender and age without an address', () => {
   assert.equal(sourceLine({ sender: 'Dana Demo <dana@example.test>', occurred_at: at(10, 28, 7).toISOString() }, now), "From Dana Demo's email, 2h ago");
   assert.equal(sourceLine({ sender: 'dana@example.test', occurred_at: at(10, 26).toISOString() }, now), 'From an email, 2d ago');
   assert.equal(sourceLine({ sender: null, occurred_at: null }, now), 'From an email, time unavailable');
+  assert.equal(sourceLine({ sender: 'Dana Demo <dana@example.test><script>trailing text</script>', occurred_at: at(10, 28, 7).toISOString() }, now), "From Dana Demo's email, 2h ago");
 });
 
 test('ages cover minutes, hours, days and missing or future timestamps', () => {

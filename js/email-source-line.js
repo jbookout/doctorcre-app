@@ -10,7 +10,7 @@ export function relativeAge(occurredAt, now = new Date()) {
 }
 
 export function sourceLine({ sender, occurred_at: occurredAt } = {}, now = new Date()) {
-  const name = String(sender ?? '').replace(/<[^>]*>/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
+  const name = String(sender ?? '').split('<', 1)[0].replace(/^["'\s]+|["'\s]+$/g, '');
   return `${name && !name.includes('@') ? `From ${name}'s email` : 'From an email'}, ${relativeAge(occurredAt, now)}`;
 }
 
