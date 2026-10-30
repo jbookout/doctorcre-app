@@ -150,12 +150,13 @@ test('a refused chip dismissal reports the refusal and an uncertain one offers C
 
 test('unknown confirmation locks other decisions and Check outcome replays the same request', async () => {
   const row = proposal(), calls = []; let release;
+  const entered = Promise.withResolvers();
   const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
     previewEmailNextStep: async () => row.preview,
-    confirmEmailNextStep: async args => { calls.push(args); if (calls.length === 1) { await new Promise(resolve => { release = resolve; }); throw Error('lost response'); } return { ...row.preview, status: 'confirmed', requires_confirmation: false }; } });
+    confirmEmailNextStep: async args => { calls.push(args); if (calls.length === 1) { await new Promise(resolve => { release = resolve; entered.resolve(); }); throw Error('lost response'); } return { ...row.preview, status: 'confirmed', requires_confirmation: false }; } });
   await view.refresh(); await action('Confirm');
   const pending = action('Confirm change');
-  await Promise.resolve();
+  await entered.promise;
   assert.equal(container.querySelector('[data-email-action="confirm"]')?.disabled, true);
   release(); await pending;
   assert.match(container.textContent, /Outcome unknown/);

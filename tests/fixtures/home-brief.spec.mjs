@@ -100,5 +100,8 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Ho
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const dir = new URL('../../out/test-artifacts/home-brief/', import.meta.url);
   await mkdir(dir, { recursive: true });
+  await page.locator('.home-grid').scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button', { name: 'Refresh past-client touches', exact: true })).toBeVisible();
+  await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: `${dir.pathname}home-${width}-${theme}.png`, fullPage: true });
 });

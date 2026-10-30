@@ -358,3 +358,28 @@ test('Home creates a new deal and files its email through the live client at pho
   assert.equal(calls[1].name, 'confirm-email-filing'); assert.equal(calls[1].args.deal, 'demo-created');
   assert.equal(calls[1].args.proposal_digest, digest);
 });
+
+test('session loss during the email command download prevents a late confirmation', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'email-command-session', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  const writes = [];
+  await page.route('**/mcp', route => {
+    const { name } = route.request().postDataJSON().params;
+    if (name === 'confirm-email-next-step') writes.push(name);
+    return route.continue();
+  });
+  await page.route('**/js/email-proposal-command.js', async route => {
+    await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+    await route.continue();
+  });
+  await page.goto(`${origin}/?mode=live`);
+  const card = page.locator('#homeEmailFollowups');
+  await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm change', exact: true }).click();
+  await card.getByText('Sign in to review email follow-ups.', { exact: true }).waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.deepEqual(writes, []);
+  assert.equal(await card.locator('article').count(), 0);
+});
