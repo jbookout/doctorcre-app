@@ -15,7 +15,7 @@ export function mountMarketTerms(root, { deal, read }) {
       if (current !== sequence) return;
       if (!data?.ok || data.schema_version !== 'market-terms.v1' || !Array.isArray(data.rows) || !data.coverage) throw new Error('Invalid response');
       const c = data.coverage;
-      const coverage = `<p><strong>${data.rows.length} comparable ${data.rows.length === 1 ? "term" : "terms"} across ${esc(c.comparable_deals)} ${c.comparable_deals === 1 ? "deal" : "deals"}.</strong> ${esc(c.classified_receipts)} of ${esc(c.canonical_receipts)} recorded receipts classified, from ${esc(c.recorded_documents)} recorded documents. Archive coverage is unknown.</p>`;
+      const coverage = `<p><strong>${data.rows.length} comparable ${data.rows.length === 1 ? "term" : "terms"} across ${esc(c.comparable_deals)} ${c.comparable_deals === 1 ? "deal" : "deals"}.</strong></p><p>Firm-wide history coverage (not filtered): ${esc(c.eligible_receipts)} of ${esc(c.canonical_receipts)} receipts eligible; ${esc(c.unsupported_receipts)} unsupported, ${esc(c.superseded_without_context)} superseded without context, ${esc(c.unclassified_receipts)} unclassified. From ${esc(c.recorded_documents)} recorded documents. Archive coverage is unknown.</p>`;
       if (!data.rows.length) { result.innerHTML = `${coverage}<p>No comparable terms match these filters.</p>`; return; }
       const rows = data.rows.map(row => {
         const superseded = row.effective_to && row.effective_to <= new Date().toISOString().slice(0, 10) && data.rows.some(next => next.entity_ref === row.entity_ref && next.fact_key === row.fact_key && next.term_kind === row.term_kind && next.effective_from === row.effective_to);

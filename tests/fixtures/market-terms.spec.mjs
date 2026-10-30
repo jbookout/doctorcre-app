@@ -12,7 +12,9 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await page.locator('.card-open:visible').first().click();
     await page.getByRole('tab', {name:'Compare terms'}).click();
     await expect(page.locator('#workspace-market-terms')).toContainText('fixture-lease');
+    await expect(page.locator('#workspace-market-terms')).toContainText('1 of 20 receipts eligible; 7 unsupported, 4 superseded without context, 8 unclassified');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.locator('#workspace-market-terms p').last().scrollIntoViewIfNeeded();
     await page.screenshot({path:`.github/pr-evidence/WR39.S6.J4/terms-${width}-${theme}.png`,fullPage:true});
   });
 }
