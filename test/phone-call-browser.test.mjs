@@ -17,11 +17,11 @@ async function open(t, options = {}) {
     const req = r.request(), path = new URL(req.url()).pathname;
     if (req.method() !== 'GET') state.writes.push({ path, method: req.method(), headers: req.headers(), body: req.postData() });
     if (req.method() === 'PUT' && state.allowTransfer) state.transferred = true;
-    const session = { schema_version: 1, session_id: id, state: state.transferred ? 'ready_review' : 'pending', transferred: state.transferred, filed: false, upload_state: state.transferred ? 'transferred' : state.upload_state || 'queued', sha256: createHash('sha256').update(wav()).digest('hex') };
+    const session = { schema_version: 1, session_id: id, state: state.transferred ? 'ready_review' : state.sessionState || 'queued', transferred: state.transferred, filed: false, sha256: createHash('sha256').update(wav()).digest('hex') };
     if (path.endsWith('/report')) return r.fulfill({ json: { ...session, report: state.transferred ? { summary: 'Synthetic Clinic will review the revised proposal.', decisions: [], open_questions: ['Who agreed to send the proposal?'] } : null,
       actions: state.transferred ? [{ id: 'action-1', assignee: 'joe', action: 'Send revised proposal', due_on: null, status: 'pending' }] : [],
       deal_updates: state.transferred ? [{ id: 'update-1', kind: 'next_step', status: 'pending', payload: { text: 'Review revised proposal', evidence_quote: 'We will review it.' } }] : [] } });
-    return r.fulfill({ json: session });
+    return r.fulfill({ json: req.method() === 'PUT' && !state.transferred ? { ...session, state: 'queued', queued: true, retry_after_seconds: state.retrySeconds || 0 } : session });
   });
   await page.route('**/mcp', r => {
     const rpc = r.request().postDataJSON();
@@ -52,7 +52,7 @@ test('phone import retains pending audio across reload and clears it only after 
   state.allowTransfer = true;
   state.transferred = true;
   await page.getByRole('button', { name: 'Check upload' }).click();
-  await page.getByText('Ready for review', { exact: true }).waitFor();
+  await page.locator('#phoneReview').getByText('Ready for review', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Transfer recording' }).count(), 0);
   assert.equal(state.writes.filter(r => r.method === 'POST').length, 1);
   const admission = JSON.parse(state.writes.find(r => r.method === 'POST').body);
@@ -204,7 +204,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ex
   await page.getByRole('button', { name: 'Check upload' }).click();
   await page.locator('#phoneCalls[aria-busy=false]').waitFor();
   assert.equal(state.writes.filter(r => r.method === 'PUT').length, 1, 'queued checks never resend audio');
-  state.upload_state = 'expired';
+  state.sessionState = 'expired';
   await page.reload();
   await page.getByText('Expired — upload again', { exact: true }).waitFor();
   assert.equal(await page.locator('audio').count(), 1);
@@ -216,7 +216,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ex
   await page.screenshot({ path: `out/test-artifacts/phone-uploads/${width}-${theme}.png` });
   state.allowTransfer = true;
   await page.getByRole('button', { name: 'Upload again', exact: true }).click();
-  await page.getByText('Received by the Studio', { exact: true }).first().waitFor();
+  await page.locator('#phoneReview').getByText('Ready for review', { exact: true }).waitFor();
   assert.equal(await page.locator('audio').count(), 0);
   assert.equal(state.writes.filter(r => r.method === 'PUT').length, 2);
 });
@@ -281,4 +281,27 @@ for (const theme of ['light', 'dark']) test(`duration limit says saved at phone 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('out/test-artifacts/phone-calls', { recursive: true });
   await page.screenshot({ path: `out/test-artifacts/phone-calls/limit-390-${theme}.png`, fullPage: true });
+});
+
+for (const [sessionState, label] of Object.entries({ pending: 'Pending transfer', queued: 'Waiting for the Studio', expired: 'Expired — upload again', transferred: 'Received by the Studio', ready_review: 'Ready for review', filed: 'Filed', needs_attention: 'Needs attention on the Studio', held_review: 'Held for review' })) test(`review displays ${sessionState}`, async t => {
+  const { page } = await open(t, { review: true, sessionState });
+  await page.locator('#phoneReview').getByText(label, { exact: true }).waitFor();
+  if (['needs_attention', 'held_review'].includes(sessionState)) assert.equal(await page.locator('[data-transfer]').count(), 0);
+});
+
+test('queued upload waits for the server retry interval', async t => {
+  const { page, state } = await open(t, { retrySeconds: 60 });
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByText('Waiting for the Studio', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Check upload' }).isDisabled(), true);
+  await page.reload();
+  await page.getByText('Waiting for the Studio', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Check upload' }).isDisabled(), true);
+  assert.equal(await page.locator('audio').count(), 1);
+  assert.equal(state.writes.filter(r => r.method === 'PUT').length, 1);
 });

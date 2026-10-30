@@ -43,8 +43,14 @@ function stopMessage(row) {
   return '';
 }
 const mimeTypes = new Set(['audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mpeg', 'audio/webm']);
-const uploadLabels = { queued: 'Waiting for the Studio', transferred: 'Received by the Studio', expired: 'Expired — upload again' };
-const labels = { pending: 'Pending transfer', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
+const labels = { pending: 'Pending transfer', queued: 'Waiting for the Studio', expired: 'Expired — upload again', transferred: 'Received by the Studio', ready_review: 'Ready for review', filed: 'Filed', needs_attention: 'Needs attention on the Studio', held_review: 'Held for review' };
+let retryTimer, retryTime;
+function scheduleRetry(at) {
+  if (!at || disposed || (retryTime && retryTime <= at)) return;
+  clearTimeout(retryTimer);
+  retryTime = at;
+  retryTimer = setTimeout(() => { retryTime = null; void pending().catch(error => notice(error.message)); }, Math.max(0, at - Date.now()));
+}
 async function duration(audio) {
   const url = URL.createObjectURL(audio);
   try {
@@ -67,19 +73,21 @@ async function metadata(audio, started_at, consent_announced_at, seconds) {
   const digest = await crypto.subtle.digest('SHA-256', await audio.arrayBuffer());
   return { sha256: [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join(''), byte_count: audio.size, duration_seconds, mime_type, started_at, consent_announced_at };
 }
+const transferred = session => session.transferred && ['transferred', 'ready_review', 'filed', 'needs_attention', 'held_review'].includes(session.state);
 async function pending() {
   const rows = await recorder.recover(await store.list(scope, tour_id));
   for (const row of rows.filter(r => r.session_id && r.audio?.size && r.status !== 'failed' && r.id !== transferringId)) {
+    if (row.retry_at > Date.now()) { scheduleRetry(row.retry_at); continue; }
     let confirmed;
     try { confirmed = await api.status(row.session_id); }
     catch (error) { notice(error.message); continue; }
     if (disposed) return;
-    Object.assign(row, await store.patch(scope, row.id, { upload_state: confirmed.upload_state }));
-    if (confirmed.upload_state === 'transferred' && confirmed.transferred)
+    Object.assign(row, await store.patch(scope, row.id, { state: confirmed.state, retry_at: null }));
+    if (transferred(confirmed))
       Object.assign(row, await store.patch(scope, row.id, { audio: null, status: 'transferred' }));
   }
   if (disposed) return;
-  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : uploadLabels[r.upload_state] || (r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer')}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.upload_state === 'expired' ? 'Upload again' : r.upload_state === 'queued' ? 'Check upload' : 'Transfer recording'}</button>` : ''}</article>`).join('');
+  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : labels[r.state] || (r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer')}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p>${!r.state || r.state === 'pending' || r.state === 'expired' || r.state === 'queued' ? `<button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy || r.retry_at > Date.now() ? 'disabled' : ''}>${r.state === 'expired' ? 'Upload again' : r.state === 'queued' ? 'Check upload' : 'Transfer recording'}</button>` : ''}` : ''}</article>`).join('');
   for (const player of $('phonePending').querySelectorAll('audio')) {
     const url = URL.createObjectURL(rows.find(r => r.id === player.dataset.audio).audio);
     player.src = url; player.onloadeddata = () => URL.revokeObjectURL(url);
@@ -90,19 +98,25 @@ async function transfer(id) {
   if (!row?.audio?.size || row.status === 'recording') return;
   const meta = row.metadata || await metadata(row.audio, row.captured_at, row.consent_announced_at, row.duration_seconds);
   await store.patch(scope, id, { metadata: meta });
-  if (row.upload_state === 'queued') {
+  if (row.state === 'queued') {
     const confirmed = await api.status(row.session_id);
-    if (confirmed.upload_state === 'transferred' && confirmed.transferred) await review(row.session_id);
+    if (transferred(confirmed)) await review(row.session_id);
     return;
   }
-  const admitted = row.session_id && row.upload_state !== 'expired' ? { session_id: row.session_id } : await api.admit(meta);
+  const admitted = row.session_id && row.state !== 'expired' ? { session_id: row.session_id } : await api.admit(meta);
   await store.patch(scope, id, { session_id: admitted.session_id });
   notice('Transferring…');
   const receipt = await api.transfer(admitted.session_id, row.audio, meta.mime_type);
   if (receipt.sha256 && receipt.sha256 !== meta.sha256) throw new Error('Transfer could not be verified. Saved audio has been kept.');
+  if (receipt.state === 'queued') {
+    const retry_at = Date.now() + Math.max(0, Number(receipt.retry_after_seconds) || 0) * 1000;
+    await store.patch(scope, id, { state: receipt.state, retry_at });
+    scheduleRetry(retry_at);
+    notice(''); return;
+  }
   const confirmed = await api.status(admitted.session_id);
-  await store.patch(scope, id, { upload_state: confirmed.upload_state });
-  if (confirmed.upload_state !== 'transferred' || !receipt.transferred || !confirmed.transferred) { notice(''); return; }
+  await store.patch(scope, id, { state: confirmed.state, retry_at: null });
+  if (!receipt.transferred || !transferred(confirmed)) { notice(''); return; }
   await store.patch(scope, id, { audio: null, status: 'transferred' });
   try { await review(admitted.session_id); notice('Transfer confirmed. Audio removed from this device.'); }
   catch { notice('Transfer confirmed. Review is unavailable. Open the saved review link to retry.'); }
@@ -185,7 +199,7 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; clearTimeout(retryTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();

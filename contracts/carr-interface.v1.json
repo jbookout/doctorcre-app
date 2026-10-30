@@ -1630,9 +1630,13 @@
       "path": "/api/v1/call-sessions/{id}",
       "states": [
         "pending",
+        "queued",
+        "expired",
         "transferred",
         "ready_review",
-        "filed"
+        "filed",
+        "needs_attention",
+        "held_review"
       ],
       "fields": [
         "schema_version",
@@ -1680,12 +1684,20 @@
     },
     "authentication": "Same-origin partner cookie and x-carr-csrf for POST/PUT, using private-session.js. Server scopes reads to the authenticated owner. A review link provides the session ID on another authorized device; there is no session-list endpoint.",
     "review": "Pending single-track candidates require explicit partner confirmation through existing resolve-post-call-candidate or resolve-candidate. Applied automatic changes and Undo use read-call-outcomes and undo-call-change. Those operations expose only unreviewed automatic changes and refuse human-confirmed changes. No transcript, Outlook draft creation, or automatic phone candidate application.",
-    "upload_state": {
-      "field": "upload_state",
-      "inspected_producer_commit": "1c616c79c21b683d7fa181ebd95b6745736d3ab4",
-      "values": ["queued", "transferred", "expired"],
-      "producer_status": "Provisional for DoctorCRE/carr-system#2732. Its wr572-s8-j6 diff inspected for WR572.S8.J14 does not yet expose this field. Queued and expired retain local audio; expired retries admission and transfer. A verified session read with upload_state transferred and transferred true confirms Studio receipt."
-    },
-    "deployment_order": "Depends on DoctorCRE/carr-system#2732 and DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge."
+    "deployment_order": "Depends on DoctorCRE/carr-system#2732 and DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge.",
+    "upload": {
+      "field": "state",
+      "source_commit": "68d99f8a9329d921db0fa18e1ac34f26192e4f70",
+      "values": [
+        "pending",
+        "queued",
+        "expired",
+        "transferred",
+        "ready_review",
+        "filed"
+      ],
+      "receipt": "Queued uploads return queued:true and retry_after_seconds. Retain local audio until a verified matching session status confirms transferred:true. Expired uploads may be admitted and uploaded again.",
+      "future_states": "needs_attention and held_review may include reason and open_questions."
+    }
   }
 }
