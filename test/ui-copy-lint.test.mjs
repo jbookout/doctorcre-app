@@ -56,7 +56,7 @@ test('configured CI lint covers React island source', async t => {
 });
 
 test('UI copy lint rejects internal values in Today move sentences', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'doctorcre-moves-copy-'));
+  const dir = await temporaryDirectory('doctorcre-moves-copy-');
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'today-moves.mjs');
   await writeFile(path, 'export const MOVE_FIELDS = ["next_step"]; export function todayMove(move) { return { action: `Updated ${move.field} ${move.move_value}` }; }');
