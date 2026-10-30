@@ -31,7 +31,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
-  let overdueReviews = null;
+  let overdueReviews = null, overdueEpoch = 0;
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
   const retirePendingEmail = () => {
     emailRetired = true;
@@ -180,7 +180,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) { void overdueReviews?.refresh(); void emailReview?.refresh(); if (emailActivity?.open) void replyOutcomes?.refresh(); }
+    if (!agendaOnly) { void refreshOverdueReviews(); void emailReview?.refresh(); if (emailActivity?.open) void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -360,6 +360,31 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('click', () => select(button.dataset.scope));
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
+  async function refreshOverdueReviews() {
+    if (overdueReviews) return overdueReviews.refresh();
+    const host = $('homeOverdueReviews');
+    if (!host || !client.readDealUpdateReviews || disposed || emailRetired) return;
+    const ticket = ++overdueEpoch;
+    host.setAttribute('aria-busy', 'true');
+    const paint = message => {
+      host.setAttribute('aria-busy', 'false');
+      host.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2></header><p class="home-empty" role="status">${message}</p>`;
+    };
+    try {
+      const result = await readWithDeadline(() => client.readDealUpdateReviews(), { timeoutMs: 10_000 });
+      if (disposed || emailRetired || ticket !== overdueEpoch) return;
+      if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length) {
+        paint('No overdue reviews.'); return;
+      }
+      const { mountDealUpdateReviews } = await import('./deal-update-reviews.js');
+      if (disposed || emailRetired || ticket !== overdueEpoch) return;
+      overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result,
+        onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });
+      await overdueReviews.refresh();
+    } catch {
+      if (!disposed && !emailRetired && ticket === overdueEpoch) paint('Could not load overdue reviews. Refresh Home to try again.');
+    }
+  }
   panelObserver = new window.IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
@@ -390,11 +415,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (emailActivity?.open) void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
     } });
     return emailReview.refresh();
-  });
-  if ($('homeOverdueReviews') && client.readDealUpdateReviews) import('./deal-update-reviews.js').then(({ mountDealUpdateReviews }) => {
-    if (disposed || emailRetired) return;
-    overdueReviews = mountDealUpdateReviews({ container: $('homeOverdueReviews'), client, onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });
-    void overdueReviews.refresh();
   });
   auto.refresh();
   return { refresh: auto.refresh, dispose() { document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); overdueReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };

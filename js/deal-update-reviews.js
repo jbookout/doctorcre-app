@@ -3,7 +3,7 @@ import { escapeText as E } from './change-receipts.mjs';
 import { readWithDeadline } from './current-read.mjs';
 import { uuidv4 } from './uuid.js';
 
-export function mountDealUpdateReviews({ container, client, onChange = () => {} }) {
+export function mountDealUpdateReviews({ container, client, initialResult, onChange = () => {} }) {
   let rows = [], state = 'loading', epoch = 0, disposed = false;
   const decisions = new Map();
   const win = container.ownerDocument.defaultView;
@@ -33,7 +33,8 @@ export function mountDealUpdateReviews({ container, client, onChange = () => {} 
     const ticket = ++epoch;
     state = 'loading'; render();
     try {
-      const result = await readWithDeadline(() => client.readDealUpdateReviews(), { timeoutMs: 10_000 });
+      const result = initialResult ?? await readWithDeadline(() => client.readDealUpdateReviews(), { timeoutMs: 10_000 });
+      initialResult = undefined;
       if (disposed || ticket !== epoch) return;
       const ids = new Set();
       if (result?.schema_version !== 'deal-update-reviews.v1' || !Array.isArray(result.proposals) || result.proposals.length > 200
