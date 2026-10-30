@@ -3,7 +3,7 @@
 (() => {
   document.addEventListener("load", event => {
     const link = event.target;
-    if (link instanceof HTMLLinkElement && link.matches('link[data-font-stylesheet][rel="preload"][as="style"]')) {
+    if (link instanceof HTMLLinkElement && link.matches('link[data-font-stylesheet="early"][rel="preload"][as="style"]')) {
       link.rel = "stylesheet";
     }
   }, true);
