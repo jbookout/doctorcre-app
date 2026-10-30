@@ -202,3 +202,5 @@
 
 #dealFlags .deal-alert .work-card-title a::after { content: ""; position: absolute; inset: 0; }
 #dealFlags .deal-alert .deal-items a { position: relative; z-index: 1; }
+.home-call-task .work-card-title a.home-call-contact { max-width: 100%; }
+.home-call-task .home-call-contact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
