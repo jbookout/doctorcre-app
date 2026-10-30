@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+    "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -70,6 +70,7 @@
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
+    "list-practice-origination",
     "list-progress-boards",
     "log-activity",
     "loop-board",
@@ -707,7 +708,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
@@ -797,7 +798,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+          "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
         },
         "template_states": [
           "current",
@@ -831,7 +832,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -1049,6 +1050,101 @@
       "match_basis": "Exact attendee email is a possible match, never a confirmed meeting-to-deal relationship. Display suggestions as unconfirmed. Failed deal_suggestions is unavailable, never proof of no related deal.",
       "presentation": "On-demand Home dialog. Render calendar notes including zero-row partial responses, source freshness, unavailable states and retry. No startup read or writes. Clear content and reject late results on close, disposal or session invalidation.",
       "content_storage": "Memory only."
+    },
+    "list-practice-origination": {
+      "write": false,
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2742"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "before_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
+          }
+        }
+      },
+      "response": {
+        "contract": "practice-origination.v1",
+        "required_keys": [
+          "ok",
+          "contract",
+          "cards",
+          "next_cursor",
+          "coverage",
+          "outreach_started"
+        ],
+        "card_keys": [
+          "id",
+          "source",
+          "record_key",
+          "npi",
+          "name",
+          "city",
+          "state",
+          "kind",
+          "evidence_date",
+          "date_basis",
+          "source_url",
+          "facts",
+          "published_on",
+          "recorded_at",
+          "route",
+          "client_refs",
+          "client_ids",
+          "why_now"
+        ],
+        "kinds": [
+          "enumeration",
+          "registry_update",
+          "pecos_observation",
+          "pecos_correction"
+        ],
+        "date_basis": [
+          "enumeration",
+          "registry_update",
+          "publication"
+        ],
+        "routes": [
+          "research",
+          "relationship_follow_up",
+          "identity_review"
+        ],
+        "coverage_keys": [
+          "source",
+          "enabled",
+          "coverage",
+          "status"
+        ],
+        "coverage_optional_keys": [
+          "terms_url",
+          "access_terms",
+          "rate_control",
+          "recovery",
+          "reason",
+          "checkpoint",
+          "published_on",
+          "detail",
+          "updated_at"
+        ],
+        "coverage_statuses": [
+          "available",
+          "blocked",
+          "unavailable",
+          "uncovered"
+        ],
+        "outreach_started": false,
+        "ordering": "Latest card per source record, id descending; next_cursor pages with before_id. Routes reflect current relationships. Registry and publication dates do not prove practice opening. No term estimates are supplied."
+      }
     }
   },
   "vendor_directory": {
@@ -1307,7 +1403,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+      "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
@@ -1316,7 +1412,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
       },
       "inputSchema": {
         "type": "object",
@@ -1351,7 +1447,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
       },
       "inputSchema": {
         "type": "object",
@@ -1380,7 +1476,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
       },
       "inputSchema": {
         "type": "object",

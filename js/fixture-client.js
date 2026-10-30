@@ -1,3 +1,4 @@
+import { practiceOriginationFixture } from './practice-origination-fixture.js';
 import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
@@ -1249,6 +1250,8 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
+
+    async listPracticeOrigination(args = {}) { return practiceOriginationFixture(args); },
 
     async getHomeAgenda() {
       const board = await this.getBoard();
