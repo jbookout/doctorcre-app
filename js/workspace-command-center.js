@@ -31,11 +31,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
+  let overdueReviews = null;
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
   const retirePendingEmail = () => {
     emailRetired = true;
     panelObserver?.disconnect();
-    for (const [id, title, view] of [['homeReplyOutcomes', 'Sent replies', replyOutcomes], ['homeEmailFollowups', 'Email follow-ups', emailReview], ['homeEmailFilings', 'Filed automatically', emailFilings]]) {
+    for (const [id, title, view] of [['homeOverdueReviews', 'Overdue tasks to review', overdueReviews], ['homeReplyOutcomes', 'Sent replies', replyOutcomes], ['homeEmailFollowups', 'Email follow-ups', emailReview], ['homeEmailFilings', 'Filed automatically', emailFilings]]) {
       if (view || !$(id)) continue;
       $(id).setAttribute('aria-busy', 'false');
       $(id).innerHTML = `<header class="home-panel-head"><h2>${title}</h2></header><p role="status">Sign in to view ${title.toLowerCase()}.</p>`;
@@ -179,7 +180,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) { void emailReview?.refresh(); if (emailActivity?.open) void replyOutcomes?.refresh(); }
+    if (!agendaOnly) { void overdueReviews?.refresh(); void emailReview?.refresh(); if (emailActivity?.open) void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -390,8 +391,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     } });
     return emailReview.refresh();
   });
+  if ($('homeOverdueReviews') && client.readDealUpdateReviews) import('./deal-update-reviews.js').then(({ mountDealUpdateReviews }) => {
+    if (disposed || emailRetired) return;
+    overdueReviews = mountDealUpdateReviews({ container: $('homeOverdueReviews'), client, onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });
+    void overdueReviews.refresh();
+  });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); overdueReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

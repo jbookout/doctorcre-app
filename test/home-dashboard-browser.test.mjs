@@ -56,6 +56,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     },
     'correspondence-readiness': args => client.correspondenceReadiness(args),
     'read-post-call-followups': () => client.getPostCallFollowups(),
+    'read-deal-update-reviews': async () => ({ schema_version: 'deal-update-reviews.v1', proposals: [] }),
     'today-triage': () => client.todayTriage(),
     'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
@@ -236,7 +237,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'read-deal-update-reviews': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
