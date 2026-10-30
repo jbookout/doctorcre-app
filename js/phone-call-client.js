@@ -11,7 +11,7 @@ function verifiedSession(value, id) {
 export function createPhoneCallClient() {
   async function request(path, init = {}, id) {
     const response = await sessionFetch(path, { ...init, credentials: 'same-origin', signal: AbortSignal.timeout(init.method === 'PUT' ? 130000 : 15000) });
-    if (!response.ok) throw new Error(response.status === 429 ? 'Daily recording limit reached. Your audio is still on this device.' : 'Call service unavailable. Your saved audio stays on this device.');
+    if (!response.ok) throw new Error(response.status === 400 ? 'This recording could not be accepted. Check its length and file before trying again.' : response.status === 413 ? 'This recording is too large. Choose a file up to 50 MiB.' : response.status === 415 ? 'This audio format is not supported. Try an MP4, WAV, MP3 or WebM recording.' : response.status === 429 ? 'Daily recording limit reached. Your audio is still on this device.' : 'Call service unavailable. Your saved audio stays on this device.');
     const value = await response.json();
     if (path === '/auth/session') return value;
     verifiedSession(value, id);
