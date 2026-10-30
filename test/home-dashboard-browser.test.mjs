@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { actionCompletion, calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -41,9 +41,11 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   });
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
+  const completionRequests = [];
   const handlers = {
+    'complete-one-action': async args => { completionRequests.push(args); return actionCompletion.write(args); },
     'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (boardMalformed) return { ...board, deals: [{ name: 'Demo missing record identity' }] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
-    'get-deal-room': async args => { if (detailFailure === '503' || (detailFailure === 'partial' && args.deal === 'd01')) throw Error('Unavailable'); if ([401, 403].includes(detailFailure)) throw Object.assign(Error('Refused'), { status: detailFailure }); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
+    'get-deal-room': async args => { if (detailFailure === '503' || (detailFailure === 'partial' && args.deal === 'd01')) throw Error('Unavailable'); if ([401, 403].includes(detailFailure)) throw Object.assign(Error('Refused'), { status: detailFailure }); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); if (actionCompletion) return { ...detail, ...detail.deal, deal_id: detail.deal.id, events: [], critical_dates: [], next_actions: await actionCompletion.read(args.deal) }; return { ...detail,
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: ['d14', 'd20', 'd23'].includes(args.deal) ? '2026-09-30' : '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
@@ -76,6 +78,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     if (url.origin !== origin) return route.abort();
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params.name);
+      if (rpc.params.name === 'complete-one-action' && actionCompletion?.rpcUnavailable) return route.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, error: { code: -32601, message: 'Method not found' } } });
       if (!handlers[rpc.params.name]) { errors.push(`Unexpected MCP operation: ${rpc.params.name}`); return route.fulfill({ status: 500, json: { error: 'unexpected_operation' } }); }
       try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(responses.has(rpc.params.name) ? await responses.get(rpc.params.name) : await handlers[rpc.params.name](rpc.params.arguments)) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
@@ -97,7 +100,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, resources, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, resources, completionRequests, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -1219,4 +1222,179 @@ test('Deals panel ends with muted counts and a plain All deals link', async t =>
     assert.equal(await page.locator('main > footer #dealCounts').count(), 0);
     assert.equal(await link.evaluate(el => getComputedStyle(el).borderTopStyle), 'none');
   }
+});
+
+
+test('Home Done waits for closed action readback and leaves its sibling', async t => {
+  const rows = [1, 2].map(n => ({ id: `00000000-0000-4000-8000-00000000000${n}`, description: `Demo task ${n}`, version: 1, status: 'open', owner: 'joe', due_on: null }));
+  let written = false, release;
+  const readback = new Promise(resolve => { release = resolve; });
+  t.after(() => release());
+  const { page, completionRequests } = await open(t, { actionCompletion: {
+    read: async deal => { if (deal !== 'd01') return []; if (written) await readback; return structuredClone(rows); },
+    write: async args => { written = true; rows[0].status = 'done'; rows[0].version = 2; return { ok: true, action_id: args.action_id, status: 'done', version: 2 }; },
+  } });
+  const cards = page.locator('#homeBrief article');
+  await cards.first().getByRole('button', { name: 'Done', exact: true }).click();
+  await page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'get-deal-room');
+  assert.equal(await cards.count(), 2);
+  release();
+  await cards.filter({ hasText: 'Demo task 1' }).waitFor({ state: 'detached' });
+  assert.equal(await cards.filter({ hasText: 'Demo task 2' }).count(), 1);
+  assert.equal(completionRequests[0].action_id, rows[0].id);
+  assert.equal(completionRequests[0].base_version, 1);
+});
+
+const doneRows = () => [1, 2].map(n => ({ id: `00000000-0000-4000-8000-00000000000${n}`, description: `Demo task ${n}`, version: 1, status: 'open', owner: 'joe', due_on: null }));
+
+test('Home Done refreshes a changed task before a new completion', async t => {
+  const rows = doneRows(); let attempts = 0;
+  const { page, completionRequests } = await open(t, { actionCompletion: {
+    read: async deal => deal === 'd01' ? structuredClone(rows) : [],
+    write: async args => {
+      if (++attempts === 1) { Object.assign(rows[0], { description: 'Demo updated task', version: 2 }); return { error: 'version_conflict', current_version: 2 }; }
+      Object.assign(rows[0], { status: 'done', version: 3 });
+      return { ok: true, action_id: args.action_id, status: 'done', version: 3 };
+    },
+  } });
+  await page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByText('This task changed. Review it before choosing Done again.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#homeBrief article').count(), 2);
+  const card = page.locator('#homeBrief article').filter({ hasText: 'Demo updated task' });
+  await card.getByRole('button', { name: 'Done', exact: true }).click();
+  await card.waitFor({ state: 'detached' });
+  assert.equal(completionRequests[1].base_version, 2);
+  assert.notEqual(completionRequests[1].idempotency_key, completionRequests[0].idempotency_key);
+});
+
+test('Home Done quietly removes an already closed task after readback', async t => {
+  const rows = doneRows();
+  const { page } = await open(t, { actionCompletion: {
+    read: async deal => deal === 'd01' ? structuredClone(rows) : [],
+    write: async () => { rows[0].status = 'done'; return { error: 'action_not_open' }; },
+  } });
+  await page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByText('This task was already done.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#homeBrief article').count(), 1);
+  assert.match(await page.locator('#homeBrief article').innerText(), /Demo task 2/);
+});
+
+test('Home Done hides unavailable controls and preserves links-only cards', async t => {
+  const rows = doneRows();
+  const { page, calls } = await open(t, { actionCompletion: {
+    read: async deal => deal === 'd01' ? structuredClone(rows) : [],
+    write: async () => ({ error: 'unknown_tool' }),
+  } });
+  await page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-task-done]')].every(button => button.hidden));
+  assert.equal(await page.locator('#homeBrief article').count(), 2);
+  assert.equal(await page.locator('#homeBrief article a').count(), 2);
+  assert.equal(calls.includes('complete-action'), false);
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await page.locator('#homeBrief button:visible').count(), 0);
+});
+
+test('Home Done keeps a task on unknown outcomes and retries the same request', async t => {
+  const rows = doneRows(); let attempts = 0;
+  const { page, completionRequests } = await open(t, { actionCompletion: {
+    read: async deal => deal === 'd01' ? structuredClone(rows) : [],
+    write: async args => {
+      if (++attempts === 1) throw Error('Connection lost');
+      rows[0].status = 'done'; return { ok: true, action_id: args.action_id, status: 'done', version: 2 };
+    },
+  } });
+  const card = page.locator('#homeBrief article').first();
+  await card.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByText('Could not confirm this task is done. Try Done again.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#homeBrief article').count(), 2);
+  await card.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.locator('#homeBrief article').filter({ hasText: 'Demo task 1' }).waitFor({ state: 'detached' });
+  assert.deepEqual(completionRequests[1], completionRequests[0]);
+});
+
+test('Home Done remains hidden on the previous unversioned read', async t => {
+  const { page } = await open(t);
+  assert.ok(await page.locator('#homeBrief article a').count() > 0);
+  assert.equal(await page.locator('#homeBrief button').count(), 0);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+  test(`Home Done fits shared cards at ${width} in ${theme}`, async t => {
+    const rows = doneRows();
+    rows[0].description = 'Demo follow-up with the practice team to review the updated property options';
+    const { page, errors } = await open(t, { width, theme, actionCompletion: {
+      read: async deal => deal === 'd01' ? structuredClone(rows) : [],
+      write: async args => { rows[0].status = 'done'; return { ok: true, action_id: args.action_id, status: 'done', version: 2 }; },
+    } });
+    const button = page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true });
+    await button.waitFor();
+    await button.focus();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    for (const card of await page.locator('#homeBrief article').all()) {
+      const box = await card.boundingBox();
+      assert.ok(box.height <= 110, `brief card height ${box.height}`);
+    }
+    if (process.env.W2_SCREENSHOT_DIR) {
+      await page.locator('#homeBrief').scrollIntoViewIfNeeded();
+      await screenshot(page, `home-done-${width}-${theme}-detail`);
+    }
+    await button.press('Enter');
+    await page.locator('#homeBrief article').filter({ hasText: rows[0].description }).waitFor({ state: 'detached' });
+    assert.equal(await page.locator('#homeBrief article').count(), 1);
+    assert.deepEqual(errors, []);
+  });
+}
+
+test('Home Done keeps the card when readback still shows it open', async t => {
+  const rows = doneRows();
+  const { page, completionRequests } = await open(t, { actionCompletion: {
+    read: async deal => deal === 'd01' ? structuredClone(rows) : [],
+    write: async args => ({ ok: true, action_id: args.action_id, status: 'done', version: 2 }),
+  } });
+  const button = page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true });
+  await button.click();
+  await page.getByText('Could not confirm this task is done. Try Done again.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#homeBrief article').count(), 2);
+  rows[0].status = 'done';
+  await button.click();
+  await page.locator('#homeBrief article').filter({ hasText: 'Demo task 1' }).waitFor({ state: 'detached' });
+  assert.deepEqual(completionRequests[1], completionRequests[0]);
+});
+
+
+test('Home Done hides controls when the server has no JSON-RPC method', async t => {
+  const { page } = await open(t, { actionCompletion: {
+    rpcUnavailable: true,
+    read: async deal => deal === 'd01' ? doneRows() : [],
+  } });
+  await page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('#homeBrief [data-task-done]').length === 0);
+  assert.equal(await page.locator('#homeBrief article a').count(), 2);
+});
+
+test('Home Done retains its card through a concurrent agenda refresh until readback', async t => {
+  const rows = doneRows(); let written = false, release;
+  const blocked = new Promise(resolve => { release = resolve; });
+  t.after(() => release());
+  const { page } = await open(t, { actionCompletion: {
+    read: async deal => { if (deal !== 'd01') return []; if (written) await blocked; return structuredClone(rows); },
+    write: async args => { written = true; return { ok: true, action_id: args.action_id, status: 'done', version: 2 }; },
+  } });
+  let readStarted;
+  const readback = new Promise(resolve => { readStarted = resolve; });
+  await page.route('**/mcp', async route => {
+    const rpc = route.request().postDataJSON();
+    if (rpc.params.name === 'get-deal-room') { readStarted(); return route.fallback(); }
+    if (rpc.params.name !== 'read-home-agenda') return route.fallback();
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ schema_version: 'home-agenda.v1', actor: 'joe', deals: [{ id: 'd01', name: 'Demo practice', owner: 'joe', critical_dates: [], next_actions: [rows[1]] }] }) }] } } });
+  });
+  await page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true }).click();
+  await readback;
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await page.locator('#homeBrief article').filter({ hasText: 'Demo task 1' }).count(), 1);
+  rows[0].status = 'done'; release();
+  await page.locator('#homeBrief article').filter({ hasText: 'Demo task 1' }).waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#homeBrief article').filter({ hasText: 'Demo task 2' }).count(), 1);
 });

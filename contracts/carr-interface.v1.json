@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -36,6 +36,7 @@
     "close-investigation",
     "close-loop",
     "complete-deal-item",
+    "complete-one-action",
     "confirm-email-deal-progress",
     "confirm-email-filing",
     "confirm-email-next-step",
@@ -760,7 +761,13 @@
           "order": "Role, company name, contact name, vendor party id."
         },
         "next_actions": {
-          "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
+          "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null.",
+          "version": "Positive integer from the action row, including accepted post-call actions. Closed actions remain in this read for completion readback.",
+          "producer": {
+            "repository": "DoctorCRE/carr-system",
+            "source_commit": "a6ec28c308ed5244a5afa64edbc1e4d1ef548af5",
+            "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2765"
+          }
         },
         "item_schema_version": "deal-items.v1",
         "item_keys": [
@@ -894,8 +901,9 @@
     "read-home-agenda": {
       "write": false,
       "producer": {
-        "repository": "jbookout/carr-system",
-        "source_commit": "b6210ca0a93e4a913b7e69b9669b74fdc9aa6337"
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "a6ec28c308ed5244a5afa64edbc1e4d1ef548af5",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2765"
       },
       "response": {
         "schema_version": "home-agenda.v1",
@@ -942,7 +950,8 @@
           "description",
           "due_on",
           "status",
-          "hold_until"
+          "hold_until",
+          "version"
         ],
         "membership": "Active deals without a closed phase, outcome, close date or invoice date. Includes both owners and national accounts. Open actions retain hold dates; Home applies Chicago business dates and owner scope.",
         "limits": {
@@ -1455,6 +1464,52 @@
         ]
       },
       "effect": "Add one sourced deal checklist item. It never replaces sibling actions. Repeating source_ref and title returns the existing item."
+    },
+    "complete-one-action": {
+      "write": true,
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "a6ec28c308ed5244a5afa64edbc1e4d1ef548af5",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2765"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "action_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "base_version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "action_id",
+          "base_version"
+        ]
+      },
+      "response": {
+        "required_keys": [
+          "ok",
+          "action_id",
+          "status",
+          "version"
+        ],
+        "status": "done"
+      },
+      "refusals": [
+        "version_conflict",
+        "action_not_open",
+        "action_not_found",
+        "partner_required"
+      ],
+      "readback": "get-deal-room next_actions must show the selected action closed before removing its Home brief card."
     }
   },
   "email_proposals": {

@@ -100,7 +100,7 @@ export function createLiveClient(opts = {}) {
       throw error;
     }
     if (outcome.kind === 'unconfirmed') {
-      if (outcome.reason === 'rpc') throw new Error(`live ${verb} rpc error: ${outcome.cause.message}`);
+      if (outcome.reason === 'rpc') throw Object.assign(new Error(`live ${verb} rpc error: ${outcome.cause.message}`), { rpcCode: outcome.cause.code });
       if (['network', 'deadline', 'envelope', 'payload'].includes(outcome.reason)) throw outcome.cause;
       throw unknownMcpOutcome(outcome.cause);
     }
@@ -430,6 +430,7 @@ export function createLiveClient(opts = {}) {
 
     async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
     async instructDealItem(args) { return write('instruct-deal-item', args); },
+    async completeOneAction(args) { return write('complete-one-action', args, opts.writeTimeoutMs || 10_000); },
     async completeDealItem(args) { return write('complete-deal-item', args); },
     // The portal password goes to CARR once, here; CARR keeps only a verifier and answers with the link.
     async registerClientPortal(args) {

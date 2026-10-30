@@ -67,7 +67,7 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     for (const task of taskRows) {
       const day = toDay(task.due_on);
       if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
-      const entry = { key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' };
+      const entry = { key: `task:${task.id}`, action_id: task.id, version: task.version, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' };
       briefTasks.push(entry);
       if (!(toDay(task.hold_until) > today)) entries.push(entry);
     }

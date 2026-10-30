@@ -203,3 +203,6 @@
 
 #dealFlags .deal-alert .work-card-title a::after { content: ""; position: absolute; inset: 0; }
 #dealFlags .deal-alert .deal-items a { position: relative; z-index: 1; }
+
+.home-brief-card .work-card-actions { grid-column: 2; grid-row: 2; }
+.home-brief-card .home-outline { background: transparent; font-family: inherit; cursor: pointer; }
