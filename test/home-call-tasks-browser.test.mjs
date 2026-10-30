@@ -281,7 +281,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ca
   await first.waitFor();
   await mkdir(join(root, 'out/test-artifacts/call-contact'), { recursive: true });
   await page.locator('#homeCallTasks').screenshot({ path: join(root, `out/test-artifacts/call-contact/${width}-${theme}-${process.env.CONTACT_CAPTURE || 'after'}.png`) });
-  assert.equal(await first.locator('.work-card-title').innerText(), 'Call Pat Smith · Demo coastal purchase');
+  assert.equal(await first.locator('.work-card-title').innerText(), 'Pat Smith · Demo coastal purchase');
   assert.equal(await second.locator('.work-card-title').innerText(), 'Demo coastal purchase');
   assert.equal(await first.locator('.work-card-title a').getAttribute('href'), '/deals?deal=qa-deal-1');
   assert.equal((await first.boundingBox()).height, (await second.boundingBox()).height);

@@ -56,8 +56,8 @@ test('Home names the contact on task and email follow-ups', async () => {
   const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([{ ...wire, contact_name: 'Pat Smith' }, email]) });
   const h = mount();
   h.controller.update({ ...ready, tasks });
-  assert.equal(h.host.querySelector('[data-call-task] h3').textContent, 'Call Pat Smith · Demo deal');
-  assert.equal(h.host.querySelector('[data-call-draft] h3').textContent, 'Call Alex Jones · Demo deal');
+  assert.equal(h.host.querySelector('[data-call-task] h3').textContent, 'Pat Smith · Demo deal');
+  assert.equal(h.host.querySelector('[data-call-draft] h3').textContent, 'Alex Jones · Demo deal');
   h.close();
 });
 

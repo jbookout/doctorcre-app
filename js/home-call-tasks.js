@@ -56,7 +56,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
     host.hidden = false;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
     const source = task => `<p class="home-call-source">From your call with ${E(task.dealName)}, <time datetime="${E(task.createdAt)}" title="${E(sourceTime(task.createdAt))}">${E(relativeAge(task.createdAt))}</time></p>`;
-    const title = task => `<a ${task.contactName ? 'class="home-call-contact" ' : ''}href="/deals?deal=${encodeURIComponent(task.dealId)}">${task.contactName ? `<span>${E(`Call ${task.contactName} · ${task.dealName}`)}</span>` : E(task.dealName)}</a>`;
+    const title = task => `<a ${task.contactName ? 'class="home-call-contact" ' : ''}href="/deals?deal=${encodeURIComponent(task.dealId)}">${task.contactName ? `<span>${E(`${task.contactName} · ${task.dealName}`)}</span>` : E(task.dealName)}</a>`;
     const markup = `<header class="home-panel-head"><h2>Call follow-ups to review</h2></header>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${view.busy && !tasks.length ? '<div class="home-followup-skeleton" role="status">Loading call follow-ups…</div>' : !tasks.length && !unavailable ? '<p class="home-empty">No call follow-ups</p>' : ''}${tasks.map(task => {
       if (task.kind === 'email_draft') {
         const disabled = !admitted() || openingDraft !== null;
