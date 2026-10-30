@@ -1,6 +1,6 @@
 import { mountHierarchy } from './progress-hierarchy.js';
 import { mountOrchestrator } from './progress-orchestrator.js';
-import { mountWorkQueue } from './progress-work-queue.js';
+import { mountQueueBoard } from './work-queue-board.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
@@ -40,6 +40,9 @@ export function mountBoard(deps = {}) {
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
   const orchestratorView = boardId === 'orchestrator';
+  // The system board page is the record-layer work queue, read live (WR-000557 S4). The Control Room's
+  // Boards tab keeps its census pipeline, which also feeds Attention, until its own slice (S6).
+  const queueBoardView = boardId === SYSTEM_BOARD_ID && !deps.openTask;
   const byId = id => doc.getElementById(id);
   const costs = mountCostView(byId('board-costs'));
   const location = deps.location || win.location;
@@ -446,7 +449,7 @@ export function mountBoard(deps = {}) {
   }
 
   function hasWorkViews(view) {
-    return standalone && Boolean(view) && !orchestratorView && !view.hierarchy && !view.work_queue;
+    return standalone && Boolean(view) && !orchestratorView && !view.hierarchy && !queueBoardView;
   }
 
   function rememberWorkCard(event) {
@@ -515,6 +518,16 @@ export function mountBoard(deps = {}) {
   function renderStages(view) {
     if (disposed) return;
     const container = byId("board-stages");
+    if (queueBoardView) {
+      queueUI ||= mountQueueBoard({ container, client, document: doc, window: win, onJobs: (jobs, observation) => {
+        byId("task-count").textContent = observation.state === "read" ? `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}` : "—";
+      } });
+      byId("pipeline-title").textContent = "Work queue";
+      for (const id of ["board-rail", "board-filters"]) byId(id).setAttribute("hidden", "");
+      for (const id of ["board-completed", "completed-list", "board-blocked", "board-ledger"])
+        byId(id)?.closest(".panel")?.setAttribute("hidden", "");
+      return;
+    }
     if (!view && boardState === "pending") {
       container.setAttribute("aria-busy", "true");
       container.classList.add("hierarchy-board");
@@ -545,7 +558,7 @@ export function mountBoard(deps = {}) {
       byId('task-count').textContent = `${view.orchestrator.total_cards ?? view.orchestrator.cards.length} recorded ${(view.orchestrator.total_cards ?? view.orchestrator.cards.length) === 1 ? 'item' : 'items'}`;
       return;
     }
-    if (view?.hierarchy && !view.work_queue) {
+    if (view?.hierarchy) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
       hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
@@ -574,16 +587,6 @@ export function mountBoard(deps = {}) {
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.task_id || task.id} : {})})));
     deps.onTasks?.(all,systemWork ? censusObservation : {state:boardState});
-    if (view?.work_queue) {
-      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
-      queueUI.update(view.work_queue);
-      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
-      byId('pipeline-title').textContent = 'Work queue';
-      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
-      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
-        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
-      return;
-    }
     renderFilters({repos:view?.repos || [],cards:all,stages});
     if (!hasWorkViews(view) || workView === "history") renderCompleted({...view, cards:all,stages});
     else (byId("completed-list") || byId("board-completed")).replaceChildren();
@@ -1089,10 +1092,20 @@ export function mountBoard(deps = {}) {
     renderSync(view);
     if (hasWorkViews(view)) byId("board-headline").replaceChildren();
     else renderHeadline(view);
-    doc.querySelector(".headline").hidden = hasWorkViews(view) || orchestratorView || Boolean(view.hierarchy || view.work_queue);
-    byId("board-title").classList.toggle("sr-only", orchestratorView || Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
+    doc.querySelector(".headline").hidden = hasWorkViews(view) || orchestratorView || Boolean(view.hierarchy || queueBoardView);
+    byId("board-title").classList.toggle("sr-only", orchestratorView || Boolean(view.hierarchy || queueBoardView) || Boolean(deps.openTask));
     const breadcrumb = doc.querySelector('nav[aria-label="Breadcrumb"]');
-    if (breadcrumb) breadcrumb.hidden = !orchestratorView && (Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
+    if (breadcrumb) breadcrumb.hidden = !orchestratorView && (Boolean(view.hierarchy || queueBoardView) || Boolean(deps.openTask));
+    if (queueBoardView) {
+      // Only the cost panel comes from this board's snapshot; its retired task panels stay hidden.
+      byId("board-title").textContent = "System Job Board";
+      byId("board-meta").textContent = "Live from the record-layer work queue";
+      for (const id of ["board-freshness", "board-sync", "repos-panel"]) if (byId(id)) byId(id).hidden = true;
+      for (const id of ["board-blocked", "board-questions", "board-ledger", "board-deliverables", "board-decisions", "board-notes", "board-completed"])
+        byId(id)?.closest(".panel")?.setAttribute("hidden", "");
+      renderStages(view);
+      return;
+    }
     renderRepos(view);
     renderStages(view);
     if (!hasWorkViews(view) || workView === "history") renderBlocked(view);
@@ -1104,7 +1117,7 @@ export function mountBoard(deps = {}) {
     renderNotes(view);
     for (const [id, count] of [["board-questions", view.questions.length], ["board-deliverables", view.deliverables.length],
       ["board-decisions", view.decisions.length + view.questions.filter(q => q.status).length], ["board-notes", view.notes.length]])
-      byId(id).closest(".panel").hidden = (orchestratorView || Boolean(view.hierarchy || view.work_queue)) && !count;
+      byId(id).closest(".panel").hidden = (orchestratorView || Boolean(view.hierarchy || queueBoardView)) && !count;
     applyWorkViewVisibility(view);
   }
 
@@ -1228,6 +1241,7 @@ export function mountBoard(deps = {}) {
     const controller = boardReadController;
     const seq = ++readSeq;
     systemWork?.refresh(false, { force });
+    if (force) queueUI?.refresh();
     loadDirectory(seq);
     const run = (async () => {
       let read;
@@ -1244,6 +1258,14 @@ export function mountBoard(deps = {}) {
       if (seq !== readSeq) return "superseded";
       const view = boardView(read, currentNow());
       if (view.error) { boardState="unknown"; deps.onTasks?.([], {state:"unknown"}); setError(view.error); return false; }
+      if (!view.version && queueBoardView) {
+        // The queue board does not depend on a snapshot; an unpublished one only means no cost panel.
+        costs.update(null);
+        byId("board-meta").textContent = "Live from the record-layer work queue · no cost snapshot published";
+        byId("board-meta").setAttribute("data-read-state", "unpublished");
+        byId("board-retry").hidden = false;
+        return false;
+      }
       if (!view.version) {
         clearBoard("unpublished");
         setError(byId("board-data-mode") ? "" : "This board has not been published yet.");
@@ -1283,8 +1305,9 @@ export function mountBoard(deps = {}) {
     renderStages(currentView);
     if (!orchestratorView && boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: (pipeline, observation) => { if (pipeline) censusPipeline = pipeline; censusObservation = observation; renderStages(currentView); } });
+    // The queue board refreshes itself; its snapshot only carries costs, so it is read once.
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
-      if (disposed) return;
+      if (disposed || queueBoardView) return;
       poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
         poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
     });

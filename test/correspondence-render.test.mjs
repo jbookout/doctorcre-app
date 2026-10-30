@@ -120,7 +120,7 @@ test('a disposed mount cannot paint a previous deal after its read resolves', as
 
 test('meeting disclosure and keyboard focus survive delayed read settlement and timeout', async t => {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
-  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs', 'today-moves.mjs', 'client.js'].map(async name =>
+  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs', 'business-date.js', 'email-source-line.js', 'today-moves.mjs', 'client.js'].map(async name =>
     [`/js/${name}`, await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8')])));
   for (const phase of ['readiness', 'thread']) {
     for (const outcome of ['settled', 'timeout']) {
@@ -180,20 +180,42 @@ test('both record panel controllers wire Evidence using the shared renderer', as
   assert.match(deals, /location.assign\(`\/deals\?deal=/, 'legacy cards use the shared snapshot route');
 });
 
-test('Evidence groups show newest instants first and undated items last without changing inputs', () => {
-  const items = [
-    { title: 'Undated', when: null },
-    { title: 'Older', when: '2026-10-26T12:00:00.000001Z' },
-    { title: 'Newest', when: '2026-10-26T12:00:00.000002Z' },
-  ];
-  const view = Object.fromEntries(['threads', 'meetings'].map(group => [group, {
-    state: 'ready', items: items.map(item => ({ ...item, kind: group === 'threads' ? 'thread' : 'meeting' })),
-  }]));
-  const original = structuredClone(view);
-  const dom = new JSDOM(renderEvidence(view));
-  for (const group of dom.window.document.querySelectorAll('.evidence-group')) {
-    assert.deepEqual([...group.querySelectorAll('summary span')].map(node => node.textContent), ['Newest', 'Older', 'Undated']);
+const threadAnswer = rows => ({ ...found, receipts: rows.map((when, i) => ({ ...found.receipts[0], read_receipt_id: `10000000-0000-4000-8000-00000000000${i + 1}`, recorded_at: when })) });
+const meetingRow = (id, when) => ({ ...meeting, id, summary: `Synthetic ${id}`, occurred_at: when });
+
+test('evidence builders order threads and meetings once, newest first, undated never invented', () => {
+  const instants = ['2026-10-26T12:00:00.000001Z', '2026-10-26T12:00:00.000002Z', '2026-10-25T12:00:00Z'];
+  const threads = correspondenceState(threadAnswer(instants), identity).items.map(item => item.when);
+  assert.deepEqual(threads, [instants[1], instants[0], instants[2]]);
+  const meetings = meetingEvidence(instants.map((when, i) => meetingRow(`m${i}`, when))).items.map(item => item.id);
+  assert.deepEqual(meetings, ['m1', 'm0', 'm2']);
+});
+
+test('equal instants keep the record layer order instead of an invented id tie-break', () => {
+  const same = '2026-10-26T12:00:00Z';
+  for (const ids of [['a', 'z'], ['z', 'a']]) {
+    assert.deepEqual(meetingEvidence(ids.map(id => meetingRow(id, same))).items.map(item => item.id), ids);
   }
-  assert.deepEqual(view, original);
-  dom.window.close();
+});
+
+test('evidence renders what it is given and shows a Central zone label, with threads marked as read times', () => {
+  const view = { threads: correspondenceState(threadAnswer(['2026-09-30T12:00:00Z']), identity), meetings: meetingEvidence([meetingRow('m', '2026-12-01T12:00:00Z')]) };
+  const root = new JSDOM(renderEvidence(view)).window.document;
+  assert.equal(root.querySelector('[data-kind="thread"] time').textContent, 'Read Sep 30, 7:00 AM CDT');
+  assert.equal(root.querySelector('[data-kind="meeting"] time').textContent, 'Dec 1, 6:00 AM CST');
+  assert.equal(root.querySelector('[data-kind="meeting"] time').dateTime, '2026-12-01T12:00:00Z');
+});
+
+
+test('latest email threads keep email classification and message times in newest-first order', async () => {
+  const view = await loadEvidence({}, { email_threads: [
+    { subject: 'Older email', latest_message_at: '2026-12-01T12:00:00Z' },
+    { subject: 'Newer email', latest_message_at: '2026-12-02T12:00:00Z' },
+  ] });
+  assert.deepEqual(view.threads.items.map(item => item.title), ['Newer email', 'Older email']);
+  const doc = new JSDOM(renderEvidence(view)).window.document;
+  const rows = [...doc.querySelectorAll('[data-kind="thread"]')];
+  assert.deepEqual(rows.map(row => row.querySelector('summary span').textContent), ['Newer email', 'Older email']);
+  assert.ok(rows.every(row => row.querySelector('p').textContent === 'Email'));
+  assert.equal(rows[0].querySelector('time').textContent, 'Dec 2, 6:00 AM CST');
 });
