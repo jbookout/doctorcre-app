@@ -10,6 +10,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const notice = message => { if (!disposed) $('phoneNotice').textContent = message; };
 const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
+const answers = new Map(), answering = new Set();
 const tour_id = 'calls';
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
 async function acquireWakeLock() {
@@ -125,7 +126,7 @@ async function transfer(id) {
 function reviewId(value) { try { return new URL(value).searchParams.get('session'); } catch { return value; } }
 async function review(id) {
   if (!sessionId(id)) throw new Error('Enter a valid call session ID.');
-  const result = await api.report(id);
+  const [result, session] = await Promise.all([api.report(id), api.status(id)]);
   if (disposed) return;
   currentId = id;
   $('phoneCalls').classList.add('has-review');
@@ -134,6 +135,8 @@ async function review(id) {
   $('phoneOpen').hidden = true;
   const held = [...(result.actions || []), ...(result.deal_updates || [])].some(r => r.status === 'pending');
   $('phoneReview').innerHTML = `<span class="phone-badge">${esc(labels[result.state])}</span><p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
+  const questions = Array.isArray(session.review_questions) ? session.review_questions : [];
+  $('phoneReview').insertAdjacentHTML('afterbegin', questions.length ? `<section id="phoneQuestions"><h3>Questions to answer</h3>${questions.map(q => `<form class="phone-row" data-question="${esc(q.id)}"><p>${esc(q.question)}</p><label>Answer <textarea name="answer" maxlength="1000" required ${answering.has(id + ':' + q.id) ? 'disabled' : ''} ${answers.has(id + ':' + q.id) ? 'readonly' : ''}>${esc(answers.get(id + ':' + q.id)?.answer || '')}</textarea></label><button type="submit" ${answering.has(id + ':' + q.id) ? 'disabled' : ''}>Submit answer</button><p role="status"></p></form>`).join('')}</section>` : '');
   if (result.report) {
     try {
       const answer = await client.readCallOutcomes();
@@ -177,6 +180,26 @@ async function start() {
   $('phoneRecord').onclick = () => { if (!$('phoneConsent').checked) { notice('Confirm that everyone was told before recording.'); return; } void run(async () => { await recorder.start({ scope, tour_id, consent_announced_at: new Date().toISOString() }); await acquireWakeLock(); $('phoneConsent').checked = false; }); };
   $('phoneStop').onclick = () => { recorder.stop(); notice('Recording stopped. Review the saved audio before transferring.'); };
   $('phoneOpen').onsubmit = event => { event.preventDefault(); void run(() => review(reviewId($('phoneSession').value.trim()))); };
+  $('phoneCalls').addEventListener('submit', event => {
+    const form = event.target.closest('[data-question]'); if (!form) return;
+    event.preventDefault();
+    const question_id = form.dataset.question, id = currentId, slot = id + ':' + question_id;
+    const answer = form.elements.answer.value.trim(); if (!answer || answering.has(slot)) return;
+    const prior = answers.get(slot);
+    const payload = prior || { idempotency_key: crypto.randomUUID(), session_id: id, question_id, answer };
+    answers.set(slot, payload); answering.add(slot);
+    form.querySelectorAll('button, textarea').forEach(control => control.disabled = true);
+    void (async () => {
+      let message = '';
+      try { await api.answer(id, payload); } catch (error) { message = error.message; }
+      try { if (!disposed && currentId === id) await review(id); } catch { message ||= 'Call review could not be refreshed. Please retry.'; }
+      answering.delete(slot);
+      if (disposed || currentId !== id) return;
+      const current = [...$('phoneReview').querySelectorAll('[data-question]')].find(row => row.dataset.question === question_id);
+      if (current) { current.querySelector('[role=status]').textContent = message; current.querySelector('button').disabled = false; current.querySelector('textarea').disabled = false; current.querySelector('textarea').readOnly = true; }
+      else if (message) notice(message);
+    })();
+  });
   $('phoneCalls').addEventListener('click', event => {
     const button = event.target.closest('button'); if (!button) return;
     if (button.dataset.transfer) void run(async () => {
@@ -201,8 +224,9 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentId && !disposed) void review(currentId).catch(() => notice('Call review could not be refreshed. Please retry.'));
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();
   else if (!wakeLock || wakeLock.released) recorder.stop('hidden');
