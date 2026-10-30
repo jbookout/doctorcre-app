@@ -42,6 +42,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`sh
       const style = await card.evaluate(node => { const s = getComputedStyle(node); return { radius: parseFloat(s.borderRadius), border: parseFloat(s.borderLeftWidth), background: s.backgroundColor }; });
       assert.ok(style.radius > 0 && style.border > 0 && style.background !== 'rgba(0, 0, 0, 0)', `${surface} has a tile surface`);
     }
+    if (surface === 'deals-board') assert.ok((await page.locator('.kanban-card[data-id="d23"]').boundingBox()).height <= 145, 'unchanged board information fits the pre-PR tile height');
     if (surface === 'deals-board') assert.equal(await page.locator('.kanban-card:not(.parked-card) .work-card-status').count(), 0, 'column stage is not a chip');
     if (surface === 'leads') assert.equal(await card.locator('.work-card-body').count(), 0, 'ordinary leads have no empty body');
     if (surface === 'brief') {

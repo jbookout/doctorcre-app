@@ -450,7 +450,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 
 :is(.work-card--tile, .work-card--row, .work-card--stack) { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-3); overflow-wrap: anywhere; }
 .work-card--stack, .work-card--row { border: 0; border-top: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; }
-.work-card--tile { padding: var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
+.work-card--tile { row-gap: 0; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
 :is(.work-card--tile, .work-card--row, .work-card--stack) .work-card-title { grid-column: 1/-1; margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.35 var(--font-text); }
 :is(.work-card--tile, .work-card--row, .work-card--stack) .work-card-meta { grid-column: 1; min-width: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 :is(.work-card--tile, .work-card--row, .work-card--stack) p { margin: 0; }

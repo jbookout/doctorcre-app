@@ -108,8 +108,8 @@ function cardHtml(deal) {
   return workCard({ variant: 'tile', className: 'kanban-card', heading: 'h4',
     attributes: `data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}"`,
     title: `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button>`,
-    meta: `<span class="owner">${esc(actorName(deal.owner))}</span>`,
-    body: `${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}<div class="deal-alert">${renderDealSummary(deal,{today,viewer:state.selfActor})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}` });
+    meta: `<span class="owner">${esc(actorName(deal.owner))}</span>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}`,
+    body: `<div class="deal-alert">${renderDealSummary(deal,{today,viewer:state.selfActor})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}` });
 }
 function rowHtml(deal) {
   const nextStep = noteText(deal.next_step);

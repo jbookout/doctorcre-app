@@ -85,6 +85,7 @@
 .auto-move span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .auto-move button { justify-self: start; padding: 0 var(--space-2); min-height: var(--touch); }
 /* Attention is a status, not the brand colour: a warn rule on top and the words. */
+.kanban-card.work-card--tile .work-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
 .kanban-card[data-attention="true"] { border-top: 2px solid var(--status-warn); }
 .attention-flag { display: inline-flex; align-items: center; min-width: var(--touch); min-height: var(--touch); padding: 0 var(--space-1); border: 0; background: transparent; color: var(--status-warn-ink); font: inherit; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); white-space: nowrap; text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 4px; cursor: pointer; }
 .attention-flag:hover { text-decoration-color: currentColor; }
