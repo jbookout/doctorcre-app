@@ -3,7 +3,7 @@ const PREFIX = '/api/v1/call-sessions';
 export const sessionId = value => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value || '');
 function verifiedSession(value, id) {
   if (value?.schema_version !== 1 || !sessionId(value.session_id) || (id && value.session_id !== id) ||
-      !['pending', 'queued', 'expired', 'transferred', 'ready_review', 'filed'].includes(value.state) ||
+      !['pending', 'queued', 'expired', 'transferred', 'ready_review', 'filed', 'held_review', 'needs_attention'].includes(value.state) ||
       typeof value.transferred !== 'boolean' || typeof value.filed !== 'boolean')
     throw new Error('Call status could not be verified. Saved audio has been kept.');
   return value;

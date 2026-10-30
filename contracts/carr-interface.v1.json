@@ -1620,6 +1620,10 @@
       "follow_up": {
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2753",
         "source_commit": "bd532aae9f85bd52778718c6cc595f37a2cc6d13"
+      },
+      "studio_status": {
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2746",
+        "source_commit": "91bbf3b4c2b516fa693dcd817fccb31c4fb4059b"
       }
     },
     "admission": {
@@ -1650,15 +1654,20 @@
         "expired",
         "transferred",
         "ready_review",
-        "filed"
+        "filed",
+        "needs_attention",
+        "held_review"
       ],
       "fields": [
         "schema_version",
         "session_id",
         "state",
         "filed",
-        "transferred"
-      ]
+        "transferred",
+        "reason",
+        "open_questions"
+      ],
+      "studio_status": "Active Studio states take precedence over transfer states. Reasons are extraction_failed, transcript_unavailable, transient_ceiling, summary_repeats_transcript, or open_review_questions. Budget is reserved for a follow-up."
     },
     "report": {
       "method": "GET",
