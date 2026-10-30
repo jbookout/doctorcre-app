@@ -223,6 +223,13 @@ export function createLiveClient(opts = {}) {
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
+    async prepareTermsComparison(args) {
+      if (!online()) throw Object.assign(new Error('Offline'), { payload: { error: 'offline' } });
+      return sessionCommands.send(JSON.stringify(['prepare-terms-comparison', args.deal_id]), args, async (request, binding) => {
+        const { prepareComparisonHttp } = await import('./terms-comparison-http.js');
+        return prepareComparisonHttp(fetchImpl, request, binding.slice(binding.indexOf(':') + 1), opts.writeTimeoutMs || 10_000);
+      });
+    },
     async listFactReview(args = {}, { signal } = {}) { return rpc('list-fact-review', args, signal); },
     async recordHumanFact(args) { return write('record-human-fact', args); },
     async resolveFactReview(args) { return write('resolve-fact-review', args); },

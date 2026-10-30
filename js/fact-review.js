@@ -43,7 +43,7 @@ function entryHtml(documents, factKey, prefix) {
     <small id="${prefix}-source-hint" class="fact-wide">Transcribe the clause from the stored document. This entry does not verify the document text.</small></div>`;
 }
 function reviewHtml(item, documents, index) {
-  return `<article class="fact-term" data-fact-key="${esc(item.fact_key)}"><header><h3>${esc(FACT_TERMS[item.fact_key]?.label || item.fact_key.replaceAll('_', ' '))}</h3><span class="fact-state">${esc(reviewLabel(item))}</span></header>
+  return `<article class="fact-term" id="term-${esc(item.fact_key)}" tabindex="-1" data-fact-key="${esc(item.fact_key)}"><header><h3>${esc(FACT_TERMS[item.fact_key]?.label || item.fact_key.replaceAll('_', ' '))}</h3><span class="fact-state">${esc(reviewLabel(item))}</span></header>
     <div class="fact-canonical"><small>Canonical value</small><p${item.canonical_fact ? '' : ' class="fact-empty"'}>${item.canonical_fact ? esc(valueText(item.canonical_fact)) : 'No canonical value recorded'}</p></div>
     <div class="fact-observations">${item.observations.map(o => `<section class="fact-observation"><strong>${esc(valueText(o))}</strong>${item.canonical_fact?.observation_ids?.includes(o.id) ? '<span class="fact-state"> · Settled value</span>' : ''}<p class="fact-read">${esc(readLabel(o))}</p>${sourceHtml(o, documents)}</section>`).join('')}</div>
     <button type="button" class="btn" data-review-term${item.pending ? ' hidden' : ''}>Review term</button>
@@ -59,11 +59,14 @@ function reviewHtml(item, documents, index) {
 
 export function mountFactReview(root, { client, entityRef, attachments } = {}) {
   let disposed = false, generation = 0, items = [], writing = false, dirty = false;
-  let documents = [];
+  let documents = [], comparison;
   const pending = new Map();
-  root.innerHTML = '<h2>Terms</h2><p role="status" data-terms-status>Loading terms…</p><div data-terms-list></div><div data-terms-record></div><button type="button" class="btn" data-refresh-terms>Refresh terms</button>';
+  root.innerHTML = '<h2>Terms</h2><p role="status" data-terms-status>Loading terms…</p><div data-terms-comparison></div><div data-terms-list></div><div data-terms-record></div><button type="button" class="btn" data-refresh-terms>Refresh terms</button>';
   const status = root.querySelector('[data-terms-status]');
   const list = root.querySelector('[data-terms-list]');
+  void import('./terms-comparison.js').then(({ mountTermsComparison }) => {
+    if (!disposed) comparison = mountTermsComparison(root.querySelector('[data-terms-comparison]'), { client, entityRef });
+  });
   function setDocuments(attachments) {
     documents = (attachments || []).filter(doc => doc.subject_type === 'deal' && doc.subject_id === entityRef && !doc.deleted_at && doc.id && doc.filename);
     const record = root.querySelector('[data-terms-record]');
@@ -88,7 +91,8 @@ export function mountFactReview(root, { client, entityRef, attachments } = {}) {
         cursor = page.has_more ? page.next_cursor : null;
       } while (cursor);
       items = loaded;
-      list.innerHTML = items.map((item, index) => reviewHtml(item, documents, index)).join('') || '<p>No sourced terms recorded.</p>';
+      list.innerHTML = items.map((item, index) => reviewHtml(item, documents, index)).join('') + Object.entries(FACT_TERMS).filter(([key]) => !items.some(item => item.fact_key === key))
+        .map(([key, term]) => `<section class="fact-term fact-empty" id="term-${key}" tabindex="-1"><h3>${esc(term.label)}</h3><p>No sourced terms recorded.</p></section>`).join('');
       status.textContent = message;
     } catch {
       if (!disposed && current === generation) {
@@ -212,7 +216,7 @@ export function mountFactReview(root, { client, entityRef, attachments } = {}) {
     if (!disposed && !dirty && !writing && !pending.size) setDocuments(nextAttachments);
     return refresh();
   }, dispose() {
-    disposed = true; generation++;
+    disposed = true; generation++; comparison?.dispose();
     root.removeEventListener('submit', submit); root.removeEventListener('change', change); root.removeEventListener('click', click);
     root.removeEventListener('change', markDirty); root.removeEventListener('input', markDirty);
   } };

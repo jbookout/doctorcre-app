@@ -39,6 +39,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Terms in Overview shows canonical values and cited observations. `node --test test/fact-review-client.test.mjs` covers both adapters. `npx playwright test --project=fixtures tests/fixtures/fact-review.spec.mjs --trace=on` resolves the three-document conflict at 390px and 1440px in both themes and writes captures and traces under `.e2e/fixture-playwright/`. It also covers stale evidence, draft retention, uncertain saves, unit preservation and unavailable stored-document metadata. The synthetic `d14` fixture has three stored attachments. Live document names, recording and corrections require a producer attachment-list contract, which the pinned #2739 head does not expose.
 
+- Prepare terms comparison in Terms reads a draft field list from the LOI Grid fill plan. Fields with two confirmed versions are compared automatically; missing versions appear under Remaining work. `node --test test/terms-comparison-client.test.mjs test/terms-comparison-ui.test.mjs test/terms-comparison-browser.test.mjs` covers the pinned HTTP response, refusal reasons, field links, stale snapshots, unavailable service, retained requests and both themes at 390px and 1440px. Synthetic captures are retained under `.github/pr-evidence/WR39.S4.J6/`.
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.

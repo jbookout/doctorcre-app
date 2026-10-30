@@ -292,3 +292,17 @@
 .fact-term form > button { grid-column: 1 / -1; justify-self: start; }
 
 @media (min-width: 1100px) { [data-fact-record] .fact-entry { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+.terms-draft { margin-block: var(--space-3); padding: var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); overflow-wrap: anywhere; }
+.terms-draft > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.terms-draft h3, .terms-draft h4 { margin: 0 0 var(--space-2); }
+.terms-draft > header .fact-state { border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); padding: var(--space-1) var(--space-2); color: var(--fg); }
+.terms-draft-note, .terms-versions { color: var(--fg-muted); font-size: var(--font-size-1); }
+.terms-draft-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-block: var(--space-4); }
+.terms-draft dl { margin: 0; }
+.terms-draft dl > div { padding-block: var(--space-2); border-top: var(--hairline-width) solid var(--hairline); }
+.terms-draft dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.terms-draft dd { margin: var(--space-1) 0 0; }
+.terms-draft dd small { display: block; margin-top: var(--space-1); color: var(--fg-muted); }
+.fact-term[id] { scroll-margin-top: 280px; }
+@media (max-width: 600px) { .terms-draft-groups { grid-template-columns: 1fr; } .fact-term[id] { scroll-margin-top: 80px; } }

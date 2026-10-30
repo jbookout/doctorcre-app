@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.67.0",
+  "version": "1.68.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
@@ -169,7 +169,9 @@
     "/api/tours/*",
     "/api/v1/fact-review/list",
     "/api/v1/fact-review/record",
-    "/api/v1/fact-review/resolve"
+    "/api/v1/fact-review/resolve",
+    "/api/v1/fact-review/comparison",
+    "/api/v1/fact-review/comparison/validate"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -1738,5 +1740,69 @@
     "citations": "Observation source retains document_ref, page_start, page_end, cited_text_sha256, cited_text_expires_at. Expired cited_text is null.",
     "conflict": "version_conflict refuses the write. Refresh canonical_version and review_version and ask the partner to review again.",
     "attachment_read_gap": "The pinned producer exposes no stored deal attachment list or filenames. get-deal-room.documents is prepared-document metadata, not attachment metadata. Live recording/correction and document names remain unavailable until the producer supplies this contract."
+  },
+  "terms_comparison": {
+    "schema_version": "terms-comparison.v1",
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "98dbf7386b570d03de2dd1a0e829400c1cb8df9b",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2760"
+    },
+    "prepare": {
+      "verb": "prepare-terms-comparison",
+      "route": "/api/v1/fact-review/comparison",
+      "method": "POST",
+      "input": [
+        "idempotency_key",
+        "deal_id",
+        "fields"
+      ],
+      "field": [
+        "fact_key",
+        "prior_version",
+        "current_version"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "document_id",
+        "template",
+        "basename",
+        "deal",
+        "status",
+        "owed",
+        "partial",
+        "carried",
+        "edits",
+        "remaining",
+        "human_gate"
+      ]
+    },
+    "validate": {
+      "verb": "validate-terms-comparison",
+      "route": "/api/v1/fact-review/comparison/validate",
+      "input": [
+        "document_id"
+      ],
+      "schema_version": "terms-comparison-validation.v1"
+    },
+    "http_refusal": {
+      "status": 400,
+      "error": "comparison_fact_blocked",
+      "fields": [
+        "field",
+        "reason"
+      ],
+      "reasons": [
+        "missing",
+        "unresolved",
+        "stale_snapshot",
+        "missing_version",
+        "source_not_permitted",
+        "invalid_value"
+      ]
+    },
+    "display": "Read-only LOI Grid fill plan. Only edits contain permitted display values and source labels. No document paths, ids or internal lineage are displayed.",
+    "versions": "Reference fields with confirmed prior and current versions. Use current canonical_version and the greatest confirmed canonical_history version below it. Other fields are named as remaining work and do not block comparable fields."
   }
 }

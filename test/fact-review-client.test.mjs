@@ -103,3 +103,20 @@ test('fixture list pages resolved and pending terms and normalizes a recorded le
   assert.equal(final.observations[0].value, '5');
   assert.equal(final.observations[0].unit, 'years');
 });
+
+test('fixture prepares a draft from two confirmed rent versions', async () => {
+  const client = await fixture();
+  const item = (await client.listFactReview({ entity_ref: 'd14' })).items[0];
+  for (const observation of item.observations.slice(0, 2)) {
+    const current = (await client.listFactReview({ entity_ref: 'd14', include_resolved: true })).items[0];
+    await client.resolveFactReview({ entity_ref: 'd14', fact_key: item.fact_key, base_version: current.canonical_version,
+      review_version: current.review_version, decision: 'approve', observation_id: observation.id,
+      reason: 'Demo comparison confirmation.', idempotency_key: crypto.randomUUID() });
+  }
+  const args = { deal_id: 'd14', fields: [{ fact_key: 'base_rent_per_sf', prior_version: 1, current_version: 2 }], idempotency_key: crypto.randomUUID() };
+  const draft = await client.prepareTermsComparison(args);
+  assert.equal(draft.schema_version, 'terms-comparison.v1');
+  assert.equal(draft.status, 'draft');
+  assert.equal(draft.edits.find(edit => edit.where === 'cell:LOI Grid!C9').text, '25 (nnn)');
+  assert.equal((await client.prepareTermsComparison(args)).document_id, draft.document_id);
+});
