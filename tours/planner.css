@@ -146,3 +146,18 @@
   .planner-page .library-card, .planner-page .widget-actions, .planner-page .market-buttons { display: none; }
   .planner-grid { display: block; }
 }
+
+.client-updates { margin-block: var(--space-3); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.client-updates[hidden] { display: none; }
+.client-updates p { margin: 0 0 var(--space-2); color: var(--fg-muted); }
+.client-updates summary { min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
+.client-update-facts { margin: 0; }
+.client-update-facts dt { margin-top: var(--space-3); font-weight: var(--font-weight-strong); }
+.client-update-facts dd { margin: var(--space-1) 0; }
+.client-name-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.client-name-actions button { flex: 1 1 auto; }
+
+.client-updates summary::before { content: "▸"; margin-right: var(--space-2); }
+.client-updates details[open] > summary::before { content: "▾"; }
+.client-update-row + .client-update-row { border-top: var(--hairline-width) solid var(--hairline); margin-top: var(--space-3); padding-top: var(--space-3); }
+.client-update-row h4 { margin: var(--space-2) 0; }

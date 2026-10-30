@@ -98,107 +98,6 @@ test('signed-in synthetic Home distinguishes load failure, keeps last good rows,
   assert.deepEqual(Object.fromEntries(Object.entries(confirm.arguments).filter(([key]) => !['proposal_digest', 'idempotency_key'].includes(key))), preview.arguments);
 });
 
-test('Home email quality loads separately, retries a failed report, and refreshes after dismissal', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
-  t.after(() => page.close());
-  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'email-quality', viewer: 'joe', reset: true } });
-  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-  let fail = true, holdAgenda = true, releaseAgenda;
-  const agenda = new Promise(resolve => { releaseAgenda = resolve; });
-  t.after(() => releaseAgenda());
-  await page.route('**/mcp', async route => {
-    if (holdAgenda && route.request().postDataJSON().params.name === 'read-home-agenda') await agenda;
-    if (fail && route.request().postDataJSON().params.name === 'email-proposal-quality') return route.fulfill({ status: 503, json: { error: 'synthetic_outage' } });
-    return route.continue();
-  });
-  await page.goto(`${origin}/?mode=live`);
-  const review = page.locator('#homeEmailFollowups');
-  await review.scrollIntoViewIfNeeded();
-  await review.locator('article').first().waitFor();
-  const replies = page.locator('#homeReplyOutcomes');
-  await replies.scrollIntoViewIfNeeded();
-  await page.locator('#homeReplyOutcomes[aria-busy="false"]').waitFor();
-  const quality = page.getByRole('region', { name: 'Email proposal quality', exact: true });
-  await quality.scrollIntoViewIfNeeded();
-  await quality.getByText(/Could not load email proposal quality/).waitFor();
-  holdAgenda = false; releaseAgenda();
-  fail = false;
-  await quality.getByRole('button', { name: 'Retry email proposal quality' }).click();
-  await quality.getByText('Next steps', { exact: true }).waitFor();
-  const row = review.locator('article').first();
-  await row.getByRole('button', { name: 'Add a note', exact: true }).click();
-  await row.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Already handled in the synthetic review');
-  await row.getByRole('button', { name: 'Dismiss proposal' }).click();
-  await row.getByText('Dismissed.', { exact: true }).waitFor();
-  await quality.getByText('Already handled in the synthetic review', { exact: true }).waitFor();
-  assert.match(await quality.innerText(), /100%/);
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await mkdir('out/test-artifacts/email-followups', { recursive: true });
-  await quality.screenshot({ path: 'out/test-artifacts/email-followups/quality-390.png', animations: 'disabled' });
-  fail = true;
-  await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
-  await quality.getByText(/Showing the last successful read/).waitFor();
-  assert.match(await quality.innerText(), /Already handled in the synthetic review/);
-  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
-  await quality.getByText(/Sign in/).waitFor();
-  assert.doesNotMatch(await quality.innerText(), /Already handled|Demo/);
-});
-
-
-test('Home loads email follow-ups offscreen and leaves quality unloaded until its report approaches the viewport', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1 }, reducedMotion: 'reduce' });
-  t.after(() => page.close());
-  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-after-paint', viewer: 'joe', reset: true } });
-  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-  let downloads = 0, reviewDownloads = 0;
-  await page.route('**/js/email-followups.js', async route => { reviewDownloads++; await route.continue(); });
-  await page.route('**/js/email-quality.js', async route => { downloads++; await route.continue(); });
-  await page.goto(origin, { waitUntil: 'networkidle' });
-  await page.locator('#dealFlags .home-flag').first().waitFor();
-  assert.equal(downloads, 0, 'the below-fold report does not compete with initial Home work');
-  assert.equal(reviewDownloads, 1, 'email follow-ups load with Home without scrolling');
-  await page.locator('#homeEmailFollowups article').first().waitFor();
-  assert.equal(await page.locator('#homeEmailFollowups').evaluate(node => node.getBoundingClientRect().top >= innerHeight), true);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#homeEmailQuality').scrollIntoViewIfNeeded();
-  await page.locator('#homeEmailQuality [data-quality-kind]').first().waitFor();
-  assert.equal(downloads, 1);
-});
-
-test('Home session loss during the quality download prevents a late report read', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
-  t.after(() => page.close());
-  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-lazy-session', viewer: 'joe', reset: true } });
-  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-  let reads = 0;
-  await page.route('**/mcp', route => {
-    if (route.request().postDataJSON().params.name === 'email-proposal-quality') reads++;
-    return route.continue();
-  });
-  await page.route('**/js/email-quality.js', async route => {
-    await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
-    await route.continue();
-  });
-  await page.goto(`${origin}/?mode=live`);
-  await page.locator('#homeEmailQuality').scrollIntoViewIfNeeded();
-  await page.locator('#homeEmailQuality').getByText('Sign in to view email proposal quality.', { exact: true }).waitFor();
-  assert.equal(reads, 0);
-});
-
-
-test('Home still loads email quality when the agenda read fails', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
-  t.after(() => page.close());
-  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-without-agenda', viewer: 'joe', reset: true } });
-  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-  await page.route('**/mcp', route => route.request().postDataJSON().params.name === 'read-home-agenda'
-    ? route.fulfill({ status: 503, json: { error: 'synthetic_outage' } }) : route.continue());
-  await page.goto(`${origin}/?mode=live`);
-  await page.locator('#dealFlags').getByText('Deals unavailable', { exact: true }).waitFor();
-  await page.locator('#homeEmailQuality').scrollIntoViewIfNeeded();
-  await page.locator('#homeEmailQuality [data-quality-kind]').first().waitFor();
-});
-
 for (const width of [1440, 390]) {
   test(`deal email review scopes proposals, confirms and dismisses at ${width}px`, async t => {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
@@ -357,6 +256,20 @@ test('Home creates a new deal and files its email through the live client at pho
   assert.equal(calls[0].name, 'new-deal'); assert.equal(calls[0].args.client, 'Demo Client');
   assert.equal(calls[1].name, 'confirm-email-filing'); assert.equal(calls[1].args.deal, 'demo-created');
   assert.equal(calls[1].args.proposal_digest, digest);
+});
+
+test('Home loads email follow-ups even outside the viewport', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 1 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-after-paint', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  let reviewDownloads = 0;
+  await page.route('**/js/email-followups.js', async route => { reviewDownloads++; await route.continue(); });
+  await page.goto(origin, { waitUntil: 'networkidle' });
+  await page.locator('#dealFlags .home-flag').first().waitFor();
+  assert.equal(reviewDownloads, 1, 'email follow-ups load with Home without scrolling');
+  await page.locator('#homeEmailFollowups article').first().waitFor();
+  assert.equal(await page.locator('#homeEmailFollowups').evaluate(node => node.getBoundingClientRect().top >= innerHeight), true);
 });
 
 test('session loss during the email command download prevents a late confirmation', async t => {

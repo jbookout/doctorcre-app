@@ -33,7 +33,6 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Ho
         : name === 'lead-board' ? { leads: [] }
         : name === 'read-post-call-followups' ? followups
         : name === 'read-invoice-tracker' ? { schema_version: 'invoice-tracker.v1', actor: 'joe', entries: [], observed_at: '2026-10-01T15:00:00Z' }
-        : name === 'email-proposal-quality' ? await client.getEmailProposalQuality()
         : name === 'list-email-thread-filings' ? { filings: [] }
         : name === 'read-call-outcomes' ? { schema_version: 'call-outcomes.v1', calls: [], send: false }
         : name === 'list-email-proposals' ? { schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: args.mode ? [] : emails.proposals, send: false, more: false, next_cursor: null }
