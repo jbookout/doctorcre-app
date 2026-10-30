@@ -1006,6 +1006,7 @@ const workspaceTabs = [
   {id:'timeline', label:'Timeline'},
   {id:'correspondence', label:'Correspondence & notes'},
 ];
+const marketTermsViews = new Map();
 let workspaceTab = 'overview';
 let boardScroll = 0;
 let timelineType = '';
@@ -1024,6 +1025,16 @@ function selectWorkspaceTab(id) {
     $(`tab-${tab.id}`).setAttribute('aria-selected', String(selected));
     $(`tab-${tab.id}`).tabIndex = selected ? 0 : -1;
     if ($(`workspace-${tab.id}`)) $(`workspace-${tab.id}`).hidden = !selected;
+  }
+  if (id === 'market-terms' && state.panelDetail) {
+    const deal = state.panelDetail.deal;
+    let view = marketTermsViews.get(deal.id);
+    if (!view) {
+      view = document.createElement('div');
+      marketTermsViews.set(deal.id, view);
+      mountMarketTerms(view, {deal, dealName: ref => state.deals.get(ref)?.name, read: args => state.client.readMarketTerms(args)});
+    }
+    $('workspace-market-terms').append(view);
   }
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
@@ -1200,7 +1211,6 @@ function paintPanel(detail) {
   updateDetailTimestamp();
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
-  mountMarketTerms($('workspace-market-terms'), { deal:detail.deal, read:args => state.client.readMarketTerms(args) });
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
