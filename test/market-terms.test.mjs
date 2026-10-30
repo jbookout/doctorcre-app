@@ -31,3 +31,13 @@ test('empty and undeployed states are explicit', async () => {
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.match(root.textContent, /unavailable until the server update is deployed/);
 });
+
+test('only an amended period is labeled superseded', async () => {
+  const dom = new JSDOM('<div></div>');
+  const root = dom.window.document.querySelector('div');
+  const term = {entity_ref:'d1',fact_key:'rent',value:'25',unit:'USD/SF/year',term_kind:'executed',term_date:'2024-01-01',effective_from:'2024-01-01',effective_to:'2025-01-01',confidence:'human_review',sources:[]};
+  const rows = [term, {...term,effective_from:'2025-01-01',effective_to:null}, {...term,entity_ref:'d2'}];
+  mountMarketTerms(root, {deal:{},read:async () => ({ok:true,schema_version:'market-terms.v1',rows,coverage:{recorded_documents:1,canonical_receipts:3,classified_receipts:3,comparable_deals:2}})});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(root.querySelectorAll('tr.superseded').length, 1);
+});

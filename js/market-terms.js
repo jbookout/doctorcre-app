@@ -18,7 +18,7 @@ export function mountMarketTerms(root, { deal, read }) {
       const coverage = `<p><strong>${data.rows.length} comparable ${data.rows.length === 1 ? "term" : "terms"} across ${esc(c.comparable_deals)} ${c.comparable_deals === 1 ? "deal" : "deals"}.</strong> ${esc(c.classified_receipts)} of ${esc(c.canonical_receipts)} recorded receipts classified, from ${esc(c.recorded_documents)} recorded documents. Archive coverage is unknown.</p>`;
       if (!data.rows.length) { result.innerHTML = `${coverage}<p>No comparable terms match these filters.</p>`; return; }
       const rows = data.rows.map(row => {
-        const superseded = row.effective_to && row.effective_to <= new Date().toISOString().slice(0, 10);
+        const superseded = row.effective_to && row.effective_to <= new Date().toISOString().slice(0, 10) && data.rows.some(next => next.entity_ref === row.entity_ref && next.fact_key === row.fact_key && next.term_kind === row.term_kind && next.effective_from === row.effective_to);
         const number = Number(row.value);
         const value = /^USD/i.test(row.unit || '') && row.value !== '' && Number.isFinite(number) ? invoiceMoney(number) : row.value;
         const source = (row.sources || []).map(s => `${s.document_ref}${s.page_start ? `, p. ${s.page_start}${s.page_end && s.page_end !== s.page_start ? `–${s.page_end}` : ''}` : ''}`).join('; ') || row.context_source?.document_ref || 'Source unavailable';
