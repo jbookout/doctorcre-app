@@ -160,7 +160,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-item { display: grid; justify-content: stretch; gap: var(--space-1); width: 100%; padding: var(--space-3); margin: 0 0 var(--space-2); text-align: left; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); font: var(--font-weight-regular) var(--font-size-1)/1.45 var(--font-text); }
 .app-layout-item strong { font-weight: var(--font-weight-strong); }
 .app-layout-show-all, #appTodayRetry { min-width: var(--touch); min-height: var(--touch); }
-.app-layout-item[hidden], .app-layout-empty[hidden] { display: none; }
+#appTodayOwners[hidden], .app-layout-item[hidden], .app-layout-empty[hidden] { display: none; }
 .app-layout-item span { font-size: var(--font-size-1); color: var(--fg-muted); overflow-wrap: anywhere; }
 @media (hover: hover) { .app-layout-item:hover { background: var(--surface-2); border-color: var(--hairline-strong); } }
 .app-layout-empty { display: block; padding: var(--space-3) 0; color: var(--fg-muted); font: var(--font-size-1) var(--font-text); }
@@ -184,7 +184,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .has-app-layout .pipeline h1 { font-size: var(--font-size-4); }
 .has-app-layout .lead-card { transition: border-color var(--duration-hover) var(--ease-out); }
 .has-app-layout dialog { max-width: none; width: min(1100px, calc(100vw - 32px)); box-sizing: border-box; }
-.has-app-layout #recordPanel { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(1100px, calc(100vw - 32px)); max-height: 85dvh; z-index: 1300; overflow: auto; background: var(--surface-1); color: var(--fg); box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-overlay); }
+.has-app-layout #recordPanel:not(main) { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(1100px, calc(100vw - 32px)); max-height: 85dvh; z-index: 1300; overflow: auto; background: var(--surface-1); color: var(--fg); box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-overlay); }
 .has-app-layout #recordPanel h2, .has-app-layout #recordPanel h3 { color: var(--fg); }
 .has-app-layout #recordPanel summary { color: var(--fg); }
 .has-app-layout #panelBody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
@@ -344,14 +344,12 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 .app-layout-today .receipts-live:empty { display: none; }
 .entry-original { white-space: pre-wrap; }
 .has-app-layout dialog summary { cursor: pointer; color: var(--fg); min-height: var(--touch); display: flex; align-items: center; }
-.has-app-layout .planner-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; width: 100%; }
-.has-app-layout .territory-card { grid-column: 1 / -1; }
 .has-app-layout main.layout { display: block; }
 .app-layout-sidebar .library-scroll { max-height: 250px; }
 .app-layout-sidebar .library-filter input { width: 100%; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   body.report-shell { padding-left: 0; padding-bottom: calc(var(--layout-bottom) + var(--space-3)); }
-  .lead-detail-grid, .has-app-layout .planner-grid { grid-template-columns: 1fr; }
+  .lead-detail-grid { grid-template-columns: 1fr; }
 }
 .has-app-layout .card-move, .has-app-layout .lead-move { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .has-app-layout .card-move:focus, .has-app-layout .lead-move:focus-within { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }

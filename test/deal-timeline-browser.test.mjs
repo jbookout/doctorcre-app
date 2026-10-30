@@ -85,15 +85,15 @@ test('refresh preserves expanded updates, focus, dates and draft through an outa
 test('W9 board/list use the same addressable popup and Home href opens it directly',async t=>{
  const {page,errors}=await open(t,{link:true});
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
- await page.getByLabel('Close deal',{exact:true}).click();
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  assert.equal(new URL(page.url()).searchParams.has('deal'),false);
  await page.locator('#listView').click();await page.locator('.deal-row[data-id="d14"] .card-open').click();
- assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),true);
- await page.getByLabel('Close deal',{exact:true}).click();
+ assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden),true);
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await page.locator('#homeDealFlag').click();
- await page.locator('#recordPanel[open] #detailUpdateForm').waitFor();
+ await page.locator('#recordPanel:not([hidden]) #detailUpdateForm').waitFor();
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
- assert.equal(await page.locator('#recordPanel[open]').count(),1);
+ assert.equal(await page.locator('#recordPanel:not([hidden])').count(),1);
  assert.deepEqual(errors,[]);
 });
 
@@ -103,6 +103,7 @@ test('W9 board/list use the same addressable popup and Home href opens it direct
 for (const theme of ['light','dark']) test(`phone phase labels are legible along a dated rail in ${theme}`,async t=>{
  const {page,errors}=await open(t,{width:390,reducedMotion:'reduce'});
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+ await page.getByRole('tab',{name:'Timeline',exact:true}).click();
  const labels=await page.locator('.phase-rail li').evaluateAll(items=>items.map(item=>{
   const labels=[...item.querySelectorAll('span,abbr')].filter(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return s.display!=='none' && s.clipPath==='none' && r.width>=16 && r.height>=12 && parseFloat(s.fontSize)>=12;});
   return {top:item.getBoundingClientRect().top,labels:labels.map(n=>n.textContent)};
@@ -127,4 +128,23 @@ for(const width of [1440,390]) for(const theme of ['light','dark']) test(`newest
  assert.equal(await page.locator('#recordPanel').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
  await page.locator('.deal-updates').screenshot({path:`out/test-artifacts/newest-updates/history-${width}-${theme}.png`});
  assert.deepEqual(errors,[]);
+});
+
+test('update form offers the current next action and date at phone width', async t => {
+ const {page}=await open(t,{width:390});
+ const deal=await page.evaluate(async()=> (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).deal);
+ const form=page.locator('#detailUpdateForm');
+ assert.equal(await form.getByLabel('Next step').inputValue(), typeof deal.next_step === 'object' ? deal.next_step?.text || '' : deal.next_step || '');
+ assert.equal(await form.getByLabel('Next date').inputValue(),deal.next_date || '');
+ for (const field of [form.getByLabel('Update'),form.getByLabel('Next step'),form.getByLabel('Next date'),form.getByRole('button',{name:'Add update'})]) {
+  assert.ok((await field.boundingBox()).height >= 44);
+ }
+ assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
+ await form.getByLabel('Update').focus();
+ for (const label of ['Next step','Next date']) {
+  await page.keyboard.press('Tab');
+  assert.equal(await form.getByLabel(label).evaluate(e=>e===document.activeElement),true);
+ }
+ for (let i=0; i<4 && !await form.getByRole('button',{name:'Add update'}).evaluate(e=>e===document.activeElement); i++) await page.keyboard.press('Tab');
+ assert.equal(await form.getByRole('button',{name:'Add update'}).evaluate(e=>e===document.activeElement),true);
 });

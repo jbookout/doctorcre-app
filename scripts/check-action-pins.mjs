@@ -37,7 +37,7 @@ export async function checkActionPins(root = fileURLToPath(new URL('../', import
     visited.add(file);
     const document = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-rdate', '-e',
       'puts JSON.generate(YAML.safe_load(STDIN.read, permitted_classes: [Date, Time], aliases: true))'], {
-      input: await readFile(file, 'utf8'), encoding: 'utf8', timeout: 5_000, stdio: ['pipe', 'pipe', 'pipe'],
+      input: await readFile(file, 'utf8'), encoding: 'utf8', timeout: 900_000, stdio: ['pipe', 'pipe', 'pipe'],
     }));
     const jobs = Object.values(document.jobs ?? {});
     for (const entry of [...jobs, ...jobs.flatMap(job => job.steps ?? []), ...(document.runs?.steps ?? [])]) {

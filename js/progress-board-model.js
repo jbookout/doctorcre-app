@@ -76,6 +76,19 @@ export function legendEntries() {
   return groups;
 }
 
+export const WORK_VIEWS = [
+  { id: "active", label: "Active", includes: card => !["queued", "live", "recorded"].includes(card.stage) && (card.health !== "blocked" || card.status === "running") },
+  { id: "completed", label: "Completed", includes: card => ["live", "recorded"].includes(card.stage) },
+  { id: "attention", label: "Needs a hand", includes: card => card.health === "blocked" },
+  { id: "queue", label: "Queue", includes: card => card.stage === "queued" && card.health !== "blocked" },
+  { id: "history", label: "History", includes: () => true },
+];
+export const WORK_LANE_LIMIT = 20;
+
+export function cardsForView(cards, view = "active") {
+  return cards.filter(WORK_VIEWS.find(item => item.id === view)?.includes || WORK_VIEWS[0].includes);
+}
+
 export const SYSTEM_BOARD_ID = "carr-v5";
 const PUBLICATION_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 

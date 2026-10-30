@@ -24,4 +24,4 @@ Use `test/deal-items-browser.test.mjs`, `test/deal-item-sheet.test.mjs`, `test/d
 
 Stored item UUIDs support item commands. The separate phase checklist derives milestones and has no item-completion command. Keep both views distinct.
 
-An empty structured list says No action items recorded. It does not fall back to legacy paragraphs or imply that no work remains. Empty Home attention cannot prove item opening. Use the existing dated synthetic fixtures. Local writes do not prove staging authentication, producer deployment, production backfill, or remote persistence.
+Board cards show the earliest open next action, or the recorded next step, and the latest available activity. Structured items remain under Still needed. A deal with no next step or activity says No next step set; open the deal to add one. Empty Home attention cannot prove item opening. Use the existing dated synthetic fixtures. Local writes do not prove staging authentication, producer deployment, production backfill, or remote persistence.

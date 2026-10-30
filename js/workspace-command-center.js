@@ -13,15 +13,22 @@ import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, re
 import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
 import { mountHomeMeetingReviews } from './home-meeting-reviews.js';
+import { mountHomeWeek } from './home-week-view.js';
+import { meetingDate, meetingTime } from './home-week.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
 const count = value => value === null ? '—' : String(value);
 const AGENDA_PREVIEW = 6;
+const MEETING_TIME_ZONES = [
+  [BUSINESS_TIME_ZONE, 'Chicago (Central)'], ['America/New_York', 'New York (Eastern)'],
+  ['America/Denver', 'Denver (Mountain)'], ['America/Los_Angeles', 'Los Angeles (Pacific)'], ['UTC', 'UTC'],
+];
 const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs }) {
   const $ = id => document.getElementById(id);
+  const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
   let emailQuality = null, emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, emailObserver = null;
   const retirePendingEmail = () => {
     emailRetired = true;
@@ -37,7 +44,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
-  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
+  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard, meetingTimeZone = BUSINESS_TIME_ZONE;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
     openReport: async (session, { signal }) => {
@@ -60,7 +67,16 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
     const key = target.contains(document.activeElement) ? document.activeElement?.dataset.homeKey : null;
+    const dayScroll = new Map([...target.querySelectorAll('[data-home-week-date]')].map(day => [day.dataset.homeWeekDate, day.scrollTop]));
+    const week = target.querySelector('.home-week');
+    const day = week && [...week.querySelectorAll('[data-home-week-date]')].sort((a, b) => Math.abs(a.getBoundingClientRect().left - week.getBoundingClientRect().left) - Math.abs(b.getBoundingClientRect().left - week.getBoundingClientRect().left))[0]?.dataset.homeWeekDate;
     target.innerHTML = html;
+    for (const node of target.querySelectorAll('[data-home-week-date]')) node.scrollTop = dayScroll.get(node.dataset.homeWeekDate) || 0;
+    if (day) {
+      const currentWeek = target.querySelector('.home-week');
+      const currentDay = target.querySelector(`[data-home-week-date="${day}"]`);
+      if (currentWeek && currentDay) currentWeek.scrollLeft += currentDay.getBoundingClientRect().left - currentWeek.getBoundingClientRect().left;
+    }
     if (key) {
       const replacement = [...target.querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === key);
       (replacement || $('homePrimaryAction')).focus();
@@ -77,13 +93,35 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const header = `<header class="home-panel-head"><h2>Upcoming meetings</h2>${client.calendarMeetingPrep ? '<button type="button" class="home-outline" data-prepare-meetings data-home-key="prepare-meetings">Prepare meetings</button>' : ''}${failed ? '<button type="button" class="home-refresh" data-retry-meetings aria-label="Retry meetings" title="Retry meetings">↻</button>' : `<span class="home-period">${count} ${count === 1 ? 'meeting' : 'meetings'}</span>`}</header>`;
     const warnings = (meetings.notes || []).map(note => `<p class="home-meeting-warning">${E(note)}</p>`).join('');
     const rows = meetings.items.map(meeting => {
-      const time = new Date(meeting.start).toLocaleString(undefined, { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', ...(meeting.all_day ? {} : { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) });
+      const time = meeting.all_day
+        ? meetingDate(meeting.start)
+        : meetingTime(meeting.start, meetingTimeZone, true);
       const detail = `${meeting.location || 'Place not provided'} · ${meeting.attendee_count} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}`;
       return `<div class="home-meeting"><time datetime="${E(meeting.start)}">${E(time)}${meeting.all_day ? ' · All day' : ''}</time><strong>${E(meeting.title)}</strong><span>${E(detail)}</span></div>`;
     }).join('');
     const content = failed ? `<p class="home-meeting-failure" role="status">Meetings unavailable</p>`
       : count ? `<div class="home-meetings">${rows}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings' : 'No meetings returned'}</p>`;
-    widget('homeMeetings', header + warnings + content);
+    widget('homeMeetings', header + (!failed && count ? `<p class="home-week-zone">Meeting times · ${E(meetingTimeZone)}</p>` : '') + warnings + content);
+  };
+  const renderCalendar = (agenda, today, signedOut) => {
+    const agendaDeals = scopedDeals(snapshot?.board, scope);
+    const agendaLoading = !signedOut && (!snapshot || snapshot.reads.board?.state === 'loading');
+    const agendaUnavailable = !agenda || (!agenda.entries.length && agenda.failed.length === agendaDeals?.length && agenda.failed.length > 0);
+    const agendaPartial = agenda && (agenda.failed.length > 0 || agenda.undated.length > 0);
+    const agendaItems = ({ all: agenda?.upcoming, today: agenda?.dueToday, overdue: agenda?.overdue })[agendaView]?.filter(entry => entry.type === 'date') || [];
+    const agendaMessage = signedOut ? 'Sign in to view calendar'
+      : agendaLoading ? 'Updating calendar…'
+      : agendaUnavailable ? 'Calendar unavailable'
+      : agendaPartial ? 'Some dates unavailable or missing'
+      : !agendaItems.length ? ({ all: 'No calendar dates', today: 'No dates due today', overdue: 'No overdue dates' })[agendaView] : '';
+    const agendaRetry = !signedOut && !agendaLoading && (agendaUnavailable || agenda?.failed.length);
+    $('homeCalendar').setAttribute('aria-busy', String(Boolean(agendaLoading)));
+    const weekContent = !signedOut && (agenda || calendar && calendar.state !== 'unavailable') ? workingWeek.html({ agenda, calendar, today, timeZone: meetingTimeZone }) : '';
+    if (!weekContent) workingWeek.clear();
+    const timezoneControl = weekContent && ['ready', 'partial'].includes(calendar?.state) && calendar.items.some(meeting => !meeting.all_day) ? `<label class="home-meeting-zone">Meeting timezone<select data-meeting-timezone data-home-key="meeting-timezone">${MEETING_TIME_ZONES.map(([zone, label]) => `<option value="${zone}"${zone === meetingTimeZone ? ' selected' : ''}>${label}</option>`).join('')}</select></label>` : '';
+    const calendarContent = timezoneControl + weekContent + (agenda?.entries.length ? `<div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(`/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">Date</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '');
+
+    widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${agenda && !signedOut ? `<div class="scope-switch" role="group" aria-label="Agenda view">${[['all', 'All dates'], ['today', 'Today'], ['overdue', 'Overdue']].map(([value, label]) => `<button type="button" class="scope-option${agendaView === value ? ' on' : ''}" data-home-key="agenda:view:${value}" data-agenda-view="${value}" aria-pressed="${agendaView === value}">${label}</button>`).join('')}</div>` : ''}${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar</button>` : ''}`);
   };
   const render = () => {
     replyOutcomes?.syncActor();
@@ -98,7 +136,10 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     renderMeetings(signedOut);
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
-    catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
+    catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar unavailable.'; }
+    const tasks = agenda?.briefTasks || [];
+    const briefMessage = signedOut ? 'Sign in to view tasks' : !agenda && (!snapshot || snapshot.reads.board?.state === 'loading') ? 'Updating tasks…' : !agenda ? 'Tasks unavailable' : agenda.failed.length ? 'Some tasks unavailable' : !tasks.length ? 'No open tasks' : '';
+    widget('homeBrief', `<header class="home-panel-head"><h2>Your brief</h2>${agenda && !signedOut && !agenda.failed.length ? `<span class="home-period">${tasks.length} open</span>` : ''}</header>${tasks.map(task => `<a class="home-brief-card" data-home-key="brief:${E(task.key)}" href="${E(dealHref(task.deal_id))}"><strong>${E(task.label)}</strong><span>${E(task.deal_name)}</span>${task.owner ? `<span>${E(({ joe: 'Joe', dell: 'Dell' })[task.owner] || task.owner)}</span>` : ''}<span>${task.day ? `Due <time datetime="${E(task.day)}">${E(dateLabel(task.day))}</time>` : 'No due date'}</span></a>`).join('')}${briefMessage ? `<p class="home-empty" role="status">${briefMessage}</p>` : ''}`);
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;
@@ -109,27 +150,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const invoiceUnavailable = snapshot?.reads?.invoices?.state === 'error';
       widget('homeInvoices', overdue.length ? `<header class="home-panel-head"><h2>Invoice attention · ${overdue.length}</h2><a class="home-outline" href="/invoices">Invoices <span aria-hidden="true">↗</span></a></header><div class="home-flags">${overdue.map(row => `<a class="home-flag" data-home-key="invoice:${E(row.key)}" href="${E(invoiceHref(row.key))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(row.name)}</strong><span>${E(invoiceMoney(row.amount))} · overdue since ${E(invoiceDate(row.due_on))}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('')}</div>` : invoiceUnavailable && !signedOut ? '<header class="home-panel-head"><h2>Invoice attention</h2></header><p class="home-empty">Invoices unavailable</p>' : null);
     }
-    const agendaDeals = scopedDeals(snapshot?.board, scope);
-    const agendaLoading = !signedOut && (!snapshot || snapshot.reads.board?.state === 'loading');
-    const agendaUnavailable = !agenda || (!agenda.entries.length && agenda.failed.length === agendaDeals?.length && agenda.failed.length > 0);
-    const agendaPartial = agenda && (agenda.failed.length > 0 || agenda.undated.length > 0);
-    const agendaItems = ({ all: agenda?.upcoming, today: agenda?.dueToday, overdue: agenda?.overdue })[agendaView] || [];
-    const agendaMessage = signedOut ? 'Sign in to view calendar and tasks'
-      : agendaLoading ? 'Updating calendar and tasks…'
-      : agendaUnavailable ? 'Calendar and tasks unavailable'
-      : agendaPartial ? 'Some dates unavailable or missing'
-      : !agendaItems.length ? ({ all: 'No calendar dates or tasks', today: 'No dates or tasks due today', overdue: 'No overdue dates or tasks' })[agendaView] : '';
-    const agendaRetry = !signedOut && !agendaLoading && (agendaUnavailable || agenda?.failed.length);
-    $('homeCalendar').setAttribute('aria-busy', String(Boolean(agendaLoading)));
-    const calendarContent = agenda?.entries.length ? `<a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '';
-
-    widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${agenda && !signedOut ? `<div class="scope-switch" role="group" aria-label="Agenda view">${[['all', 'All dates & tasks'], ['today', 'Today'], ['overdue', 'Overdue']].map(([value, label]) => `<button type="button" class="scope-option${agendaView === value ? ' on' : ''}" data-home-key="agenda:view:${value}" data-agenda-view="${value}" aria-pressed="${agendaView === value}">${label}</button>`).join('')}</div>` : ''}${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar and tasks</button>` : ''}`);
+    renderCalendar(agenda, today, signedOut);
     const leads = signedOut ? [] : topNewLeads(snapshot?.leads, { scope, actor: snapshot?.board?.actor, now: now() });
     leadEntries = new Map(leads.map(lead => [lead.id, lead]));
     widget('homeLeads', leads.length ? `<header class="home-panel-head"><h2>Recent arrivals</h2><span class="home-period">7 days</span><a class="home-outline" href="/leads">Prospecting queue</a></header><svg class="home-lead-scores" viewBox="0 0 600 42" role="img" aria-label="Relative scores of recent arrivals">${leads.map((lead, i) => `<rect class="score-track" x="${i * 200}" y="10" width="186" height="12" rx="6"/><rect x="${i * 200}" y="10" width="${Math.max(0, lead.score) / Math.max(1, ...leads.map(row => row.score)) * 186}" height="12" rx="6"/>`).join('')}</svg><div class="home-lead-list">${leads.map((lead, i) => `<button type="button" data-lead="${E(lead.id)}" data-home-key="lead:${E(lead.id)}" class="home-lead"><span class="home-lead-rank">${i + 1}</span><div><strong>${E(lead.name)}</strong><span>${E([lead.specialty, lead.city].filter(Boolean).join(' · '))}</span></div><span class="home-score"><b>${E(lead.score)}</b><small>Score</small></span></button>`).join('')}</div>` : null);
     if ($('homeIntroductions')) {
       const suggestions = signedOut ? [] : introductionSuggestions(snapshot?.relationships, {scope,actor:snapshot?.board?.actor,now:now()});
-      widget('homeIntroductions', suggestions.length ? `<header class="home-panel-head"><h2>Suggested introductions</h2><a class="home-icon-link" href="/relationships" aria-label="Open relationships">↗</a></header><div class="relationship-intro-list">${suggestions.map(s=>`<button type="button" class="relationship-card" data-intro-node="${E(s.to)}" data-home-key="intro:${E(s.id)}"><span class="intro-route">${E(introductionRouteLabel(s.path))}</span><strong>${E(s.reason)}</strong></button>`).join('')}</div>` : null);
+      widget('homeIntroductions', suggestions.length ? `<header class="home-panel-head"><h2>Suggested introductions</h2><a class="home-icon-link" href="/relationships" aria-label="Open relationships">↗</a></header><div class="relationship-intro-list">${suggestions.map(s=>`<button type="button" class="relationship-card" data-intro-node="${E(s.to)}" data-home-key="intro:${E(s.id)}"${relationshipDialog ? '' : ' disabled'}><span class="intro-route">${E(introductionRouteLabel(s.path))}</span><strong>${E(s.reason)}</strong></button>`).join('')}</div>` : null);
       if (signedOut || snapshot?.reads?.relationships?.state === 'error') relationshipDialog?.clear();
       else if(snapshot?.relationships) relationshipDialog?.update(snapshot.relationships);
     }
@@ -217,7 +244,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
   });
+  $('homeCalendar').addEventListener('change', event => {
+    const choice = event.target.closest('[data-meeting-timezone]');
+    if (!choice || !MEETING_TIME_ZONES.some(([zone]) => zone === choice.value)) return;
+    meetingTimeZone = choice.value;
+    render();
+  });
   $('homeCalendar').addEventListener('click', event => {
+    if (workingWeek.click(event)) return;
     const view = event.target.closest('[data-agenda-view]');
     if (view) {
       agendaView = view.dataset.agendaView;
@@ -253,7 +287,11 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       && value.items.every(row => row && typeof row.title === 'string' && typeof row.start === 'string' && Number.isFinite(Date.parse(row.start))
         && (row.location == null || typeof row.location === 'string') && Number.isSafeInteger(row.attendee_count) && row.attendee_count >= 0);
     calendar = value == null ? null : valid ? value : { state: 'unavailable', items: [] };
+    const today = localToday(new Date(now()));
+    let agenda = null;
+    try { if (!snapshot?.unauthorized) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); } catch {}
     renderMeetings(snapshot?.unauthorized);
+    renderCalendar(agenda, today, snapshot?.unauthorized);
   };
   $('homeMeetings')?.addEventListener('click', async event => {
     if (event.target.closest('[data-retry-meetings]')) document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar'));
@@ -264,10 +302,16 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const { mountMeetingPreparation } = await import('./meeting-preparation.js');
       if (disposed || epoch !== prepEpoch) return;
       meetingPrep ||= mountMeetingPreparation({ document, window, client });
-      meetingPrep.open(button);
+      meetingPrep.open(button, meetingTimeZone);
     } catch { if (!disposed && epoch === prepEpoch) { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Meeting preparation unavailable. Try Prepare meetings again.'; } }
   });
-  const clearCalendar = () => { prepEpoch++; meetingPrep?.clear(); calendar = null; renderMeetings(true); };
+  const clearCalendar = () => {
+    prepEpoch++; sequence++; meetingPrep?.clear(); calendar = null; workingWeek.clear();
+    snapshot = { unauthorized: true, loading: false, board: null, details: new Map(), reads: { board: { state: 'error' } } };
+    updatedAt = null; snapshotDocObservedAt = null; pageDocContext?.clear();
+    selectedLead = null; $('homeDetail').close(); $('homeDetailBody').replaceChildren(); relationshipDialog?.clear();
+    render();
+  };
   document.addEventListener('doctorcre:brief-calendar', updateCalendar);
   document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
   window.addEventListener('doctorcre-session-invalidated', clearCalendar);
@@ -333,7 +377,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   if ($('homeEmailFilings') && client.listEmailThreadFilings) emailObserver.observe($('homeEmailFilings'));
   if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); emailQuality?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); emailQuality?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
@@ -349,10 +393,20 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
   // The cards still waiting are decided in Call Mode's post-call report.
-  const openCards = () => {
-    const button = document.getElementById('callModeButton');
-    if (button && !button.hidden) button.click();
-    else toast('Open Call Mode on the Mac that recorded the call to decide them.');
+  const lifetime = new AbortController();
+  const { signal } = lifetime;
+  const openCards = async session => {
+    try {
+      const { mountGlobalCallMode } = await import('./global-call-mode.js');
+      if (signal.aborted) return;
+      const call = await mountGlobalCallMode(document);
+      if (signal.aborted) return;
+      if (!await call.open({ session, signal }) && !signal.aborted) toast('Open Call Mode on the Mac that recorded the call to decide them.');
+    } catch {
+      if (!signal.aborted) toast('The call report could not open. Try again on the Mac that recorded this call.');
+    }
   };
-  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }).refresh();
+  const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }) : null;
+  window.addEventListener('doctorcre-session-invalidated', () => { lifetime.abort(); callOutcomes?.dispose(); }, { once: true });
+  callOutcomes?.refresh();
 }

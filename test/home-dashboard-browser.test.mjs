@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -25,7 +25,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   // Virtual time pauses CSS transitions. Data journeys use reduced motion so
   // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW });
-  if (!firstOpen) await page.addInitScript(() => {
+  if (!firstOpen && !freshBrief) await page.addInitScript(() => {
     if (!localStorage.getItem('doctorcre:morning:joe')) localStorage.setItem('doctorcre:morning:joe', JSON.stringify({ day: '2026-10-01', lastShownAt: '2026-10-01T14:00:00Z', since: '2026-09-30T17:00:00Z' }));
   });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
@@ -49,7 +49,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
-      return { schema_version: 'home-agenda.v1', ...board, deals: await Promise.all(board.deals.map(async deal => ({
+      return { ...board, schema_version: 'home-agenda.v1', deals: await Promise.all(board.deals.map(async deal => ({
         ...deal, ...await handlers['get-deal-room']({ deal: deal.id }).catch(error => { if (detailFailure === 'partial') return { critical_dates: null, next_actions: null }; throw error; }),
       }))) };
     },
@@ -177,14 +177,14 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
 
 test('PR124 R1 generated Home flag and task links open the requested record through the deployed route', async t => {
   const { page, errors } = await open(t, { origin: 'https://app.doctorcre.com' });
-  for (const selector of ['.home-flag h3 a', '.home-agenda a:has(.home-item-type:text-is("Task"))']) {
+  for (const selector of ['.home-flag h3 a', '#homeBrief a']) {
     await page.locator(selector).first().waitFor();
     const link = page.locator(selector).first();
     const id = new URL(await link.getAttribute('href'), page.url()).searchParams.get('deal');
     assert.ok(id);
     await link.click();
-    await page.locator('.kanban-card').first().waitFor();
-    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm') && document.querySelector('#detailOwner'), id);
+    await page.locator('.kanban-card').first().waitFor({state:'attached'});
+    await page.waitForFunction(id => !document.querySelector('#recordPanel')?.hidden && document.querySelector('#detailUpdateForm') && document.querySelector('#detailOwner'), id);
     const detail = await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail);
     assert.equal(detail.deal.id, id);
     assert.equal(await page.locator('#panelTitle').textContent(), detail.deal.name);
@@ -226,8 +226,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.equal(await page.getByRole('link', { name: 'Control Room', exact: true }).count(), 1);
     if (width <= 760) await page.keyboard.press('Escape');
     assert.equal(await page.locator('.home-week .home-day').count(), 7);
-    // The week link names its destination before the day tiles it wraps.
-    assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
+    assert.equal(await page.getByRole('region', { name: 'Calendar', exact: true }).getByRole('link', { name: 'Open Calendar', exact: true }).getAttribute('href'), '/calendar');
     assert.equal(await page.locator('.home-lead').count(), 3);
     assert.equal(await page.locator('.home-flags .home-flag').count(), 3);
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
@@ -294,8 +293,8 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
   // Recover only after the failing refresh ends: a resume during it joins that read.
   await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeCalendar').isVisible(), true);
-  assert.match(await page.locator('#homeCalendar').textContent(), /Calendar and tasks unavailable/);
-  assert.equal(await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).isVisible(), true);
+  assert.match(await page.locator('#homeCalendar').textContent(), /Calendar unavailable/);
+  assert.equal(await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar', exact: true }).isVisible(), true);
   state.failBoard(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts').textContent));
@@ -314,7 +313,7 @@ test('a flagged Home deal opens that exact Deals record; unknown IDs show a fail
   assert.equal(href, '/deals?deal=d14');
   // Keep this synthetic test on the fixture adapter on the receiving page.
   await page.locator('.home-flag h3 a').first().click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
+  await page.waitForFunction(() => !document.querySelector('#recordPanel')?.hidden && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd14');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Surgical Practice/);
   await page.goto('http://localhost/deals?deal=unknown');
@@ -353,13 +352,13 @@ for (const width of [320, 390]) test(`phone agenda keeps its loading space ahead
   for (const ms of [10_001, 10_001, 5_001]) { await page.clock.runFor(ms); await page.waitForTimeout(20); }
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await calendar.getAttribute('aria-busy'), 'false');
-  assert.match(await calendar.textContent(), /Calendar and tasks unavailable/);
+  assert.match(await calendar.textContent(), /Calendar unavailable/);
   assert.ok((await calendar.boundingBox()).height < 400, 'an unavailable agenda releases its loading space');
   assert.equal(await page.locator('#homeInvoices').isVisible(), true);
   await screenshot(page, `phone-agenda-unavailable-${width}`);
   responses.set('read-home-agenda', { schema_version: 'home-agenda.v1', actor: 'joe', deals: [] });
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => document.querySelector('#homeCalendar').textContent.includes('No calendar dates or tasks'));
+  await page.waitForFunction(() => document.querySelector('#homeCalendar').textContent.includes('No calendar dates'));
   assert.equal(await calendar.getAttribute('aria-busy'), 'false');
   assert.ok((await calendar.boundingBox()).height < 400, 'a verified empty agenda stays compact');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
@@ -408,14 +407,14 @@ test('R7 linked Deals detail refusal or timeout cannot prevent board and feed po
       && request.postDataJSON()?.params?.name === 'get-deal-room'
       && new URL(request.frame().url()).pathname === '/deals');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
-    await page.locator('.kanban-card').first().waitFor();
+    await page.locator('.kanban-card').first().waitFor({state:'attached'});
     await firstFeed;
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
     await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
     assert.match(await page.locator('#panelBody').textContent(), /Updates temporarily unavailable/);
-    assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Close deal', exact: true }).isVisible(), true);
+    assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Back to deals', exact: true }).isVisible(), true);
     const before = [state.boardReads, state.feedReads];
     const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'deal-room-board');
@@ -492,11 +491,11 @@ test('R13 phone lead detail wraps specialty, maximum-length names and metadata w
 
 test('R14 a task with no critical dates opens its exact deal with its next action', async t => {
   const { page } = await open(t, { tasksOnly: true });
-  const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
+  const task = page.locator('[data-home-key="brief:task:demo-task-d01"]');
   await task.waitFor();
   assert.equal(await task.getAttribute('href'), '/deals?deal=d01');
   await task.click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
+  await page.waitForFunction(() => !document.querySelector('#recordPanel')?.hidden && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
   assert.equal(await page.locator('.deal-current-action strong').textContent(), 'Confirm fictional requirements');
@@ -518,7 +517,7 @@ test('R12 malformed tasks retain independent widgets and settled agenda reports 
 test('R9 agenda focus survives independent responses while the shared board is still loading', async t => {
   const { page } = await open(t, { delayBoard: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
+  const task = page.locator('[data-home-key="brief:task:demo-task-d01"]');
   await task.focus();
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
@@ -561,17 +560,17 @@ for (const failure of [null, '503']) test(`Slice A Calendar distinguishes confir
  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
  const calendar = page.locator('#homeCalendar');
  assert.equal(await calendar.isVisible(), true);
- assert.match(await calendar.textContent(), /Calendar & tasks/);
+ assert.match(await calendar.textContent(), /Calendar/);
  if (!failure) {
-  assert.match(await calendar.textContent(), /No .*dates.*tasks/i);
+  assert.match(await calendar.textContent(), /No .*dates/i);
   assert.doesNotMatch(await calendar.textContent(), /unavailable|updating/i);
  } else {
   assert.match(await calendar.textContent(), /unavailable/i);
-  assert.doesNotMatch(await calendar.textContent(), /No .*dates.*tasks/i);
+  assert.doesNotMatch(await calendar.textContent(), /No .*dates/i);
   state.failDetails(null);
   const before = calls.length;
-  await calendar.getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
-  await page.waitForFunction(() => /No .*dates.*tasks/i.test(document.querySelector('#homeCalendar').textContent));
+  await calendar.getByRole('button', { name: 'Retry calendar', exact: true }).click();
+  await page.waitForFunction(() => /No .*dates/i.test(document.querySelector('#homeCalendar').textContent));
   const retried = calls.slice(before);
   assert.ok(retried.includes('read-home-agenda'));
   assert.equal(retried.includes('get-deal-room'), false);
@@ -585,7 +584,7 @@ test('Slice A Calendar stays visible while all detail reads are pending', async 
  const { page } = await open(t, { hangDetails: true });
  assert.equal(await page.locator('#homeCalendar').isVisible(), true);
  assert.match(await page.locator('#homeCalendar').textContent(), /updating|loading/i);
- assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /No .*dates.*tasks/i);
+ assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /No .*dates/i);
 });
 
 
@@ -595,8 +594,8 @@ test('Slice A Calendar with successful empty details and failed details stays pa
  const calendar = page.locator('#homeCalendar');
  assert.equal(await calendar.isVisible(), true);
  assert.match(await calendar.textContent(), /Some dates unavailable or missing/);
- assert.doesNotMatch(await calendar.textContent(), /No calendar dates or tasks|Calendar and tasks unavailable/);
- assert.equal(await calendar.getByRole('button', { name: 'Retry calendar and tasks', exact: true }).isEnabled(), true);
+ assert.doesNotMatch(await calendar.textContent(), /No calendar dates|Calendar unavailable/);
+ assert.equal(await calendar.getByRole('button', { name: 'Retry calendar', exact: true }).isEnabled(), true);
 });
 
 for (const status of [401, 403]) test(`Slice A Calendar retry honors authorization refusal: ${status}`, async t => {
@@ -606,7 +605,7 @@ for (const status of [401, 403]) test(`Slice A Calendar retry honors authorizati
  await page.locator('.home-lead').first().click();
  await page.keyboard.press('Escape');
  state.failDetails(status);
- await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
+ await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar', exact: true }).click();
  await page.waitForURL('**/public-shell/session-ended.html');
  assert.equal(await page.locator('#homeCalendar,#homeLeads,#homeDetail').count(), 0);
  assert.match(await page.locator('body').textContent(), /Session ended/);
@@ -623,126 +622,40 @@ test('Slice A Calendar retry clears unrelated private data when the board actor 
  await page.keyboard.press('Escape');
  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', actor: 'dell', deals: board.deals.map(deal => ({ ...deal, critical_dates: [], next_actions: [] })) });
  state.failDetails(null);
- await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
+ await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar', exact: true }).click();
  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
  assert.equal(await page.locator('#homeLeads').isVisible(), false);
  assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
 });
 
-for (const width of [1440, 390]) test(`Home Today filters and expands daily work without losing the complete agenda at ${width}`, async t => {
+for (const width of [1440, 390]) test(`Home calendar filters dates while tasks stay in the brief at ${width}`, async t => {
   const { page, responses, errors } = await open(t, { width });
   const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
-  const due = Array.from({ length: 8 }, (_, i) => ({ id: `demo-due-${i}`, description: `Demo due ${i}`, status: 'open', owner: 'joe', due_on: '2026-10-01' }));
   const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe',
-    critical_dates: [{ id: 'demo-future-date', due_on: '2026-10-03', status: 'open', note: 'Demo future date' }],
-    next_actions: [...Array.from({ length: 7 }, (_, i) => ({ ...due[0], id: `demo-old-${i}`, description: `Demo overdue ${i}`, due_on: '2026-09-30' })), ...due, { ...due[0], id: 'demo-undated', description: 'Demo undated', due_on: null }, { ...due[0], id: 'demo-future', description: 'Demo future', due_on: '2026-10-02' }] };
+    critical_dates: [
+      { id: 'missed', due_on: '2026-09-30', status: 'open', note: 'Demo missed date' },
+      ...Array.from({ length: 8 }, (_, i) => ({ id: `today-${i}`, due_on: '2026-10-01', status: 'open', note: `Demo date ${i}` })),
+      { id: 'future', due_on: '2026-10-03', status: 'open', note: 'Demo future date' },
+    ], next_actions: [{ id: 'task', due_on: null, status: 'open', description: 'Demo undated task', owner: 'joe' }] };
   responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [deal] });
   await page.locator('#refreshHome').click();
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   const calendar = page.locator('#homeCalendar');
-  const all = calendar.getByRole('button', { name: 'All dates & tasks', exact: true });
-  const today = calendar.getByRole('button', { name: 'Today', exact: true });
-  assert.equal(await all.count(), 1);
-  assert.equal(await all.getAttribute('aria-pressed'), 'true');
-  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo overdue 0', 'Demo overdue 1', 'Demo overdue 2', 'Demo overdue 3', 'Demo overdue 4', 'Demo overdue 5']);
-  await calendar.getByRole('button', { name: 'Show all 18', exact: true }).click();
-  assert.equal(await page.locator('#homeAgenda a').count(), 18);
-  await today.click();
-  assert.equal(await today.getAttribute('aria-pressed'), 'true');
-  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo due 0', 'Demo due 1', 'Demo due 2', 'Demo due 3', 'Demo due 4', 'Demo due 5']);
-  assert.equal(await page.locator('#homeAgenda a').first().getAttribute('href'), '/deals?deal=d01');
-  const week = await page.locator('.home-week').textContent();
-  await calendar.getByRole('button', { name: 'Show all 8', exact: true }).click();
-  assert.equal(await page.locator('#homeAgenda a').count(), 8);
-  assert.equal(await page.locator('#homeAgenda a').nth(6).evaluate(node => document.activeElement === node), true);
-  await today.focus();
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.equal(await today.evaluate(node => document.activeElement === node), true);
-  assert.equal(await page.locator('#homeAgenda a').count(), 8);
-  await all.click();
+  await calendar.getByRole('button', { name: 'Today', exact: true }).click();
   assert.equal(await page.locator('#homeAgenda a').count(), 6);
-  await calendar.getByRole('button', { name: 'Show all 18', exact: true }).click();
-  assert.ok((await page.locator('#homeAgenda strong').allTextContents()).includes('Demo undated'));
-  assert.equal(await page.locator('.home-week').textContent(), week);
-  await today.click();
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await screenshot(page, `today-${width}`);
-  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, next_actions: deal.next_actions.filter(row => row.due_on === null) }] });
-  await page.locator('#refreshHome').click();
-  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.equal(await page.locator('#homeAgenda a').count(), 0);
-  assert.match(await calendar.textContent(), /No dates or tasks due today/);
-  assert.equal(await calendar.getByRole('button', { name: /Show all/ }).count(), 0);
-  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: null }] });
-  await page.locator('#refreshHome').click();
-  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.match(await calendar.textContent(), /unavailable/);
-  assert.doesNotMatch(await calendar.textContent(), /No dates or tasks due today/);
-  assert.deepEqual(errors, []);
-});
-
-for (const width of [1440, 390]) test(`Home Overdue isolates missed work and retains scope, refresh and recovery at ${width}`, async t => {
-  const { page, responses, errors } = await open(t, { width });
-  const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
-  const task = (id, due_on, extra = {}) => ({ id, due_on, description: `Demo ${id}`, status: 'open', owner: 'joe', ...extra });
-  const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe', workspace_kind: 'local', account_client_id: null, next_date: '2026-10-02',
-    critical_dates: [{ id: 'demo-old-date', due_on: '2026-09-29', status: 'open', note: 'Demo missed date' }],
-    next_actions: [
-      ...Array.from({ length: 8 }, (_, i) => task(`overdue-${i}`, '2026-09-30', { owner: i === 7 ? 'dell' : 'joe' })),
-      task('today', '2026-10-01'), task('future', '2026-10-02'), task('undated', null),
-      task('held', '2026-09-28', { hold_until: '2026-10-02' }), task('done', '2026-09-28', { status: 'done' }),
-    ] };
-  const refresh = async () => {
-    await page.locator('#refreshHome').click();
-    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  };
-  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [deal] });
-  await refresh();
-  const calendar = page.locator('#homeCalendar');
-  const overdue = calendar.getByRole('button', { name: 'Overdue', exact: true });
-  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: 1/);
-  assert.equal(await page.locator('#dealFlags .home-flag h3 a').count(), 1);
-  assert.equal(await overdue.count(), 1);
-  assert.equal(await calendar.getByRole('button', { name: 'All dates & tasks', exact: true }).getAttribute('aria-pressed'), 'true');
-  const week = await page.locator('.home-week').textContent();
-  await overdue.click();
-  assert.equal(await overdue.getAttribute('aria-pressed'), 'true');
-  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo missed date', 'Demo overdue-0', 'Demo overdue-1', 'Demo overdue-2', 'Demo overdue-3', 'Demo overdue-4']);
-  assert.equal(await page.locator('#homeAgenda a').first().getAttribute('href'), '/calendar?day=2026-09-29&d=2026-09-29');
-  assert.equal(await page.locator('#homeAgenda a').nth(1).getAttribute('href'), '/deals?deal=d01');
-  await calendar.getByRole('button', { name: 'Show all 9', exact: true }).click();
-  assert.equal(await page.locator('#homeAgenda a').count(), 9);
-  assert.equal(await page.locator('#homeAgenda a').nth(6).evaluate(node => document.activeElement === node), true);
-  await overdue.focus();
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.equal(await overdue.evaluate(node => document.activeElement === node), true);
-  assert.equal(await page.locator('#homeAgenda a').count(), 9);
-  await page.getByRole('button', { name: 'Just me', exact: true }).click();
   await calendar.getByRole('button', { name: 'Show all 8', exact: true }).click();
   assert.equal(await page.locator('#homeAgenda a').count(), 8);
-  assert.ok(!(await page.locator('#homeAgenda strong').allTextContents()).includes('Demo overdue-7'));
-  assert.equal(await page.locator('.home-week').textContent(), week);
+  assert.equal(await page.locator('#homeAgenda a').nth(6).evaluate(node => document.activeElement === node), true);
+  assert.equal(await page.locator('#homeAgenda a').first().getAttribute('href'), '/calendar?day=2026-10-01&d=2026-10-01');
+  await calendar.getByRole('button', { name: 'Overdue', exact: true }).click();
+  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo missed date']);
+  assert.equal(await page.getByText('Demo undated task', { exact: true }).count(), 1);
+  assert.equal(await page.locator('#homeBrief').getByText('Demo undated task', { exact: true }).isVisible(), true);
+  await page.getByRole('button', { name: 'Just me', exact: true }).click();
+  assert.equal(await page.locator('#homeBrief').getByText('Demo undated task', { exact: true }).count(), 1);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
-  for (const theme of ['light', 'dark']) {
-    await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
-    await screenshot(page, `overdue-${width}-${theme}`);
-  }
-  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: [task('today', '2026-10-01')] }] });
-  await refresh();
-  assert.equal(await page.locator('#homeAgenda a').count(), 0);
-  assert.match(await calendar.textContent(), /No overdue dates or tasks/);
-  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: null }] });
-  await refresh();
-  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: —/);
-  assert.match(await page.locator('#dealFlags').textContent(), /Overdue local deals unavailable/);
-  assert.match(await calendar.textContent(), /unavailable/);
-  assert.doesNotMatch(await calendar.textContent(), /No overdue dates or tasks/);
   assert.deepEqual(errors, []);
 });
-
 
 test('Home shows upcoming meeting time, title, place and attendee count', async t => {
   const { page, errors } = await open(t, { delayHome: true, calendar: { state: 'ready', notes: [], items: [
@@ -846,7 +759,7 @@ for (const wake of ['visibility', 'online']) test(`Home retains meetings during 
   assert.deepEqual(errors, []);
 });
 
-for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Upcoming meetings is compact and above the fold at ${width}px ${theme}`, async t => {
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Upcoming meetings stays compact after the brief at ${width}px ${theme}`, async t => {
   const { page, errors } = await open(t, { width, height: width === 390 ? 844 : 900, theme, calendar: {
     state: 'partial', notes: ['Check Outlook for attendance and cancellations.'], items: [
       { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
@@ -860,7 +773,8 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
   assert.doesNotMatch(await card.innerText(), /7 days/);
   assert.equal(await card.locator('a, .home-flag').count(), 0);
   const bounds = await card.boundingBox();
-  assert.ok(bounds.y + bounds.height < (width === 390 ? 844 : 900), 'meetings card fits in the first viewport');
+  const brief = await page.locator('#homeBrief').boundingBox();
+  assert.ok(bounds.y >= brief.y + brief.height, 'open tasks precede meetings');
   await screenshot(page, `home-meetings-${width}-${theme}`);
   for (const row of await card.locator('.home-meeting').all()) { const { height } = await row.boundingBox(); assert.ok(height <= 64, `meeting row uses two compact lines, measured ${height}px`); }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -871,6 +785,37 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
 
 
 const prepCalendar = { state: 'ready', items: [{ title: 'Demo preparation entry', start: '2026-10-01T16:00:00Z', attendee_count: 2 }] };
+
+test('Meeting preparation follows the selected zone and preserves all-day source dates across DST', async t => {
+  const { page, responses } = await open(t, { calendar: prepCalendar });
+  responses.set('calendar-meeting-prep', { state: 'ready', observed_at: '2026-10-01T14:00:00Z', items: [
+    { title: 'Timed meeting', start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', all_day: false, possible_deals: [] },
+    { title: 'Spring all-day', start: '2026-03-08T00:00:00Z', end: '2026-03-09T00:00:00Z', all_day: true, possible_deals: [] },
+    { title: 'Fall all-day', start: '2026-11-01T00:00:00Z', end: '2026-11-02T00:00:00Z', all_day: true, possible_deals: [] },
+  ] });
+  const zone = page.getByRole('combobox', { name: 'Meeting timezone', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  for (const [value, time, observed] of [
+    ['America/New_York', '12:00 PM EDT', '10:00 AM EDT'],
+    ['America/Chicago', '11:00 AM CDT', '9:00 AM CDT'],
+    ['America/Denver', '10:00 AM MDT', '8:00 AM MDT'],
+    ['America/Los_Angeles', '9:00 AM PDT', '7:00 AM PDT'],
+    ['UTC', '4:00 PM UTC', '2:00 PM UTC'],
+  ]) {
+    await zone.selectOption(value);
+    await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+    await settles(async () => assert.match(await dialog.innerText(), /Timed meeting/));
+    assert.ok((await dialog.locator('article').filter({ hasText: 'Timed meeting' }).innerText()).includes(time));
+    assert.ok((await dialog.innerText()).includes(observed));
+    for (const [title, start, end] of [['Spring all-day', 'Mar 8', 'Mar 9'], ['Fall all-day', 'Nov 1', 'Nov 2']]) {
+      const row = await dialog.locator('article').filter({ hasText: title }).innerText();
+      assert.ok(row.includes(`${start} to ${end}`), `${value}: ${row}`);
+      assert.match(row, /All day/);
+    }
+    await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  }
+});
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Meeting preparation opens possible deal context on demand at ${width}px ${theme}`, async t => {
   const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
@@ -887,7 +832,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Me
         { id: 'demo-missing', name: 'Demo missing facts', prep: { state: 'ready', phase: null, next_step: null, next_date: null, last_touch: null, market: null } },
       ] }],
   });
-  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click({ timeout: 2000 });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
   await settles(async () => assert.match(await dialog.innerText(), /Review counteroffer/));
   const text = await dialog.innerText();
@@ -972,5 +917,230 @@ for (const calendar of [{ state: 'empty', items: [] }, null]) test(`Meeting prep
   await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
   const target = calendar ? page.getByRole('button', { name: 'Prepare meetings', exact: true }) : page.locator('#homePrimaryAction');
   await settles(async () => assert.equal(await target.evaluate(button => button === document.activeElement), true));
+  assert.deepEqual(errors, []);
+});
+
+test('Your brief stays visible across Home visits', async t => {
+  const { page } = await open(t, { tasksOnly: true, freshBrief: true });
+  const brief = page.getByRole('complementary', { name: 'Your brief' });
+  await brief.getByText('Demo follow-up').first().waitFor();
+  const titles = await brief.locator('a').allTextContents();
+  assert.ok(titles.length > 0);
+  assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
+  await page.reload();
+  await brief.getByText('Demo follow-up').first().waitFor();
+  assert.deepEqual(await brief.locator('a').allTextContents(), titles);
+  assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
+
+});
+
+test('Your brief shows loading while the first task read is pending', async t => {
+  const { page } = await open(t, { hangDetails: true });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('Updating tasks…').waitFor();
+  assert.doesNotMatch(await brief.innerText(), /Tasks unavailable/);
+});
+
+test('Your brief shows unavailable after the task read fails', async t => {
+  const { page } = await open(t, { malformedBoard: true });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('Tasks unavailable').waitFor();
+  assert.doesNotMatch(await brief.innerText(), /\d+ open/);
+});
+
+test('Your brief does not claim zero open tasks when the list is partial', async t => {
+  const { page } = await open(t, { emptyAgenda: true, initialDetailFailure: 'partial' });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('Some tasks unavailable').waitFor();
+  assert.doesNotMatch(await brief.innerText(), /0 open/);
+});
+
+test('Your brief shows zero open tasks when the list is complete', async t => {
+  const { page } = await open(t, { emptyAgenda: true });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('No open tasks').waitFor();
+  assert.match(await brief.innerText(), /0 open/);
+});
+
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H03 working week opens every dated item and restores focus at ${width} ${theme}`, async t => {
+  const calendar = { state: 'ready', items: [
+    { title: 'Synthetic afternoon meeting', start: '2026-10-01T20:00:00Z', all_day: false, location: 'Synthetic meeting room', attendee_count: 3 },
+    { title: 'Synthetic morning meeting', start: '2026-10-01T14:15:00Z', all_day: false, location: null, attendee_count: 1 },
+    { title: 'Synthetic all-day meeting', start: '2026-10-03T00:00:00Z', all_day: true, location: null, attendee_count: 0 },
+  ] };
+  const { page, calls, errors } = await open(t, { width, theme, calendar });
+  const panel = page.getByRole('region', { name: 'Calendar', exact: true });
+  await panel.getByRole('button', { name: 'Synthetic morning meeting', exact: true }).waitFor();
+  assert.match(await panel.innerText(), /America\/Chicago/);
+  assert.match(await page.locator('#homeMeetings .home-meeting').filter({ hasText: 'Synthetic all-day meeting' }).innerText(), /Oct 3/);
+  const thursday = panel.getByRole('region', { name: 'Thursday, October 1, 2026', exact: true });
+  assert.deepEqual(await thursday.getByRole('button').filter({ hasText: 'Synthetic' }).evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))), [
+    'Synthetic morning meeting', 'Synthetic afternoon meeting',
+  ]);
+  assert.match(await thursday.innerText(), /9:15 AM CDT/);
+  assert.match(await thursday.innerText(), /3:00 PM CDT/);
+  assert.ok(await thursday.getByRole('button', { name: 'Demo follow-up', exact: true }).count());
+  for (const title of ['Synthetic morning meeting', 'Synthetic afternoon meeting', 'Demo follow-up']) {
+    const chip = thursday.getByRole('button', { name: title, exact: true }).first();
+    await chip.focus(); await page.keyboard.press('Enter');
+    const detail = page.getByRole('dialog', { name: title, exact: true });
+    await detail.waitFor();
+    if (title === 'Synthetic morning meeting') {
+      assert.match(await detail.innerText(), /9:15 AM CDT/);
+      assert.match(await detail.innerText(), /1 attendee/);
+      assert.match(await detail.innerText(), /Place not provided/);
+    } else if (title === 'Demo follow-up') {
+      assert.doesNotMatch(await chip.innerText(), /All day/);
+      assert.doesNotMatch(await detail.innerText(), /All day/);
+      assert.match(await detail.getByRole('link', { name: 'Open deal', exact: true }).getAttribute('href'), /^\/deals\?deal=/);
+    }
+    await page.keyboard.press('Escape');
+    await detail.waitFor({ state: 'hidden' });
+    assert.equal(await chip.evaluate(node => node === document.activeElement), true);
+  }
+  if (width === 390) {
+    const choice = panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true });
+    await choice.click();
+    assert.equal(await choice.getAttribute('aria-pressed'), 'true');
+    assert.match(await panel.locator('.home-week-selected-day').innerText(), /Saturday, October 3, 2026/);
+  }
+  const saturday = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
+  const allDay = saturday.getByRole('button', { name: 'Synthetic all-day meeting', exact: true });
+  await allDay.click();
+  const detail = page.getByRole('dialog', { name: 'Synthetic all-day meeting', exact: true });
+  assert.match(await detail.innerText(), /All day/);
+  const dir = new URL('../out/test-artifacts/home-week/', import.meta.url);
+  await mkdir(dir, { recursive: true });
+  await detail.screenshot({ path: `${dir.pathname}detail-${width}-${theme}.png` });
+  await detail.getByRole('button', { name: 'Close', exact: true }).click();
+  assert.equal(await allDay.evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.equal(calls.some(name => /patch-|complete-|reschedule/.test(name)), false);
+  assert.deepEqual(errors, []);
+  await panel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${dir.pathname}week-${width}-${theme}.png`, fullPage: true });
+  await panel.screenshot({ path: `${dir.pathname}week-panel-${width}-${theme}.png` });
+});
+
+test('H03 calendar details retire on a replaced meeting snapshot and session loss', async t => {
+  const meeting = { title: 'Synthetic temporary meeting', start: '2026-10-01T14:00:00Z', all_day: false, location: null, attendee_count: 2 };
+  const state = await open(t, { calendar: { state: 'ready', items: [meeting] } });
+  const { page } = state;
+  const calendar = page.getByRole('region', { name: 'Calendar', exact: true });
+  await calendar.getByRole('button', { name: meeting.title, exact: true }).click();
+  const detail = page.getByRole('dialog', { name: meeting.title, exact: true });
+  await detail.waitFor();
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: { state: 'empty', items: [] } })));
+  await detail.waitFor({ state: 'hidden' });
+  assert.equal(await calendar.getByRole('button', { name: meeting.title, exact: true }).count(), 0);
+  assert.equal(await calendar.getByRole('region', { name: 'Thursday, October 1, 2026', exact: true }).evaluate(node => node === document.activeElement), true);
+  await page.evaluate(meeting => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: { state: 'ready', items: [meeting] } })), meeting);
+  await calendar.getByRole('button', { name: meeting.title, exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  await detail.waitFor({ state: 'hidden' });
+  assert.equal(await calendar.getByRole('button', { name: meeting.title, exact: true }).count(), 0);
+  assert.deepEqual(state.errors, []);
+});
+
+test('H03 phone keeps the chosen day through a meeting update', async t => {
+  const meeting = { title: 'Synthetic Saturday meeting', start: '2026-10-03T15:00:00Z', all_day: false, location: null, attendee_count: 1 };
+  const meetings = Array.from({ length: 8 }, (_, index) => ({ ...meeting, title: `${meeting.title} ${index}` }));
+  const { page } = await open(t, { width: 390, calendar: { state: 'ready', items: meetings } });
+  const panel = page.getByRole('region', { name: 'Calendar', exact: true });
+  await panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true }).click();
+  const day = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
+  const position = async () => {
+    const outer = await panel.boundingBox(), inner = await day.boundingBox();
+    assert.ok(inner.x >= outer.x && inner.x + inner.width <= outer.x + outer.width + 1, 'chosen day stays within Calendar width');
+  };
+  await position();
+  await day.evaluate(node => { node.scrollTop = 120; });
+  const previousScroll = await day.evaluate(node => node.scrollTop);
+  assert.ok(previousScroll > 0, 'fixture has vertically scrollable day content');
+  await page.evaluate(meetings => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: { state: 'ready', items: meetings.map(item => ({ ...item, title: `Updated ${item.title}` })) } })), meetings);
+  await position();
+  assert.equal(await day.evaluate(node => node.scrollTop), previousScroll);
+  assert.match(await panel.locator('.home-week-selected-day').innerText(), /Saturday, October 3, 2026/);
+  assert.equal(await panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true }).getAttribute('aria-pressed'), 'true');
+  await panel.getByRole('region', { name: 'Sunday, October 4, 2026', exact: true }).evaluate(node => node.scrollIntoView({ block: 'nearest', inline: 'start' }));
+  await settles(async () => assert.match(await panel.locator('.home-week-selected-day').innerText(), /Sunday, October 4, 2026/));
+});
+
+test('H03 task details close when both calendar sources become unavailable', async t => {
+  const state = await open(t, { calendar: { state: 'unavailable', items: [] } });
+  const { page } = state;
+  const panel = page.getByRole('region', { name: 'Calendar', exact: true });
+  await panel.getByRole('button', { name: 'Demo follow-up', exact: true }).first().click();
+  const detail = page.getByRole('dialog', { name: 'Demo follow-up', exact: true });
+  await detail.waitFor();
+  state.failDetails('503');
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  await detail.waitFor({ state: 'hidden' });
+  assert.equal(await panel.getByRole('button', { name: 'Demo follow-up', exact: true }).count(), 0);
+});
+
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H03 meeting timezone updates Home without changing commitments at ${width} ${theme}`, async t => {
+  const calendar = { state: 'ready', items: [
+    { title: 'Synthetic midnight meeting', start: '2026-10-02T05:30:00Z', all_day: false, location: 'Synthetic meeting room', attendee_count: 2 },
+    { title: 'Synthetic later meeting', start: '2026-10-02T06:15:00Z', all_day: false, location: null, attendee_count: 1 },
+    { title: 'Synthetic all-day commitment', start: '2026-10-03T00:00:00Z', all_day: true, location: null, attendee_count: 0 },
+  ] };
+  const { page, calls, errors } = await open(t, { width, height: width === 390 ? 844 : 1000, theme, calendar });
+  const panel = page.getByRole('region', { name: 'Calendar', exact: true });
+  await panel.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).waitFor();
+  const zone = panel.getByRole('combobox', { name: 'Meeting timezone', exact: true });
+  assert.equal(await zone.count(), 1);
+  assert.equal(await zone.inputValue(), 'America/Chicago');
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const sourceReads = () => calls.filter(name => ['read-home-agenda', 'morning-brief'].includes(name)).length;
+  const reads = sourceReads();
+  await zone.focus();
+  await zone.selectOption('America/Los_Angeles');
+  assert.equal(await zone.evaluate(node => node === document.activeElement), true);
+  const thursday = panel.getByRole('region', { name: 'Thursday, October 1, 2026', exact: true });
+  assert.deepEqual(await thursday.getByRole('button').filter({ hasText: 'Synthetic' }).evaluateAll(nodes => nodes.map(node => node.textContent)), [
+    '10:30 PM PDTSynthetic midnight meeting', '11:15 PM PDTSynthetic later meeting',
+  ]);
+  assert.match(await page.locator('#homeMeetings .home-meeting').filter({ hasText: 'Synthetic midnight meeting' }).innerText(), /Oct 1, 10:30 PM PDT/);
+  assert.equal(sourceReads(), reads);
+  assert.ok(await thursday.getByRole('button', { name: 'Demo follow-up', exact: true }).count());
+  const saturday = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
+  assert.equal(await saturday.getByRole('button', { name: 'Synthetic all-day commitment', exact: true }).count(), 1);
+  const chip = thursday.getByRole('button', { name: 'Synthetic midnight meeting', exact: true });
+  await chip.focus();
+  await page.keyboard.press('Enter');
+  const detail = page.getByRole('dialog', { name: 'Synthetic midnight meeting', exact: true });
+  await detail.waitFor();
+  assert.match(await detail.innerText(), /Thursday, October 1, 2026 · 10:30 PM PDT/);
+  const dir = new URL('../out/test-artifacts/home-timezone/', import.meta.url);
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: `${dir.pathname}detail-${width}-${theme}.png` });
+  await page.keyboard.press('Escape');
+  await detail.waitFor({ state: 'hidden' });
+  assert.equal(await chip.evaluate(node => node === document.activeElement), true);
+  await zone.selectOption('America/New_York');
+  const friday = panel.getByRole('region', { name: 'Friday, October 2, 2026', exact: true });
+  assert.match(await friday.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).innerText(), /1:30 AM EDT/);
+  assert.match(await page.locator('#homeMeetings .home-meeting').filter({ hasText: 'Synthetic midnight meeting' }).innerText(), /Oct 2, 1:30 AM EDT/);
+  assert.equal(sourceReads(), reads);
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await zone.inputValue(), 'America/New_York');
+  assert.match(await friday.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).innerText(), /1:30 AM EDT/);
+  if (width === 390) await panel.getByRole('button', { name: 'Friday, October 2, 2026', exact: true }).click();
+  await panel.evaluate(node => { node.scrollIntoView({ block: 'start' }); window.scrollBy(0, -160); });
+  await zone.focus();
+  const bounds = await zone.boundingBox();
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width, 'timezone control fits the viewport');
+  assert.equal(await zone.evaluate(node => node.scrollWidth <= node.clientWidth), true, 'timezone label is not clipped');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: `${dir.pathname}home-${width}-${theme}.png` });
+  await page.locator('#homeMeetings').evaluate(node => { node.scrollIntoView({ block: 'start' }); window.scrollBy(0, -160); });
+  await page.screenshot({ path: `${dir.pathname}meetings-${width}-${theme}.png` });
+  await page.reload();
+  await panel.getByRole('button', { name: 'Synthetic midnight meeting', exact: true }).waitFor();
+  assert.equal(await zone.inputValue(), 'America/Chicago', 'reload starts a new display choice');
+  assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
   assert.deepEqual(errors, []);
 });

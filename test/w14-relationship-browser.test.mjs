@@ -467,6 +467,7 @@ for (const [entry, url, region, button] of [
     const path = page.locator(`${region} ${button}`);
     await path.waitFor();
     assert.equal(await path.locator('.intro-route').innerText(), 'Demo Healthcare Lending → Demo Practice Builders → Demo Dental Expansion');
+    await page.locator(`${region} ${button}:enabled`).waitFor();
     await path.focus();
     await page.keyboard.press('Enter');
     await page.locator('.relationship-dialog[open]').waitFor();
@@ -523,5 +524,28 @@ for (const [entry, url, region] of [
   await route.waitFor();
   assert.equal(await route.innerText(), 'Demo <em>Lending</em> & Partners → Demo Dental Expansion');
   assert.equal(await route.locator('em').count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+
+test('Home introductions wait for their dialog before accepting keyboard entry', async t => {
+  const { page, errors } = await open(t, 390);
+  let release;
+  const download = new Promise(resolve => { release = resolve; });
+  t.after(() => release());
+  await page.route('**/js/relationship-dialog.js', async route => {
+    await download;
+    await route.fallback();
+  });
+  await page.goto('http://localhost/?mode=live');
+  const path = page.locator('#homeIntroductions [data-intro-node]');
+  await path.waitFor();
+  assert.equal(await path.isDisabled(), true, 'the introduction waits for its dialog');
+  release();
+  await page.locator('#homeIntroductions [data-intro-node]:enabled').waitFor();
+  await path.focus();
+  await page.keyboard.press('Enter');
+  await page.locator('.relationship-dialog[open]').waitFor();
+  assert.equal(await page.locator('#relationshipTitle').innerText(), 'Demo Dental Expansion');
   assert.deepEqual(errors, []);
 });

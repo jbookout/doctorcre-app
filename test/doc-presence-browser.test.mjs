@@ -91,9 +91,9 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
  const{page,goto,errors,calls}=await setup(t);
  await goto('/deals?mode=live&deal=d14');
- await page.locator('#recordPanel[open]').waitFor();
- await page.locator('#recordPanel > #docPresence').waitFor();
- await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready');
+ await page.locator('#recordPanel:not([hidden])').waitFor();
+ await page.locator('#recordPanel #docPresence').waitFor();
+ await page.waitForFunction(()=>document.querySelector('#recordPanel #docPresence')?.dataset.state==='ready');
  assert.equal(await page.getByRole('button',{name:'Deal outlook',exact:true}).count(),0);
  assert.doesNotMatch(await page.locator('#recordPanel').innerText(),/Jev|Read this deal|lint|leak check/);
  await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
@@ -117,7 +117,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  const refreshed=page.waitForResponse(response=>response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await refreshed;
- await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');
+ await page.waitForFunction(()=>document.querySelector('#recordPanel #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');
  assert.ok(calls.filter(call=>call.name==='get-deal-room').length>detailReads);
  await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
@@ -253,12 +253,13 @@ test('held Leads collection recovers in the current local filter before opening 
  await goto('/leads?mode=live');await entered;
  await page.locator('#appSidebarToggle').click();
  await page.locator('#leadSearch').fill('no matches');
- release();await page.waitForFunction(()=>document.querySelectorAll('#hotLeads [data-lead-id]').length>0);
+ release();await page.locator('#leadBoard[aria-busy="false"]').waitFor();
  assert.equal(await page.locator('.lead-card').count(),0);
  const filtered=await readContext(page);
  assert.equal(filtered.ready,true,JSON.stringify(filtered));assert.deepEqual(filtered.records,[]);
  assert.equal(filtered.filters.search,'no matches');assert.ok(filtered.observedAt);
- await page.locator('#hotLeads [data-lead-id]').first().click();
+ await page.locator('#leadSearch').fill('');
+ await page.locator('#leadBoard .lead-open').first().click();
  await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));
  const opened=await readContext(page);assert.equal(opened.ready,true);assert.equal(opened.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');

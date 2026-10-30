@@ -19,9 +19,24 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
   let clientsStatus = "pending", clientsMessage = "", clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
-  let clientQuery = "", clientsEpoch = 0;
+  let pendingClientName = null;
+  let clientQuery = "", clientsEpoch = 0, planPurpose = "client";
   let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false, territory = null, territoryLoading = false;
   const key = "doctorcre-tour-planning-drafts-v1";
+  const drafts = { plan: new Map(), space: new Map() };
+  const clientDetails = { plan: "idle", space: "idle" };
+  function setClientDetails(prefix, status) {
+    clientDetails[prefix] = status;
+    $(`#${prefix}-client-retry`).hidden = status !== "failed";
+  }
+  function subjectKey(prefix) {
+    if (prefix === "space") return searchClient || "research";
+    return planPurpose === "research" ? "research" : planClient || "client";
+  }
+  function rememberDrafts() {
+    drafts.plan.set(subjectKey("plan"), { values: plan.values, clearedFields: plan.clearedFields });
+    drafts.space.set(subjectKey("space"), { values: search.values, clearedFields: search.clearedFields });
+  }
   const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
   const clientsLoading = "Clients are loading. Wait, then review again.";
   // Capture restoration input before an edit can persist a partial boot draft.
@@ -34,8 +49,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     restoreOrClear();
     let outcome = "Draft stays in this tab. Sign in to save.";
     if (scope) {
+      rememberDrafts();
       try {
-        window.sessionStorage.setItem(key, JSON.stringify({ scope, planClient, searchClient, plan: plan.values, search: search.values }));
+        window.sessionStorage.setItem(key, JSON.stringify({ scope, planPurpose, planClient, searchClient, drafts: { plan: [...drafts.plan], space: [...drafts.space] }, plan: plan.values, search: search.values }));
         return true;
       } catch { outcome = "Draft stays in this tab."; }
     }
@@ -50,7 +66,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       ++clientsEpoch; clientQuery = "";
       for (const prefix of ["plan", "space"]) { $(`#${prefix}-client-query`).value = ""; $(`#${prefix}-client-state`).textContent = ""; }
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
-      savedDraft = null; clientsStatus = scope ? "pending" : "unavailable"; clientsMessage = scope ? "" : "Sign in to continue."; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
+      for (const prefix of ["plan", "space"]) { $(`#${prefix}-client-updates`).hidden = true; $(`#${prefix}-client-updates`).replaceChildren(); }
+      clearNameReview();
+      savedDraft = null; drafts.plan.clear(); drafts.space.clear(); setClientDetails("plan", "idle"); setClientDetails("space", "idle"); planPurpose = "client"; clientsStatus = scope ? "pending" : "unavailable"; clientsMessage = scope ? "" : "Sign in to continue."; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
       $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; renderLibrary(); renderFiles();
       try { window.sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
       for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
@@ -59,11 +77,21 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     } else if (scope) {
       try {
         if (savedDraft?.scope === scope) {
-          if (planEpoch === 0) { plan.restore(savedDraft.plan); planClient = savedDraft.planClient || ""; }
-          if (searchEpoch === 0) { search.restore(savedDraft.search); searchClient = savedDraft.searchClient || ""; }
+          for (const prefix of ["plan", "space"]) {
+            for (const entry of Array.isArray(savedDraft.drafts?.[prefix]) ? savedDraft.drafts[prefix] : []) {
+              if (!Array.isArray(entry) || typeof entry[0] !== "string" || !["client", "research"].includes(entry[0]) && !/^[0-9a-f-]{36}$/i.test(entry[0])) continue;
+              const fields = prefix === "plan" ? PLAN_FIELDS : SEARCH_FIELDS;
+              const values = Object.fromEntries(fields.filter(field => typeof entry[1]?.values?.[field] === "string").map(field => [field, entry[1].values[field]]));
+              const clearedFields = fields.filter(field => Array.isArray(entry[1]?.clearedFields) && entry[1].clearedFields.includes(field));
+              drafts[prefix].set(entry[0], { values, clearedFields });
+            }
+          }
+          if (planEpoch === 0) { planPurpose = savedDraft.planPurpose === "research" ? "research" : "client"; planClient = planPurpose === "client" ? savedDraft.planClient || "" : ""; plan.restore(savedDraft.plan); }
+          if (searchEpoch === 0) { searchClient = savedDraft.searchClient || ""; search.restore(savedDraft.search); }
         }
       } catch { /* An invalid draft never selects another client's record. */ }
     }
+    $("#plan-purpose").value = planPurpose; $("#plan-client-picker").hidden = planPurpose === "research";
     syncForm("plan", plan); syncForm("space", search); fillClients();
   }
   async function read(operation) {
@@ -80,6 +108,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const [field, value] of Object.entries(draft.values)) {
       const control = $(`#${prefix}-${field}`);
       if (control.value !== value) control.value = value;
+      if (field === "area") control.title = value;
     }
     if (prefix === "space") {
       for (const button of document.querySelectorAll(".market-buttons [data-market]")) button.setAttribute("aria-pressed", String(button.dataset.market === draft.values.area));
@@ -91,6 +120,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const field of Object.keys(draft.values)) $(`#${prefix}-${field}`).addEventListener("input", event => {
       const value = event.target.value;
       if (scope !== null) restoreOrClear();
+      if (prefix === "plan" && field === "name") clearNameReview();
       draft.set(field, value); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
     });
     $(`#${prefix}-undo`).addEventListener("click", () => {
@@ -130,22 +160,87 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       throw error;
     }
   }
-  async function prefill(prefix, id) {
+  async function prefill(prefix, id, purpose = planPurpose) {
+    restoreOrClear(); rememberDrafts();
     const epoch = prefix === "plan" ? ++planEpoch : ++searchEpoch;
     const draft = prefix === "plan" ? plan : search;
-    if (prefix === "plan") { planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
+    if (prefix === "plan") { clearNameReview(); planPurpose = purpose; $("#plan-purpose").value = purpose; $("#plan-client-picker").hidden = purpose === "research"; planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
     // A new record starts an independent draft, so previous-client criteria never migrate.
-    draft.reset(); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
+    $(`#${prefix}-client-updates`).hidden = true; $(`#${prefix}-client-updates`).replaceChildren();
+    const saved = drafts[prefix].get(subjectKey(prefix));
+    draft.reset(); draft.restore(saved?.values);
+    if (prefix === "plan" && (id || purpose === "research")) {
+      const brief = drafts.space.get(subjectKey("plan"));
+      const values = Object.fromEntries(["area", "use"].filter(field => brief?.values[field] || brief?.clearedFields.includes(field)).map(field => [field, brief.values[field]]));
+      draft.restore(values);
+    }
+    syncForm(prefix, draft); fillClients(); save(prefix === "plan" ? "#plan-message" : "#space-message");
     const target = prefix === "plan" ? "#plan-message" : "#space-message";
-    message(target, id ? "Updating…" : "");
-    if (!id) return;
+    if (!id) { setClientDetails(prefix, "idle"); message(target, ""); return; }
+    return loadClientDetails(prefix, id, epoch, !saved);
+  }
+  async function loadClientDetails(prefix, id, epoch, newDraft = false) {
+    const target = `#${prefix}-message`;
+    setClientDetails(prefix, "loading"); message(target, "Updating…");
     try {
       const record = await read(async () => validateClientRecord(await api.client(id), id));
       if (disposed || epoch !== (prefix === "plan" ? planEpoch : searchEpoch) || record.id !== id) return;
-      if (prefix === "plan") selectedRecord = record;
-      draft.suggest(clientSuggestions(record)); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
+      setClientDetails(prefix, "ready");
+      applyClientRecord(prefix, record, newDraft); save(prefix === "plan" ? "#plan-message" : "#space-message");
       message(target, "");
-    } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || "Client details temporarily unavailable."); }
+    } catch (error) { if (!disposed && epoch === (prefix === "plan" ? planEpoch : searchEpoch)) { setClientDetails(prefix, "failed"); message(target, unavailable(error) || "Client details temporarily unavailable."); } }
+  }
+  function clearNameReview() {
+    pendingClientName = null;
+    $("#plan-client-name-review").hidden = true;
+    $("#client-name-before").textContent = ""; $("#client-name-after").textContent = "";
+  }
+  function applyClientRecord(prefix, record, newDraft = false) {
+    const draft = prefix === "plan" ? plan : search;
+    const suggestions = clientSuggestions(record);
+    if (newDraft) draft.prefill(suggestions);
+    const before = draft.values;
+    if (prefix === "plan") {
+      clearNameReview();
+      if (suggestions.name !== before.name) {
+        pendingClientName = suggestions.name;
+        $("#client-name-before").textContent = before.name || "Empty";
+        $("#client-name-after").textContent = suggestions.name || "Empty";
+        $("#plan-client-name-review").hidden = false;
+      }
+    }
+    const changes = Object.entries(suggestions).filter(([field, value]) => field !== "name" && before[field] !== value && Object.hasOwn(before, field));
+    const root = $(`#${prefix}-client-updates`);
+    if (changes.length) {
+      const details = element("details");
+      const labels = { area: "Area", use: "Space type", notes: "Tour notes" };
+      const readAt = new Date();
+      const time = element("time", readAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+      time.dateTime = readAt.toISOString();
+      const stamp = element("p", "Client record read at "); stamp.append(time);
+      details.append(element("summary", `Review ${changes.length} field ${changes.length === 1 ? "change" : "changes"}`));
+      for (const [field, value] of changes) {
+        const row = element("section", undefined, "client-update-row"); row.dataset.field = field;
+        const facts = element("dl", undefined, "client-update-facts");
+        facts.append(element("dt", "Current draft"), element("dd", before[field] || "Empty"), element("dt", "Client record"), element("dd", value || "Empty"));
+        const actions = element("div", undefined, "client-name-actions");
+        for (const choice of ["keep", "use"]) {
+          const button = element("button", `${choice === "keep" ? "Keep" : "Use"} ${labels[field].toLowerCase()}`);
+          button.type = "button"; button.dataset.choice = choice;
+          button.addEventListener("click", () => {
+            if (choice === "use" && draft.values[field] === before[field]) draft.set(field, value);
+            if (choice === "keep" && draft.values[field] === before[field]) draft.set(field, before[field]);
+            row.remove(); if (!details.querySelector("[data-field]")) root.hidden = true;
+            syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
+          });
+          actions.append(button);
+        }
+        row.append(element("h4", labels[field]), facts, actions); details.append(row);
+      }
+      root.replaceChildren(stamp, details); root.hidden = false;
+    } else { root.hidden = true; root.replaceChildren(); }
+    if (prefix === "plan") selectedRecord = record;
+    syncForm(prefix, draft);
   }
   function renderLibrary() {
     const focusedId = document.activeElement?.dataset?.tourId;
@@ -238,13 +333,30 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     $("#packet-upload").value = "";
   }
   function reviewDraft(trigger) {
-    if (clientsStatus !== "ready") { message("#plan-message", clientsStatus === "pending" ? clientsLoading : clientsMessage === clientsUnavailable ? `${clientsMessage} Your draft is retained.` : clientsMessage); return; }
-    if (!planClient) { message("#plan-message", "Choose a client."); $("#plan-client").focus(); return; }
+    if (planPurpose === "client" && clientsStatus !== "ready") { message("#plan-message", clientsStatus === "pending" ? clientsLoading : clientsMessage === clientsUnavailable ? `${clientsMessage} Your draft is retained.` : clientsMessage); return; }
+    if (planPurpose === "client" && !planClient) { message("#plan-message", "Choose a client."); $("#plan-client").focus(); return; }
+    if (planPurpose === "client" && clientDetails.plan !== "ready") {
+      message("#plan-message", clientDetails.plan === "failed" ? "Client details temporarily unavailable." : "Client details are loading. Wait, then review again."); return;
+    }
+    if (pendingClientName !== null) { message("#plan-message", "Review the changed client name before continuing."); $("#keep-client-name").focus(); return; }
     currentTour = null; ++dialogEpoch; showDialog(plan.values.name || "Packet draft", trigger); message("#detail-message", "");
     const body = $("#detail-content"); const facts = element("dl", undefined, "draft-facts");
     const labels = { date: "Date", time: "Start time", area: "Area", use: "Space type", start: "Start", end: "Finish", dwell: "Minutes per stop", buffer: "Travel buffer", notes: "Notes" };
     for (const [field, label] of Object.entries(labels)) if (plan.values[field]) facts.append(element("dt", label), element("dd", plan.values[field]));
-    body.append(element("span", "Private draft", "pill"), facts);
+    body.append(element("span", planPurpose === "research" ? "Research · Private draft" : "Client · Private draft", "pill"), facts);
+    const criteria = drafts.space.get(subjectKey("plan"))?.values;
+    if (criteria && SEARCH_FIELDS.some(field => criteria[field])) {
+      const section = element("section"); section.id = "packet-search-criteria"; section.setAttribute("aria-labelledby", "packet-search-heading");
+      const heading = element("h3", "Search draft · this tab"); heading.id = "packet-search-heading";
+      const searchFacts = element("dl", undefined, "draft-facts");
+      const searchLabels = { area: "Area", use: "Space type", minSize: "Minimum SF", maxSize: "Maximum SF", budget: "Maximum budget", rentBasis: "Budget basis", transaction: "Transaction", availableBy: "Available by", parking: "Parking", requirements: "Must-haves" };
+      const rentLabels = { sf_year: "$/SF/year", month: "$/month", purchase: "Purchase price" };
+      for (const field of SEARCH_FIELDS) if (criteria[field]) {
+        const value = field === "rentBasis" ? rentLabels[criteria[field]] || criteria[field] : criteria[field];
+        searchFacts.append(element("dt", searchLabels[field]), element("dd", value));
+      }
+      section.append(heading, element("p", "Private draft criteria saved in this tab only. No space search or tour has been created."), searchFacts); body.append(section);
+    }
     if (selectedRecord?.notes) {
       const details = element("details"); details.append(element("summary", "Client notes · Details"), element("p", selectedRecord.notes)); body.append(details);
     }
@@ -293,15 +405,15 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
         const record = await read(async () => validateClientRecord(await api.client(id, { signal }), id));
         if (!active()) return;
         if (record.id === id && [planClient, searchClient].includes(id)) {
-          if (planClient === id && planEpoch === planRevision) { selectedRecord = record; plan.refreshSuggestions(clientSuggestions(record)); syncForm("plan", plan); settleClientMessage("plan"); }
-          if (searchClient === id && searchEpoch === searchRevision) { search.refreshSuggestions(clientSuggestions(record)); syncForm("space", search); settleClientMessage("space"); }
+          if (planClient === id && planEpoch === planRevision) { setClientDetails("plan", "ready"); applyClientRecord("plan", record); settleClientMessage("plan"); }
+          if (searchClient === id && searchEpoch === searchRevision) { setClientDetails("space", "ready"); applyClientRecord("space", record); settleClientMessage("space"); }
           save();
         }
       } catch {
         if (!active()) return;
         current = false;
-        if (planClient === id && planEpoch === planRevision) message("#plan-message", "Client details temporarily unavailable.");
-        if (searchClient === id && searchEpoch === searchRevision) message("#space-message", "Client details temporarily unavailable.");
+        if (planClient === id && planEpoch === planRevision) { setClientDetails("plan", "failed"); message("#plan-message", "Client details temporarily unavailable."); }
+        if (searchClient === id && searchEpoch === searchRevision) { setClientDetails("space", "failed"); message("#space-message", "Client details temporarily unavailable."); }
       }
     }
     if (!active()) return;
@@ -325,14 +437,35 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       for (const name of ["plan", "space"]) $(`#${name}-client-query`).value = clientQuery;
       void loadClients().catch(() => {});
     };
+    $(`#${prefix}-client-retry`).addEventListener("click", () => {
+      const id = prefix === "plan" ? planClient : searchClient;
+      if (id) void loadClientDetails(prefix, id, prefix === "plan" ? ++planEpoch : ++searchEpoch);
+    });
     $(`#${prefix}-client-find`).addEventListener("click", find);
     $(`#${prefix}-client-query`).addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); find(); } });
   }
+  for (const choice of ["keep", "use"]) $(`#${choice}-client-name`).addEventListener("click", () => {
+    restoreOrClear();
+    if (pendingClientName === null) return;
+    plan.set("name", choice === "use" ? pendingClientName : plan.values.name);
+    clearNameReview(); syncForm("plan", plan); save("#plan-message"); message("#plan-message", "Tour name selected for this draft."); $("#plan-name").focus();
+  });
+  $("#plan-purpose").addEventListener("change", event => {
+    void prefill("plan", "", event.target.value === "research" ? "research" : "client");
+  });
   $("#plan-client").addEventListener("change", event => void prefill("plan", event.target.value));
   $("#space-client").addEventListener("change", event => void prefill("space", event.target.value));
   $("#tour-filter").addEventListener("input", renderLibrary);
   $("#plan-form").addEventListener("submit", event => { event.preventDefault(); save("#plan-message"); reviewDraft($("#review-packet")); });
   $("#space-form").addEventListener("submit", event => { event.preventDefault(); const error = validateCriteria(search.values); if (error) message("#space-message", error); else if (save("#space-message")) message("#space-message", "Search draft saved."); });
+  $("#plan-from-search").addEventListener("click", () => {
+    restoreOrClear();
+    const error = validateCriteria(search.values);
+    if (error) { message("#space-message", error); return; }
+    if (subjectKey("plan") === (searchClient || "research")) save("#space-message");
+    else void prefill("plan", searchClient, searchClient ? "client" : "research");
+    $("#plan-name").focus();
+  });
   $("#packet-upload").addEventListener("change", event => acceptFiles([...event.target.files]));
   const drop = $("#packet-drop");
   drop.addEventListener("dragover", event => { event.preventDefault(); drop.classList.add("dragging"); });

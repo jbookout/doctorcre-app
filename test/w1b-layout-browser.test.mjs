@@ -126,10 +126,10 @@ test('Local Deals opens a wide popup, refreshes its original note, and keeps Tod
  await original.locator('summary').click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
  await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
- assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
- await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),false);
+ assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();await page.locator('#recordPanel').waitFor({state:'hidden'});assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),false);
  await page.locator('#appTodayToggle').click();
- await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
+ await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>!document.querySelector('#recordPanel')?.hidden);await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});});
  await page.clock.fastForward(3_000);
  assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
@@ -141,9 +141,9 @@ test('blocked localStorage, automatic Today refresh, and wide item details stay 
  await page.locator('#appSidebarToggle').click();
  await page.locator('#appTodayToggle').click();
  const first=page.locator('#appTodayNeeds [data-layout-deal]').first();await first.click();
- await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
+ await page.waitForFunction(()=>!document.querySelector('#recordPanel')?.hidden);assert.equal(await page.locator('#recordPanel').evaluate(n=>{const parent=getComputedStyle(n.parentElement);return n.offsetWidth===n.parentElement.clientWidth-parseFloat(parent.paddingLeft)-parseFloat(parent.paddingRight);}),true);
  const before=await page.locator('#appSyncTime').getAttribute('datetime');await page.clock.fastForward(61_000);await page.waitForFunction(before=>document.querySelector('#appSyncTime').getAttribute('datetime')!==before,before);
- assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);await page.getByLabel('Close deal',{exact:true}).click();
+ assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await goto('/leads');await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),true);assert.ok((await page.locator('#leadDetail').boundingBox()).width>=900);
  await page.locator('#detailBody summary').first().click();assert.equal(await page.locator('#detailBody details').first().evaluate(n=>n.open),true);await page.locator('#detailBody summary').first().focus();await page.clock.fastForward(61_000);assert.equal(await page.locator('#detailBody summary').first().evaluate(n=>n===document.activeElement),true);assert.equal(await page.locator('#detailBody details').first().evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.deepEqual(errors,[]);
@@ -158,8 +158,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
   return route.fallback();
  });
  await page.route('**/pipeline/changes*',route=>failed==='feed'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
- await goto('/?mode=live');
- await page.getByRole('button',{name:'Skip walkthrough',exact:true}).click();
+ await goto('/leads?mode=live');
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  if(width===390)await page.locator('#appTodayToggle').click();
  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Review synthetic terms'));
@@ -172,17 +171,17 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
   failed=source;await page.clock.fastForward(61_000);
   await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
   assert.deepEqual(await rows(),good,source+' must retain successful rows');
-  await retry.waitFor({timeout:5000});
+  await retry.waitFor();
   assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);
   assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection unavailable');
   assert.match(await page.locator('#appToday').textContent(),/Showing last update/);
   const retryBox=await retry.boundingBox();assert.ok(retryBox.width>=44 && retryBox.height>=44);
   if(source==='deal-room-board'){
    await mkdir(new URL('out/test-artifacts/today-retry/',root),{recursive:true});
-   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/home-${width}-${theme}.png`,root).pathname});
+   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/leads-${width}-${theme}.png`,root).pathname});
   }
-  failed=null;await retry.click({timeout:5000});
-  await retry.waitFor({state:'hidden',timeout:5000});
+  failed=null;await retry.click();
+  await retry.waitFor({state:'hidden'});
   assert.deepEqual(await rows(),good);
   assert.notEqual(await page.locator('#appSyncTime').getAttribute('datetime'),before);
   assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
@@ -195,7 +194,7 @@ for(const today of [undefined,{state:'unavailable',items:[]}]) test(`Today retai
  const {page,goto,errors}=await open(t,{clock:true});let unavailable=false;
  await page.route('**/mcp',route=>unavailable && route.request().postDataJSON().params.name==='morning-brief'
   ?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({sponsor:'joe',sections:{today}})}]}}}):route.fallback());
- await goto('/?mode=live');
+ await goto('/leads?mode=live');
  const before=await page.locator('#appTodayNext [data-layout-deal]').allTextContents();assert.ok(before.length);
  unavailable=true;await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
@@ -213,7 +212,7 @@ for(const actor of ['joe','dell']) test(`Today discards retained priorities when
   if(['morning-brief','today-triage'].includes(name))return route.fulfill({status:503,body:'Unavailable'});
   return route.fallback();
  });
- await goto('/?mode=live');assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());
+ await goto('/leads?mode=live');assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());
  narrowed=true;await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
  assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
@@ -223,13 +222,12 @@ test('Today offers retry after its first read fails without claiming an empty re
  const {page,errors}=await open(t,{clock:true});let failed=true;
  await page.route('**/mcp',route=>failed && ['deal-room-board','morning-brief','today-triage'].includes(route.request().postDataJSON().params.name)
   ?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
- await page.goto('http://localhost/?mode=live');
- const retry=page.getByRole('button',{name:'Retry Today',exact:true});await retry.waitFor({timeout:5000});
- await page.getByRole('button',{name:'Skip walkthrough',exact:true}).click();
+ await page.goto('http://localhost/leads?mode=live');
+ const retry=page.getByRole('button',{name:'Retry Today',exact:true});await retry.waitFor();
  assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
  assert.match(await page.locator('#appTodayNext').textContent(),/Unavailable/);
  assert.doesNotMatch(await page.locator('#appToday').textContent(),/Showing last update/);
- failed=false;await retry.click();await retry.waitFor({state:'hidden',timeout:5000});
+ failed=false;await retry.click();await retry.waitFor({state:'hidden'});
  assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());assert.deepEqual(errors,[]);
 });
 
@@ -357,14 +355,14 @@ for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain po
  for(const link of await page.locator('.app-shell-navigation>a').all()) await link.click({trial:true});
  await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('System Job Board',{exact:true}).isVisible(),true);
 });
-test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
+test('PR129 #11 light theme pairs record headings and filter text with light surfaces',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();
  const luminance=rgb=>{const c=rgb.match(/[\d.]+/g).slice(0,3).map(n=>{const x=Number(n)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2];};
  const colors=await page.locator('.controls').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color}));
  assert.ok((Math.max(luminance(colors.background),luminance(colors.text))+.05)/(Math.min(luminance(colors.background),luminance(colors.text))+.05)>=4.5,JSON.stringify(colors));
  const labelColor=await page.locator('.controls label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
  await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"] .card-open').click();await page.locator('#detailPhase').waitFor();
- const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
+ const pair=await page.locator('.workspace-header').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h1')).color}));
  assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
  for(const scheme of await page.locator('#recordPanel textarea').evaluateAll(ns=>ns.map(n=>getComputedStyle(n).colorScheme)))assert.equal(scheme,'light');
  const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
@@ -422,7 +420,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  if(status===401||status===403){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#recordPanel,#contextDrawer').count(),0);assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic unsaved draft|Synthetic protected note/);assert.deepEqual(errors,[]);return;}
  await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('#panelBody [role="status"]')?.textContent));
  assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
-  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
   assert.equal(await page.locator('#panelTitle').textContent(),title);
   assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Synthetic unsaved draft');
   assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
@@ -434,4 +432,88 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  assert.equal(await page.locator('#panelTitle').textContent(),title);
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
  assert.deepEqual(errors,[]);
+});
+
+test('Recent moves describe feed changes without internal data', async t => {
+ // carr-system ec7aaa6b3e8a31659afe49a4b2ba23b0c4827831: tools.js 2412-2424, 2472-2493, 2557-2562, 2649-2655, 4599-4601, 4652-4660, 4771-4772, 4805-4809, 4936-4941, 4970-4973, 6186-6189, 6302-6305, 9287-9290, 9486-9488, 9637-9639, 9664-9666, 9932-9933, 9980-9984, 10013-10016, 10243-10245; dealroom.ts 122.
+ const fields = [
+  ['deal_type','renewal','Deal type → Renewal'], ['phase','due_diligence','Phase → Due Diligence'],
+  ['segment','medical_office','Segment → Medical office'], ['outcome','won','Outcome → Won'],
+  ['closed_on','2026-08-20','Closed on → Aug 20'], ['won_value',100,'Won value'], ['notes_path','internal:key','Notes path'],
+  ['salesforce_id','abc123','Salesforce'], ['city','Austin','City → Austin'], ['lane','national','Lane → National'],
+  ['invoiced_on','2026-08-20','Invoiced on → Aug 20'], ['sf_close_date_placeholder','2026-08-20','Salesforce close date → Aug 20'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',name:'Synthetic Client'},'Client changed to Synthetic Client'],
+  ['owner','dell','Owner → Dell'], ['attention',true,'Attention flag → Flagged'], ['next_date','2026-08-20','Next date → Aug 20'],
+  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked'], ['next_step','Review terms','Next step → Review terms'],
+  ['note',{note:'Synthetic note'},'Note added → Synthetic note'], ['market_agent',{market_agent:'Example Agent'},'Market agent → Example Agent'],
+  ['account_owner',{owner:'joe'},'Account owner'], ['status',{status:'done'},'Status → Done'],
+  ['document',{template:'internal',document_id:'abc'},'Document'], ['document.sent_status',{sent_status:'draft'},'Document status → Draft'],
+  ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},'Reminder sent to Joe'],
+  ['next_action',{next_action_id:'critical-date:0558',description:'Call the client',assignee:'joe',due_on:'2026-08-20'},'Next action for Joe: Call the client · due Aug 20'], ['deal_items_conversion',{next_action_id:'abc'},'Deal items updated'],
+  ['email_draft_metadata',{draft_id:'abc'},'Email draft updated'], ['call_change_undo',{candidate_id:'abc'},'Call change undone'],
+  ['unknown_field',{internal_key:'secret'},'Unknown field'],
+ ];
+ const events=fields.map(([field,new_value],i)=>({id:`event-${i}`,subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`}));
+ const {page,goto}=await open(t,{clock:true,events:[]});
+ for (const event of events) {
+  await page.route('**/pipeline/changes*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]})}));
+  await goto('/leads?mode=live');
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  const text=await page.locator('#appTodayMoves').innerText();
+  assert.doesNotMatch(text, /[{}]|":|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b/i, event.field);
+  assert.ok(text.includes(fields[events.indexOf(event)][2]), `${event.field}: ${text}`);
+  await page.unroute('**/pipeline/changes*');
+ }
+});
+
+test('Recent moves show labels and partner text while withholding structured IDs', async t => {
+ const cases = [
+  ['phase','due_diligence','Phase → Due Diligence'],
+  ['owner','dell','Owner → Dell'],
+  ['attention',true,'Attention flag → Flagged'],
+  [null,{name:'Synthetic deal'},'Change recorded'],
+  ['status','open','Status → Open'],
+  ['status','done','Status → Done'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',client_name:'Synthetic Client'},'Client changed to Synthetic Client'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},'Client changed'],
+  ['status','brand_new','Status → Brand new'],
+  ['unknown_field','due_diligence','Unknown field → Due diligence'],
+  ['unknown_field','critical-date:0558','Unknown field'],
+  ['lane','national','Lane → National'],
+  ['note','Call id 12345','Note added → Call id 12345'],
+  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked — Client paused activity'],
+  ['next_step','Open id 12345','Next step → Open id 12345'],
+  ['next_step','Review {draft} and follow_up: tomorrow','Next step → Review {draft} and follow_up: tomorrow'],
+  ['next_action',12345,'Next action'],
+  ['next_action',{next_action_id:'critical-date:0558'},'Next action'],
+  ['unknown_field',{title:'Review proposal',id:'secret-id'},'Unknown field: Review proposal'],
+ ];
+ const {page,goto}=await open(t,{clock:true,events:[]});
+ for (const [field,new_value,expected] of cases) {
+  const event={id:'event-1',subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:'2026-10-01T14:00:00Z'};
+  await page.route('**/pipeline/changes*',route=>route.fulfill({json:{events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]}}));
+  await goto('/leads?mode=live');
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  const row=await page.locator('#appTodayMoves').innerText();
+  assert.ok(row.includes(expected), `${field}: ${row}`);
+  if (field === 'next_action') assert.doesNotMatch(row, /12345|critical-date:0558/);
+  if (field === 'unknown_field' && typeof new_value === 'object') assert.doesNotMatch(row, /secret-id/);
+  await page.unroute('**/pipeline/changes*');
+ }
+});
+
+test('Recent moves screenshot evidence', async t => {
+ if (!process.env.MOVES_SCREENSHOT_DIR) return;
+ for (const [width,height] of [[390,844],[1440,900]]) for (const theme of ['light','dark']) {
+  const events=[{id:'event-1',subject_type:'deal',subject_id:'d23',field:'checklist_ping',actor:'joe',new_value:{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},recorded_at:'2026-10-01T14:00:00Z'}];
+  const {page,goto}=await open(t,{width,height,clock:true,events});
+  await goto('/leads?mode=live');
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  if(width===390) await page.locator('#appTodayToggle').click();
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  await page.locator('#appTodayMoves').scrollIntoViewIfNeeded();
+  await mkdir(process.env.MOVES_SCREENSHOT_DIR,{recursive:true});
+  await page.screenshot({animations:'disabled',path:`${process.env.MOVES_SCREENSHOT_DIR}/${width}-${theme}.png`});
+  await page.close();
+ }
 });

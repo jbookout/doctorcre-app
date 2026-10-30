@@ -9,8 +9,7 @@ doctrine store and decision log, not in repo files. Do not create `GLOSSARY.md` 
 ## Before exploring, read these
 
 - **Glossary**: `search-doctrine` for the term, then `read-doctrine` for the
-  section. `doctrine-index` lists the documents. `./run.sh retrieve "<question>"`
-  is the broad lookup.
+  section. `doctrine-index` lists the documents.
 - **Decisions (ADRs)**: the decision log, written by `log-decision` and changed
   by `update-decision`. Search it by what a decision does, not by a label.
 - **Repo-local contracts**: this repo's `AGENTS.md` and the files it links.

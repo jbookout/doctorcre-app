@@ -1,3 +1,4 @@
+import { WAIT_MS } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -85,6 +86,38 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
 });
 
 
+test('built Home keeps its data paint compact and preserves overdue deal navigation', async t => {
+  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-paint-'));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
+  t.after(() => server.stop());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: profile.viewport, isMobile: true, hasTouch: true });
+  await page.route('**/*', route => new URL(route.request().url()).origin === server.url ? route.continue() : route.abort());
+  const reads = [], errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('response', response => {
+    if (response.request().resourceType() === 'script') reads.push((async () => {
+      assert.equal(response.ok(), true, response.url());
+      return (await response.body()).length;
+    })());
+  });
+  const home = screens.find(screen => screen.id === 'home');
+  await page.goto(server.url + home.route, { waitUntil: 'networkidle' });
+  await page.locator(home.ready).first().waitFor();
+  await page.locator(home.tap).tap();
+  await page.waitForFunction(home.complete);
+  const link = page.locator('#dealFlags h3 a').first();
+  assert.match(await link.getAttribute('href'), /^\/deals\?deal=/);
+  assert.ok((await link.innerText()).trim());
+  const bytes = (await Promise.all(reads)).reduce((total, size) => total + size, 0);
+  assert.ok(bytes < 400000, `Home transferred ${bytes} JavaScript bytes`);
+  t.diagnostic(`Home transferred ${bytes} JavaScript bytes`);
+  assert.deepEqual(errors, []);
+});
+
 test('Home discovers its boot mode while the client bootstrap is downloading', async t => {
   const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-boot-'));
   t.after(() => rm(outDir, { recursive: true, force: true }));
@@ -97,7 +130,7 @@ test('Home discovers its boot mode while the client bootstrap is downloading', a
   let release;
   const bootstrap = new Promise(resolve => { release = resolve; });
   await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => { await bootstrap; await route.continue(); });
-  const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: 3000 });
+  const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: WAIT_MS });
   await page.goto(server.url + '/', { waitUntil: 'commit' });
   try { await mode; } finally { release(); }
   await page.locator('#dealFlags .home-flag').first().waitFor();

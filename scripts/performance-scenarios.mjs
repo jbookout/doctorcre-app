@@ -24,10 +24,9 @@ export const screens = [
 
 export const tasks = [
   { id: 'task-agenda', route: '/', fixture: 'agenda', conditions: '40 active synthetic deals; agenda snapshot delayed 75ms',
-    ready: '#homeCalendar[aria-busy="false"] #homeAgenda a',
+    ready: '#homeBrief a',
     async verify(page) {
-      await page.locator('[data-agenda-show-all]').click();
-      await page.waitForFunction(() => document.querySelectorAll('#homeAgenda a').length >= 40);
+      await page.waitForFunction(() => document.querySelectorAll('#homeBrief a').length >= 40);
     } },
   { id: 'task-leads', route: '/leads', fixture: 'leads', conditions: '375 synthetic leads; board and detail reads delayed 75ms; intercepted telephone link and persisted pageshow',
     ready: '#leadBoard .lead-open',
@@ -46,7 +45,7 @@ export const tasks = [
       await page.waitForFunction(title => document.querySelector('#leadDetail')?.open && document.querySelector('#detailTitle')?.textContent === title && document.querySelector('#detailBody a[href^="tel:"]'), selected);
     } },
   { id: 'task-deal-link', route: '/deals?deal=d23', fixture: 'deals', conditions: 'exact fixture deal URL; detail reads delayed 75ms',
-    ready: '#recordPanel[open] #detailUpdateForm',
+    ready: '#recordPanel:not([hidden]) #detailUpdateForm',
     async verify(page) {
       if (new URL(page.url()).searchParams.get('deal') !== 'd23' || (await page.locator('#panelTitle').textContent()) !== 'Demo Specialty Clinic') throw Error('Exact deal link opened the wrong record');
     } },
@@ -56,9 +55,9 @@ export const tasks = [
       await page.locator('.kanban-card[data-id="d23"] .card-open').tap();
       await page.locator('#detailUpdateForm textarea').fill('Synthetic unsent phone update');
       await page.goBack();
-      await page.waitForFunction(() => !document.querySelector('#recordPanel').open && !new URL(location.href).searchParams.has('deal'));
+      await page.waitForFunction(() => document.querySelector('#recordPanel').hidden && !new URL(location.href).searchParams.has('deal'));
       await page.locator('.kanban-card[data-id="d23"] .card-open').tap();
-      await page.waitForFunction(() => document.querySelector('#recordPanel').open && document.querySelector('#detailUpdateForm textarea')?.value === 'Synthetic unsent phone update');
+      await page.waitForFunction(() => !document.querySelector('#recordPanel').hidden && document.querySelector('#detailUpdateForm textarea')?.value === 'Synthetic unsent phone update');
       if (!await page.locator('#detailUpdateStatus').textContent().then(text => text.includes('Unsent'))) throw Error('Restored draft is not labeled unsent');
     } },
   { id: 'task-tour-library', route: '/tours', fixture: 'tours', conditions: '40 synthetic saved tours; client directory delayed 250ms',

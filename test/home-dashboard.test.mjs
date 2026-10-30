@@ -57,8 +57,7 @@ test('agenda preserves open dates and tasks, owner scope, future dates, invalid 
   ] }]]);
   const all = agendaSnapshot(board, details, { today: '2026-10-01' });
   assert.equal(all.entries.length, 4);
-  assert.equal(all.week.length, 7);
-  assert.equal(all.week[0].entries[0].type, 'task');
+  assert.equal(all.entries.find(row => row.day === '2026-10-01').type, 'task');
   assert.deepEqual(all.failed, ['demo-b']);
   assert.equal(all.undated.length, 1);
   assert.equal(all.upcoming.at(-1).day, '2027-02-01');
@@ -78,7 +77,6 @@ test('held deal tasks stay out of every Home agenda until the hold date', () => 
   for (const scope of ['team', 'mine']) {
     const view = agendaSnapshot(board, details, { scope, today: '2026-10-01' });
     assert.deepEqual(view.entries.map(row => row.key), ['task:released', 'task:expired', 'task:post-call']);
-    assert.ok(!view.week.flatMap(day => day.entries).some(row => row.key === 'task:held'));
     assert.ok(!view.upcoming.some(row => row.key === 'task:held'));
   }
   assert.equal(details.get('demo-a').next_actions[0].hold_until, '2027-01-01');

@@ -42,6 +42,8 @@
  * @property {string} phase
  * @property {Actor|null} owner
  * @property {boolean} attention
+ * @property {{id:string, owner:Actor|null, description:string, due_on:string|null}[]} open_actions
+ * @property {{kind:string, summary:string, occurred_at:string}|null} last_step
  * @property {string|null} last_touch
  * @property {string} next_step
  * @property {string|null} next_date

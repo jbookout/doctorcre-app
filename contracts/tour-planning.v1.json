@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-tour-planning.v1",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "mode": "app-only-drafts",
   "existing_reads": {
     "producer": "jbookout/carr-system",
@@ -15,10 +15,18 @@
     "area": "client.city and client.state; never a claimed search preference",
     "use": "client.vertical or client.specialty",
     "notes": "short client.notes summary; original entry expands in the draft popup",
-    "missing_fields": ["client space criteria", "preferred tour date", "preferred route endpoints", "appointments"]
+    "missing_fields": [
+      "client space criteria",
+      "preferred tour date",
+      "preferred route endpoints",
+      "appointments"
+    ],
+    "saved_search_draft": "same-tab search area and use for the exact selected client or Research; Plan from search retains that subject and existing plan edits; these are user-entered app drafts, not a canonical CARR search brief",
+    "packet_search_criteria": "all nonempty SEARCH_FIELDS from the exact Plan subject at review time, rendered separately from itinerary facts; current search edits appear on reopening, without a canonical revision or route handoff",
+    "record_refresh_review": "A brand-new draft prefills once. A refresh never writes into an existing draft; every client-sourced field that differs from the draft, including typed and empty values, offers a keep-or-use choice. Nonidentity comparisons show before/after values and the local successful read time. This is a client-record read, not a mail/calendar capture receipt or evidence date."
   },
   "storage": {
-    "drafts": "sessionStorage scoped to the hash of the authenticated Tour session token",
+    "drafts": "sessionStorage scoped to the hash of the authenticated Tour session token; Research and exact client IDs retain independent plan and search drafts, including deliberately cleared fields",
     "files": "memory only; no file bytes, names or derived contents are persisted or transmitted",
     "business_writes": "none"
   },
@@ -30,8 +38,15 @@
     "Unsupported actions stay disabled; catalog search is not MLS search.",
     "No default date, budget, appointment, listing result or navigation coordinate is invented.",
     "Selecting another client clears prior-client values; late responses are discarded.",
-    "Background updates refresh the record and tour details without overwriting edited draft fields.",
+    "Background updates refresh the record and tour details without writing into existing drafts.",
     "Files are never included in public projection, share or PDF commands.",
-    "Territory is a schematic overview; no property or native-navigation pins are presented."
+    "Territory shows Census context only; no property or native-navigation pins are presented.",
+    "Research packet review does not require a client or a readable client directory.",
+    "A failed selected-client detail read retains the exact selection and offers explicit retry without clearing edits or files; client packet review waits for a successful detail read.",
+    "Client switches restore only that subject's tab-local draft; a session change clears every subject's cached draft.",
+    "Plan from search validates criteria before changing the plan subject and preserves private files when the subject is already selected.",
+    "Packet search criteria never use another selected Search subject as a fallback. Cleared criteria remain absent after reload.",
+    "A differing client-sourced tour name, including a typed or empty draft value, requires Keep draft name or Use current name before packet review; typing a tour name is also explicit selection. Both choices affect only the app draft and never write client identity.",
+    "Client refresh change details and pending name choices stay in memory, clear on subject/session change, and render record values as inert text. Unresolved name differences are detected again after reload."
   ]
 }

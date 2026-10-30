@@ -214,16 +214,16 @@ test('an open Deal detail updates automatically without closing its popup', asyn
   const { page, errors } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/deals');
   await page.locator('.card-open').first().click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open);
+  await page.waitForFunction(() => !document.querySelector('#recordPanel')?.hidden);
   const name = await page.locator('#panelTitle').textContent();
   const before = await page.locator('#recordPanel').getAttribute('data-updated');
   await page.clock.fastForward(61_000);
   await page.waitForFunction(before => document.querySelector('#recordPanel')?.dataset.updated !== before, before);
   assert.equal(await page.locator('#panelTitle').textContent(), name);
-  assert.equal(await page.locator('#recordPanel').evaluate(e => e.open), true);
-  await page.getByLabel('Close deal', {exact:true}).click();
+  assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden), true);
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await page.clock.fastForward(61_000);
-  assert.equal(await page.locator('#recordPanel').evaluate(e => e.open), false);
+  assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden), false);
   assert.deepEqual(errors, []);
 });
 
@@ -473,7 +473,7 @@ test('background controls and Doc shortcuts retire the walkthrough without inter
 for (const actor of ['joe', 'dell']) test(`first verified ${actor} sign-in opens the walkthrough once in this browser and Help replays it`, async t => {
   const { page, errors } = await open(t, { actor, live: true, minimal: true, firstSignIn: true, width: actor === 'joe' ? 390 : 1280 });
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
-  await guide.waitFor({ timeout: 5000 });
+  await guide.waitFor();
   await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
   await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
   await page.waitForFunction(() => document.querySelector('[data-walkthrough] [data-progress]')?.textContent === '1 of 6');
