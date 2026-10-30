@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -162,7 +162,11 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*"
+    "/api/tours/*",
+    "/api/v1/call-sessions",
+    "/api/v1/call-sessions/{id}",
+    "/api/v1/call-sessions/{id}/transfer",
+    "/api/v1/call-sessions/{id}/report"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -1593,5 +1597,89 @@
       "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
     }
+  },
+  "phone_call_sessions": {
+    "schema_version": 1,
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "529b5f48da5e301b7f89cd85498d3f8f19f3b891",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2721",
+      "source": "mcp-server/src/phone-call-sessions.js"
+    },
+    "admission": {
+      "method": "POST",
+      "path": "/api/v1/call-sessions",
+      "fields": [
+        "sha256",
+        "byte_count",
+        "duration_seconds",
+        "mime_type",
+        "started_at",
+        "consent_announced_at"
+      ],
+      "deduplication": "Authenticated owner and audio SHA-256. Retain the original metadata across retries."
+    },
+    "transfer": {
+      "method": "PUT",
+      "path": "/api/v1/call-sessions/{id}/transfer",
+      "body": "Audio bytes with admitted MIME and exact Content-Length. The browser supplies Content-Length from the Blob.",
+      "receipt": "schema_version:1, matching session_id and transferred:true. First transfer includes matching sha256; replay omits sha256. Verify a fresh matching status with transferred:true before clearing scoped pending audio. HTTP 202 and pending are not transfer confirmation."
+    },
+    "status": {
+      "method": "GET",
+      "path": "/api/v1/call-sessions/{id}",
+      "states": [
+        "pending",
+        "transferred",
+        "ready_review",
+        "filed"
+      ],
+      "fields": [
+        "schema_version",
+        "session_id",
+        "state",
+        "filed",
+        "transferred"
+      ]
+    },
+    "report": {
+      "method": "GET",
+      "path": "/api/v1/call-sessions/{id}/report",
+      "fields": [
+        "schema_version",
+        "session_id",
+        "state",
+        "filed",
+        "transferred",
+        "report",
+        "actions",
+        "deal_updates"
+      ],
+      "narrative": [
+        "summary",
+        "decisions",
+        "open_questions"
+      ],
+      "actions": [
+        "id",
+        "kind",
+        "deal_id",
+        "assignee",
+        "action",
+        "due_on",
+        "status",
+        "resulting_ref"
+      ],
+      "deal_updates": [
+        "id",
+        "kind",
+        "payload",
+        "status",
+        "resulting_ref"
+      ]
+    },
+    "authentication": "Same-origin partner cookie and x-carr-csrf for POST/PUT, using private-session.js. Server scopes reads to the authenticated owner. A review link provides the session ID on another authorized device; there is no session-list endpoint.",
+    "review": "Pending single-track candidates require explicit partner confirmation through existing resolve-post-call-candidate or resolve-candidate. Applied automatic changes and Undo use read-call-outcomes and undo-call-change. Those operations expose only unreviewed automatic changes and refuse human-confirmed changes. No transcript, Outlook draft creation, or automatic phone candidate application.",
+    "deployment_order": "Depends on DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge."
   }
 }
