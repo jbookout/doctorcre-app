@@ -1254,7 +1254,7 @@ export async function createFixtureClient(opts = {}) {
       const board = await this.getBoard();
       return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
         ...deal,
-        critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
+        critical_dates: [...(deal.next_date ? [{ label: deal.next_step || 'Follow-up due', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
         next_actions: actionsFor(deal),
       })) };
@@ -1271,7 +1271,7 @@ export async function createFixtureClient(opts = {}) {
       const critical_dates = [];
       if (deal.next_date) {
         critical_dates.push({
-          label: 'Next date',
+          label: deal.next_step || 'Follow-up due',
           date: deal.next_date,
         });
       }
@@ -3042,7 +3042,7 @@ export async function createFixtureClient(opts = {}) {
   let emailFixture;
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true }));
   Object.assign(client, Object.fromEntries([
-    'getEmailProposalQuality', 'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
+    'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
     'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
   ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);

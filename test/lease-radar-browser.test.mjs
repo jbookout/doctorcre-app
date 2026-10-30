@@ -28,7 +28,6 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     'morning-brief': async () => ({ state:'unavailable' }),
     'read-home-agenda': () => client.getHomeAgenda(),
     'read-post-call-followups': async () => ({ schema_version: 'post-call-followups.v1', candidates: [], send: false }),
-    'email-proposal-quality': () => client.getEmailProposalQuality(),
     'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'list-email-thread-filings': async () => ({ filings: [] }),
     'deal-room-board': () => client.getBoard(), 'get-deal-room': args => client.getDeal(args.deal),
@@ -63,6 +62,10 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`http://localhost/${home ? '' : 'leases'}?mode=live`);
+  if (home) {
+    await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    await page.locator('.home-grid').scrollIntoViewIfNeeded();
+  }
   await page.locator(home ? '#homePastClients .lease-card' : '#leaseRadar .lease-card').first().waitFor();
   return { page, errors, calls, payload, fail(value) { failure = value; }, get reads() { return reads; } };
 }

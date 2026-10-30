@@ -165,3 +165,29 @@ for (const width of [1440, 390]) test(`Lead lanes start with five cards and expa
   assert.equal(await lane.locator('.lead-open').innerText(), 'Synthetic practice 100');
   assert.deepEqual(writes, []);
 });
+
+for (const width of [390,1440]) for (const theme of ['light','dark']) test(`lead board targets and empty stages ${width} ${theme}`, async t => {
+ const browser=await chromium.launch(); t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width,height:900},colorScheme:theme});
+ await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
+ const board=workspace(); board.leads=[lead(1,{stage:'new',doctor_name:'Demo practice'})];
+ await routeLeads(page,{getBoard:()=>board}); await page.goto('http://localhost/leads');
+ await page.locator('.lead-card').first().waitFor();
+ const controls=page.locator('.lead-card :is(.lead-open, [data-claim], .drag-handle):visible');
+ assert.equal(await controls.count(),3);
+ for(const control of await controls.all()) { const box=await control.boundingBox(); assert.ok(box.width>=44 && box.height>=44, await control.evaluate(n=>n.className||n.outerHTML)); }
+ await mkdir('out/test-artifacts/WR572.S6.J1',{recursive:true});
+ await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/leads-${width}-${theme}.png`});
+ if(width===390) {
+  assert.equal(await page.locator('.stage-column:not(:has(.lead-card)):visible').count(),0);
+  const note=page.locator('.stages-hidden'); assert.match(await note.innerText(),/\d+ stages? hidden/);
+  await note.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/stages-hidden-leads-390-${theme}.png`});
+  await note.getByRole('button').click();
+  assert.ok(await page.locator('.stage-column:not(:has(.lead-card)):visible').count()>0);
+  await note.getByRole('button').click();
+  await page.locator('#stageFilter').selectOption('qualified');
+  assert.equal(await page.locator('.filtered-empty').isVisible(),true);
+  assert.equal(await page.locator('.stages-hidden').count(),0);
+ }
+});

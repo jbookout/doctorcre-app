@@ -50,7 +50,6 @@
     "decide-doc-suggestion",
     "decline-work-request",
     "dismiss-email-proposal",
-    "email-proposal-quality",
     "end-deal-review",
     "engineering-passport",
     "find",
@@ -783,7 +782,11 @@
           "suggestion",
           "status"
         ],
-        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+        "email_threads": {
+          "shape": "Optional array of {conversation_id, subject, latest_message_at}, newest message first; conversation_id and subject may be null. Missing on older servers.",
+          "source": "DoctorCRE/carr-system PR #2694 at b36239232aca073d062530d23f74e4aed40dd760: subject is outside-origin email_context.subject; latest_message_at is the latest email activity occurred_at."
+        }
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
@@ -1579,16 +1582,6 @@
     },
     "undo": "undo-email-thread-filing {event_id,idempotency_key} with a new UUID key per attempt. Refusals such as email_thread_filing_changed leave the filing intact and are shown, never retried.",
     "deployment_order": "The app must not merge before the producer PR is deployed."
-  },
-  "email_proposal_quality": {
-    "producer": {
-      "repository": "DoctorCRE/carr-system",
-      "source_commit": "470cbb3494a04c63f8d01569a0373d61922b33b1",
-      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2450"
-    },
-    "schema_version": "email-proposal-quality.v1",
-    "read": "email-proposal-quality {} returns days:7, kinds[], corrections[] and send:false. Kinds contain kind, proposed, pending, confirmed, dismissed, dismiss_rate, confirmed_confidence, dismissed_confidence and over_threshold. Corrections contain id, kind, deal_name, reason and resolved_at.",
-    "review": "Counts are a created-at cohort. Dismissal is the correction signal, not an undo rate. Null rates and confidences mean no resolved sample. over_threshold is advisory, not enforcement. Corrections are limited to 20. No writes or sends."
   },
   "work_queue": {
     "producer": {

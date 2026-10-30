@@ -26,13 +26,14 @@ const sent = { id: '10000000-0000-4000-8000-000000000001', deal: 'demo-deal', su
 const failed = { ...sent, id: '10000000-0000-4000-8000-000000000002', subject: 'Demo failed reply', outcome: 'failed', failure_reason_code: 'unconfirmed_after_dispatch' };
 const pending = owner => ({ id: `pending-${owner}`, deal: 'demo-deal', status: 'approved_to_send', kind: 'reply_draft', reply_draft: { owner, subject: `Demo ${owner} pending reply`, body: 'Private body' }, send_result: null, submitted_email: { subject: `Demo ${owner} submitted reply` } });
 const pageOf = (proposals, more = false) => ({ schema_version: 'email-reply-outcomes.v1', proposals, send: false, more, next_cursor: more ? proposals.at(-1).id : null });
-async function open(t, { width = 390, outcomes = () => pageOf([sent, failed]), waiting = () => ({ schema_version: 'email-proposals.v1', proposals: [pending('joe'), pending('dell')], send: false, more: false, next_cursor: null }) } = {}) {
+async function open(t, { width = 390, theme = 'dark', outcomes = () => pageOf([sent, failed]), waiting = () => ({ schema_version: 'email-proposals.v1', proposals: [pending('joe'), pending('dell')], send: false, more: false, next_cursor: null }) } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
-  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-  const calls = [];
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
+  const calls = [], filings = [];
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
+    if (name === 'list-email-thread-filings') { filings.push(args); return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ filings: [] }) }] } } }); }
     if (name !== 'list-email-proposals' || (!args.mode && args.status !== 'approved_to_send')) return route.continue();
     calls.push(args);
     try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (args.mode ? outcomes(args) : waiting(args))) }] } } }); }
@@ -41,18 +42,29 @@ async function open(t, { width = 390, outcomes = () => pageOf([sent, failed]), w
   assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `reply-${width}`, viewer: 'joe', reset: true } })).status(), 200);
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#dealAttention[aria-busy="false"]').waitFor();
+  await page.getByText('Email activity', { exact: true }).scrollIntoViewIfNeeded();
+  assert.match(await page.locator('#homeEmailActivity summary').innerText(), /Sent replies and filed emails/);
+  assert.equal(calls.length, 0, 'reply activity makes no requests before opening');
+  assert.equal(filings.length, 0, 'filing activity makes no requests before opening');
+  await mkdir('out/test-artifacts/reply-outcomes', { recursive: true });
+  await page.locator('#homeEmailActivity').screenshot({ path: `out/test-artifacts/reply-outcomes/closed-${width}-${theme}.png`, animations: 'disabled' });
+  await page.getByText('Email activity', { exact: true }).click();
   const card = page.locator('#homeReplyOutcomes');
-  assert.equal(await card.count(), 1, 'Home has a reply delivery outcomes panel');
+  assert.equal(await card.count(), 1, 'Home has a sent replies outcomes panel');
   await card.scrollIntoViewIfNeeded();
   await card.locator('h2').waitFor();
+  await page.waitForFunction(() => document.querySelector('#homeEmailFilings')?.getAttribute('aria-busy') === 'false');
+  assert.equal(filings.length, 1, 'opening loads filing activity');
   return { page, card, calls };
 }
 
-for (const width of [390, 1440]) test(`Home renders signed-in partner reply delivery outcomes at ${width}px`, async t => {
-  const { page, card, calls } = await open(t, { width });
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Home renders signed-in partner sent replies outcomes at ${width}px ${theme}`, async t => {
+  const { page, card, calls } = await open(t, { width, theme });
   await card.getByText('Demo sent reply', { exact: true }).waitFor();
   await card.getByText('Demo failed reply', { exact: true }).waitFor();
   await card.getByText('Demo joe submitted reply', { exact: true }).waitFor();
+  const sizes = await page.locator('#homeEmailActivity').evaluate(node => [node.querySelector('summary'), node.querySelector('h2'), node.querySelector('h3')].map(el => parseFloat(getComputedStyle(el).fontSize)));
+  assert.ok(sizes[0] > sizes[1] && sizes[1] > sizes[2], `heading sizes descend: ${sizes}`);
   assert.match(await card.innerText(), /Sent/);
   assert.match(await card.innerText(), /Failed.*Delivery could not be confirmed/s);
   assert.match(await card.innerText(), /Pending.*Delivery is not yet confirmed/s);
@@ -65,7 +77,8 @@ for (const width of [390, 1440]) test(`Home renders signed-in partner reply deli
   await mkdir('out/test-artifacts/reply-outcomes', { recursive: true });
   await page.setViewportSize({ width, height: 1200 });
   await card.evaluate(node => window.scrollTo({ top: window.scrollY + node.getBoundingClientRect().top - 100, behavior: 'instant' }));
-  await page.screenshot({ path: `out/test-artifacts/reply-outcomes/home-${width}.png`, animations: 'disabled' });
+  await page.locator('#homeEmailActivity').evaluate(node => window.scrollTo({ top: window.scrollY + node.getBoundingClientRect().top - 100, behavior: 'instant' }));
+  await page.locator('#homeEmailActivity').screenshot({ path: `out/test-artifacts/reply-outcomes/open-${width}-${theme}.png`, animations: 'disabled' });
 });
 
 test('Home distinguishes a successful empty reply outcomes read from unavailable data', async t => {

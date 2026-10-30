@@ -10,7 +10,7 @@ const banned = ['Nothing needs you right now', 'nothing needs your decision', 'W
   'Deals that need you', 'One thing is broken, nothing is stuck', 'Nothing is waiting on you', 'Everything is clear', 'WHAT\nNEEDS\tYOUR attention',
   // Internal vocabulary retired from partner screens.
   'Work record', 'Add work record', 'Search work records', 'Recheck Quill', 'Quill local recorder', 'Checking Quill on this device',
-  'runs on the Mac with Quill', 'checked by Jev', 'Automatic Jev checks', 'Reason not yet classified'];
+  'runs on the Mac with Quill', 'checked by Jev', 'Automatic Jev checks', 'Reason not yet classified', 'Reply delivery', 'Sent records a send outcome', 'Check the recorder', 'Call recording runs on the Mac', 'Automatic email filings', 'Call evidence', 'No overdue local next steps', 'Overdue local deals', 'Next date / Date', "{ label: 'Next date', date: dueOn }", '<span class="home-item-type">Date</span>'];
 for (const phrase of banned) test(`UI copy lint rejects planted narration: ${JSON.stringify(phrase)}`, async t => {
   const dir = await mkdtemp(join(tmpdir(), 'doctorcre-ui-copy-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'planted.html'); await writeFile(path, `<h2>${phrase}</h2>`);
@@ -53,4 +53,14 @@ test('configured CI lint covers React island source', async t => {
   const planted = run();
   assert.equal(planted.status, 1, planted.stdout + planted.stderr);
   assert.match(planted.stderr, /planted\.tsx:1/);
+});
+
+test('UI copy lint rejects internal values in Today move sentences', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'doctorcre-moves-copy-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, 'today-moves.mjs');
+  await writeFile(path, 'export const MOVE_FIELDS = ["next_step"]; export function todayMove(move) { return { action: `Updated ${move.field} ${move.move_value}` }; }');
+  const result = spawnSync(process.execPath, [checker.pathname, path], { encoding: 'utf8' });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /UI copy/);
 });

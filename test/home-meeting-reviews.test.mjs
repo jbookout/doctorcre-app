@@ -38,6 +38,8 @@ test('only well-formed reviews are listed, newest first', () => {
 test('confirming a meeting logs one meeting activity on the chosen deal and hides it', async () => {
   const writes = [], h = mount(async args => { writes.push(args); return { ok: true, activity_id: 'demo-activity' }; });
   assert.equal(h.host.hidden, false);
+  assert.equal(h.host.querySelector('.work-card-title')?.textContent, 'Demo site tour');
+  assert.equal(h.host.querySelector('.work-card-status'), null);
   assert.match(h.host.textContent, /Did these meetings happen\?/);
   assert.deepEqual([...h.host.querySelectorAll('option')].map(o => o.value), ['', 'demo-deal', 'demo-other'], 'the partner’s own deals come first');
   assert.equal(h.host.querySelector('[data-review-log]').disabled, true, 'a deal must be chosen first');

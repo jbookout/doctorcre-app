@@ -76,7 +76,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
         assert.equal(result.reads.filter(name => name === 'getHomeAgenda').length, 1);
         assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
         assert.ok(result.reads.includes('getLeadBoard'), 'count the lead board read assigned during home boot');
-        assert.ok(result.reads.includes('readLeaseRadar'), 'count the lease radar read assigned during home boot');
+        assert.equal(result.reads.includes('readLeaseRadar'), false, 'past-client reads wait for the secondary Home grid');
       }
       if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
       if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
@@ -115,6 +115,9 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   const bytes = (await Promise.all(reads)).reduce((total, size) => total + size, 0);
   assert.ok(bytes < 400000, `Home transferred ${bytes} JavaScript bytes`);
   t.diagnostic(`Home transferred ${bytes} JavaScript bytes`);
+  await page.locator('.home-grid').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Refresh past-client touches', exact: true }).waitFor();
+  await page.locator('#homeIntroductions button:not([disabled])').first().waitFor();
   assert.deepEqual(errors, []);
 });
 
