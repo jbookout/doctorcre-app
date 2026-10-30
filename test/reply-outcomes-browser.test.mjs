@@ -1,16 +1,16 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 
 let outDir, server, browser, origin;
 before(async () => {
-  outDir = await mkdtemp(join(tmpdir(), 'reply-outcomes-'));
+  outDir = await temporaryDirectory('reply-outcomes-');
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

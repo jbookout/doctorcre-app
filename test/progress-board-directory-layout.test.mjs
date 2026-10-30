@@ -2,7 +2,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 
 const outcomeTitle = 'Let partners compare every synthetic delivery outcome and understand the next action before opening the complete work record or its supporting history, including the current stage, the expected result, the documented handoff, and the evidence that each synthetic release reached its intended destination with the right verification';
 const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: `demo-${i}`, title: `Demo repository ${i}`, project: i === 165 ? 'Synthetic Focus' : 'Demo delivery' }));

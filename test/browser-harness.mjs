@@ -1,3 +1,5 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { rmSync } from 'node:fs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
@@ -22,6 +24,7 @@ const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const pools = [];
+let browserTemp;
 
 export function webkitSkipReason(platform = process.platform, macOSVersion = platform === 'darwin'
   ? execFileSync('/usr/bin/sw_vers', ['-productVersion'], { encoding: 'utf8' }).trim() : '') {
@@ -33,8 +36,12 @@ export function webkitSkipReason(platform = process.platform, macOSVersion = pla
 after(async () => {
   const results = await Promise.allSettled(pools.flatMap(pool => [...pool.values()]));
   pools.forEach(pool => pool.clear());
-  await Promise.all(results.filter(result => result.status === 'fulfilled')
-    .map(result => result.value.close()));
+  try {
+    await Promise.all(results.filter(result => result.status === 'fulfilled')
+      .map(result => result.value.close()));
+  } finally {
+    if (browserTemp) rmSync(browserTemp, { recursive: true, force: true });
+  }
 });
 
 function browserEngine(engine) {
@@ -43,12 +50,17 @@ function browserEngine(engine) {
   pools.push(launched);
   return {
     async launch(options = {}) {
+      if (!browserTemp) {
+        browserTemp = temporaryDirectory('doctorcre-browser-');
+        process.env.TMPDIR = browserTemp;
+        process.env.TEMP = browserTemp;
+        process.env.TMP = browserTemp;
+      }
       const key = JSON.stringify(options);
       if (!launched.has(key)) launched.set(key, engine.launch({ ...options, ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
       const browser = await launched.get(key);
       const contexts = new Set();
-      return {
-        async newPage(options = {}) {
+      async function newContext(options = {}) {
           const context = await browser.newContext(options);
           contexts.add(context);
           context.setDefaultTimeout(WAIT_MS);
@@ -66,6 +78,12 @@ function browserEngine(engine) {
               throw new DOMException('Browser tests never capture from host devices', 'NotAllowedError');
             };
           });
+          return context;
+      }
+      return {
+        newContext,
+        async newPage(options = {}) {
+          const context = await newContext(options);
           const page = await context.newPage();
           if (throttle > 1 && engine === playwrightChromium) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
           if (jitter > 0) {

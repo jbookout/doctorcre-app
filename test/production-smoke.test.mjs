@@ -2,7 +2,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 import { RELEASE_IDENTITY } from "../smoke/production/release-identity.mjs";
 
 // The production journeys run against the live app after every release

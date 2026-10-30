@@ -1,12 +1,12 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { copyFile, mkdir, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 
 import { buildArtifact, runCli, verifyArtifact } from "../scripts/artifact.mjs";
 
@@ -14,7 +14,7 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const COMMIT = "1".repeat(40);
 
 test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
-  const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
+  const outDir=await temporaryDirectory('doctorcre-report-layout-', t);
   await buildArtifact({root:ROOT,outDir,commit:COMMIT});
   const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width:820,height:900}});
@@ -40,9 +40,9 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
   assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
 });
 
-test("the static artifact rebuild is byte-for-byte reproducible", async () => {
-  const first = await mkdtemp(join(tmpdir(), "doctorcre-artifact-a-"));
-  const second = await mkdtemp(join(tmpdir(), "doctorcre-artifact-b-"));
+test("the static artifact rebuild is byte-for-byte reproducible", async (t) => {
+  const first = await temporaryDirectory("doctorcre-artifact-a-", t);
+  const second = await temporaryDirectory("doctorcre-artifact-b-", t);
   const a = await buildArtifact({ root: ROOT, outDir: first, commit: COMMIT });
   const b = await buildArtifact({ root: ROOT, outDir: second, commit: COMMIT });
   assert.equal(a.archiveSha256, b.archiveSha256);
@@ -57,16 +57,16 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
 });
 
-test("the deployment directory is rebuilt without stale files", async () => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-site-clean-"));
+test("the deployment directory is rebuilt without stale files", async (t) => {
+  const outDir = await temporaryDirectory("doctorcre-site-clean-", t);
   await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   await writeFile(join(outDir, "site", "stale-secret.txt"), "must disappear");
   await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   await assert.rejects(readFile(join(outDir, "site", "stale-secret.txt")), /ENOENT/);
 });
 
-test("verification binds every payload file and rejects changed bytes", async () => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-artifact-verify-"));
+test("verification binds every payload file and rejects changed bytes", async (t) => {
+  const outDir = await temporaryDirectory("doctorcre-artifact-verify-", t);
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   const verified = await verifyArtifact(built.archive, built.archiveSha256);
   assert.equal(verified.fileCount, built.manifest.files.length);
@@ -82,9 +82,9 @@ test("verification binds every payload file and rejects changed bytes", async ()
 
 });
 
-test("every contracted page including Doc activity is present in the deployment and archive", async () => {
+test("every contracted page including Doc activity is present in the deployment and archive", async (t) => {
   const routes = (await import("../js/routes.js")).routeContract;
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-route-artifact-"));
+  const outDir = await temporaryDirectory("doctorcre-route-artifact-", t);
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   const verified = await verifyArtifact(built.archive, built.archiveSha256);
   for (const path of new Set(Object.values(routes.routes))) {
@@ -95,8 +95,7 @@ test("every contracted page including Doc activity is present in the deployment 
 });
 
 async function committedFixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "doctorcre-source-fixture-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await temporaryDirectory("doctorcre-source-fixture-", t);
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
@@ -116,8 +115,7 @@ test("CLI verification accepts the exact committed artifact", async (t) => {
 });
 
 test("one contract path declaration drives both assembly and committed-source verification", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "doctorcre-contract-membership-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = await temporaryDirectory("doctorcre-contract-membership-", t);
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
@@ -225,8 +223,7 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
 });
 
 test("the static artifact ships no unsupported diagnostic sender", async (t) => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-no-diagnostics-"));
-  t.after(() => rm(outDir, { recursive: true, force: true }));
+  const outDir = await temporaryDirectory("doctorcre-no-diagnostics-", t);
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   assert.equal(built.manifest.runtime_errors, undefined);
   assert.equal(built.manifest.files.some(file => /error-tracking/.test(file.path)), false);
@@ -243,8 +240,8 @@ test('report assembly is independent of app-shell implementation spelling', asyn
   assert.deepEqual(await readFile(join(outDir, 'site/reports/share.js')), before);
 });
 
-test('Home and Tasks retain their routes while retired Home implementation leaves the artifact', async () => {
-  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-retirement-'));
+test('Home and Tasks retain their routes while retired Home implementation leaves the artifact', async (t) => {
+  const outDir = await temporaryDirectory('doctorcre-home-retirement-', t);
   const built = await buildArtifact({root:ROOT,outDir,commit:COMMIT});
   const routes = (await import("../js/routes.js")).routeContract;
   assert.equal(routes.routes['/'], 'workspace.html');
