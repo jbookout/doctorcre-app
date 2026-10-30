@@ -76,6 +76,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
         assert.equal(result.reads.filter(name => name === 'getHomeAgenda').length, 1);
         assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
         assert.ok(result.reads.includes('getLeadBoard'), 'count the lead board read assigned during home boot');
+        assert.equal(result.reads.includes('listPracticeOrigination'), false, 'contact reasons wait for the secondary Home grid');
         assert.equal(result.reads.includes('readLeaseRadar'), false, 'past-client reads wait for the secondary Home grid');
       }
       if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
@@ -118,6 +119,7 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   await page.locator('.home-grid').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Refresh past-client touches', exact: true }).waitFor();
   await page.locator('#homeIntroductions button:not([disabled])').first().waitFor();
+  await page.locator('#homeContactReasons .work-card').first().waitFor();
   assert.deepEqual(errors, []);
 });
 

@@ -12,6 +12,7 @@ export async function routeLeads(page,{getBoard=workspace,getReasons=()=>({ok:tr
    if(path==='/mcp'){
     const p=(await request.json()).params;let value={ok:true};
     if(p.name==='list-practice-origination')value=await getReasons(p.arguments);
+    else if(p.name==='read-home-agenda')value={schema_version:'home-agenda.v1',actor:'example-partner',deals:[]};
     else if(p.name==='deal-room-board')value={actor:'example-partner',deals:[]};
     else if(p.name==='lead-board'){onRead();const board=await getBoard();value={...board,...(p.arguments.lead_id?{detail:getDetail(board.leads.find(l=>l.id===p.arguments.lead_id),p.arguments)}:{})}}else onWrite(p);
     return Response.json({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(value)}]}});
