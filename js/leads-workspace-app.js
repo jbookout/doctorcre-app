@@ -59,7 +59,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       .find(node => node.getAttribute(identity.attr) === identity.value && node.dataset.clientId === identity.client);
     (node || $("refreshBoard")).focus({ preventScroll: true });
   }
-  const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? "" : "s"} with no leads` : `${count} stage${count === 1 ? "" : "s"} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${state.showEmptyStages}">${state.showEmptyStages ? "− Hide empty stages" : "+ Show empty stages"}</button></p>` : "";
+  const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? "" : "s"} with no leads` : `${count} stage${count === 1 ? "" : "s"} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${state.showEmptyStages}"><span aria-hidden="true">${state.showEmptyStages ? "− " : "+ "}</span>${state.showEmptyStages ? "Hide empty stages" : "Show empty stages"}</button></p>` : "";
   function render() {
     const focused = focusIdentity(doc.activeElement);
     const laneScroll = new Map([...$("leadBoard").querySelectorAll("[data-stage]")].map(node => [node.dataset.stage, node.querySelector(".lead-stack").scrollTop]));

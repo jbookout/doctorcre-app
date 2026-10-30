@@ -233,4 +233,3 @@ dialog::backdrop { background: var(--scrim); }
 
 .lead-card .work-card-title { padding-right: calc(var(--touch) + var(--space-2)); }
 .lead-card .score { display: inline-flex; align-items: baseline; gap: var(--space-1); }
-@media (max-width: 650px) { .stages-hidden { padding-left: var(--space-2); } }

@@ -30,6 +30,17 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
     const facts = card.locator('.deal-summary-facts').first();
     assert.match(await facts.innerText(), national ? /Fri Oct 30 · D/ : /Fri Oct 30/);
     if (!national) assert.doesNotMatch(await facts.innerText(), /· D/);
+    const spaced = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.filter(node => node.textContent.includes('·')).map(node => {
+      const range = document.createRange();
+      range.setStart(node.firstChild, 0);
+      range.setEnd(node.firstChild, 1);
+      return { text: node.textContent, space: range.getBoundingClientRect().width };
+    }));
+    assert.ok(spaced.length > 0, 'a dated summary line is rendered');
+    for (const fact of spaced) {
+      assert.match(fact.text, /^ · /, 'the dot keeps a space before it');
+      assert.ok(fact.space > 1, 'the space before the dot is rendered, not collapsed');
+    }
     const visible = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.every(node => {
       const box = node.getBoundingClientRect();
       for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {

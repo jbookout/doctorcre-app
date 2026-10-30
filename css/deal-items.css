@@ -28,7 +28,7 @@
 .deal-summary-line { display: grid; grid-template-columns: auto minmax(0, max-content) auto; justify-content: start; align-items: baseline; margin: var(--space-2) 0 0; line-height: 1.4; min-width: 0; }
 .deal-summary-label { color: var(--fg-muted); padding-right: 0.3em; }
 .deal-summary-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; min-width: 0; }
-.deal-summary-facts { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.deal-summary-facts { white-space: pre; font-variant-numeric: tabular-nums; }
 .deal-summary-facts time[data-overdue="true"] { color: var(--status-warn-ink); }
 .deal-summary-last { color: var(--fg-muted); }
 .has-app-layout .table-frame.has-deal-summaries :is(th, td):nth-child(4), .has-deal-summaries .col-date { display: none; }
