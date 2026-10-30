@@ -88,7 +88,7 @@ test('a background filing read failure preserves focus outside its panel', async
   const refresh = view.refresh();
   reject(Error('Synthetic read unavailable'));
   await refresh;
-  assert.match(container.textContent, /Could not load automatic email filings/);
+  assert.match(container.textContent, /Could not load filed emails/);
   assert.equal(document.activeElement, trigger);
 });
 

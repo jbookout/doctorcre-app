@@ -150,7 +150,7 @@ test('the notice clears once the last proposal has resolved', async () => {
   assert.match(h.host.textContent, /Task added/);
   h.controller.update({ ...ready, tasks: [] });
   assert.doesNotMatch(h.host.textContent, /Task added/);
-  assert.equal(h.host.hidden, true);
+  assert.equal(h.host.hidden, false);
   h.close();
 });
 
@@ -238,9 +238,22 @@ test('call follow-ups show recorded proposal time separately from task due date'
   const h = mount();
   h.controller.update({ ...ready, tasks });
   for (const article of h.host.querySelectorAll('article')) {
-    assert.match(article.textContent, /From call · Proposed Oct 1, 2026, 9:00 AM CDT/);
+    assert.match(article.textContent, /From your call with Demo deal, .* ago/);
     assert.equal(article.querySelector('.home-call-source time').dateTime, '2026-10-01T14:00:00Z');
   }
-  assert.equal(h.host.querySelector('[data-call-task] time').dateTime, '2026-10-05');
+  assert.equal(h.host.querySelector('[data-call-task] .home-call-task-controls time').dateTime, '2026-10-05');
+  h.close();
+});
+
+test('call review labels its source age, due date and empty/loading states', () => {
+  const h = mount();
+  h.controller.update({ ...ready, tasks: [{ ...task, dueOn: '2026-10-02' }] });
+  assert.match(h.host.textContent, /From your call with Demo deal, .* ago/);
+  assert.match(h.host.querySelector('.home-call-task-controls').textContent, /Due Oct 2/);
+  h.controller.update({ ...ready, tasks: [] });
+  assert.equal(h.host.hidden, false);
+  assert.match(h.host.textContent, /No call follow-ups/);
+  h.controller.update({ ...ready, tasks: [], busy: true });
+  assert.ok(h.host.querySelector('.home-followup-skeleton'));
   h.close();
 });

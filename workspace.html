@@ -41,8 +41,8 @@
         <div data-layout-slot="status" class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button data-layout-refresh id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
       </div>
     </section>
-    <section id="homeCallTasks" class="home-panel home-call-tasks" aria-label="Call tasks to review" hidden></section>
-    <section id="homeEmailFollowups" class="home-panel" aria-label="Email follow-ups" aria-busy="true"><header class="home-panel-head"><h2>Email follow-ups</h2></header><p class="home-empty">Loading email follow-ups…</p></section>
+    <section id="homeCallTasks" class="home-panel home-call-tasks" aria-label="Call tasks to review" aria-busy="true"><header class="home-panel-head"><h2>Call follow-ups to review</h2></header><div class="home-followup-skeleton" role="status">Loading call follow-ups…</div></section>
+    <section id="homeEmailFollowups" class="home-panel" aria-label="Email follow-ups" aria-busy="true"><header class="home-panel-head"><h2>Email follow-ups</h2></header><div class="home-followup-skeleton" role="status">Loading email follow-ups…</div></section>
     <aside id="homeBrief" class="home-panel home-brief" aria-label="Your brief" aria-live="polite"><header class="home-panel-head"><h2>Your brief</h2></header><p class="home-empty">Updating tasks…</p></aside>
     <div class="home-main">
     <p id="homeNotice" class="home-notice" role="status" hidden></p>
@@ -55,8 +55,8 @@
     </section>
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar</h2></header><p class="home-empty" role="status">Updating calendar…</p></section>
-    <section id="homeReplyOutcomes" class="home-panel" aria-label="Reply delivery" aria-busy="true"><header class="home-panel-head"><h2>Reply delivery</h2></header><p class="home-empty">Loading reply delivery…</p></section>
-    <section id="homeEmailFilings" class="home-panel" aria-label="Automatic email filings" aria-busy="true"><header class="home-panel-head"><h2>Automatic email filings</h2></header><p class="home-empty">Loading automatic email filings…</p></section>
+    <section id="homeReplyOutcomes" class="home-panel" aria-label="Sent replies" aria-busy="true"><header class="home-panel-head"><h2>Sent replies</h2></header><p class="home-empty">Loading sent replies…</p></section>
+    <section id="homeEmailFilings" class="home-panel" aria-label="Filed automatically" aria-busy="true"><header class="home-panel-head"><h2>Filed automatically</h2></header><p class="home-empty">Loading filed emails…</p></section>
       <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
       <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>

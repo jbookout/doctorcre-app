@@ -160,7 +160,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
       if (name === 'read-home-agenda') {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: —/);
         assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
-        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|No overdue local next steps/);
+        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|No overdue next steps/);
         assert.equal(await page.locator('#homeLeads').isVisible(), true);
       } else {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
@@ -505,8 +505,8 @@ test('R12 malformed tasks retain independent widgets and settled agenda reports 
   const { page, errors } = await open(t, { malformedTasks: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
-  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: —/);
-  assert.match(await page.locator('#dealFlags').textContent(), /Overdue local deals unavailable/);
+  assert.match(await page.locator('#dealCounts').textContent(), /Overdue deals: —/);
+  assert.match(await page.locator('#dealFlags').textContent(), /Overdue deals unavailable/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.match(await page.locator('#homeCalendar').textContent(), /unavailable|missing/i);
   assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /updating/i);

@@ -1,5 +1,5 @@
 import { toDay } from './calendar-model.js';
-import { BUSINESS_TIME_ZONE } from './business-date.js';
+import { relativeAge, sourceTime } from './email-source-line.js';
 
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -47,24 +47,26 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
   };
   const render = () => {
     if (disposed) return;
+    const expanded = new Set([...host.querySelectorAll('details[open]')].map(node => node.closest('article')?.dataset.callTask || node.closest('article')?.dataset.callDraft));
     const focused = host.contains(document.activeElement) ? document.activeElement?.dataset.callTaskKey : null;
     const tasks = view.signedOut ? [] : visible(), flags = [];
     const unavailable = view.read?.state === 'error' || view.scope === 'mine' && !actor;
-    host.hidden = !tasks.length && !unavailable && !notice;
+    host.hidden = false;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
-    const source = task => `<p class="home-call-source">From call · ${task.createdAt ? `Proposed <time datetime="${E(task.createdAt)}">${E(new Date(task.createdAt).toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }))}</time>` : 'Proposal time unavailable'}</p>`;
-    const markup = `<header class="home-panel-head"><h2>Call follow-ups to review</h2></header>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
+    const source = task => `<p class="home-call-source">From your call with ${E(task.dealName)}, <time datetime="${E(task.createdAt)}" title="${E(sourceTime(task.createdAt))}">${E(relativeAge(task.createdAt))}</time></p>`;
+    const markup = `<header class="home-panel-head"><h2>Call follow-ups to review</h2></header>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${view.busy && !tasks.length ? '<div class="home-followup-skeleton" role="status">Loading call follow-ups…</div>' : !tasks.length && !unavailable ? '<p class="home-empty">No call follow-ups</p>' : ''}${tasks.map(task => {
       if (task.kind === 'email_draft') {
         const disabled = !admitted() || openingDraft !== null;
-        return `<article class="home-call-task" data-call-draft="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${source(task)}${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div></article>`;
+        return `<article class="home-call-task home-followup-card" data-call-draft="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${source(task)}${task.evidence ? `<details><summary>What was said</summary><p>${E(task.evidence)}</p></details>` : ''}</div><div class="home-call-task-controls home-followup-actions"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div></article>`;
       }
       const decision = decisions.get(task.candidateId);
       const disabled = !admitted() || ['submitting', 'resolved'].includes(decision?.state);
       const uncertain = decision?.state === 'uncertain';
-      const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date';
-      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${source(task)}${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
+      const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No due date';
+      return `<article class="home-call-task home-followup-card" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p>${source(task)}${task.evidence ? `<details><summary>What was said</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls home-followup-actions"><span>${task.dueOn ? `Due <time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
     }).join('')}`;
     if (markup !== painted) { host.innerHTML = markup; painted = markup; }
+    for (const node of host.querySelectorAll('article')) if (expanded.has(node.dataset.callTask || node.dataset.callDraft) && node.querySelector('details')) node.querySelector('details').open = true;
     host.querySelectorAll('[data-call-task-key]').forEach((node, index) => {
       if (flags[index]) node.setAttribute('aria-disabled', 'true'); else node.removeAttribute('aria-disabled');
     });
@@ -123,7 +125,14 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
       await onChanged();
     }
   };
-  const retire = () => { lifetime.abort(); disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
+  const minute = globalThis.setInterval(() => {
+    for (const node of host.querySelectorAll('.home-call-source time')) {
+      node.textContent = relativeAge(node.dateTime);
+      node.title = sourceTime(node.dateTime);
+    }
+  }, 60_000);
+  minute?.unref?.();
+  const retire = () => { globalThis.clearInterval(minute); lifetime.abort(); disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
   host.addEventListener('click', decide);
   document.defaultView?.addEventListener('doctorcre-session-invalidated', retire);
   return {

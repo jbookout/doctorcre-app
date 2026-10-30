@@ -109,7 +109,7 @@ test('Home adds a reviewed call task and reads its exact owner, date and text th
   const { page, actions, writes, reads, errors } = await open(t);
   const proposal = page.locator('[data-call-task="proposal-joe"]');
   await proposal.waitFor();
-  assert.match(await proposal.innerText(), /Demo coastal purchase.*Demo proposal-joe lender follow-up.*Joe.*Oct 2/s);
+  assert.match(await proposal.innerText(), /Demo coastal purchase.*Demo proposal-joe lender follow-up.*Due Oct 2.*Add Joe task/s);
   assert.equal(await proposal.getByRole('link', { name: 'Demo coastal purchase' }).getAttribute('href'), '/deals?deal=qa-deal-1');
   assert.equal(writes.length, 0);
   await mkdir(join(root, 'out/test-artifacts/home-call-tasks'), { recursive: true });
@@ -128,14 +128,14 @@ test('phone Home scopes by proposed assignee and skipping a sibling creates no t
   const email = { ...task('proposal-email'), kind: 'email_draft', payload: { deal_id: 'qa-deal-1', recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo email proposal', body_sha256: 'a'.repeat(64) } };
   const { page, actions, writes, errors } = await open(t, { width: 390, candidates: [task('proposal-joe'), task('proposal-dell', 'dell', null), email] });
   await page.locator('[data-call-task="proposal-dell"]').waitFor();
-  assert.match(await page.locator('[data-call-task="proposal-dell"]').innerText(), /Dell.*No date/s);
+  assert.match(await page.locator('[data-call-task="proposal-dell"]').innerText(), /No due date.*Add Dell task/s);
   assert.equal(await page.locator('[data-call-task="proposal-email"]').count(), 0);
   await page.getByRole('button', { name: 'Just me', exact: true }).click();
   assert.equal(await page.locator('[data-call-task="proposal-joe"]').count(), 1);
   assert.equal(await page.locator('[data-call-task="proposal-dell"]').count(), 0);
   await page.getByRole('button', { name: 'Team view', exact: true }).click();
   const sibling = page.locator('[data-call-task="proposal-dell"]');
-  await sibling.getByText('Call evidence', { exact: true }).click();
+  await sibling.getByText('What was said', { exact: true }).click();
   assert.match(await sibling.innerText(), /Joe will call the demo lender/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.locator('#dealAttention').screenshot({ path: join(root, 'out/test-artifacts/home-call-tasks/phone-review.png') });
