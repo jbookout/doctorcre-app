@@ -342,6 +342,7 @@ function applyBoardSnapshot(board) {
   const actorChanged = previousActor && previousActor !== state.selfActor;
   bindDraftActor(state.selfActor);
   if (actorChanged) {
+    marketTermsViews.clear();
     pageDocContext?.clear();
     const contextRead = pageDocContext?.begin('getBoard');
     pageDocContext?.finish(contextRead, board);
@@ -851,6 +852,7 @@ function refusePanelDetail(error) {
   if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
   ++panelReadSequence;
   ++contextReadSequence;
+  marketTermsViews.clear();
   state.panelDetail = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
