@@ -345,3 +345,61 @@ test('queued upload is checked automatically and clears audio after Studio trans
   assert.ok(reads >= 1);
   assert.equal(await page.locator('audio').count(), 0);
 });
+
+test('phone review shows the Studio hold and attention reasons', async t => {
+  const { page } = await open(t, { review: true });
+  let status = { state: 'held_review', reason: 'summary_repeats_transcript', open_questions: 2 };
+  await page.route('**/api/v1/call-sessions**', r => r.fulfill({ json: { schema_version: 1, session_id: id, transferred: true, filed: false, ...status, report: null, actions: [], deal_updates: [] } }));
+  const cases = [
+    [{ state: 'held_review', reason: 'summary_repeats_transcript', open_questions: 2 }, 'Held for review', 'The summary repeated the transcript.'],
+    [{ state: 'held_review', reason: 'transcript_unavailable', open_questions: 1 }, 'Held for review', 'The transcript is unavailable for review.'],
+    [{ state: 'held_review', reason: 'open_review_questions', open_questions: 3 }, 'Held for review', '3 questions need your answer.'],
+    [{ state: 'needs_attention', reason: 'transcript_unavailable', open_questions: 0 }, 'Needs attention', 'The transcript is unavailable.'],
+    [{ state: 'needs_attention', reason: 'extraction_failed', open_questions: 0 }, 'Needs attention', 'The call could not be extracted.'],
+    [{ state: 'needs_attention', reason: 'transient_ceiling', open_questions: 0 }, 'Needs attention', 'Processing was retried too long.'],
+    [{ state: 'held_review', reason: 'budget', open_questions: 0 }, 'Held for review', "Held until tomorrow: today's processing budget is used."],
+    [{ state: 'needs_attention', reason: 'unknown', open_questions: 0 }, 'Needs attention', 'This call needs attention before processing can continue.'],
+    [{ state: 'transferred', reason: null, open_questions: 0 }, 'Processing', 'The call service is waiting for transfer or processing. Refresh to check again.'],
+  ];
+  for (const [payload, label, message] of cases) {
+    status = payload;
+    await page.reload();
+    await page.getByText(label, { exact: true }).waitFor({ timeout: 3000 });
+    await page.getByText(message, { exact: true }).waitFor({ timeout: 3000 });
+  }
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`held call status at ${width} ${theme}`, async t => {
+  const { page } = await open(t, { review: true, width, theme });
+  await page.route('**/api/v1/call-sessions**', r => r.fulfill({ json: { schema_version: 1, session_id: id, state: 'held_review', reason: 'open_review_questions', open_questions: 3, transferred: true, filed: false, report: null, actions: [], deal_updates: [] } }));
+  await page.reload();
+  await page.getByText('3 questions need your answer.', { exact: true }).waitFor();
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await animationsSettled(page);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await mkdir('.github/pr-evidence/WR572.S8.J43', { recursive: true });
+  await page.screenshot({ path: `.github/pr-evidence/WR572.S8.J43/held-${width}-${theme}.png`, fullPage: true });
+});
+
+test('queued call shows a hold on status refresh and does not resend audio', async t => {
+  const { page, state } = await open(t);
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  let status = 'pending';
+  await page.route('**/api/v1/call-sessions**', r => {
+    if (r.request().method() === 'PUT') { state.writes.push({ method: 'PUT' }); status = 'queued'; }
+    return r.fulfill({ json: { schema_version: 1, session_id: id, state: status, reason: status === 'held_review' ? 'open_review_questions' : null, open_questions: 3, transferred: false, filed: false } });
+  });
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByRole('button', { name: 'Check status' }).waitFor();
+  status = 'held_review';
+  await page.getByRole('button', { name: 'Check status' }).click();
+  await page.locator('#phonePending').getByText('3 questions need your answer.', { exact: true }).waitFor();
+  assert.equal(state.writes.filter(w => w.method === 'PUT').length, 1);
+  assert.equal(await page.locator('audio').count(), 1);
+  await page.reload();
+  await page.locator('#phonePending').getByText('Held for review', { exact: true }).waitFor();
+});
