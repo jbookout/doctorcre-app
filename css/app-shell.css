@@ -438,10 +438,6 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .app-walkthrough-target, #docOpen.app-walkthrough-target { box-sizing: border-box; outline: 3px solid var(--focus-ring); outline-offset: -3px; animation: walkthrough-highlight 450ms ease-out; }
 @keyframes walkthrough-highlight { from { outline-color: transparent; } }
 
-.email-proposal { padding: var(--space-4) 0; border-top: var(--hairline-width) solid var(--hairline); }
-.email-proposal h3 { margin: 0; font-size: var(--font-size-2); }
-.email-proposal h3 a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg); }
-.email-proposal p { margin: var(--space-2) 0; }
 .email-source, .email-proposal q { color: var(--fg-muted); font-size: var(--font-size-1); }
 .email-proposal q { display: block; max-width: 80ch; }
 .email-change { font-weight: var(--font-weight-strong); }
@@ -452,5 +448,19 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .email-controls button:disabled { opacity: .55; cursor: default; }
 .email-controls [data-email-action="confirm"], .email-controls [data-email-action="submit-draft"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .email-warning { color: var(--status-warn-ink); }
-.email-dismiss { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
 .email-controls .email-chip { border-radius: var(--radius-round); font-weight: var(--font-weight-regular); }
+
+.work-card { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); min-width: 0; padding: var(--space-3); border: 0; border-top: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; overflow-wrap: anywhere; }
+.work-card .work-card-title { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.35 var(--font-text); }
+.work-card .work-card-meta { color: var(--fg-muted); font-size: var(--font-size-1); }
+.work-card p { margin: 0; }
+.work-card-status { align-self: flex-start; padding: var(--space-1) var(--space-2); border-radius: var(--radius-round); background: var(--surface-2); color: var(--fg-muted); font-size: var(--font-size-1); }
+.work-card-body { display: grid; gap: var(--space-2); min-width: 0; }
+.work-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.work-card :is(button, summary, a) { min-height: var(--touch); }
+.work-card a { color: inherit; }
+.work-card-title a, .work-card-meta a { display: inline-flex; align-items: center; }
+.work-card button:not(.attention-flag) { white-space: normal; }
+.work-card button { min-width: var(--touch); max-width: 100%; }
+.work-card .email-dismiss { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
+.work-card .email-dismiss > span { color: var(--fg-muted); font-size: var(--font-size-1); }

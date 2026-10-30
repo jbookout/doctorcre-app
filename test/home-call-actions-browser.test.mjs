@@ -73,23 +73,23 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
       await page.locator('#homeCalendar').screenshot({ path: `${capture}-panel.png`, animations: 'disabled' });
       await writeFile(`${capture}.json`, JSON.stringify({ actionCount, width, theme, viewer, panel, grid }, null, 2));
     }
-    const rows = page.locator('#homeBrief > a');
+    const rows = page.locator('#homeBrief > article');
     const firstFive = ['Demo call overdue', 'Demo call today', 'Demo call also-undated', 'Demo call undated', 'Demo call future'];
-    assert.deepEqual(await rows.locator('strong').allTextContents(), [...firstFive,
+    assert.deepEqual(await rows.locator('h3').allTextContents(), [...firstFive,
       ...(actionCount === 30 ? Array.from({ length: 25 }, (_, i) => `Demo call extra-${String(i + 1).padStart(2, '0')}`) : [])]);
     if (actionCount === 30) {
       refreshed = true;
       await page.locator('#refreshHome').click();
       await page.locator('#refreshHome[aria-busy="false"]').waitFor();
       assert.equal(await rows.count(), 30, 'refresh retains every task');
-      assert.equal(await rows.last().locator('strong').textContent(), 'Demo updated call', 'new data repaints the brief');
+      assert.equal(await rows.last().locator('h3').textContent(), 'Demo updated call', 'new data repaints the brief');
       await page.getByRole('button', { name: 'Team view', exact: true }).click();
       assert.equal(await rows.count(), 30, 'reselecting the same scope keeps every task');
     }
     const undated = rows.filter({ hasText: 'Demo call undated' });
     assert.match(await undated.innerText(), /No due date/);
     assert.match(await undated.innerText(), /Dell/);
-    assert.equal(await undated.getAttribute('href'), '/deals?deal=qa-deal-1');
+    assert.equal(await undated.locator('a').getAttribute('href'), '/deals?deal=qa-deal-1');
     assert.equal(await undated.locator('time').count(), 0);
     assert.equal(await rows.locator('time').count(), actionCount === 5 ? 3 : 28);
     assert.equal(await page.locator('#homeCalendar .home-partial').count(), 0);

@@ -37,16 +37,10 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await card.locator('article').first().waitFor().catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
     assert.equal(await card.locator('article').count(), width === 390 ? 1 : 2);
     if (width === 390) await card.getByRole('button', { name: 'Show 1 more', exact: true }).click();
-    const confirmBox = await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).boundingBox();
-    const dismiss = card.locator('article').first().locator('summary');
-    const dismissBox = await dismiss.boundingBox();
-    assert.ok(Math.abs(dismissBox.y - confirmBox.y) < 2, 'Confirm and Dismiss share an action line');
-    await dismiss.click();
     const chips = card.locator('article').first().getByRole('group', { name: 'Dismiss reason' }).getByRole('button');
     assert.deepEqual(await chips.allInnerTexts(), ['Already handled', 'Wrong deal', 'Not now', 'Add a note']);
     for (const box of await Promise.all((await chips.all()).map(chip => chip.boundingBox()))) assert.ok(box.height >= 44, 'dismiss choices are full touch targets');
-    await dismiss.click();
-    assert.match(await card.locator('.email-source').first().innerText(), /^From .*email, .*ago$/);
+    assert.match(await card.locator('.email-source').first().innerText(), /Dana Demo · Oct 26, .* CDT · \d+ days waiting/);
     const first = card.locator('article').first();
     await first.getByRole('button', { name: 'Confirm', exact: true }).click();
     await first.getByRole('button', { name: 'Confirm change', exact: true }).waitFor();
@@ -54,7 +48,6 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await first.getByRole('button', { name: 'Confirm change', exact: true }).click();
     await first.getByText('Confirmed.', { exact: true }).waitFor();
     const second = card.locator('article').last();
-    await second.locator('summary').click();
     await second.getByRole('button', { name: 'Not now', exact: true }).click();
     await second.getByText('Dismissed.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
@@ -127,7 +120,6 @@ for (const width of [1440, 390]) {
     await page.locator('.kanban-column [data-id="qa-deal-2"] .card-open').click();
     await review.getByText('The tour is confirmed for November 3.', { exact: true }).waitFor();
     assert.doesNotMatch(await review.innerText(), /Please send the revised plan/);
-    await review.locator('article').first().locator('summary').click();
     await review.getByRole('button', { name: 'Add a note', exact: true }).click();
     await review.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Synthetic tour already handled');
     await review.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();

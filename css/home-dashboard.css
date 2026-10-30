@@ -56,12 +56,12 @@
 .home-empty { margin: 0; padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-call-tasks { margin-bottom: var(--space-4); }
 .home-call-tasks[hidden] { display: none; }
-.home-call-task { display: flex; gap: var(--space-4); justify-content: space-between; padding: var(--space-3) 0; }
-.home-call-task > div { min-width: 0; }
+.home-meeting-review { display: flex; gap: var(--space-4); justify-content: space-between; padding: var(--space-3) 0; }
+.home-meeting-review > div { min-width: 0; }
+.home-meeting-review p { margin: var(--space-2) 0; overflow-wrap: anywhere; }
 .home-call-task a { color: var(--fg); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
-.home-call-task p { margin: var(--space-2) 0; overflow-wrap: anywhere; }
 .home-call-source, .home-call-task span, .home-call-task details, .home-call-task-notice { color: var(--fg-muted); font-size: var(--font-size-1); }
-.home-call-task-controls { display: flex; align-items: flex-start; gap: var(--space-2); flex: none; }
+.home-call-task-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); flex: none; }
 .home-call-task button { background: transparent; cursor: pointer; }
 .home-call-task button:disabled, .home-call-task button[aria-disabled="true"] { opacity: .5; cursor: default; }
 .home-call-task-error { color: var(--status-warn-ink); }
@@ -189,29 +189,12 @@
 
 #homeEmailFollowups { margin-bottom: var(--space-4); }
 .home-brief { margin-bottom: var(--space-4); }
-.home-brief-card { display: grid; gap: var(--space-1); padding-block: var(--space-3); color: inherit; text-decoration: none; }
-.home-brief-card + .home-brief-card { border-top: var(--hairline-width) solid var(--hairline-strong); }
-.home-brief-card span { color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-main { container-type: inline-size; display: grid; gap: var(--space-4); }
 .home-main > .home-panel, .home-main > .home-grid { margin-top: 0; }
 @container (max-width: 700px) {
   .home-grid, .home-lead-list { grid-template-columns: minmax(0, 1fr); }
 }
 
-.home-followup-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; border-top: var(--hairline-width) solid var(--hairline); }
-.home-followup-card > div { min-width: 0; }
-.home-followup-card h3, .home-followup-card p { margin: 0; }
-.home-followup-card h3 a { min-height: 0; }
-.home-followup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
-.home-followup-actions > details { position: relative; }
-.home-followup-actions summary { cursor: pointer; list-style: none; }
-.home-followup-actions summary::-webkit-details-marker { display: none; }
-.email-dismiss > div { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); }
 .home-followup-skeleton { height: 180px; padding-top: var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-followup-skeleton::after { content: ""; display: block; width: 75%; height: 12px; margin-top: var(--space-4); background: var(--surface-2); box-shadow: 0 28px 0 var(--surface-2); }
-.home-call-tasks:has(.home-followup-card), .home-call-tasks:has(.home-followup-skeleton) { min-height: 280px; }
-
-.home-followup-actions .email-dismiss { display: block; flex-basis: auto; }
-.home-followup-card.email-proposal { padding: var(--space-3) 0; }
-.home-followup-card.email-proposal h3 a { min-height: 0; }
-.home-followup-card.email-proposal p { margin: 0; }
+.home-call-tasks:has(.work-card), .home-call-tasks:has(.home-followup-skeleton) { min-height: 380px; }

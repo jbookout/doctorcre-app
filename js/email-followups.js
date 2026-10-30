@@ -1,10 +1,12 @@
+import { workCard } from './work-card.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';
 import { uuidv4 } from './uuid.js';
 import { readWithDeadline } from './current-read.mjs';
-import { sourceLine, sourceTime } from './email-source-line.js';
+import { sourceTime, waitingDays } from './email-source-line.js';
 
 const E = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const emailSource = source => `${String(source.sender || '').split('<', 1)[0].replace(/^[\"'\s]+|[\"'\s]+$/g, '') || 'Sender unavailable'} · ${sourceTime(source.occurred_at)} · ${waitingDays(source.occurred_at)}`;
 const day = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'No date';
 const owner = value => ({ joe: 'Joe', dell: 'Dell' })[value] || 'Owner unavailable';
 const phase = value => PHASE_BY_SLUG[value] || 'Phase unavailable';
@@ -77,13 +79,17 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       else if (state.status === 'submitting') controls = button('confirm', 'Saving…', true);
       else if (state.status === 'previewing') controls = button('preview', 'Checking preview…', true);
       else if (state.status === 'unknown') controls = button('replay', 'Check outcome');
-      else if (state.status !== 'done') controls = `${row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor ? button('edit-draft', 'Review reply', loadState !== 'ready') : ''}${preview && validPreview(row, preview) ? button(filing(row) ? 'review-filing' : 'preview', filing(row) ? 'Review filing' : 'Confirm', loadState !== 'ready') : ''}<details class="email-dismiss"><summary class="home-outline">Dismiss</summary><div role="group" aria-label="Dismiss reason">${DISMISS_REASONS.map(reason => `<button type="button" class="btn home-outline email-chip" data-email-action="dismiss-chip" data-email-chip="${reason}"${loadState !== 'ready' ? ' disabled' : ''}>${reason}</button>`).join('')}${button('note', 'Add a note', loadState !== 'ready')}</div></details>`;
-      return `<article class="email-proposal home-followup-card" data-email-id="${E(row.id)}"><h3>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : 'Possible new deal'}</h3>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}<p class="email-source"></p><q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Open the deal to review it or dismiss it with a reason.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}<div class="email-controls home-followup-actions">${controls}</div></article>`;
+      else if (state.status !== 'done') controls = `${row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor ? button('edit-draft', 'Review reply', loadState !== 'ready') : ''}${preview && validPreview(row, preview) ? button(filing(row) ? 'review-filing' : 'preview', filing(row) ? 'Review filing' : 'Confirm', loadState !== 'ready') : ''}<div class="email-dismiss" role="group" aria-label="Dismiss reason"><span>Dismiss</span>${DISMISS_REASONS.map(reason => `<button type="button" class="btn home-outline email-chip" data-email-action="dismiss-chip" data-email-chip="${reason}"${loadState !== 'ready' ? ' disabled' : ''}>${reason}</button>`).join('')}${button('note', 'Add a note', loadState !== 'ready')}</div>`;
+      return workCard({ className: 'email-proposal', attributes: `data-email-id="${E(row.id)}"`,
+        title: E(row.source.subject || 'Subject unavailable'),
+        meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : 'Possible new deal'}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
+        status: state.status === 'done' ? 'Reviewed' : 'Email proposal',
+        body: `<q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Open the deal to review it or dismiss it with a reason.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
     }).join('')}${rows.length > visibleCount ? button('show', `Show ${rows.length - visibleCount} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
     for (const article of container.querySelectorAll('[data-email-id]')) {
       if (expanded.has(article.dataset.emailId) && article.querySelector('details')) article.querySelector('details').open = true;
       const { source } = rows.find(row => row.id === article.dataset.emailId);
-      article.querySelector('.email-source').textContent = sourceLine(source);
+      article.querySelector('.email-source').textContent = emailSource(source);
       article.querySelector('.email-source').title = sourceTime(source.occurred_at);
     }
     if (active) {
@@ -253,7 +259,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     for (const article of container.querySelectorAll('[data-email-id]')) {
       const row = rows.find(row => row.id === article.dataset.emailId);
       if (row) {
-        article.querySelector('.email-source').textContent = sourceLine(row.source);
+        article.querySelector('.email-source').textContent = emailSource(row.source);
         article.querySelector('.email-source').title = sourceTime(row.source.occurred_at);
       }
     }

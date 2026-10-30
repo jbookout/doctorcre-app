@@ -78,8 +78,6 @@
 .kanban-column > h3 button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--touch); padding: var(--space-2) 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
 .kanban-column > h3 button small { margin-left: auto; }
 .stage-preview { display: grid; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
-.kanban-card { height: auto; min-width: 0; grid-template-rows: none; align-content: start; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
-.kanban-card h4 { overflow-wrap: anywhere; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }
 .kanban-lane-label { display: none; }
 .next-line { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; overflow-wrap: anywhere; margin: 0; font-size: var(--font-size-1); color: var(--fg-muted); }
@@ -90,7 +88,6 @@
 .kanban-card[data-attention="true"] { border-top: 2px solid var(--status-warn); }
 .attention-flag { display: inline-flex; align-items: center; min-width: var(--touch); min-height: var(--touch); padding: 0 var(--space-1); border: 0; background: transparent; color: var(--status-warn-ink); font: inherit; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); white-space: nowrap; text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 4px; cursor: pointer; }
 .attention-flag:hover { text-decoration-color: currentColor; }
-.deal-row > .attention-flag { grid-column: 1/-1; justify-self: start; }
 .stages-hidden { display: none; }
 :root[data-color-assist="on"] .kanban-card:not(.deal-row)[data-attention="true"] { border-top-style: double; border-top-width: 4px; }
 .parked-lane { grid-column: 1/-1; margin-top: var(--space-2); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
@@ -98,11 +95,6 @@
 .parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .parked-card { height: auto; grid-template-rows: none; align-content: start; }
 .deal-list { display: grid; grid-column: 1/-1; gap: 0; border-block: var(--hairline-width) solid var(--hairline); }
-.deal-row { min-height: var(--touch); grid-template-rows: auto; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 60px; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2); border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; cursor: pointer; font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-.deal-row:last-child { border-bottom: 0; }
-.deal-row h4 { margin: 0; }
-.deal-row > span { color: var(--fg-muted); }
-.deal-row > .owner { text-align: right; }
 .deal-row[data-attention="true"] { border-top: 0; border-left: 2px solid var(--status-warn); }
 .detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: var(--space-5); }
 .detail-grid section { min-width: 0; }
@@ -118,7 +110,7 @@
 .note-original { white-space: pre-wrap; overflow-wrap: anywhere; }
 .park-control { color: var(--status-danger-ink); background: transparent; border: 0; margin-top: var(--space-4); }
 @media(max-width:1440px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
+@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .detail-controls { grid-template-columns: 1fr; } }
 @media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
 @media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; } }
 :root[data-motion="reduced"] :is(.kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"]) { transition: none; transform: none; }
@@ -183,7 +175,6 @@
 .deal-vendor-details p { display:grid; grid-template-columns:4em minmax(0,1fr); align-items:center; column-gap:var(--space-2); margin:0; }
 .deal-vendor-details p + p { margin-top:var(--space-2); }
 .deal-vendor-details a { display:block; box-sizing:border-box; min-height:44px; min-width:44px; overflow-wrap:anywhere; text-decoration:none; border:1px solid currentColor; border-radius:6px; padding:12px var(--space-2); }
-.deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }
 .deal-updates .deal-note p { line-height:var(--line-height-body); }

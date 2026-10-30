@@ -1,3 +1,4 @@
+import { workCard } from './work-card.js';
 import { overdueLabel } from './deal-review-model.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -13,10 +14,13 @@ export const monthDay = value => {
 };
 /** The one overdue treatment on board cards and list rows: a tappable age that opens the deal. */
 export const renderOverdueFlag = (id, name, label) => label ? `<button type="button" class="attention-flag" data-open="${esc(id)}" aria-label="${esc(label)}, open ${esc(name)}">${esc(label)}</button>` : '';
-export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = false, viewer = '', board = false } = {}) {
-  const overdue = overdueLabel(deal.overdue_since, today);
-  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue && !board ? `<p class="deal-overdue">${overdue}</p>` : ''}${board ? renderDealSummary(deal, { today, viewer }) : ''}${renderDealItems(deal,{today,buttons, empty: !board,board})}`;
+export function renderDealAlert(deal, { today = '' } = {}) {
+  return workCard({ className: 'home-flag deal-alert',
+    title: `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`,
+    meta: esc(({ joe: 'Joe', dell: 'Dell' })[deal.owner] || deal.owner || 'Unassigned'),
+    status: overdueLabel(deal.overdue_since, today) || 'Deal', body: renderDealItems(deal, { today }) });
 }
+
 export function renderDealItems(deal, { today = '', buttons = false, empty = true, board = false } = {}) {
   const next = board ? nextOpenAction(deal) : null;
   const items = openDealItems(deal).filter(item => !next || item.title.trim() !== next.description.trim() || (item.due_on || null) !== (next.due_on || null));

@@ -1,3 +1,4 @@
+import { workCard } from './work-card.js';
 import { renderDealAlert } from './deal-items.js';
 import { scopedDeals } from './deal-review-model.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
@@ -145,11 +146,11 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar unavailable.'; }
     const tasks = agenda?.briefTasks || [];
     const briefMessage = signedOut ? 'Sign in to view tasks' : !agenda && (!snapshot || snapshot.reads.board?.state === 'loading') ? 'Updating tasks…' : !agenda ? 'Tasks unavailable' : agenda.failed.length ? 'Some tasks unavailable' : !tasks.length ? 'No open tasks' : '';
-    widget('homeBrief', `<header class="home-panel-head"><h2>Your brief</h2>${agenda && !signedOut && !agenda.failed.length ? `<span class="home-period">${tasks.length} open</span>` : ''}</header>${tasks.map(task => `<a class="home-brief-card" data-home-key="brief:${E(task.key)}" href="${E(dealHref(task.deal_id))}"><strong>${E(task.label)}</strong><span>${E(task.deal_name)}</span>${task.owner ? `<span>${E(({ joe: 'Joe', dell: 'Dell' })[task.owner] || task.owner)}</span>` : ''}<span>${task.day ? `Due <time datetime="${E(task.day)}">${E(dateLabel(task.day))}</time>` : 'No due date'}</span></a>`).join('')}${briefMessage ? `<p class="home-empty" role="status">${briefMessage}</p>` : ''}`);
+    widget('homeBrief', `<header class="home-panel-head"><h2>Your brief</h2>${agenda && !signedOut && !agenda.failed.length ? `<span class="home-period">${tasks.length} open</span>` : ''}</header>${tasks.map(task => workCard({ className: 'home-brief-card', title: `<a data-home-key="brief:${E(task.key)}" href="${E(dealHref(task.deal_id))}">${E(task.label)}</a>`, meta: `${E(task.deal_name)}${task.owner ? ` · ${E(({ joe: 'Joe', dell: 'Dell' })[task.owner] || task.owner)}` : ''}`, status: 'Open task', body: task.day ? `Due <time datetime="${E(task.day)}">${E(dateLabel(task.day))}</time>` : 'No due date' })).join('')}${briefMessage ? `<p class="home-empty" role="status">${briefMessage}</p>` : ''}`);
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;
-    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => `<article class="home-flag deal-alert">${renderDealAlert(deal,{today})}</article>`).join('') : '<p class="home-empty">No overdue next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue deals unavailable' : 'Updating…'}</p>`);
+    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => renderDealAlert(deal, { today })).join('') : '<p class="home-empty">No overdue next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue deals unavailable' : 'Updating…'}</p>`);
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
       const overdue = invoices?.filter(row => row.overdue) || [];

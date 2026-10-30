@@ -36,7 +36,7 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   await page.goto('http://localhost/');
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
   const home = await page.locator('#dealFlags .home-flag').count();
-  const homeOverdue = await page.locator('#dealFlags .home-flag .deal-overdue').allTextContents();
+  const homeOverdue = await page.locator('#dealFlags .home-flag .work-card-status').allTextContents();
   const homeCounts = await page.locator('#dealCounts').textContent();
   await page.getByRole('button', { name: 'Just me', exact: true }).click();
   const mine = await page.locator('#dealFlags .home-flag').count();
