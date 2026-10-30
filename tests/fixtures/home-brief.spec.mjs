@@ -18,6 +18,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     evidence_quote: 'Follow up with the lender.', created_at: '2026-10-01T13:00:00Z',
   }] };
   const emails = await client.listEmailProposals({ limit: 50 });
+  if (state === 'populated') emails.proposals.push({ ...emails.proposals[0], id: 'synthetic-extra-email' });
   emails.proposals.forEach(row => { row.source.sender = 'Dana Demo'; row.source.occurred_at = '2026-10-01T13:00:00Z'; });
   const briefData = await client.morningBrief();
   briefData.sections.today = { state: 'ready', items: agenda.deals.map((deal, i) => ({ subject_type: 'deal', subject_id: deal.id, subject_name: deal.name, what: `${['Send the lease summary', 'Review the revised plan'][i]}`, due_on: '2026-10-01' })) };
@@ -111,6 +112,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
   const email = page.getByRole('region', { name: 'Email follow-ups', exact: true });
   await expect(call.getByText('Call Morgan Demo about the loan', { exact: true })).toBeVisible();
   await expect(email.locator('article')).toHaveCount(width === 390 ? 1 : 2);
+  await expect(email).toContainText(`Showing ${width === 390 ? 1 : 2} of 3`);
   const order = await page.locator('.home-hero, #homeCallTasks, #homeEmailFollowups, #homeBrief, #homeMeetings, #dealAttention, #homeCalendar, #dealCounts').evaluateAll(nodes => nodes.map(node => node.id || 'hero'));
   expect(order).toEqual(['hero', 'homeCallTasks', 'homeEmailFollowups', 'homeBrief', 'homeMeetings', 'dealAttention', 'homeCalendar', 'dealCounts']);
   const panels = [call, email, brief, page.locator('#dealAttention'), page.locator('#homeCalendar'), page.locator('#dealCounts')];
@@ -140,8 +142,8 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
   await page.evaluate(() => scrollTo(0, 0));
   await capture();
   if (width === 390) {
-    await email.getByRole('button', { name: 'Show 1 more', exact: true }).click();
-    await expect(email.locator('article')).toHaveCount(2);
+    await email.getByRole('button', { name: 'Show 2 more', exact: true }).click();
+    await expect(email.locator('article')).toHaveCount(3);
   }
   await call.locator('summary').click();
   await email.locator('article').first().locator('summary').click();
