@@ -1,4 +1,5 @@
 import { toDay } from './calendar-model.js';
+import { BUSINESS_TIME_ZONE } from './business-date.js';
 
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -22,13 +23,13 @@ export async function readHomeCallFollowups(client, { signal } = {}) {
     if (row.kind === 'email_draft') {
       if (!text(p.recipient_party_id) || !text(p.recipient_ref) || !text(p.subject) || !/^[a-f0-9]{64}$/.test(p.body_sha256)) throw malformed();
       tasks.push({ kind: 'email_draft', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id,
-        dealName: row.deal_name, subject: p.subject, recipientRef: p.recipient_ref, evidence: row.evidence_quote || '' });
+        dealName: row.deal_name, createdAt: row.created_at, subject: p.subject, recipientRef: p.recipient_ref, evidence: row.evidence_quote || '' });
       continue;
     }
     if (!ownerLabel(p.assignee) || !text(p.action)
       || !(p.due_on === null || typeof p.due_on === 'string' && toDay(p.due_on) === p.due_on)) throw malformed();
     tasks.push({ kind: 'assigned_action', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id, dealName: row.deal_name,
-      owner: p.assignee, description: p.action, dueOn: p.due_on, evidence: row.evidence_quote || '' });
+      createdAt: row.created_at, owner: p.assignee, description: p.action, dueOn: p.due_on, evidence: row.evidence_quote || '' });
   }
   return tasks;
 }
@@ -51,16 +52,17 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
     const unavailable = view.read?.state === 'error' || view.scope === 'mine' && !actor;
     host.hidden = !tasks.length && !unavailable && !notice;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
-    const markup = `<h3>Call follow-ups to review</h3>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
+    const source = task => `<p class="home-call-source">From call · ${task.createdAt ? `Proposed <time datetime="${E(task.createdAt)}">${E(new Date(task.createdAt).toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }))}</time>` : 'Proposal time unavailable'}</p>`;
+    const markup = `<header class="home-panel-head"><h2>Call follow-ups to review</h2></header>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
       if (task.kind === 'email_draft') {
         const disabled = !admitted() || openingDraft !== null;
-        return `<article class="home-call-task" data-call-draft="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div></article>`;
+        return `<article class="home-call-task" data-call-draft="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${source(task)}${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div></article>`;
       }
       const decision = decisions.get(task.candidateId);
       const disabled = !admitted() || ['submitting', 'resolved'].includes(decision?.state);
       const uncertain = decision?.state === 'uncertain';
       const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date';
-      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
+      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${source(task)}${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
     }).join('')}`;
     if (markup !== painted) { host.innerHTML = markup; painted = markup; }
     host.querySelectorAll('[data-call-task-key]').forEach((node, index) => {

@@ -11,6 +11,14 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Ho
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const agenda = await client.getHomeAgenda();
   agenda.deals = agenda.deals.slice(0, 2).map((deal, i) => ({ ...deal, next_actions: [{ id: `synthetic-${i}`, description: `Synthetic follow-up ${i + 1}`, due_on: null, status: 'open', owner: 'joe' }] }));
+  const followups = { schema_version: 'post-call-followups.v1', send: false, candidates: [{
+    id: 'synthetic-call-task', session_id: 'synthetic-call', kind: 'assigned_action',
+    deal_id: agenda.deals[0].id, deal_name: agenda.deals[0].name,
+    payload: { deal_id: agenda.deals[0].id, assignee: 'joe', action: 'Call the synthetic lender', due_on: '2026-10-02' },
+    evidence_quote: 'Follow up with the lender.', created_at: '2026-09-30T14:00:00Z',
+  }] };
+  const emails = await client.listEmailProposals({ limit: 50 });
+  emails.proposals.forEach(row => { row.source.occurred_at = '2026-09-29T14:00:00Z'; });
   const briefData = await client.morningBrief();
   briefData.sections.today = { state: 'ready', items: agenda.deals.map((deal, i) => ({ subject_type: 'deal', subject_id: deal.id, subject_name: deal.name, what: `Synthetic follow-up ${i + 1}`, due_on: '2026-10-01' })) };
   await page.route('**/*', async route => {
@@ -23,12 +31,12 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Ho
         : name === 'deal-room-board' ? { ...await client.getBoard(args), deals: agenda.deals.map((deal, i) => ({ ...deal, next_step: `Synthetic follow-up ${i + 1}`, next_date: '2026-09-30' })) }
         : name === 'morning-brief' ? briefData
         : name === 'lead-board' ? { leads: [] }
-        : name === 'read-post-call-followups' ? await client.getPostCallFollowups()
+        : name === 'read-post-call-followups' ? followups
         : name === 'read-invoice-tracker' ? { schema_version: 'invoice-tracker.v1', actor: 'joe', entries: [], observed_at: '2026-10-01T15:00:00Z' }
         : name === 'email-proposal-quality' ? await client.getEmailProposalQuality()
         : name === 'list-email-thread-filings' ? { filings: [] }
         : name === 'read-call-outcomes' ? { schema_version: 'call-outcomes.v1', calls: [], send: false }
-        : name === 'list-email-proposals' ? { schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }
+        : name === 'list-email-proposals' ? { schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: args.mode ? [] : emails.proposals, send: false, more: false, next_cursor: null }
         : name === 'today-triage' ? { items: agenda.deals.map((deal, i) => ({ subject_type: 'deal', subject_id: deal.id, subject_name: deal.name, what: `Synthetic follow-up ${i + 1}`, due_on: '2026-10-01' })) }
         : { ok: true, items: [], proposals: [], filings: [], events: [], calls: [], send: false };
       return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
@@ -59,13 +67,28 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Ho
     }
   }
   if (width === 390) {
-    const briefBox = await brief.boundingBox();
+    const briefBox = await page.locator('#homeCallTasks').boundingBox();
     const header = await page.locator('.app-layout-tabbar').boundingBox();
     expect(briefBox.y).toBeGreaterThanOrEqual(header.y + header.height);
     expect(briefBox.y).toBeLessThan(header.y + header.height + 80);
     const sections = await page.locator('main .home-panel:visible').all();
     for (const section of sections) expect((await section.boundingBox()).y).toBeGreaterThanOrEqual(briefBox.y);
   }
+  const call = page.getByRole('region', { name: 'Call tasks to review' });
+  const email = page.getByRole('region', { name: 'Email follow-ups', exact: true });
+  await expect(call.getByText('Call the synthetic lender', { exact: true })).toBeVisible();
+  await expect(email.locator('article')).toHaveCount(2);
+  const order = await page.locator('.home-hero, #homeCallTasks, #homeEmailFollowups, #homeBrief, #homeMeetings, #dealAttention, #homeCalendar, #dealCounts').evaluateAll(nodes => nodes.map(node => node.id || 'hero'));
+  expect(order).toEqual(['hero', 'homeCallTasks', 'homeEmailFollowups', 'homeBrief', 'homeMeetings', 'dealAttention', 'homeCalendar', 'dealCounts']);
+  const panels = [call, email, brief, page.locator('#dealAttention'), page.locator('#homeCalendar'), page.locator('#dealCounts')];
+  for (let i = 1; i < panels.length; i++) {
+    const previous = await panels[i - 1].boundingBox(), current = await panels[i].boundingBox();
+    expect(current.y).toBeGreaterThanOrEqual(previous.y + previous.height);
+  }
+  await expect(call.getByText('From call', { exact: false })).toContainText('Sep 30, 2026');
+  await expect(call.locator('time[datetime="2026-09-30T14:00:00Z"]')).toHaveCount(1);
+  await expect(email.locator('.email-source').first()).toContainText('Sep 29');
+  await expect(page.locator('footer[aria-label="Deal counts"]')).toContainText('Active deals: 2');
   for (const title of ['Synthetic follow-up 1', 'Synthetic follow-up 2']) {
     await expect(page.getByText(title, { exact: true }).filter({ visible: true })).toHaveCount(1);
     expect((await page.locator('body').innerText()).split(title).length - 1).toBe(1);

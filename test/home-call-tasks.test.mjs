@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { mountHomeCallTasks, readHomeCallFollowups } from '../js/home-call-tasks.js';
 
 const task = { kind: 'assigned_action', candidateId: 'demo-candidate', sessionId: 'demo-session', dealId: 'demo-deal', dealName: 'Demo deal',
-  owner: 'joe', description: 'Call the demo lender', dueOn: null, evidence: 'Joe will call the demo lender.' };
+  createdAt: '2026-10-01T14:00:00Z', owner: 'joe', description: 'Call the demo lender', dueOn: null, evidence: 'Joe will call the demo lender.' };
 const wire = { id: task.candidateId, session_id: task.sessionId, kind: 'assigned_action', deal_id: task.dealId,
   deal_name: task.dealName, payload: { deal_id: task.dealId, assignee: task.owner, action: task.description, due_on: null },
   evidence_quote: task.evidence, created_at: '2026-10-01T14:00:00Z' };
@@ -38,7 +38,7 @@ test('a changed Home actor retires the previous task review lifetime', async () 
 test('follow-up reads preserve tasks and pending email metadata', async () => {
   const email = { ...wire, id: 'demo-email', kind: 'email_draft', payload: { deal_id: task.dealId,
     recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo email', body_sha256: 'a'.repeat(64) } };
-  assert.deepEqual(await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([wire, email]) }), [task, { kind: 'email_draft', candidateId: 'demo-email', sessionId: task.sessionId, dealId: task.dealId, dealName: task.dealName, subject: 'Demo email', recipientRef: 'DEMO-P-01', evidence: task.evidence }]);
+  assert.deepEqual(await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([wire, email]) }), [task, { kind: 'email_draft', candidateId: 'demo-email', sessionId: task.sessionId, dealId: task.dealId, dealName: task.dealName, createdAt: wire.created_at, subject: 'Demo email', recipientRef: 'DEMO-P-01', evidence: task.evidence }]);
   for (const payload of [
     { ...envelope([wire]), schema_version: 'post-call-followups.v2' },
     { ...envelope([wire]), send: true }, envelope([wire, wire]),
@@ -226,4 +226,21 @@ test('an unavailable draft report explains where to review it', async () => {
   assert.match(host.textContent, /Open Call Mode on the Mac that recorded this call/);
   assert.equal(host.querySelector('[data-call-draft-id]').getAttribute('aria-disabled'), null);
   controller.dispose(); dom.window.close();
+});
+
+
+test('call follow-ups show recorded proposal time separately from task due date', async () => {
+  const email = { ...wire, id: 'demo-source-email', kind: 'email_draft', payload: { deal_id: task.dealId,
+    recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo email', body_sha256: 'a'.repeat(64) } };
+  const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([
+    { ...wire, payload: { ...wire.payload, due_on: '2026-10-05' } }, email,
+  ]) });
+  const h = mount();
+  h.controller.update({ ...ready, tasks });
+  for (const article of h.host.querySelectorAll('article')) {
+    assert.match(article.textContent, /From call · Proposed Oct 1, 2026, 9:00 AM CDT/);
+    assert.equal(article.querySelector('.home-call-source time').dateTime, '2026-10-01T14:00:00Z');
+  }
+  assert.equal(h.host.querySelector('[data-call-task] time').dateTime, '2026-10-05');
+  h.close();
 });

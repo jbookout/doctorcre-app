@@ -363,19 +363,18 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         emailFilings = mountEmailFilings({ container: entry.target, client });
         void emailFilings.refresh();
       });
-      else import('./email-followups.js').then(({ mountEmailFollowups }) => {
-        if (disposed || emailRetired) return;
-        emailReview = mountEmailFollowups({ container: entry.target, client, onChange: () => {
-          void emailQuality?.refresh(); void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
-        } });
-        void emailReview.refresh();
-      });
     }
   });
   if ($('homeReplyOutcomes') && client.listEmailProposals) emailObserver.observe($('homeReplyOutcomes'));
   if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
   if ($('homeEmailFilings') && client.listEmailThreadFilings) emailObserver.observe($('homeEmailFilings'));
-  if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
+  if ($('homeEmailFollowups') && client.listEmailProposals) import('./email-followups.js').then(({ mountEmailFollowups }) => {
+    if (disposed || emailRetired) return;
+    emailReview = mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => {
+      void emailQuality?.refresh(); void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+    } });
+    void emailReview.refresh();
+  });
   auto.refresh();
   return { refresh: auto.refresh, dispose() { disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); emailQuality?.dispose(); replyOutcomes?.dispose(); } };
 }

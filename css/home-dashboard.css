@@ -1,8 +1,3 @@
-/* Home: one dominant element, the deals that need Joe, then quieter panels.
- * Every value comes from css/tokens.css. Panels sit one tone step above the
- * ground; rows inside a panel are separated by hairlines, never boxed again.
- * Motion is state change only: hover and focus change border or ink. */
-
 .home-shell { max-width: 1180px; width: 100%; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-7); }
 .home-hero { margin-bottom: var(--space-5); align-items: center; }
 .home-hero h1 { margin: 0; }
@@ -24,13 +19,14 @@
 .home-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-3); }
 .home-panel-head h2 { margin: 0; min-width: 0; font: var(--font-weight-strong) var(--font-size-2)/var(--line-height-heading) var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
 
-/* The dominant panel: the deals that need Joe. */
+/* Deal attention. */
 .home-deals { padding: var(--space-5) var(--space-6); }
 .home-deals .home-panel-head { align-items: flex-start; margin-bottom: var(--space-4); }
 .home-deals .home-panel-head h2 { font-size: var(--font-size-3); }
-.home-counts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.app-layout-main .home-footer { display: block; }
+.home-counts { padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-5) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .home-counts span { white-space: nowrap; }
-.home-counts b { color: var(--fg); font-weight: var(--font-weight-strong); }
+.home-counts b { font-weight: var(--font-weight-regular); }
 
 /* Links that act. Only the primary one carries the accent. */
 .home-outline { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-decoration: none; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
@@ -60,14 +56,13 @@
 .home-meeting-warning { margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-warn); background: color-mix(in srgb, var(--status-warn) 10%, transparent); color: var(--status-warn-ink); font-size: var(--font-size-1); }
 .home-meeting-failure { margin: 0; padding: var(--space-3) 0; color: var(--status-danger-ink); font-size: var(--font-size-1); }
 .home-empty { margin: 0; padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
-.home-call-tasks { margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); }
+.home-call-tasks { margin-bottom: var(--space-4); }
 .home-call-tasks[hidden] { display: none; }
-.home-call-tasks h3 { margin: 0 0 var(--space-3); font-size: var(--font-size-2); }
 .home-call-task { display: flex; gap: var(--space-4); justify-content: space-between; padding: var(--space-3) 0; }
 .home-call-task > div { min-width: 0; }
 .home-call-task a { color: var(--fg); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
 .home-call-task p { margin: var(--space-2) 0; overflow-wrap: anywhere; }
-.home-call-task span, .home-call-task details, .home-call-task-notice { color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-call-source, .home-call-task span, .home-call-task details, .home-call-task-notice { color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-call-task-controls { display: flex; align-items: flex-start; gap: var(--space-2); flex: none; }
 .home-call-task button { background: transparent; cursor: pointer; }
 .home-call-task button:disabled, .home-call-task button[aria-disabled="true"] { opacity: .5; cursor: default; }
@@ -194,6 +189,7 @@
 .meeting-preparation [data-prep-content] { margin-top: var(--space-3); }
 .meeting-preparation .meeting-prep-deal { padding-left: var(--space-3); border-left: var(--hairline-width) solid var(--hairline-strong); }
 
+#homeEmailFollowups { margin-bottom: var(--space-4); }
 .home-brief { margin-bottom: var(--space-4); }
 .home-brief-card { display: grid; gap: var(--space-1); padding-block: var(--space-3); color: inherit; text-decoration: none; }
 .home-brief-card + .home-brief-card { border-top: var(--hairline-width) solid var(--hairline-strong); }
