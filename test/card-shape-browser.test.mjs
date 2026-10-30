@@ -61,6 +61,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`sh
       assert.ok((await card.boundingBox()).height <= 160, 'list rows stay compact');
     }
     if (['email', 'email-deal'].includes(surface)) assert.equal(await card.locator('.work-card-status').count(), 0, 'proposal type is not a state');
+    if (surface === 'email') assert.ok(await page.locator('#homeEmailFollowups h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize)) > await card.locator('.work-card-title').evaluate(node => parseFloat(getComputedStyle(node).fontSize)), 'section headings lead card titles');
+    if (surface === 'email') assert.equal(await card.locator('.email-change').evaluate(node => getComputedStyle(node).fontSize), await card.locator('.work-card-meta').evaluate(node => getComputedStyle(node).fontSize), 'proposed changes use secondary text sizing');
 
     for (const target of await page.locator(selector).first().locator('button:visible, a:visible, summary:visible, select:visible').all()) {
       const box = await target.boundingBox();
