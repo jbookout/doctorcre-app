@@ -1611,7 +1611,7 @@
   "market_terms": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "d5a930338fe331cbcea7e3edef50196bf28c34d6",
+      "source_commit": "ad325109bebca2502a4efca3080181033693fde6",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2757"
     },
     "verb": "read-market-terms",

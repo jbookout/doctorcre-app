@@ -102,7 +102,7 @@
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getPostCallFollowups pending post-call-followups.v1 metadata; email bodies remain local
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
- * @property {(args:{submarket?:string,use_type?:string,as_of?:string}) => Promise<Object>} readMarketTerms confirmed firm history projection, pinned to carr-system d5a930338fe331cbcea7e3edef50196bf28c34d6
+ * @property {(args:{submarket?:string,use_type?:string,as_of?:string}) => Promise<Object>} readMarketTerms confirmed firm history projection, pinned to carr-system ad325109bebca2502a4efca3080181033693fde6
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges
  * @property {(args:{deal:string, field:string, idempotency_key:string}) => Promise<{ok:true}>} presenceLease
