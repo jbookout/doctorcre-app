@@ -95,7 +95,7 @@
 .parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .parked-card { height: auto; grid-template-rows: none; align-content: start; }
 .deal-list { display: grid; grid-column: 1/-1; gap: 0; border-block: var(--hairline-width) solid var(--hairline); }
-.deal-row[data-attention="true"] { border-top: 0; border-left: 2px solid var(--status-warn); }
+.deal-row[data-attention="true"] { border-top: var(--hairline-width) solid var(--hairline); }
 .detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: var(--space-5); }
 .detail-grid section { min-width: 0; }
 .detail-controls { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
@@ -184,6 +184,7 @@
 .app-section-tabs a { display:flex; align-items:center; min-height:var(--touch); padding:var(--space-2) 0; color:var(--fg-muted); text-decoration:none; border-bottom:2px solid transparent; font-weight:var(--font-weight-strong); }
 .app-section-tabs a[aria-current=page] { color:var(--fg); border-bottom-color:var(--fg); }
 .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(300px,1fr)); overflow:auto; }
+.dealroom-page.has-app-layout .kanban:has(.deal-list) { grid-template-columns: minmax(0, 1fr); }
 .dealroom-page.has-app-layout .kanban:has(.kanban-column) { max-height:65dvh; }
 @media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); } }
 @media(max-width:760px) {

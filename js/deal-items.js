@@ -18,7 +18,7 @@ export function renderDealAlert(deal, { today = '' } = {}) {
   return workCard({ className: 'home-flag deal-alert',
     title: `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`,
     meta: esc(({ joe: 'Joe', dell: 'Dell' })[deal.owner] || deal.owner || 'Unassigned'),
-    status: overdueLabel(deal.overdue_since, today) || 'Deal', body: renderDealItems(deal, { today }) });
+    status: overdueLabel(deal.overdue_since, today) || '', body: renderDealItems(deal, { today }) });
 }
 
 export function renderDealItems(deal, { today = '', buttons = false, empty = true, board = false } = {}) {

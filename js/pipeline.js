@@ -105,24 +105,24 @@ function cardHtml(deal) {
   const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
   const attention = Boolean(overdue);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
-  return workCard({ className: 'kanban-card', heading: 'h4',
+  return workCard({ variant: 'tile', className: 'kanban-card', heading: 'h4',
     attributes: `data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}"`,
     title: `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button>`,
-    meta: `<span class="owner">${esc(actorName(deal.owner))}</span>`, status: columnLabel(deal.phase),
+    meta: `<span class="owner">${esc(actorName(deal.owner))}</span>`,
     body: `${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}<div class="deal-alert">${renderDealSummary(deal,{today,viewer:state.selfActor})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}` });
 }
 function rowHtml(deal) {
   const nextStep = noteText(deal.next_step);
   const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
-  return workCard({ className: 'kanban-card deal-row', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}"`,
+  return workCard({ variant: 'row', className: 'kanban-card deal-row', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}"`,
     title: `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button>`,
-    meta: `<span class="owner">${esc(actorName(deal.owner))}</span>`, status: columnLabel(deal.phase),
-    body: `<p class="next-line" title="${esc(nextStep)}">${nextStep.trim() ? esc(nextStep) : 'Next step missing'}</p>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}${renderDealVendors(deal.vendors)}${autoHtml(deal)}` });
+    meta: `<span class="owner">${esc(actorName(deal.owner))}</span>`,
+    body: `<span class="deal-stage">${esc(columnLabel(deal.phase))}</span><div class="deal-row-next"><p class="next-line" title="${esc(nextStep)}">${nextStep.trim() ? esc(nextStep) : 'Next step missing'}</p>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}${renderDealVendors(deal.vendors)}${autoHtml(deal)}</div>` });
 }
 function parkedHtml(deal) {
   const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
-  return workCard({ className: 'kanban-card parked-card', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0"`,
-    title: esc(dealTitle(deal)), meta: esc(actorName(deal.owner)), status: 'Parked',
+  return workCard({ variant: 'tile', className: 'kanban-card parked-card', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0"`,
+    title: esc(dealTitle(deal)), meta: esc(actorName(deal.owner)), status: deal.parking_reason !== 'other' ? deal.parking_reason?.replaceAll('_', ' ') : '',
     body: `<p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), viewer: state.selfActor })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}`,
     actions: `<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button>` });
 }

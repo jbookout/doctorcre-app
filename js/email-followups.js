@@ -50,7 +50,6 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const refusedCreations = new Map();
   function render() {
     if (disposed) return;
-    const expanded = new Set([...container.querySelectorAll('details[open]')].map(node => node.closest('[data-email-id]')?.dataset.emailId));
     const active = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
     const selection = active?.matches('textarea, input') ? [active.selectionStart, active.selectionEnd] : null;
     const focusField = active?.hasAttribute('data-email-subject') ? 'subject' : active?.hasAttribute('data-email-body') ? 'body' : active?.hasAttribute('data-email-deal-name') ? 'deal-name' : active?.hasAttribute('data-email-deal-client') ? 'deal-client' : 'reason';
@@ -83,11 +82,10 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       return workCard({ className: 'email-proposal', attributes: `data-email-id="${E(row.id)}"`,
         title: E(row.source.subject || 'Subject unavailable'),
         meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : 'Possible new deal'}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
-        status: state.status === 'done' ? 'Reviewed' : 'Email proposal',
+        status: state.status === 'done' ? 'Reviewed' : '',
         body: `<q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Open the deal to review it or dismiss it with a reason.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
     }).join('')}${rows.length > visibleCount ? button('show', `Show ${rows.length - visibleCount} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
     for (const article of container.querySelectorAll('[data-email-id]')) {
-      if (expanded.has(article.dataset.emailId) && article.querySelector('details')) article.querySelector('details').open = true;
       const { source } = rows.find(row => row.id === article.dataset.emailId);
       article.querySelector('.email-source').textContent = emailSource(source);
       article.querySelector('.email-source').title = sourceTime(source.occurred_at);

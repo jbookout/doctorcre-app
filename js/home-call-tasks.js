@@ -59,7 +59,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
       if (task.kind === 'email_draft') {
         const disabled = !admitted() || openingDraft !== null;
       return workCard({ className: 'home-call-task', attributes: `data-call-draft="${E(task.candidateId)}"`,
-        title: `<a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a>`, meta: source(task), status: 'Reply draft',
+        title: `<a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a>`, meta: source(task), status: 'Needs reply',
         body: `<p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${task.evidence ? `<details><summary>What was said</summary><p>${E(task.evidence)}</p></details>` : ''}`, actions: `<div class="home-call-task-controls"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div>` });
       }
       const decision = decisions.get(task.candidateId);
@@ -67,7 +67,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
       const uncertain = decision?.state === 'uncertain';
       const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No due date';
       return workCard({ className: 'home-call-task', attributes: `data-call-task="${E(task.candidateId)}"`,
-        title: `<a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a>`, meta: source(task), status: 'Call follow-up',
+        title: `<a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a>`, meta: source(task), status: uncertain ? 'Unconfirmed' : '',
         body: `<p>${E(task.description)}</p>${task.evidence ? `<details><summary>What was said</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}`, actions: `<div class="home-call-task-controls"><span>${task.dueOn ? `Due <time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div>` });
     }).join('')}`;
     if (markup !== painted) { host.innerHTML = markup; painted = markup; }
