@@ -3,7 +3,7 @@ const PREFIX = '/api/v1/call-sessions';
 export const sessionId = value => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value || '');
 function verifiedSession(value, id) {
   if (value?.schema_version !== 1 || !sessionId(value.session_id) || (id && value.session_id !== id) ||
-      !['pending', 'queued', 'expired', 'transferred', 'ready_review', 'filed', 'held_review', 'needs_attention'].includes(value.state) ||
+      typeof value.state !== 'string' || !value.state ||
       typeof value.transferred !== 'boolean' || typeof value.filed !== 'boolean')
     throw new Error('Call status could not be verified. Saved audio has been kept.');
   return value;
@@ -23,7 +23,7 @@ export function createPhoneCallClient() {
       };
       if (path.endsWith('/answers')) {
         const answerMessages = { question_already_resolved: 'This question has already been answered.', question_not_found: 'This question is no longer available.', not_found: 'This call is unavailable or belongs to another partner.', invalid_question_answer: 'This answer is invalid. Check it and try again.', key_reuse: 'This answer could not be accepted. Refresh the call and try again.' };
-        throw new Error(answerMessages[error] || 'The answer could not be sent. Please retry.');
+        throw Object.assign(new Error(answerMessages[error] || 'The answer could not be sent. Please retry.'), { code: error });
       }
       throw new Error(messages[error] || (response.status === 400 ? 'This recording could not be accepted. Check its length and file before trying again.' : response.status === 413 ? 'This recording is too large. Choose a file up to 50 MiB.' : response.status === 415 ? 'This audio format is not supported. Try an MP4, WAV, MP3 or WebM recording.' : response.status === 409 ? 'An upload is already in progress or this recording does not match. Your audio stays on this device.' : response.status === 429 ? 'The upload queue is full or too many uploads were attempted. Try again later.' : 'Call service unavailable. Your saved audio stays on this device.'));
     }

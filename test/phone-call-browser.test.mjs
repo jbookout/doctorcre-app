@@ -360,6 +360,7 @@ test('review link shows open review questions and submits an answer', async t =>
   });
   await page.reload();
   await page.getByText('Confirm the closure?').waitFor();
+  assert.equal(await page.locator('#phoneReview .phone-badge').innerText(), 'Waiting for your answers');
   await page.getByLabel('Answer').fill('confirm');
   await page.getByRole('button', { name: 'Submit answer' }).click();
   await page.getByText('Confirm the closure?').waitFor({ state: 'detached' });
@@ -373,6 +374,7 @@ for (const [code, message] of [
   ['question_not_found', 'This question is no longer available.'],
   ['not_found', 'This call is unavailable or belongs to another partner.'],
   ['invalid_question_answer', 'This answer is invalid. Check it and try again.'],
+  ['key_reuse', 'This answer could not be accepted. Refresh the call and try again.'],
   ['unavailable', 'The answer could not be sent. Please retry.'],
 ]) test(`answer refusal ${code} keeps the question`, async t => {
   const { page } = await open(t, { review: true });
@@ -387,10 +389,22 @@ for (const [code, message] of [
   await page.getByLabel('Answer').fill('confirm');
   await page.getByRole('button', { name: 'Submit answer' }).click();
   await page.getByText(message, { exact: true }).waitFor();
+  if (['invalid_question_answer', 'key_reuse'].includes(code)) await page.getByLabel('Answer').fill('corrected');
   await Promise.all([page.waitForResponse(response => response.url().endsWith('/answers')), page.getByRole('button', { name: 'Submit answer' }).click()]);
   assert.equal(writes.length, 2);
-  assert.deepEqual(writes[0], writes[1]);
+  if (['invalid_question_answer', 'key_reuse'].includes(code)) assert.notEqual(writes[0].idempotency_key, writes[1].idempotency_key);
+  else assert.deepEqual(writes[0], writes[1]);
   assert.equal(await page.getByText('Confirm the closure?').count(), 1);
+});
+
+for (const [state, label] of [['needs_attention', 'Needs attention'], ['future_state', 'Status unavailable']]) test(`review labels ${state}`, async t => {
+  const { page } = await open(t, { review: true });
+  await page.route('**/api/v1/call-sessions/**', r => {
+    const session = { schema_version: 1, session_id: id, state, transferred: true, filed: false };
+    return r.fulfill({ json: r.request().url().endsWith('/report') ? { ...session, report: null, actions: [], deal_updates: [] } : session });
+  });
+  await page.reload();
+  await page.getByText(label, { exact: true }).waitFor();
 });
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`review questions at ${width} ${theme}`, async t => {

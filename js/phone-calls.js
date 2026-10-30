@@ -12,6 +12,7 @@ const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
 const answers = new Map(), answering = new Set();
 const tour_id = 'calls';
+let reviewGeneration = 0;
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
 async function acquireWakeLock() {
   const generation = ++wakeGeneration;
@@ -46,7 +47,7 @@ function stopMessage(row) {
   return '';
 }
 const mimeTypes = new Set(['audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mpeg', 'audio/webm']);
-const labels = { pending: 'Pending transfer', queued: 'Uploaded — waiting for the Studio', expired: 'Transfer again', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
+const labels = { pending: 'Pending transfer', queued: 'Uploaded — waiting for the Studio', expired: 'Transfer again', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed', held_review: 'Waiting for your answers', needs_attention: 'Needs attention' };
 async function duration(audio) {
   const url = URL.createObjectURL(audio);
   try {
@@ -126,22 +127,23 @@ async function transfer(id) {
 function reviewId(value) { try { return new URL(value).searchParams.get('session'); } catch { return value; } }
 async function review(id) {
   if (!sessionId(id)) throw new Error('Enter a valid call session ID.');
+  const generation = ++reviewGeneration;
   const [result, session] = await Promise.all([api.report(id), api.status(id)]);
-  if (disposed) return;
+  if (disposed || generation !== reviewGeneration) return;
   currentId = id;
   $('phoneCalls').classList.add('has-review');
   const url = new URL(location.href); url.searchParams.set('session', id); history.replaceState(null, '', url);
   $('phoneSession').value = id;
   $('phoneOpen').hidden = true;
   const held = [...(result.actions || []), ...(result.deal_updates || [])].some(r => r.status === 'pending');
-  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(labels[result.state])}</span><p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
+  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(Object.hasOwn(labels, result.state) ? labels[result.state] : 'Status unavailable')}</span><p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
   const questions = Array.isArray(session.review_questions) ? session.review_questions : [];
   $('phoneReview').insertAdjacentHTML('afterbegin', questions.length ? `<section id="phoneQuestions"><h3>Questions to answer</h3>${questions.map(q => `<form class="phone-row" data-question="${esc(q.id)}"><p>${esc(q.question)}</p><label>Answer <textarea name="answer" maxlength="1000" required ${answering.has(id + ':' + q.id) ? 'disabled' : ''} ${answers.has(id + ':' + q.id) ? 'readonly' : ''}>${esc(answers.get(id + ':' + q.id)?.answer || '')}</textarea></label><button type="submit" ${answering.has(id + ':' + q.id) ? 'disabled' : ''}>Submit answer</button><p role="status"></p></form>`).join('')}</section>` : '');
   if (result.report) {
     try {
       const answer = await client.readCallOutcomes();
-      if (!disposed && currentId === id) $('phoneOutcomes').innerHTML = callOutcomesHtml((answer.calls || []).filter(c => c.session_id === id)) || '<p class="phone-meta">No unreviewed automatic changes were returned. Confirmed changes remain listed above.</p>';
-    } catch { if (!disposed) notice('Applied changes could not be checked. Refresh review to retry.'); }
+      if (!disposed && generation === reviewGeneration && currentId === id) $('phoneOutcomes').innerHTML = callOutcomesHtml((answer.calls || []).filter(c => c.session_id === id)) || '<p class="phone-meta">No unreviewed automatic changes were returned. Confirmed changes remain listed above.</p>';
+    } catch { if (!disposed && generation === reviewGeneration) notice('Applied changes could not be checked. Refresh review to retry.'); }
   }
 }
 async function run(action) {
@@ -191,12 +193,12 @@ async function start() {
     form.querySelectorAll('button, textarea').forEach(control => control.disabled = true);
     void (async () => {
       let message = '';
-      try { await api.answer(id, payload); } catch (error) { message = error.message; }
+      try { await api.answer(id, payload); } catch (error) { message = error.message; if (['invalid_question_answer', 'key_reuse'].includes(error.code)) answers.delete(slot); }
       try { if (!disposed && currentId === id) await review(id); } catch { message ||= 'Call review could not be refreshed. Please retry.'; }
       answering.delete(slot);
       if (disposed || currentId !== id) return;
       const current = [...$('phoneReview').querySelectorAll('[data-question]')].find(row => row.dataset.question === question_id);
-      if (current) { current.querySelector('[role=status]').textContent = message; current.querySelector('button').disabled = false; current.querySelector('textarea').disabled = false; current.querySelector('textarea').readOnly = true; }
+      if (current) { current.querySelector('[role=status]').textContent = message; current.querySelector('button').disabled = false; current.querySelector('textarea').disabled = false; current.querySelector('textarea').readOnly = answers.has(slot); if (!answers.has(slot)) current.querySelector('textarea').value = answer; }
       else if (message) notice(message);
     })();
   });

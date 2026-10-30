@@ -48,3 +48,5 @@ body { margin: 0; background: var(--ground); font-family: var(--font-text); }
 .phone-times label { min-width: 0; }
 
 #phoneQuestions textarea { display: block; min-height: 80px; resize: vertical; }
+
+#phoneQuestions [role="status"]:empty { display: none; }
