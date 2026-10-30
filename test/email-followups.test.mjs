@@ -25,18 +25,29 @@ function setup(client, options = {}) {
   return { dom, container, view, action: name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) }) };
 }
 
-test('Home lists pending email evidence and proposed owner/date without exposing the raw sender', async () => {
+test('email card shows its subject, absolute Chicago date and waiting age', async () => {
+  const row = proposal(); row.source.sender = 'Dana Demo';
+  row.source.occurred_at = '2026-10-01T12:00:00Z';
+  const { container, view } = setup({ listEmailProposals: async () => response([row]) });
+  await view.refresh();
+  assert.match(container.textContent, /Demo follow-up/);
+  assert.match(container.textContent, /Dana Demo/);
+  assert.match(container.textContent, /Oct 1, 7:00 AM CDT/);
+  assert.match(container.textContent, /days? waiting/);
+});
+
+test('Home lists pending email evidence and proposed owner/date with sender metadata', async () => {
   const { container, view } = setup({ listEmailProposals: async () => response([proposal()]) });
   await view.refresh();
   assert.match(container.textContent, /Email follow-ups/);
   assert.match(container.textContent, /Demo Harbor expansion/);
-  assert.match(container.querySelector('.email-source').textContent, /^From an email, .* ago$/);
+  assert.match(container.querySelector('.email-source').textContent, /private-sender@example.test/);
   assert.ok(container.querySelector('.email-source').title);
   assert.match(container.textContent, /Please send the revised plan by November 3\./);
   assert.match(container.textContent, /Send the revised plan/);
   assert.match(container.textContent, /Joe/);
   assert.match(container.textContent, /Nov 3/);
-  assert.doesNotMatch(container.innerHTML, /private-sender|example.test/);
+  assert.match(container.textContent, /Demo follow-up/);
   assert.equal(container.querySelector('a').getAttribute('href'), '/deals?deal=20000000-0000-4000-8000-000000000001');
 });
 
@@ -116,7 +127,7 @@ test('mailbox display names use the prefix as text when sender metadata contains
   const row = proposal(); row.source.sender = 'Dana <b>Demo</b> <dana@example.test>'; row.source.subject = '<img src=x onerror=alert(1)>Plan';
   const { container, view } = setup({ listEmailProposals: async () => response([row]) });
   await view.refresh();
-  assert.match(container.querySelector('.email-source').textContent, /^From Dana's email, .* ago$/);
+  assert.match(container.querySelector('.email-source').textContent, /^Dana · Oct 26,/);
   assert.equal(container.querySelector('.email-source img, .email-source b'), null);
 });
 
@@ -813,16 +824,16 @@ test('offline new-deal creation keeps the original request available after recon
   view.dispose(); dom.window.close();
 });
 
-test('Home caps email cards and expands distinct dismissal reasons on demand', async () => {
+test('Home caps email cards and exposes dismissal reasons directly', async () => {
   const rows = Array.from({ length: 5 }, (_, i) => ({ ...proposal(), id: `demo-${i}` }));
   const { container, view, action } = setup({ listEmailProposals: async () => response(rows) });
   const pending = view.refresh();
   assert.ok(container.querySelector('.home-followup-skeleton'));
   await pending;
   assert.equal(container.querySelectorAll('article').length, 2);
-  assert.equal(container.querySelectorAll('details.email-dismiss').length, 2);
-  assert.equal(container.querySelector('summary').textContent, 'Dismiss');
-  assert.deepEqual([...container.querySelector('details').querySelectorAll('[data-email-chip]')].map(node => node.textContent), ['Already handled', 'Wrong deal', 'Not now']);
+  assert.equal(container.querySelectorAll('details.email-dismiss').length, 0);
+  assert.equal(container.querySelectorAll('[aria-label="Dismiss reason"]').length, 2);
+  assert.deepEqual([...container.querySelector('.email-dismiss').querySelectorAll('[data-email-chip]')].map(node => node.textContent), ['Already handled', 'Wrong deal', 'Not now']);
   await action('Show 3 more');
   assert.equal(container.querySelectorAll('article').length, 5);
   view.dispose();

@@ -67,7 +67,8 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     releaseCalls(); releaseEmails();
     await expect(page.locator('#homeCallTasks article')).toHaveCount(1);
     const after = await page.locator('#homeEmailFollowups').boundingBox();
-    expect(after.y).toBeCloseTo(before.y, 0);
+    expect(after.y).toBeLessThanOrEqual(before.y);
+    expect((await page.locator('#homeCallTasks').boundingBox()).height).toBeLessThan(380);
     return;
   }
   if (state !== 'populated') {
@@ -122,7 +123,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
   await expect(call.locator('.home-call-source')).toContainText('2h ago');
   await expect(call.locator('.home-call-task-controls')).toContainText('Due Oct 2');
   await expect(call.locator('time[datetime="2026-10-01T13:00:00Z"]')).toHaveCount(1);
-  await expect(email.locator('.email-source').first()).toContainText("From Dana Demo's email, 2h ago");
+  await expect(email.locator('.email-source').first()).toContainText('Dana Demo · Oct 1, 8:00 AM CDT · 0 days waiting');
   await expect(page.locator('footer[aria-label="Deal counts"]')).toContainText('Active deals: 2');
   for (const title of ['Send the lease summary', 'Review the revised plan']) {
     await expect(page.getByText(title, { exact: true }).filter({ visible: true })).toHaveCount(1);
@@ -144,10 +145,8 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     await expect(email.locator('article')).toHaveCount(2);
   }
   await call.locator('summary').click();
-  await email.locator('article').first().locator('summary').click();
   await page.clock.fastForward(60 * 60 * 1000);
   await expect(call.locator('details')).toHaveAttribute('open', '');
-  await expect(email.locator('article').first().locator('details')).toHaveAttribute('open', '');
   await expect(call.locator('.home-call-source')).toContainText('3h ago');
-  await expect(email.locator('.email-source').first()).toContainText('3h ago');
+  await expect(email.locator('.email-source').first()).toContainText('0 days waiting');
 });

@@ -96,12 +96,8 @@
 .lead-stack { display: grid; }
 .lead-card + .lead-card { border-top: var(--hairline-width) solid var(--hairline); }
 .stage-column[data-drop-active="true"] { border-color: var(--fg-muted); background: var(--surface-2); }
-.lead-card { position: relative; display: grid; gap: var(--space-2); min-width: 0; padding: var(--space-3); border: 0; border-radius: 0; background: transparent; cursor: pointer; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
 .lead-card[data-selected="true"] { border-color: var(--fg); outline: var(--focus-width) solid var(--fg); }
 .lead-card:hover { background: var(--surface-2); }
-.lead-card h3 { padding-right: var(--space-4); font-size: var(--font-size-1); overflow-wrap: anywhere; }
-.card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-1); }
-.card-actions { display: flex; align-items: center; gap: var(--space-3); }
 .lead-market { min-width: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 .drag-handle { position: absolute; top: 0; right: 0; display: flex; align-items: center; justify-content: center; min-width: var(--touch); min-height: var(--touch); color: var(--fg-quiet); cursor: grab; touch-action: none; }
 .auto-move { color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
@@ -234,3 +230,6 @@ dialog::backdrop { background: var(--scrim); }
   .drag-handle { display: flex; align-items: center; justify-content: center; min-width: var(--touch); min-height: var(--touch); scroll-margin-block: calc(var(--leads-header-offset, 0px) + var(--touch) + 2 * var(--space-2) + var(--space-3)) calc(var(--layout-bottom, 56px) + var(--space-3)); }
   .lead-card h3 { min-height: var(--touch); padding-right: calc(var(--touch) + var(--space-2)); }
 }
+
+.lead-card .work-card-title { padding-right: calc(var(--touch) + var(--space-2)); }
+.lead-card .score { display: inline-flex; align-items: baseline; gap: var(--space-1); }

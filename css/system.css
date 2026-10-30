@@ -157,10 +157,6 @@ small, .small { font-size: var(--font-size-1); color: var(--fg-muted); }
 .kanban-card[data-kind="client"] { border-left: 3px solid var(--data-2); }
 .kanban-card[data-pending="true"] { border-style: dashed; }
 .kanban-card[data-pending="true"]::after { content: "Saving…"; position: absolute; right: var(--space-2); top: var(--space-2); color: var(--status-info-ink); font-size: var(--font-size-1); }
-.kanban-card h4 { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.25 var(--font-text); }
-.kanban-card .work-meta { font-size: var(--font-size-1); }
-.card-actions { display: flex; gap: var(--space-1); margin-top: 2px; }
-.card-actions .btn { min-height: var(--touch); padding: var(--space-1) var(--space-3); font-size: var(--font-size-1); }
 /* Cards move by mouse drag. The keyboard path is the same move, announced:
    focus a card, Enter or Space lifts it, arrows choose a column, Enter drops,
    Escape puts it back. Nothing in this system is drag-only. */
