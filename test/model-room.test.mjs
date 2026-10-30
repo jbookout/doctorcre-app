@@ -631,7 +631,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
     "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
     "/api/share/feedback", "/api/share/shortlist", "/api/share/comment",
-    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*",
+    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*", "/api/v1/market-terms/read",
   ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 
