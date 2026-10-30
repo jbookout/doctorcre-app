@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.67.0",
+  "version": "1.68.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
