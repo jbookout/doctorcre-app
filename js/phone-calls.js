@@ -88,6 +88,7 @@ async function transfer(id) {
   const confirmed = await api.status(admitted.session_id);
   if (!receipt.transferred || !confirmed.transferred) { notice('Pending transfer. Try again when the call service is available.'); return; }
   await store.patch(scope, id, { audio: null, status: 'transferred' });
+  await pending();
   try { await review(admitted.session_id); notice('Transfer confirmed. Audio removed from this device.'); }
   catch { notice('Transfer confirmed. Review is unavailable. Open the saved review link to retry.'); }
 }
