@@ -2,9 +2,8 @@ import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
-import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
-import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
@@ -421,12 +420,6 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
-
-  const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
-
-  const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
-
-  const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
   const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -1260,10 +1253,7 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
-    async readMarketTerms(args = {}) {
-      const rows = [{canonical_fact_id:'fixture-rent', entity_ref:'d14', fact_key:'rent', version:1, value:'35', unit:'USD/sf/year', expense_basis:'NNN', confidence:'human_review', submarket:'North', use_type:'Office', term_kind:'executed', term_date:'2026-01-01', effective_from:'2026-01-01', effective_to:null, context_source:{document_ref:'fixture-lease'}, sources:[{document_ref:'fixture-lease',page_start:1,page_end:2}]}].filter(row => (!args.submarket || row.submarket === args.submarket) && (!args.use_type || row.use_type === args.use_type));
-      return {ok:true,schema_version:'market-terms.v1',empty:!rows.length,rows,coverage:{recorded_documents:40,canonical_receipts:20,classified_receipts:12,comparable_deals:rows.length}};
-    },
+    async readMarketTerms(args = {}) { return (await import('./market-terms-fixture.js')).readMarketTerms(args); },
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
@@ -2032,9 +2022,11 @@ export async function createFixtureClient(opts = {}) {
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
       // No fixture session is closed.
       void include_closed;
+      const {EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS} = await import('./example-sessions.js');
+      const rows = [...EXAMPLE_SESSION_ROWS, ...BRANCH_SESSION_ROWS];
       const matched = text.length === 0
-        ? SESSION_ROWS
-        : SESSION_ROWS.filter((row) => String(row.display_name).toLowerCase().includes(text)
+        ? rows
+        : rows.filter((row) => String(row.display_name).toLowerCase().includes(text)
           || String(row.canonical_session_id).toLowerCase().includes(text));
       if (text === 'reverent') {
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
