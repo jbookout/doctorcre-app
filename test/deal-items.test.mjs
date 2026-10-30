@@ -104,8 +104,9 @@ test('board summaries use the real fixture and live adapters for detail-only act
   const live = createLiveClient({ fetchImpl: async () => Response.json({ result: { content: [{ text: JSON.stringify(board) }] } }) });
   for (const client of [fixture, live]) {
     const deal = (await client.getBoard()).deals.find(row => row.id === seed.deals[0].id);
-    const doc = new JSDOM(renderDealSummary(deal, { today: '2026-10-29', viewer: 'joe' }) + renderDealItems(deal, { today: '2026-10-29', buttons: true, board: true })).window.document;
-    assert.match(doc.body.textContent, /Next: Tour the property · D/);
+    const doc = new JSDOM(renderDealSummary(deal, { today: '2026-10-29', viewer: 'joe', board: true }) + renderDealItems(deal, { today: '2026-10-29', buttons: true, board: true })).window.document;
+    assert.match(doc.body.textContent, /Next: Tour the property/);
+    assert.doesNotMatch(doc.body.textContent, /· D/);
     assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
     assert.doesNotMatch(doc.body.textContent, /Old action|No next step/);
   }

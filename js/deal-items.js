@@ -42,12 +42,12 @@ function nextOpenAction(deal) {
     .sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.id.localeCompare(b.id))[0];
 }
 
-export function renderDealSummary(deal, { today = '', viewer = '' } = {}) {
+export function renderDealSummary(deal, { today = '', viewer = '', board = false } = {}) {
   const next = nextOpenAction(deal);
   const lines = [];
   if (next) {
     const date = next.due_on && next.due_on < today ? '' : shortDate(next.due_on, today);
-    const owner = next.owner && viewer && next.owner !== viewer ? ` · ${next.owner.slice(0, 1).toUpperCase()}` : '';
+    const owner = !board && next.owner && viewer && next.owner !== viewer ? ` · ${next.owner.slice(0, 1).toUpperCase()}` : '';
     lines.push(`<span class="deal-summary-line"><span class="deal-summary-label">Next: </span><span class="deal-summary-text">${esc(next.description.trim())}</span><span class="deal-summary-facts">${date ? ` · <time data-overdue="${Boolean(next.due_on && next.due_on < today)}" datetime="${esc(next.due_on)}">${esc(date)}</time>` : ''}${esc(owner)}</span></span>`);
   } else {
     lines.push('<span class="deal-summary-line">No next step set</span>');

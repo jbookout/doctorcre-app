@@ -476,3 +476,8 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .work-card--row .deal-stage { grid-column: 2; grid-row: 1; }
   .work-card--row .deal-row-next { grid-column: 3; grid-row: 1; }
 }
+.home-flag .deal-items-empty { font-size: var(--font-size-1); }
+.app-layout-item .app-layout-move-detail { display: flex; flex-wrap: wrap; column-gap: .7em; overflow: hidden; }
+.app-layout-item .app-layout-move-age { position: relative; white-space: nowrap; }
+.app-layout-item .app-layout-move-age::before { content: '·'; position: absolute; right: calc(100% + .25em); }
+@media (max-width: 650px) { .stages-hidden { padding-left: var(--space-2); } }

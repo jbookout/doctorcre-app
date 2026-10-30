@@ -109,7 +109,7 @@ function cardHtml(deal) {
     attributes: `data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}"`,
     title: `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button>`,
     meta: `<span class="owner">${esc(actorName(deal.owner))}</span>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}`,
-    body: `<div class="deal-alert">${renderDealSummary(deal,{today,viewer:state.selfActor})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}` });
+    body: `<div class="deal-alert">${renderDealSummary(deal,{today,board:true})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}` });
 }
 function rowHtml(deal) {
   const nextStep = noteText(deal.next_step);
@@ -122,8 +122,8 @@ function rowHtml(deal) {
 function parkedHtml(deal) {
   const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
   return workCard({ variant: 'tile', className: 'kanban-card parked-card', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0"`,
-    title: esc(dealTitle(deal)), meta: esc(actorName(deal.owner)), status: deal.parking_reason !== 'other' ? deal.parking_reason?.replaceAll('_', ' ') : '',
-    body: `<p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), viewer: state.selfActor })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}`,
+    title: esc(dealTitle(deal)), meta: esc(actorName(deal.owner)), status: deal.parking_reason !== 'other' ? deal.parking_reason?.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()) : '',
+    body: `<p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), board: true })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}`,
     actions: `<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button>` });
 }
 
@@ -237,7 +237,7 @@ function renderBoard() {
   state.unplaced = grouped.unplaced.length;
   const focusedStage = board.contains(document.activeElement) ? document.activeElement?.dataset?.collapseStage : null;
   preserveBoardFocus({ board, document, announce, paint() {
-    board.innerHTML = state.view === 'list' ? `<div class="deal-list">${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
+    board.innerHTML = state.view === 'list' ? `<div class="deal-list"><div class="deal-list-head" aria-hidden="true"><span>Deal</span><span>Stage</span><span>Next step</span><span>Owner</span></div>${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
       const cards = urgencyOrder(column.slug === 'pending' ? prospects : column.deals);
       const collapsed = state.collapsedColumns.has(column.slug);
       const content = collapsed
@@ -262,7 +262,7 @@ function renderBoard() {
   renderPendingWrites();
 }
 
-const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? '' : 's'} with no deals` : `${count} stage${count === 1 ? '' : 's'} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${Boolean(state.showEmptyStages)}">${state.showEmptyStages ? 'Hide empty stages' : 'Show empty stages'}</button></p>` : '';
+const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? '' : 's'} with no deals` : `${count} stage${count === 1 ? '' : 's'} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${Boolean(state.showEmptyStages)}"><span aria-hidden="true">${state.showEmptyStages ? '− ' : '+ '}</span>${state.showEmptyStages ? 'Hide empty stages' : 'Show empty stages'}</button></p>` : '';
 
 function renderChips() {
   const bar = $('boardChips');
