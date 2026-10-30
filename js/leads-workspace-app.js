@@ -39,7 +39,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const possible = lead.possible_clients || [];
     return workCard({ className: 'lead-card', attributes: `data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true"`,
       title: `<span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button>`,
-      meta: `<span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small>`, status: normalizedStage(lead) === 'new' && !lead.owner ? 'Unclaimed' : '',
+      meta: `<span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small>`,
       body: `      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
 `, actions: `<span class="score"><small>Score</small>${score(lead)}</span>${normalizedStage(lead) === 'new' && !lead.owner ? `<button data-claim="${esc(lead.id)}">Claim</button>` : ''}` });
@@ -59,7 +59,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       .find(node => node.getAttribute(identity.attr) === identity.value && node.dataset.clientId === identity.client);
     (node || $("refreshBoard")).focus({ preventScroll: true });
   }
-  const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? "" : "s"} with no leads` : `${count} stage${count === 1 ? "" : "s"} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${state.showEmptyStages}">${state.showEmptyStages ? "Hide empty stages" : "Show empty stages"}</button></p>` : "";
+  const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? "" : "s"} with no leads` : `${count} stage${count === 1 ? "" : "s"} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${state.showEmptyStages}">${state.showEmptyStages ? "− Hide empty stages" : "+ Show empty stages"}</button></p>` : "";
   function render() {
     const focused = focusIdentity(doc.activeElement);
     const laneScroll = new Map([...$("leadBoard").querySelectorAll("[data-stage]")].map(node => [node.dataset.stage, node.querySelector(".lead-stack").scrollTop]));
