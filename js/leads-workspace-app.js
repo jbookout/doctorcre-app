@@ -23,7 +23,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
   const expandedStages = new Set();
-  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, showEmptyStages: false, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
     historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeDetail: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -58,6 +58,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       .find(node => node.getAttribute(identity.attr) === identity.value && node.dataset.clientId === identity.client);
     (node || $("refreshBoard")).focus({ preventScroll: true });
   }
+  const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? "" : "s"} with no leads` : `${count} stage${count === 1 ? "" : "s"} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${state.showEmptyStages}">${state.showEmptyStages ? "Hide empty stages" : "Show empty stages"}</button></p>` : "";
   function render() {
     const focused = focusIdentity(doc.activeElement);
     const laneScroll = new Map([...$("leadBoard").querySelectorAll("[data-stage]")].map(node => [node.dataset.stage, node.querySelector(".lead-stack").scrollTop]));
@@ -106,8 +107,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } else {
       $("leadBoard").innerHTML = `<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
         const rows = shown.filter(lead => normalizedStage(lead) === key), expanded = expandedStages.has(key);
-        return `<section class="stage-column" data-expanded="${expanded}" data-mobile-current="${!currentStage || key === currentStage}" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span>${rows.length > 5 ? `<button type="button" data-expand-stage="${key}" aria-expanded="${expanded}" aria-controls="leads-${key}" aria-label="${expanded ? `Collapse ${text} to 5 leads` : `Show all ${rows.length} ${text} leads`}">${expanded ? "Collapse" : "Show all"}</button>` : ""}</h2><div class="lead-stack" id="leads-${key}">${(expanded ? rows : rows.slice(0, 5)).map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
-      }).join("")}</div>`;
+        return `<section class="stage-column" data-expanded="${expanded}" data-mobile-current="${!currentStage || key === currentStage}"${!currentStage && !rows.length && !state.showEmptyStages ? ' data-hide-empty="true"' : ""} data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span>${rows.length > 5 ? `<button type="button" data-expand-stage="${key}" aria-expanded="${expanded}" aria-controls="leads-${key}" aria-label="${expanded ? `Collapse ${text} to 5 leads` : `Show all ${rows.length} ${text} leads`}">${expanded ? "Collapse" : "Show all"}</button>` : ""}</h2><div class="lead-stack" id="leads-${key}">${(expanded ? rows : rows.slice(0, 5)).map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
+      }).join("")}${emptyStagesNote(currentStage ? 0 : BOARD_STAGES.filter(([key]) => !shown.some(lead => normalizedStage(lead) === key)).length)}</div>`;
     }
 
     // The time states the snapshot on screen, as Deals does: a failed refresh
@@ -528,6 +529,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       evidence_ids: p.review.evidence.map(entry => entry.id), ...(answer ? { human_quote: answer } : {}) } });
   });
   function clickLead(event) {
+    if (event.target.closest("[data-toggle-empty-stages]")) { state.showEmptyStages = !state.showEmptyStages; render(); return; }
     const expand = event.target.closest("[data-expand-stage]");
     if (expand) { const key = expand.dataset.expandStage; if (expandedStages.has(key)) expandedStages.delete(key); else expandedStages.add(key); render(); return; }
     const undo = event.target.closest("[data-undo]"); if (undo) { const lead = leadById(undo.dataset.undo), review = lead && undoReview(lead); if (review) openReview(lead.id, review.stage, { undoEventId: review.stage_review.undo_event_id }); return; }

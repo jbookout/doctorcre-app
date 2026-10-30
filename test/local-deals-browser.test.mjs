@@ -378,8 +378,8 @@ test('W4 a long automatic reason keeps its date visible without persistent card 
   const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
   await card.hover();
   await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
-  // Attention reads in words with a glyph, never a bare colour dot (S8).
-  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ 245 days overdue');
+  // Attention reads in words, never a bare colour dot (S8).
+  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '245 days overdue');
 });
 
 

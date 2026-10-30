@@ -88,7 +88,10 @@
 .auto-move button { justify-self: start; padding: 0 var(--space-2); min-height: var(--touch); }
 /* Attention is a status, not the brand colour: a warn rule on top and the words. */
 .kanban-card[data-attention="true"] { border-top: 2px solid var(--status-warn); }
-.attention-flag { color: var(--status-warn-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.attention-flag { display: inline-flex; align-items: center; min-width: var(--touch); min-height: var(--touch); padding: 0 var(--space-1); border: 0; background: transparent; color: var(--status-warn-ink); font: inherit; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); white-space: nowrap; text-decoration: underline; text-decoration-color: var(--hairline); text-underline-offset: 4px; cursor: pointer; }
+.attention-flag:hover { text-decoration-color: currentColor; }
+.deal-row > .attention-flag { grid-column: 1/-1; justify-self: start; }
+.stages-hidden { display: none; }
 :root[data-color-assist="on"] .kanban-card:not(.deal-row)[data-attention="true"] { border-top-style: double; border-top-width: 4px; }
 .parked-lane { grid-column: 1/-1; margin-top: var(--space-2); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
 .parked-lane > summary { cursor: pointer; color: var(--fg-muted); min-height: var(--touch); }
@@ -194,7 +197,9 @@
 @media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); } }
 @media(max-width:760px) {
  .dealroom-page.has-app-layout .kanban { grid-template-columns:minmax(0,1fr); }
- .dealroom-page .kanban-column:not(:has(.kanban-card)):not([data-collapsed="true"]) { display:none; }
+ .dealroom-page .kanban-column[data-hide-empty="true"] { display:none; }
+ .stages-hidden { display:flex; grid-column:1/-1; align-items:center; flex-wrap:wrap; gap:var(--space-2); margin:0; color:var(--fg-muted); font-size:var(--font-size-1); }
+ .stages-hidden button { min-height:var(--touch); padding:0 var(--space-3); border:0; background:transparent; color:var(--fg); font:inherit; text-decoration:underline; text-underline-offset:4px; cursor:pointer; }
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }

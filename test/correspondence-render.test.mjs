@@ -120,7 +120,7 @@ test('a disposed mount cannot paint a previous deal after its read resolves', as
 
 test('meeting disclosure and keyboard focus survive delayed read settlement and timeout', async t => {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
-  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs', 'client.js'].map(async name =>
+  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs', 'today-moves.mjs', 'client.js'].map(async name =>
     [`/js/${name}`, await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8')])));
   for (const phase of ['readiness', 'thread']) {
     for (const outcome of ['settled', 'timeout']) {

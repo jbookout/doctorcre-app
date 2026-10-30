@@ -50,7 +50,7 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   const myBadges = await page.locator('.kanban-column .attention-flag').count();
   assert.deepEqual({ home, badges, mine, myBadges }, { home: 3, badges: 2, mine: 1, myBadges: 1 });
   assert.match(homeCounts, /Overdue deals: 3/);
-  assert.deepEqual(await page.locator('.kanban-column .attention-flag').allTextContents(), ['◆ 1 day overdue']);
+  assert.deepEqual(await page.locator('.kanban-column .attention-flag').allTextContents(), ['1 day overdue']);
   assert.deepEqual(homeOverdue, ['30 days overdue', '2 days overdue', '1 day overdue']);
   const days = rows => rows.map(text => Number(/(\d+) days? overdue$/.exec(text)[1]));
   assert.ok(rail.length >= 2 && rail.every(text => /\d+ days? overdue$/.test(text)), JSON.stringify(rail));
