@@ -376,8 +376,8 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
   assert.deepEqual(contract.mcp_operations.slice(dispatch - 2, dispatch + 2), [
-    "read-correspondence-thread",
     "read-deal-reconciliation",
+    "read-deal-update-reviews",
     "read-dispatch-history",
     "read-doc-activity",
   ]);
