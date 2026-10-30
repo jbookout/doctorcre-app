@@ -1,4 +1,5 @@
 // App presentation only. CARR owns consent, relevance and receipt validation.
+import { newestFirst } from './change-receipts.mjs';
 const NATIVE_KEYS = ['source_system', 'native_id', 'native_id_epoch'];
 const CEILING_KEYS = ['dispatchable', 'provider_operation', 'send_authority_holder', 'send_authority_seam', 'automatic_internal_update', 'effects'];
 const RECEIPT_KEYS = ['read_receipt_id', 'partner_slug', 'adapter_kind', 'account_digest', 'native_identity', 'thread_metadata', 'metadata_digest', 'consent_in_force', 'recorded_at'];
@@ -72,14 +73,14 @@ export function correspondenceState(answer, identity) {
   const items = answer.receipts.map(row => ({ id: row.read_receipt_id, kind: 'thread',
     title: 'Correspondence thread', when: row.recorded_at,
     source: `${row.native_identity.source_system} · ${row.adapter_kind} · ${row.partner_slug} · CARR read receipt` }));
-  return { state: 'ready', count: items.length, items };
+  return { state: 'ready', count: items.length, items: newestFirst(items, item => item.when) };
 }
 export function meetingEvidence(activities) {
   const meetings = Array.isArray(activities) ? activities.filter(row => row?.kind === 'meeting') : [];
   if (!meetings.length) return unavailableEvidence('meeting_coverage_unavailable');
   if (!meetings.every(row => text(row.id) && text(row.source) && text(row.summary) && instant(row.occurred_at))) return unavailableEvidence();
-  return { state: 'ready', count: meetings.length, items: meetings.map(row => ({ id: row.id,
-    kind: 'meeting', title: row.summary, when: row.occurred_at, source: `${row.source} · CARR deal activity` })) };
+  return { state: 'ready', count: meetings.length, items: newestFirst(meetings.map(row => ({ id: row.id,
+    kind: 'meeting', title: row.summary, when: row.occurred_at, source: `${row.source} · CARR deal activity` })), item => item.when) };
 }
 export function threadReferences(detail) {
   const refs = new Map();
