@@ -115,8 +115,8 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
   await expect(email.locator('article')).toHaveCount(width === 390 ? 1 : 2);
   await expect(email).toContainText(`Showing ${width === 390 ? 1 : 2} of 3`);
   const order = await page.locator('.home-hero, #homeCallTasks, #homeEmailFollowups, #homeBrief, #homeMeetings, #dealAttention, #homeCalendar, #dealCounts').evaluateAll(nodes => nodes.map(node => node.id || 'hero'));
-  expect(order).toEqual(['hero', 'homeCallTasks', 'homeEmailFollowups', 'homeBrief', 'homeMeetings', 'dealAttention', 'homeCalendar', 'dealCounts']);
-  const panels = [call, email, brief, page.locator('#dealAttention'), page.locator('#homeCalendar'), page.locator('#dealCounts')];
+  expect(order).toEqual(['hero', 'homeCallTasks', 'homeEmailFollowups', 'homeBrief', 'homeMeetings', 'dealAttention', 'dealCounts', 'homeCalendar']);
+  const panels = [call, email, brief, page.locator('#dealAttention'), page.locator('#homeCalendar')];
   for (let i = 1; i < panels.length; i++) {
     const previous = await panels[i - 1].boundingBox(), current = await panels[i].boundingBox();
     expect(current.y).toBeGreaterThanOrEqual(previous.y + previous.height);

@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { dealTimeline, countdown, renderDealTimeline, renderDealUpdates, renderCriticalDates, calendarDay, updateCountdowns } from '../js/deal-timeline.js';
+import * as view from '../js/deal-timeline.js';
+import { prepareDealDetail } from '../js/local-deals-model.js';
+import { sourceTime } from '../js/email-source-line.js';
+const { countdown, renderCriticalDates, calendarDay, updateCountdowns } = view;
+// Renderers read a detail that was prepared once, as the app does when it loads a deal.
+const dealTimeline = (d, n) => view.dealTimeline(prepareDealDetail(d), n);
+const renderDealTimeline = (d, n) => view.renderDealTimeline(prepareDealDetail(d), n);
+const renderDealUpdates = (d, n) => view.renderDealUpdates(prepareDealDetail(d), n);
 import { createLiveClient } from '../js/live-client.js';
 import { readFile } from 'node:fs/promises';
 const now = Date.parse('2026-10-04T17:00:00Z');
@@ -180,4 +187,31 @@ test('deal room activity includes documents in newest-first order without guessi
 test('a null update timestamp stays explicitly unrecorded instead of showing the epoch', () => {
  const root=new JSDOM(renderDealUpdates({thread:[{id:'null-date',text:'Synthetic undated update',recorded_at:null}]})).window.document;
  assert.equal(root.querySelector('.deal-note time').textContent,'Date not recorded');
+});
+
+test('prepareDealDetail orders every dated list once and leaves its input untouched', () => {
+ const value = {thread:[{id:'old',at:'2026-10-01T12:00:00Z',text:'Synthetic old'},{id:'new',at:'2026-10-02T12:00:00Z',text:'Synthetic new'}],
+  activities:[{id:'a1',summary:'Synthetic first',occurred_at:'2026-10-01T09:00:00Z'},{id:'a2',summary:'Synthetic second',occurred_at:'2026-10-03T09:00:00Z'}],
+  documents:[{id:'d',note:'Synthetic document',prepared_at:'2026-10-02T18:00:00Z'}]};
+ const before = structuredClone(value);
+ const ready = prepareDealDetail(value);
+ assert.deepEqual(ready.thread.map(r=>r.id),['new','old']);
+ assert.deepEqual(ready.activities.map(r=>r.id),['a2','a1']);
+ assert.deepEqual(ready.entries.map(r=>r.id),['a2','document-d','new','old','a1']);
+ assert.deepEqual(value,before);
+});
+
+test('rows with equal instants keep the order they arrived in', () => {
+ for (const ids of [['a','z'],['z','a']]) {
+  const ready = prepareDealDetail({thread:ids.map(id=>({id,at:'2026-10-02T12:00:00Z',text:`Synthetic ${id}`}))});
+  assert.deepEqual(ready.thread.map(r=>r.id),ids);
+ }
+});
+
+test('recorded instants display in Central time with the zone named', () => {
+ assert.equal(sourceTime('2026-10-01T12:00:00Z', new Date('2026-10-30T12:00:00Z')),'Oct 1, 7:00 AM CDT');
+ assert.equal(sourceTime('2026-12-01T12:00:00Z', new Date('2027-01-01T12:00:00Z')),'Dec 1, 2026, 6:00 AM CST');
+ assert.equal(sourceTime(null),'Time unavailable');
+ const html = renderDealUpdates({thread:[{id:'n',at:'2026-10-01T12:00:00Z',text:'Synthetic note'}]});
+ assert.match(new JSDOM(html).window.document.querySelector('.deal-note time').textContent,/7:00 AM CDT$/);
 });
