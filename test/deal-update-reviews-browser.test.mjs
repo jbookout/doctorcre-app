@@ -79,11 +79,12 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     t.after(() => page.close());
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
     await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `auto-${width}-${theme}`, viewer: 'joe', reset: true } });
+    let reviews = [];
     let closed = [{ assessment_id: '10000000-0000-4000-8000-000000000003', deal_id: row.deal_id, deal_name: 'Demo Harbor expansion', action_title: 'Request revised terms', quote: 'The landlord sent the revised terms today.', resolved_at: '2026-10-01T12:00:00Z', undo_possible: true }];
     await page.route('**/mcp', async route => {
       const { name, arguments: args } = route.request().postDataJSON().params;
       let result;
-      if (name === 'read-deal-update-reviews') result = { schema_version: 'deal-update-reviews.v1', proposals: [], automatic_resolutions: closed };
+      if (name === 'read-deal-update-reviews') result = { schema_version: 'deal-update-reviews.v1', proposals: reviews, automatic_resolutions: closed };
       else if (name === 'review-deal-update') { assert.equal(args.decision, 'undo'); closed = []; result = { ok: true, decision: 'undo', action_id: row.assessment.action.id }; }
       else return route.continue();
       await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
@@ -95,6 +96,12 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     assert.match(await panel.innerText(), /Closed automatically.*Demo Harbor expansion.*Request revised terms.*The landlord sent/s);
     await mkdir('.github/pr-evidence/WR433.S4.J20', { recursive: true });
     await panel.screenshot({ path: `.github/pr-evidence/WR433.S4.J20/${width}-${theme}.png`, animations: 'disabled' });
+    reviews = [row];
+    await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+    await panel.getByRole('button', { name: 'Confirm' }).waitFor();
+    if (width === 390) await panel.getByRole('button', { name: 'Show 1 more' }).click();
+    await panel.screenshot({ path: `.github/pr-evidence/WR433.S4.J20/${width}-${theme}-mixed.png`, animations: 'disabled' });
+
     await panel.getByRole('button', { name: 'Undo' }).click();
     await panel.getByText('Task reopened.').waitFor();
   });

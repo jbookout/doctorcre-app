@@ -96,6 +96,16 @@ for (const reason of ['awaiting_assessment', 'assessment_in_progress', 'interrup
 });
 
 const automatic = (id = 'auto') => ({ assessment_id: id, deal_id: 'demo-deal', deal_name: 'Demo Harbor', action_title: 'Request terms', quote: 'Terms arrived.', resolved_at: '2026-10-01T12:00:00Z', undo_possible: true });
+test('a closed task that cannot be undone has no Undo button', async t => {
+  const { view, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [{ ...automatic(), undo_possible: false }] }) });
+  await view.refresh();
+  assert.equal(container.querySelector('[data-update-action="undo"]'), null);
+});
+test('empty reviews are named before automatic closes', async t => {
+  const { view, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }) });
+  await view.refresh();
+  assert.match(container.textContent, /No overdue reviews\..*Closed automatically/s);
+});
 test('automatically closed task can be undone', async t => {
   const writes = [];
   const { view, action, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }), reviewDealUpdate: async args => { writes.push(args); return { ok: true, decision: 'undo', action_id: 'demo-action' }; } });

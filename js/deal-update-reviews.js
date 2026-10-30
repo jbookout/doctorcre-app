@@ -15,21 +15,16 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
     const focused = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
     const focusId = focused?.closest('[data-update-id]')?.dataset.updateId, focusAction = focused?.dataset.updateAction;
     container.setAttribute('aria-busy', String(state === 'loading'));
-    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${Math.max(0, rows.length - count) > 0 ? `<span class="home-list-count">Showing ${Math.min(count, rows.length)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${rows.slice(0, count).map((row, index) => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${Math.max(0, rows.length - count) > 0 ? `<span class="home-list-count">Showing ${Math.min(count, rows.length)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.some(row => !row.automatic) ? '<p class="home-empty">No overdue reviews.</p>' : ''}${rows.slice(0, count).map((row, index) => {
       const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
       const disabled = state !== 'ready' || pending;
-      if (row.automatic) return `${index === 0 || !rows.slice(0, count)[index - 1].automatic ? '<h3>Closed automatically</h3>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
+      const automatic = row.automatic;
+      const assessing = !automatic && ['awaiting_assessment', 'assessment_in_progress', 'interrupted'].includes(row.assessment.reason);
+      return `${automatic && (index === 0 || !rows[index - 1].automatic) ? '<div class="panel-section"><h3>Closed automatically</h3></div>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
         title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
-        meta: `<p>Task · ${E(row.action_title)}</p><p>Closed · ${E(sourceTime(row.resolved_at, undefined, 'Date unavailable'))}</p>`,
-        body: `<q>${E(row.quote)}</q>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
-        actions: `<div class="email-controls">${decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : button('undo', pending ? 'Saving…' : 'Undo', disabled)}</div>` })}`;
-      const assessing = row.assessment.reason === 'awaiting_assessment' || row.assessment.reason === 'assessment_in_progress' || row.assessment.reason === 'interrupted';
-
-      return workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
-        title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
-        meta: `<p>Overdue task · ${E(row.assessment.action.description)}</p>`,
-        body: `<q>${E(row.assessment.quote || row.assessment.update)}</q><p class="email-change">${assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
-        actions: `<div class="email-controls">${assessing || decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : `${button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}${button('dismiss', 'Dismiss', disabled)}`}</div>` });
+        meta: automatic ? `<p>Task · ${E(row.action_title)}</p><p>Closed · ${E(sourceTime(row.resolved_at, undefined, 'Date unavailable'))}</p>` : `<p>Overdue task · ${E(row.assessment.action.description)}</p>`,
+        body: `<q>${E(automatic ? row.quote : row.assessment.quote || row.assessment.update)}</q>${automatic ? '' : `<p class="email-change">${assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>`}${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
+        actions: `<div class="email-controls">${assessing || decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : automatic ? row.undo_possible ? button('undo', pending ? 'Saving…' : 'Undo', disabled) : '' : `${button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}${button('dismiss', 'Dismiss', disabled)}`}</div>` })}`;
     }).join('')}${Math.max(0, rows.length - count) > 0 ? button('show', `Show ${Math.max(0, rows.length - count)} more`) : ''}`;
     if (focused) {
       const article = [...container.querySelectorAll('[data-update-id]')].find(node => node.dataset.updateId === focusId);
@@ -58,12 +53,12 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       });
       if (result.automatic_resolutions != null && !Array.isArray(result.automatic_resolutions)) throw Error('Invalid automatic resolutions');
       for (const row of result.automatic_resolutions || []) {
-        if (row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name && typeof row.action_title === 'string' && typeof row.quote === 'string' && typeof row.resolved_at === 'string' && typeof row.undo_possible === 'boolean') {
+        if (row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name && ['action_title', 'quote', 'resolved_at'].every(key => typeof row[key] === 'string') && typeof row.undo_possible === 'boolean') {
           ids.add(row.assessment_id); next.push({ ...row, automatic: true });
         }
       }
       for (const row of rows) if (!ids.has(row.assessment_id) && ['unknown', 'submitting'].includes(decisions.get(row.assessment_id)?.state)) next.push(row);
-      next.sort((a, b) => Number(Boolean(a.automatic)) - Number(Boolean(b.automatic)));
+      next.sort((a, b) => (a.automatic ? 1 : 0) - (b.automatic ? 1 : 0));
       for (const [id, decision] of decisions) if (decision.state === 'refused') decisions.delete(id);
       rows = next; state = 'ready';
     } catch (error) {
