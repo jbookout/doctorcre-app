@@ -192,3 +192,10 @@
 .home-followup-skeleton { height: 180px; padding-top: var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-followup-skeleton::after { content: ""; display: block; width: 75%; height: 12px; margin-top: var(--space-4); background: var(--surface-2); box-shadow: 0 28px 0 var(--surface-2); }
 .home-call-tasks:has(.home-followup-skeleton) { min-height: 380px; }
+
+.home-email-activity { grid-column: 1 / -1; }
+.home-email-activity summary { cursor: pointer; font: var(--font-weight-strong) var(--font-size-3)/var(--line-height-heading) var(--font-text); color: var(--fg); }
+.home-email-hint { display: block; margin-top: var(--space-1); color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-1)/var(--line-height-heading) var(--font-text); }
+.home-email-activity > section .home-panel-head h2 { font-size: var(--font-size-2); }
+.home-email-activity > section h3 { font-size: var(--font-size-1); }
+.home-email-activity > section { margin-top: var(--space-5); }

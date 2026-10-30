@@ -177,7 +177,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) { void emailReview?.refresh(); void replyOutcomes?.refresh(); }
+    if (!agendaOnly) { void emailReview?.refresh(); if (emailActivity?.open) void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -363,29 +363,33 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       panelObserver.unobserve(entry.target);
       if (disposed || emailRetired) continue;
       if (entry.target.matches('.home-grid')) loadPastClients();
-      else if (entry.target.id === 'homeReplyOutcomes') import('./reply-outcomes.js').then(({ mountReplyOutcomes }) => {
-        if (disposed || emailRetired) return;
-        replyOutcomes = mountReplyOutcomes({ container: entry.target, client });
-        void replyOutcomes.refresh();
-      });
-      else if (entry.target.id === 'homeEmailFilings') import('./email-filings.js').then(({ mountEmailFilings }) => {
-        if (disposed || emailRetired) return;
-        emailFilings = mountEmailFilings({ container: entry.target, client });
-        void emailFilings.refresh();
-      });
     }
   });
-  if ($('homeReplyOutcomes') && client.listEmailProposals) panelObserver.observe($('homeReplyOutcomes'));
-  if ($('homeEmailFilings') && client.listEmailThreadFilings) panelObserver.observe($('homeEmailFilings'));
+  const emailActivity = $('homeEmailActivity');
+  const openEmailActivity = () => {
+    if (!emailActivity.open || disposed || emailRetired) return;
+    emailActivity.removeEventListener('toggle', openEmailActivity);
+    if (client.listEmailProposals) import('./reply-outcomes.js').then(({ mountReplyOutcomes }) => {
+      if (disposed || emailRetired) return;
+      replyOutcomes = mountReplyOutcomes({ container: $('homeReplyOutcomes'), client });
+      void replyOutcomes.refresh();
+    });
+    if (client.listEmailThreadFilings) import('./email-filings.js').then(({ mountEmailFilings }) => {
+      if (disposed || emailRetired) return;
+      emailFilings = mountEmailFilings({ container: $('homeEmailFilings'), client });
+      void emailFilings.refresh();
+    });
+  };
+  emailActivity?.addEventListener('toggle', openEmailActivity);
   if ($('homeEmailFollowups') && client.listEmailProposals) emailInitialRead = import('./email-followups.js').then(({ mountEmailFollowups }) => {
     if (disposed || emailRetired) return;
     emailReview = mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => {
-      void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+      if (emailActivity?.open) void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
     } });
     return emailReview.refresh();
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
