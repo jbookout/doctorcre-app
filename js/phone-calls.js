@@ -12,6 +12,7 @@ const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
 const tour_id = 'calls';
 const mimeTypes = new Set(['audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mpeg', 'audio/webm']);
+const uploadLabels = { queued: 'Waiting for the Studio', transferred: 'Received by the Studio', expired: 'Expired — upload again' };
 const labels = { pending: 'Pending transfer', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
 async function duration(audio) {
   const url = URL.createObjectURL(audio);
@@ -37,8 +38,17 @@ async function metadata(audio, started_at, consent_announced_at, seconds) {
 }
 async function pending() {
   const rows = await recorder.recover(await store.list(scope, tour_id));
+  for (const row of rows.filter(r => r.session_id && r.audio?.size && r.status !== 'failed')) {
+    let confirmed;
+    try { confirmed = await api.status(row.session_id); }
+    catch (error) { notice(error.message); continue; }
+    if (disposed) return;
+    Object.assign(row, await store.patch(scope, row.id, { upload_state: confirmed.upload_state }));
+    if (confirmed.upload_state === 'transferred' && confirmed.transferred)
+      Object.assign(row, await store.patch(scope, row.id, { audio: null, status: 'transferred' }));
+  }
   if (disposed) return;
-  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer'}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${r.interrupted ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>Transfer recording</button>` : ''}</article>`).join('');
+  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${uploadLabels[r.upload_state] || (r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer')}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${r.interrupted ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.upload_state === 'expired' ? 'Upload again' : r.upload_state === 'queued' ? 'Check upload' : 'Transfer recording'}</button>` : ''}</article>`).join('');
   for (const player of $('phonePending').querySelectorAll('audio')) {
     const url = URL.createObjectURL(rows.find(r => r.id === player.dataset.audio).audio);
     player.src = url; player.onloadeddata = () => URL.revokeObjectURL(url);
@@ -49,12 +59,18 @@ async function transfer(id) {
   if (!row?.audio?.size || row.status === 'recording') return;
   const meta = row.metadata || await metadata(row.audio, row.captured_at, row.consent_announced_at, row.duration_seconds);
   await store.patch(scope, id, { metadata: meta });
-  const admitted = row.session_id ? { session_id: row.session_id } : await api.admit(meta);
+  if (row.upload_state === 'queued') {
+    const confirmed = await api.status(row.session_id);
+    if (confirmed.upload_state === 'transferred' && confirmed.transferred) await review(row.session_id);
+    return;
+  }
+  const admitted = row.session_id && row.upload_state !== 'expired' ? { session_id: row.session_id } : await api.admit(meta);
   await store.patch(scope, id, { session_id: admitted.session_id });
   const receipt = await api.transfer(admitted.session_id, row.audio, meta.mime_type);
   if (receipt.sha256 && receipt.sha256 !== meta.sha256) throw new Error('Transfer could not be verified. Saved audio has been kept.');
   const confirmed = await api.status(admitted.session_id);
-  if (!receipt.transferred || !confirmed.transferred) { notice('Pending transfer. Try again when the call service is available.'); return; }
+  await store.patch(scope, id, { upload_state: confirmed.upload_state });
+  if (confirmed.upload_state !== 'transferred' || !receipt.transferred || !confirmed.transferred) { notice(''); return; }
   await store.patch(scope, id, { audio: null, status: 'transferred' });
   try { await review(admitted.session_id); notice('Transfer confirmed. Audio removed from this device.'); }
   catch { notice('Transfer confirmed. Review is unavailable. Open the saved review link to retry.'); }

@@ -17,7 +17,7 @@ async function open(t, options = {}) {
     const req = r.request(), path = new URL(req.url()).pathname;
     if (req.method() !== 'GET') state.writes.push({ path, method: req.method(), headers: req.headers(), body: req.postData() });
     if (req.method() === 'PUT' && state.allowTransfer) state.transferred = true;
-    const session = { schema_version: 1, session_id: id, state: state.transferred ? 'ready_review' : 'pending', transferred: state.transferred, filed: false };
+    const session = { schema_version: 1, session_id: id, state: state.transferred ? 'ready_review' : 'pending', transferred: state.transferred, filed: false, upload_state: state.transferred ? 'transferred' : state.upload_state || 'queued', sha256: createHash('sha256').update(wav()).digest('hex') };
     if (path.endsWith('/report')) return r.fulfill({ json: { ...session, report: state.transferred ? { summary: 'Synthetic Clinic will review the revised proposal.', decisions: [], open_questions: ['Who agreed to send the proposal?'] } : null,
       actions: state.transferred ? [{ id: 'action-1', assignee: 'joe', action: 'Send revised proposal', due_on: null, status: 'pending' }] : [],
       deal_updates: state.transferred ? [{ id: 'update-1', kind: 'next_step', status: 'pending', payload: { text: 'Review revised proposal', evidence_quote: 'We will review it.' } }] : [] } });
@@ -47,10 +47,11 @@ test('phone import retains pending audio across reload and clears it only after 
   await page.getByText('Pending transfer', { exact: true }).waitFor();
   await page.reload();
   await page.getByRole('button', { name: 'Transfer recording' }).click();
-  await page.getByText('Pending transfer. Try again when the call service is available.', { exact: true }).waitFor();
+  await page.getByText('Waiting for the Studio', { exact: true }).waitFor();
   assert.equal(state.writes.some(r => r.method === 'PUT'), true);
   state.allowTransfer = true;
-  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  state.transferred = true;
+  await page.getByRole('button', { name: 'Check upload' }).click();
   await page.getByText('Ready for review', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Transfer recording' }).count(), 0);
   assert.equal(state.writes.filter(r => r.method === 'POST').length, 1);
@@ -189,4 +190,33 @@ test('phone capture navigation and review require no local companion', async t =
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('link', { name: 'Phone capture', exact: true }).waitFor();
   assert.deepEqual(requests, []);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`expired upload retains audio and uploads again at ${width} ${theme}`, async t => {
+  const { page, state } = await open(t, { width, theme });
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByText('Waiting for the Studio', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Check upload' }).click();
+  await page.locator('#phoneCalls[aria-busy=false]').waitFor();
+  assert.equal(state.writes.filter(r => r.method === 'PUT').length, 1, 'queued checks never resend audio');
+  state.upload_state = 'expired';
+  await page.reload();
+  await page.getByText('Expired — upload again', { exact: true }).waitFor();
+  assert.equal(await page.locator('audio').count(), 1);
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await animationsSettled(page);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await mkdir('out/test-artifacts/phone-uploads', { recursive: true });
+  await page.getByRole('button', { name: 'Upload again', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `out/test-artifacts/phone-uploads/${width}-${theme}.png` });
+  state.allowTransfer = true;
+  await page.getByRole('button', { name: 'Upload again', exact: true }).click();
+  await page.getByText('Received by the Studio', { exact: true }).first().waitFor();
+  assert.equal(await page.locator('audio').count(), 0);
+  assert.equal(state.writes.filter(r => r.method === 'PUT').length, 2);
 });
