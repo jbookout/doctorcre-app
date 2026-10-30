@@ -56,10 +56,10 @@ for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${
 test('filters, aging and automatic refresh preserve drafts and recover failed data', async t => {
   const h = await open(t), page = h.page;
   await page.locator('#invoiceSearch').fill('Cedar'); await page.locator('[data-invoice]').click(); await page.locator('#invoicePaidDate').fill('2026-09-30'); await page.locator('#invoiceOriginal summary').click();
-  h.update(data => { data.entries.find(row => row.name === 'Demo Cedar Expansion').gross_amount = '10000'; }); const reads = h.reads; await page.clock.runFor(31000); await page.waitForFunction(() => /10,000/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.ok(h.reads > reads); assert.equal(await page.locator('#invoicePaidDate').inputValue(), '2026-09-30'); assert.equal(await page.locator('#invoiceOriginal').getAttribute('open'), '');
+  h.update(data => { data.entries.find(row => row.name === 'Demo Cedar Expansion').gross_amount = '10000'; }); const reads = h.reads; await page.clock.runFor(61000); await page.waitForFunction(() => /10,000/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.ok(h.reads > reads); assert.equal(await page.locator('#invoicePaidDate').inputValue(), '2026-09-30'); assert.equal(await page.locator('#invoiceOriginal').getAttribute('open'), '');
   await page.locator('#closeInvoiceDetail').click(); await page.locator('#clearInvoiceFilters').click(); await page.locator('#invoiceAging [data-age="2"]').click(); assert.equal(await page.locator('[data-invoice]').count(), 1); assert.match(await page.locator('[data-invoice]').innerText(), /Bay/); await page.locator('#allAges').click(); assert.equal(await page.locator('[data-invoice]').count(), 4);
   h.setFailed(true); await page.locator('#refreshInvoices').click(); await page.waitForFunction(() => !document.querySelector('#invoiceNotice').hidden); assert.equal(await page.locator('[data-invoice]').count(), 4); assert.match(await page.locator('#invoiceUpdated').innerText(), /Updated/);
-  h.setFailed(false); await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoiceNotice').hidden); assert.deepEqual(h.errors, []);
+  h.setFailed(false); await page.clock.runFor(61000); await page.waitForFunction(() => document.querySelector('#invoiceNotice').hidden); assert.deepEqual(h.errors, []);
 });
 test('uncertain receipt reconciles without another write; conflict keeps the draft', async t => {
   const h = await open(t, { receipt: 'uncertain' }); await h.page.locator('[data-invoice]').first().click(); await h.page.locator('#markInvoicePaid').click(); await h.page.waitForFunction(() => /Paid/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.equal(h.writes, 1);
@@ -69,7 +69,7 @@ test('Home attention shares invoice identity, scope and refreshed paid state', a
   const h = await open(t, { home: true }), page = h.page; assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 3);
   await page.locator('[data-scope="mine"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 2);
   h.update(data => { for (const row of data.entries) if (row.owner === 'joe' && row.status === 'invoiced') { row.status = 'received'; row.received_on = today; } });
-  await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
+  await page.clock.runFor(61000); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
   await page.screenshot({ path: new URL('out/test-artifacts/w15/home-attention-1440.png', root).pathname });
 });
 test('pending receipt confirmations remain attached to each invoice across popup changes', async t => {
@@ -83,10 +83,10 @@ test('pending receipt confirmations remain attached to each invoice across popup
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(0).click();
   assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment');
   h.update(data => { data.entries.find(row => row.commission_id === first).gross_amount = '9401'; });
-  await page.clock.runFor(31000); await page.waitForFunction(() => /9,401/.test(document.querySelector('#invoiceDetailFacts').textContent));
+  await page.clock.runFor(61000); await page.waitForFunction(() => /9,401/.test(document.querySelector('#invoiceDetailFacts').textContent));
   assert.equal(h.writes, 2);
   h.update(data => { const row = data.entries.find(row => row.commission_id === first); row.status = 'received'; row.received_on = today; });
-  await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
+  await page.clock.runFor(61000); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
   await page.locator('#closeInvoiceDetail').click(); await page.locator('[data-invoice]').filter({ hasText: 'Demo Bay' }).click();
   assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment'); assert.equal(h.writes, 2);
 });
@@ -141,7 +141,7 @@ test('hung payment becomes recoverable after the write deadline without an autom
 test('phone focus survives automatic invoice removal and filtered-out row repaint',async t=>{
  const h=await open(t,{width:320}),page=h.page;
  await page.locator('[data-invoice]').first().click();h.update(data=>{data.entries=data.entries.filter(row=>row.name!=='Demo Cedar Expansion');});
- await page.clock.runFor(31000);await page.waitForFunction(()=>!document.querySelector('#invoiceDetail').open);
+ await page.clock.runFor(61000);await page.waitForFunction(()=>!document.querySelector('#invoiceDetail').open);
  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#refreshInvoices')),true);
  await page.locator('[data-invoice]').first().focus();await page.evaluate(()=>{const input=document.querySelector('#invoiceSearch');input.value='no match';input.dispatchEvent(new Event('input'));});
  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#refreshInvoices')),true);
