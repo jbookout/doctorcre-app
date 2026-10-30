@@ -7,6 +7,7 @@ import { invoiceMoney } from './invoice-tracker-model.js';
 const BASES = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
 
 function valueText(value) {
+  if (value.unit === 'schedule' || value.canonical_unit === 'schedule') return 'Rent schedule';
   const amount = value.canonical_unit ? value.normalized_value : value.value;
   const unit = value.canonical_unit || value.unit;
   const units = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
@@ -15,12 +16,13 @@ function valueText(value) {
 }
 function readLabel(observation) {
   const method = { text_layer: 'Text', ocr: 'OCR', human: 'Typed by a partner' }[observation.method] || 'Read method unavailable';
+  if (observation.method === 'ocr') return 'OCR · verify';
   const confidence = { auto_accept: 'high', verify_band: 'verify', human_review: 'review' }[observation.confidence_tier];
   return confidence ? `${method} · ${confidence}` : method;
 }
 function reviewLabel(item) {
   if (!item.pending) return 'Reviewed';
-  return item.reasons.map(reason => ({ conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' }[reason] || 'Review required')).join(' · ') || 'Review required';
+  return `${item.priority === 'high' ? 'High priority · ' : ''}${item.reasons.map(reason => ({ ocr_disagreement: 'OCR disagreement', conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' }[reason] || 'Review required')).join(' · ') || 'Review required'}`;
 }
 function documentName(observation, documents) {
   return documents.find(doc => doc.id === observation.source.document_ref)?.display_name || 'Document name unavailable';
@@ -43,15 +45,16 @@ function entryHtml(documents, factKey, prefix) {
     <label class="fact-wide">Cited text<textarea name="cited_text" rows="2" maxlength="4000" required aria-describedby="${prefix}-source-hint"></textarea></label>
     <small id="${prefix}-source-hint" class="fact-wide">Transcribe the clause from the stored document. This entry does not verify the document text.</small></div>`;
 }
-function reviewHtml(item, documents, index) {
-  return `<article class="fact-term" data-fact-key="${esc(item.fact_key)}"><header><h3>${esc(FACT_TERMS[item.fact_key]?.label || item.fact_key.replaceAll('_', ' '))}</h3><span class="fact-state">${esc(reviewLabel(item))}</span></header>
-    <div class="fact-canonical"><small>Canonical value</small><p${item.canonical_fact ? '' : ' class="fact-empty"'}>${item.canonical_fact ? esc(valueText(item.canonical_fact)) : 'No canonical value recorded'}</p></div>
-    <div class="fact-observations">${item.observations.map(o => `<section class="fact-observation"><strong>${esc(valueText(o))}</strong>${item.canonical_fact?.observation_ids?.includes(o.id) ? '<span class="fact-state"> · Settled value</span>' : ''}<p class="fact-read">${esc(readLabel(o))}</p>${sourceHtml(o, documents)}</section>`).join('')}</div>
+function reviewHtml(item, documents, index, scheduleHtml) {
+  const schedule = item.fact_key === 'rent_schedule';
+  return `<article class="fact-term" data-fact-key="${esc(item.fact_key)}"><header><h3>${esc(FACT_TERMS[item.fact_key]?.label || (schedule ? 'Rent schedule' : item.fact_key.replaceAll('_', ' ')))}</h3><span class="fact-state">${esc(reviewLabel(item))}</span></header>
+    <div class="fact-canonical"><small>Canonical value</small>${schedule && item.canonical_fact ? scheduleHtml(item.canonical_fact.normalized_schedule, false) : `<p${item.canonical_fact ? '' : ' class="fact-empty"'}>${item.canonical_fact ? esc(valueText(item.canonical_fact)) : 'No canonical value recorded'}</p>`}</div>
+    <div class="fact-observations">${item.observations.map(o => `<section class="fact-observation">${schedule ? scheduleHtml(o.value, true) : `<strong>${esc(valueText(o))}</strong>`}${item.canonical_fact?.observation_ids?.includes(o.id) ? '<span class="fact-state"> · Settled value</span>' : ''}<p class="fact-read">${esc(readLabel(o))}</p>${sourceHtml(o, documents)}</section>`).join('')}</div>
     <button type="button" class="btn" data-review-term${item.pending ? ' hidden' : ''}>Review term</button>
     <form data-fact-review="${index}"${item.pending ? '' : ' hidden'}>
-      <label>Decision<select aria-label="Decision" name="decision"><option value="approve">Approve a sourced value</option><option value="correct"${documents.length ? '' : ' disabled'}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
+      <label>Decision<select aria-label="Decision" name="decision"><option value="approve">Approve a sourced value</option><option value="correct"${documents.length && !schedule ? '' : ' disabled'}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
       <label data-choose-value>Choose a value<select aria-label="Choose a value" name="observation_id" required><option value="">Choose a sourced value</option>${item.observations.map(o => `<option value="${esc(o.id)}">${esc(valueText(o))} · ${esc(documentName(o, documents))}</option>`).join('')}</select></label>
-      <fieldset data-correction hidden disabled><legend>Corrected term</legend>${entryHtml(documents, item.fact_key, `correction-${index}`)}</fieldset>
+      <fieldset data-correction hidden disabled><legend>Corrected term</legend>${schedule ? '' : entryHtml(documents, item.fact_key, `correction-${index}`)}</fieldset>
       <label>Reason<textarea name="reason" rows="2" maxlength="2000" required></textarea></label><button type="submit" class="btn btn-primary">Save review</button><p role="status" data-write-status></p>
     </form>
     ${item.review_history.length ? `<details class="fact-history"><summary>Review history</summary><ul>${item.review_history.map(row => `<li><strong>${esc({ approve: 'Approved', correct: 'Corrected', reject: 'Rejected' }[row.decision] || row.decision)}</strong><p>${esc(row.reason)}</p></li>`).join('')}</ul></details>` : ''}
@@ -107,8 +110,10 @@ export function mountFactReview(root, { client, entityRef } = {}) {
         if (page.has_more && (!page.next_cursor || page.next_cursor === cursor)) throw new Error('Terms unavailable');
         cursor = page.has_more ? page.next_cursor : null;
       } while (cursor);
+      const scheduleHtml = loaded.some(item => item.fact_key === 'rent_schedule') ? (await import('./rent-schedule.js')).scheduleHtml : null;
+      if (disposed || current !== generation) return;
       items = loaded;
-      list.innerHTML = items.map((item, index) => reviewHtml(item, documents, index)).join('') || '<p>No sourced terms recorded.</p>';
+      list.innerHTML = items.map((item, index) => reviewHtml(item, documents, index, scheduleHtml)).join('') || '<p>No sourced terms recorded.</p>';
       status.textContent = message;
     } catch {
       if (!disposed && current === generation) {

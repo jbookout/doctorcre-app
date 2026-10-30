@@ -292,3 +292,14 @@
 .fact-term form > button { grid-column: 1 / -1; justify-self: start; }
 
 @media (min-width: 1100px) { [data-fact-record] .fact-entry { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+.fact-schedule { width: 100%; border-collapse: collapse; font-size: var(--font-size-1); }
+.fact-schedule th, .fact-schedule td { text-align: left; padding: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); vertical-align: top; }
+.fact-schedule .fact-read { display: block; }
+@media (max-width: 600px) {
+  .fact-schedule, .fact-schedule tbody, .fact-schedule tr, .fact-schedule td { display: block; }
+  .fact-schedule thead { display: none; }
+  .fact-schedule tr { padding-block: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); }
+  .fact-schedule td { display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr; border: 0; padding: var(--space-1) 0; overflow-wrap: anywhere; }
+  .fact-schedule td::before { content: attr(data-label); color: var(--fg-muted); }
+}

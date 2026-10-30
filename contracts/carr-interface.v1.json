@@ -1617,6 +1617,8 @@
   "fact_review": {
     "schema_version": "fact-review.v1",
     "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2739",
+    "schedule_producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2764",
+    "schedule_producer_revision": "18115d1565e924c27da090815a386bb9e96351bc",
     "list": {
       "verb": "list-fact-review",
       "input": [
