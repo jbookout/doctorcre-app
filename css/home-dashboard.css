@@ -109,7 +109,7 @@
 .home-agenda-more { margin-top: var(--space-3); background: transparent; cursor: pointer; }
 .home-agenda a:hover { background: var(--surface-2); }
 .home-agenda time, .home-agenda-date { min-width: 52px; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-.home-item-type, .home-period { flex: none; color: var(--fg-quiet); font-size: var(--font-size-1); }
+.home-period { flex: none; color: var(--fg-quiet); font-size: var(--font-size-1); }
 .home-partial { display: block; margin-top: var(--space-3); color: var(--fg-quiet); font-size: var(--font-size-1); }
 
 /* New leads: scores are data, drawn in the first data series. */
