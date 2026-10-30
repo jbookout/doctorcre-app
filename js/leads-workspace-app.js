@@ -37,7 +37,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function card(lead) {
     const move = automaticMove(lead), undo = undoReview(lead);
     const possible = lead.possible_clients || [];
-    return workCard({ variant: 'tile', className: 'lead-card', attributes: `data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true"`,
+    return workCard({ className: 'lead-card', attributes: `data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true"`,
       title: `<span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button>`,
       meta: `<span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small>`, status: normalizedStage(lead) === 'new' && !lead.owner ? 'Unclaimed' : '',
       body: `      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}

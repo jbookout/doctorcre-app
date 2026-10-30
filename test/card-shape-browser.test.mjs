@@ -38,7 +38,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`sh
     assert.equal(await page.locator(selector).first().locator('.work-card-title').count(), 1);
     assert.equal(await page.locator(selector).first().locator('.work-card-meta').count(), 1);
     const card = page.locator(selector).first();
-    if (surface === 'deals-board' || surface === 'leads') {
+    if (surface === 'deals-board') {
       const style = await card.evaluate(node => { const s = getComputedStyle(node); return { radius: parseFloat(s.borderRadius), border: parseFloat(s.borderLeftWidth), background: s.backgroundColor }; });
       assert.ok(style.radius > 0 && style.border > 0 && style.background !== 'rgba(0, 0, 0, 0)', `${surface} has a tile surface`);
     }

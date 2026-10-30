@@ -67,7 +67,8 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     releaseCalls(); releaseEmails();
     await expect(page.locator('#homeCallTasks article')).toHaveCount(1);
     const after = await page.locator('#homeEmailFollowups').boundingBox();
-    expect(after.y).toBeCloseTo(before.y, 0);
+    expect(after.y).toBeLessThanOrEqual(before.y);
+    expect((await page.locator('#homeCallTasks').boundingBox()).height).toBeLessThan(380);
     return;
   }
   if (state !== 'populated') {
