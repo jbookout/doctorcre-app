@@ -108,9 +108,9 @@ test('recent moves catch up through history and update read-only on pages withou
  const events=[{id:'demo-event-1',subject_type:'deal',subject_id:'d23',field:'attention',actor:'doc',old_value:false,new_value:true,recorded_at:'2026-10-01T14:00:00Z'}];
  const{page,goto,writes,errors}=await open(t,{clock:true,events});await goto('/leads?mode=live');
  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
- assert.match(await page.locator('#appTodayMoves').textContent(),/Demo Specialty Clinic.*Flagged for attention by Doc/);assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
+ assert.match(await page.locator('#appTodayMoves').textContent(),/Demo Specialty Clinic.*Doc flagged for attention/);assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
  events.push({id:'demo-event-2',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Review synthetic terms',recorded_at:'2026-10-01T15:00:00Z'});
- await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Set the next step to Review synthetic terms'));
+ await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Doc set the next step to Review synthetic terms'));
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
@@ -160,7 +160,10 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
  await goto('/leads?mode=live');
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  if(width===390)await page.locator('#appTodayToggle').click();
- await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Set the next step to Review synthetic terms'));
+ await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Doc set the next step to Review synthetic terms'));
+ const overdue = page.locator('#appTodayNeeds .app-layout-overdue').first();
+ assert.match(await overdue.innerText(), /days? overdue/);
+ assert.equal(await overdue.evaluate(node => getComputedStyle(node).whiteSpace), 'nowrap');
  const sections=['#appTodayNeeds','#appTodayNext','#appTodayMoves'];
  const rows=async()=>Promise.all(sections.map(async selector=>(await page.locator(selector+' [data-layout-deal]').allTextContents()).map(text=>selector==='#appTodayMoves'?text.replace(/ · (?:just now|\d+ (?:minute|hour|day)s? ago)$/, ''):text)));
  const good=await rows();assert.ok(good.every(items=>items.length));
@@ -455,12 +458,12 @@ const moveRow=(page,deal)=>page.locator(`#appTodayMoves [data-layout-deal="${dea
 test('Recent moves lead with the deal name and say what changed, who did it and when',async t=>{
  const {page,errors}=await movesOpen(t);
  for(const [deal,name,detail] of [
-  ['d01','Demo Dental North','Moved to Due Diligence by Joe · 2 hours ago'],
-  ['d02','Demo Pediatrics East','Flagged for attention by Doc · just now'],
-  ['d03','Demo Therapy Group','Set the next step to Review terms by Dell · 1 minute ago'],
-  ['d04','Demo Vision Center','Set the next date to Oct 5 by Joe · 1 hour ago'],
-  ['d05','Demo Family Clinic','Assigned to Dell by Doc · 3 days ago'],
-  ['d06','Demo Orthodontics South','Changed the client by Dell · 12 minutes ago'],
+  ['d01','Demo Dental North','Joe moved to Due Diligence · 2 hours ago'],
+  ['d02','Demo Pediatrics East','Doc flagged for attention · just now'],
+  ['d03','Demo Therapy Group','Dell set the next step to Review terms · 1 minute ago'],
+  ['d04','Demo Vision Center','Joe set the next date to Oct 5 · 1 hour ago'],
+  ['d05','Demo Family Clinic','Doc assigned to Dell · 3 days ago'],
+  ['d06','Demo Orthodontics South','Dell changed the client · 12 minutes ago'],
  ]){
   const row=moveRow(page,deal);
   assert.equal(await row.locator('strong').innerText(),name);
@@ -481,9 +484,9 @@ test('Recent move ages follow the clock without a reload',async t=>{
  const {page,errors}=await movesOpen(t);
  assert.match(await moveRow(page,'d02').innerText(),/just now/);
  await page.clock.fastForward(2*MIN);
- await page.waitForFunction(()=>/Flagged for attention by Doc · 2 minutes ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ await page.waitForFunction(()=>/Doc flagged for attention · 2 minutes ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
  await page.clock.fastForward(HOUR);
- await page.waitForFunction(()=>/Flagged for attention by Doc · 1 hour ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ await page.waitForFunction(()=>/Doc flagged for attention · 1 hour ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
  assert.deepEqual(errors,[]);
 });
 

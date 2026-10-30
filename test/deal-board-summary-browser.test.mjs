@@ -28,7 +28,7 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
     await card.waitFor();
     await card.scrollIntoViewIfNeeded();
     const facts = card.locator('.deal-summary-facts').first();
-    assert.match(await facts.innerText(), /Fri Oct 30 · D/);
+    assert.match(await facts.innerText(), /Fri Oct 30 · Dell/);
     const visible = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.every(node => {
       const box = node.getBoundingClientRect();
       for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
@@ -40,7 +40,7 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
       }
       return box.width > 0 && box.right <= innerWidth;
     }));
-    assert.equal(visible, true, 'date and partner initial are outside the clamped text');
+    assert.equal(visible, true, 'date and partner name are outside the clamped text');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     if ([390, 1440].includes(width)) {
       const dir = 'out/test-artifacts/deal-board-summary';

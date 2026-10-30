@@ -820,6 +820,7 @@ test('Home caps email cards and expands distinct dismissal reasons on demand', a
   assert.ok(container.querySelector('.home-followup-skeleton'));
   await pending;
   assert.equal(container.querySelectorAll('article').length, 2);
+  assert.match(container.textContent, /Showing 2 of 5/);
   assert.equal(container.querySelectorAll('details.email-dismiss').length, 2);
   assert.equal(container.querySelector('summary').textContent, 'Dismiss');
   assert.deepEqual([...container.querySelector('details').querySelectorAll('[data-email-chip]')].map(node => node.textContent), ['Already handled', 'Wrong deal', 'Not now']);

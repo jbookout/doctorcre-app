@@ -259,7 +259,7 @@ function renderBoard() {
   renderPendingWrites();
 }
 
-const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? '' : 's'} with no deals` : `${count} stage${count === 1 ? '' : 's'} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${Boolean(state.showEmptyStages)}">${state.showEmptyStages ? 'Hide empty stages' : 'Show empty stages'}</button></p>` : '';
+const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? '' : 's'} with no deals` : `${count} stage${count === 1 ? '' : 's'} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${Boolean(state.showEmptyStages)}">${state.showEmptyStages ? '− Hide empty stages' : '+ Show empty stages'}</button></p>` : '';
 
 function renderChips() {
   const bar = $('boardChips');

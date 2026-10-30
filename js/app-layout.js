@@ -148,11 +148,11 @@ export function mountAppLayout(root, host, pathname) {
   let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
   const resetFeed = () => { feedActor = null; cursor = null; feed = createFeedProgress(); receipts = []; if (!pageOwnsMoves) renderMoves(); };
   let todayItems = null, todayNeeds = null, nextExpanded = false, failedReads = [];
-  const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${briefOwnerLabel(item) ? `<small class="morning-owner">${briefOwnerLabel(item)}</small>` : ''}${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
+  const row = (item, extra = '', overdue = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${briefOwnerLabel(item) ? `<small class="morning-owner">${briefOwnerLabel(item)}</small>` : ''}${extra || overdue ? `<span>${escape(extra)}${overdue ? ` <span class="app-layout-overdue">${extra ? '· ' : ''}${escape(overdue)}</span>` : ''}</span>` : ''}</button>`;
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
   const overdueRows = deals => {
     const today = businessDay();
-    return mostOverdueFirst(deals, today).map(d => row(d, [d.next_step, overdueLabel(overdueSince(d, today), today)].filter(Boolean).join(' · ')));
+    return mostOverdueFirst(deals, today).map(d => row(d, d.next_step || '', overdueLabel(overdueSince(d, today), today)));
   };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
@@ -182,7 +182,7 @@ export function mountAppLayout(root, host, pathname) {
     const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
     render('#appTodayMoves', moves.map(move => {
       const { name, action, by, age } = todayMove(move);
-      const detail = `${escape(action)}${by ? ` by ${escape(by)}` : ''}${age ? ` · <span class="app-layout-age">${escape(age)}</span>` : ''}`;
+      const detail = `${by ? `${escape(by)} ${escape(action.charAt(0).toLowerCase() + action.slice(1))}` : escape(action)}${age ? ` <span class="app-layout-age">· ${escape(age)}</span>` : ''}`;
       return `<button type="button" class="app-layout-item" data-layout-deal="${escape(move.deal_id)}"><strong>${escape(name)}</strong><span>${detail}</span></button>`;
     }).join('') || empty);
   };
