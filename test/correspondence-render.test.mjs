@@ -197,3 +197,19 @@ test('Evidence groups show newest instants first and undated items last without 
   assert.deepEqual(view, original);
   dom.window.close();
 });
+
+test('threads and meetings with equal instants use a stable record order', () => {
+  const items = [
+    { id:'a', title:'Synthetic A', when:'2026-10-26T12:00:00Z' },
+    { id:'z', title:'Synthetic Z', when:'2026-10-26T07:00:00-05:00' },
+  ];
+  for (const rows of [items, [...items].reverse()]) {
+    const view = Object.fromEntries(['threads', 'meetings'].map(group => [group, {
+      state:'ready', items:rows.map(item => ({...item, kind:group === 'threads' ? 'thread' : 'meeting'})),
+    }]));
+    const root = new JSDOM(renderEvidence(view)).window.document;
+    for (const group of root.querySelectorAll('.evidence-group')) {
+      assert.deepEqual([...group.querySelectorAll('summary span')].map(node => node.textContent), ['Synthetic Z', 'Synthetic A']);
+    }
+  }
+});

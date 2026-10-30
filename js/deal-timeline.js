@@ -1,5 +1,5 @@
 import { COLUMNS, columnBySlug, columnByValue, noteText } from './pipeline-model.js';
-import { escapeText, compareInstants } from './change-receipts.mjs';
+import { escapeText, compareDatedEntries } from './change-receipts.mjs';
 import { concise, noteEntries } from './local-deals-model.js';
 import { ACTOR_LABEL } from './client.js';
 
@@ -71,7 +71,7 @@ export function dealTimeline(detail, now = Date.now()) {
   const entries = noteEntries(detail).map(e => ({...e, day:calendarDay(e.when),type:e.kind}));
   for (const doc of detail.documents || []) entries.push({id:`document-${doc.id}`,type:'Document',kind:'Document',
     day:calendarDay(doc.prepared_at),when:doc.prepared_at,summary:concise(doc.note || 'Document prepared',150),original:noteText(doc.note)});
-  entries.sort((a,b) => compareInstants(a.when,b.when) || String(b.id).localeCompare(String(a.id)));
+  entries.sort(compareDatedEntries);
   return {phases,dates,missing,entries,today:today(now)};
 }
 
@@ -91,7 +91,7 @@ export function renderDealUpdates(detail, now = Date.now()) {
   const held = (detail.next_actions || []).filter(task => task.status === 'open' && calendarDay(task.hold_until) > today(now))
     .map(task => ({id:`action:${task.id}`,kind:`Held until ${dateCaption(calendarDay(task.hold_until))}`,
       actor:task.owner,when:task.updated_at,summary:task.description,original:task.description}));
-  const entries = [...noteEntries(detail), ...held].sort((a,b) => compareInstants(a.when,b.when) || String(b.id).localeCompare(String(a.id)));
+  const entries = [...noteEntries(detail), ...held].sort(compareDatedEntries);
   if (!entries.length) return '';
   const stamp = value => {
     const date = new Date(value || NaN);

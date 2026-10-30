@@ -234,6 +234,10 @@ export function compareInstants(a, b) {
   return 0;
 }
 
+export function compareDatedEntries(a, b) {
+  return compareInstants(a.when, b.when) || String(b.id ?? '').localeCompare(String(a.id ?? ''));
+}
+
 /**
  * Newest first, on the same (recorded_at, id) key the server orders and
  * paginates by: instant, then the precision below a millisecond, then the

@@ -57,8 +57,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
           next_actions: [{id:'demo-next',description:'Demo next action',status:'open',due_on:'2026-10-01',hold_until:'2027-01-01'}, ...(window.duplicateNextStep ? [{id:'demo-duplicate',description:'Demo unique next step',status:'open',due_on:'2026-11-20'}] : [])],
           history: [{id:'demo-change',field:'owner',new_value:'dell',recorded_at:'2026-10-02T15:00:00Z',summary:'Demo owner changed'}],
           critical_dates: [{ id: 'demo-loi', kind: 'loi_expiry', due_on: '2026-10-09', note: 'Demo LOI deadline' }],
-          thread: [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-02T12:00:00Z', text: 'Demo recorded deal note' }],
-          activities: [{id:'demo-mail',kind:'correspondence',source:'Demo mail',occurred_at:'2026-10-01T12:00:00Z',summary:'Demo mail receipt',detail:{native_identity:identity}}, { id: 'demo-meeting', kind: 'meeting', occurred_at: '2026-10-03T12:00:00Z', summary: 'Demo discovery meeting', detail: 'Demo meeting evidence', source: 'Demo calendar fixture' }],
+          thread: [{ id:'demo-old-note', kind:'note', actor:'joe', at:'2026-10-01T12:00:00Z', text:'Demo earlier note' }, { id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-02T12:00:00Z', text: 'Demo recorded deal note' }],
+          activities: [{id:'demo-mail',kind:'correspondence',source:'Demo mail',occurred_at:'2026-10-01T12:00:00Z',summary:'Demo mail receipt',detail:{native_identity:identity}}, { id: 'demo-earlier', kind: 'meeting', occurred_at: '2026-10-01T12:00:00Z', summary: 'Demo earlier meeting', source: 'Demo calendar fixture' }, { id: 'demo-meeting', kind: 'meeting', occurred_at: '2026-10-03T12:00:00Z', summary: 'Demo discovery meeting', detail: 'Demo meeting evidence', source: 'Demo calendar fixture' }],
           documents: window.workspaceDocumentRemoved ? [] : [{ id: 'demo-document', prepared_at: '2026-10-03T13:00:00Z', note: 'Demo lease document' }],
         };
       };
@@ -128,6 +128,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
         await expect(page.getByRole('region', { name: 'Deal notes', exact: true })).toContainText('Demo recorded deal note');
         await expect(page.locator('#panelEvidence')).toContainText('Demo discovery meeting');
         await expect(page.locator('#panelEvidence')).toContainText('Correspondence thread');
+        await expect(page.locator('.workspace-note p')).toHaveText(['Demo recorded deal note', 'Demo earlier note']);
+        await expect(page.locator('[data-evidence-group=meetings] summary span')).toHaveText(['Demo discovery meeting', 'Demo earlier meeting']);
       }
       await page.evaluate(() => scrollTo(0, 0));
       await page.locator('body').evaluate(() => document.fonts.ready);
@@ -139,7 +141,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       const targets = await page.getByRole('tab').evaluateAll(tabs => tabs.map(tab => ({ width: tab.getBoundingClientRect().width, height: tab.getBoundingClientRect().height })));
       for (const target of targets) { expect(target.width).toBeGreaterThanOrEqual(44); expect(target.height).toBeGreaterThanOrEqual(44); }
       const path = testInfo.outputPath(`workspace-${width}-${theme}-${tab}.png`);
-      await page.screenshot({ path, animations: 'disabled' });
+      await page.screenshot({ path, fullPage: true, animations: 'disabled' });
       await testInfo.attach(`${width}-${theme}-${tab}`, { path, contentType: 'image/png' });
     }
   });

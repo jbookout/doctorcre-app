@@ -23,7 +23,7 @@ import {
   cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
 import {
-  escapeText, fieldLabel, readableValue, ingestChangeEvents, receiptViews, receiptListHtml,
+  escapeText, fieldLabel, readableValue, ingestChangeEvents, receiptViews, receiptListHtml, compareDatedEntries,
   receiptsSignature, createFeedProgress, observeChangeBatch, performUndo,
 } from './change-receipts.mjs';
 import {
@@ -1022,7 +1022,7 @@ function selectWorkspaceTab(id) {
   }
 }
 function workspaceNotesHtml(detail) {
-  return `<section aria-label="Deal notes"><h3>Deal notes</h3>${(detail.thread || []).map(note => `<article class="workspace-note"><b>${esc(actorName(note.actor))}</b> <time datetime="${esc(note.at || note.created_at || note.recorded_at || '')}">${esc(dateCaption(calendarDay(note.at || note.created_at || note.recorded_at)))}</time><p class="note-original">${esc(noteText(note.text))}</p></article>`).join('') || '<p>No notes recorded.</p>'}</section>`;
+  return `<section aria-label="Deal notes"><h3>Deal notes</h3>${(detail.thread || []).map(note => ({...note, when:note.at || note.created_at || note.recorded_at})).sort(compareDatedEntries).map(note => `<article class="workspace-note"><b>${esc(actorName(note.actor))}</b> <time datetime="${esc(note.at || note.created_at || note.recorded_at || '')}">${esc(dateCaption(calendarDay(note.at || note.created_at || note.recorded_at)))}</time><p class="note-original">${esc(noteText(note.text))}</p></article>`).join('') || '<p>No notes recorded.</p>'}</section>`;
 }
 function workspaceEventsHtml(detail) {
   const view = dealTimeline(detail);

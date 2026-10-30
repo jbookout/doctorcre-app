@@ -1,4 +1,4 @@
-import { compareInstants } from './change-receipts.mjs';
+import { compareDatedEntries } from './change-receipts.mjs';
 import { noteText } from './pipeline-model.js';
 import { needsAttention } from './deal-review-model.js';
 
@@ -46,5 +46,5 @@ export function noteEntries(detail) {
     id: n.id, kind: n.kind === 'archived_step' ? 'Prior next step' : n.kind === 'note' ? 'Note' : n.kind || 'Entry', actor: n.actor, when: n.at || n.created_at || n.recorded_at,
     summary: concise(n.text,150), original: noteText(n.text),
   }));
-  return [...activities, ...notes].filter(n => n.summary).sort((a,b) => compareInstants(a.when, b.when));
+  return [...activities, ...notes].filter(n => n.summary).sort(compareDatedEntries);
 }
