@@ -345,3 +345,85 @@ test('queued upload is checked automatically and clears audio after Studio trans
   assert.ok(reads >= 1);
   assert.equal(await page.locator('audio').count(), 0);
 });
+
+test('review link shows open review questions and submits an answer', async t => {
+  const { page } = await open(t, { review: true });
+  let questions = [{ id: 'review-model-1', question: 'Confirm the closure?' }], submitted;
+  await page.route('**/api/v1/call-sessions/**', r => {
+    const req = r.request();
+    if (req.url().endsWith('/answers')) {
+      submitted = req.postDataJSON(); questions = [];
+      return r.fulfill({ json: { ok: true, session_id: id, question_id: submitted.question_id, answer: submitted.answer } });
+    }
+    const session = { schema_version: 1, session_id: id, state: 'held_review', reason: 'open_review_questions', open_questions: questions.length, review_questions: questions, transferred: true, filed: false };
+    return r.fulfill({ json: req.url().endsWith('/report') ? { ...session, report: null, actions: [], deal_updates: [] } : session });
+  });
+  await page.reload();
+  await page.getByText('Confirm the closure?').waitFor();
+  assert.equal(await page.locator('#phoneReview .phone-badge').innerText(), 'Waiting for your answers');
+  await page.getByLabel('Answer').fill('confirm');
+  await page.getByRole('button', { name: 'Submit answer' }).click();
+  await page.getByText('Confirm the closure?').waitFor({ state: 'detached' });
+  assert.equal(submitted.answer, 'confirm');
+  assert.equal(submitted.question_id, 'review-model-1');
+  assert.ok(submitted.idempotency_key);
+});
+
+for (const [code, message] of [
+  ['question_already_resolved', 'This question has already been answered.'],
+  ['question_not_found', 'This question is no longer available.'],
+  ['not_found', 'This call is unavailable or belongs to another partner.'],
+  ['invalid_question_answer', 'This answer is invalid. Check it and try again.'],
+  ['key_reuse', 'This answer could not be accepted. Refresh the call and try again.'],
+  ['unavailable', 'The answer could not be sent. Please retry.'],
+]) test(`answer refusal ${code} keeps the question`, async t => {
+  const { page } = await open(t, { review: true });
+  const writes = [];
+  await page.route('**/api/v1/call-sessions/**', r => {
+    const req = r.request();
+    if (req.url().endsWith('/answers')) { writes.push(req.postDataJSON()); return r.fulfill({ status: 409, json: { error: code } }); }
+    const session = { schema_version: 1, session_id: id, state: 'held_review', transferred: true, filed: false, review_questions: [{ id: 'review-model-1', question: 'Confirm the closure?' }] };
+    return r.fulfill({ json: req.url().endsWith('/report') ? { ...session, report: null, actions: [], deal_updates: [] } : session });
+  });
+  await page.reload();
+  await page.getByLabel('Answer').fill('confirm');
+  await page.getByRole('button', { name: 'Submit answer' }).click();
+  await page.getByText(message, { exact: true }).waitFor();
+  if (['invalid_question_answer', 'key_reuse'].includes(code)) await page.getByLabel('Answer').fill('corrected');
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/answers')), page.getByRole('button', { name: 'Submit answer' }).click()]);
+  assert.equal(writes.length, 2);
+  if (['invalid_question_answer', 'key_reuse'].includes(code)) assert.notEqual(writes[0].idempotency_key, writes[1].idempotency_key);
+  else assert.deepEqual(writes[0], writes[1]);
+  assert.equal(await page.getByText('Confirm the closure?').count(), 1);
+});
+
+for (const [state, label] of [['needs_attention', 'Needs attention'], ['future_state', 'Status unavailable']]) test(`review labels ${state}`, async t => {
+  const { page } = await open(t, { review: true });
+  await page.route('**/api/v1/call-sessions/**', r => {
+    const session = { schema_version: 1, session_id: id, state, transferred: true, filed: false };
+    return r.fulfill({ json: r.request().url().endsWith('/report') ? { ...session, report: null, actions: [], deal_updates: [] } : session });
+  });
+  await page.reload();
+  await page.getByText(label, { exact: true }).waitFor();
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`review questions at ${width} ${theme}`, async t => {
+  const { page } = await open(t, { review: true, width, theme });
+  await page.route('**/api/v1/call-sessions/**', r => {
+    const session = { schema_version: 1, session_id: id, state: 'held_review', transferred: true, filed: false, review_questions: [{ id: 'review-model-1', question: 'Confirm the closure?' }, { id: 'q3', question: 'Which recipient?' }] };
+    return r.fulfill({ json: r.request().url().endsWith('/report') ? { ...session, report: null, actions: [], deal_updates: [] } : session });
+  });
+  await page.reload();
+  await page.getByText('Confirm the closure?').waitFor();
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await animationsSettled(page);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await mkdir('.github/pr-evidence/WR572.S8.J45', { recursive: true });
+  await page.screenshot({ path: `.github/pr-evidence/WR572.S8.J45/${width}-${theme}.png`, fullPage: true });
+});
+
+test('older session reads without review questions leave the review unchanged', async t => {
+  const { page } = await open(t, { review: true });
+  await page.getByRole('button', { name: 'Refresh review' }).waitFor();
+  assert.equal(await page.getByRole('heading', { name: 'Questions to answer' }).count(), 0);
+});
