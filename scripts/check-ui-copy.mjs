@@ -5,7 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const narration = String.raw`nothing\s+needs?\s+your?\b|what\s+needs?\s+your?\b|needs?\s+you\b|(?:deals?|things?)\s+that\s+need\s+you\b|(?:one|1)\s+thing\s+is\s+broken\b|nothing\s+is\s+(?:stuck|waiting\s+on\s+you)\b|everything\s+is\s+clear\b`;
 // Internal vocabulary retired from partner screens: say deal, the call recorder, checked.
 const internal = String.raw`work\s+records?\b|(?:re)?check(?:ing)?\s+quill\b|quill\s+local\s+recorder\b|with\s+quill\b|checked\s+by\s+jev\b|jev\s+checks\b|reason\s+not\s+yet\s+classified\b`;
-const banned = new RegExp(String.raw`\b(?:${narration}|${internal})`, 'i');
+const homeJargon = String.raw`reply\s+delivery\b|sent\s+records\s+a\s+send\s+outcome\b|check\s+the\s+recorder\b|call\s+recording\s+runs\s+on\s+the\s+mac\b|automatic\s+email\s+filings\b|call\s+evidence\b|(?:overdue\s+local\s+(?:next\s+steps|deals))\b|next\s+date\s*/\s*date\b|label\s*:\s*['"]Next date['"]|class=['"][^'"]*home-item-type[^'"]*['"]>Date<`;
+const banned = new RegExp(String.raw`\b(?:${narration}|${internal}|${homeJargon})`, 'i');
 const extensions = new Set(['.html', '.js', '.mjs', '.ts', '.tsx', '.jsx', '.json', '.css', '.svg']);
 
 export async function checkUiCopy(paths) {

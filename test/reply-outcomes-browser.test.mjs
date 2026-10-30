@@ -42,13 +42,13 @@ async function open(t, { width = 390, outcomes = () => pageOf([sent, failed]), w
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#dealAttention[aria-busy="false"]').waitFor();
   const card = page.locator('#homeReplyOutcomes');
-  assert.equal(await card.count(), 1, 'Home has a reply delivery outcomes panel');
+  assert.equal(await card.count(), 1, 'Home has a sent replies outcomes panel');
   await card.scrollIntoViewIfNeeded();
   await card.locator('h2').waitFor();
   return { page, card, calls };
 }
 
-for (const width of [390, 1440]) test(`Home renders signed-in partner reply delivery outcomes at ${width}px`, async t => {
+for (const width of [390, 1440]) test(`Home renders signed-in partner sent replies outcomes at ${width}px`, async t => {
   const { page, card, calls } = await open(t, { width });
   await card.getByText('Demo sent reply', { exact: true }).waitFor();
   await card.getByText('Demo failed reply', { exact: true }).waitFor();

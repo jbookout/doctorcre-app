@@ -62,6 +62,10 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`http://localhost/${home ? '' : 'leases'}?mode=live`);
+  if (home) {
+    await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    await page.locator('.home-grid').scrollIntoViewIfNeeded();
+  }
   await page.locator(home ? '#homePastClients .lease-card' : '#leaseRadar .lease-card').first().waitFor();
   return { page, errors, calls, payload, fail(value) { failure = value; }, get reads() { return reads; } };
 }

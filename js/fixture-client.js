@@ -1254,7 +1254,7 @@ export async function createFixtureClient(opts = {}) {
       const board = await this.getBoard();
       return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
         ...deal,
-        critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
+        critical_dates: [...(deal.next_date ? [{ label: deal.next_step || 'Follow-up due', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
         next_actions: actionsFor(deal),
       })) };
@@ -1271,7 +1271,7 @@ export async function createFixtureClient(opts = {}) {
       const critical_dates = [];
       if (deal.next_date) {
         critical_dates.push({
-          label: 'Next date',
+          label: deal.next_step || 'Follow-up due',
           date: deal.next_date,
         });
       }

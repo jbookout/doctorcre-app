@@ -51,19 +51,25 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
 
-    test('Deals lists size to content and keep owner beside the stage', async ({ page }) => {
+    test('Deals lists keep touch targets readable and owner beside the stage', async ({ page }) => {
       await page.goto('http://localhost/deals');
       await expect(page.locator('.kanban-card').first()).toBeVisible();
       await page.locator('#listView').click();
       await capture(page, 'deals-list');
       const row = page.locator('.deal-row').filter({ hasNot: page.locator('.auto-move') }).first();
-      expect((await row.boundingBox()).height).toBeLessThanOrEqual(width === 390 ? 108 : 64);
+      const target = row.getByRole('button').first();
+      expect((await target.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      await expect(row.locator('.next-line')).toBeVisible();
+      expect(await row.evaluate(node => [...node.children].every(child => {
+        const box = child.getBoundingClientRect(), row = node.getBoundingClientRect();
+        return box.top >= row.top && box.bottom <= row.bottom;
+      }))).toBe(true);
       if (width === 390) {
         const stage = await row.locator(':scope > span').first().boundingBox();
         const owner = await row.locator(':scope > span').last().boundingBox();
         expect(Math.abs(stage.y - owner.y)).toBeLessThan(2);
       }
-      await row.click();
+      await target.click();
       await expect(page.locator('#recordPanel')).toBeVisible();
     });
 

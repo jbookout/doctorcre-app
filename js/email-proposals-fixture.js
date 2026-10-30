@@ -8,7 +8,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
   const rows = [stepDeal, phaseDeal].filter(Boolean).map(seed => deals.get(seed.id)).map((deal, index) => ({
     id: `10000000-0000-4000-8000-00000000000${index + 1}`, version: 1, kind: index ? 'phase_move' : 'next_step',
     deal: deal.id, deal_name: deal.name, confidence: 0.9, suspected_instruction: null, status: 'pending',
-    source: { activity_id: `30000000-0000-4000-8000-00000000000${index + 1}`, sender: 'demo-correspondent@example.test',
+    source: { activity_id: `30000000-0000-4000-8000-00000000000${index + 1}`, sender: 'Dana Demo <demo-correspondent@example.test>',
       subject: index ? 'Demo confirmed tour' : 'Demo plan follow-up', occurred_at: '2026-10-26T12:00:00Z',
       evidence_quote: index ? 'The tour is confirmed for November 3.' : 'Please send the revised plan by November 3.' },
     confirm_verb: index ? 'confirm-email-deal-progress' : 'confirm-email-next-step', preview_error: null,

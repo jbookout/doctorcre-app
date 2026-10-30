@@ -1,31 +1,23 @@
-// Where an email follow-up came from and how long it has waited, in the viewer's local calendar.
+import { BUSINESS_TIME_ZONE } from './business-date.js';
+
 const parse = value => { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; };
-const midnight = date => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-/** Weekdays after the email's local date, up to and including today's; null when the date is unusable. */
-export function businessDaysWaiting(occurredAt, now = new Date()) {
+export function relativeAge(occurredAt, now = new Date()) {
   const sent = parse(occurredAt);
-  if (!sent) return null;
-  let days = 0;
-  for (let cursor = midnight(sent), end = midnight(now); cursor < end;) {
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
-    if (cursor.getDay() % 6) days++;
-  }
-  return days;
+  if (!sent) return 'time unavailable';
+  const minutes = Math.max(0, Math.floor((now.getTime() - sent.getTime()) / 60000));
+  return minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago`
+    : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
 }
 
-export function waitingLabel(occurredAt, now = new Date()) {
-  const days = businessDaysWaiting(occurredAt, now);
-  if (days === null) return '';
-  if (days) return `Waiting ${days} business day${days === 1 ? '' : 's'}`;
-  const sent = parse(occurredAt);
-  return midnight(sent) >= midnight(now) ? 'Today' : `Waiting since ${sent.toLocaleDateString('en-US', { weekday: 'long' })}`;
+export function sourceLine({ sender, occurred_at: occurredAt } = {}, now = new Date()) {
+  const name = String(sender ?? '').split('<', 1)[0].replace(/^["'\s]+|["'\s]+$/g, '');
+  return `${name && !name.includes('@') ? `From ${name}'s email` : 'From an email'}, ${relativeAge(occurredAt, now)}`;
 }
 
-/** "From {name} · {subject} · {date}". Addresses are never shown; a sender without a name reads "Email". */
-export function sourceLine({ sender, subject, occurred_at: occurredAt } = {}, now = new Date()) {
-  const name = String(sender ?? '').replace(/<[^>]*>/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
+export function sourceTime(occurredAt, now = new Date()) {
   const sent = parse(occurredAt);
-  const date = sent && sent.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sent.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) });
-  return [name && !name.includes('@') ? `From ${name}` : 'Email', String(subject ?? '').trim(), date].filter(Boolean).join(' · ');
+  if (!sent) return 'Time unavailable';
+  const year = date => date.toLocaleDateString('en-US', { timeZone: BUSINESS_TIME_ZONE, year: 'numeric' });
+  return sent.toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric',
+    ...(year(sent) === year(now) ? {} : { year: 'numeric' }), hour: 'numeric', minute: '2-digit' });
 }

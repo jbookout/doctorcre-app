@@ -160,7 +160,7 @@ export function createCallMode(deps) {
   async function reconcileRecorder() {
     if (!state.recorderUncertain) return false;
     const snapshot = await api('state');
-    if (snapshot.state === 'state_unknown') throw new Error('Recorder outcome unknown. Check the recorder before another action.');
+    if (snapshot.state === 'state_unknown') throw new Error('Recorder outcome unknown. Check call recorder status before another action.');
     state.recorderUncertain = false;
     const notice = $('#callModePermission'); if (notice) notice.hidden = true;
     await refresh({snapshot});
@@ -174,7 +174,7 @@ export function createCallMode(deps) {
     if (availability) {
       availability.hidden = eligible;
       availability.textContent = state.eligibility === 'checking' || state.eligibility === 'unknown'
-        ? 'Checking the call recorder…' : 'Call recording runs on the Mac';
+        ? 'Checking the call recorder…' : 'Call recorder offline';
     }
     for (const id of ['callModeButton', 'callModeStandalone']) {
       const element = $(`#${id}`);
@@ -190,7 +190,7 @@ export function createCallMode(deps) {
         const element = $(`#${id}`);
         if (element) element.hidden = true;
       }
-      if ($('#callModeState')) $('#callModeState').textContent = 'Call recording runs on the Mac';
+      if ($('#callModeState')) $('#callModeState').textContent = 'Call recorder offline';
       if ($('#callModeTimer')) $('#callModeTimer').textContent = '';
       if ($('#callModeDetail')) $('#callModeDetail').textContent = '';
       return;
@@ -208,7 +208,7 @@ export function createCallMode(deps) {
     $('#callModeConsentRow').hidden = busy;
     $('#callModeStop').hidden = !recording;
     $('#callModeTimer').textContent = recording ? elapsedTime(snapshot.started_at, now) : ({
-      idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', filed: 'Summary saved', state_unknown: 'Check the recorder',
+      idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', filed: 'Summary saved', state_unknown: 'Check call recorder status',
     }[snapshot.state] || 'Ready');
     $('#callModeState').textContent = recording ? 'Recording live' : ({
       transcribing: 'Processing this call', ready_to_extract: 'Transcript ready for extraction',

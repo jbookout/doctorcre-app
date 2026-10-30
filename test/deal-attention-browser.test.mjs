@@ -49,7 +49,7 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   await page.getByRole('button', { name: 'Joe', exact: true }).click();
   const myBadges = await page.locator('.kanban-column .attention-flag').count();
   assert.deepEqual({ home, badges, mine, myBadges }, { home: 3, badges: 2, mine: 1, myBadges: 1 });
-  assert.match(homeCounts, /Overdue local deals: 3/);
+  assert.match(homeCounts, /Overdue deals: 3/);
   assert.deepEqual(await page.locator('.kanban-column .attention-flag').allTextContents(), ['1 day overdue']);
   assert.deepEqual(homeOverdue, ['30 days overdue', '2 days overdue', '1 day overdue']);
   const days = rows => rows.map(text => Number(/(\d+) days? overdue$/.exec(text)[1]));
@@ -61,6 +61,6 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   await page.goto('http://localhost/');
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
   assert.equal(await page.locator('#dealFlags .home-flag').count(), 0);
-  assert.match(await page.locator('#dealFlags').textContent(), /No overdue local next steps/);
+  assert.match(await page.locator('#dealFlags').textContent(), /No overdue next steps/);
   assert.deepEqual(errors, []);
 });

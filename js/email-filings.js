@@ -10,7 +10,7 @@ const refusal = error => REFUSALS[error?.payload?.error] || 'Could not undo this
 const denied = error => [401, 403].includes(error?.status) || error?.code === 'session_changed';
 const when = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
-// Automatic email filings with Undo. Only the source subject and sender name
+// Filed automatically with Undo. Only the source subject and sender name
 // are shown; activity_version is the server's guard and may be null (legacy).
 export function mountEmailFilings({ container, client }) {
   const win = container.ownerDocument.defaultView;
@@ -21,11 +21,11 @@ export function mountEmailFilings({ container, client }) {
     const ownedFocus = container.contains(container.ownerDocument.activeElement);
     const focusId = ownedFocus ? container.ownerDocument.activeElement.closest('[data-filing-id]')?.dataset.filingId : null;
     container.setAttribute('aria-busy', String(loadState === 'loading'));
-    const notice = loadState === 'denied' ? '<p role="status">Sign in to review automatic email filings.</p>'
-      : loadState === 'error' ? `<p role="status">Could not load automatic email filings.${rows.length ? ' Showing the last successful read.' : ''}</p><button type="button" class="btn home-outline" data-filing-retry>Retry automatic email filings</button>`
-        : loadState === 'loading' && !rows.length ? '<p class="home-empty">Loading automatic email filings…</p>'
-          : loadState === 'ready' && !rows.length ? '<p class="home-empty">No automatic email filings to review.</p>' : '';
-    container.innerHTML = `<header class="home-panel-head"><h2>Automatic email filings</h2></header>${notice}${rows.map(row => {
+    const notice = loadState === 'denied' ? '<p role="status">Sign in to review filed emails.</p>'
+      : loadState === 'error' ? `<p role="status">Could not load filed emails.${rows.length ? ' Showing the last successful read.' : ''}</p><button type="button" class="btn home-outline" data-filing-retry>Retry filed emails</button>`
+        : loadState === 'loading' && !rows.length ? '<p class="home-empty">Loading filed emails…</p>'
+          : loadState === 'ready' && !rows.length ? '<p class="home-empty">No filed emails to review.</p>' : '';
+    container.innerHTML = `<header class="home-panel-head"><h2>Filed automatically</h2></header>${notice}${rows.map(row => {
       const outcome = outcomes.get(row.event_id);
       return `<article class="email-proposal" data-filing-id="${E(row.event_id)}"><h3>${E(row.subject || 'Subject unavailable')}</h3><p>From ${E(row.sender_name || 'Sender unavailable')}${when(row.occurred_at) ? ` · ${E(when(row.occurred_at))}` : ''}</p>${
         outcome?.status === 'undone' ? '<p role="status" tabindex="-1">Undone. The email is no longer filed to this deal and will not be filed automatically again.</p>'

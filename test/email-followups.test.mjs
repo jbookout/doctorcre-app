@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
+const windows = [];
+afterEach(() => { windows.splice(0).forEach(win => win.close()); });
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { mountEmailFollowups } from '../js/email-followups.js';
@@ -17,6 +19,7 @@ const proposal = () => ({ id: '10000000-0000-4000-8000-000000000001', version: 3
 const response = proposals => ({ schema_version: 'email-proposals.v1', proposals, send: false, more: false, next_cursor: null });
 function setup(client, options = {}) {
   const dom = new JSDOM('<section id="review"></section>');
+  windows.push(dom.window);
   const container = dom.window.document.querySelector('section');
   const view = mountEmailFollowups({ container, client: { selfActor: 'joe', ...client }, onChange: () => {}, ...options });
   return { dom, container, view, action: name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) }) };
@@ -27,8 +30,8 @@ test('Home lists pending email evidence and proposed owner/date without exposing
   await view.refresh();
   assert.match(container.textContent, /Email follow-ups/);
   assert.match(container.textContent, /Demo Harbor expansion/);
-  assert.equal(container.querySelector('.email-source').textContent, 'Email · Demo follow-up · Oct 26');
-  assert.match(container.querySelector('.email-waiting').textContent, /^Waiting \d+ business days?$/);
+  assert.match(container.querySelector('.email-source').textContent, /^From an email, .* ago$/);
+  assert.ok(container.querySelector('.email-source').title);
   assert.match(container.textContent, /Please send the revised plan by November 3\./);
   assert.match(container.textContent, /Send the revised plan/);
   assert.match(container.textContent, /Joe/);
@@ -49,7 +52,7 @@ test('a failed refresh keeps last good proposals and offers retry; only a succes
   assert.equal(container.querySelector('[data-email-action="preview"]').disabled, true);
   value = response([]);
   await action('Retry email follow-ups');
-  assert.match(container.textContent, /No pending email follow-ups/);
+  assert.match(container.textContent, /No email follow-ups/);
   value = {};
   await view.refresh();
   assert.match(container.textContent, /Could not load/);
@@ -109,11 +112,11 @@ test('Dismiss requires a reason and sends the proposal version the user read', a
   assert.match(container.textContent, /Dismissed/);
 });
 
-test('provenance names the sender and subject as text, never markup', async () => {
+test('mailbox display names use the prefix as text when sender metadata contains markup', async () => {
   const row = proposal(); row.source.sender = 'Dana <b>Demo</b> <dana@example.test>'; row.source.subject = '<img src=x onerror=alert(1)>Plan';
   const { container, view } = setup({ listEmailProposals: async () => response([row]) });
   await view.refresh();
-  assert.equal(container.querySelector('.email-source').textContent, 'From Dana Demo · <img src=x onerror=alert(1)>Plan · Oct 26');
+  assert.match(container.querySelector('.email-source').textContent, /^From Dana's email, .* ago$/);
   assert.equal(container.querySelector('.email-source img, .email-source b'), null);
 });
 
@@ -122,7 +125,7 @@ test('a dismiss chip dismisses in one tap with its text as the reason', async ()
   const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
     dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed', version: 4 }; } }, { onChange: () => changes++ });
   await view.refresh();
-  assert.deepEqual([...container.querySelectorAll('[data-email-chip]')].map(chip => chip.textContent), ['Already handled', 'Wrong deal', 'Not now', 'Wrong']);
+  assert.deepEqual([...container.querySelectorAll('[data-email-chip]')].map(chip => chip.textContent), ['Already handled', 'Wrong deal', 'Not now']);
   await action('Not now');
   const { idempotency_key, ...args } = calls[0];
   assert.match(idempotency_key, /^[a-f0-9-]{36}$/);
@@ -150,12 +153,13 @@ test('a refused chip dismissal reports the refusal and an uncertain one offers C
 
 test('unknown confirmation locks other decisions and Check outcome replays the same request', async () => {
   const row = proposal(), calls = []; let release;
+  const entered = Promise.withResolvers();
   const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
     previewEmailNextStep: async () => row.preview,
-    confirmEmailNextStep: async args => { calls.push(args); if (calls.length === 1) { await new Promise(resolve => { release = resolve; }); throw Error('lost response'); } return { ...row.preview, status: 'confirmed', requires_confirmation: false }; } });
+    confirmEmailNextStep: async args => { calls.push(args); if (calls.length === 1) { await new Promise(resolve => { release = resolve; entered.resolve(); }); throw Error('lost response'); } return { ...row.preview, status: 'confirmed', requires_confirmation: false }; } });
   await view.refresh(); await action('Confirm');
   const pending = action('Confirm change');
-  await Promise.resolve();
+  await entered.promise;
   assert.equal(container.querySelector('[data-email-action="confirm"]')?.disabled, true);
   release(); await pending;
   assert.match(container.textContent, /Outcome unknown/);
@@ -807,4 +811,32 @@ test('offline new-deal creation keeps the original request available after recon
   online = true; await action('Check outcome');
   assert.equal(creates, 1); assert.match(container.textContent, /Confirmed\./);
   view.dispose(); dom.window.close();
+});
+
+test('Home caps email cards and expands distinct dismissal reasons on demand', async () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ({ ...proposal(), id: `demo-${i}` }));
+  const { container, view, action } = setup({ listEmailProposals: async () => response(rows) });
+  const pending = view.refresh();
+  assert.ok(container.querySelector('.home-followup-skeleton'));
+  await pending;
+  assert.equal(container.querySelectorAll('article').length, 2);
+  assert.equal(container.querySelectorAll('details.email-dismiss').length, 2);
+  assert.equal(container.querySelector('summary').textContent, 'Dismiss');
+  assert.deepEqual([...container.querySelector('details').querySelectorAll('[data-email-chip]')].map(node => node.textContent), ['Already handled', 'Wrong deal', 'Not now']);
+  await action('Show 3 more');
+  assert.equal(container.querySelectorAll('article').length, 5);
+  view.dispose();
+});
+
+test('email refresh keeps the loaded cards without inserting a loading skeleton', async () => {
+  let release, next = response([proposal()]);
+  const { container, view } = setup({ listEmailProposals: async () => next });
+  await view.refresh();
+  next = new Promise(resolve => { release = resolve; });
+  const pending = view.refresh();
+  assert.equal(container.querySelectorAll('article').length, 1);
+  assert.equal(container.querySelector('.home-followup-skeleton'), null);
+  release(response([proposal()]));
+  await pending;
+  view.dispose();
 });

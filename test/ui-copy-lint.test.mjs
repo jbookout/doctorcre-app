@@ -10,7 +10,7 @@ const banned = ['Nothing needs you right now', 'nothing needs your decision', 'W
   'Deals that need you', 'One thing is broken, nothing is stuck', 'Nothing is waiting on you', 'Everything is clear', 'WHAT\nNEEDS\tYOUR attention',
   // Internal vocabulary retired from partner screens.
   'Work record', 'Add work record', 'Search work records', 'Recheck Quill', 'Quill local recorder', 'Checking Quill on this device',
-  'runs on the Mac with Quill', 'checked by Jev', 'Automatic Jev checks', 'Reason not yet classified'];
+  'runs on the Mac with Quill', 'checked by Jev', 'Automatic Jev checks', 'Reason not yet classified', 'Reply delivery', 'Sent records a send outcome', 'Check the recorder', 'Call recording runs on the Mac', 'Automatic email filings', 'Call evidence', 'No overdue local next steps', 'Overdue local deals', 'Next date / Date', "{ label: 'Next date', date: dueOn }", '<span class="home-item-type">Date</span>'];
 for (const phrase of banned) test(`UI copy lint rejects planted narration: ${JSON.stringify(phrase)}`, async t => {
   const dir = await mkdtemp(join(tmpdir(), 'doctorcre-ui-copy-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'planted.html'); await writeFile(path, `<h2>${phrase}</h2>`);
