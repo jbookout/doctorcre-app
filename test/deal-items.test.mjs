@@ -153,3 +153,9 @@ test('board summaries state a repeated action and its due date only once', () =>
   assert.equal(doc.querySelectorAll('time').length, 1);
   assert.doesNotMatch(doc.body.textContent, /Still needed/);
 });
+
+test('national account action identifies the other owner by name', () => {
+  const deal = { open_actions: [{ id: 'a', description: 'Review terms', owner: 'dell' }] };
+  const doc = new JSDOM(renderDealSummary(deal, { viewer: 'joe', actorName: name => ({ dell: 'Dell' })[name] })).window.document;
+  assert.match(doc.body.textContent, /Review terms · Dell/);
+});
