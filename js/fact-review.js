@@ -2,7 +2,6 @@ import { escapeText as esc } from './change-receipts.mjs';
 import { uuidv4 } from './uuid.js';
 
 import { FACT_TERMS } from './client.js';
-import { invoiceMoney } from './invoice-tracker-model.js';
 
 const BASES = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
 
@@ -10,7 +9,7 @@ function valueText(value) {
   const amount = value.canonical_unit ? value.normalized_value : value.value;
   const unit = value.canonical_unit || value.unit;
   const units = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
-  const formatted = Object.hasOwn(units, unit) ? `${invoiceMoney(Number(amount))}${units[unit]}` : `${amount} ${unit}`;
+  const formatted = Object.hasOwn(units, unit) ? `$${String(amount).replace(/^\d+/, integer => integer.replace(/\B(?=(\d{3})+(?!\d))/g, ','))}${units[unit]}` : `${amount} ${unit}`;
   return `${formatted}${value.expense_basis ? ` · ${BASES[value.expense_basis] || value.expense_basis}` : ''}`;
 }
 function readLabel(observation) {
@@ -158,7 +157,7 @@ export function mountFactReview(root, { client, entityRef, attachments } = {}) {
       if (result.ok !== true || result.schema_version !== 'fact-review.v1') throw new Error('Receipt unavailable');
       pending.delete(form);
       dirty = false;
-      if (form.matches('[data-fact-record]')) form.reset();
+      if (form.matches('[data-fact-record]')) { form.reset(); output.textContent = ''; }
       writing = false;
       await refresh(request.method === 'recordHumanFact' ? 'Term recorded for review.' : 'Review saved.');
     } catch (error) {

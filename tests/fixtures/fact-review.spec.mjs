@@ -31,10 +31,10 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path, animations: 'disabled' });
     await testInfo.attach('Three sourced values', { path, contentType: 'image/png' });
     const review = terms.locator('form[data-fact-review]');
-    await review.getByLabel('Choose a value').selectOption({ label: '$26.00/SF/yr · NNN · Demo Amendment.pdf' });
+    await review.getByLabel('Choose a value').selectOption({ label: '$26/SF/yr · NNN · Demo Amendment.pdf' });
     await review.getByLabel('Reason').fill('Demo amendment supersedes the earlier documents.');
     await review.getByRole('button', { name: 'Save review', exact: true }).click();
-    await expect(terms.locator('.fact-canonical')).toContainText('$26.00/SF/yr');
+    await expect(terms.locator('.fact-canonical')).toContainText('$26/SF/yr');
     await expect(terms).toContainText('Review saved');
     await expect(terms.locator('.fact-observation')).toHaveCount(3);
     const edit = terms.getByRole('button', { name: 'Review term', exact: true });
@@ -47,7 +47,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await review.getByLabel('Cited text').fill('Demo corrected rent is $27 per square foot.');
     await review.getByLabel('Reason').fill('Demo reviewed correction.');
     await review.getByRole('button', { name: 'Save review', exact: true }).click();
-    await expect(terms.locator('.fact-canonical')).toContainText('$27.00/SF/yr');
+    await expect(terms.locator('.fact-canonical')).toContainText('$27/SF/yr');
     await terms.getByText('Record a term', { exact: true }).click();
     const record = terms.locator('form[data-fact-record]');
     if (width === 1440) {
@@ -60,13 +60,19 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await record.getByLabel('Cited text').fill('Demo later clause.');
     await record.getByRole('button', { name: 'Record term', exact: true }).click();
     await expect(terms.locator('.fact-observation')).toHaveCount(5);
+    await expect(record.locator('[data-write-status]')).not.toHaveText('Saving…');
     await review.getByLabel('Decision').selectOption('reject');
     await review.getByLabel('Reason').fill('Demo later clause does not apply.');
     await review.getByRole('button', { name: 'Save review', exact: true }).click();
-    await expect(terms.locator('.fact-canonical')).toContainText('$27.00/SF/yr');
+    await expect(terms.locator('.fact-canonical')).toContainText('$27/SF/yr');
     await expect(terms).toContainText('Review saved');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`terms-${width}-${theme}-resolved.png`), animations: 'disabled' });
+    await page.evaluate(() => {
+      for (const node of document.querySelectorAll('body *')) {
+        if (!node.closest('#panelTerms') && ['fixed', 'sticky'].includes(getComputedStyle(node).position)) node.style.visibility = 'hidden';
+      }
+    });
+    await terms.screenshot({ path: testInfo.outputPath(`terms-${width}-${theme}-resolved.png`), animations: 'disabled' });
   });
 }
 
@@ -169,4 +175,21 @@ test('a refused record preserves its selected unit and source for correction', a
   await review.getByLabel('Reason').fill('Demo five-year lease.');
   await review.getByRole('button', { name: 'Save review' }).click();
   await expect(leaseTerm.locator('.fact-canonical')).toContainText('60 months');
+});
+
+
+test('distinct decimal term values remain distinct when displayed', async ({ page }) => {
+  await page.goto(`${server.url}/deals?deal=d14`);
+  const terms = page.getByRole('region', { name: 'Terms', exact: true });
+  await terms.getByText('Record a term', { exact: true }).click();
+  const record = terms.locator('form[data-fact-record]');
+  for (const value of ['24.375', '24.38', '12345678901234567890.123456789012345678']) {
+    await record.getByLabel('Value', { exact: true }).fill(value);
+    await record.getByLabel('Cited text').fill('Demo sourced value.');
+    await record.getByRole('button', { name: 'Record term', exact: true }).click();
+    await expect(record.locator('[data-write-status]')).not.toHaveText('Saving…');
+  }
+  await expect(terms).toContainText('$24.375/SF/yr');
+  await expect(terms).toContainText('$24.38/SF/yr');
+  await expect(terms).toContainText('$12,345,678,901,234,567,890.123456789012345678/SF/yr');
 });
