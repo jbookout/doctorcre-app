@@ -1,4 +1,4 @@
-import { compareDatedEntries } from './change-receipts.mjs';
+import { newestFirst } from './change-receipts.mjs';
 import { noteText } from './pipeline-model.js';
 import { needsAttention } from './deal-review-model.js';
 
@@ -46,5 +46,22 @@ export function noteEntries(detail) {
     id: n.id, kind: n.kind === 'archived_step' ? 'Prior next step' : n.kind === 'note' ? 'Note' : n.kind || 'Entry', actor: n.actor, when: n.at || n.created_at || n.recorded_at,
     summary: concise(n.text,150), original: noteText(n.text),
   }));
-  return [...activities, ...notes].filter(n => n.summary).sort(compareDatedEntries);
+  return [...activities, ...notes].filter(n => n.summary);
+}
+const threadInstant = n => n.at || n.created_at || n.recorded_at;
+/**
+ * The only place a deal's dated lists are ordered. Every list a renderer reads
+ * comes out newest first, and `entries` is the merged update stream (notes,
+ * activities, documents, held next steps) so no renderer sorts or merges again.
+ */
+export function prepareDealDetail(detail) {
+  const documents = (detail.documents || []).map(doc => ({ id: `document-${doc.id}`, source: 'document', kind: 'Document',
+    when: doc.prepared_at, summary: concise(doc.note || 'Document prepared', 150), original: noteText(doc.note) }));
+  const holds = (detail.next_actions || []).filter(task => task.status === 'open' && task.hold_until).map(task => ({
+    id: `action:${task.id}`, source: 'hold', holdUntil: task.hold_until, actor: task.owner, when: task.updated_at,
+    summary: task.description, original: task.description }));
+  const entries = newestFirst([...noteEntries(detail), ...documents, ...holds], n => n.when);
+  return { ...detail, entries,
+    thread: newestFirst(detail.thread || [], threadInstant),
+    activities: newestFirst(detail.activities || [], a => a.occurred_at || a.recorded_at) };
 }

@@ -47,7 +47,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.evaluate(async ({identity,found,readiness}) => {
       const { state } = await import('/js/pipeline.js');
       state.client.correspondenceReadiness = async () => readiness;
-      state.client.readCorrespondenceThread = async () => found;
+      state.client.readCorrespondenceThread = async () => ({ ...found, receipts: [...found.receipts, { ...found.receipts[0], read_receipt_id: '10000000-0000-4000-8000-000000000002', recorded_at: '2026-10-02T15:30:00Z' }] });
       const read = state.client.getDeal.bind(state.client);
       state.client.getDeal = async id => {
         const detail = await read(id);
@@ -129,6 +129,9 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
         await expect(page.locator('#panelEvidence')).toContainText('Demo discovery meeting');
         await expect(page.locator('#panelEvidence')).toContainText('Correspondence thread');
         await expect(page.locator('.workspace-note p')).toHaveText(['Demo recorded deal note', 'Demo earlier note']);
+        await expect(page.locator('.workspace-note time')).toHaveText(['Oct 2, 2026, 7:00 AM CDT', 'Oct 1, 2026, 7:00 AM CDT']);
+        await expect(page.locator('[data-evidence-group=threads] time')).toHaveText(['Read Oct 2, 2026, 10:30 AM CDT', 'Read Sep 30, 2026, 7:00 AM CDT']);
+        await expect(page.locator('[data-evidence-group=meetings] time')).toHaveText(['Oct 3, 2026, 7:00 AM CDT', 'Oct 1, 2026, 7:00 AM CDT']);
         await expect(page.locator('[data-evidence-group=meetings] summary span')).toHaveText(['Demo discovery meeting', 'Demo earlier meeting']);
       }
       await page.evaluate(() => scrollTo(0, 0));
@@ -141,7 +144,10 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       const targets = await page.getByRole('tab').evaluateAll(tabs => tabs.map(tab => ({ width: tab.getBoundingClientRect().width, height: tab.getBoundingClientRect().height })));
       for (const target of targets) { expect(target.width).toBeGreaterThanOrEqual(44); expect(target.height).toBeGreaterThanOrEqual(44); }
       const path = testInfo.outputPath(`workspace-${width}-${theme}-${tab}.png`);
+      // A full-page capture repeats fixed bars mid-page and hides rows behind them; hide them so every row is visible.
+      const chrome = await page.evaluateHandle(() => { const hidden = [...document.querySelectorAll('body *')].filter(el => ['fixed', 'sticky'].includes(getComputedStyle(el).position)); for (const el of hidden) el.style.visibility = 'hidden'; return hidden; });
       await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+      await chrome.evaluate(hidden => { for (const el of hidden) el.style.visibility = ''; });
       await testInfo.attach(`${width}-${theme}-${tab}`, { path, contentType: 'image/png' });
     }
   });

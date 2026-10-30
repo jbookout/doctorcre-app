@@ -1,6 +1,7 @@
 import { COLUMNS, columnBySlug, columnByValue, noteText } from './pipeline-model.js';
-import { escapeText, compareDatedEntries } from './change-receipts.mjs';
-import { concise, noteEntries } from './local-deals-model.js';
+import { escapeText } from './change-receipts.mjs';
+import { formatBusinessInstant } from './business-date.js';
+import { concise } from './local-deals-model.js';
 import { ACTOR_LABEL } from './client.js';
 
 const DAY = 86400000;
@@ -68,10 +69,7 @@ export function dealTimeline(detail, now = Date.now()) {
   const dates = [...grouped.values()].map(({references,...row}) => ({...row,
     original:[...new Set(references)].join('\n\n')})).sort((a,b) => a.day.localeCompare(b.day));
   const missing = DATE_KINDS.filter(d => !dates.some(row => row.kind === d.kind));
-  const entries = noteEntries(detail).map(e => ({...e, day:calendarDay(e.when),type:e.kind}));
-  for (const doc of detail.documents || []) entries.push({id:`document-${doc.id}`,type:'Document',kind:'Document',
-    day:calendarDay(doc.prepared_at),when:doc.prepared_at,summary:concise(doc.note || 'Document prepared',150),original:noteText(doc.note)});
-  entries.sort(compareDatedEntries);
+  const entries = (detail.entries || []).filter(e => e.source !== 'hold').map(e => ({...e, day:calendarDay(e.when), type:e.kind}));
   return {phases,dates,missing,entries,today:today(now)};
 }
 
@@ -88,17 +86,11 @@ export function renderDealTimeline(detail, now = Date.now()) {
   return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : ''}</li>`).join('')}</ol></section>`;
 }
 export function renderDealUpdates(detail, now = Date.now()) {
-  const held = (detail.next_actions || []).filter(task => task.status === 'open' && calendarDay(task.hold_until) > today(now))
-    .map(task => ({id:`action:${task.id}`,kind:`Held until ${dateCaption(calendarDay(task.hold_until))}`,
-      actor:task.owner,when:task.updated_at,summary:task.description,original:task.description}));
-  const entries = [...noteEntries(detail), ...held].sort(compareDatedEntries);
+  const entries = (detail.entries || []).filter(e => e.source !== 'document' && (e.source !== 'hold' || calendarDay(e.holdUntil) > today(now)))
+    .map(e => e.source === 'hold' ? {...e, kind:`Held until ${dateCaption(calendarDay(e.holdUntil))}`} : e);
   if (!entries.length) return '';
-  const stamp = value => {
-    const date = new Date(value || NaN);
-    return Number.isFinite(date.getTime()) ? date.toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}) : 'Date not recorded';
-  };
   const overview = concise(entries[0]?.summary, 72);
-  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<div class="updates-overview"><p aria-label="Latest recorded update">${esc(overview)}</p></div><details class="updates-history"><summary data-detail-focus="update-history">Recorded updates (${entries.length})</summary>${(detail.activities || []).length >= 50 ? '<p class="updates-scope">Includes the latest 50 activities; older activities may be omitted.</p>' : ''}${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
+  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<div class="updates-overview"><p aria-label="Latest recorded update">${esc(overview)}</p></div><details class="updates-history"><summary data-detail-focus="update-history">Recorded updates (${entries.length})</summary>${(detail.activities || []).length >= 50 ? '<p class="updates-scope">Includes the latest 50 activities; older activities may be omitted.</p>' : ''}${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(formatBusinessInstant(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
   for (const node of root.querySelectorAll('[data-countdown]')) {
