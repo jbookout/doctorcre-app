@@ -373,7 +373,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     try {
       const result = await readWithDeadline(() => client.readDealUpdateReviews(), { timeoutMs: 10_000 });
       if (disposed || emailRetired || ticket !== overdueEpoch) return;
-      if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length) {
+      if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length && (!result.automatic_resolutions || Array.isArray(result.automatic_resolutions) && !result.automatic_resolutions.length)) {
         paint('No overdue reviews.'); return;
       }
       const { mountDealUpdateReviews } = await import('./deal-update-reviews.js');

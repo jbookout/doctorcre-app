@@ -13,7 +13,7 @@ test('overdue review client uses the versioned read and exact session-bound reso
   } });
   await client.readDealUpdateReviews();
   assert.deepEqual(calls[0], { name: 'read-deal-update-reviews', arguments: {}, csrf: undefined });
-  for (const decision of ['resolve', 'dismiss']) {
+  for (const decision of ['resolve', 'dismiss', 'undo']) {
     const args = { assessment_id: `demo-${decision}`, decision, reason: 'Synthetic partner review', idempotency_key: decision };
     await client.reviewDealUpdate(args);
     assert.deepEqual(calls.at(-1), { name: 'review-deal-update', arguments: args, csrf: 'synthetic' });

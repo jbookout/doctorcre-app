@@ -10,15 +10,20 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
   const decisions = new Map();
   const win = container.ownerDocument.defaultView;
   const limit = homeListLimit(win);
-  const refusals = { overdue_action_changed: 'The task changed. Refresh overdue reviews before deciding again.', assessment_already_reviewed: 'This was already reviewed by the other partner.', partner_required: 'A partner is required to review this task.', assessment_not_found: 'The assessment was not found.', not_action_owner: 'Only the task owner can review this task.' };
+  const refusals = { overdue_action_changed: 'The task changed. Refresh overdue reviews before deciding again.', assessment_already_reviewed: 'This was already reviewed by the other partner.', partner_required: 'A partner is required to review this task.', newer_change_exists: "A newer change was made to this task, so this can't be undone here.", assessment_not_found: 'The assessment was not found.', not_action_owner: 'Only the task owner can review this task.' };
   const button = (action, label, disabled = false) => `<button type="button" class="btn home-outline" data-update-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
   function render() {
     const focused = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
     const focusId = focused?.closest('[data-update-id]')?.dataset.updateId, focusAction = focused?.dataset.updateAction;
     container.setAttribute('aria-busy', String(state === 'loading'));
-    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${limit.remaining(rows) > 0 ? `<span class="home-list-count">Showing ${limit.count(rows)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${limit.visible(rows).map(row => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${limit.remaining(rows) > 0 ? `<span class="home-list-count">Showing ${limit.count(rows)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${limit.visible(rows).map((row, index) => {
       const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
       const disabled = state !== 'ready' || pending;
+      if (row.automatic) return `${index === 0 || !limit.visible(rows)[index - 1].automatic ? '<h3>Closed automatically</h3>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
+        title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
+        meta: `<p>Task · ${E(row.action_title)}</p><p>Closed · ${E(sourceTime(row.resolved_at, undefined, 'Date unavailable'))}</p>`,
+        body: `<q>${E(row.quote)}</q>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
+        actions: `<div class="email-controls">${decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : button('undo', pending ? 'Saving…' : 'Undo', disabled)}</div>` })}`;
       const assessing = row.assessment.reason === 'awaiting_assessment' || row.assessment.reason === 'assessment_in_progress';
       return workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
         title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
@@ -51,7 +56,14 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
         if (valid) ids.add(row.assessment_id);
         return valid;
       });
+      if (result.automatic_resolutions != null && !Array.isArray(result.automatic_resolutions)) throw Error('Invalid automatic resolutions');
+      for (const row of result.automatic_resolutions || []) {
+        if (row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name && typeof row.action_title === 'string' && typeof row.quote === 'string' && typeof row.resolved_at === 'string' && typeof row.undo_possible === 'boolean') {
+          ids.add(row.assessment_id); next.push({ ...row, automatic: true });
+        }
+      }
       for (const row of rows) if (!ids.has(row.assessment_id) && ['unknown', 'submitting'].includes(decisions.get(row.assessment_id)?.state)) next.push(row);
+      next.sort((a, b) => Number(Boolean(a.automatic)) - Number(Boolean(b.automatic)));
       for (const [id, decision] of decisions) if (decision.state === 'refused') decisions.delete(id);
       rows = next; state = 'ready';
     } catch (error) {
@@ -72,13 +84,13 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
     const prior = decisions.get(row.assessment_id), action = control.dataset.updateAction;
     if (prior?.state === 'submitting' || prior?.state === 'done' || prior?.state === 'unknown' && action !== 'replay') return;
     const request = prior?.request || { assessment_id: row.assessment_id, decision: action,
-      reason: action === 'resolve' ? 'The quoted update shows this task was handled.' : 'This update does not establish that the task was handled.', idempotency_key: uuidv4() };
+      reason: action === 'undo' ? 'This task should remain open.' : action === 'resolve' ? 'The quoted update shows this task was handled.' : 'This update does not establish that the task was handled.', idempotency_key: uuidv4() };
     decisions.set(row.assessment_id, { state: 'submitting', request }); render();
     try {
       const result = await client.reviewDealUpdate(request);
       if (disposed || state === 'denied') return;
-      if (result?.ok !== true || result.decision !== request.decision || result.action_id !== row.assessment.action.id) throw Error('Unverified review outcome');
-      decisions.set(row.assessment_id, { state: 'done', message: request.decision === 'resolve' ? 'Task marked done.' : 'Dismissed. Task remains open.' });
+      if (result?.ok !== true || result.decision !== request.decision || (row.automatic ? !result.action_id : result.action_id !== row.assessment.action.id)) throw Error('Unverified review outcome');
+      decisions.set(row.assessment_id, { state: 'done', message: request.decision === 'undo' ? 'Task reopened.' : request.decision === 'resolve' ? 'Task marked done.' : 'Dismissed. Task remains open.' });
       render(); onChange();
     } catch (error) {
       if (disposed || state === 'denied') return;
