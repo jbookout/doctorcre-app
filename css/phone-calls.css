@@ -44,6 +44,5 @@ body { margin: 0; background: var(--ground); font-family: var(--font-text); }
 #phoneCalls .phone-row p { margin: 8px 0; }
 #phoneCalls .phone-inline button { flex-shrink: 0; }
 
-.phone-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.phone-times { display: grid; grid-template-columns: 1fr; }
 .phone-times label { min-width: 0; }
-@media (max-width: 720px) { .phone-times { grid-template-columns: 1fr; gap: 0; } }
