@@ -3,7 +3,7 @@
   "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
+    "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -708,7 +708,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
+        "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
@@ -798,7 +798,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
+          "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925"
         },
         "template_states": [
           "current",
@@ -832,7 +832,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
+        "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -1055,7 +1055,7 @@
       "write": false,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
+        "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925",
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2742"
       },
       "inputSchema": {
@@ -1403,7 +1403,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06",
+      "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
@@ -1412,7 +1412,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
+        "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925"
       },
       "inputSchema": {
         "type": "object",
@@ -1447,7 +1447,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
+        "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925"
       },
       "inputSchema": {
         "type": "object",
@@ -1476,7 +1476,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "a7118c3c7d94196f7834ca7163e98725d69a0b06"
+        "source_commit": "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925"
       },
       "inputSchema": {
         "type": "object",

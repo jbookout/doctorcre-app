@@ -48,6 +48,7 @@ test('rendered reasons preserve date meaning, relationship routing, review holds
   const view = mountContactReasons({host,window:dom.window,client:{listPracticeOrigination:async()=>practiceOriginationFixture()}});
   t.after(()=>view.dispose());
   await view.refresh();
+  host.querySelector('[data-show-reasons]').click();
   assert.equal(host.querySelectorAll('.work-card').length,6);
   assert.equal(host.querySelector('a[href="/clients?record=demo-client"]').textContent,'Follow up with DEMO-CLIENT');
   const review = [...host.querySelectorAll('article')].find(c=>c.textContent.includes('Needs review'));
@@ -64,7 +65,7 @@ test('rendered reasons preserve date meaning, relationship routing, review holds
   assert.equal(host.querySelectorAll('button').length,0);
 });
 
-test('Home caps new research reasons at three and links each to Leads', async t => {
+test('Home caps new research reasons at two and links each to Leads', async t => {
   const {JSDOM} = await import('jsdom');
   const {mountContactReasons} = await import('../js/contact-reasons.js');
   const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
@@ -74,8 +75,8 @@ test('Home caps new research reasons at three and links each to Leads', async t 
   const view = mountContactReasons({host,window:dom.window,home:true,client:{listPracticeOrigination:async()=>practiceOriginationFixture()}});
   t.after(()=>view.dispose());
   await view.refresh();
-  assert.equal(host.querySelectorAll('article').length,3);
-  assert.equal(host.querySelectorAll('h3 a[href="/leads#contactReasons"]').length,3);
+  assert.equal(host.querySelectorAll('article').length,2);
+  assert.equal(host.querySelectorAll('h3 a[href="/leads#contactReasons"]').length,2);
   assert.doesNotMatch(host.textContent,/Follow up with|Needs review/);
 });
 
@@ -95,7 +96,7 @@ test('failed reads stay distinct from empty results, retry recovers, and session
   assert.doesNotMatch(host.textContent,/No new reasons/);
   result = practiceOriginationFixture();
   await view.refresh();
-  assert.equal(host.querySelectorAll('article').length,6);
+  assert.equal(host.querySelectorAll('article').length,2);
   let release;
   client.listPracticeOrigination = ()=>new Promise(resolve=>{release=resolve});
   const pending = view.refresh();
@@ -143,9 +144,30 @@ test('More reasons pages without duplicates and preserves the focused source on 
   host.querySelector('[data-more-reasons]').click();
   await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(lastArgs.before_id,'5');
+  host.querySelector('[data-show-reasons]').click();
   assert.equal(host.querySelectorAll('article').length,4);
   const source = host.querySelector('a[target="_blank"]');
   source.focus();
   await view.refresh();
   assert.equal(dom.window.document.activeElement.href,source.href);
+});
+
+ test('Home hides empty results and skips malformed cards', async t => {
+  const {JSDOM} = await import('jsdom');
+  const {mountContactReasons} = await import('../js/contact-reasons.js');
+  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const dom = new JSDOM('<section></section>', {url:'http://localhost/'});
+  t.after(()=>dom.window.close());
+  const host = dom.window.document.querySelector('section');
+  let payload = {...empty};
+  const view = mountContactReasons({host,window:dom.window,home:true,client:{listPracticeOrigination:async()=>payload}});
+  t.after(()=>view.dispose());
+  await view.refresh();
+  assert.equal(host.hidden,true);
+  payload = practiceOriginationFixture();
+  payload.cards.unshift({id:'broken'});
+  await view.refresh();
+  assert.equal(host.hidden,false);
+  assert.equal(host.querySelectorAll('article').length,2);
+  assert.doesNotMatch(host.textContent,/unavailable/);
 });

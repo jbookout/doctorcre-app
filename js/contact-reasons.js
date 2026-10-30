@@ -1,3 +1,4 @@
+import { homeListLimit } from './home-list-limit.js';
 import { workCard } from './work-card.js';
 import { escapeText as E } from './change-receipts.mjs';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
@@ -18,18 +19,17 @@ function validate(payload) {
   if (payload?.ok !== true || payload.contract !== 'practice-origination.v1' || payload.outreach_started !== false
     || !Array.isArray(payload.cards) || !Array.isArray(payload.coverage)
     || !(payload.next_cursor === null || /^[1-9][0-9]{0,18}$/.test(payload.next_cursor))
-    || !payload.cards.every(row => row && /^[1-9][0-9]{0,18}$/.test(row.id) && typeof row.name === 'string'
+    || !payload.coverage.every(row => row && sources[row.source] && ['available','blocked','unavailable','uncovered'].includes(row.status))) {
+    throw new Error('Contact reasons unavailable');
+  }
+  return {...payload, cards: payload.cards.filter(row => row && /^[1-9][0-9]{0,18}$/.test(row.id) && typeof row.name === 'string'
       && kinds[row.kind] && ['research','relationship_follow_up','identity_review'].includes(row.route)
       && /^\d{4}-\d{2}-\d{2}$/.test(row.evidence_date) && Number.isFinite(Date.parse(row.evidence_date))
       && typeof row.city === 'string' && typeof row.state === 'string'
       && Array.isArray(row.client_ids) && Array.isArray(row.client_refs)
       && row.client_ids.every(id => typeof id === 'string' && id.length) && row.client_refs.every(ref => typeof ref === 'string')
       && (row.route !== 'relationship_follow_up' || row.client_ids.length === 1)
-      && publicSource(row))
-    || !payload.coverage.every(row => row && sources[row.source] && ['available','blocked','unavailable','uncovered'].includes(row.status))) {
-    throw new Error('Contact reasons unavailable');
-  }
-  return payload;
+      && publicSource(row))};
 }
 function publicSource(row) {
   try {
@@ -54,9 +54,9 @@ function card(row, home) {
 
 export function mountContactReasons({host,window,client,home = false}) {
   const document = host.ownerDocument;
-  let payload = null, error = false, busy = false, retired = false, sequence = 0;
+  let payload = null, error = false, busy = false, retired = false, sequence = 0, visibleCount = homeListLimit(window);
   function render() {
-    host.hidden = false;
+    host.hidden = Boolean(home && payload && !error && !retired && !payload.cards.some(row => row.route === 'research'));
     host.setAttribute('aria-busy',String(busy));
     const parts = [`<header class="${home ? 'home-panel-head' : 'section-heading'}"><h2>Reasons to reach out</h2>${home ? '<a class="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>' : ''}</header>`];
     if (retired) {
@@ -65,8 +65,9 @@ export function mountContactReasons({host,window,client,home = false}) {
       if (error) parts.push(`<p role="status">Contact reasons unavailable.${payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>`);
       if (payload) {
         const rows = payload.cards.filter(row => !home || row.route === 'research');
-        const shown = home ? rows.slice(0,3) : rows;
+        const shown = rows.slice(0,visibleCount);
         parts.push(`<div class="contact-reason-list">${shown.map(row=>card(row,home)).join('') || '<p>No new reasons to reach out.</p>'}</div>`);
+        if (rows.length > visibleCount) parts.push(`<button type="button" class="btn home-outline" data-reason-key="show" data-show-reasons>Show ${rows.length - visibleCount} more</button>`);
         if (!home) {
           parts.push('<p class="contact-reason-note">Registry and publication dates do not confirm when a practice opened.</p>');
           parts.push(`<ul class="contact-reason-coverage" aria-label="Source coverage">${payload.coverage.map(row=>`<li>${sources[row.source]} · ${row.status === 'available' ? 'Covered' : row.status === 'blocked' ? 'Updates blocked' : 'Not yet covered'}${row.status === 'available' && row.coverage ? ` <small>${E(row.coverage)}</small>` : ''}</li>`).join('')}</ul>`);
@@ -101,6 +102,7 @@ export function mountContactReasons({host,window,client,home = false}) {
   function retire() { retired = true; clear(); }
   const auto = mountAutoRefresh({document,window,refresh:read,onResume:clear});
   const click = event => {
+    if (event.target.closest('[data-show-reasons]')) { visibleCount = Infinity; render(); }
     if (event.target.closest('[data-retry-reasons]')) auto.refresh();
     if (event.target.closest('[data-more-reasons]')) read({},true);
   };
