@@ -94,13 +94,21 @@ class ReviewGate(unittest.TestCase):
             return {"body": f"VERDICT: {verdict}\nReviewed-SHA: abc\nReviewer: grok", "user": {"login": "jbookout"}, **date, **extra}
         early = {"created_at": "2026-01-01T00:00:00Z"}
         late = {"submitted_at": "2026-01-02T00:00:00Z"}
-        cases = [(item("CHANGES", early), item("APPROVE", late), "success"),
+        cases = [(item("CHANGES", early), item("APPROVE", late), "failure"),
                  (item("APPROVE", early), item("CHANGES", late), "failure"),
                  (item("APPROVE", early), item("CHANGES", late, state="DISMISSED"), "success")]
         for comment, review, expected in cases:
             with self.subTest(expected=expected, review=review), patch.object(gate, "api", side_effect=[pr, {}, [{"filename": "safe"}], [comment], [review], pr, {}]) as api:
                 gate.run({"pull_request": {"number": 4}, "review": {}}, "owner/repo")
                 self.assertEqual(api.call_args.args[1]["state"], expected)
+
+    def test_changes_veto_only_the_reviewed_head(self):
+        pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
+        changes = {"body": "VERDICT: CHANGES\nReviewed-SHA: abc\nReviewer: reviewer"}
+        approval = {"body": "VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: reviewer"}
+        self.assertFalse(gate.approved(pr, [], [changes, approval]))
+        changes["body"] = changes["body"].replace("abc", "old")
+        self.assertTrue(gate.approved(pr, [], [changes, approval]))
 
     def test_later_changes_from_any_reviewer_blocks(self):
         pr = {"body": "Card: WR568.S1.J2", "base": {"ref": "main"}, "additions": 151,
