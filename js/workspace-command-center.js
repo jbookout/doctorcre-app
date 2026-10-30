@@ -12,7 +12,6 @@ import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
-import { mountHomeMeetingReviews } from './home-meeting-reviews.js';
 import { mountHomeWeek } from './home-week-view.js';
 import { meetingDate, meetingTime } from './home-week.js';
 
@@ -57,8 +56,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
   let storage; try { storage = window.localStorage; } catch {}
-  const meetingReviews = $('homeMeetingReviews') && client.logActivity
-    ? mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now }) : null;
+  let meetingReviews = null, meetingReviewLoad = null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
@@ -84,6 +82,16 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const renderMeetings = signedOut => {
     if (!$('homeMeetings')) return;
     const meetings = signedOut ? null : calendar;
+    if (!meetingReviews && !meetingReviewLoad && $('homeMeetingReviews') && client.logActivity && meetings?.follow_up_reviews?.length) {
+      meetingReviewLoad = import('./home-meeting-reviews.js').then(({ mountHomeMeetingReviews }) => {
+        if (disposed || snapshot?.unauthorized) return;
+        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now });
+        renderMeetings(snapshot?.unauthorized);
+      }).catch(() => {
+        meetingReviewLoad = null;
+        if (!disposed && !snapshot?.unauthorized) widget('homeMeetingReviews', '<p class="home-empty" role="status">Meeting follow-ups unavailable. Reload this page to try again.</p>');
+      });
+    }
     meetingReviews?.update({ calendar: meetings, deals: scopedDeals(snapshot?.board, 'team') || [], actor: snapshot?.board?.actor, signedOut: Boolean(signedOut) });
     if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
     const failed = meetings.state === 'unavailable';

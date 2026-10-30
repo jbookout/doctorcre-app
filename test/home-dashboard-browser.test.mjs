@@ -28,6 +28,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   if (!firstOpen && !freshBrief) await page.addInitScript(() => {
     if (!localStorage.getItem('doctorcre:morning:joe')) localStorage.setItem('doctorcre:morning:joe', JSON.stringify({ day: '2026-10-01', lastShownAt: '2026-10-01T14:00:00Z', since: '2026-09-30T17:00:00Z' }));
   });
+  const resources = []; page.on('request', request => resources.push(new URL(request.url()).pathname));
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
   let boardMalformed = malformedBoard, briefFailure = initialBriefFailure;
@@ -96,7 +97,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, resources, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -1142,4 +1143,40 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H0
   assert.equal(await zone.inputValue(), 'America/Chicago', 'reload starts a new display choice');
   assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
   assert.deepEqual(errors, []);
+});
+
+test('Home downloads meeting confirmation only when the calendar returns reviews', async t => {
+  const { page, errors, resources } = await open(t, { calendar: { state: 'empty', items: [], follow_up_reviews: [] } });
+  await page.locator('#homeMeetings').getByText('No upcoming meetings', { exact: true }).waitFor();
+  assert.equal(resources.includes('/js/home-meeting-reviews.js'), false);
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
+    state: 'partial', items: [], notes: [], follow_up_reviews: [{ key: 'aaaaaaaaaaaaaaaa', state: 'needs_review', title: 'Demo lender meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
+  } })));
+  const panel = page.locator('#homeMeetingReviews');
+  await panel.getByRole('heading', { name: 'Did these meetings happen?' }).waitFor();
+  await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await panel.waitFor({ state: 'hidden' });
+  assert.deepEqual(errors, []);
+});
+
+test('session loss during the meeting-confirmation download prevents late controls', async t => {
+  const { page } = await open(t, { calendar: { state: 'empty', items: [], follow_up_reviews: [] } });
+  await page.locator('#homeMeetings').getByText('No upcoming meetings', { exact: true }).waitFor();
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { requested = resolve; });
+  t.after(() => release());
+  await page.route('**/js/home-meeting-reviews.js', async route => {
+    requested(); await gate;
+    await route.fulfill({ body: await readFile(new URL('../js/home-meeting-reviews.js', import.meta.url)), contentType: 'text/javascript' });
+  });
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
+    state: 'partial', items: [], follow_up_reviews: [{ key: 'bbbbbbbbbbbbbbbb', state: 'needs_review', title: 'Demo retired meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
+  } })));
+  await started;
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  release();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('#homeMeetingReviews').isVisible(), false);
+  assert.equal(await page.getByText('Demo retired meeting', { exact: true }).count(), 0);
 });
