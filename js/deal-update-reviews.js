@@ -1,5 +1,4 @@
 import { workCard } from './work-card.js';
-import { homeListLimit } from './home-list-limit.js';
 import { sourceTime } from './email-source-line.js';
 import { escapeText as E } from './change-receipts.mjs';
 import { readWithDeadline } from './current-read.mjs';
@@ -9,28 +8,29 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
   let rows = [], state = 'loading', epoch = 0, disposed = false;
   const decisions = new Map();
   const win = container.ownerDocument.defaultView;
-  const limit = homeListLimit(win);
-  const refusals = { overdue_action_changed: 'The task changed. Refresh overdue reviews before deciding again.', assessment_already_reviewed: 'This was already reviewed by the other partner.', partner_required: 'A partner is required to review this task.', newer_change_exists: "A newer change was made to this task, so this can't be undone here.", assessment_not_found: 'The assessment was not found.', not_action_owner: 'Only the task owner can review this task.' };
+  let count = win?.matchMedia?.('(max-width: 700px)').matches ? 1 : 2;
+  const refusals = { overdue_action_changed: 'The task changed. Refresh overdue reviews before deciding again.', assessment_already_reviewed: 'This was already reviewed by the other partner.', partner_required: 'A partner is required to review this task.', newer_change_exists: "A newer change was made to this task, so this can't be undone here.", assessment_not_found: 'This update is no longer waiting for review.', not_action_owner: 'Only the task owner can review this task.' };
   const button = (action, label, disabled = false) => `<button type="button" class="btn home-outline" data-update-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
   function render() {
     const focused = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
     const focusId = focused?.closest('[data-update-id]')?.dataset.updateId, focusAction = focused?.dataset.updateAction;
     container.setAttribute('aria-busy', String(state === 'loading'));
-    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${limit.remaining(rows) > 0 ? `<span class="home-list-count">Showing ${limit.count(rows)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${limit.visible(rows).map((row, index) => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${Math.max(0, rows.length - count) > 0 ? `<span class="home-list-count">Showing ${Math.min(count, rows.length)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.length ? '<p class="home-empty">No overdue reviews.</p>' : ''}${rows.slice(0, count).map((row, index) => {
       const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
       const disabled = state !== 'ready' || pending;
-      if (row.automatic) return `${index === 0 || !limit.visible(rows)[index - 1].automatic ? '<h3>Closed automatically</h3>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
+      if (row.automatic) return `${index === 0 || !rows.slice(0, count)[index - 1].automatic ? '<h3>Closed automatically</h3>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
         title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
         meta: `<p>Task · ${E(row.action_title)}</p><p>Closed · ${E(sourceTime(row.resolved_at, undefined, 'Date unavailable'))}</p>`,
         body: `<q>${E(row.quote)}</q>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
         actions: `<div class="email-controls">${decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : button('undo', pending ? 'Saving…' : 'Undo', disabled)}</div>` })}`;
-      const assessing = row.assessment.reason === 'awaiting_assessment' || row.assessment.reason === 'assessment_in_progress';
+      const assessing = row.assessment.reason === 'awaiting_assessment' || row.assessment.reason === 'assessment_in_progress' || row.assessment.reason === 'interrupted';
+
       return workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
         title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
-        meta: `<p>Overdue task · ${E(row.assessment.action.description)}</p><p>Update · ${E(sourceTime(row.recorded_at, undefined, 'Date unavailable'))}</p>`,
+        meta: `<p>Overdue task · ${E(row.assessment.action.description)}</p>`,
         body: `<q>${E(row.assessment.quote || row.assessment.update)}</q><p class="email-change">${assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
         actions: `<div class="email-controls">${assessing || decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : `${button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}${button('dismiss', 'Dismiss', disabled)}`}</div>` });
-    }).join('')}${limit.remaining(rows) > 0 ? button('show', `Show ${limit.remaining(rows)} more`) : ''}`;
+    }).join('')}${Math.max(0, rows.length - count) > 0 ? button('show', `Show ${Math.max(0, rows.length - count)} more`) : ''}`;
     if (focused) {
       const article = [...container.querySelectorAll('[data-update-id]')].find(node => node.dataset.updateId === focusId);
       const target = [...(article || container).querySelectorAll('button:not(:disabled)')].find(node => node.dataset.updateAction === focusAction) || article?.querySelector('button:not(:disabled), a') || container.querySelector('button:not(:disabled)');
@@ -77,7 +77,7 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
     const control = event.target?.closest('[data-update-action]');
     if (!control || control.disabled || disposed || state === 'denied') return;
     if (control.dataset.updateAction === 'refresh') return refresh();
-    if (control.dataset.updateAction === 'show') { limit.showAll(rows); render(); return; }
+    if (control.dataset.updateAction === 'show') { count = rows.length; render(); return; }
     if (state !== 'ready') return;
     const row = rows.find(item => item.assessment_id === control.closest('[data-update-id]')?.dataset.updateId);
     if (!row) return;

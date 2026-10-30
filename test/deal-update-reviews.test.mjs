@@ -21,6 +21,7 @@ test('Home overdue review names the deal, overdue task, evidence and exact propo
   assert.equal(container.querySelector('a').getAttribute('href'), '/deals?deal=demo-deal');
   assert.match(container.textContent, /Demo Harbor expansion/);
   assert.match(container.textContent, /Request revised terms/);
+  assert.doesNotMatch(container.textContent, /Date unavailable|Update ·/);
   assert.equal(container.querySelector('q').textContent, proposal().assessment.quote);
   assert.match(container.textContent, /Mark this overdue task as done/);
 });
@@ -77,7 +78,7 @@ test('session loss clears evidence and rejects a late read', async t => {
 for (const [code, message] of [
   ['assessment_already_reviewed', /already reviewed by the other partner/i],
   ['partner_required', /partner.*required/i],
-  ['assessment_not_found', /assessment.*not found/i],
+  ['assessment_not_found', /This update is no longer waiting for review/i],
   ['not_action_owner', /only the task owner/i],
   ['unexpected', /Review was refused/i],
 ]) test(`review refusal ${code} explains the outcome`, async t => {
@@ -86,8 +87,8 @@ for (const [code, message] of [
   assert.match(container.textContent, message);
   if (code === 'not_action_owner') assert.equal(container.querySelectorAll('article button').length, 0);
 });
-test('unknown rows are skipped and pending assessments stay visible without decisions', async t => {
-  const pending = { ...proposal(), assessment_id: 'pending', assessment: { ...proposal().assessment, reason: 'awaiting_assessment', quote: undefined } };
+for (const reason of ['awaiting_assessment', 'assessment_in_progress', 'interrupted']) test(`${reason} assessments stay visible without decisions`, async t => {
+  const pending = { ...proposal(), assessment_id: 'pending', assessment: { ...proposal().assessment, reason, quote: undefined } };
   const { view, container } = setup(t, { readDealUpdateReviews: async () => response([null, pending]) });
   await view.refresh();
   assert.match(container.textContent, /still assessing/i);
