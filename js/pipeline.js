@@ -114,9 +114,10 @@ function cardHtml(deal) {
 }
 function rowHtml(deal) {
   const nextStep = noteText(deal.next_step);
+  const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : '<p class="next-line">Next step missing</p>'}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
+    <p class="next-line" title="${esc(nextStep)}">${nextStep.trim() ? esc(nextStep) : 'Next step missing'}${overdue ? ` · <span class="attention-flag">${overdue}</span>` : ''}</p><span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
   const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
@@ -240,7 +241,7 @@ function renderBoard() {
         ? `<p class="stage-preview">${cards.slice(0,2).map(d => `<span>${esc(dealTitle(d))}</span>`).join('')}${cards.length > 2 ? `<span>${cards.length - 2} more</span>` : ''}</p>`
         : cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
       const chosen = state.lifted && state.target === column.slug;
-      return `<section class="kanban-column glass" data-column="${esc(column.slug)}" data-collapsed="${collapsed}"${chosen ? ' data-drop="true"' : ''}
+      return `<section class="kanban-column glass" data-column="${esc(column.slug)}" data-count="${cards.length}" data-collapsed="${collapsed}"${chosen ? ' data-drop="true"' : ''}
         aria-label="${esc(column.label)}, ${cards.length} cards">
         <h3 title="${esc(PHASE_TRIGGERS[column.slug])}"><button type="button" data-collapse-stage="${esc(column.slug)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${esc(column.label)}">${esc(column.label)}<small>${cards.length}</small><span aria-hidden="true">${collapsed ? '+' : '−'}</span></button></h3>
         ${content}

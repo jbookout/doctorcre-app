@@ -165,3 +165,17 @@ for (const width of [1440, 390]) test(`Lead lanes start with five cards and expa
   assert.equal(await lane.locator('.lead-open').innerText(), 'Synthetic practice 100');
   assert.deepEqual(writes, []);
 });
+
+for (const width of [390,1440]) for (const theme of ['light','dark']) test(`lead board targets and empty stages ${width} ${theme}`, async t => {
+ const browser=await chromium.launch(); t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width,height:900},colorScheme:theme});
+ await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
+ const board=workspace(); board.leads=[lead(1,{stage:'new',doctor_name:'Demo practice'})];
+ await routeLeads(page,{getBoard:()=>board}); await page.goto('http://localhost/leads');
+ await page.locator('.lead-card').first().waitFor();
+ const target=page.locator('.lead-open').first(), box=await target.boundingBox();
+ assert.ok(box.width>=44 && box.height>=44);
+ if(width===390) assert.equal(await page.locator('.stage-column:not(:has(.lead-card)):visible').count(),0);
+ await mkdir('.github/pr-evidence/WR572.S6.J1',{recursive:true});
+ await page.screenshot({path:`.github/pr-evidence/WR572.S6.J1/leads-${width}-${theme}.png`});
+});

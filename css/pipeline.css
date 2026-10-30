@@ -194,7 +194,7 @@
 @media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); } }
 @media(max-width:760px) {
  .dealroom-page.has-app-layout .kanban { grid-template-columns:minmax(0,1fr); }
- .dealroom-page .kanban-column:not(:has(.kanban-card)):not([data-collapsed="true"]) { display:none; }
+ .dealroom-page .kanban-column[data-count="0"] { display:none; }
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }

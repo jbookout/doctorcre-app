@@ -387,3 +387,35 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-
  await page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}.png`,root).pathname,animations:'disabled'});
  assert.deepEqual(errors,[]);
 });
+
+test('phone hides empty collapsed stages and keeps populated collapsed stages', async t => {
+ const {page}=await open(t,390,{showDetail:false,sparse:true});
+ const empty=page.locator('.kanban-column').filter({has:page.locator('h3 small:text-is("0")')}).first();
+ assert.ok(await empty.count());
+ await page.setViewportSize({width:1280,height:960});
+ await empty.locator('button').click();
+ await page.setViewportSize({width:390,height:960});
+ assert.equal(await empty.isVisible(),false);
+ const slug=await page.locator('.kanban-column:has(.kanban-card)').first().getAttribute('data-column');
+ const populated=page.locator(`[data-column="${slug}"]`);
+ await populated.locator('h3 button').click();
+ assert.equal(await populated.isVisible(),true);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light','dark']) test(`deal board targets and evidence ${width} ${theme}`, async t => {
+ const {page}=await open(t,width,{theme,showDetail:false,height:900});
+ const controls=page.locator('.kanban-card :is(.card-open, .deal-items button):visible');
+ assert.ok(await controls.count());
+ for(const control of await controls.all()) { const box=await control.boundingBox(); assert.ok(box.width>=44 && box.height>=44); }
+ await mkdir('.github/pr-evidence/WR572.S6.J1',{recursive:true});
+ await page.screenshot({path:`.github/pr-evidence/WR572.S6.J1/deals-${width}-${theme}.png`});
+ await page.getByRole('button',{name:'List',exact:true}).click();
+ await page.screenshot({path:`.github/pr-evidence/WR572.S6.J1/deals-list-${width}-${theme}.png`});
+});
+
+test('deal list shows overdue age in its rows', async t => {
+ const {page}=await open(t,390,{showDetail:false});
+ await page.getByRole('button',{name:'List',exact:true}).click();
+ const row=page.locator('.deal-row[data-id="d14"]');
+ assert.match(await row.textContent(), /\d+ days overdue/);
+});

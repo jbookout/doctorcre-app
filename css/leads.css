@@ -176,6 +176,7 @@ dialog::backdrop { background: var(--scrim); }
   .stage-column[data-expanded="true"] .stage-head { top: calc(var(--leads-header-offset, 0px) + var(--touch) + 2 * var(--space-2) + var(--hairline-width)); }
   .stage-nav select { flex: 1; scroll-margin-top: calc(var(--leads-header-offset, 0px) + var(--space-2)); }
   #leadBoard:not([data-touch-dragging]) .stage-column[data-mobile-current="false"] { display: none; }
+  #leadBoard:not([data-touch-dragging]):not(:has(.dragging)) .stage-column:not(:has(.lead-card)) { display: none; }
   .page-heading { margin-bottom: var(--space-3); }
   #territoryMap { height: 180px; }
   #territoryMap:has(.map-place-members) { height: 640px; }
@@ -202,7 +203,7 @@ dialog::backdrop { background: var(--scrim); }
 #mapLeadMembers button small { display: block; color: var(--fg-muted); font-size: var(--font-size-1); }
 #mapLeadMembers button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); }
 
-.leads-workspace .lead-open { min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font-weight: inherit; text-align: left; }
+.leads-workspace .lead-open { min-width: var(--touch); min-height: var(--touch); padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font-weight: inherit; text-align: left; }
 .lead-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-2); }
 .lead-card button:not(.lead-open), .lead-card .score, .drag-handle { position: relative; z-index: 1; }
 .lead-card .drag-handle { position: absolute; }
