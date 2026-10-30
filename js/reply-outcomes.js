@@ -61,7 +61,7 @@ export function mountReplyOutcomes({ container, client }) {
     }).join('');
     container.innerHTML = `<header class="home-panel-head"><h2 tabindex="-1">Sent replies</h2></header>
       ${retired || !partner(actor) ? '<p role="status">Sign in as a partner to view sent replies.</p>'
-        : `<p>Replies submitted for sending. Sent means your email app sent the reply. It does not mean the recipient has read it.</p>${sections}`}`;
+        : `<p>Replies submitted for sending. Sent means your email app sent the reply. It does not confirm recipient delivery or a read receipt.</p>${sections}`}`;
     if (focused) {
       const replyLink = focusReply && [...container.querySelectorAll('[data-reply-outcome]')].find(node => node.dataset.replyOutcome === focusReply)?.querySelector('a');
       (replyLink?.getAttribute('href') === focusHref ? replyLink : container.querySelector(`[data-reply-retry="${focusStream}"], [data-reply-more="${focusStream}"]`) || container.querySelector('h2'))?.focus();
