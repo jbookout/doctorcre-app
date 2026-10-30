@@ -206,3 +206,4 @@
 
 .home-brief-card .work-card-actions { grid-column: 2; grid-row: 2; }
 .home-brief-card .home-outline { background: transparent; font-family: inherit; cursor: pointer; }
+.home-brief-card:has([data-task-done]) :is(.work-card-title a, .work-card-meta) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
