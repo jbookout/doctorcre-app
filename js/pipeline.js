@@ -1034,7 +1034,7 @@ function selectWorkspaceTab(id) {
     if (!view) {
       view = document.createElement('div');
       marketTermsViews.set(deal.id, view);
-      mountMarketTerms(view, {deal, dealName: ref => state.deals.get(ref)?.name, read: args => state.client.readMarketTerms(args)});
+      mountMarketTerms(view, {deal, dealName: ref => { const match = state.deals.get(ref); return match ? dealTitle(match) : null; }, read: args => state.client.readMarketTerms(args)});
     }
     $('workspace-market-terms').append(view);
   }
