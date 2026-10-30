@@ -1,3 +1,4 @@
+import { mountFactReview } from './fact-review.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
@@ -1044,6 +1045,8 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
+let factReviewPanel;
+
 function workspaceHtml(detail) {
   const d = detail.deal;
   const nextStep = noteText(d.next_step);
@@ -1060,6 +1063,7 @@ function workspaceHtml(detail) {
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <section data-detail-read="next-actions" aria-label="Next actions"><h2>Next actions</h2><ul>${(detail.next_actions || []).filter(action => action.status === 'open').map(action => `<li>${esc(noteText(action.description))}${calendarDay(action.due_on) ? ` · <time datetime="${esc(action.due_on)}">${esc(dateCaption(calendarDay(action.due_on)))}</time>` : ''}</li>`).join('') || '<li>No next actions recorded.</li>'}</ul></section>
+    <section id="panelTerms" aria-label="Terms"></section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
     <form id="detailUpdateForm" class="deal-update-form" novalidate><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><label for="dealUpdateStep">Next step</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${todayIso()}"${d.next_date && d.next_date < todayIso() ? ' aria-describedby="detailUpdateDateHint"' : ''}>${d.next_date && d.next_date < todayIso() ? '<small id="detailUpdateDateHint">Current next date is overdue.</small>' : ''}<button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
@@ -1154,6 +1158,7 @@ async function readPanel(id) {
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }
+      void factReviewPanel?.refresh(detail.attachments);
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1189,7 +1194,9 @@ async function refreshEvidence(detail, id, seq) {
 function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   renderWorkspaceFacts(detail);
+  factReviewPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
+  factReviewPanel = mountFactReview($('panelTerms'), { client: state.client, entityRef: detail.deal.id, attachments: detail.attachments });
   disposeEvidence?.(); disposeEvidence = null;
   disposePanelEmailFollowups();
   syncUpdateForm();
@@ -1198,6 +1205,8 @@ function paintPanel(detail) {
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
+  factReviewPanel?.dispose();
+  factReviewPanel = null;
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
@@ -1224,6 +1233,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   await refreshPanel();
 }
 function closeWorkspace({ fromHistory = false } = {}) {
+  factReviewPanel?.dispose();
+  factReviewPanel = null;
   if (!fromHistory && history.state?.doctorcreDealWorkspace) { history.back(); return; }
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');
