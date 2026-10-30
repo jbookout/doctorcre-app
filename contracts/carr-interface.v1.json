@@ -781,7 +781,11 @@
           "suggestion",
           "status"
         ],
-        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+        "email_threads": {
+          "shape": "Optional array of {conversation_id, subject, latest_message_at}, newest message first; conversation_id and subject may be null. Missing on older servers.",
+          "source": "DoctorCRE/carr-system PR #2694 at b36239232aca073d062530d23f74e4aed40dd760: subject is outside-origin email_context.subject; latest_message_at is the latest email activity occurred_at."
+        }
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
