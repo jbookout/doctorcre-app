@@ -55,8 +55,11 @@
     </section>
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar</h2></header><p class="home-empty" role="status">Updating calendar…</p></section>
-    <section id="homeReplyOutcomes" class="home-panel" aria-label="Sent replies" aria-busy="true"><header class="home-panel-head"><h2>Sent replies</h2></header><p class="home-empty">Loading sent replies…</p></section>
-    <section id="homeEmailFilings" class="home-panel" aria-label="Filed automatically" aria-busy="true"><header class="home-panel-head"><h2>Filed automatically</h2></header><p class="home-empty">Loading filed emails…</p></section>
+    <details id="homeEmailActivity" class="home-panel home-email-activity">
+      <summary><span>Email activity</span><span class="home-email-hint">Sent replies and filed emails</span></summary>
+      <section id="homeReplyOutcomes" aria-label="Sent replies" aria-busy="true"></section>
+      <section id="homeEmailFilings" aria-label="Filed automatically" aria-busy="true"></section>
+    </details>
       <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
       <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>
