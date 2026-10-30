@@ -43,8 +43,11 @@ async function open(t, { width = 390, theme = 'dark', outcomes = () => pageOf([s
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#dealAttention[aria-busy="false"]').waitFor();
   await page.getByText('Email activity', { exact: true }).scrollIntoViewIfNeeded();
+  assert.match(await page.locator('#homeEmailActivity summary').innerText(), /Sent replies and filed emails/);
   assert.equal(calls.length, 0, 'reply activity makes no requests before opening');
   assert.equal(filings.length, 0, 'filing activity makes no requests before opening');
+  await mkdir('out/test-artifacts/reply-outcomes', { recursive: true });
+  await page.locator('#homeEmailActivity').screenshot({ path: `out/test-artifacts/reply-outcomes/closed-${width}-${theme}.png`, animations: 'disabled' });
   await page.getByText('Email activity', { exact: true }).click();
   const card = page.locator('#homeReplyOutcomes');
   assert.equal(await card.count(), 1, 'Home has a sent replies outcomes panel');
@@ -60,6 +63,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ho
   await card.getByText('Demo sent reply', { exact: true }).waitFor();
   await card.getByText('Demo failed reply', { exact: true }).waitFor();
   await card.getByText('Demo joe submitted reply', { exact: true }).waitFor();
+  const sizes = await page.locator('#homeEmailActivity').evaluate(node => [node.querySelector('summary'), node.querySelector('h2'), node.querySelector('h3')].map(el => parseFloat(getComputedStyle(el).fontSize)));
+  assert.ok(sizes[0] > sizes[1] && sizes[1] > sizes[2], `heading sizes descend: ${sizes}`);
   assert.match(await card.innerText(), /Sent/);
   assert.match(await card.innerText(), /Failed.*Delivery could not be confirmed/s);
   assert.match(await card.innerText(), /Pending.*Delivery is not yet confirmed/s);
@@ -73,7 +78,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ho
   await page.setViewportSize({ width, height: 1200 });
   await card.evaluate(node => window.scrollTo({ top: window.scrollY + node.getBoundingClientRect().top - 100, behavior: 'instant' }));
   await page.locator('#homeEmailActivity').evaluate(node => window.scrollTo({ top: window.scrollY + node.getBoundingClientRect().top - 100, behavior: 'instant' }));
-  await page.screenshot({ path: `out/test-artifacts/reply-outcomes/home-${width}-${theme}.png`, fullPage: true, animations: 'disabled' });
+  await page.locator('#homeEmailActivity').screenshot({ path: `out/test-artifacts/reply-outcomes/open-${width}-${theme}.png`, animations: 'disabled' });
 });
 
 test('Home distinguishes a successful empty reply outcomes read from unavailable data', async t => {
