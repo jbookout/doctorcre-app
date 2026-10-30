@@ -1207,3 +1207,16 @@ test('session loss during the meeting-confirmation download prevents late contro
   assert.equal(await page.locator('#homeMeetingReviews').isVisible(), false);
   assert.equal(await page.getByText('Demo retired meeting', { exact: true }).count(), 0);
 });
+
+test('Deals panel ends with muted counts and a plain All deals link', async t => {
+  for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+    const { page } = await open(t, { width, theme });
+    await screenshot(page, `deals-footer-${width}-${theme}`);
+    const panel = page.locator('#dealAttention');
+    const link = panel.getByRole('link', { name: 'All deals', exact: true });
+    assert.equal(await link.getAttribute('href'), '/deals');
+    assert.equal(await panel.locator('footer #dealCounts').isVisible(), true);
+    assert.equal(await page.locator('main > footer #dealCounts').count(), 0);
+    assert.equal(await link.evaluate(el => getComputedStyle(el).borderTopStyle), 'none');
+  }
+});

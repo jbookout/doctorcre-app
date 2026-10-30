@@ -22,19 +22,22 @@
 
 /* Deal attention. */
 .home-deals { padding: var(--space-5); }
-.home-deals .home-panel-head { align-items: flex-start; margin-bottom: var(--space-4); }
-.app-layout-main .home-footer { display: block; }
-.home-counts { padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-5) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-deals .home-panel-head { margin-bottom: 0; }
+.app-layout-main .home-deals footer { display: block; }
+.home-counts { padding-top: var(--space-2); border-top: var(--hairline-width) solid var(--hairline); display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .home-counts span { white-space: nowrap; }
 .home-counts b { font-weight: var(--font-weight-regular); }
 
-/* Links that act. Only the primary one carries the accent. */
+/* Links that act. */
+.home-plain-link { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg-muted); font-size: var(--font-size-1); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 4px; }
+.home-plain-link:hover { color: var(--fg); text-decoration-color: currentColor; }
 .home-outline { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-decoration: none; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
 .home-outline:hover { border-color: var(--fg-quiet); background: var(--surface-2); }
 .home-icon-link { display: grid; place-items: center; flex: none; min-width: var(--touch); min-height: var(--touch); border-radius: var(--radius-2); color: var(--fg-muted); text-decoration: none; transition: color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
 .home-icon-link:hover { color: var(--fg); background: var(--surface-2); }
 
 /* Rows: one line per item, separated by hairlines. */
+.home-deals .work-card { padding-block: var(--space-1); }
 .home-flags { display: grid; margin: 0 calc(var(--space-3) * -1); }
 .home-flag:not(.work-card) { display: flex; align-items: center; gap: var(--space-3); min-height: 56px; padding: var(--space-3); border-top: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); color: inherit; text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
 .home-flag:not(.work-card):first-child { border-top-color: transparent; }
@@ -160,8 +163,6 @@
   .home-tools .scope-switch { width: auto; }
   .home-updated { width: 100%; justify-content: flex-end; }
   .home-panel, .home-deals { padding: var(--space-4); }
-  .home-deals .home-panel-head { flex-direction: column; align-items: stretch; gap: var(--space-3); }
-  #homePrimaryAction { width: 100%; }
   .home-grid { grid-template-columns: minmax(0, 1fr); }
   .home-call-task-controls { flex-wrap: wrap; }
   .home-flags, .home-agenda { margin-inline: calc(var(--space-2) * -1); }
