@@ -79,7 +79,7 @@ export function postCallItemStatus(item) {
 }
 
 const idlePostCall = () => ({ status: 'idle', session: null, weekly: false, report: null, error: null,
-  contextReady: false, contextAttempted: false, draftErrors: new Map() });
+  contextReady: false, contextAttempted: false, draftErrors: new Map(), questionEdits: new Map() });
 
 /**
  * @param {Object} deps
@@ -304,7 +304,57 @@ export function createCallMode(deps) {
   function questionCard(item) {
     const question = typeof item === 'string' ? item : (item.question || item.text || item.summary || 'Needs review');
     const options = Array.isArray(item?.options) ? item.options : [];
-    return `<article class="post-call-card question"><p>${esc(reportText(question))}</p>${options.length ? `<div class="post-call-options" aria-label="Possible answers">${options.map((option) => `<span>${esc(reportText(typeof option === 'string' ? option : option.label || option.text))}</span>`).join('')}</div>` : ''}</article>`;
+    const edit = state.postCall.questionEdits.get(item?.id);
+    return `<article class="post-call-card question"><p>${esc(reportText(question))}</p>${options.length ? `<div class="post-call-options" aria-label="Possible answers">${options.map((option) => `<span>${esc(reportText(typeof option === 'string' ? option : option.label || option.text))}</span>`).join('')}</div>` : ''}
+      ${edit?.error ? `<p class="post-call-inline-error" role="alert">${esc(edit.error)}</p>` : ''}
+      ${item?.resolved === true ? `<p><b>Resolved</b> · ${esc(item.resolution || '')}</p>` : item?.id ? `
+      <div class="field"><label>Resolution <input type="text" data-question-resolution="${esc(item.id)}" value="${esc(edit?.text || '')}"${edit?.busy ? ' disabled' : ''}></label></div>
+      <div class="post-call-card-actions"><button type="button" class="primary" data-resolve-question="${esc(item.id)}"${!edit?.text?.trim() || edit?.busy ? ' disabled' : ''}>${edit?.busy ? 'Resolving…' : 'Resolve'}</button></div>
+      ` : ''}</article>`;
+  }
+
+  function questionInput(event) {
+    const field = event.target?.closest?.('[data-question-resolution]');
+    if (!field) return;
+    const id = field.dataset.questionResolution;
+    state.postCall.questionEdits.set(id, { text: field.value });
+    field.closest('article').querySelector('[data-resolve-question]').disabled = !field.value.trim();
+  }
+  root.addEventListener('input', questionInput);
+
+  async function resolveQuestion(button) {
+    const id = button.dataset.resolveQuestion;
+    const edit = state.postCall.questionEdits.get(id);
+    if (!edit?.text?.trim() || edit.busy) return;
+    const session = state.postCall.session, generation = state.callGeneration;
+    const current = () => state.postCall.session === session && state.callGeneration === generation;
+    edit.busy = true;
+    edit.error = null;
+    state.statusSequence = (state.statusSequence || 0) + 1;
+    state.statusInFlight = null;
+    renderPostCall();
+    try {
+      const result = await deps.postCallClient.resolveQuestion(session, id, edit.text.trim());
+      if (!current()) return;
+      if (!Array.isArray(result.questions)) throw new Error('The updated questions could not be read. Refresh the report to check the resolution.');
+      state.statusSequence = (state.statusSequence || 0) + 1;
+      state.statusInFlight = null;
+      state.postCall.report = { ...state.postCall.report, review_questions: result.questions };
+      const status = typeof result.status === 'object' ? result.status.state : result.status;
+      state.postCall.status = ({ ready_review: 'review_ready', blocked: 'failed' })[status] || status || state.postCall.status;
+      state.postCall.questionEdits.delete(id);
+    } catch (error) {
+      if (!current()) return;
+      if (error.status === 409) {
+        edit.error = 'Already resolved';
+        await refreshPostCall();
+      } else {
+        edit.error = error.status === 404 ? 'This question could not be found. Refresh the report.'
+          : error.status === 400 ? 'Enter a resolution before trying again.' : error.message;
+      }
+    } finally {
+      if (current()) { edit.busy = false; renderPostCall(); }
+    }
   }
 
   function draftCard(draft) {
@@ -764,6 +814,8 @@ export function createCallMode(deps) {
     if (skip) { await resolveCandidate(skip.dataset.postCallSkip, false, skip); return true; }
     const draft = hit('[data-create-outlook-draft]');
     if (draft) { await createDraft(draft); return true; }
+    const question = hit('[data-resolve-question]');
+    if (question) { await resolveQuestion(question); return true; }
     if (hit('[data-refresh-post-call]')) { await refreshPostCall(); return true; }
     const retry = hit('[data-retry-call-context]');
     if (retry) {
@@ -783,6 +835,6 @@ export function createCallMode(deps) {
   return {
     state, open, close, start, stop, refresh, refreshPostCall, render, handleClick, checkEligibility,
     startPolling, stopPolling, publishWeeklyCallContext,
-    dispose() { stopPolling(); if (state.tickTimer) timers.clearInterval(state.tickTimer); state.tickTimer = null; },
+    dispose() { root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) timers.clearInterval(state.tickTimer); state.tickTimer = null; },
   };
 }
