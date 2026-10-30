@@ -1,5 +1,5 @@
 import { newestFirst } from './change-receipts.mjs';
-import { formatBusinessInstant } from './business-date.js';
+import { sourceTime } from './email-source-line.js';
 import { correspondenceState, meetingEvidence, readinessRequest, readinessState, threadReferences, unavailableEvidence } from './correspondence-model.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
@@ -8,7 +8,7 @@ function evidenceGroup(title, state) {
   if (state.state === 'refused') return `<div class="evidence-group" data-evidence-group="${group}" data-state="refused"><h4>${title} unavailable</h4><a href="/auth/login">Sign in</a></div>`;
   if (state.state !== 'ready') return `<div class="evidence-group" data-evidence-group="${group}" data-state="${esc(state.state)}"><h4>${title} ${state.state === 'loading' ? 'loading…' : 'unavailable'}</h4>${state.state === 'loading' ? '' : '<button type="button" data-evidence-retry>Retry evidence</button>'}</div>`;
   if (!state.items?.length) return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><p>No linked evidence</p></div>`;
-  return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${state.items.map(item => `<li class="evidence-item" data-kind="${item.kind === 'email-thread' ? 'thread' : esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(item.kind === 'thread' ? 'Read ' : '')}${esc(formatBusinessInstant(item.when))}</time></summary><p>${item.kind === 'thread' || item.kind === 'email-thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
+  return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${state.items.map(item => `<li class="evidence-item" data-kind="${item.kind === 'email-thread' ? 'thread' : esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(item.kind === 'thread' ? 'Read ' : '')}${esc(sourceTime(item.when))}</time></summary><p>${item.kind === 'thread' || item.kind === 'email-thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
 }
 export function renderEvidence(view = {}) {
   const groups = [['Threads',view.threads],['Meetings',view.meetings]].filter(([,state]) => state?.state);

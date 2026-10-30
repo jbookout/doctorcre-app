@@ -15,10 +15,3 @@ export function overnightCutoff(now = new Date()) {
   const wall = Date.parse(`${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}Z`);
   return new Date(target.valueOf() + target.valueOf() - wall).toISOString();
 }
-
-const instantFormat = new Intl.DateTimeFormat('en-US', { timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true, timeZoneName:'short' });
-/** One display of a recorded instant everywhere: business time zone, with its zone label (CDT/CST). */
-export function formatBusinessInstant(value, missing = 'Date not recorded') {
-  const date = new Date(value || NaN);
-  return Number.isFinite(date.getTime()) ? instantFormat.format(date) : missing;
-}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import * as view from '../js/deal-timeline.js';
 import { prepareDealDetail } from '../js/local-deals-model.js';
-import { formatBusinessInstant } from '../js/business-date.js';
+import { sourceTime } from '../js/email-source-line.js';
 const { countdown, renderCriticalDates, calendarDay, updateCountdowns } = view;
 // Renderers read a detail that was prepared once, as the app does when it loads a deal.
 const dealTimeline = (d, n) => view.dealTimeline(prepareDealDetail(d), n);
@@ -209,9 +209,9 @@ test('rows with equal instants keep the order they arrived in', () => {
 });
 
 test('recorded instants display in Central time with the zone named', () => {
- assert.equal(formatBusinessInstant('2026-10-01T12:00:00Z'),'Oct 1, 2026, 7:00 AM CDT');
- assert.equal(formatBusinessInstant('2026-12-01T12:00:00Z'),'Dec 1, 2026, 6:00 AM CST');
- assert.equal(formatBusinessInstant(null),'Date not recorded');
+ assert.equal(sourceTime('2026-10-01T12:00:00Z', new Date('2026-10-30T12:00:00Z')),'Oct 1, 7:00 AM CDT');
+ assert.equal(sourceTime('2026-12-01T12:00:00Z', new Date('2027-01-01T12:00:00Z')),'Dec 1, 2026, 6:00 AM CST');
+ assert.equal(sourceTime(null),'Time unavailable');
  const html = renderDealUpdates({thread:[{id:'n',at:'2026-10-01T12:00:00Z',text:'Synthetic note'}]});
  assert.match(new JSDOM(html).window.document.querySelector('.deal-note time').textContent,/7:00 AM CDT$/);
 });
