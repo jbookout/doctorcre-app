@@ -199,3 +199,6 @@
 .home-email-activity > section .home-panel-head h2 { font-size: var(--font-size-2); }
 .home-email-activity > section h3 { font-size: var(--font-size-1); }
 .home-email-activity > section { margin-top: var(--space-5); }
+
+.home-call-task .work-card-title a.home-call-contact { max-width: 100%; }
+.home-call-task .home-call-contact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
