@@ -53,6 +53,8 @@ export function createFixtureDealStore(seed) {
  * @param {string} [opts.selfActor]
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
+const VERSION_CONFLICT = 'version_conflict';
+
 export async function createFixtureClient(opts = {}) {
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
@@ -166,7 +168,7 @@ export async function createFixtureClient(opts = {}) {
     }
     if (Number(baseVersion) !== Number(row.version)) {
       const error = new Error('fixture update-loop refused: version_conflict');
-      error.payload = { error: 'version_conflict', hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
+      error.payload = { error: VERSION_CONFLICT, hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
       throw error;
     }
   }
@@ -417,7 +419,7 @@ export async function createFixtureClient(opts = {}) {
   function guardWorkRequestVersion(verb, row, baseVersion) {
     if (!Number.isInteger(baseVersion)) refuse(verb, 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
     if (Number(baseVersion) !== Number(row.version)) {
-      refuse(verb, 'version_conflict', { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
+      refuse(verb, VERSION_CONFLICT, { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
     }
   }
 
@@ -1218,7 +1220,7 @@ export async function createFixtureClient(opts = {}) {
         if (!rows.length || rows.some(d => d.client_status !== 'prospect') || !rows.some(d => !isClosedDeal(d))) refuse('set-prospect-engagement-status', 'not_a_prospect');
         if (args.expected_actor && args.expected_actor !== selfActor) refuse('set-prospect-engagement-status', 'account_changed');
         if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) refuse('set-prospect-engagement-status', 'invalid_engagement_status');
-        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', 'version_conflict');
+        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', VERSION_CONFLICT);
         const client_version = args.base_version + 1;
         rows.forEach(d => Object.assign(d, { prospect_engagement_status: args.status, client_version }));
         return { ok:true, client_id:args.client_id, prospect_engagement_status:args.status, client_version };
@@ -1377,7 +1379,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('update-deal', 'missing_base_version', { hint: 'Re-read the deal and send the version it holds now.' });
         }
         if (Number(base_version) !== Number(row.version)) {
-          refuse('update-deal', 'version_conflict', { deal, resolution: 're-read the deal and decide from what it holds now' });
+          refuse('update-deal', VERSION_CONFLICT, { deal, resolution: 're-read the deal and decide from what it holds now' });
         }
         if ('outcome' in patch) {
           if (!DEAL_OUTCOMES.includes(patch.outcome)) {
@@ -1880,7 +1882,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('answer-work-request-for-joe', 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
         }
         if (Number(base_version) !== Number(card.version)) {
-          refuse('answer-work-request-for-joe', 'version_conflict', { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
+          refuse('answer-work-request-for-joe', VERSION_CONFLICT, { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
         }
         if (scope_confirmed !== true) refuse('answer-work-request-for-joe', 'scope_not_confirmed', { human_ref: ref });
         const text = String(answer_text ?? '').trim();
@@ -2164,7 +2166,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('set-notification-preference', 'notification_preference_timezone_unknown', { timezone });
         }
         if (!Number.isInteger(base_version) || base_version !== preference.version) {
-          refuse('set-notification-preference', 'version_conflict', { current_version: preference.version });
+          refuse('set-notification-preference', VERSION_CONFLICT, { current_version: preference.version });
         }
         if (typeof device_opt_in === 'boolean') preference.device_opt_in = device_opt_in;
         if (clear) {
@@ -2302,7 +2304,7 @@ export async function createFixtureClient(opts = {}) {
         { suggestion_id, base_version, choice, snoozed_until, work_ref });
       if (docSuggestionResults.has(idempotency_key))
         return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
-      if (row.version !== base_version) refuse('decide-doc-suggestion', 'version_conflict', { current: { ...row } });
+      if (row.version !== base_version) refuse('decide-doc-suggestion', VERSION_CONFLICT, { current: { ...row } });
       if (!['act','discuss','snooze','dismiss'].includes(choice)) refuse('decide-doc-suggestion', 'choice_invalid');
       if (choice === 'act') {
         const found = loops.filter(item => item.number === String(work_ref || '').replace(/^#/, '')
@@ -2329,7 +2331,7 @@ export async function createFixtureClient(opts = {}) {
         { suggestion_id, base_version, proposed_text, source_conversation_id, source_sequence });
       if (docSuggestionResults.has(idempotency_key))
         return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
-      if (row.version !== base_version) refuse('propose-doc-correction', 'version_conflict', { current: { ...row } });
+      if (row.version !== base_version) refuse('propose-doc-correction', VERSION_CONFLICT, { current: { ...row } });
       if (row.conversation_id !== source_conversation_id || row.source_sequence !== source_sequence)
         refuse('propose-doc-correction', 'source_scope_mismatch');
       if (!String(proposed_text || '').trim()) refuse('propose-doc-correction', 'correction_text_invalid');
@@ -2500,7 +2502,7 @@ export async function createFixtureClient(opts = {}) {
           refuse(verb, 'doc_conversation_no_change_requested', { conversation_id: id });
         }
         if (!Number.isInteger(base_version) || base_version !== row.version) {
-          refuse(verb, 'version_conflict', { conversation_id: id, current_version: row.version });
+          refuse(verb, VERSION_CONFLICT, { conversation_id: id, current_version: row.version });
         }
         if (name !== undefined) {
           // The PRIOR title, appended to an immutable history no verb reads back.
@@ -2565,7 +2567,16 @@ export async function createFixtureClient(opts = {}) {
       return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
     },
     async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
-    async readProgressBoard({board_id}={}){const {default:queueFixture}=await import('./progress-work-queue-fixture.js');return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:structuredClone(queueFixture)},questions:[]};},
+    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{}}},questions:[]};},
+    // Synthetic work-queue rows: one demo job per derived stage, shaped like the work-queue verb.
+    async workQueue(){
+      const job=(slice,j,stage,title,prs=[],extra={})=>({card_id:`WR901.S${slice}.J${j}`,work_request:'WR-000901',work_request_title:'Demo dashboard refresh',slice_ordinal:slice,j_number:j,priority:slice*10+j,executor:'codex',model:'demo-model',effort:'medium',card_title:title,description:`Demo ${title.toLowerCase()} work.`,created_at:nowIso(),stage,stale:false,prs,...extra});
+      const pr=(n,state,draft=false)=>({repo:'jbookout/doctorcre-app',number:n,url:`https://github.com/jbookout/doctorcre-app/pull/${n}`,title:`Demo PR ${n}`,draft,state,updated_at:nowIso(),card_id:`WR901.S1.J${n-100}.app#${n}`});
+      return {ok:true,stale_after_hours:24,github:[{repo:'jbookout/doctorcre-app',state:'ok',observed_at:nowIso(),truncated:false}],jobs:[
+        job(1,1,'review','Demo chart fix',[pr(101,'open')]),job(1,2,'build','Demo table work',[pr(102,'open',true)]),
+        job(1,3,'merged','Demo copy update',[pr(103,'merged')]),job(1,4,'closed','Demo retired idea',[pr(104,'closed')]),
+        job(2,1,'queued','Demo export check',[],{stale:true})]};
+    },
     // V2 C1: one demo row per unfinished-work kind the live census returns,
     // plus a captured Work Request and a detected incident for Triage. Shapes
     // follow unfinished-work.v1 (mcp-server/src/system-work-census.v5.js);
@@ -3031,7 +3042,7 @@ export async function createFixtureClient(opts = {}) {
   };
 
   let emailFixture;
-  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true }));
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([
     'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
     'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',

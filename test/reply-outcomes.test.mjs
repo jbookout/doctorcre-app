@@ -26,6 +26,12 @@ function setup(t, read = () => page(), selfActor = 'joe', pendingRead = waiting)
   return { dom, container, view, client, requests, async actor(value) { actor = value; await client.getBoard(); view.syncActor(); await tick(); } };
 }
 
+test('sent replies explain that sent is not a read receipt', async t => {
+  const { view, container } = setup(t);
+  await view.refresh();
+  assert.match(container.textContent, /Sent means your email app sent the reply\. It does not confirm recipient delivery or a read receipt\./);
+});
+
 test('sent replies labels all public failure reasons without rendering remote text as HTML', async t => {
   const reasons = {
     invalid_submission: 'The submitted reply was invalid.',

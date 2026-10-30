@@ -638,7 +638,7 @@ function hierarchyTasteFixture() {
 }
 
 for(const route of ['room','standalone'])for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`hierarchy occlusion journey ${route} ${width}px ${theme}`,async t=>{
- const path=route==='room'?'/control-room?mode=live&tab=boards&card=WR14.S2':'/control-room/progress/board/carr-v5?card=WR14.S2';
+ const path=route==='room'?'/control-room?mode=live&tab=boards&card=WR14.S2':'/control-room/progress/board/demo-project?card=WR14.S2';
  const snapshot=hierarchyTasteFixture();
  snapshot.hierarchy.slices['WR14.S2'].cards=['WR14.S2.J2.app#320','WR14.S2.J1.app#316','WR14.S2.J3.carr#1971'];
  for(const card of Object.values(snapshot.tasks)){

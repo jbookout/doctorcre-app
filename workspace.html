@@ -15,7 +15,7 @@
   <link rel="modulepreload" href="/js/boot-mode.js">
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/deal-items.css">
-  <link rel="preload" as="style" data-font-stylesheet href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
+  <link rel="preload" as="style" data-font-stylesheet="early" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
 
   <link rel="stylesheet" href="/css/workspace.css">
   <link rel="stylesheet" href="/css/home-dashboard.css">
@@ -50,8 +50,9 @@
     <section id="homeMeetingReviews" class="home-panel" aria-label="Meetings to confirm" hidden></section>
     <section id="homeCallOutcomes" class="home-panel call-outcomes" aria-label="Applied from the pipeline call" hidden></section>
     <section id="dealAttention" class="home-panel home-deals" aria-labelledby="dealAttentionTitle" aria-live="polite" aria-busy="true">
-      <header class="home-panel-head"><h2 id="dealAttentionTitle">Deals</h2><a id="homePrimaryAction" class="home-outline" href="/deals">Open deal room <span aria-hidden="true">↗</span></a></header>
+      <header class="home-panel-head"><h2 id="dealAttentionTitle">Deals</h2><a id="homePrimaryAction" class="home-plain-link" href="/deals">All deals</a></header>
       <div id="dealFlags" class="home-flags"><p class="home-empty">Updating…</p></div>
+      <footer aria-label="Deal counts"><p id="dealCounts" class="home-counts"><span>Active deals: <b>—</b></span> <span>In market: <b>—</b></span> <span>National accounts: <b>—</b></span></p></footer>
     </section>
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar</h2></header><p class="home-empty" role="status">Updating calendar…</p></section>
@@ -67,7 +68,6 @@
     </div>
 
     </div>
-    <footer class="home-footer" aria-label="Deal counts"><p id="dealCounts" class="home-counts"><span>Active deals: <b>—</b></span> <span>In market: <b>—</b></span> <span>National accounts: <b>—</b></span></p></footer>
   </main>
   <dialog id="homeDetail" class="home-detail" aria-labelledby="homeDetailTitle"><article id="homeDetailBody"></article></dialog>
   <script type="module" src="/js/workspace-command-center.js"></script>

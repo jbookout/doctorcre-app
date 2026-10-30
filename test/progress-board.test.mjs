@@ -24,7 +24,7 @@ function memoryStorage(initial = {}) {
   return { getItem: key => (data.has(key) ? data.get(key) : null), setItem: (key, value) => data.set(key, String(value)), data };
 }
 
-async function mount(read, { now = REF, storage = memoryStorage(), search = "?board=carr-v5" } = {}) {
+async function mount(read, { now = REF, storage = memoryStorage(), search = "?board=demo-project" } = {}) {
   const dom = new JSDOM(PAGE, { url: `https://app.doctorcre.com/progress-board${search}` });
   const { window } = dom;
   window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
@@ -131,7 +131,7 @@ test("every indicator the renderer emits has a legend entry, from the same const
   for (const executor of EXECUTORS) assert.ok(legendIds.has(`glyph-${executor.pool}`), executor.pool);
   for (const pulse of PULSES) assert.ok(legendIds.has(`pulse-${pulse.id}`), pulse.id);
   for (const read of [FULL.project, FULL.all_repos]) {
-    const { $$ } = await mount(read, { search: `?board=${read.snapshot.board_id}` });
+    const { $$ } = await mount(read, { search: `?board=${read === FULL.project ? 'demo-project' : read.snapshot.board_id}` });
     const shownLegend = new Set($$("#legend-body [data-legend-id]").map(node => node.dataset.legendId));
     const emitted = new Set($$("[data-indicators]").flatMap(node => node.dataset.indicators.split(" ")));
     assert.ok(emitted.size > 8, "the fixture exercises many indicators");

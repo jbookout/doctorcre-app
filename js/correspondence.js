@@ -1,16 +1,14 @@
-import { compareInstants } from './change-receipts.mjs';
+import { newestFirst } from './change-receipts.mjs';
+import { sourceTime } from './email-source-line.js';
 import { correspondenceState, meetingEvidence, readinessRequest, readinessState, threadReferences, unavailableEvidence } from './correspondence-model.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const emailWhen = value => new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
-const when = value => new Date(value).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
 function evidenceGroup(title, state) {
   const group = title === 'Threads' ? 'threads' : 'meetings';
   if (state.state === 'refused') return `<div class="evidence-group" data-evidence-group="${group}" data-state="refused"><h4>${title} unavailable</h4><a href="/auth/login">Sign in</a></div>`;
   if (state.state !== 'ready') return `<div class="evidence-group" data-evidence-group="${group}" data-state="${esc(state.state)}"><h4>${title} ${state.state === 'loading' ? 'loading…' : 'unavailable'}</h4>${state.state === 'loading' ? '' : '<button type="button" data-evidence-retry>Retry evidence</button>'}</div>`;
   if (!state.items?.length) return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><p>No linked evidence</p></div>`;
-  const items = [...state.items].sort((a, b) => compareInstants(a.when, b.when));
-  return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${items.map(item => `<li class="evidence-item" data-kind="${item.kind === 'email-thread' ? 'thread' : esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(item.kind === 'email-thread' ? emailWhen(item.when) : when(item.when))}</time></summary><p>${item.kind === 'thread' || item.kind === 'email-thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
+  return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${state.items.map(item => `<li class="evidence-item" data-kind="${item.kind === 'email-thread' ? 'thread' : esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(item.kind === 'thread' ? 'Read ' : '')}${esc(sourceTime(item.when))}</time></summary><p>${item.kind === 'thread' || item.kind === 'email-thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
 }
 export function renderEvidence(view = {}) {
   const groups = [['Threads',view.threads],['Meetings',view.meetings]].filter(([,state]) => state?.state);
@@ -24,7 +22,7 @@ async function boundedRead(read, timeoutMs) {
 }
 export async function loadEvidence(client, detail = {}, { timeoutMs = 8000 } = {}) {
   if (Array.isArray(detail.email_threads)) {
-    const items = detail.email_threads.map(row => ({ kind: 'email-thread', title: row.subject || '(No subject)', when: row.latest_message_at }));
+    const items = newestFirst(detail.email_threads.map(row => ({ kind: 'email-thread', title: row.subject || '(No subject)', when: row.latest_message_at })), item => item.when);
     return { threads: { state: 'ready', count: items.length, items }, meetings: meetingEvidence(detail.activities) };
   }
   try {
@@ -34,7 +32,7 @@ export async function loadEvidence(client, detail = {}, { timeoutMs = 8000 } = {
     // THIS deal; native ids are never inferred from names, note ids or deal ids.
     const results = await Promise.all(references.map(async identity => correspondenceState(
       await boundedRead(() => client.readCorrespondenceThread(identity), timeoutMs), identity)));
-    const items = results.flatMap(result => result.items);
+    const items = newestFirst(results.flatMap(result => result.items), item => item.when);
     const failed = results.some(result => result.state !== 'ready');
     const threads = !complete ? unavailableEvidence('thread_coverage_unavailable')
       : !references.length ? unavailableEvidence(readiness.reason === 'adapter_unavailable' ? readiness.reason : 'native_identity_unavailable')

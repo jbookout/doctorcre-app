@@ -1,6 +1,6 @@
 import { PHASE_BY_SLUG } from './client.js';
 
-export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent, replyDrafts = false, filingProposals = false }) {
+export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent, replyDrafts = false, filingProposals = false, nonDealProposals = false }) {
   const digest = async value => `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
   const fail = error => { throw Object.assign(Error(error), { payload: { error } }); };
   const phaseDeal = seedDeals.find(deal => deal.phase === 'Research') || seedDeals[1];
@@ -20,14 +20,29 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       deal: index ? null : stepDeal.id, deal_name: index ? null : stepDeal.name, proposed_matter: index ? 'Possible new demo practice' : null,
       sender_role: 'client', confirm_verb: 'confirm-email-filing' });
   }
+  if (nonDealProposals && rows[0]) for (const [index, subject_type] of ['client','lead','vendor'].entries()) {
+    rows.push({ ...structuredClone(rows[0]), id: `10000000-0000-4000-8000-00000000002${index}`,
+      deal: null, deal_name: null, subject_type, subject_id: `40000000-0000-4000-8000-00000000000${index}`,
+      subject_name: `Demo ${subject_type} contact`, current_action: null,
+      source: { ...structuredClone(rows[0].source), activity_id: `30000000-0000-4000-8000-00000000002${index}` } });
+  }
   const receipts = new Map();
   async function preview(args, kind) {
-    const row = rows.find(item => item.deal === args.deal && item.source.activity_id === args.activity_id && item.kind === kind);
+    const row = rows.find(item => item.deal === (args.deal ?? null) && item.source.activity_id === args.activity_id && item.kind === kind);
     if (!row || row.source.evidence_quote !== args.evidence_quote) fail('email_evidence_not_found');
     if (['file_to_deal', 'possible_new_deal'].includes(kind)) {
       const value = { contract: 'email-filing.v1', proposal_id: row.id, kind, deal: row.deal, activity_id: row.source.activity_id,
         evidence_quote: row.source.evidence_quote, sender_role: row.sender_role, sender: { name: 'Demo client', party_id: 'demo-contact' },
         new_people: [], text: row.proposed_matter, requires_confirmation: true };
+      return { ...value, proposal_digest: await digest(value) };
+    }
+    if (row.deal === null && kind === 'next_step') {
+      const value = { contract: 'email-next-step.v1', status: 'proposed', deal: null, deal_name: null,
+        subject_type: row.subject_type, subject_id: row.subject_id, subject_name: row.subject_name,
+        text: args.text, next_date: args.next_date, owner: args.owner || 'joe',
+        current_next_step: row.current_action?.description ?? null, current_next_date: row.current_action?.due_date ?? null,
+        current_owner_actions: row.current_action ? [row.current_action] : [],
+        evidence_quote: args.evidence_quote, source: { activity_id: row.source.activity_id }, requires_confirmation: true };
       return { ...value, proposal_digest: await digest(value) };
     }
     const deal = deals.get(row.deal);
@@ -46,10 +61,11 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
     const shown = await preview(args, kind);
     if (shown.proposal_digest !== args.proposal_digest) fail(kind === 'next_step' ? 'email_next_step_proposal_stale' : 'email_deal_proposal_stale');
-    const row = rows.find(item => item.deal === args.deal && item.kind === kind && item.source.activity_id === args.activity_id);
+    const row = rows.find(item => item.deal === (args.deal ?? null) && item.kind === kind && item.source.activity_id === args.activity_id);
     if (row.status === 'confirmed') fail('email_proposal_not_pending');
     if (row.kind === 'next_step') {
-      if (shown.owner === 'joe') await client.setNextStep({ deal: row.deal, text: shown.text, next_date: shown.next_date, base_version: shown.base_version, idempotency_key: args.idempotency_key });
+      if (row.deal === null) row.current_action = { description: shown.text, due_date: shown.next_date, owner: shown.owner };
+      else if (shown.owner === 'joe') await client.setNextStep({ deal: row.deal, text: shown.text, next_date: shown.next_date, base_version: shown.base_version, idempotency_key: args.idempotency_key });
       else {
         const deal = deals.get(row.deal);
         deal.email_actions = [{ id: row.id, description: shown.text, due_on: shown.next_date, owner: 'dell', status: 'open', hold_until: null }];
@@ -66,7 +82,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
   }
   return {
-    async listEmailProposals({ deal, limit, cursor, mode, status } = {}) {
+    async listEmailProposals({ deal, limit, cursor, mode, status, include_non_deal = false } = {}) {
       if (mode === 'recent_outcomes') {
         if (status !== undefined || limit > 50) fail('email_outcomes_arguments_invalid');
         if (cursor) fail('email_proposals_cursor_invalid');
@@ -75,7 +91,8 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       const proposals = [];
       const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
       if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
-      const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!deal || item.deal === deal));
+      const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!deal || item.deal === deal)
+        && (include_non_deal || item.kind !== 'next_step' || item.deal !== null));
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
         if (row.kind === 'reply_draft') { proposals.push(structuredClone({ ...item, status })); continue; }

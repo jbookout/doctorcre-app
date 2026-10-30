@@ -288,3 +288,47 @@ test('session loss during the email command download prevents a late confirmatio
   assert.deepEqual(writes, []);
   assert.equal(await card.locator('article').count(), 0);
 });
+
+for (const [subject_type,width] of [['client',1440],['lead',390],['vendor',390]]) {
+  test(`Home confirms a non-deal ${subject_type} at ${width}px through the live adapter`, async t => {
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    t.after(() => page.close());
+    await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `non-deal-${subject_type}`, viewer: 'joe', reset: true } });
+    await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+    const source = { activity_id: '30000000-0000-4000-8000-000000000099', evidence_quote: 'Please send the revised plan by November 3.',
+      sender: 'Dana Demo', subject: 'Demo contact follow-up', occurred_at: '2026-10-26T12:00:00Z' };
+    const preview = { contract: 'email-next-step.v1', status: 'proposed', deal: null, deal_name: null,
+      subject_type, subject_id: '40000000-0000-4000-8000-000000000099', subject_name: 'Demo contact',
+      text: 'Send the revised plan', next_date: '2026-11-03', owner: 'joe', current_next_step: 'Call Dana Demo',
+      current_next_date: '2026-11-01', source, evidence_quote: source.evidence_quote,
+      proposal_digest: `sha256:${'a'.repeat(64)}`, requires_confirmation: true };
+    const row = { id: '10000000-0000-4000-8000-000000000099', version: 1, kind: 'next_step', deal: null, deal_name: null,
+      subject_type, subject_id: preview.subject_id, subject_name: preview.subject_name, source, preview,
+      confirm_verb: 'confirm-email-next-step', preview_error: null, confidence: 0.9, suspected_instruction: null };
+    const writes = [];
+    await page.route('**/mcp', async route => {
+      const rpc = route.request().postDataJSON(), { name, arguments: args } = rpc.params;
+      let result;
+      if (name === 'list-email-proposals' && !args.mode) {
+        assert.equal(args.include_non_deal, true);
+        result = { schema_version: 'email-proposals.v1', proposals: [row], send: false, more: false, next_cursor: null };
+      } else if (name === 'preview-email-next-step') result = preview;
+      else if (name === 'confirm-email-next-step') { writes.push(args); result = { ...preview, status: 'confirmed', requires_confirmation: false }; }
+      else return route.continue();
+      return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
+    });
+    await page.goto(`${origin}/?mode=live`);
+    const card = page.locator('#homeEmailFollowups');
+    await card.getByText('Demo contact follow-up', { exact: true }).waitFor();
+    assert.match(await card.innerText(), new RegExp(`${subject_type[0].toUpperCase()+subject_type.slice(1)} · Demo contact`));
+    await card.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await card.getByText(`Joe confirms this change to the ${subject_type}.`, { exact: true }).waitFor();
+    await card.screenshot({ path: `out/test-artifacts/email-followups/non-deal-${subject_type}-${width}.png`, animations: 'disabled' });
+    await card.getByRole('button', { name: 'Confirm change', exact: true }).click();
+    await card.getByText('Confirmed.', { exact: true }).waitFor();
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].deal, null);
+    assert.equal(writes[0].activity_id, source.activity_id);
+    assert.equal(writes[0].proposal_digest, preview.proposal_digest);
+  });
+}

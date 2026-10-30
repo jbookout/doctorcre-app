@@ -235,6 +235,17 @@ export function compareInstants(a, b) {
 }
 
 /**
+ * Newest first on the instant alone, including sub-millisecond precision.
+ * Rows with equal instants keep the order the record layer returned them in
+ * (the sort is stable): inventing an id-based tie-break would claim an
+ * ordering the server never made. An instant that cannot be placed sorts last.
+ * Call this once, where a deal's detail is loaded; renderers must not re-sort.
+ */
+export function newestFirst(rows, instantOf) {
+  return [...rows].sort((a, b) => compareInstants(instantOf(a), instantOf(b)));
+}
+
+/**
  * Newest first, on the same (recorded_at, id) key the server orders and
  * paginates by: instant, then the precision below a millisecond, then the
  * event id — the server's own tie-break, reversed. A timestamp that cannot be

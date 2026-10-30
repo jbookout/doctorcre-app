@@ -9,9 +9,9 @@ export function relativeAge(occurredAt, now = new Date()) {
     : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
 }
 
-export function sourceTime(occurredAt, now = new Date()) {
+export function sourceTime(occurredAt, now = new Date(), missing = 'Time unavailable') {
   const sent = parse(occurredAt);
-  if (!sent) return 'Time unavailable';
+  if (!sent) return missing;
   const year = date => date.toLocaleDateString('en-US', { timeZone: BUSINESS_TIME_ZONE, year: 'numeric' });
   return sent.toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric',
     ...(year(sent) === year(now) ? {} : { year: 'numeric' }), hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });

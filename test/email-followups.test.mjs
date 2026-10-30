@@ -257,14 +257,14 @@ test('Home pages pending proposals and keeps the first page when loading more fa
       : { ...response([first]), more: true, next_cursor: first.id };
   } });
   await view.refresh();
-  assert.deepEqual(calls[0], { limit: 50 });
+  assert.deepEqual(calls[0], { limit: 50, include_non_deal: true });
   await action('Load more email follow-ups');
   assert.match(container.textContent, /Demo Harbor expansion/);
   assert.match(container.textContent, /Could not load/);
   fail = false;
   await action('Retry email follow-ups');
   assert.match(container.textContent, /Demo second deal/);
-  assert.deepEqual(calls.at(-1), { limit: 50, cursor: first.id });
+  assert.deepEqual(calls.at(-1), { limit: 50, include_non_deal: true, cursor: first.id });
   assert.doesNotMatch(container.textContent, /Load more email follow-ups/);
 });
 
@@ -851,4 +851,55 @@ test('email refresh keeps the loaded cards without inserting a loading skeleton'
   release(response([proposal()]));
   await pending;
   view.dispose();
+});
+
+for (const subjectType of ['client','lead','vendor']) test(`Home reviews ${subjectType} next steps without requiring a deal`, async () => {
+  const row = proposal();
+  Object.assign(row, { deal: null, deal_name: null, subject_type: subjectType,
+    subject_id: '40000000-0000-4000-8000-000000000001', subject_name: 'Demo contact' });
+  Object.assign(row.preview, { deal: null, deal_name: null, subject_type: row.subject_type,
+    subject_id: row.subject_id, subject_name: row.subject_name });
+  const calls = [];
+  const { container, view, action } = setup({
+    listEmailProposals: async args => { calls.push(['list',args]); return response([row]); },
+    previewEmailNextStep: async args => { calls.push(['preview',args]); return row.preview; },
+    confirmEmailNextStep: async args => { calls.push(['confirm',args]); return { ...row.preview, status: 'confirmed', requires_confirmation: false }; },
+  });
+  await view.refresh();
+  assert.match(container.textContent, /Demo contact/);
+  assert.doesNotMatch(container.textContent, /Possible new deal|Could not load/);
+  assert.equal(calls[0][1].include_non_deal, true);
+  await action('Confirm');
+  assert.match(container.textContent, new RegExp(`change to the ${subjectType}`));
+  assert.match(container.textContent, /Call the landlord/);
+  await action('Confirm change');
+  assert.equal(calls.at(-1)[1].deal, null);
+  assert.equal(calls.at(-1)[1].activity_id, row.source.activity_id);
+  assert.equal(calls.at(-1)[1].proposal_digest, digest);
+  assert.match(container.textContent, /Confirmed/);
+});
+
+test('blocked non-deal evidence stays readable and dismissible without a confirm control', async () => {
+  const row = { ...proposal(), deal: null, deal_name: null, preview: null,
+    subject_type: null, subject_id: null, subject_name: null, preview_error: 'email_next_step_evidence_not_found' };
+  const writes = [];
+  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
+  await view.refresh();
+  assert.match(container.textContent, /Please send the revised plan/);
+  assert.equal(container.querySelector('[data-email-action="preview"]'), null);
+  await action('Not now');
+  assert.equal(writes[0].base_version, row.version);
+  assert.equal(writes[0].reason, 'Not now');
+  assert.match(container.textContent, /Dismissed/);
+});
+
+test('a non-deal preview for a different contact is rejected before offering confirmation', async () => {
+  const row = proposal();
+  Object.assign(row, { deal: null, deal_name: null, subject_type: 'vendor', subject_id: 'vendor-one', subject_name: 'Demo vendor' });
+  Object.assign(row.preview, { deal: null, subject_type: 'vendor', subject_id: 'vendor-two', subject_name: 'Demo vendor' });
+  const { container, view } = setup({ listEmailProposals: async () => response([row]) });
+  await view.refresh();
+  assert.match(container.textContent, /Could not load email follow-ups/);
+  assert.equal(container.querySelector('[data-email-action="preview"]'), null);
 });

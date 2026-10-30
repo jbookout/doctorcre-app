@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -143,6 +143,7 @@
     "update-lead",
     "update-loop",
     "update-vendor",
+    "work-queue",
     "work-request-card"
   ],
   "http_surfaces": [
@@ -1557,6 +1558,16 @@
       "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
       "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
       "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
+    },
+    "non_deal_next_steps": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "ee92d2767bdbac621cab3416e22026d5d5c34357",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2724"
+      },
+      "read": "Home calls list-email-proposals with include_non_deal=true. Non-deal next_step rows have deal=null and subject_type, subject_id and subject_name matching their preview. Deal pages keep their existing deal filter.",
+      "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews remain dismissible.",
+      "deployment_order": "Merge and verify the pinned server producer before merging this consumer. Do not auto-merge this app change."
     }
   },
   "email_thread_filings": {
@@ -1581,6 +1592,17 @@
     },
     "undo": "undo-email-thread-filing {event_id,idempotency_key} with a new UUID key per attempt. Refusals such as email_thread_filing_changed leave the filing intact and are shown, never retried.",
     "deployment_order": "The app must not merge before the producer PR is deployed."
+  },
+  "work_queue": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "55cbf1b302b4fc2c9511246a0639fa4919940558",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2547"
+    },
+    "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|build|review|merged|closed), stale and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr}.",
+    "review": "Stage, PR links and staleness are derived by the server from Card lines on GitHub PRs; the page never recomputes them. A github source that is not ok means its PR stages may be behind and the page says so.",
+    "refresh": "One work-queue call per 60-second refresh through mountAutoRefresh, none while hidden, none after 5 idle minutes. The published carr-v5 snapshot is read once for costs and never polled.",
+    "deployment_order": "Hold auto-merge until server PR #2547 is merged and the work-queue verb is live in production."
   },
   "vendor_directory_people": {
     "schema": "carr-vendor-directory.v2",

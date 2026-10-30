@@ -8,11 +8,20 @@ import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
-import workQueue from '../js/progress-work-queue-fixture.js';
+import { QUEUE_STAGES } from '../js/work-queue-board-model.js';
 import orchestratorSequence from './fixtures/progress-orchestrator.json' with {type:'json'};
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, assetRoot, autoMount = true, timezoneId, setupPage } = {}) {
+// Synthetic work-queue jobs, shaped like the carr-mcp work-queue verb.
+const queueJob = (card_id, stage, extra = {}) => ({ card_id, work_request: `WR-${card_id.match(/^WR(\d+)/)[1].padStart(6, '0')}`,
+  work_request_title: 'Synthetic board rebuild', slice_ordinal: 1, j_number: 1, priority: 1, executor: 'codex', model: 'synthetic-model',
+  effort: 'medium', card_title: 'Synthetic queue work', description: 'Build the synthetic queue card.', created_at: '2026-10-27T12:00:00Z',
+  stage, stale: false, prs: [], ...extra });
+const queueRead = (jobs, github = [{ repo: 'jbookout/doctorcre-app', state: 'ok', observed_at: '2026-10-27T12:00:00Z', truncated: false }]) =>
+  ({ ok: true, stale_after_hours: 24, jobs, github });
+const defaultQueue = queueRead([queueJob('WR14.S1.J1', 'review', { prs: [{ repo: 'jbookout/doctorcre-app', number: 12, url: 'https://github.com/jbookout/doctorcre-app/pull/12',
+  title: 'Synthetic PR', draft: false, state: 'open', updated_at: '2026-10-27T12:00:00Z', card_id: 'WR14.S1.J1.app#12' }] })]);
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], queue = defaultQueue, control, width = 390, height = 900, costData, snapshotData, assetRoot, autoMount = true, timezoneId, setupPage } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, ...(timezoneId ? { timezoneId } : {}) });
   const context = page.context();
@@ -35,6 +44,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
             build: { title: `${board.title} task`, status: 'running', updated_at: new Date().toISOString() },
           } } }, questions: [] };
       }
+      if (rpc.name === 'work-queue') payload = queue;
       if (rpc.name === 'unfinished-work') {
         if (!unfinished) { payload = { error: 'unknown_tool', tool: 'unfinished-work' }; isError = true; }
         else {
@@ -81,7 +91,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   if (!target.searchParams.has('mode')) target.searchParams.set('mode', 'live');
   await setupPage?.(page);
   await page.goto(target.href);
-  return { page, context, calls, errors, setSnapshot: value => { snapshotData = value; }, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
+  return { page, context, calls, errors, setSnapshot: value => { snapshotData = value; }, setQueue: value => { queue = value; }, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
 
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
@@ -93,13 +103,13 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   const opened = target === '_blank' ? context.waitForEvent('page') : null;
   await link.click();
   const board = opened ? await opened : page;
-  await board.locator('#board-title').filter({ hasText: 'System delivery' }).waitFor();
-  assert.equal(await board.locator('#board-stages [data-card-id="build"]').count(), 1, 'published task remains visible');
+  await board.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
+  assert.equal(await board.locator('#board-title').textContent(), 'System Job Board');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
-  assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)), ['build']);
+  assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)),
+    QUEUE_STAGES.map(stage => stage.id), 'every stage renders, empty or not');
   assert.equal(await board.locator('.directory-panel').isVisible(), true, 'the canonical board retains its project selector');
   if (!unfinished) {
-    await board.locator('[data-work-view="history"]').click();
     assert.match(await board.locator('#system-work-error').textContent(), /System work updates unavailable/);
     assert.equal(await board.locator('#system-work-retry').isVisible(), true);
   }
@@ -108,7 +118,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
 
 for (const id of ['carr-v5', 'demo-project']) test(`legacy query redirects to the ${id} board page`, async t => {
   const { page, errors } = await open(t, { path: `/control-room/progress?board=${id}&view=flow` });
-  await page.locator('#board-stages [data-card-id="build"]').waitFor();
+  await page.locator(`#board-stages [data-card-id="${id === 'carr-v5' ? 'WR14.S1.J1' : 'build'}"]`).waitFor();
   assert.equal(new URL(page.url()).pathname, `/control-room/progress/board/${id}`);
   assert.equal(new URL(page.url()).search, '?view=flow&mode=live');
   assert.deepEqual(errors, []);
@@ -132,6 +142,7 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+const projectPath = '/control-room/progress/board/demo-project';
 async function hierarchyEvidence(page, state, width, theme) {
   await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
   if (!process.env.HIERARCHY_EVIDENCE_DIR) return;
@@ -141,7 +152,7 @@ async function hierarchyEvidence(page, state, width, theme) {
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`hierarchy keeps one heading when shell arrives after board at ${width}px ${theme}`, async t => {
-    const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy,
+    const { page, errors } = await open(t, { width, path: projectPath, snapshotData: hierarchy,
       setupPage: page => page.route('**/js/app-shell.js', async route => {
         await page.waitForFunction(() => document.querySelector('[data-hierarchy-id="WR14"]'));
         await route.continue();
@@ -157,7 +168,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   });
 
   test(`hierarchy taste has one heading and reaches work promptly at ${width}px ${theme}`, async t => {
-    const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy });
+    const { page, errors } = await open(t, { width, path: projectPath, snapshotData: hierarchy });
     const first = page.locator('[data-hierarchy-id="WR14"]');
     await first.waitFor();
     await hierarchyEvidence(page, 'requests', width, theme);
@@ -172,37 +183,13 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.deepEqual(errors, []);
   });
 
-  test(`hierarchy taste holds row skeletons while the census resolves first at ${width}px ${theme}`, async t => {
-    let release;
-    const held = new Promise(resolve => { release = resolve; });
-    t.after(() => release());
-    const { page, errors } = await open(t, { width, path: '/control-room?mode=live&tab=boards',
-      snapshotData: hierarchy, rows: Array.from({ length: 17 }, (_, index) => workRow(`pending-${index}`)),
-      control: async (route, rpc) => {
-        if (rpc.name !== 'read-progress-board') return false;
-        await held; await route.continue(); return true;
-      } });
-    await page.waitForFunction(() => document.querySelector('#system-work-coverage')?.textContent.length > 0);
-    await hierarchyEvidence(page, 'loading', width, theme);
-    assert.equal(await page.locator('#board-stages [data-card-id]').count(), 0, 'census cards do not replace the loading hierarchy');
-    const skeletons = page.locator('#board-stages .hierarchy-skeleton');
-    assert.equal(await skeletons.count(), 3, 'a short set of row-shaped skeletons holds the board frame');
-    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), 'true');
-    const skeletonY = (await skeletons.first().boundingBox()).y;
-    release();
-    await page.locator('[data-hierarchy-id="WR14"]').waitFor();
-    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), null);
-    assert.ok(Math.abs((await page.locator('[data-hierarchy-id="WR14"]').boundingBox()).y - skeletonY) < 48, 'the first row keeps its place after loading');
-    assert.deepEqual(errors, []);
-  });
-
-  for (const path of [systemPath, '/control-room?mode=live&tab=boards']) {
+  for (const path of [projectPath]) {
     test(`hierarchy taste explains completed levels without empty panels at ${width}px ${theme} ${path}`, async t => {
       const { page, errors } = await open(t, { width, path, snapshotData: hierarchy });
       await page.locator('[data-hierarchy-id="WR14"] > button').click();
       await page.locator('#hierarchy-completed > details > summary').click();
       await page.locator('[data-hierarchy-id="WR14.S1"] > button').click();
-      await hierarchyEvidence(page, path === systemPath ? 'empty-page' : 'empty-room', width, theme);
+      await hierarchyEvidence(page, 'empty-page', width, theme);
       assert.match(await page.locator('#board-stages').textContent(), /All pull requests in this slice are completed\./);
       for (const id of ['board-questions', 'board-deliverables', 'board-decisions', 'board-notes']) {
         assert.equal(await page.locator(`#${id}`).isVisible(), false, `${id} has no content to show`);
@@ -284,7 +271,6 @@ for (const width of [320, 390]) test(`all cost days have an equivalent phone tou
 
 test('cost panel has day popup, month history, provider selection and measured reduced motion on mobile', async t => {
   const { page, errors } = await open(t, { path: systemPath, costData: costs });
-  await page.locator('[data-work-view="history"]').click();
   const panel = page.locator('#board-costs');
   await panel.waitFor();
   assert.match(await panel.textContent(), /Coverage incomplete/);
@@ -316,7 +302,6 @@ test('cost panel has day popup, month history, provider selection and measured r
 
 test('independent census diagram uses the same stage colors as the published board legend', async t => {
   const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
-  await page.locator('[data-work-view="history"]').click();
   await page.locator('#system-work-flow .flow-stage').first().waitFor();
   for (const stage of STAGES) {
     // Stage colours are token roles, so the expected paint is whatever that role resolves to here.
@@ -329,14 +314,16 @@ test('independent census diagram uses the same stage colors as the published boa
   assert.deepEqual(errors, []);
 });
 async function panelTasks(page, ids) {
-  const history = page.locator('[data-work-view="history"]');
-  if (await history.getAttribute('aria-pressed') !== 'true') await history.click();
   await page.waitForFunction(expected => {
     const actual = [...document.querySelectorAll('#system-work-flow [data-task-id]')].map(n => n.dataset.taskId).sort();
     return JSON.stringify(actual) === JSON.stringify(expected.slice().sort());
   }, ids.map(id => `loop:${id}`));
   assert.equal(await page.locator('#system-work-count').textContent(), `${ids.length} TASK${ids.length === 1 ? '' : 'S'}`);
 }
+
+// The system board's census and snapshot have no clock of their own; the Refresh control reads them.
+// A programmatic click keeps keyboard focus where the person left it.
+const manualRefresh = page => page.evaluate(() => document.getElementById('board-retry').click());
 
 for (const denied of ['unfinished-work', 'read-progress-board']) {
   for (const order of ['denial-first', 'success-first']) test(`${denied} sign-out clears both flows (${order}) and recovers`, async t => {
@@ -350,36 +337,36 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
       else await route.continue();
       return true;
     } });
-    await page.locator('#board-stages [data-card-id="build"]').waitFor();
+    await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
     await panelTasks(page, ['open']);
     const original = page.url();
     active = true;
     const success = order === 'success-first'
       ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.status() === 200) : null;
-    await page.clock.runFor(60_000);
+    await manualRefresh(page);
     if (order === 'success-first') await success;
     else await page.waitForURL('**/public-shell/session-ended.html*');
     release();
     await page.waitForURL('**/public-shell/session-ended.html*');
     assert.equal(await page.locator('#board-stages [data-card-id], #board-completed .completed-card, #system-work-flow [data-task-id], .work-card').count(), 0);
-    assert.doesNotMatch(await page.locator('body').textContent(), /Synthetic build/);
+    assert.doesNotMatch(await page.locator('body').textContent(), /Synthetic queue work/);
     active = false;
     await page.goto(original);
-    await page.locator('#board-stages [data-card-id="build"]').waitFor();
+    await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
     await panelTasks(page, ['open']);
     assert.equal(await page.locator('#board-sign-in').isVisible(), false);
     assert.deepEqual(errors, []);
   });
 }
 
-test('Library pipeline membership and count follow mode, filters, and automatic refresh', async t => {
+test('Library pipeline membership and count follow mode, filters, and manual refresh', async t => {
   const { page, setRows, errors } = await open(t, { path: systemPath, rows: [workRow('open'), workRow('done', true)] });
   await panelTasks(page, ['open', 'done']);
   await page.locator('#live-library').click();
   await page.locator('#system-work-cards [data-work-id="done"]').waitFor();
   await panelTasks(page, ['done']);
   setRows([workRow('open'), ...Array.from({ length: 12 }, (_, i) => workRow(`done-${i}`, true))]);
-  await page.clock.runFor(60_000);
+  await manualRefresh(page);
   await panelTasks(page, Array.from({ length: 12 }, (_, i) => `done-${i}`));
   await page.locator('[name="text"]').fill('done-11');
   await page.locator('#system-work-filters').getByRole('button', { name: 'Search', exact: true }).click();
@@ -402,7 +389,6 @@ test('Library can render before the first unfinished read and rejects its late r
       if (rpc.name !== 'unfinished-work' || rpc.arguments.live_library) return false;
       await held; await route.continue(); return true;
     } });
-  await page.locator('[data-work-view="history"]').click();
   await page.locator('#live-library').click();
   await panelTasks(page, ['done']);
   release();
@@ -418,26 +404,26 @@ for (const failed of ['unfinished-work', 'read-progress-board']) test(`${failed}
       if (!active || rpc.name !== failed) return false;
       await route.fulfill({ status: 503, body: '{}' }); return true;
     } });
-  await page.locator('#board-stages [data-card-id="build"]').waitFor();
+  await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
   await panelTasks(page, ['open']);
   active = true;
-  await page.clock.runFor(60_000);
+  await manualRefresh(page);
   await page.locator(failed === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
-  assert.equal(await page.locator('#board-stages [data-card-id="build"]').count(), 1);
+  assert.equal(await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').count(), 1);
   await panelTasks(page, ['open']);
   assert.equal(await page.locator('#board-sign-in').isVisible(), false);
   active = false;
-  await page.clock.runFor(60_000);
+  await manualRefresh(page);
   await page.waitForFunction(() => document.querySelector('#board-error').hidden && document.querySelector('#system-work-error').hidden);
   assert.deepEqual(errors, []);
 });
 
-for (const empty of [false, true]) test(`automatic refresh keeps keyboard position when a census task is removed (${empty ? 'empty' : 'remaining'} result)`, async t => {
+for (const empty of [false, true]) test(`a refresh keeps keyboard position when a census task is removed (${empty ? 'empty' : 'remaining'} result)`, async t => {
   const { page, setRows, errors } = await open(t, { path: systemPath, rows: [workRow('remove'), workRow('keep')] });
   await panelTasks(page, ['remove', 'keep']);
   await page.locator('#system-work-flow [data-task-id="loop:remove"]').focus();
   setRows(empty ? [] : [workRow('keep')]);
-  await page.clock.runFor(60_000);
+  await manualRefresh(page);
   await panelTasks(page, empty ? [] : ['keep']);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'system-work-title');
   assert.deepEqual(errors, []);
@@ -537,7 +523,7 @@ for (const width of [390, 1440]) {
 
 
 for (const width of [390, 1440]) test(`Work Request drill-down works in the rendered page at ${width}px`, async t => {
-  const { page, errors } = await open(t, {width, path:'/control-room/progress/board/carr-v5', snapshotData:hierarchy});
+  const { page, errors } = await open(t, {width, path:projectPath, snapshotData:hierarchy});
   const card = id => page.locator(`[data-hierarchy-id="${id}"]`);
   await card('WR14').getByRole('button', {name:'Board cleanup'}).click();
   await card('WR14.S2').getByRole('button', {name:'Board navigation'}).click();
@@ -561,69 +547,113 @@ for (const width of [390, 1440]) test(`Work Request drill-down works in the rend
 });
 
 
-for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
-  test(`living queue preserves focus, scroll and expanded detail at ${width}px in ${theme}`, async t => {
-    const { page, errors, setSnapshot } = await open(t, { width, timezoneId: 'America/Chicago',
-      path: '/control-room/progress/board/carr-v5?card=WR14.S1.J1', snapshotData: structuredClone(workQueue) });
-    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-    const job = page.locator('[data-queue-id="WR14.S1.J1"]');
-    await job.locator('> summary').waitFor();
-    assert.equal(await job.getAttribute('open'), '');
-    for (const id of ['board-questions', 'board-blocked', 'board-ledger', 'board-deliverables', 'board-decisions', 'board-notes'])
-      assert.equal(await page.locator(`#${id}`).evaluate(el => el.closest('.panel').hidden), true, `${id} stays hidden on the queue`);
-    const eventAt = workQueue.work_queue.history.find(event => event.card_id === 'WR14.S1.J1').at;
-    const eventText = await job.locator('.queue-log li').first().textContent();
-    assert.equal(eventText.startsWith(eventAt), false, 'event history does not expose the raw timestamp');
-    assert.match(eventText, /Oct 19, \d{1,2}:00 AM/, 'event history uses a compact local timestamp');
-    await job.locator('> summary').focus();
-    await page.keyboard.press('Enter');
-    assert.equal(await job.getAttribute('open'), null, 'keyboard collapses job');
-    await page.keyboard.press('Enter');
-    assert.equal(await job.getAttribute('open'), '', 'keyboard expands job');
-    await job.locator('> summary').scrollIntoViewIfNeeded();
-    const scroll = await job.evaluate(node => node.closest('.app-layout-center').scrollTop);
-    assert.ok(scroll > 0, 'the job is scrolled into the board viewport');
-    const changed = structuredClone(workQueue);
-    changed.work_queue.board.order.reverse();
-    changed.work_queue.revision++;
-    setSnapshot(changed);
-    await page.clock.runFor(60_300);
-    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR14"]').waitFor();
-    assert.deepEqual(await page.locator('[data-queue-root] > section').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
-    assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
-    assert.equal(await job.evaluate(node => node.closest('.app-layout-center').scrollTop), scroll);
-    assert.equal(await job.getAttribute('open'), '');
+const prFact = (card_id, number, state, draft = false) => ({ repo: 'jbookout/doctorcre-app', number, url: `https://github.com/jbookout/doctorcre-app/pull/${number}`,
+  title: `Synthetic PR ${number}`, draft, state, updated_at: '2026-10-27T12:00:00Z', card_id: `${card_id}.app#${number}` });
+const stagedQueue = queueRead([
+  queueJob('WR557.S4.J1', 'review', { work_request_title: 'One Work Request queue', prs: [prFact('WR557.S4.J1', 12, 'open')] }),
+  queueJob('WR557.S4.J2', 'build', { work_request_title: 'One Work Request queue', card_title: 'Delete board path', stale: true, prs: [prFact('WR557.S4.J2', 13, 'open', true)] }),
+  queueJob('WR557.S1.J2', 'merged', { work_request_title: 'One Work Request queue', card_title: 'Record lean jobs', prs: [prFact('WR557.S1.J2', 9, 'merged')] }),
+  queueJob('WR562.S1.J1', 'queued', { work_request_title: 'Team memory', card_title: 'Memory design' }),
+], [{ repo: 'DoctorCRE/carr-system', state: 'unavailable', reason: 'github_http_403' }, { repo: 'jbookout/doctorcre-app', state: 'ok', truncated: false }]);
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark'])
+  test(`system board shows every stage with WR.S.J IDs, Work Request titles and PR links at ${width}px ${theme}`, async t => {
+    const { page, errors } = await open(t, { width, path: systemPath, queue: stagedQueue });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await page.locator('#board-stages [data-card-id="WR557.S4.J1"]').waitFor();
+    assert.deepEqual(await page.locator('#board-stages .column').evaluateAll(columns => columns.map(column =>
+      `${column.dataset.stage}:${column.querySelectorAll('[data-card-id]').length}`)), ['queued:1', 'build:1', 'review:1', 'merged:1', 'closed:0']);
+    assert.match(await page.locator('.column[data-stage="closed"]').textContent(), /PR closed without merging/);
+    const review = page.locator('[data-card-id="WR557.S4.J1"]');
+    assert.match(await review.textContent(), /WR557\.S4\.J1.*Synthetic queue work/);
+    assert.equal(await review.locator('a').getAttribute('href'), 'https://github.com/jbookout/doctorcre-app/pull/12');
+    assert.equal(await review.locator('a').textContent(), 'WR557.S4.J1.app#12 · open');
+    assert.equal(await page.locator('.column[data-stage="review"] .queue-group').textContent(), 'WR-000557 · One Work Request queue');
+    assert.equal(await page.locator('[data-card-id="WR557.S4.J2"] a').textContent(), 'WR557.S4.J2.app#13 · draft');
+    assert.deepEqual(await page.locator('#board-stages .flag-stale').evaluateAll(flags => flags.map(flag => flag.closest('[data-card-id]').dataset.cardId)),
+      ['WR557.S4.J2'], 'only the server-flagged job is stale');
+    assert.match(await page.locator('.queue-board-status').textContent(), /4 jobs · 1 stale \(no progress for 24 hours while queued or building\)/);
+    assert.match(await page.locator('.queue-board-notices').textContent(), /GitHub could not be read for DoctorCRE\/carr-system/);
+    assert.equal(await page.locator('#task-count').textContent(), '4 jobs');
+    for (const id of ['board-questions', 'board-blocked', 'board-ledger', 'board-deliverables', 'board-decisions', 'board-notes', 'board-completed'])
+      assert.equal(await page.locator(`#${id}`).evaluate(el => el.closest('.panel').hidden), true, `${id} stays hidden on the queue board`);
+    assert.equal(await page.locator('.headline').isVisible(), false, 'the retired snapshot headline is gone');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    assert.match(await job.textContent(), /gpt-6.1-sol/);
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    changed.work_queue.board.order.reverse(); changed.work_queue.revision++;
-    setSnapshot(structuredClone(changed));
-    await page.clock.runFor(60_300);
-    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR20"]').waitFor();
-    assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
-    assert.deepEqual(errors, []);
     await page.evaluate(axe.source);
     assert.deepEqual(await page.evaluate(async () => (await axe.run('#board-stages')).violations.map(v => v.id)), []);
+    assert.deepEqual(errors, []);
     await mkdir('test-artifacts/work-queue', { recursive: true });
     await page.screenshot({ path: `test-artifacts/work-queue/${width}-${theme}.png`, fullPage: true });
-    if (width === 390 && theme === 'light') {
-      await mkdir('test-artifacts/work-queue', { recursive: true });
-      await job.locator('.queue-log').evaluate(el => { el.open = true; });
-      await page.screenshot({ path: 'test-artifacts/work-queue/followup-390.png', fullPage: true });
-    }
   });
 
-test('an unreviewed fixture preview renders queue details without calling the live board', async t => {
-  const { page, calls, errors } = await open(t, {path:'/control-room/progress/board/carr-v5?mode=fixture&card=WR14.S1.J1', boardRead:'failed'});
-  await page.locator('[data-queue-id="WR14.S1.J1"][open]').waitFor();
-  assert.equal(calls.filter(call => call.name === 'read-progress-board').length, 0);
-  assert.match(await page.locator('#board-stages').textContent(), /Demo queue ordering/);
+test('every queued job is reachable: 250 review jobs render with no cap and the column scrolls', async t => {
+  const jobs = Array.from({ length: 250 }, (_, index) => queueJob(`WR600.S1.J${index + 1}`, 'review', { j_number: index + 1 }));
+  const { page, errors } = await open(t, { width: 1280, path: systemPath, queue: queueRead(jobs) });
+  await page.locator('[data-card-id="WR600.S1.J250"]').waitFor({ state: 'attached' });
+  assert.equal(await page.locator('#board-stages [data-card-id]').count(), 250);
+  const body = page.locator('.column[data-stage="review"] .column-body');
+  assert.equal(await body.evaluate(node => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === 'auto'), true);
+  await page.locator('[data-card-id="WR600.S1.J250"]').scrollIntoViewIfNeeded();
+  assert.equal(await page.locator('[data-card-id="WR600.S1.J250"]').isVisible(), true);
+  assert.deepEqual(errors, []);
+});
+
+test('the system board reads the queue once per 60 seconds, never while hidden, and stops after 5 idle minutes', async t => {
+  const { page, calls, errors, setQueue } = await open(t, { width: 1280, path: systemPath });
+  await page.locator('[data-card-id="WR14.S1.J1"]').waitFor();
+  await page.waitForLoadState('networkidle');
+  const count = name => calls.filter(call => call.name === name).length;
+  const reads = () => count('work-queue');
+  assert.equal(reads(), 1, 'one read on open');
+  const snapshot = count('read-progress-board'), census = count('unfinished-work');
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+  setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'First refresh completed' })]));
+  await page.mouse.move(10, 10);
+  await page.clock.runFor(59_000);
+  assert.equal(reads(), 1, 'no read before the interval');
+  await page.clock.runFor(1_500);
+  await page.getByText('First refresh completed', { exact: true }).waitFor();
+  assert.equal(reads(), 2, 'one read per interval');
+  setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'Second refresh completed' })]));
+  await page.mouse.move(20, 20);
+  await page.clock.runFor(60_500);
+  await page.getByText('Second refresh completed', { exact: true }).waitFor();
+  assert.equal(reads(), 3, 'never more than one read per interval');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(5 * 60_000);
+  assert.equal(reads(), 3, 'a hidden tab makes no reads');
+  setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'Visible refresh completed' })]));
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.getByText('Visible refresh completed', { exact: true }).waitFor();
+  await page.clock.runFor(500);
+  assert.equal(reads(), 4, 'returning to the tab reads once at once');
+  await page.clock.runFor(10 * 60_000);
+  const idle = reads();
+  assert.ok(idle <= 4 + Math.ceil(5 * 60_000 / 60_000), `reads stop at the 5-minute idle cutoff (${idle})`);
+  await page.clock.runFor(30 * 60_000);
+  assert.equal(reads(), idle, 'an idle visible tab makes no reads');
+  assert.equal(count('read-progress-board'), snapshot, 'the snapshot is never polled on the queue board');
+  assert.equal(count('unfinished-work'), census, 'the census is never polled on the queue board');
+  assert.deepEqual(errors, []);
+});
+
+test('an unreviewed fixture preview renders the demo queue without calling the live board', async t => {
+  const { page, calls, errors } = await open(t, {path:'/control-room/progress/board/carr-v5?mode=fixture', boardRead:'failed'});
+  await page.locator('[data-card-id="WR901.S1.J1"]').waitFor({ timeout: 3000 });
+  assert.equal(calls.filter(call => ['work-queue', 'read-progress-board'].includes(call.name)).length, 0);
+  assert.match(await page.locator('#board-stages').textContent(), /Demo dashboard refresh/);
   assert.deepEqual(errors, []);
 });
 
 for (const status of [401, 403]) test(`denied hierarchy read ${status} stays empty through browser Back and recovers unchanged data`, async t => {
   let denied = false;
-  const {page, errors} = await open(t, {path:systemPath, snapshotData:hierarchy, control:async(route,rpc)=>{
+  const {page, errors} = await open(t, {path:projectPath, snapshotData:hierarchy, control:async(route,rpc)=>{
     if (!denied || rpc.name !== 'read-progress-board') return false;
     await route.fulfill({status, body:'{}'});
     return true;
@@ -647,34 +677,34 @@ for (const status of [401, 403]) test(`denied hierarchy read ${status} stays emp
   assert.deepEqual(errors, []);
 });
 
-for (const status of [401, 403]) test(`denied queue read ${status} recovers the same queue after browser Back`, async t => {
+for (const status of [401, 403]) test(`denied work-queue read ${status} clears the queue and recovers it after browser Back`, async t => {
   let denied = false;
-  const {page, errors} = await open(t, {path:systemPath, snapshotData:workQueue, control:async(route,rpc)=>{
-    if (!denied || rpc.name !== 'read-progress-board') return false;
+  const {page, calls, errors} = await open(t, {path:systemPath, control:async(route,rpc)=>{
+    if (!denied || rpc.name !== 'work-queue') return false;
     await route.fulfill({status, body:'{}'});
     return true;
   }});
-  const cards = page.locator('#board-stages [data-queue-id]');
-  await cards.first().waitFor({state:'attached'});
-  const count = await cards.count();
-  await page.evaluate(()=>history.pushState({},'',location.pathname+'?card=WR14.S1.J1'));
+  const cards = page.locator('#board-stages [data-card-id]');
+  await cards.first().waitFor();
+  await page.evaluate(() => history.pushState({}, '', location.pathname + '?view=queue'));
   const original = page.url();
   denied = true;
-  await page.clock.runFor(60_000);
-  await page.waitForURL('**/public-shell/session-ended.html*');
+  await page.mouse.move(10, 10);
+  await page.clock.runFor(61_000);
+  await page.waitForURL('**/public-shell/session-ended.html*', { waitUntil: 'commit' });
   assert.equal(await cards.count(), 0);
   await page.goBack();
-  await page.waitForURL('**/public-shell/session-ended.html*');
+  await page.waitForURL('**/public-shell/session-ended.html*', { waitUntil: 'commit' });
   assert.equal(await cards.count(), 0);
   denied = false;
   await page.goto(original);
-  await page.waitForLoadState('networkidle');
-  assert.equal(await cards.count(), count);
+  await cards.first().waitFor();
+  assert.equal(await cards.count(), 1);
   assert.deepEqual(errors, []);
 });
 
 test('leaving a job through browser history closes its actual detail dialog', async t => {
-  const { page, errors } = await open(t, {path:systemPath, snapshotData:hierarchy, autoMount:false});
+  const { page, errors } = await open(t, {path:projectPath, snapshotData:hierarchy, autoMount:false});
   await page.evaluate(async ({fixture, html}) => {
     const {mountBoard} = await import('/js/progress-board.js');
     const {mountJobDetail} = await import('/js/job-detail.js');
@@ -706,84 +736,6 @@ test('leaving a job through browser history closes its actual detail dialog', as
   assert.equal(await dialog.isVisible(), false);
   assert.deepEqual(errors, []);
 });
-
-for (const width of [390, 1280]) test(`queue polling retains the open event log and keyboard focus at ${width}px`, async t => {
-  const {page, calls, errors, setSnapshot} = await open(t, {width, height:844,
-    path:'/control-room/progress/board/carr-v5?card=WR14.S1.J1', snapshotData:structuredClone(workQueue)});
-  const job = page.locator('[data-queue-id="WR14.S1.J1"]');
-  const log = job.locator('.queue-log');
-  await log.locator('summary').click();
-  await log.locator('summary').focus();
-  const reads = calls.filter(c => c.name === 'read-progress-board').length;
-  const changed = structuredClone(workQueue);
-  changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
-  changed.work_queue.revision++;
-  setSnapshot(changed);
-  await page.clock.runFor(60_300);
-  await page.waitForFunction(() => document.querySelector('.queue-status').textContent.includes('revision 11'));
-  assert.ok(calls.filter(c => c.name === 'read-progress-board').length > reads, 'the actual board poll read the changed snapshot');
-  assert.equal(await log.getAttribute('open'), '', 'manual event-log disclosure survives polling');
-  assert.equal(await log.locator('summary').evaluate(el => document.activeElement === el), true, 'focus remains on the event-log summary');
-  assert.deepEqual(errors, []);
-  await mkdir('test-artifacts/work-queue', {recursive:true});
-  await log.locator('summary').scrollIntoViewIfNeeded();
-  await page.screenshot({path:`test-artifacts/work-queue/poll-${width}.png`});
-  await job.locator('.queue-execution > summary').click();
-  for (const control of [job.locator('.queue-execution > summary'), job.locator('[data-pr]')]) {
-    await control.focus();
-    changed.work_queue.revision++;
-    changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
-    setSnapshot(structuredClone(changed));
-    await page.clock.runFor(60_300);
-    await page.waitForFunction(revision => document.querySelector('.queue-status').textContent.includes(`revision ${revision}`), changed.work_queue.revision);
-    assert.equal(await control.evaluate(el => document.activeElement === el), true, 'the same control keeps focus after a changed-card poll');
-    assert.equal(await job.locator('.queue-execution').getAttribute('open'), '');
-    assert.equal(await log.getAttribute('open'), '');
-  }
-
-});
-
-for (const width of [390, 1280]) test(`queue first view shows producer-ordered job titles and states at ${width}px`, async t => {
-  const {page, errors} = await open(t, {width, height:844, path:'/control-room/progress/board/carr-v5', snapshotData:structuredClone(workQueue)});
-  await page.locator('[data-queue-id="WR20.S1.J1"] > summary').waitFor({state:'attached'});
-  assert.equal(await page.locator('#board-rail').isVisible(), false, 'the pipeline rail does not occupy queue space');
-  assert.equal(await page.locator('#board-filters').isVisible(), false, 'pipeline filters do not occupy queue space');
-  assert.deepEqual(await page.locator('.queue-job').evaluateAll(jobs => jobs.map(el => el.dataset.queueId)), ['WR20.S1.J1','WR14.S2.J1','WR14.S1.J1']);
-  for (const [id, title, state] of [['WR20.S1.J1','Demo release checks','queued'],['WR14.S2.J1','Demo board details','queued'],['WR14.S1.J1','Demo queue ordering','review']]) {
-    const summary = page.locator(`[data-queue-id="${id}"] > summary`);
-    assert.match(await summary.textContent(), new RegExp(title));
-    assert.match(await summary.locator('.queue-state').textContent(), new RegExp(state));
-    assert.equal(await summary.isVisible(), true, `${title} is visible without expanding ancestors`);
-    const box = await summary.boundingBox();
-    const viewport = await summary.evaluate(el => { const rect = el.closest('.app-layout-center').getBoundingClientRect(); return {top:rect.top,bottom:rect.bottom}; });
-    assert.ok(box.y >= viewport.top && box.y + box.height <= viewport.bottom, `${title} and its state fit in the first viewport`);
-  }
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-  assert.deepEqual(errors, []);
-  await mkdir('test-artifacts/work-queue', {recursive:true});
-  await page.screenshot({path:`test-artifacts/work-queue/queue-${width}.png`});
-});
-
-for (const width of [390, 1280]) test(`expanded queue detail leads with findings and PR/log actions at ${width}px`, async t => {
-  const {page, errors} = await open(t, {width, height:844,
-    path:'/control-room/progress/board/carr-v5', snapshotData:structuredClone(workQueue)});
-  const job = page.locator('[data-queue-id="WR14.S1.J1"]');
-  await job.locator('> summary').click();
-  const logLink = job.locator('[data-job-log]');
-  const box = await logLink.boundingBox();
-  const viewport = await logLink.evaluate(el => { const rect = el.closest('.app-layout-center').getBoundingClientRect(); return {top:rect.top,bottom:rect.bottom}; });
-  assert.ok(box && box.y >= viewport.top && box.y + box.height <= viewport.bottom, 'the log action sits in the first viewport of the expanded detail');
-  assert.equal(await job.locator('[data-pr]').isVisible(), true);
-  assert.match(await job.locator('.queue-findings').textContent(), /P2.*Show unknown timing.*Open/s);
-  assert.doesNotMatch(await job.locator('.queue-findings').textContent(), /Preserve keyboard focus/);
-  assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), false, 'execution metadata starts collapsed');
-  assert.deepEqual(errors, []);
-  await mkdir('test-artifacts/work-queue', {recursive:true});
-  await page.screenshot({path:`test-artifacts/work-queue/detail-${width}.png`});
-  await job.locator('.queue-execution > summary').click();
-  assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), true);
-});
-
 
 for (const width of [390,1280]) for (const theme of ['light','dark'])
   test(`orchestrator published queue observations update in place at ${width}px ${theme}`, async t => {
@@ -866,7 +818,7 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
 
 
 test('session invalidation disposes board callbacks before its document is cleared', async t => {
-  const {page, errors} = await open(t, {path:systemPath, snapshotData:workQueue, autoMount:false});
+  const {page, errors} = await open(t, {path:projectPath, autoMount:false});
   const result = await page.evaluate(async fixture => {
     const {mountBoard} = await import('/js/progress-board.js');
     let reads = 0;
@@ -878,7 +830,7 @@ test('session invalidation disposes board callbacks before its document is clear
     await board.refresh(true);
     board.tick();
     return {reads, text:document.body.textContent};
-  }, workQueue);
+  }, {title:'Demo project', tasks:{build:{title:'Synthetic build', status:'running'}}});
   assert.deepEqual(result, {reads:1, text:''});
   assert.deepEqual(errors, []);
 });
@@ -947,8 +899,8 @@ for (const width of [390,1440]) test(`standalone work views keep a bounded queue
   assert.deepEqual(errors,[]);
 });
 
-test('ordinary standalone system board exposes snapshot work views when the census read is available',async t=>{
-  const {page,errors}=await open(t,{path:'/control-room/progress/board/carr-v5'});
+test('ordinary standalone project board exposes snapshot work views when the census read is available',async t=>{
+  const {page,errors}=await open(t,{path:projectPath});
   await page.locator('#board-stages [data-card-id="build"]').waitFor();
   assert.equal(await page.locator('[data-work-view="active"]').isVisible(),true);
   assert.deepEqual(errors,[]);
