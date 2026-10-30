@@ -4,7 +4,6 @@ import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
-import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
@@ -421,12 +420,6 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
-
-  const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
-
-  const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
-
-  const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
   const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -2025,12 +2018,14 @@ export async function createFixtureClient(opts = {}) {
     // Scenario totals are independent of the page limit.
     async sessionIdentity({ query = null, limit = null, include_closed = false } = {}) {
       refuseIfOutage('sessions', 'read-session-identity');
+      const { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } = await import('./example-sessions.js');
+      const sessionRows = [...EXAMPLE_SESSION_ROWS, ...BRANCH_SESSION_ROWS];
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
       // No fixture session is closed.
       void include_closed;
       const matched = text.length === 0
-        ? SESSION_ROWS
-        : SESSION_ROWS.filter((row) => String(row.display_name).toLowerCase().includes(text)
+        ? sessionRows
+        : sessionRows.filter((row) => String(row.display_name).toLowerCase().includes(text)
           || String(row.canonical_session_id).toLowerCase().includes(text));
       if (text === 'reverent') {
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
