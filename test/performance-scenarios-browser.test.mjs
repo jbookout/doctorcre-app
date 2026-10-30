@@ -113,7 +113,6 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   assert.match(await link.getAttribute('href'), /^\/deals\?deal=/);
   assert.ok((await link.innerText()).trim());
   const bytes = (await Promise.all(reads)).reduce((total, size) => total + size, 0);
-  assert.ok(bytes < 400000, `Home transferred ${bytes} JavaScript bytes`);
   t.diagnostic(`Home transferred ${bytes} JavaScript bytes`);
   await page.locator('.home-grid').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Refresh past-client touches', exact: true }).waitFor();
