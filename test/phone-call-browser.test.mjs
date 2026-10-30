@@ -110,22 +110,6 @@ test('microphone interruption keeps captured audio and labels the interruption a
   assert.equal(await page.locator('audio').count(), 1);
 });
 
-test('a mismatched transfer receipt keeps the audio available after reload', async t => {
-  const { page } = await open(t);
-  await page.getByLabel('Everyone was told').check();
-  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
-  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
-  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
-  await page.getByRole('button', { name: 'Save recording' }).click();
-  await page.getByRole('button', { name: 'Transfer recording' }).waitFor();
-  await page.route('**/call-sessions/*/transfer', r => r.fulfill({ json: { schema_version: 1, session_id: id, state: 'transferred', transferred: true, filed: false, sha256: 'f'.repeat(64) } }));
-  await page.getByRole('button', { name: 'Transfer recording' }).click();
-  await page.getByText('Transfer could not be verified. Saved audio has been kept.', { exact: true }).waitFor();
-  await page.reload();
-  await page.getByRole('button', { name: 'Transfer recording' }).waitFor();
-  assert.equal(await page.locator('audio').count(), 1);
-});
-
 test('a different verified partner cannot restore another partner pending recording', async t => {
   const { page } = await open(t);
   await page.getByLabel('Everyone was told').check();
@@ -219,9 +203,9 @@ for (const locked of [false, true]) test(`phone recording handles hidden page wi
     await page.waitForFunction(() => window.wakeRequests === 2);
     await page.getByRole('button', { name: 'Stop recording' }).click();
   } else {
-    await page.getByText(/Recording paused when the phone locked.*saved up to/).waitFor();
+    await page.getByText(/Recording paused when this page was hidden/).waitFor();
     await page.reload();
-    await page.getByText(/Recording paused when the phone locked.*saved up to/).waitFor();
+    await page.getByText(/Recording paused when this page was hidden/).waitFor();
   }
   await page.getByRole('button', { name: 'Transfer recording' }).waitFor();
 });
@@ -251,4 +235,113 @@ for (const theme of ['light', 'dark']) test(`duration limit says saved at phone 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('out/test-artifacts/phone-calls', { recursive: true });
   await page.screenshot({ path: `out/test-artifacts/phone-calls/limit-390-${theme}.png`, fullPage: true });
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`queued audio waits for Studio and retry does not upload it again ${width} ${theme}`, async t => {
+  const { page, state } = await open(t, { width, theme });
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  let queued = false, transferred = false;
+  await page.route('**/api/v1/call-sessions**', r => {
+    const req = r.request();
+    if (req.method() === 'PUT') { state.writes.push({ method: 'PUT' }); queued = true; }
+    return r.fulfill({ json: { schema_version: 1, session_id: id, state: transferred ? 'transferred' : queued ? 'queued' : 'pending', transferred, filed: false } });
+  });
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.locator('#phonePending').getByText('Uploaded — waiting for the Studio', { exact: true }).waitFor({ timeout: 3000 });
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await animationsSettled(page);
+  await mkdir('.github/pr-evidence/WR572.S8.J35', { recursive: true });
+  await page.screenshot({ path: `.github/pr-evidence/WR572.S8.J35/queued-${width}-${theme}.png`, fullPage: true });
+  await page.getByRole('button', { name: /Check status/ }).click();
+  assert.equal(state.writes.filter(w => w.method === 'PUT').length, 1);
+  await page.locator('#phoneCalls[aria-busy=false]').waitFor();
+  transferred = true;
+  await page.getByRole('button', { name: 'Check status' }).click();
+  await page.getByText('Transferred', { exact: true }).waitFor();
+  assert.equal(await page.locator('audio').count(), 0);
+});
+
+test('expired upload offers transfer again and sends the saved audio', async t => {
+  const { page, state } = await open(t);
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  let status = 'pending';
+  await page.route('**/api/v1/call-sessions**', r => {
+    if (r.request().method() === 'PUT') { state.writes.push({ method: 'PUT' }); status = 'queued'; }
+    return r.fulfill({ json: { schema_version: 1, session_id: id, state: status, transferred: false, filed: false } });
+  });
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByRole('button', { name: 'Check status' }).waitFor();
+  await page.locator('#phoneCalls[aria-busy=false]').waitFor();
+  status = 'expired';
+  await page.getByRole('button', { name: 'Check status' }).click();
+  await page.getByRole('button', { name: 'Transfer again' }).click();
+  await page.getByRole('button', { name: 'Check status' }).waitFor();
+  assert.equal(state.writes.filter(w => w.method === 'PUT').length, 2);
+});
+
+for (const [status, code, copy] of [
+  [409, 'recording_mismatch', 'This recording does not match the upload already in progress.'],
+  [409, 'audio_handoff_unavailable', 'An upload is already in progress or this recording does not match.'],
+  [429, 'daily_admission_limit', 'Daily recording limit reached.'],
+  [429, 'handoff_full', 'The upload queue is full.'],
+  [429, 'upload_rate_limit', 'Too many uploads in a short time.'],
+  [429, 'audio_handoff_unavailable', 'The upload queue is full or too many uploads were attempted.'],
+  [503, 'phone_intake_unavailable', 'Call service unavailable.'],
+]) test(`phone upload explains ${status} ${code}`, async t => {
+  const { page } = await open(t);
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  await page.route('**/call-sessions/*/transfer', r => r.fulfill({ status, json: { error: code } }));
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.locator('#phoneNotice').getByText(copy, { exact: false }).waitFor();
+});
+
+test('unavailable upload state never resends saved audio', async t => {
+  const { page, state } = await open(t);
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByText('Pending transfer. Try again when the call service is available.').waitFor();
+  await page.locator('#phoneCalls[aria-busy=false]').waitFor();
+  await page.route('**/call-sessions/*', r => r.fulfill({ json: { schema_version: 1, session_id: id, state: 'pending', transferred: false, filed: false, upload_state_unavailable: true } }));
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByText('Upload status is unavailable. Your saved audio stays on this device.').waitFor();
+  assert.equal(state.writes.filter(w => w.method === 'PUT').length, 1);
+});
+
+test('queued upload is checked automatically and clears audio after Studio transfer', async t => {
+  const { page } = await open(t);
+  await page.clock.install();
+  await page.getByLabel('Everyone was told').check();
+  await page.getByLabel('Recording file').setInputFiles({ name: 'synthetic.wav', mimeType: 'audio/wav', buffer: wav() });
+  await page.getByLabel('Recording started').fill('2026-10-30T10:00');
+  await page.getByLabel('Consent announced').fill('2026-10-30T09:59');
+  await page.getByRole('button', { name: 'Save recording' }).click();
+  let queued = false, transferred = false, reads = 0;
+  await page.route('**/api/v1/call-sessions**', r => {
+    if (r.request().method() === 'PUT') queued = true;
+    if (r.request().method() === 'GET') reads++;
+    return r.fulfill({ json: { schema_version: 1, session_id: id, state: transferred ? 'transferred' : queued ? 'queued' : 'pending', transferred, filed: false } });
+  });
+  await page.getByRole('button', { name: 'Transfer recording' }).click();
+  await page.getByRole('button', { name: 'Check status' }).waitFor();
+  transferred = true;
+  await page.clock.runFor(30000);
+  await page.getByText('Transferred', { exact: true }).waitFor();
+  assert.ok(reads >= 1);
+  assert.equal(await page.locator('audio').count(), 0);
 });

@@ -1614,9 +1614,13 @@
     "schema_version": 1,
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "529b5f48da5e301b7f89cd85498d3f8f19f3b891",
-      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2721",
-      "source": "mcp-server/src/phone-call-sessions.js"
+      "source_commit": "68d99f8a9329d921db0fa18e1ac34f26192e4f70",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2732",
+      "source": "mcp-server/src/phone-call-sessions.js",
+      "follow_up": {
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2753",
+        "source_commit": "bd532aae9f85bd52778718c6cc595f37a2cc6d13"
+      }
     },
     "admission": {
       "method": "POST",
@@ -1635,13 +1639,15 @@
       "method": "PUT",
       "path": "/api/v1/call-sessions/{id}/transfer",
       "body": "Audio bytes with admitted MIME and exact Content-Length. The browser supplies Content-Length from the Blob.",
-      "receipt": "schema_version:1, matching session_id and transferred:true. First transfer includes matching sha256; replay omits sha256. Verify a fresh matching status with transferred:true before clearing scoped pending audio. HTTP 202 and pending are not transfer confirmation."
+      "result": "A successful upload can return queued. Retain local audio until a matching status confirms transferred. Retry only after checking status; upload_state_unavailable leaves the outcome unknown."
     },
     "status": {
       "method": "GET",
       "path": "/api/v1/call-sessions/{id}",
       "states": [
         "pending",
+        "queued",
+        "expired",
         "transferred",
         "ready_review",
         "filed"

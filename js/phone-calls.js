@@ -11,11 +11,12 @@ const notice = message => { if (!disposed) $('phoneNotice').textContent = messag
 const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
 const tour_id = 'calls';
-let wakeLock = null, wakeGeneration = 0, transferringId = null;
+let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
 async function acquireWakeLock() {
   const generation = ++wakeGeneration;
   try {
-    const lock = await navigator.wakeLock?.request('screen');
+    if (!navigator.wakeLock) { notice('Keep the screen on and this page open while recording.'); return; }
+    const lock = await navigator.wakeLock.request('screen');
     if (!recorder?.active || generation !== wakeGeneration) { await lock?.release(); return; }
     const previous = wakeLock;
     wakeLock = lock;
@@ -23,7 +24,7 @@ async function acquireWakeLock() {
     lock?.addEventListener('release', () => {
       if (wakeLock !== lock) return;
       wakeLock = null;
-      if (document.hidden) recorder?.stop('locked');
+      if (document.hidden) recorder?.stop('hidden');
     });
   } catch { notice('Keep the screen on and this page open while recording.'); }
 }
@@ -40,10 +41,11 @@ function stopMessage(row) {
     const seconds = Math.floor(row.duration_seconds || 0);
     return `Recording paused when the phone locked — saved up to ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   }
+  if (row.stop_reason === 'hidden') return 'Recording paused when this page was hidden. The audio was saved.';
   return '';
 }
 const mimeTypes = new Set(['audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mpeg', 'audio/webm']);
-const labels = { pending: 'Pending transfer', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
+const labels = { pending: 'Pending transfer', queued: 'Uploaded — waiting for the Studio', expired: 'Transfer again', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
 async function duration(audio) {
   const url = URL.createObjectURL(audio);
   try {
@@ -69,11 +71,36 @@ async function metadata(audio, started_at, consent_announced_at, seconds) {
 async function pending() {
   const rows = await recorder.recover(await store.list(scope, tour_id));
   if (disposed) return;
-  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer'}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>Transfer recording</button>` : ''}</article>`).join('');
+  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'queued' ? 'Uploaded — waiting for the Studio' : r.status === 'expired' ? 'Transfer again' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer'}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.status === 'queued' ? 'Check status' : r.status === 'expired' ? 'Transfer again' : 'Transfer recording'}</button>` : ''}</article>`).join('');
   for (const player of $('phonePending').querySelectorAll('audio')) {
     const url = URL.createObjectURL(rows.find(r => r.id === player.dataset.audio).audio);
     player.src = url; player.onloadeddata = () => URL.revokeObjectURL(url);
   }
+}
+async function applyStatus(id, session) {
+  if (session.upload_state_unavailable) throw new Error('Upload status is unavailable. Your saved audio stays on this device.');
+  if (session.transferred) {
+    await store.patch(scope, id, { audio: null, status: 'transferred' });
+    await pending();
+    try { await review(session.session_id); notice('Transfer confirmed. Audio removed from this device.'); }
+    catch { notice('Transfer confirmed. Review is unavailable. Open the saved review link to retry.'); }
+  } else if (session.state === 'queued' || session.state === 'expired') {
+    await store.patch(scope, id, { status: session.state });
+  }
+}
+function schedulePoll() {
+  if (pollTimer || disposed || pollAttempts >= 10) return;
+  pollTimer = setTimeout(async () => {
+    pollTimer = null;
+    pollAttempts++;
+    const rows = await store.list(scope, tour_id);
+    for (const row of rows.filter(r => r.status === 'queued' && r.session_id)) {
+      try { await applyStatus(row.id, await api.status(row.session_id)); } catch { /* Keep the saved audio and retry later. */ }
+    }
+    await pending();
+    pollDelay = Math.min(pollDelay * 2, 120000);
+    if ((await store.list(scope, tour_id)).some(r => r.status === 'queued')) schedulePoll();
+  }, pollDelay);
 }
 async function transfer(id) {
   const row = (await store.list(scope, tour_id)).find(r => r.id === id);
@@ -82,15 +109,18 @@ async function transfer(id) {
   await store.patch(scope, id, { metadata: meta });
   const admitted = row.session_id ? { session_id: row.session_id } : await api.admit(meta);
   await store.patch(scope, id, { session_id: admitted.session_id });
+  if (row.session_id) {
+    const status = await api.status(admitted.session_id);
+    if (status.upload_state_unavailable || status.transferred || status.state === 'queued' || (status.state === 'expired' && row.status !== 'expired')) { await applyStatus(id, status); if (status.state === 'queued') schedulePoll(); return; }
+  }
   notice('Transferring…');
-  const receipt = await api.transfer(admitted.session_id, row.audio, meta.mime_type);
-  if (receipt.sha256 && receipt.sha256 !== meta.sha256) throw new Error('Transfer could not be verified. Saved audio has been kept.');
+  pollAttempts = 0; pollDelay = 30000;
+  const result = await api.transfer(admitted.session_id, row.audio, meta.mime_type);
+  if (result.state === 'queued') { await applyStatus(id, result); schedulePoll(); notice('Uploaded — waiting for the Studio'); return; }
   const confirmed = await api.status(admitted.session_id);
-  if (!receipt.transferred || !confirmed.transferred) { notice('Pending transfer. Try again when the call service is available.'); return; }
-  await store.patch(scope, id, { audio: null, status: 'transferred' });
-  await pending();
-  try { await review(admitted.session_id); notice('Transfer confirmed. Audio removed from this device.'); }
-  catch { notice('Transfer confirmed. Review is unavailable. Open the saved review link to retry.'); }
+  await applyStatus(id, confirmed);
+  if (confirmed.state === 'queued') schedulePoll();
+  if (!confirmed.transferred && confirmed.state !== 'queued') notice('Pending transfer. Try again when the call service is available.');
 }
 function reviewId(value) { try { return new URL(value).searchParams.get('session'); } catch { return value; } }
 async function review(id) {
@@ -133,6 +163,7 @@ async function start() {
   }, onError: (message, note) => { notice(message); if (note) void store.patch(scope, note.id, { interrupted: true, stop_reason: 'error' }).catch(() => {}); } });
   $('phoneSave').disabled = false; $('phoneRecord').disabled = false; notice('');
   await pending();
+  if ((await store.list(scope, tour_id)).some(r => r.status === 'queued')) schedulePoll();
   $('phoneImport').onsubmit = event => { event.preventDefault(); void run(async () => {
     const audio = $('phoneFile').files[0]; if (!audio) throw new Error('Choose a recording file.');
     const timestamp = new Date().toISOString();
@@ -151,7 +182,7 @@ async function start() {
     if (button.dataset.transfer) void run(async () => {
       transferringId = button.dataset.transfer; await pending();
       try { await transfer(button.dataset.transfer); }
-      catch (error) { await store.patch(scope, button.dataset.transfer, { status: 'failed' }); throw error; }
+      catch (error) { const row = (await store.list(scope, tour_id)).find(r => r.id === button.dataset.transfer); if (row?.status !== 'queued') await store.patch(scope, button.dataset.transfer, { status: 'failed' }); throw error; }
       finally { transferringId = null; }
     });
     if (button.id === 'phoneAnother') { $('phoneOpen').hidden = false; $('phoneSession').focus(); }
@@ -170,12 +201,12 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();
-  else if (!wakeLock || wakeLock.released) recorder.stop('locked');
+  else if (!wakeLock || wakeLock.released) recorder.stop('hidden');
 });
-document.addEventListener('freeze', () => recorder?.stop('locked'));
-window.addEventListener('pagehide', () => { recorder?.stop('locked'); releaseWakeLock(); }, { once: true });
+document.addEventListener('freeze', () => recorder?.stop('hidden'));
+window.addEventListener('pagehide', () => { recorder?.stop('hidden'); releaseWakeLock(); }, { once: true });
 void start().catch(error => notice(error.message));
