@@ -2,11 +2,25 @@ import { escapeText as esc } from './change-receipts.mjs';
 import { uuidv4 } from './uuid.js';
 
 import { FACT_TERMS } from './client.js';
+import { invoiceMoney } from './invoice-tracker-model.js';
 
 const BASES = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
 
 function valueText(value) {
-  return `${value.canonical_unit ? value.normalized_value : value.value} ${value.canonical_unit || value.unit}${value.expense_basis ? ` · ${BASES[value.expense_basis] || value.expense_basis}` : ''}`;
+  const amount = value.canonical_unit ? value.normalized_value : value.value;
+  const unit = value.canonical_unit || value.unit;
+  const units = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
+  const formatted = Object.hasOwn(units, unit) ? `${invoiceMoney(Number(amount))}${units[unit]}` : `${amount} ${unit}`;
+  return `${formatted}${value.expense_basis ? ` · ${BASES[value.expense_basis] || value.expense_basis}` : ''}`;
+}
+function readLabel(observation) {
+  const method = { text_layer: 'Text', ocr: 'OCR', human: 'Typed by a partner' }[observation.method] || 'Read method unavailable';
+  const confidence = { auto_accept: 'high', verify_band: 'verify', human_review: 'review' }[observation.confidence_tier];
+  return confidence ? `${method} · ${confidence}` : method;
+}
+function reviewLabel(item) {
+  if (!item.pending) return 'Reviewed';
+  return item.reasons.map(reason => ({ conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' }[reason] || 'Review required')).join(' · ') || 'Review required';
 }
 function documentName(observation, documents) {
   return documents.find(doc => doc.id === observation.source.document_ref)?.filename || 'Document name unavailable';
@@ -30,10 +44,9 @@ function entryHtml(documents, factKey, prefix) {
     <small id="${prefix}-source-hint" class="fact-wide">Transcribe the clause from the stored document. This entry does not verify the document text.</small></div>`;
 }
 function reviewHtml(item, documents, index) {
-  return `<article class="fact-term" data-fact-key="${esc(item.fact_key)}"><header><h3>${esc(FACT_TERMS[item.fact_key]?.label || item.fact_key.replaceAll('_', ' '))}</h3><span class="fact-state">${item.pending ? item.reasons.includes('conflict') ? 'Conflicting values' : 'Review required' : 'Reviewed'}</span></header>
-    <div class="fact-canonical"><small>Canonical value</small><p>${item.canonical_fact ? esc(valueText(item.canonical_fact)) : 'No canonical value recorded'}</p>
-    ${item.observations.filter(o => item.canonical_fact?.observation_ids?.includes(o.id)).map(o => sourceHtml(o, documents)).join('')}</div>
-    <div class="fact-observations">${item.observations.map(o => `<section class="fact-observation"><strong>${esc(valueText(o))}</strong>${sourceHtml(o, documents)}</section>`).join('')}</div>
+  return `<article class="fact-term" data-fact-key="${esc(item.fact_key)}"><header><h3>${esc(FACT_TERMS[item.fact_key]?.label || item.fact_key.replaceAll('_', ' '))}</h3><span class="fact-state">${esc(reviewLabel(item))}</span></header>
+    <div class="fact-canonical"><small>Canonical value</small><p${item.canonical_fact ? '' : ' class="fact-empty"'}>${item.canonical_fact ? esc(valueText(item.canonical_fact)) : 'No canonical value recorded'}</p></div>
+    <div class="fact-observations">${item.observations.map(o => `<section class="fact-observation"><strong>${esc(valueText(o))}</strong>${item.canonical_fact?.observation_ids?.includes(o.id) ? '<span class="fact-state"> · Settled value</span>' : ''}<p class="fact-read">${esc(readLabel(o))}</p>${sourceHtml(o, documents)}</section>`).join('')}</div>
     <button type="button" class="btn" data-review-term${item.pending ? ' hidden' : ''}>Review term</button>
     <form data-fact-review="${index}"${item.pending ? '' : ' hidden'}>
       <label>Decision<select aria-label="Decision" name="decision"><option value="approve">Approve a sourced value</option><option value="correct"${documents.length ? '' : ' disabled'}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
@@ -152,9 +165,18 @@ export function mountFactReview(root, { client, entityRef, attachments } = {}) {
       if (disposed) return;
       writing = false;
       if (error.payload?.error === 'version_conflict') {
+        const factKey = items[Number(form.dataset.factReview)]?.fact_key;
+        const reason = form.elements.reason?.value;
         pending.delete(form);
         dirty = false;
         await refresh('Terms changed since you opened this review. Refreshed terms; review them again.');
+        const refreshed = [...list.querySelectorAll('[data-fact-key]')].find(term => term.dataset.factKey === factKey);
+        if (refreshed && reason) {
+          refreshed.querySelector('[name=reason]').value = reason;
+          refreshed.querySelector('[data-fact-review]').hidden = false;
+          refreshed.querySelector('[data-review-term]').hidden = true;
+          dirty = true;
+        }
       } else if (error.payload?.error && !['internal_error', 'offline', 'DEPENDENCY_UNAVAILABLE'].includes(error.payload.error) && !error.pendingRequest || (error.status === 401 || error.status === 403) && !error.pendingRequest) {
         pending.delete(form);
         output.textContent = error.status === 401 || error.status === 403 ? 'Sign in again before reviewing terms.' : 'Term not saved. Check the value, source and reason, then try again.';

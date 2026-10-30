@@ -16,6 +16,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(terms).toContainText('Demo Amendment.pdf');
     await expect(terms).toContainText('Excerpt no longer available');
     await expect(terms).toContainText('No canonical value recorded');
+    await expect(terms).toContainText('OCR · verify');
     await terms.scrollIntoViewIfNeeded();
     await page.evaluate(() => document.fonts.ready);
     const path = testInfo.outputPath(`terms-${width}-${theme}.png`);
@@ -30,10 +31,10 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path, animations: 'disabled' });
     await testInfo.attach('Three sourced values', { path, contentType: 'image/png' });
     const review = terms.locator('form[data-fact-review]');
-    await review.getByLabel('Choose a value').selectOption({ label: '26 USD/SF/year · NNN · Demo Amendment.pdf' });
+    await review.getByLabel('Choose a value').selectOption({ label: '$26.00/SF/yr · NNN · Demo Amendment.pdf' });
     await review.getByLabel('Reason').fill('Demo amendment supersedes the earlier documents.');
     await review.getByRole('button', { name: 'Save review', exact: true }).click();
-    await expect(terms.locator('.fact-canonical')).toContainText('26 USD/SF/year');
+    await expect(terms.locator('.fact-canonical')).toContainText('$26.00/SF/yr');
     await expect(terms).toContainText('Review saved');
     await expect(terms.locator('.fact-observation')).toHaveCount(3);
     const edit = terms.getByRole('button', { name: 'Review term', exact: true });
@@ -46,9 +47,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await review.getByLabel('Cited text').fill('Demo corrected rent is $27 per square foot.');
     await review.getByLabel('Reason').fill('Demo reviewed correction.');
     await review.getByRole('button', { name: 'Save review', exact: true }).click();
-    await expect(terms.locator('.fact-canonical')).toContainText('27 USD/SF/year');
+    await expect(terms.locator('.fact-canonical')).toContainText('$27.00/SF/yr');
     await terms.getByText('Record a term', { exact: true }).click();
     const record = terms.locator('form[data-fact-record]');
+    if (width === 1440) {
+      const rows = await record.evaluate(form => [...form.querySelectorAll('[name=page_start], [name=page_end]')].map(input => input.parentElement.offsetTop));
+      expect(rows[1]).toBe(rows[0]);
+    }
+    await record.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`record-${width}-${theme}.png`), animations: 'disabled' });
     await record.getByLabel('Value', { exact: true }).fill('28');
     await record.getByLabel('Cited text').fill('Demo later clause.');
     await record.getByRole('button', { name: 'Record term', exact: true }).click();
@@ -56,7 +63,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await review.getByLabel('Decision').selectOption('reject');
     await review.getByLabel('Reason').fill('Demo later clause does not apply.');
     await review.getByRole('button', { name: 'Save review', exact: true }).click();
-    await expect(terms.locator('.fact-canonical')).toContainText('27 USD/SF/year');
+    await expect(terms.locator('.fact-canonical')).toContainText('$27.00/SF/yr');
     await expect(terms).toContainText('Review saved');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`terms-${width}-${theme}-resolved.png`), animations: 'disabled' });
@@ -83,7 +90,7 @@ test('stale evidence refreshes the review without applying the old decision', as
   await expect(terms).toContainText('Terms changed since you opened this review');
   await expect(terms.locator('.fact-observation')).toHaveCount(4);
   await expect(terms.locator('.fact-canonical')).toContainText('No canonical value recorded');
-  await expect(review.getByLabel('Reason')).toHaveValue('');
+  await expect(review.getByLabel('Reason')).toHaveValue('Demo original review.');
 });
 
 test('unknown save retries the identical request and freezes its reviewed fields', async ({ page }) => {

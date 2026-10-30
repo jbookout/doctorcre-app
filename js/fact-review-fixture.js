@@ -6,11 +6,11 @@ export function createFactReviewFixture() {
     id: `00000000-0000-4000-8000-00000000003${i}`, subject_type: 'deal', subject_id: 'd14', filename,
   }));
   const observations = [24, 25, 26].map((value, i) => ({ id: uuidv4(), entity_ref: 'd14', fact_key: 'base_rent_per_sf',
-    value: String(value), normalized_value: String(value), unit: 'USD/SF/year', expense_basis: 'nnn', method: 'text_layer',
+    value: String(value), normalized_value: String(value), unit: 'USD/SF/year', expense_basis: 'nnn', method: i === 0 ? 'ocr' : 'text_layer', confidence_tier: i === 0 ? 'verify_band' : 'auto_accept',
     source: { document_ref: documents[i].id, page_start: i + 1, page_end: i + 1, cited_text: i === 1 ? null : `Demo annual base rent is $${value} per square foot.`,
       cited_text_expires_at: i === 1 ? '2020-01-01T00:00:00Z' : '2099-01-01T00:00:00Z', cited_text_sha256: 'a'.repeat(64) } }));
   const fields = new Map([['d14|base_rent_per_sf', { entity_ref: 'd14', fact_key: 'base_rent_per_sf', canonical_version: 0,
-    review_version: '0'.repeat(64), pending: true, reasons: ['conflict'], observations, canonical_fact: null, canonical_history: [], review_history: [] }]]);
+    review_version: '0'.repeat(64), pending: true, reasons: ['conflict', 'verify_band', 'human_review'], observations, canonical_fact: null, canonical_history: [], review_history: [] }]]);
   const receipts = new Map();
   const refuse = error => { throw Object.assign(new Error(error), { payload: { error } }); };
   const response = result => structuredClone({ ...result, ok: true, schema_version: 'fact-review.v1' });
@@ -39,7 +39,7 @@ export function createFactReviewFixture() {
     const [whole, fraction = ''] = input.value.split('.');
     const scaled = (BigInt(whole + fraction) * BigInt(contract.units[input.unit])).toString().padStart(fraction.length + 1, '0');
     const normalized = fraction ? `${scaled.slice(0, -fraction.length)}.${scaled.slice(-fraction.length)}`.replace(/0+$/, '').replace(/\.$/, '') : scaled;
-    const observation = { ...structuredClone(input), id: uuidv4(), entity_ref: entity, normalized_value: normalized, method: 'human',
+    const observation = { ...structuredClone(input), id: uuidv4(), entity_ref: entity, normalized_value: normalized, method: 'human', confidence_tier: 'human_review',
       source: { ...source, cited_text_expires_at: '2099-01-01T00:00:00Z', cited_text_sha256: 'b'.repeat(64) } };
     field.observations.push(observation);
     field.pending = true;
