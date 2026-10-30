@@ -105,8 +105,8 @@ test('board summaries use the real fixture and live adapters for detail-only act
   for (const client of [fixture, live]) {
     const deal = (await client.getBoard()).deals.find(row => row.id === seed.deals[0].id);
     const doc = new JSDOM(renderDealAlert(deal, { today: '2026-10-29', viewer: 'joe', buttons: true, board: true })).window.document;
-    assert.match(doc.body.textContent, /Next: Tour the property · Dell/);
-    assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
+    assert.match(doc.body.textContent, /Next: Tour the property Dell/);
+    assert.match(doc.body.textContent, /Last: Met the client Thu Oct 22/);
     assert.doesNotMatch(doc.body.textContent, /Old action|No next step/);
   }
   seed.deals[0].email_actions[2].completed_at = '2026-10-23T12:00:00Z';
@@ -134,7 +134,7 @@ test('field audit writes preserve the recorded Last step and stay off board card
   assert.ok(detail.history.some(entry => /attention/.test(entry.summary)));
   assert.ok(detail.activities.every(entry => !/attention/.test(entry.summary)));
   const doc = new JSDOM(renderDealAlert(after, { board: true, today: '2026-10-29' })).window.document;
-  assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
+  assert.match(doc.body.textContent, /Last: Met the client Thu Oct 22/);
   assert.doesNotMatch(doc.body.textContent, /attention|false|true/);
 });
 

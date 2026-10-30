@@ -165,7 +165,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
  assert.match(await overdue.innerText(), /days? overdue/);
  assert.equal(await overdue.evaluate(node => getComputedStyle(node).whiteSpace), 'nowrap');
  const sections=['#appTodayNeeds','#appTodayNext','#appTodayMoves'];
- const rows=async()=>Promise.all(sections.map(async selector=>(await page.locator(selector+' [data-layout-deal]').allTextContents()).map(text=>selector==='#appTodayMoves'?text.replace(/ · (?:just now|\d+ (?:minute|hour|day)s? ago)$/, ''):text)));
+ const rows=async()=>Promise.all(sections.map(async selector=>(await page.locator(selector+' [data-layout-deal]').allTextContents()).map(text=>selector==='#appTodayMoves'?text.replace(/ (?:just now|\d+ (?:minute|hour|day)s? ago)$/, ''):text)));
  const good=await rows();assert.ok(good.every(items=>items.length));
  const retry=page.getByRole('button',{name:'Retry Today',exact:true});
  for(const source of ['deal-room-board','today-triage','morning-brief','feed']){
@@ -458,12 +458,12 @@ const moveRow=(page,deal)=>page.locator(`#appTodayMoves [data-layout-deal="${dea
 test('Recent moves lead with the deal name and say what changed, who did it and when',async t=>{
  const {page,errors}=await movesOpen(t);
  for(const [deal,name,detail] of [
-  ['d01','Demo Dental North','Joe moved to Due Diligence · 2 hours ago'],
-  ['d02','Demo Pediatrics East','Doc flagged for attention · just now'],
-  ['d03','Demo Therapy Group','Dell set the next step to Review terms · 1 minute ago'],
-  ['d04','Demo Vision Center','Joe set the next date to Oct 5 · 1 hour ago'],
-  ['d05','Demo Family Clinic','Doc assigned to Dell · 3 days ago'],
-  ['d06','Demo Orthodontics South','Dell changed the client · 12 minutes ago'],
+  ['d01','Demo Dental North','Joe moved to Due Diligence 2 hours ago'],
+  ['d02','Demo Pediatrics East','Doc flagged for attention just now'],
+  ['d03','Demo Therapy Group','Dell set the next step to Review terms 1 minute ago'],
+  ['d04','Demo Vision Center','Joe set the next date to Oct 5 1 hour ago'],
+  ['d05','Demo Family Clinic','Doc assigned to Dell 3 days ago'],
+  ['d06','Demo Orthodontics South','Dell changed the client 12 minutes ago'],
  ]){
   const row=moveRow(page,deal);
   assert.equal(await row.locator('strong').innerText(),name);
@@ -484,9 +484,9 @@ test('Recent move ages follow the clock without a reload',async t=>{
  const {page,errors}=await movesOpen(t);
  assert.match(await moveRow(page,'d02').innerText(),/just now/);
  await page.clock.fastForward(2*MIN);
- await page.waitForFunction(()=>/Doc flagged for attention · 2 minutes ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ await page.waitForFunction(()=>/Doc flagged for attention 2 minutes ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
  await page.clock.fastForward(HOUR);
- await page.waitForFunction(()=>/Doc flagged for attention · 1 hour ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
+ await page.waitForFunction(()=>/Doc flagged for attention 1 hour ago/.test(document.querySelector('#appTodayMoves [data-layout-deal="d02"]').textContent));
  assert.deepEqual(errors,[]);
 });
 
@@ -495,6 +495,18 @@ test('Recent move times never wrap apart at 390px',async t=>{
  const ages=page.locator('#appTodayMoves .app-layout-age');
  assert.equal(await ages.count(),6);
  assert.deepEqual(await ages.evaluateAll(nodes=>nodes.map(node=>node.getClientRects().length)),[1,1,1,1,1,1]);
+ const lines = await moveRow(page,'d03').locator('span').first().evaluate(node => {
+  const range = document.createRange(), lines = new Map();
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) for (let i = 0; i < walker.currentNode.length; i++) {
+   range.setStart(walker.currentNode, i); range.setEnd(walker.currentNode, i + 1);
+   const rect = range.getBoundingClientRect();
+   if (rect.width) lines.set(rect.top, (lines.get(rect.top) || '') + walker.currentNode.data[i]);
+  }
+  return [...lines.values()].map(line => line.trim());
+ });
+ assert.ok(lines.length > 1, 'fixture must wrap');
+ assert.ok(lines.every(line => !line.startsWith('·')), JSON.stringify(lines));
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
 });
 

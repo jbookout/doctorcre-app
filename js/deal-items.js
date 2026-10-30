@@ -44,14 +44,14 @@ export function renderDealSummary(deal, { today = '', viewer = '' } = {}) {
   if (next) {
     const date = next.due_on && next.due_on < today ? '' : shortDate(next.due_on, today);
     const owner = next.owner && viewer && next.owner !== viewer ? ({ joe: 'Joe', dell: 'Dell' }[next.owner] || '') : '';
-    lines.push(`<span class="deal-summary-line"><span class="deal-summary-label">Next: </span><span class="deal-summary-text">${esc(next.description.trim())}</span><span class="deal-summary-facts">${date ? ` · <time data-overdue="${Boolean(next.due_on && next.due_on < today)}" datetime="${esc(next.due_on)}">${esc(date)}</time>` : ''}${owner ? ` · ${owner}` : ''}</span></span>`);
+    lines.push(`<span class="deal-summary-line"><span class="deal-summary-label">Next: </span><span class="deal-summary-text">${esc(next.description.trim())}</span> <span class="deal-summary-facts separated-fact">${date ? `<time data-overdue="${Boolean(next.due_on && next.due_on < today)}" datetime="${esc(next.due_on)}">${esc(date)}</time>` : ''}${owner ? `${date ? ' · ' : ''}${owner}` : ''}</span></span>`);
   } else {
     lines.push('<span class="deal-summary-line">No next step set</span>');
   }
   const last = deal.last_step;
   const lastDate = shortDate(last?.occurred_at, '');
   if (last?.summary?.trim() && lastDate) {
-    lines.push(`<span class="deal-summary-line deal-summary-last"><span class="deal-summary-label">Last: </span><span class="deal-summary-text">${esc(last.summary.trim())}</span><span class="deal-summary-facts"> · <time datetime="${esc(last.occurred_at)}">${esc(lastDate)}</time></span></span>`);
+    lines.push(`<span class="deal-summary-line deal-summary-last"><span class="deal-summary-label">Last: </span><span class="deal-summary-text">${esc(last.summary.trim())}</span> <span class="deal-summary-facts separated-fact"><time datetime="${esc(last.occurred_at)}">${esc(lastDate)}</time></span></span>`);
   }
   return lines.join('');
 }

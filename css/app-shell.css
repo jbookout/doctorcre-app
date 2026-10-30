@@ -455,3 +455,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .email-warning { color: var(--status-warn-ink); }
 .email-dismiss { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
 .email-controls .email-chip { border-radius: var(--radius-round); font-weight: var(--font-weight-regular); }
+
+.separated-facts { display: flex; flex-wrap: wrap; column-gap: 1em; overflow: hidden; }
+.separated-fact { position: relative; }
+.separated-fact:not(:empty)::before { content: "·"; position: absolute; right: calc(100% + 0.4em); }

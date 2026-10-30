@@ -17,7 +17,7 @@
 .home-panel[hidden] { display: none; }
 .home-panel + .home-panel, .home-panel + .home-grid { margin-top: var(--space-4); }
 .home-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-3); }
-.home-panel-head h2, #homeReplyOutcomes section > h3 { margin: 0; min-width: 0; font: var(--font-weight-strong) var(--font-size-2)/var(--line-height-heading) var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
+.home-panel-head h2 { margin: 0; min-width: 0; font: var(--font-weight-strong) var(--font-size-2)/var(--line-height-heading) var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
 
 /* Deal attention. */
 .home-deals { padding: var(--space-5); }
@@ -215,3 +215,5 @@
 .home-followup-card.email-proposal p { margin: 0; }
 
 @media (max-width: 700px) { .home-followup-skeleton { min-height: 198px; } }
+
+#homeReplyOutcomes section > h3 { margin: 0; font-size: var(--font-size-1); }

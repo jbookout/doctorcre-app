@@ -29,6 +29,21 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
     await card.scrollIntoViewIfNeeded();
     const facts = card.locator('.deal-summary-facts').first();
     assert.match(await facts.innerText(), /Fri Oct 30 · Dell/);
+    if (width === 390 && !national) {
+      const lines = await card.locator('.deal-summary-line').first().evaluate(node => {
+        const range = document.createRange(), lines = new Map();
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) for (let i = 0; i < walker.currentNode.length; i++) {
+          range.setStart(walker.currentNode, i); range.setEnd(walker.currentNode, i + 1);
+          const rect = range.getBoundingClientRect();
+          if (rect.width) lines.set(rect.top, (lines.get(rect.top) || '') + walker.currentNode.data[i]);
+        }
+        return [...lines.values()].map(line => line.trim());
+      });
+      assert.ok(lines.length > 1, 'fixture must wrap');
+      assert.ok(lines.every(line => !line.startsWith('·')), JSON.stringify(lines));
+    }
+
     const visible = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.every(node => {
       const box = node.getBoundingClientRect();
       for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {

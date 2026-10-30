@@ -26,8 +26,8 @@
 
 .deal-item-date[data-overdue="true"], .deal-item-date[data-overdue="true"] time { color: var(--status-warn); }
 
-.deal-summary-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; margin: var(--space-2) 0 0; line-height: 1.4; min-width: 0; }
-.deal-summary-label { color: var(--fg-muted); padding-right: 0.3em; }
+.deal-summary-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; column-gap: 1em; overflow: hidden; margin: var(--space-2) 0 0; line-height: 1.4; min-width: 0; }
+.deal-summary-label { color: var(--fg-muted); margin-right: -0.7em; }
 .deal-summary-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; min-width: 0; }
 .deal-summary-facts { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .deal-summary-facts time[data-overdue="true"] { color: var(--status-warn-ink); }
