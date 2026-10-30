@@ -308,7 +308,7 @@ export function createCallMode(deps) {
     return `<article class="post-call-card question"><p>${esc(reportText(question))}</p>${options.length ? `<div class="post-call-options" aria-label="Possible answers">${options.map((option) => `<span>${esc(reportText(typeof option === 'string' ? option : option.label || option.text))}</span>`).join('')}</div>` : ''}
       ${edit?.error ? `<p class="post-call-inline-error" role="alert">${esc(edit.error)}</p>` : ''}
       ${item?.resolved === true ? `<p><b>Resolved</b> · ${esc(item.resolution || '')}</p>` : item?.id ? `
-      <div class="field"><label>Resolution <input type="text" data-question-resolution="${esc(item.id)}" value="${esc(edit?.text || '')}"${edit?.busy ? ' disabled' : ''}></label></div>
+      <div class="field"><label>Resolution <textarea rows="3" data-question-resolution="${esc(item.id)}"${edit?.busy ? ' disabled' : ''}>${esc(edit?.text || '')}</textarea></label></div>
       <div class="post-call-card-actions"><button type="button" class="primary" data-resolve-question="${esc(item.id)}"${!edit?.text?.trim() || edit?.busy ? ' disabled' : ''}>${edit?.busy ? 'Resolving…' : 'Resolve'}</button></div>
       ` : ''}</article>`;
   }
@@ -336,21 +336,21 @@ export function createCallMode(deps) {
     try {
       const result = await deps.postCallClient.resolveQuestion(session, id, edit.text.trim());
       if (!current()) return;
-      if (!Array.isArray(result.questions)) throw new Error('The updated questions could not be read. Refresh the report to check the resolution.');
+      if (!Array.isArray(result.report?.review_questions)) throw new Error('The updated questions could not be read. Refresh the report to check the resolution.');
       state.statusSequence = (state.statusSequence || 0) + 1;
       state.statusInFlight = null;
-      state.postCall.report = { ...state.postCall.report, review_questions: result.questions };
+      state.postCall.report = result.report;
       const status = typeof result.status === 'object' ? result.status.state : result.status;
       state.postCall.status = ({ ready_review: 'review_ready', blocked: 'failed' })[status] || status || state.postCall.status;
       state.postCall.questionEdits.delete(id);
     } catch (error) {
       if (!current()) return;
-      if (error.status === 409) {
+      if (error.status === 409 && (error.cause?.message === 'already_resolved' || error.cause?.message === 'Call Mode could not verify the post-call review state')) {
         edit.error = 'Already resolved';
         await refreshPostCall();
       } else {
         edit.error = error.status === 404 ? 'This question could not be found. Refresh the report.'
-          : error.status === 400 ? 'Enter a resolution before trying again.' : error.message;
+          : error.status === 400 ? 'Enter a resolution before trying again.' : error.status === 409 ? error.cause?.message || error.message : error.message;
       }
     } finally {
       if (current()) { edit.busy = false; renderPostCall(); }
@@ -458,12 +458,19 @@ export function createCallMode(deps) {
       ...(Array.isArray(envelope.questions) ? envelope.questions : [])];
     const drafts = Array.isArray(envelope.draft_proposals) ? envelope.draft_proposals : (Array.isArray(envelope.drafts) ? envelope.drafts : []);
     const hasReport = post.status === 'review_ready' || post.status === 'filed' || joe.length || dell.length || updates.length || questions.length || drafts.length;
+    const active = root.activeElement;
+    const focusedId = active?.dataset?.questionResolution;
+    const selection = focusedId ? [active.selectionStart, active.selectionEnd, active.selectionDirection] : null;
     $('#postCallReport').innerHTML = hasReport ? `${core.summary ? `<p class="post-call-summary">${esc(reportText(core.summary))}</p>` : ''}
     ${reportSection('Deal by deal', updates, dealUpdateCard, 'No deal updates were identified.')}
     ${reportSection('Joe this week', joe, (item) => taskCard(item, 'Joe'), 'No Joe tasks were identified.')}
     ${reportSection('Dell this week', dell, (item) => taskCard(item, 'Dell'), 'No Dell tasks were identified.')}
     ${reportSection('Questions to resolve', questions, questionCard, 'No unresolved questions.')}
     ${reportSection('What clients and vendors need to know · email drafts', drafts, draftCard, 'No client or vendor emails are needed from this call.')}` : '';
+    if (focusedId) {
+      const field = [...$('#postCallReport').querySelectorAll('[data-question-resolution]')].find(node => node.dataset.questionResolution === focusedId);
+      if (field && !field.disabled) { field.focus(); field.setSelectionRange(...selection); }
+    }
   }
 
   // --------------------------------------------------------- context index

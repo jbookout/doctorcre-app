@@ -23,8 +23,8 @@ test('resolving a review question renders the returned resolution read-only', as
   const requests = [];
   const { ui, doc } = await review(t, async (url, init) => {
     requests.push({ url, body: JSON.parse(init.body), headers: init.headers });
-    return { ok: true, json: async () => ({ questions: [{ id: 'demo-question', question: 'Which suite?',
-      resolved: true, resolution: 'Suite 200 <confirmed>' }], status: { state: 'filed' } }) };
+    return { ok: true, json: async () => ({ report: { review_questions: [{ id: 'demo-question', question: 'Which suite?',
+      resolved: true, resolution: 'Suite 200 <confirmed>' }] }, status: { state: 'filed' } }) };
   });
   const field = doc.querySelector('[data-question-resolution]');
   assert.ok(field, 'Unresolved questions offer a resolution field');
@@ -88,8 +88,8 @@ test('a report read started during Resolve cannot restore the old unresolved que
   field.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }));
   const resolving = ui.handleClick(doc.querySelector('[data-resolve-question]'));
   const reading = ui.refreshPostCall();
-  finishResolve({ ok: true, json: async () => ({ questions: [{ id: 'demo-question', question: 'Which suite?',
-    resolved: true, resolution: 'Suite 200' }], status: { state: 'filed' } }) });
+  finishResolve({ ok: true, json: async () => ({ report: { review_questions: [{ id: 'demo-question', question: 'Which suite?',
+    resolved: true, resolution: 'Suite 200' }] }, status: { state: 'filed' } }) });
   await resolving;
   finishRead({ ok: true, json: async () => ({ status: 'review_ready', report: {
     review_questions: [{ id: 'demo-question', question: 'Which suite?', resolved: false }] } }) });
@@ -115,7 +115,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       const body = route.request().postDataJSON();
       assert.deepEqual(body, { session: 'demo-session', resolution: 'Suite 200' });
       questions[0] = { ...questions[0], resolved: true, resolution: body.resolution };
-      await route.fulfill({ json: { questions, status: { state: 'filed' } } });
+      await route.fulfill({ json: { report: { review_questions: questions }, status: { state: 'filed' } } });
     });
     await page.goto(`${server.origin}/question-review`);
     await page.evaluate(async questions => {
@@ -149,3 +149,25 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: `out/test-artifacts/call-question-resolve/${width}-${theme}-resolved.png`, fullPage: true });
   });
 }
+
+ test('poll preserves the focused resolution and cursor', async t => {
+  const { ui, doc } = await review(t, async () => ({ ok: true, json: async () => ({ status: 'review_ready', report: { review_questions: [{ id: 'demo-question', question: 'Which suite?', resolved: false }] } }) }));
+  const field = doc.querySelector('[data-question-resolution]');
+  field.value = 'Suite 200'; field.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }));
+  field.focus(); field.setSelectionRange(3, 5);
+  await ui.refreshPostCall();
+  const current = doc.querySelector('[data-question-resolution]');
+  assert.equal(doc.activeElement, current);
+  assert.equal(current.value, 'Suite 200');
+  assert.equal(current.selectionStart, 3); assert.equal(current.selectionEnd, 5);
+  assert.equal(current.rows, 3);
+});
+
+test('other conflicts show the companion error', async t => {
+  const { ui, doc } = await review(t, async () => ({ ok: false, status: 409, json: async () => ({ error: 'disk unavailable' }) }));
+  const field = doc.querySelector('[data-question-resolution]');
+  field.value = 'Suite 200'; field.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }));
+  await ui.handleClick(doc.querySelector('[data-resolve-question]'));
+  assert.match(doc.querySelector('#postCallReport').textContent, /disk unavailable/);
+  assert.doesNotMatch(doc.querySelector('#postCallReport').textContent, /Already resolved/);
+});
