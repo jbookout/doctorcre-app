@@ -20,7 +20,7 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       const disabled = state !== 'ready' || pending;
       const automatic = row.automatic;
       const assessing = !automatic && ['awaiting_assessment', 'assessment_in_progress', 'interrupted'].includes(row.assessment.reason);
-      return `${automatic && (index === 0 || !rows[index - 1].automatic) ? '<div class="panel-section"><h3>Closed automatically</h3></div>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
+      return `${automatic && (index === 0 || !rows[index - 1].automatic) ? '<div class="detail-section"><h3>Closed automatically</h3></div>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
         title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
         meta: automatic ? `<p>Task · ${E(row.action_title)}</p><p>Closed · ${E(sourceTime(row.resolved_at, undefined, 'Date unavailable'))}</p>` : `<p>Overdue task · ${E(row.assessment.action.description)}</p>`,
         body: `<q>${E(automatic ? row.quote : row.assessment.quote || row.assessment.update)}</q>${automatic ? '' : `<p class="email-change">${assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>`}${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
