@@ -701,6 +701,7 @@ export function createLiveClient(opts = {}) {
     },
     async listProgressBoards(_args = {}, { signal } = {}) { return rpc('list-progress-boards', {}, signal); },
     async readProgressBoard(args, { signal } = {}) { return expandBoardRead(await rpc('read-progress-board', args, signal)); },
+    async workQueue(_args = {}, { signal } = {}) { return rpc('work-queue', {}, signal); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 

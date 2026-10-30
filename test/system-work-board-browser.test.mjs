@@ -33,7 +33,6 @@ async function open(t,width,{snapshot=true}={}){
   try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:/\.m?js$/.test(path)?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto('http://localhost/control-room/progress?mode=live');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
- if(snapshot) await page.locator('[data-work-view="history"]').click();
  return {page,calls,errors};
 }
 test('all source cards and ten recorded completions fit phone and desktop; library finds old completion',async t=>{
@@ -73,7 +72,7 @@ test('finding 11: system census remains usable without inventing snapshot public
  const meta=page.locator('#board-meta');
  assert.equal(await meta.getAttribute('data-read-state'),'unpublished');
  assert.doesNotMatch(await meta.textContent(),/Published|Version null/);
- await page.getByText('This board has not been published yet.',{exact:true}).waitFor();
+ assert.match(await meta.textContent(),/no cost snapshot published/);
 });
 
 test('W1: desktop work action uses a wide dialog with human category labels',async t=>{
@@ -107,11 +106,11 @@ for (const width of [390, 1440]) test(`S8 populated Progress preserves readable 
  const empty=await page.locator('#system-work-flow .flow-stage').evaluateAll(nodes=>nodes.filter(n=>!n.querySelector('[data-task-id]')).map(n=>n.getBoundingClientRect().height));
  assert.ok(empty.every(height=>height<150), `empty lanes do not stretch to the largest lane: ${empty}`);
 });
-test('S8 unpublished Progress explains its empty sections and keeps Key in the header row', async t=>{
+test('S8 an unpublished cost snapshot leaves the live queue board in place and keeps Key in the header row', async t=>{
  const {page}=await open(t,390,{snapshot:false});
- await page.waitForFunction(()=>document.querySelector('#board-meta').textContent==='No published snapshot');
- assert.match(await page.locator('#board-stages').textContent(), /published/i);
- assert.match(await page.locator('#board-blocked').textContent(), /published/i);
+ await page.waitForFunction(()=>/no cost snapshot published/.test(document.querySelector('#board-meta').textContent));
+ assert.match(await page.locator('#board-stages .queue-board-status').textContent(), /work queue/i);
+ assert.equal(await page.locator('#board-blocked').evaluate(el=>el.closest('.panel').hidden), true);
  const dimensions=await page.evaluate(()=>{
   const box=s=>document.querySelector(s).getBoundingClientRect();
   const key=box('#legend-toggle'),nav=box('.board-switch'),check=box('#filter-blocked');

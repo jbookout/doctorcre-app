@@ -19,7 +19,7 @@ const tasks = {
   'WR14.S1.J1.carr#1960': { id: 'WR14.S1.J1.carr#1960', parent_id: 'WR14.S1', card_title: 'Board grouping', card_description: 'Keep related changes together.', done: true, pr: 1960, repo: 'jbookout/carr-system', merge_sha: 'a'.repeat(40) },
   'WR14.S2.J1.app#316': { id: 'WR14.S2.J1.app#316', parent_id: 'WR14.S2', card_title: 'Board navigation', card_description: 'Follow a request through its slices and changes.', status: 'review', stage: 'review', pr: 316, repo: 'jbookout/doctorcre-app' },
 };
-const data = { schema: 'carr-progress-board.v4', project: 'carr-v5', hierarchy, tasks };
+const data = { schema: 'carr-progress-board.v4', project: 'demo-project', hierarchy, tasks };
 
 test('default is Work Requests, then ordered slices, then only the selected slice PRs', () => {
   assert.deepEqual(hierarchyView(data).active.map(c => c.id), ['WR14']);
@@ -29,14 +29,14 @@ test('default is Work Requests, then ordered slices, then only the selected slic
   assert.deepEqual(hierarchyView(data, 'WR14.S2').active.map(c => c.id), ['WR14.S2.J1.app#316']);
   assert.equal(hierarchyView(data, 'old-card').selected.id, 'WR14.S2.J1.app#316');
   assert.equal(hierarchyView(data, 'missing').error, 'Card not found.');
-  assert.match(hierarchyUrl('carr-v5', 'WR14.S2.J1.app#316'), /WR14.S2.J1.app%23316/);
+  assert.match(hierarchyUrl('demo-project', 'WR14.S2.J1.app#316'), /WR14.S2.J1.app%23316/);
 });
 
 test('board drills down, pastes aliases, opens evidence, and Back restores the parent URL', async () => {
   const page = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
-  const dom = new JSDOM(page, { url: 'https://app.doctorcre.com/progress-board' });
+  const dom = new JSDOM(page, { url: 'https://app.doctorcre.com/progress-board?board=demo-project' });
   const opened = [];
-  const board = mountBoard({ window: dom.window, client: { readProgressBoard: async () => ({ snapshot: { board_id: 'carr-v5', version: 1, snapshot_json: data } }) },
+  const board = mountBoard({ window: dom.window, client: { readProgressBoard: async () => ({ snapshot: { board_id: 'demo-project', version: 1, snapshot_json: data } }) },
     openTask: card => opened.push(card), setInterval: () => 0, setTimeout: () => 0, clearTimeout() {} });
   await board.refresh(true);
   const doc = dom.window.document;
@@ -101,11 +101,11 @@ test('legacy receipts stay in expandable History without becoming completed proo
 
 for (const status of [401, 403]) test(`denied hierarchy read ${status} cannot be restored by history and identical recovery renders`, async () => {
   const page = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
-  const dom = new JSDOM(page, { url: 'https://app.doctorcre.com/control-room/progress/board/carr-v5' });
+  const dom = new JSDOM(page, { url: 'https://app.doctorcre.com/control-room/progress/board/demo-project' });
   let denied = false;
   const board = mountBoard({ window: dom.window, client: { readProgressBoard: async () => {
     if (denied) throw Object.assign(new Error('Denied'), {status});
-    return {snapshot: {board_id:'carr-v5', version:1, snapshot_json:data}};
+    return {snapshot: {board_id:'demo-project', version:1, snapshot_json:data}};
   } }, setInterval: () => 0, setTimeout: () => 0, clearTimeout() {} });
   try {
     await board.refresh(true);
@@ -124,7 +124,7 @@ for (const status of [401, 403]) test(`denied hierarchy read ${status} cannot be
 
 test('browser history opens the selected job detail in both directions', async () => {
   const page = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
-  const dom = new JSDOM(page, {url:'https://app.doctorcre.com/control-room/progress/board/carr-v5'});
+  const dom = new JSDOM(page, {url:'https://app.doctorcre.com/control-room/progress/board/demo-project'});
   const opened = [];
   const board = mountBoard({window:dom.window, client:{readProgressBoard:async()=>({snapshot:{version:1,snapshot_json:data}})},
     openTask:card=>opened.push(card.id), setInterval:()=>0, setTimeout:()=>0, clearTimeout(){}});
