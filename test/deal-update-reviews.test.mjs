@@ -94,3 +94,46 @@ for (const reason of ['awaiting_assessment', 'assessment_in_progress', 'interrup
   assert.match(container.textContent, /still assessing/i);
   assert.equal(container.querySelectorAll('article button').length, 0);
 });
+
+const automatic = (id = 'auto') => ({ assessment_id: id, deal_id: 'demo-deal', deal_name: 'Demo Harbor', action_title: 'Request terms', quote: 'Terms arrived.', resolved_at: '2026-10-01T12:00:00Z', undo_possible: true });
+test('a closed task that cannot be undone has no Undo button', async t => {
+  const { view, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [{ ...automatic(), undo_possible: false }] }) });
+  await view.refresh();
+  assert.equal(container.querySelector('[data-update-action="undo"]'), null);
+});
+test('empty reviews are named before automatic closes', async t => {
+  const { view, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }) });
+  await view.refresh();
+  assert.match(container.textContent, /No overdue reviews\..*Closed automatically/s);
+});
+test('automatically closed task can be undone', async t => {
+  const writes = [];
+  const { view, action, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }), reviewDealUpdate: async args => { writes.push(args); return { ok: true, decision: 'undo', action_id: 'demo-action' }; } });
+  await view.refresh();
+  assert.match(container.textContent, /Closed automatically.*Demo Harbor.*Request terms.*Terms arrived/s);
+  assert.equal(container.querySelector('a').getAttribute('href'), '/deals?deal=demo-deal');
+  await action('Undo');
+  assert.equal(writes[0].decision, 'undo'); assert.equal(writes[0].assessment_id, 'auto');
+  assert.ok(writes[0].reason && writes[0].idempotency_key);
+  assert.match(container.textContent, /Task reopened/);
+});
+test('undo explains a newer change and other refusals', async t => {
+  let code = 'newer_change_exists';
+  const { view, action, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }), reviewDealUpdate: async () => { throw Object.assign(Error('refused'), { payload: { error: code } }); } });
+  await view.refresh(); await action('Undo');
+  assert.match(container.textContent, /A newer change was made to this task, so this can't be undone here\./);
+  code = 'other'; await view.refresh(); await action('Undo');
+  assert.match(container.textContent, /Review was refused/);
+});
+test('automatic closes share the panel cap and empty groups stay hidden', async t => {
+  let closed = [automatic('one'), automatic('two'), automatic('three')];
+  const { view, action, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: closed }) });
+  await view.refresh(); assert.equal(container.querySelectorAll('article').length, 2);
+  await action('Show 1 more'); assert.equal(container.querySelectorAll('article').length, 3);
+  closed = []; await view.refresh(); assert.doesNotMatch(container.textContent, /Closed automatically/);
+});
+test('session loss clears automatically closed tasks', async t => {
+  const { view, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }) });
+  await view.refresh(); container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
+  assert.doesNotMatch(container.textContent, /Demo Harbor|Terms arrived/);
+});

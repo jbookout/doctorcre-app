@@ -365,6 +365,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const host = $('homeOverdueReviews');
     if (!host || !client.readDealUpdateReviews || disposed || emailRetired) return;
     const ticket = ++overdueEpoch;
+    const stale = () => disposed || emailRetired || ticket !== overdueEpoch;
     host.setAttribute('aria-busy', 'true');
     const paint = message => {
       host.setAttribute('aria-busy', 'false');
@@ -372,17 +373,18 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     };
     try {
       const result = await readWithDeadline(() => client.readDealUpdateReviews(), { timeoutMs: 10_000 });
-      if (disposed || emailRetired || ticket !== overdueEpoch) return;
-      if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length) {
+      if (stale()) return;
+      const closed = result?.automatic_resolutions;
+      if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length && (closed == null || Array.isArray(closed) && !closed.length)) {
         paint('No overdue reviews.'); return;
       }
       const { mountDealUpdateReviews } = await import('./deal-update-reviews.js');
-      if (disposed || emailRetired || ticket !== overdueEpoch) return;
+      if (stale()) return;
       overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result,
         onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });
       await overdueReviews.refresh();
     } catch {
-      if (!disposed && !emailRetired && ticket === overdueEpoch) paint('Could not load overdue reviews. Refresh Home to try again.');
+      if (!stale()) paint('Could not load overdue reviews. Refresh Home to try again.');
     }
   }
   panelObserver = new window.IntersectionObserver(entries => {
