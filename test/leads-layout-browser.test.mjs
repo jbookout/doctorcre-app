@@ -176,6 +176,6 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) test(`lead
  const target=page.locator('.lead-open').first(), box=await target.boundingBox();
  assert.ok(box.width>=44 && box.height>=44);
  if(width===390) assert.equal(await page.locator('.stage-column:not(:has(.lead-card)):visible').count(),0);
- await mkdir('.github/pr-evidence/WR572.S6.J1',{recursive:true});
- await page.screenshot({path:`.github/pr-evidence/WR572.S6.J1/leads-${width}-${theme}.png`});
+ await mkdir('out/test-artifacts/WR572.S6.J1',{recursive:true});
+ await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/leads-${width}-${theme}.png`});
 });

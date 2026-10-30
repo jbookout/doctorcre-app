@@ -407,10 +407,10 @@ for (const width of [390, 1440]) for (const theme of ['light','dark']) test(`dea
  const controls=page.locator('.kanban-card :is(.card-open, .deal-items button):visible');
  assert.ok(await controls.count());
  for(const control of await controls.all()) { const box=await control.boundingBox(); assert.ok(box.width>=44 && box.height>=44); }
- await mkdir('.github/pr-evidence/WR572.S6.J1',{recursive:true});
- await page.screenshot({path:`.github/pr-evidence/WR572.S6.J1/deals-${width}-${theme}.png`});
+ await mkdir('out/test-artifacts/WR572.S6.J1',{recursive:true});
+ await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/deals-${width}-${theme}.png`});
  await page.getByRole('button',{name:'List',exact:true}).click();
- await page.screenshot({path:`.github/pr-evidence/WR572.S6.J1/deals-list-${width}-${theme}.png`});
+ await page.screenshot({path:`out/test-artifacts/WR572.S6.J1/deals-list-${width}-${theme}.png`});
 });
 
 test('deal list shows overdue age in its rows', async t => {
