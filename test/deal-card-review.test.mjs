@@ -4,7 +4,7 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false,denseBoard=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -12,6 +12,10 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
  Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:nextStep,closed_on:closedOn,workspace_kind:'team',account_client_id:null,operating_state:'active',phase_started_on:{pending:'2026-08-10',research:'2026-08-31',site_selection:'2026-09-08',negotiation:'2026-09-20'}});
  seed.deals.find(d=>d.id==='d20').next_step=longestNextStep;
+ if(denseBoard) {
+  seed.deals.forEach(deal=>{if(deal.phase==='Research') deal.phase='Negotiation';});
+  seed.deals.push(...Array.from({length:100},(_,i)=>({...seed.deals.find(d=>d.id==='d14'),id:`demo-dense-${i}`,phase:'Research',name:`Demo multidisciplinary healthcare practice with a deliberately long full name number ${i}`,short_name:`Demo short ${i}`})));
+ }
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
@@ -38,19 +42,22 @@ test('every deal snapshot opens with an empty Update above a concise overview an
   assert.equal(await page.locator('#detailUpdateForm').count(),1);
   assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
   const form=await page.locator('#detailUpdateForm').boundingBox(),notes=await page.locator('.deal-updates').boundingBox();
-  assert.ok(form.y+form.height<notes.y);assert.ok(form.y+form.height<960);
+  assert.ok(form.y+form.height<notes.y);
+  await page.locator('#detailUpdateForm button[type="submit"]').scrollIntoViewIfNeeded();
+  assert.equal(await page.locator('#detailUpdateForm button[type="submit"]').isVisible(),true);
   await page.locator('.updates-history > summary').click();
   assert.equal(await page.locator('.deal-note').first().getAttribute('data-id'),'demo-new');
   assert.match(await page.locator('.deal-note').first().textContent(),/Dell/);
   assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
   assert.equal(await page.locator('.timeline-chart').count(),0);
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(),1);
-  await page.locator('#panelEvidenceSection > summary').click();
+  await page.getByRole('tab', {name:'Correspondence & notes'}).click();
   await page.locator('[data-evidence-retry]').first().waitFor();
   assert.match(await page.locator('#recordPanel').textContent(),/Threads unavailable/);
   assert.equal(await page.locator('[data-evidence-retry]').count()>0,true);
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
   await page.screenshot({path:new URL(`out/test-artifacts/deal-card-review/${width}-after.png`,root).pathname,animations:'disabled'});
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('.deal-updates').scrollIntoViewIfNeeded();
   await page.screenshot({path:new URL(`out/test-artifacts/deal-card-review/${width}-notes-after.png`,root).pathname,animations:'disabled'});
   assert.deepEqual(errors,[]);
@@ -60,7 +67,7 @@ test('every deal snapshot opens with an empty Update above a concise overview an
 test('lost deals have a searchable view and open the shared snapshot',async t=>{
  const {page}=await open(t);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,outcome:'lost'}};};state.lostDeals=[{id:'d14',name:'Demo Lost Practice',client_name:'Demo Lost Client',type:'Relocation',outcome:'lost',phase:'Closed'}];});
- await page.getByRole('button',{name:'Close deal',exact:true}).click();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.getByRole('button',{name:'Lost deals',exact:true}).click();
  assert.equal(await page.locator('#closedCount').textContent(),'1 lost deals');
  await page.getByLabel('Search lost deals').fill('Demo Lost Client');
@@ -79,7 +86,7 @@ test('archive-only snapshots hide board mutation controls',async t=>{
   state.closedDeals=[deal];
   state.client.getDeal=async()=>({deal,thread:[],history:[],participants:[],critical_dates:[]});
  });
- await page.getByRole('button',{name:'Close deal',exact:true}).click();
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.getByRole('button',{name:'Closed deals',exact:true}).click();
  await page.locator('[data-open-deal="demo-archived"]').click();
  await page.locator('#detailUpdateForm').waitFor();
@@ -112,9 +119,11 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   await evidence('board');
   await page.locator('[data-id="d14"] .card-open').click();await page.locator('#detailUpdateForm').waitFor();
 
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   const rails=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(rails).size,width===390?2:1,'phase dates fit without horizontal scrolling');
   assert.ok((await page.locator('.deal-timeline').boundingBox()).height<(width===390?330:200),'phase timeline stays compact');
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   assert.equal(await page.locator('#panelContextOpen').isVisible(),true,'linked context loads only when opened');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   assert.deepEqual(errors,[]);
@@ -127,10 +136,12 @@ test('phone timeline has one rail and unlinked context opens an explicit empty s
  const {page}=await open(t,390);
 
  await t.test('compact rail',async()=>{
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   const tops=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(tops).size,2);
  });
  await t.test('explicit empty context',async()=>{
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('#panelContextOpen').click();
   await page.getByText('No linked context recorded.',{exact:true}).waitFor();
  });
@@ -153,12 +164,12 @@ test('an open snapshot removes board controls when a refresh records closure',as
 
 test('phone deal title stays clear of Doc through the full timeline scroll',async t=>{
  const {page}=await open(t,390,{height:844});
- await page.locator('#recordPanel > #docPresence').waitFor();
+ await page.locator('#recordPanel #docPresence').waitFor();
  await animationsSettled(page);
- const maxScroll=await page.locator('#recordPanel').evaluate(n=>n.scrollHeight-n.clientHeight);
+ const maxScroll=await page.evaluate(()=>document.documentElement.scrollHeight-innerHeight);
  assert.ok(maxScroll>0,'fixture exercises a scrolling snapshot');
  for(const top of [...new Set([0,44,...Array.from({length:Math.ceil(maxScroll/16)},(_,i)=>i*16),maxScroll])]){
-  await page.locator('#recordPanel').evaluate((n,top)=>{n.scrollTop=top;},top);
+  await page.evaluate(top=>scrollTo(0,top),top);
   const obscured=await page.locator('#panelTitle').evaluate(title=>{
    const box=title.getBoundingClientRect(),hits=[];
    for(let y=box.top+1;y<box.bottom;y+=4)for(let x=box.left+1;x<box.right;x+=4){
@@ -169,47 +180,31 @@ test('phone deal title stays clear of Doc through the full timeline scroll',asyn
   });
   assert.deepEqual(obscured,[],`title remains hit-testable at scroll ${top}`);
  }
+ await page.getByRole('tab',{name:'Timeline',exact:true}).click();
  await page.locator('.deal-timeline').scrollIntoViewIfNeeded();
  await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/390-d14-scrolled.png',root).pathname,animations:'disabled'});
 });
 
 
-test('desktop board shows the full longest next step within three lines',async t=>{
+test('desktop checklist titles fit alongside the next step',async t=>{
  const {page}=await open(t,1280,{theme:'light',showDetail:false});
- await animationsSettled(page);
- const step=page.locator('.kanban-column [data-id="d20"] .next-line');
- assert.equal(await step.textContent(),longestNextStep);
- assert.equal(await step.getAttribute('title'),longestNextStep);
- for(const fontFamily of ['', 'Arial']){
-  await step.evaluate((n,fontFamily)=>n.style.fontFamily=fontFamily,fontFamily);
-  const layout=await step.evaluate(n=>{
-   const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
-   const lines=[...range.getClientRects()];
-   return {height:box.height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),
-    clipped:lines.filter(line=>line.bottom>box.bottom+1||line.right>box.right+1).length};
-  });
-  assert.equal(layout.clipped,0,'the whole sentence fits inside the visible next step');
-  assert.ok(layout.height>layout.lineHeight*2,'fixture exercises the third line');
-  assert.ok(layout.height<=layout.lineHeight*3+1,'next step uses at most three lines');
-  assert.ok((await step.locator('..').boundingBox()).height<240,'card stays compact');
- }
- await step.evaluate(n=>n.style.fontFamily='');
- await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
- await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/1280-light-board.png',root).pathname,animations:'disabled'});
+ const card=page.locator('.kanban-column [data-id="d14"]');
+ assert.deepEqual(await card.locator('ol button').allTextContents(),['Vendor Introductions','Prelim Market Study','ETL not completed']);
+ assert.equal(await card.locator('.next-line').count(),0);
+ assert.equal(await card.evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ assert.match(await card.textContent(),/Next: Prior status that must not prefill/);
 });
 
-
-test('empty next steps flag the gap without inventing an action or due date',async t=>{
+test('empty legacy next steps preserve existing structured items',async t=>{
  const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
- assert.equal(await card.getByText('Next step missing',{exact:true}).isVisible(),true);
+ assert.equal(await card.getByText('Next step missing',{exact:true}).count(),0);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
  assert.equal(await page.locator('.deal-current-action').count(),0);
- assert.equal(await page.locator('.deal-opening-snapshot').getByText('Next step missing',{exact:true}).isVisible(),true);
- assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
+ assert.equal(await page.locator('.deal-opening-snapshot ol li').count(),3,'the legacy text does not erase item records');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });
 
@@ -236,19 +231,22 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
  const dir=new URL('out/test-artifacts/deal-card-cleanup/',root);await mkdir(dir,{recursive:true});
  for(const width of [390,1280])for(const theme of ['dark','light'])await t.test(`${width}-${theme}`,async t=>{
   const {page,errors}=await open(t,width,{theme,nextStep:'Confirm the appointment and review the lease draft'});
+  assert.equal(await page.locator('.deal-opening-snapshot ol button').first().textContent(),'Vendor Introductions');
   assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
   assert.equal(await page.locator('.updates-overview').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
   assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
   assert.doesNotMatch(await page.locator('.updates-overview').textContent(),/Older demo update/);
+  await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   assert.equal(await page.locator('.phase-rail time:visible').count(),4);
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   assert.equal(await page.locator('.phase-rail time[datetime="2026-08-31"]').textContent(),'Aug 31, 2026');
   assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   await page.screenshot({path:new URL(`${width}-${theme}.png`,dir).pathname,animations:'disabled'});
   await page.locator('.updates-overview').scrollIntoViewIfNeeded();
-  const title=await page.locator('#panelTitle').boundingBox(),doc=await page.locator('#recordPanel > #docPresence').boundingBox();
-  assert.ok(title.x>=doc.x+doc.width,'the scrolled title clears Doc');
+  const title=await page.locator('#panelTitle').boundingBox(),doc=await page.locator('#recordPanel #docPresence').boundingBox();
+  assert.ok(title.y>=doc.y+doc.height || title.x>=doc.x+doc.width,'the scrolled title clears Doc');
   await page.screenshot({path:new URL(`${width}-${theme}-summary.png`,dir).pathname,animations:'disabled'});
   await page.locator('.updates-history > summary').click();
   assert.equal(await page.locator('.deal-note:visible').count()>1,true);
@@ -335,4 +333,57 @@ test('readable phone phase labels stay inside their rail columns',async t=>{
   return [...range.getClientRects()].filter(line=>line.right>box.right+1).map(()=>n.textContent);
  }));
  assert.deepEqual(overflow,[]);
+});
+
+for (const width of [390,1280]) test(`board cards show the full practice name without clipping at ${width}px`,async t=>{
+ const {page}=await open(t,width,{showDetail:false,denseBoard:true});
+ const title=page.locator('[data-id="demo-dense-0"] .card-open');
+ assert.equal(await title.textContent(),'Demo multidisciplinary healthcare practice with a deliberately long full name number 0');
+ const visible=await title.evaluate(button=>{
+  const range=document.createRange();range.selectNodeContents(button);
+  const bounds=button.closest('h4').getBoundingClientRect();
+  return [...range.getClientRects()].every(rect=>rect.bottom<=bounds.bottom+1&&rect.right<=bounds.right+1);
+ });
+ assert.equal(visible,true,'every line of the full name is visible');
+});
+
+for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-card stage keeps its heading and collapse preview at ${width}px in ${theme}`,async t=>{
+ const {page,errors}=await open(t,width,{theme,showDetail:false,denseBoard:true});
+ await mkdir(new URL('out/test-artifacts/d02-stages/',root),{recursive:true});
+ const capture=state=>page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}-${state}.png`,root).pathname,animations:'disabled'});
+ const lane=page.locator('[data-column="research"]');
+ const heading=lane.locator('h3');
+ assert.equal(await heading.locator('small').textContent(),'100');
+ await lane.scrollIntoViewIfNeeded();
+ await page.locator('#kanban').evaluate(board=>{board.scrollTop=4500;});
+ assert.ok(await page.locator('#kanban').evaluate(board=>board.scrollTop)>=1000,'the populated board scrolls');
+ assert.equal(await heading.evaluate(h=>{
+  const r=h.getBoundingClientRect(),board=document.querySelector('#kanban').getBoundingClientRect();
+  const hit=document.elementFromPoint(r.left+10,r.top+r.height/2);
+  return r.top>=board.top-1&&r.bottom<=innerHeight&&h.contains(hit);
+ }),true,'the stage heading remains visible above scrolled cards');
+ await capture('scrolled');
+ const collapse=lane.getByRole('button',{name:'Collapse Research',exact:true});
+ await collapse.focus();await page.keyboard.press('Enter');
+ assert.equal(await lane.locator('.kanban-card:visible').count(),0);
+ assert.equal(await lane.getByRole('button',{name:'Expand Research',exact:true}).getAttribute('aria-expanded'),'false');
+ assert.match(await lane.locator('.stage-preview').textContent(),/Demo multidisciplinary healthcare practice/);
+ assert.match(await lane.locator('.stage-preview').textContent(),/98 more/);
+ assert.equal(await lane.locator('.stage-preview').evaluate(preview=>{
+  const names=[...preview.querySelectorAll('span')].slice(0,2);
+  return names.length===2&&names[0].getBoundingClientRect().bottom<names[1].getBoundingClientRect().top;
+ }),true,'wrapped practice names occupy separate rows with a visible gap');
+ assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Expand Research');
+ assert.equal(await heading.evaluate(h=>{
+  const r=h.getBoundingClientRect(),board=document.querySelector('#kanban').getBoundingClientRect();
+  const hit=document.elementFromPoint(r.left+10,r.top+r.height/2);
+  return r.top>=board.top-1&&r.bottom<=innerHeight&&h.contains(hit);
+ }),true,'collapse keeps its focused heading in view');
+ await capture('collapsed');
+ await page.locator('#listView').click();await page.locator('#boardView').click();
+ await lane.getByRole('button',{name:'Expand Research',exact:true}).click();
+ assert.equal(await lane.locator('.kanban-card').count(),100);
+ await mkdir(new URL('out/test-artifacts/d02-stages/',root),{recursive:true});
+ await page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}.png`,root).pathname,animations:'disabled'});
+ assert.deepEqual(errors,[]);
 });

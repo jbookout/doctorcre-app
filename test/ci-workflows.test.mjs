@@ -76,7 +76,8 @@ test('source CI keeps the full required suite and checks privacy before browser 
   const steps = ci.split(/^      - /m).slice(1);
   assert.match(ci, /^  test:/m);
   assert.doesNotMatch(ci, /edited|continue-on-error:/);
-  assert.ok(steps.some(step => /^run: npm test$/m.test(step) && step.includes("github.event_name == 'pull_request'")));
+  assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4/);
+  assert.match(ci, /needs: \[checks, shards, performance\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);

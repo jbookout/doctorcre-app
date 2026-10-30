@@ -33,6 +33,7 @@ async function open(t,width,{snapshot=true}={}){
   try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:/\.m?js$/.test(path)?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto('http://localhost/control-room/progress?mode=live');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
+ if(snapshot) await page.locator('[data-work-view="history"]').click();
  return {page,calls,errors};
 }
 test('all source cards and ten recorded completions fit phone and desktop; library finds old completion',async t=>{

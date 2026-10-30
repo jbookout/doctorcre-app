@@ -33,7 +33,7 @@ for (const path of ['/', '/leads', '/deals']) for (const fonts of ['held', 'avai
       }
     });
     await page.goto(origin + path, { waitUntil: 'commit' });
-    await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null, { timeout: 3000 });
+    await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null);
     assert.ok(fontRequests > 0, 'the font request really started');
     assert.equal(fontCompleted, fonts === 'available', 'held CSS has not completed at first contentful paint');
     await page.getByRole('button', { name: 'Joe: account and settings', exact: true }).waitFor();

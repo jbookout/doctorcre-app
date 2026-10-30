@@ -40,6 +40,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 const dom = {
   title: document.querySelector("#pageTitle"),
+  footer: document.querySelector("#pageFooter"),
   resultsTitle: document.querySelector("#resultsTitle"),
   intro: document.querySelector("#pageIntro"),
   viewer: document.querySelector("#viewerWorkspace"),
@@ -80,6 +81,11 @@ const dom = {
 // have no ids, so they are addressed the way a reader addresses them — by where
 // they go.
 const phoneNavLinks = [...document.querySelectorAll(".mobile-nav a[href]")];
+
+const phoneFilters = window.matchMedia("(max-width: 767px)");
+phoneFilters.addEventListener("change", event => {
+  if (!event.matches) document.querySelector("#secondaryFilters").open = true;
+});
 
 const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[data-owner]")] : [];
 
@@ -320,6 +326,27 @@ function tierHtml(stats) {
   const tier = stats?.override?.tier || computed;
   return `<span class="trust-line"><span class="trust-tier" data-tier="${escapeHtml(tier)}">${escapeHtml(tier)}</span>${stats?.override ? `<span>Computed: ${escapeHtml(computed)}</span>` : ''}</span>`;
 }
+function vendorContactsHtml(record) {
+  const statuses = { not_researched: 'Not researched', needs_review: 'Needs review', office_verified: 'Office verified' };
+  const contacts = (record.people || []).map(({ company, contact, office, research }) => `
+    <li>
+      <h4>${escapeHtml(contact.name)}</h4>
+      ${company ? `<p class="note-summary">${escapeHtml(company.name.trim() || 'Company name not recorded')}</p>` : ''}
+      <dl>
+        <div class="record-field"><dt>Email</dt><dd>${escapeHtml(contact.email || 'Email not recorded')}</dd></div>
+        <div class="record-field"><dt>Phone</dt><dd>${escapeHtml([contact.phone, contact.cell].filter(Boolean).join(' · ') || 'Phone not recorded')}</dd></div>
+        <div class="record-field"><dt>Office</dt><dd>${office ? escapeHtml(`${office.street_address}, ${office.city}, ${office.state}`) : 'Office not recorded'}</dd></div>
+        <div class="record-field"><dt>Office research</dt><dd>${escapeHtml(statuses[research.status])}</dd></div>
+      </dl>
+      ${office ? `<p class="observed">${escapeHtml(office.source)} · ${escapeHtml(formatMoment(office.observed_at))}${office.expires_on ? ` · Expires ${escapeHtml(office.expires_on)}` : ''}</p>` : ''}
+    </li>`).join('');
+  return `<section class="record-section" aria-label="Vendor contacts">
+    <h3>Contacts & offices</h3>
+    <dl><div class="record-field"><dt>Recorded territory</dt><dd>${escapeHtml(record.territory || NOT_RECORDED)}</dd></div></dl>
+    ${contacts ? `<ul class="vendor-contacts">${contacts}</ul>` : '<p class="note-summary">No contacts recorded.</p>'}
+  </section>`;
+}
+
 function relationshipHtml(record) {
   const stats = record.relationship || {};
   const intro = stats.introductions || [];
@@ -378,12 +405,12 @@ async function saveTrust(event) {
   document.querySelector('#trustStatus').textContent = 'Saving…';
   let attempted = false;
   try {
-    const response = await fetchRead(recordRequestUrl('vendors', record.id), { headers: { accept: 'application/json' }, cache: 'no-store' });
+    const response = await fetchRead(recordRequestUrl('vendors', record.id, { people: true }), { headers: { accept: 'application/json' }, cache: 'no-store' });
     if (response.status === 401) return expireNow();
     if (!response.ok) throw Object.assign(new Error('Current vendor unavailable'), { status: response.status });
     const payload = await response.json();
     if (!active()) return;
-    if (!validRecordPayload(payload, 'vendors', record.id)) throw new Error('Current vendor unavailable');
+    if (!validRecordPayload(payload, 'vendors', record.id, { people: true })) throw new Error('Current vendor unavailable');
     if (payload.viewer !== view.record.payload?.viewer) return expireNow();
     if (payload.record.record_version !== operation.base_version) {
       view.pendingTrust = null;
@@ -473,7 +500,7 @@ function rowHtml(dataset, row, selectedId) {
   const allFacts = rowFacts(dataset, row);
   const missing = allFacts.filter((fact) => !fact.known).map((fact) => fact.label.toLowerCase());
   const facts = allFacts.filter((fact) => fact.known).map((fact) =>
-    `<span class="row-fact${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("")
+    `<span class="row-fact${fact.unresolved ? " unresolved" : ""}${fact.label === "Last contacted" ? " row-last-contact" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("")
     + (missing.length ? `<span class="row-missing">${NOT_RECORDED}: ${escapeHtml(missing.join(", "))}</span>` : "");
   return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span>${dataset === "vendors" ? tierHtml(row.relationship) + `<span class="contact-note">${escapeHtml(shortNote(row.relationship?.last_contact_note))}</span>` : ""}<span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
 }
@@ -673,7 +700,7 @@ function renderRecordPanel() {
     `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.filter(field => !['ETL status','What this status means','Version','What this level means','Vendor reference','Client reference','What they offer','Last touch'].includes(field.label) && field.known).map((field) =>
       `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${(section.title === 'Notes' ? `<p class="note-summary">${escapeHtml(shortNote(field.text))}</p><details class="record-details" data-details-key="notes"><summary>Details</summary><p class="entry-detail">${escapeHtml(field.text)}</p></details>` : escapeHtml(field.text))}${field.known && !field.resolved ? '<span class="unresolved-flag">Not recorded</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${referenceDetails}${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
+    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? vendorContactsHtml(payload.record) + relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${referenceDetails}${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
     dom.panelBody.dataset.recordId = payload.record.id;
     restorePanelState();
 
@@ -735,6 +762,8 @@ function expireNow() {
   view.loadingMore = null; view.failedPage = null;
   view.loadedRows = []; view.loadedPageCount = 0;
   view.pendingTrust = null; view.trustStatus = null;
+  view.activity = { id: null, sequence: view.activity.sequence + 1, result: null };
+  view.evidence = { id: null, sequence: view.evidence.sequence + 1, result: null };
   Object.assign(view, expireSession(view));
   renderControls();
   renderChips();
@@ -743,6 +772,7 @@ function expireNow() {
 }
 
 async function loadList(reason = "initial") {
+  if (view.signedOut) return;
   const query = { ...view.query, page: 1 };
   const targetPages = reason === 'background' ? Math.max(1, view.loadedPageCount || 1, view.failedPage || 1) : 1;
   view.loadingMore = null;
@@ -829,7 +859,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
 }
 
 async function loadRecord(id, { focusOnOpen = false } = {}) {
-  if (view.recordId !== id) return;
+  if (view.signedOut || view.recordId !== id) return;
   const pending = view.pendingTrust;
   const evidenceSequence = ++view.evidence.sequence;
   view.evidence.id = id;
@@ -851,7 +881,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     renderRecordPanel();
   };
   try {
-    const response = await fetchRead(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(recordRequestUrl(view.dataset, id, { people: view.dataset === 'vendors' }), { headers: { accept: "application/json" }, cache: "no-store" });
     // A record read is as authoritative about the session as a list read, and
     // it stays authoritative after the panel closes or another record is
     // opened. The expiry check runs before the selection and sequence guards
@@ -864,7 +894,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     }
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     const payload = await response.json().catch(() => null);
-    if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
+    if (!validRecordPayload(payload, view.dataset, id, { people: view.dataset === 'vendors' })) return settle("error", "FRESHNESS_UNKNOWN");
     if (pending && view.pendingTrust === pending && view.trustOperation === pending && pending.vendor === payload.record.ref) {
       const expected = pending.fields.trust_override, saved = payload.record.relationship?.override;
       if (payload.record.record_version > pending.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }
@@ -892,6 +922,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
 // ------------------------------------------------------------ orchestration
 
 function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
+  if (view.signedOut) return;
   const parsed = parseViewState(window.location.pathname, window.location.search);
   if (parsed) parsed.query.page = 1;
   if (!parsed) return;
@@ -912,11 +943,16 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   const hadRecord = Boolean(view.recordId);
   capturePanelState();
   if (recordChanged) { view.panelState = null; delete dom.panelBody.dataset.recordId; }
+  document.body.dataset.directory = parsed.dataset;
+  if (reason === "initial" || datasetChanged) {
+    document.querySelector("#secondaryFilters").open = parsed.dataset !== "vendors" || !phoneFilters.matches;
+  }
   view.dataset = parsed.dataset;
   view.query = parsed.query;
   view.recordId = parsed.recordId;
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
+  if (dom.footer) dom.footer.textContent = `DoctorCRE · ${DATASET_LABEL[parsed.dataset]}`;
   if (dom.resultsTitle) dom.resultsTitle.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
     dom.intro.textContent = "";
@@ -1084,7 +1120,7 @@ function wireControls() {
  * refetches on its own, so nothing reshuffles under a reader mid-sentence.
  */
 function watchExpiry() {
-  setInterval(() => {
+  return setInterval(() => {
     if (!view.list.payload || view.list.status === "loading") return;
     const signature = freshnessSignature(view.list.payload, view.dataset);
     if (signature === view.freshnessKey) return;
@@ -1103,8 +1139,14 @@ function start() {
   }
   if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   wireControls();
-  watchExpiry();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
+  const expiryTimer = watchExpiry();
+  const autoRefresh = mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
+  window.addEventListener('doctorcre-session-invalidated', () => {
+    autoRefresh.dispose();
+    clearInterval(expiryTimer);
+    clearTimeout(searchTimer);
+    expireNow();
+  }, { once: true });
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
   // The unread badge is chrome, not content: it loads the dealroom client, so

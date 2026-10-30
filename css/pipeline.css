@@ -74,9 +74,12 @@
 /* Columns are a tonal step below the cards, so a card is not a box inside a box. */
 .kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(7,minmax(0,1fr)); overflow: visible; gap: var(--space-2); }
 .kanban-column { min-width: 0; padding: var(--space-2); background: var(--ground); }
-.kanban-column > h3 { min-height: var(--space-7); gap: var(--space-1); }
+.kanban-column > h3 { position: sticky; top: 0; z-index: 2; margin: 0; min-height: var(--space-7); gap: var(--space-1); background: var(--ground); }
+.kanban-column > h3 button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--touch); padding: var(--space-2) 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.kanban-column > h3 button small { margin-left: auto; }
+.stage-preview { display: grid; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 .kanban-card { height: auto; min-width: 0; grid-template-rows: none; align-content: start; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
-.kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.kanban-card h4 { overflow-wrap: anywhere; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }
 .kanban-lane-label { display: none; }
 .next-line { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; overflow-wrap: anywhere; margin: 0; font-size: var(--font-size-1); color: var(--fg-muted); }
@@ -92,21 +95,19 @@
 .parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .parked-card { height: auto; grid-template-rows: none; align-content: start; }
 .deal-list { display: grid; grid-column: 1/-1; gap: 0; border-block: var(--hairline-width) solid var(--hairline); }
-.deal-row { min-height: var(--touch); grid-template-rows: auto; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 60px; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-3) var(--space-2); border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; cursor: pointer; font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.deal-row { min-height: var(--touch); grid-template-rows: auto; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 60px; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2); border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; cursor: pointer; font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .deal-row:last-child { border-bottom: 0; }
 .deal-row h4 { margin: 0; }
 .deal-row > span { color: var(--fg-muted); }
 .deal-row > .owner { text-align: right; }
 .deal-row[data-attention="true"] { border-top: 0; border-left: 2px solid var(--status-warn); }
-.deal-row .auto-move { grid-column: 3/-1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.deal-detail { max-width: none; width: min(1180px,calc(100vw - 28px)); }
 .detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: var(--space-5); }
 .detail-grid section { min-width: 0; }
 .detail-controls { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .detail-controls label { display: grid; gap: var(--space-2); }
 .detail-controls select, .detail-controls input, .detail-controls textarea { width: 100%; min-height: var(--touch); }
 .detail-next { line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
-.deal-note { padding: var(--space-3) 0; border-bottom: var(--hairline-width) solid var(--hairline); }
+.deal-note, .workspace-note { padding: var(--space-3) 0; border-bottom: var(--hairline-width) solid var(--hairline); }
 .deal-note p { margin: var(--space-2) 0; line-height: var(--line-height-body); }
 .deal-note time { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .deal-note details { margin-top: var(--space-2); }
@@ -114,7 +115,7 @@
 .note-original { white-space: pre-wrap; overflow-wrap: anywhere; }
 .park-control { color: var(--status-danger-ink); background: transparent; border: 0; margin-top: var(--space-4); }
 @media(max-width:1440px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line, .deal-row .auto-move { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
+@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
 @media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
 @media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; } }
 :root[data-motion="reduced"] :is(.kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"]) { transition: none; transform: none; }
@@ -136,11 +137,9 @@
 
 .kanban-card .auto-move span { display: block; white-space: nowrap; text-overflow: ellipsis; }
 
-/* The editable deal dialog owns its grid; the shell supplies its viewport placement. */
-.has-app-layout dialog.deal-detail#recordPanel { width: min(1180px,calc(100vw - 28px)); padding: 0; }
 .has-app-layout .deal-detail #panelBody { display: block; }
 
-.closed-deals-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: var(--space-3); }
+.closed-deals-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: var(--space-3); }
 .closed-deal { padding: var(--space-4); min-width: 0; overflow-wrap: anywhere; }
 .closed-deal h3 { margin: 0 0 var(--space-3); }
 .closed-deal dl:not(.deal-vendors) { display: grid; gap: var(--space-2); margin: 0; }
@@ -149,14 +148,24 @@
 .closed-deal dd { margin: 0; }
 
 .add-deal-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
-.add-deal-fields .field-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); }
+.add-deal-fields .field-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); }
 #addDealError:not(:empty) { color: var(--status-danger-ink); }
 #addDealOpen { margin-top: var(--space-3); }
 
 .deal-update-form { display:grid; gap:var(--space-2); margin-bottom:var(--space-4); }
 .deal-update-form textarea { min-height:80px; width:100%; box-sizing:border-box; }
-.deal-update-form button { justify-self:start; }
+.deal-update-form input { min-height:44px; width:100%; box-sizing:border-box; }
+.deal-update-form button { min-height:44px; justify-self:start; }
 .deal-update-form [role="status"]:empty { display:none; }
+@media (min-width:720px) {
+  /* Next step and date share a row so Add update stays on the opening screen. */
+  .deal-update-form { grid-template-columns:1fr 1fr; }
+  .deal-update-form > * { grid-column:1 / -1; }
+  .deal-update-form > [for="dealUpdateStep"], .deal-update-form > [for="dealUpdateDate"] { grid-row:3; }
+  .deal-update-form > #dealUpdateStep, .deal-update-form > #dealUpdateDate { grid-row:4; }
+  .deal-update-form > [for="dealUpdateStep"], .deal-update-form > #dealUpdateStep { grid-column:1; }
+  .deal-update-form > [for="dealUpdateDate"], .deal-update-form > #dealUpdateDate, .deal-update-form > #detailUpdateDateHint { grid-column:2; }
+}
 .deal-snapshot-facts { display:flex; flex-wrap:wrap; gap:var(--space-3) var(--space-6); margin:0 0 var(--space-4); }
 .deal-snapshot-facts div { min-width:0; }
 .deal-snapshot-facts dt { color:var(--fg-muted); font-size:var(--font-size-1); }
@@ -167,8 +176,10 @@
 .deal-vendors ul { list-style:none; padding:0; margin:0; display:grid; gap:var(--space-2); }
 .deal-vendor-company, .deal-vendor-contact { display:block; }
 .deal-vendor-contact { color:var(--fg-muted); }
-.deal-vendor-details > summary { cursor:pointer; min-height:var(--touch); min-width:var(--touch); }
-.deal-vendor-details p { margin:0 0 var(--space-2); }
+.deal-vendor-details > summary { cursor:pointer; min-height:var(--touch); min-width:var(--touch); line-height:var(--touch); }
+.deal-vendor-details p { display:grid; grid-template-columns:4em minmax(0,1fr); align-items:center; column-gap:var(--space-2); margin:0; }
+.deal-vendor-details p + p { margin-top:var(--space-2); }
+.deal-vendor-details a { display:block; box-sizing:border-box; min-height:44px; min-width:44px; overflow-wrap:anywhere; text-decoration:none; border:1px solid currentColor; border-radius:6px; padding:12px var(--space-2); }
 .deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }
@@ -178,26 +189,75 @@
 .app-section-tabs { display:flex; align-items:center; gap:var(--space-4); border-bottom:var(--hairline-width) solid var(--hairline); }
 .app-section-tabs a { display:flex; align-items:center; min-height:var(--touch); padding:var(--space-2) 0; color:var(--fg-muted); text-decoration:none; border-bottom:2px solid transparent; font-weight:var(--font-weight-strong); }
 .app-section-tabs a[aria-current=page] { color:var(--fg); border-bottom-color:var(--fg); }
-.dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(0,1fr)); }
-@media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); } }
-.deal-detail#recordPanel > .doc-presence { width:max-content; }
-.deal-detail#recordPanel > header { padding-inline-start:calc(var(--space-5) + var(--touch) + var(--space-3)); }
+.dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(300px,1fr)); overflow:auto; }
+.dealroom-page.has-app-layout .kanban:has(.kanban-column) { max-height:65dvh; }
+@media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); } }
 @media(max-width:760px) {
- .has-app-layout .deal-detail#recordPanel > .doc-presence { margin-bottom:calc(-1 * var(--touch)); }
- .deal-detail#recordPanel > header { padding-block:var(--space-3); padding-inline:calc(var(--space-4) + var(--touch) + var(--space-3)) var(--space-4); }
- .deal-detail#recordPanel > header h2 { font-size:var(--font-size-3); }
  .dealroom-page.has-app-layout .kanban { grid-template-columns:minmax(0,1fr); }
- .dealroom-page .kanban-column:not(:has(.kanban-card)) { display:none; }
+ .dealroom-page .kanban-column:not(:has(.kanban-card)):not([data-collapsed="true"]) { display:none; }
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }
 
-.deal-current-action { display: grid; gap: var(--space-1); margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
-.deal-current-action strong { font-size: var(--font-size-3); }
-.deal-current-action span { color: var(--fg-muted); font-size: var(--font-size-1); }
 
 #requirementEmail > summary { cursor:pointer; min-height:var(--touch); }
 #requirementEmailForm fieldset { display:grid; gap:var(--space-3); }
 #requirementEmailForm input { width:100%; box-sizing:border-box; }
 
 #panelEmailFollowups { overflow-wrap: anywhere; }
+
+.client-portal-link { display: inline-block; min-height: 2.75rem; padding: var(--space-2) 0; font-size: var(--font-size-1); }
+.client-portal-form { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); margin: var(--space-3) 0; }
+.client-portal-form label { flex: 1 0 100%; }
+.client-portal-form input { flex: 1 1 14rem; min-width: 0; min-height: 2.75rem; }
+.client-portal-form p { flex: 1 0 100%; margin: 0; }
+#detailUpdateDateHint { margin-top: calc(-1 * var(--space-1)); color: var(--status-danger); }
+#detailUpdateStatus { overflow-wrap: anywhere; scroll-margin-bottom: 10rem; }
+
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .app-layout-tabs:has(.board-toolbar) { overflow: visible; }
+  .app-layout-tabs > .board-toolbar[data-layout-slot] { flex: 1 1 0; min-width: 0; flex-wrap: wrap; max-width: 100%; }
+  .app-layout-tabs .board-toolbar .chip-bar { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
+}
+
+.deal-workspace { width: 100%; max-width: none; min-width: 0; overflow-wrap: anywhere; }
+.deal-workspace[hidden], .workspace-open #main { display: none; }
+.workspace-open #appTabsSlot .board-toolbar, .workspace-open #appSidebarSlot > section { display: none; }
+.workspace-header { position: sticky; top: var(--tabbar-height); z-index: 70; background: var(--ground); border-bottom: 1px solid var(--hairline); padding-block: var(--space-3) 0; }
+.workspace-heading { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: var(--space-2); }
+.workspace-heading > button { justify-self: start; }
+.workspace-heading .doc-presence { position: static; }
+.workspace-heading h1 { grid-column: 1 / -1; margin: 0; font-size: var(--font-size-4); }
+.workspace-facts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: var(--space-3); margin-block: var(--space-3); }
+.workspace-facts dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.workspace-facts dd { margin: 0; }
+#workspaceTabs { display: flex; overflow-x: auto; gap: var(--space-2); }
+.workspace-tab { flex: none; min-height: 44px; min-width: 44px; padding: var(--space-3); color: var(--fg-muted); background: transparent; border: 0; border-bottom: 3px solid transparent; font: inherit; white-space: nowrap; cursor: pointer; }
+.workspace-tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.workspace-tab:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.deal-workspace #panelBody { padding-block: var(--space-4); }
+.deal-workspace [role="tabpanel"] > * { margin-block-end: var(--space-5); }
+.deal-workspace [role="tabpanel"][hidden] { display: none; }
+.deal-workspace :is(button, summary) { min-height: 44px; min-width: 44px; }
+.workspace-events { list-style: none; padding: 0; }
+.workspace-events li { border-bottom: 1px solid var(--hairline); padding-block: var(--space-4); }
+.workspace-events small { margin-inline-start: var(--space-3); color: var(--fg-muted); }
+@media(max-width:650px) {
+  .workspace-header { position: static; }
+  .workspace-heading { gap: var(--space-2); }
+  .workspace-heading h1 { width: 100%; font-size: var(--font-size-3); }
+  .workspace-facts { grid-template-columns: auto auto minmax(0, 1fr); gap: 0 var(--space-2); margin-block: var(--space-1); font-size: var(--font-size-1); }
+  .workspace-facts div { min-width: 0; white-space: nowrap; }
+  .workspace-facts div:first-child { grid-column: 1 / -1; }
+  .workspace-facts div:first-child dd { display: block; overflow: hidden; text-overflow: ellipsis; }
+  .workspace-facts dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .workspace-facts dd { display: inline; }
+  .workspace-date-label { display: none; }
+  #workspaceTabs { gap: 0; overflow: visible; }
+  .workspace-tab { flex: 1 1 auto; min-width: 0; padding: var(--space-2); white-space: normal; overflow-wrap: normal; line-height: 1.2; }
+  .workspace-events li { padding-block: var(--space-2); }
+}
+
+@media (min-width: 651px) {
+  .deal-workspace .deal-update-form { max-width: 48rem; }
+}

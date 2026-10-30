@@ -86,7 +86,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     });
 
     test('built Closed and Lost vendor roles retain 16px separation', async ({ page }) => {
-      await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+      await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
       for (const [view, outcome] of [['Closed deals', 'won'], ['Lost deals', 'lost']]) {
         await page.getByRole('button', { name: view, exact: true }).click();
         const card = page.locator(`#closedDealsList [data-id="demo-${outcome}"]`);
@@ -113,7 +113,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
 
       for (const [view, outcome] of [['Closed deals', 'won'], ['Lost deals', 'lost']]) {
         test(`built ${view.toLowerCase()} title controls meet the desktop 44px touch floor`, async ({ page }) => {
-          await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+          await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
           await page.getByRole('button', { name: view, exact: true }).click();
           await expect(page.locator(`#closedDealsList [data-id="demo-${outcome}"] .card-open`)).toBeVisible();
           const small = await undersizedTargets(page, ['.card-open', '#appSyncRefresh', '#retryRead']);

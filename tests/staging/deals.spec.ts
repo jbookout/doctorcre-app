@@ -18,7 +18,7 @@ test('Local Deals switches board and list views and inspects a deal', async ({ p
   await page.locator('.card-open').first().click();
   await expect(page.locator('#recordPanel')).toBeVisible();
   await expect(page.locator('#panelTitle')).not.toBeEmpty();
-  await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await expect(page.locator('#recordPanel')).toBeHidden();
 });
 
@@ -60,7 +60,7 @@ test('An unsaved Update draft clears when the deal reopens', async ({ page }) =>
     const update = page.getByLabel('Update', { exact: true });
     await expect(update).toHaveValue('');
     await update.fill('Synthetic unsaved review draft');
-    await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+    await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
     await page.goto(`/deals?deal=${fixture.deal.id}`);
     await expect(update).toHaveValue('');
   });

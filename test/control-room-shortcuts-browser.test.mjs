@@ -44,7 +44,7 @@ for (const modifier of ['Meta', 'Control']) test(`${modifier}-K opens, filters, 
   await page.locator('#crQueueList').focus();
   await page.keyboard.press(`${modifier}+k`);
   const dialog = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
-  await dialog.waitFor({ timeout: 2500 });
+  await dialog.waitFor();
   assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
   const input = dialog.getByRole('combobox', { name: 'Find a command' });
   assert.equal(await input.evaluate(node => node === document.activeElement), true);

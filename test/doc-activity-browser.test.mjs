@@ -134,7 +134,7 @@ test('an invalid date range is labelled and never sent to the server',async t=>{
 test('unknown undo outcome retains exact request for explicit check; polling never repeats writes',async t=>{
   const {page,calls}=await open(t,{undoFailure:true});
   await page.locator('[data-undo]').first().click(); await page.getByRole('button',{name:'Check undo',exact:true}).waitFor();
-  await page.clock.runFor(30_001); await page.getByRole('button',{name:'Check undo',exact:true}).waitFor();
+  await page.clock.runFor(60_001); await page.getByRole('button',{name:'Check undo',exact:true}).waitFor();
   assert.equal(calls.filter(c=>c.name==='revert-deal-field').length,1);
   await page.getByRole('button',{name:'Check undo',exact:true}).click(); await page.getByText('Undone',{exact:true}).first().waitFor();
   const writes=calls.filter(c=>c.name==='revert-deal-field'); assert.deepEqual(writes[0].arguments,writes[1].arguments);
@@ -144,16 +144,16 @@ test('automatic refresh recovers read failure and preserves filters and expanded
   assert.deepEqual(await page.locator('[name=partner] option').evaluateAll(xs=>xs.map(x=>x.value)),['','joe','dell']);
   await page.locator('[name=partner]').selectOption('joe'); await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===3);
   await page.locator('.activity-open').first().click(); await page.locator('#detailOriginal summary').click();
-  setReadFailure(true); const before=reads(); await page.clock.runFor(30_001);
+  setReadFailure(true); const before=reads(); await page.clock.runFor(60_001);
   await page.getByText('Activity temporarily unavailable',{exact:true}).waitFor(); assert.ok(reads()>before);
-  setReadFailure(false); await page.clock.runFor(30_001); await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
+  setReadFailure(false); await page.clock.runFor(60_001); await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
   assert.equal(await page.locator('[name=partner]').inputValue(),'joe'); assert.equal(await page.locator('#detailOriginal').evaluate(el=>el.open),true);
 });
 test('earlier activity traverses keyset pages and remains complete after refresh',async t=>{
   const {page}=await open(t,{limit:2}); assert.equal(await page.locator('.activity-row').count(),2);
   await page.locator('#activityMore').click(); await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===4);
   await page.locator('#activityMore').click(); await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===5);
-  await page.clock.runFor(30_001); assert.equal(await page.locator('.activity-row').count(),5);
+  await page.clock.runFor(60_001); assert.equal(await page.locator('.activity-row').count(),5);
 });
 test('late filter responses never replace the current partner',async t=>{
   const {page,holdPartner,releaseHeld,hasHeld}=await open(t);
@@ -233,7 +233,7 @@ test('polling new arrivals preserves loaded history, expanded detail and the nex
   await page.locator('#activityMore').click();await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===4);
   const oldest=history[3];await page.locator(`[data-open="${oldest.id}"]`).click();await page.locator('#detailOriginal summary').click();
   inserted=[2,1].map(i=>({...history[0],id:`a2000000-0000-4000-8000-${String(i).padStart(12,'0')}`,at:`2026-10-01T15:0${i}:00Z`,what:'New arrival',undo:{state:'unavailable'}}));
-  await page.clock.runFor(30_001);
+  await page.clock.runFor(60_001);
   await page.waitForFunction(()=>document.querySelector('.activity-subject strong').textContent==='New arrival');
   assert.equal(await page.locator(`[data-open="${oldest.id}"]`).count(),1);
   assert.equal(await page.locator('#activityDetail').evaluate(el=>el.open),true);
@@ -249,12 +249,12 @@ test('malformed and mixed reads preserve the last valid feed and expanded detail
     let broken=false;
     const {page}=await open(t,{readTransform:answer=>broken?{...answer,entries:mode==='mixed'?[answer.entries[0],{...answer.entries[1],id:null}]:[{...answer.entries[0],id:null}]}:answer});
     await page.locator('.activity-open').first().click();await page.locator('#detailOriginal summary').click();
-    broken=true;await page.clock.runFor(30_001);
+    broken=true;await page.clock.runFor(60_001);
     await page.getByText('Activity temporarily unavailable',{exact:true}).waitFor();
     assert.equal(await page.locator('.activity-row').count(),5);
     assert.equal(await page.locator('#activityDetail').evaluate(el=>el.open),true);
     assert.equal(await page.locator('#detailOriginal').evaluate(el=>el.open),true);
-    broken=false;await page.clock.runFor(30_001);
+    broken=false;await page.clock.runFor(60_001);
     await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
   });
 });

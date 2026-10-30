@@ -2,7 +2,7 @@ import { visibleLeads } from './leads-model.js';
 import { localDeals, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
-import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
+import { criticalDateEntries, localToday, toDay } from './calendar-model.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { readHomeCallFollowups } from './home-call-tasks.js';
 
@@ -24,7 +24,9 @@ export function dealSnapshot(board, scope = 'team', agenda) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
   const local = localDeals(deals);
-  const overdue = new Set(agenda?.overdue.map(entry => entry.deal_id));
+  // Entries arrive oldest first, so the first one per deal is how long it has waited.
+  const overdue = new Map();
+  for (const entry of agenda?.overdue || []) if (!overdue.has(entry.deal_id)) overdue.set(entry.deal_id, entry.day);
   const complete = agenda && !local.some(deal => agenda.failed.includes(deal.id));
   return { active: deals.length,
     // No current contract supplies in-market membership. Neither city nor
@@ -32,7 +34,8 @@ export function dealSnapshot(board, scope = 'team', agenda) {
     inMarket: deals.every(deal => typeof deal.in_market === 'boolean')
       ? deals.filter(deal => deal.in_market).length : null,
     national: deals.filter(deal => deal.workspace_kind === 'national_account' || deal.account_client_id).length,
-    flagged: complete ? local.filter(deal => overdue.has(deal.id)) : local.length ? null : [] };
+    flagged: complete ? local.filter(deal => overdue.has(deal.id)).map(deal => ({ ...deal, overdue_since: overdue.get(deal.id) }))
+      .sort((a, b) => a.overdue_since.localeCompare(b.overdue_since)) : local.length ? null : [] };
 }
 
 export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
@@ -50,7 +53,7 @@ export function topNewLeads(payload, { scope = 'team', actor, now = Date.now() }
 export function agendaSnapshot(board, details, { scope = 'team', today = localToday() } = {}) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
-  const entries = [], failed = [], undated = [];
+  const entries = [], briefTasks = [], failed = [], undated = [];
   for (const deal of deals) {
     const detail = details.get(deal.id);
     if (!detail || !Array.isArray(detail.critical_dates) || !Array.isArray(detail.next_actions)) { failed.push(deal.id); continue; }
@@ -63,14 +66,16 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     entries.push(...dates.entries.filter(entry => !entry.settled).map(entry => ({ ...entry, type: 'date' })));
     for (const task of taskRows) {
       const day = toDay(task.due_on);
-      if (task.status !== 'open' || toDay(task.hold_until) > today || (scope === 'mine' && task.owner !== board.actor)) continue;
-      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' });
+      if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
+      const entry = { key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' };
+      briefTasks.push(entry);
+      if (!(toDay(task.hold_until) > today)) entries.push(entry);
     }
   }
   const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
-  entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
-  const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
+  const order = (a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key);
+  entries.sort(order); briefTasks.sort(order);
+  return { entries, briefTasks, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
 }
 
 // A single bounded snapshot supplies flags, dates and tasks. Slow or failed optional

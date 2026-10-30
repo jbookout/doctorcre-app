@@ -118,5 +118,5 @@ if (typeof document !== "undefined") {
   render = model => { latest = model; originalRender(model); };
   ["queueTarget", "queueStatus"].forEach(id => $(id).addEventListener("change", () => originalRender(latest)));
   $("queueComposer").addEventListener("submit", enqueue);
-  mountVisibilityPoll({ poll, intervalMs: 5_000 }).refresh();
+  mountVisibilityPoll({ poll }).refresh();
 }

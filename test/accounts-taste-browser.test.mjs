@@ -44,7 +44,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 
-  test(`Opening an account action keeps its description and due date above the update at ${width}px ${theme}`, async t => {
+  test(`Opening an account action shows its checklist title and due chip above the update at ${width}px ${theme}`, async t => {
     const page = await accountPage(t, width, theme);
     await page.locator('.account-card').first().click();
     await screenshot(page, 'account', width, theme);
@@ -57,7 +57,8 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const snapshot = page.locator('.deal-opening-snapshot');
     assert.equal(await snapshot.count(), 1, 'the opening snapshot retains the selected action');
     assert.match(await snapshot.innerText(), new RegExp(description));
-    assert.match(await snapshot.innerText(), /Overdue|overdue/);
+    assert.equal(await snapshot.locator('ol [data-overdue="true"]').count(), 1);
+    assert.doesNotMatch(await snapshot.innerText(), /Overdue action|Next action/);
     assert.equal(await snapshot.locator('time').getAttribute('datetime'), '2026-01-18', 'the opening retains the selected action due date');
     const order = await page.evaluate(() => {
       const snapshot = document.querySelector('.deal-opening-snapshot');
@@ -81,17 +82,15 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
     const captureName = sidebarOpen ? 'columns-sidebar' : 'columns';
     await screenshot(page, captureName, 1280, theme);
     const headings = page.locator('#tableFrame thead');
-    assert.match(await headings.textContent(), /Work record.*Phase.*Next step.*Next date/s);
+    assert.match(await headings.textContent(), /Deal.*Phase.*Next step.*Next date/s);
     if (sidebarOpen) {
-      assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), '"Next step"');
+      assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), 'none');
     } else {
       const geometry = await headings.boundingBox();
       assert.ok(geometry && geometry.height >= 24 && geometry.width > 400, 'wide workspace column headings remain visible');
     }
     const rows = await page.locator('#rows tr').evaluateAll(rows => rows.map(row => {
       const step = row.querySelector('.step-button');
-      const range = document.createRange();
-      range.selectNodeContents(step);
       const nameRange = document.createRange();
       nameRange.selectNodeContents(row.querySelector('.deal-link'));
       const metadata = [...row.querySelectorAll('.deal-meta span')].map(node => {
@@ -99,13 +98,13 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
         range.selectNodeContents(node);
         return { text: node.textContent, lines: range.getClientRects().length };
       });
-      return { text: step.textContent, lines: range.getClientRects().length,
+      return { text: step.textContent, lines: [...step.querySelectorAll('.deal-summary-text')].map(line => line.clientHeight / parseFloat(getComputedStyle(line).lineHeight)),
         nameLines: nameRange.getClientRects().length, metadata,
         phaseWidth: row.querySelector('select[data-phase]').getBoundingClientRect().width,
         stepWidth: step.getBoundingClientRect().width };
     }));
     if (process.env.UI_SCREENSHOT_DIR) await writeFile(`${process.env.UI_SCREENSHOT_DIR}/${captureName}-1280-${theme}.json`, JSON.stringify(rows, null, 2));
-    assert.ok(rows.every(row => row.lines <= 2), JSON.stringify(rows));
+    assert.ok(rows.every(row => row.lines.every(lines => lines <= 2)), JSON.stringify(rows));
     assert.ok(rows.every(row => row.nameLines <= 2 && row.metadata.every(item => item.lines <= 1)), JSON.stringify(rows));
     assert.ok(rows.every(row => row.stepWidth > row.phaseWidth), JSON.stringify(rows));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

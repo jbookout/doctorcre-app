@@ -1,3 +1,5 @@
+import { ACTOR_LABEL, PHASE_BY_SLUG, phaseLabel } from './client.js';
+
 /**
  * Recent change receipts for the Deal Room board.
  *
@@ -16,10 +18,6 @@
  *     (including a partner's newer change), and that refusal stays visible on
  *     the row rather than being swallowed.
  *
- * Values are shown as the feed recorded them. Slug-shaped strings are
- * humanized in shape only (`due_diligence` -> "Due diligence"); no value is
- * remapped onto a different label, because the display vocabulary lives in
- * live-client.js and inventing a second copy here would let the two drift.
  */
 
 export const REVERTIBLE_FIELDS = Object.freeze(['phase', 'owner', 'attention', 'next_date', 'operating_state']);
@@ -83,7 +81,7 @@ export function escapeText(value) {
   }[char]));
 }
 
-/** Why a work record is parked. Single home; app.js imports this. */
+/** Why a deal is parked. Single home; app.js imports this. */
 export function parkingReasonLabel(reason) {
   return PARKING_REASON_LABEL[reason] || 'Parked';
 }
@@ -172,6 +170,8 @@ export function normalizeChangeEvent(event, options = {}) {
     action: changeAction(event),
     before: null,
     after: null,
+    move_value: event.new_value,
+    move_name: event.move_name,
     revertible_field: Boolean(field) && REVERTIBLE_FIELDS.includes(field),
   };
   if (kind === 'field' && ('old_value' in event || 'new_value' in event)) {
@@ -316,7 +316,7 @@ export function receiptsAnnouncement(previousIds, views) {
   const known = new Set(previousIds);
   const fresh = (Array.isArray(views) ? views : []).filter((view) => !known.has(view.event_id));
   if (!fresh.length) return '';
-  if (fresh.length === 1) return `1 new change · ${fresh[0].deal_name} · ${fresh[0].action}`;
+  if (fresh.length === 1) return `1 new change · ${fresh[0].deal_name} · ${moveSentence(fresh[0])}`;
   return `${fresh.length} new changes`;
 }
 
@@ -505,6 +505,8 @@ export function receiptViews(receipts, options = {}) {
       action: receipt.action,
       before: receipt.before,
       after: receipt.after,
+      move_value: receipt.move_value,
+      move_name: receipt.move_name,
       own,
       superseded,
       undo_status: undoStatus,
@@ -530,11 +532,69 @@ export function receiptsSignature(views) {
     .join('|');
 }
 
+function moveDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(date.valueOf()) || date.toISOString().slice(0, 10) !== value) return null;
+  const year = new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', year:'numeric' }).format(new Date());
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}${value.slice(0, 4) === year ? '' : `, ${value.slice(0, 4)}`}`;
+}
+
+/** Plain-language summary for a feed row. Unknown values stay in the deal record. */
+export function moveSentence(move) {
+  const value = move.move_value;
+  if (move.field === 'checklist_ping') {
+    const recipient = value?.recipient === 'joe' ? 'Joe' : value?.recipient === 'dell' ? 'Dell' : null;
+    const date = moveDate(value?.due_on);
+    const kind = typeof value?.checklist_item_id === 'string' && value.checklist_item_id.startsWith('critical-date:') ? 'critical date' : null;
+    return recipient && date && kind ? `Reminder sent to ${recipient}: ${kind} due ${date}` : 'Reminder sent';
+  }
+  const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', status:'Status', lane:'Lane', summary:'Summary', description:'Description', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone', deal_type:'Deal type', segment:'Segment', outcome:'Outcome', closed_on:'Closed on', won_value:'Won value', notes_path:'Notes path', salesforce_id:'Salesforce ID', city:'City', invoiced_on:'Invoiced on', sf_close_date_placeholder:'Salesforce close date', client_id:'Client changed', document:'Document', 'document.sent_status':'Document status' };
+  const action = Object.hasOwn(actions, move.field) ? actions[move.field] : typeof move.field === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(move.field) ? humanizeSlug(move.field) : 'Change recorded';
+  if (move.field === 'client_id') return move.move_name ? `${action} to ${move.move_name}` : action;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const text = ['description', 'title', 'summary', 'name', 'label'].map(key => value[key]).find(item => typeof item === 'string' && item.trim());
+    if (text) {
+      const assignee = Object.hasOwn(ACTOR_LABEL, value.assignee) ? ACTOR_LABEL[value.assignee] : null;
+      const date = moveDate(value.due_on);
+      return `${action}${assignee ? ` for ${assignee}` : ''}: ${text.trim()}${date ? ` · due ${date}` : ''}`;
+    }
+  }
+  if (['next_step', 'note', 'summary', 'description', 'city', 'market_agent'].includes(move.field) && typeof value === 'string') {
+    return value ? `${action} → ${value}` : action;
+  }
+  const labels = {
+    owner: ACTOR_LABEL,
+    status: { open:'Open', closed:'Closed', active:'Active', inactive:'Inactive' },
+    lane: { territory:'Local', national:'National' },
+  };
+  if (move.field === 'phase' && typeof value === 'string') {
+    const phase = Object.hasOwn(PHASE_BY_SLUG, value) ? PHASE_BY_SLUG[value] : (Object.values(PHASE_BY_SLUG).includes(value) ? value : null);
+    return phase ? `${action} → ${phaseLabel(phase)}` : SLUG.test(value) && !/\d/.test(value) ? `${action} → ${humanizeSlug(value)}` : action;
+  }
+  if (Object.hasOwn(labels, move.field)) {
+    const label = typeof value === 'string' && Object.hasOwn(labels[move.field], value) ? labels[move.field][value] : null;
+    return label ? `${action} → ${label}` : typeof value === 'string' && SLUG.test(value) && !/\d/.test(value) ? `${action} → ${humanizeSlug(value)}` : action;
+  }
+  if (move.field === 'operating_state') {
+    if (!value || typeof value !== 'object' || !['active', 'parked'].includes(value.state)) return action;
+    return `${action} → ${move.after}`;
+  }
+  if (move.field === 'attention' && typeof value === 'boolean') return `${action} → ${move.after}`;
+  if (['next_date', 'closed_on', 'invoiced_on', 'sf_close_date_placeholder'].includes(move.field)) {
+    const date = moveDate(value);
+    return date ? `${action} → ${date}` : action;
+  }
+  if (move.field === 'document.sent_status') {
+    const status = value?.sent_status;
+    return typeof status === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(status) ? `${action} → ${humanizeSlug(status)}` : action;
+  }
+  if (typeof move.field === 'string' && !move.field.endsWith('_id') && move.field !== 'notes_path' && typeof value === 'string' && SLUG.test(value) && !/\d/.test(value)) return `${action} → ${humanizeSlug(value)}`;
+  return action;
+}
+
 /** One row. Every value from the feed passes through escapeText on the way in. */
 export function receiptRowHtml(view) {
-  const values = view.before !== null || view.after !== null
-    ? `<span class="receipt-values"><span class="receipt-before">${escapeText(view.before)}</span><span class="receipt-arrow" aria-hidden="true">→</span><span class="sr-only">changed to</span><span class="receipt-after">${escapeText(view.after)}</span></span>`
-    : '';
   const badge = view.badge
     ? `<span class="receipt-badge ${escapeText(view.undo_status)}">${escapeText(view.badge)}</span>`
     : '';
@@ -550,8 +610,8 @@ export function receiptRowHtml(view) {
   // target: an Undo button that succeeds, is refused, or goes pending is
   // removed or replaced, and the keyboard has to land somewhere sensible.
   return `<li class="receipt${view.superseded ? ' superseded' : ''}" data-receipt="${escapeText(view.event_id)}" tabindex="-1">
-    <p class="receipt-line"><button type="button" class="receipt-deal" data-open-deal="${escapeText(view.deal_id)}">${escapeText(view.deal_name)}</button><span class="receipt-action">${escapeText(view.action)}</span>${values}</p>
-    <p class="receipt-meta"><span class="receipt-actor">${escapeText(view.actor_label)}</span><span aria-hidden="true">·</span><time class="receipt-time" datetime="${escapeText(view.recorded_at || '')}">${escapeText(view.time_label)}</time>${badge}</p>
+    <p class="receipt-line"><button type="button" class="receipt-deal" data-open-deal="${escapeText(view.deal_id)}">${escapeText(view.deal_name)}</button><span class="receipt-action">${escapeText(moveSentence(view))}</span></p>
+    <p class="receipt-meta"><span class="receipt-actor">${escapeText(({joe:'Joe', dell:'Dell', doc:'Doc'})[view.actor] || 'Team member')}</span><span aria-hidden="true">·</span><time class="receipt-time" datetime="${escapeText(view.recorded_at || '')}">${escapeText(view.time_label)}</time>${badge}</p>
     ${undoControl ? `<div class="receipt-actions">${undoControl}</div>` : ''}${message}
   </li>`;
 }

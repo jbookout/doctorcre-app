@@ -10,7 +10,7 @@ test('deal reads bind vendor assignments and held action history to their produc
   for (const verb of ['deal-room-board', 'get-deal-room']) {
     const operation = contract.mcp_read_contracts[verb];
     assert.equal(operation.producer.source_commit, verb === 'get-deal-room'
-      ? contract.producer.source_commit : '3a57e47015916546fb2ffd11eaf880686c38e659');
+      ? contract.producer.source_commit : 'b281ef8c69dad3c1dab98229074de1b167f06e02');
 
     assert.deepEqual(operation.response.vendors.item_keys, ['party_id', 'role', 'company', 'contact', 'note', 'updated_at']);
   }
@@ -45,4 +45,16 @@ test('vendor directory revision, selector and content digest are pinned together
   assert.equal(createHash('sha256').update(source).digest('hex'), contract.vendor_directory.sha256);
   assert.equal(contract.vendor_directory.request_selector, 'contract=vendor-directory.v1');
   assert.ok(contract.mcp_operations.includes('update-vendor'));
+});
+
+test('vendor people pin the negotiated producer revision without changing the v1 contract', async () => {
+  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const pin = contract.vendor_directory_people;
+  assert.equal(pin.request_selector, 'contract=vendor-directory.v2');
+  assert.equal(pin.producer.source_commit, '3ade6e86dbf7260114cd64f0b23a80d689b64e15');
+  const source = await read(pin.path);
+  const directory = JSON.parse(source);
+  assert.equal(directory.schema, pin.schema);
+  assert.equal(directory.version, '2.0.0');
+  assert.equal(createHash('sha256').update(source).digest('hex'), pin.sha256);
 });

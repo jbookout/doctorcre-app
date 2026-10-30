@@ -7,7 +7,10 @@ import { spawnSync } from 'node:child_process';
 
 const checker = new URL('../scripts/check-ui-copy.mjs', import.meta.url);
 const banned = ['Nothing needs you right now', 'nothing needs your decision', 'What needs you', 'Needs you',
-  'Deals that need you', 'One thing is broken, nothing is stuck', 'Nothing is waiting on you', 'Everything is clear', 'WHAT\nNEEDS\tYOUR attention'];
+  'Deals that need you', 'One thing is broken, nothing is stuck', 'Nothing is waiting on you', 'Everything is clear', 'WHAT\nNEEDS\tYOUR attention',
+  // Internal vocabulary retired from partner screens.
+  'Work record', 'Add work record', 'Search work records', 'Recheck Quill', 'Quill local recorder', 'Checking Quill on this device',
+  'runs on the Mac with Quill', 'checked by Jev', 'Automatic Jev checks', 'Reason not yet classified'];
 for (const phrase of banned) test(`UI copy lint rejects planted narration: ${JSON.stringify(phrase)}`, async t => {
   const dir = await temporaryDirectory('doctorcre-ui-copy-'); t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'planted.html'); await writeFile(path, `<h2>${phrase}</h2>`);

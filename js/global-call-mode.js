@@ -12,34 +12,35 @@ export async function mountGlobalCallMode(root = document) {
   const boot = resolveDealroomBoot(globalThis.location);
   const $ = (id) => root.getElementById(id);
   let built, call, client, probing;
-  let disposed = false;
+  const lifetime = new AbortController();
+  const { signal } = lifetime;
   const show = (state) => {
+    const button = $("callModeButton"), availability = $("callModeAvailability"), retry = $("callModeRetry");
+    if (!button || !availability || !retry) return false;
     const eligible = state === "available";
-    $("callModeButton").hidden = !eligible;
-    $("callModeAvailability").hidden = eligible;
-    $("callModeAvailability").textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
-    $("callModeRetry").hidden = eligible || state === "checking";
-    $("callModeRetry").disabled = state === "checking";
+    button.hidden = !eligible;
+    availability.hidden = eligible;
+    availability.textContent = state === "checking" ? "Checking the call recorder…" : "Call recording runs on the Mac";
+    retry.hidden = eligible || state === "checking";
+    retry.disabled = state === "checking";
+    return true;
   };
-  const probe = () => disposed ? Promise.resolve(false) : probing ||= (async () => {
+  const probe = () => signal.aborted ? Promise.resolve(false) : probing ||= (async () => {
     show("checking");
     try {
       const payload = await requestCompanion(`${CALL_MODE_URL}/api/state`, { method: "GET", targetAddressSpace: "loopback" }, { timeoutMs: 1200 });
-      if (disposed) return false;
+      if (signal.aborted) return false;
       if (!CALL_MODE_STATES.includes(payload.state)) throw new Error("Unrecognised recorder state");
-      show("available");
+      if (!show("available")) return false;
       // A call in progress needs the toolbar timer, so only then is the controller built early.
-      if (payload.state === "recording") {
-        if (!await build() || disposed) return false;
-        return await call.checkEligibility();
-      }
+      if (payload.state === "recording") { await build(); return signal.aborted || !call ? false : await call.checkEligibility(); }
       return true;
-    } catch { if (!disposed) show("unavailable"); return false; }
+    } catch { if (!signal.aborted) show("unavailable"); return false; }
     finally { probing = null; }
   })();
   const build = () => built ||= (async () => {
     const [{ createCallMode }, { createClient }] = await Promise.all([import("./call-mode.js"), import("./client.js")]);
-    if (disposed) return null;
+    if (signal.aborted || !$("callModeButton")) return null;
     const host = root.createElement("div");
     host.innerHTML = DIALOG;
     root.body.append(host);
@@ -56,44 +57,45 @@ export async function mountGlobalCallMode(root = document) {
       client ||= await createClient(boot.mode, boot.options);
       if (options.session) return null;
       try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; }
-      catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
+      catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading deals."; }
       return contextError;
     } };
   })();
   let opening = false;
   const mountedCall = {
-    checkEligibility: () => disposed ? Promise.resolve(false) : call ? call.checkEligibility() : probe(),
+    checkEligibility: () => signal.aborted ? Promise.resolve(false) : call ? call.checkEligibility() : probe(),
     async handleClick(target) {
-      if (disposed) return false;
+      if (signal.aborted) return false;
       if (call) return call.handleClick(target);
       const retry = target?.closest?.("#callModeRetry");
       if (!retry) return false;
       const hadFocus = root.activeElement === retry;
-      if (await probe() && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton").focus();
+      if (await probe() && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton")?.focus();
       return true;
     },
     dispose() {
-      disposed = true;
+      lifetime.abort();
       root.defaultView?.removeEventListener("doctorcre-session-invalidated", mountedCall.dispose);
       call?.dispose?.();
     },
     async open(options = {}) {
-      if (disposed || opening || options.signal?.aborted) return false;
+      if (signal.aborted || opening || options.signal?.aborted) return false;
       opening = true;
       try {
         const context = await build();
-        if (!context || disposed) return false;
-        if (!await call.checkEligibility() || disposed || options.signal?.aborted) return false;
+        if (signal.aborted || !context) return false;
+        const eligible = await call.checkEligibility();
+        if (signal.aborted || !eligible || options.signal?.aborted) return false;
         const contextError = await context.load(options);
-        if (disposed || options.signal?.aborted) return false;
-        const opened = await call.open(options);
-        if (disposed || options.signal?.aborted) return false;
+        if (signal.aborted || options.signal?.aborted) return false;
+        const opened = await call.open({ ...options, signal: options.signal ? AbortSignal.any([signal, options.signal]) : signal });
+        if (signal.aborted) return false;
         if (contextError) { const notice = $("callModePermission"); notice.hidden = false; notice.textContent = contextError; }
         return opened;
       } finally { opening = false; }
     } };
-  root.defaultView?.addEventListener("doctorcre-session-invalidated", mountedCall.dispose, { once: true });
   mounted.set(root, mountedCall);
+  root.defaultView?.addEventListener("doctorcre-session-invalidated", mountedCall.dispose, { once: true });
   await probe();
   return mountedCall;
 }

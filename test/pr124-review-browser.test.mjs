@@ -38,7 +38,7 @@ const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js
 
 
 async function detail(page) {
- await page.locator('.kanban-column [data-id="d14"]').click();
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  await page.waitForSelector('#detailUpdateForm');
 }
 async function readPanel(page) {
@@ -87,7 +87,7 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  await page.locator('#panelContextOpen').click();
  await page.waitForFunction(()=>document.querySelector('#contextDrawer').open);
  reads.status=status;
- await page.clock.fastForward(15000);
+ await page.clock.fastForward(60_000);
  await page.waitForFunction(()=>!document.querySelector('#panelBody .deal-opening-snapshot'));
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
@@ -119,11 +119,14 @@ for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR
      else {const error=Error('Synthetic refusal');error.payload={error:'synthetic_refusal'};reject(error);}
    });
  });
+ // The one-minute poll must land while the write is pending, before the
+ // write's 30-second outcome deadline: spend most of the minute first.
+ await page.clock.fastForward(40_000);
  await page.locator('#detailUpdateForm textarea').fill('Pending synthetic next step');
  await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>typeof finishNext==='function');
  reads.status=status;
- await page.clock.fastForward(15000);
+ await page.clock.fastForward(21_000);
  await page.waitForFunction(()=>!document.querySelector('#detailUpdateForm'));
  // A completion must not implicitly reopen a detail, even if later reads succeed.
  reads.status=200;
@@ -233,14 +236,14 @@ test('R2 unknown next step replays exact key and intent; reopened pending form r
  await page.locator('#detailUpdateForm textarea').fill('Retained step');await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForTimeout(30);
  assert.match(await page.locator('#detailUpdateForm button[type=submit]').textContent(),/Check outcome/);
- await page.getByLabel('Close deal',{exact:true}).click();await detail(page);
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();await detail(page);
  assert.equal(await page.locator('#detailUpdateForm textarea').isDisabled(),true);
  await page.locator('#detailUpdateForm button[type=submit]').click();await page.waitForTimeout(30);
  assert.equal(await page.evaluate(()=>calls.length),2);
  assert.deepEqual(await page.evaluate(()=>calls[0]),await page.evaluate(()=>calls[1]));
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.addDealNote=r=>new Promise(resolve=>{calls.push(r);window.finishNext=()=>resolve({ok:true});});});
  await page.locator('#detailUpdateForm textarea').fill('Pending step');await page.locator('#detailUpdateForm button[type=submit]').click();
- await page.getByLabel('Close deal',{exact:true}).click();await detail(page);
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();await detail(page);
  assert.equal(await page.locator('#detailUpdateForm button[type=submit]').isDisabled(),true);
  await page.evaluate(()=>finishNext());
 });
@@ -252,7 +255,7 @@ test('R3 superseded park reply preserves newer active state and open detail',asy
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.fieldBase.set('d14|operating_state',{id:'new-revive',recorded_at:'2026-10-04T17:00:02Z'});state.deals.get('d14').operating_state='active';state.boardSync.requestRefresh=()=>{};releasePark();});
  await page.waitForTimeout(30);
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').operating_state),'active');
- assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),true);
+ assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden),true);
  assert.doesNotMatch(await page.locator('.toast').textContent(),/^Deal parked$/);
 });
 
@@ -287,19 +290,19 @@ test('R6 resolution retains unknown request, reports refusal and never loses che
 test('R7 detail outages recover automatically and late failure cannot replace another detail',async t=>{
  const {page}=await open(t,{many:true});
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.originalRead=state.client.getDeal.bind(state.client);state.client.getDeal=async()=>{throw Error('offline');};});
- await page.locator('.kanban-column [data-id="d14"]').click();await page.waitForTimeout(30);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();await page.waitForTimeout(30);
  assert.match(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
- await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.client.getDeal=originalRead;});await page.clock.fastForward(16_000);await page.waitForSelector('#detailUpdateForm');
+ await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.client.getDeal=originalRead;});await page.clock.fastForward(61_000);await page.waitForSelector('#detailUpdateForm');
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});await readPanel(page);
  assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=id=>id==='d14'?new Promise((_,reject)=>window.failOld=()=>reject(Error('old'))):originalRead(id);dispatchEvent(new Event('online'));});
- await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="demo-20"]').click();await page.waitForSelector('#detailUpdateForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();await page.locator('.kanban-column [data-id="demo-20"] .card-open').click();await page.waitForSelector('#detailUpdateForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
 });
 for(const width of [1440,390]) test('R8 list history has no persistent Undo at '+width,async t=>{
  const {page}=await open(t,{width});await page.locator('#listView').click();
  assert.equal(await page.locator('[data-id="d14"] [data-undo]').count(),0);
- assert.match(await page.locator('[data-id="d14"] .auto-move').textContent(),/Moved automatically/);
+ assert.equal(await page.locator('[data-id="d14"] .auto-move').count(),1,'automatic history remains visible');
 });
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);
@@ -317,7 +320,7 @@ test('R2 a move follow-up cannot replace an unanswered next-step intent or its r
  const {page}=await open(t);await detail(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.calls=[];const send=state.client.addDealNote.bind(state.client);state.client.addDealNote=async r=>{calls.push(r);const result=await send(r);if(calls.length===1)throw Error('lost reply');return result;};});
  await page.locator('#detailUpdateForm textarea').fill('Original intent');await page.locator('#detailUpdateForm button[type=submit]').click();await page.waitForTimeout(30);
- await page.getByLabel('Close deal',{exact:true}).click();
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await page.locator('.kanban-column [data-id="d14"]').focus();
  await page.keyboard.press('Enter');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
  await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
@@ -331,7 +334,7 @@ test('R6 command dock reconciliation settles the retained conflict and closes it
  const {page}=await open(t);await parkingConflict(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.calls=[];state.client.resolveConflict=async r=>{calls.push(r);if(calls.length===1)throw Error('lost reply');return {ok:true};};});
  await page.locator('#conflictForm button[type="submit"]').click();await page.waitForTimeout(30);await page.locator('#conflictCancel').click();
- await page.getByLabel('Close deal',{exact:true}).click();
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await page.locator('#receiptDock [data-event="reconcile"]').click();await page.waitForTimeout(30);
  assert.match(await page.locator('.toast').textContent(),/Conflict resolved/);
  await parkingConflict(page);

@@ -60,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -108,6 +108,7 @@ export function createLiveClient(opts = {}) {
     if (isError || (payload?.error && payload.ok !== true)) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
+      if (verb === 'new-deal') err.creationStage = 'new-deal';
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
@@ -256,6 +257,8 @@ export function createLiveClient(opts = {}) {
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
         next_actions: page.next_actions || [],
+        items: page.items || [],
+        item_schema_version: page.item_schema_version,
         activities: page.activities || [],
         participants: page.participants || [],
         premises: page.premises || [],
@@ -325,10 +328,13 @@ export function createLiveClient(opts = {}) {
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
+    async confirmEmailFiling(args) { return write('confirm-email-filing', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },
     async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
+    async listEmailThreadFilings() { return rpc('list-email-thread-filings', {}); },
+    async undoEmailThreadFiling(args) { return write('undo-email-thread-filing', args); },
 
     async readCallOutcomes() {
       return rpc('read-call-outcomes', {});
@@ -359,6 +365,7 @@ export function createLiveClient(opts = {}) {
         return res.json();
       }, { signal, timeoutMs:opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
+        if (e.field === 'client_id') e.move_name = e.new_value?.client_name || e.new_value?.name;
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.
         for (const side of ['old_value', 'new_value']) {
@@ -421,9 +428,19 @@ export function createLiveClient(opts = {}) {
       return write('update-deal', args);
     },
 
+    async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
+    async instructDealItem(args) { return write('instruct-deal-item', args); },
+    async completeDealItem(args) { return write('complete-deal-item', args); },
+    // The portal password goes to CARR once, here; CARR keeps only a verifier and answers with the link.
+    async registerClientPortal(args) {
+      return write('register-client-portal', args);
+    },
+
     async addDealNote(args) {
       return write('add-deal-note', args);
     },
+
+    async logActivity(args) { return write('log-activity', args); },
 
     async setNextStep(args) {
       return write('set-next-step', args);

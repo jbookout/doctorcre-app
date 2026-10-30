@@ -1,13 +1,15 @@
+import { renderDealAlert, renderDealItems, renderDealSummary } from './deal-items.js';
+import { mountDealItemSheet } from './deal-item-sheet.js';
 import { OWNER_FILTERS } from './owner-filters.js';
 import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
 import { renderDealVendors } from './deal-vendors.js';
+import { renderClientPortalLink } from './client-portal-link.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { performCommand, pendingCommand } from './command-feedback.mjs';
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
@@ -29,15 +31,13 @@ import {
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName,
 } from './pipeline-model.js';
-import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
+import { isClosedDeal, localDeals, needsAttention, overdueLabel, overdueSince } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
-import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
+import { renderDealTimeline, renderDealUpdates, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
 import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
-const POLL_MS = 1400;
-const BOARD_REFRESH_MS = 15000;
 
 const $ = (id) => document.getElementById(id);
 const esc = escapeText;
@@ -66,6 +66,7 @@ const state = {
   closedDeals: null,
   lostDeals: null,
   parkedOpen: false,
+  collapsedColumns: new Set(),
   /** Ids, never rows: a lifted card, a chosen column, an open panel, a move in hand. */
   lifted: null,
   target: null,
@@ -98,29 +99,28 @@ function autoHtml(deal) {
   return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
 }
 const dealTitle = (deal) => dealName(deal.name);
-function nextStepHtml(deal) {
-  const text = noteText(deal.next_step);
-  if (!text.trim()) return '<p class="next-line">Next step missing</p>';
-  return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
-}
+const phoneBoard = globalThis.matchMedia?.('(max-width:480px)');
 function cardHtml(deal) {
-  const attention = needsAttention(deal);
+  const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
+  const attention = Boolean(overdue);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
-    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4>
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
-    ${nextStepHtml(deal)}
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? `<span class="attention-flag"><span aria-hidden="true">◆</span> ${overdue}</span>` : ''}</div>
+    <div class="deal-alert">${renderDealAlert({...deal,short_name:dealTitle(deal)},{today,heading:'h4',buttons:true,board:true,viewer:state.selfActor})}</div>
     ${renderDealVendors(deal.vendors)}
+    ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
   </article>`;
 }
 function rowHtml(deal) {
+  const nextStep = noteText(deal.next_step);
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
-    <h4>${esc(dealTitle(deal))}</h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    ${nextStepHtml(deal)}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
+    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
+    ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : '<p class="next-line">Next step missing</p>'}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
-  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
+  const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
+  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), viewer: state.selfActor })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
 let dealCreation = null;
@@ -224,19 +224,25 @@ function renderBoard() {
   }
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
-  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending');
-  const parked = rows.filter(d => d.operating_state === 'parked' && columnByValue(d.phase)?.slug !== 'pending');
+  // A phone shows only work in motion; every parked deal folds into the Parked lane.
+  const foldParked = Boolean(phoneBoard?.matches);
+  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending' && (!foldParked || d.operating_state !== 'parked'));
+  const parked = rows.filter(d => d.operating_state === 'parked' && (foldParked || columnByValue(d.phase)?.slug !== 'pending'));
   renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
+  const focusedStage = board.contains(document.activeElement) ? document.activeElement?.dataset?.collapseStage : null;
   preserveBoardFocus({ board, document, announce, paint() {
     board.innerHTML = state.view === 'list' ? `<div class="deal-list">${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
       const cards = urgencyOrder(column.slug === 'pending' ? prospects : column.deals);
-      const content = cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
+      const collapsed = state.collapsedColumns.has(column.slug);
+      const content = collapsed
+        ? `<p class="stage-preview">${cards.slice(0,2).map(d => `<span>${esc(dealTitle(d))}</span>`).join('')}${cards.length > 2 ? `<span>${cards.length - 2} more</span>` : ''}</p>`
+        : cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
       const chosen = state.lifted && state.target === column.slug;
-      return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
+      return `<section class="kanban-column glass" data-column="${esc(column.slug)}" data-collapsed="${collapsed}"${chosen ? ' data-drop="true"' : ''}
         aria-label="${esc(column.label)}, ${cards.length} cards">
-        <h3 title="${esc(PHASE_TRIGGERS[column.slug])}">${esc(column.label)}<small>${cards.length}</small></h3>
+        <h3 title="${esc(PHASE_TRIGGERS[column.slug])}"><button type="button" data-collapse-stage="${esc(column.slug)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${esc(column.label)}">${esc(column.label)}<small>${cards.length}</small><span aria-hidden="true">${collapsed ? '+' : '−'}</span></button></h3>
         ${content}
       </section>`;
     }).join('') + `<details class="parked-lane"${state.parkedOpen ? ' open' : ''}><summary>Parked · ${parked.length}</summary><div class="parked-cards">${parked.map(parkedHtml).join('')}</div></details>`;
@@ -248,6 +254,7 @@ function renderBoard() {
       ? `${state.unplaced} deals need a phase`
       : '';
   }
+  if (focusedStage) board.querySelector(`[data-collapse-stage="${CSS.escape(focusedStage)}"]`)?.focus();
   renderPendingWrites();
 }
 
@@ -336,6 +343,7 @@ function applyBoardSnapshot(board) {
     disposePanelEmailFollowups();
     $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
     $('panelTitle').textContent = 'Deal';
+    $('workspaceFacts').replaceChildren();
     $('panelBody').innerHTML = '<p>Updating…</p>';
   }
   if (state.personalScope && ['joe','dell'].includes(state.selfActor)) state.filter = state.selfActor;
@@ -355,13 +363,13 @@ function applyBoardSnapshot(board) {
   }
   syncUpdateForm();
   if (!previousPanelRow && state.panelDetail && state.deals.has(state.panelDeal)) {
-    const template = document.createElement('div'); template.innerHTML = detailHtml(state.panelDetail);
+    const template = document.createElement('div'); template.innerHTML = workspaceHtml(state.panelDetail);
     for (const section of ['board-controls', 'prospect']) {
       const selector = `[data-detail-read="${section}"]`;
       $('panelBody').querySelector(selector)?.replaceWith(template.querySelector(selector));
     }
   }
-  if (state.panelDeal && $('recordPanel')?.open && previousPanelRow
+  if (state.panelDeal && !$('recordPanel')?.hidden && previousPanelRow
     && JSON.stringify(previousPanelRow) !== JSON.stringify(state.deals.get(state.panelDeal))) void refreshPanel({changed:true});
 }
 
@@ -431,14 +439,19 @@ async function sendFieldWrite(dealId, field, value, extra = null) {
   return result;
 }
 
+const nextStepKey = deal => `next-step:${deal}`;
 const FOLLOW_UP_SENDERS = {
   'resolve-conflict': request => state.client.resolveConflict(request),
   'add-deal-note': (request) => state.client.addDealNote(request),
   'set-next-step': (request) => state.client.setNextStep(request),
+  'instruct-deal-item': request => state.client.instructDealItem(request),
+  'complete-deal-item': request => state.client.completeDealItem(request),
+  'record-deal-item': (request) => state.client.recordDealItem(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
+  'register-client-portal': (request) => state.client.registerClientPortal(request),
 };
-const nextStepKey = deal => `next-step:${deal}`;
+const newItemKey = deal => `new-item:${deal}`;
 
 async function runOutcomeWrite(operationKey, step, intent) {
   operations.set(operationKey, { kind: 'outcome-read', step, intent, summary: step.summary });
@@ -480,8 +493,11 @@ async function runOutcomeWrite(operationKey, step, intent) {
 
 /** One follow-up, its own key, its own receipt. A failure never un-moves a card. */
 async function runFollowUp(operationKey, step) {
+  // One unresolved item creation per deal retains its request across moves.
+  if (step.verb === 'record-deal-item') operationKey = newItemKey(step.args.deal);
   const isUpdate = step.verb === 'add-deal-note' && operationKey.startsWith('deal-update:');
   if (isUpdate && operationKey !== updateKey(step.args.deal)) return {status:'blocked'};
+
   if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
@@ -503,7 +519,7 @@ async function runFollowUp(operationKey, step) {
       if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
         dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
           reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
-        return null;
+        return {status:'conflict', message:`Current next step: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review before retrying.`};
       }
       args = { ...args, base_version: current.version };
     }
@@ -519,18 +535,27 @@ async function runFollowUp(operationKey, step) {
     newKey: uuidv4,
     call: (request) => send(request),
   });
+  if (step.verb === 'register-client-portal' && result.started) {
+    const entry = operations.get(operationKey);
+    if (entry?.args?.password) delete entry.args.password;
+  }
   if (updateActor !== null && updateActor !== state.selfActor) return result;
+  let dockRequest = result.request;
+  if (step.verb === 'register-client-portal' && dockRequest) {
+    dockRequest = { ...dockRequest };
+    delete dockRequest.password;
+  }
   dock.record(operationKey, {
     summary: operations.get(operationKey).summary,
     status: result.status === 'blocked' ? 'unknown' : result.status,
     reason: result.message || null,
-    retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
+    retry: result.status === 'blocked' || result.retry, undo: false, request: dockRequest,
   });
-  if (isUpdate && result.status === 'ok') discardUpdate(args.deal);
+  if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
   if (step.verb === 'add-deal-note' && operationKey === updateKey(state.panelDeal) && state.panelDetail) {
     if ([401,403].includes(result.http_status)) { refusePanelDetail({status:result.http_status}); return result; }
     syncUpdateForm();
-    if (result.status === 'ok') await refreshPanel();
+    if (result.status === 'ok' && !isUpdate) await refreshPanel();
   }
   if (step.verb === 'resolve-conflict') await settleConflictChoice(step.args.conflict_id, result);
   return result;
@@ -541,10 +566,6 @@ async function runMove(intent, form) {
   if (plan.errors.length) return { ok: false, errors: plan.errors };
 
   const [phaseStep, ...followUps] = plan.steps;
-  for (const step of followUps) if (step.verb === 'set-next-step') {
-    const reviewed = state.deals.get(intent.deal);
-    step.reviewed = { next_step: reviewed?.next_step, next_date: reviewed?.next_date };
-  }
   const cell = cellKey(intent.deal, 'phase');
   if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
@@ -714,10 +735,12 @@ function closeCompletion({ cancelled }) {
   renderBoard();
   if (cancelled && intent) announce(`Move cancelled. ${intent.name} stays in ${intent.from_label}.`);
   if (intent) {
-    const returnTo = state.panelDeal === intent.deal && $('recordPanel')?.open
-      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`);
-    if (returnTo?.id === 'detailPhase') returnTo.value = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
-    returnTo?.focus({ preventScroll: true });
+    const phase = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
+    const returnTo = state.panelDeal === intent.deal && !$('recordPanel')?.hidden
+      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`)
+        || document.querySelector(`[data-collapse-stage="${CSS.escape(phase)}"]`);
+    if (returnTo?.id === 'detailPhase') returnTo.value = phase;
+    returnTo?.focus({ preventScroll: !returnTo.dataset.collapseStage });
   }
 }
 
@@ -828,6 +851,7 @@ function refusePanelDetail(error) {
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
   $('panelTitle').textContent = 'Deal';
+  $('workspaceFacts').replaceChildren();
   $('panelBody').innerHTML = '<p role="status">Unavailable. Sign in to reload this record. <a href="/auth/login">Sign in</a> <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
   return true;
 }
@@ -835,20 +859,25 @@ function syncUpdateForm() {
   const form = $('detailUpdateForm');
   if (!form || !state.panelDeal) return;
   const pending = pendingCommand(commandState, updateKey(state.panelDeal));
+  const pendingStep = pendingCommand(commandState, nextStepKey(state.panelDeal));
   bindDraftActor(state.selfActor);
   const requirementFieldset = $('requirementEmailForm')?.querySelector('fieldset');
   if (requirementFieldset) requirementFieldset.disabled = !state.selfActor;
   if (!updateDraft || updateDraft.id !== state.panelDeal) {
-    updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:''};
+    updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:'', step:noteText(state.panelDetail.deal.next_step), date:state.panelDetail.deal.next_date || '', reviewed:{next_step:state.panelDetail.deal.next_step, next_date:state.panelDetail.deal.next_date}, noteSaved:false};
     updateDrafts.set(state.panelDeal, updateDraft);
   }
   form.elements.text.value = pending ? pending.request.text : updateDraft.text;
-  form.elements.text.disabled = Boolean(pending) || !state.selfActor;
+  form.elements.text.disabled = Boolean(pending) || updateDraft.noteSaved || !state.selfActor;
+  form.elements.step.value = updateDraft.step;
+  form.elements.date.value = updateDraft.date;
+  form.elements.step.disabled = form.elements.date.disabled = Boolean(pending || pendingStep) || !state.selfActor;
   const button = form.querySelector('button[type="submit"]');
-  button.disabled = pending?.status === 'pending' || !state.selfActor;
-  button.textContent = pending ? 'Check outcome' : 'Add update';
-  form.querySelector('[data-discard-update]').disabled = Boolean(pending) || !updateDraft.text;
-  if (!pending) $('detailUpdateStatus').textContent = updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
+  button.disabled = pending?.status === 'pending' || pendingStep?.status === 'pending' || !state.selfActor;
+  button.textContent = pending || pendingStep ? 'Check outcome' : 'Add update';
+  form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
+  form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !updateDraft.text;
+  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : updateDraft.message || '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
 function validateDetail(detail, id) {
@@ -861,6 +890,16 @@ function validateDetail(detail, id) {
 function readDealDetail(id) {
   return readWithDeadline(signal => state.client.getDeal(id, { signal })).then(detail => validateDetail(detail, id));
 }
+function validateUpdateStep(draft, form) {
+  if (!draft.step.trim()) { $('detailUpdateStatus').textContent = 'Enter a next step'; form.elements.step.focus(); return false; }
+  if (draft.date && draft.date < todayIso()) {
+    $('detailUpdateStatus').textContent = draft.date === draft.reviewed.next_date
+      ? 'Current next date is overdue. Enter a new date today or later.'
+      : 'Next date must be today or later';
+    form.elements.date.focus(); return false;
+  }
+  return true;
+}
 async function saveUpdate(id) {
   const key = updateKey(id);
   const pending = pendingCommand(commandState, key);
@@ -868,15 +907,56 @@ async function saveUpdate(id) {
   const form = $('detailUpdateForm');
   const text = form?.elements.text.value.trim();
   if (!pending && !text) { $('detailUpdateStatus').textContent = 'Enter an update'; return; }
-  const args = pending?.request || {deal:id,text};
-  const promise = runFollowUp(key,{verb:'add-deal-note',args,summary:'Deal update'});
-  syncUpdateForm();
-  const result = await promise;
-  state.boardSync.requestRefresh('deal-update');
-  if (state.panelDeal === id && form?.isConnected) {
-    syncUpdateForm();
-    $('detailUpdateStatus').textContent = result.status === 'ok' ? 'Update added' : result.message || 'Update not confirmed';
-  }
+  const draft = updateDraft;
+  const actor = state.selfActor;
+  const step = draft.step.trim();
+  const changed = step !== noteText(draft.reviewed.next_step).trim() || draft.date !== (draft.reviewed.next_date || '');
+  const pendingStep = pendingCommand(commandState, nextStepKey(id));
+  if (changed && !pendingStep && !validateUpdateStep(draft, form)) return;
+  if (draft.sending) return;
+  if (!draft.stepStarted && pendingCommand(commandState, nextStepKey(id))) { $('detailUpdateStatus').textContent = 'Resolve the pending next step before adding an update.'; return; }
+  draft.sending = true;
+  try {
+    if (!draft.noteSaved) {
+      const args = pending?.request || {deal:id,text};
+      const promise = runFollowUp(key,{verb:'add-deal-note',args,summary:'Deal update'});
+      syncUpdateForm();
+      const result = await promise;
+      state.boardSync.requestRefresh('deal-update');
+      if (result?.status !== 'ok') {
+        if (state.panelDeal === id && $('detailUpdateStatus')) $('detailUpdateStatus').textContent = result?.message || 'Update not confirmed';
+        return;
+      }
+      if (actor !== state.selfActor || draftActor !== actor) return;
+      draft.noteSaved = true;
+    }
+    if (changed) {
+      if (!pendingStep && !validateUpdateStep(draft, form)) return;
+      draft.stepStarted = true;
+      const result = await runFollowUp(nextStepKey(id), {verb:'set-next-step', args:{deal:id,text:step,next_date:draft.date || null}, reviewed:draft.reviewed, summary:'Next step'});
+      if (result?.status !== 'ok') {
+        draft.conflict = result?.status === 'conflict';
+        draft.message = `Update added; next step not saved. ${result?.message || 'Review the current next step and retry.'}`;
+        if (state.panelDeal === id && $('detailUpdateStatus')) {
+          syncUpdateForm();
+          $('detailUpdateStatus').textContent = draft.message;
+          if (draft.conflict) $('detailUpdateForm').querySelector('[data-review-update-step]').focus();
+          else $('detailUpdateStatus').scrollIntoView({block:'center'});
+        }
+        return;
+      }
+    }
+    if (actor !== state.selfActor || draftActor !== actor) return;
+    discardUpdate(id);
+    if (changed) state.boardSync.requestRefresh('deal-update');
+    if (state.panelDeal === id) {
+      await refreshPanel();
+      if (actor === state.selfActor && updateDraft?.id === id) {
+        updateDraft.message = 'Update added';
+        syncUpdateForm();
+      }
+    }
+  } finally { draft.sending = false; }
 }
 function requirementEmailHtml(deal) {
   const draft = requirementDrafts.get(deal.id) || {};
@@ -912,27 +992,100 @@ async function copyRequirementDraft() {
     form.elements.message.focus(); form.elements.message.select();
   }
 }
-function detailHtml(detail) {
+const workspaceTabs = [
+  {id:'overview', label:'Overview'},
+  {id:'timeline', label:'Timeline'},
+  {id:'correspondence', label:'Correspondence & notes'},
+];
+let workspaceTab = 'overview';
+let boardScroll = 0;
+let timelineType = '';
+history.scrollRestoration = 'manual';
+function renderWorkspaceFacts(detail) {
   const d = detail.deal;
+  const dates = dealTimeline(detail).dates;
+  const active = dates.filter(date => !['cleared','passed'].includes(date.status));
+  const next = active.find(date => date.day >= todayIso()) || active[0] || dates[0];
+  $('workspaceFacts').innerHTML = `<dl class="workspace-facts"><div><dt>Client</dt><dd title="${esc(d.client_name || d.client_ref || 'Not recorded')}">${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div><div><dt>Phase</dt><dd>${esc(columnByValue(d.phase)?.label || d.phase || 'Not recorded')}</dd></div><div><dt>Owner</dt><dd>${esc(actorName(d.owner) || 'Unassigned')}</dd></div><div><dt>Next critical date</dt><dd>${next ? `<span class="workspace-date-label">${esc(next.label)} · </span><time datetime="${esc(next.day)}">${esc(dateCaption(next.day))}</time>${['cleared','passed'].includes(next.status) ? ` · ${esc(next.status)}` : next.day < todayIso() ? ' · overdue' : ''}` : 'Not recorded'}</dd></div></dl>`;
+}
+function selectWorkspaceTab(id) {
+  workspaceTab = id;
+  for (const tab of workspaceTabs) {
+    const selected = tab.id === id;
+    $(`tab-${tab.id}`).setAttribute('aria-selected', String(selected));
+    $(`tab-${tab.id}`).tabIndex = selected ? 0 : -1;
+    if ($(`workspace-${tab.id}`)) $(`workspace-${tab.id}`).hidden = !selected;
+  }
+  $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
+  if (id === 'correspondence' && state.panelDetail) {
+    $('panelEvidenceSection').open = true;
+  }
+}
+function workspaceNotesHtml(detail) {
+  return `<section aria-label="Deal notes"><h3>Deal notes</h3>${(detail.thread || []).map(note => `<article class="workspace-note"><b>${esc(actorName(note.actor))}</b> <time datetime="${esc(note.at || note.created_at || note.recorded_at || '')}">${esc(dateCaption(calendarDay(note.at || note.created_at || note.recorded_at)))}</time><p class="note-original">${esc(noteText(note.text))}</p></article>`).join('') || '<p>No notes recorded.</p>'}</section>`;
+}
+function workspaceEventsHtml(detail) {
+  const view = dealTimeline(detail);
+  const events = [
+    ...view.entries.filter(e => e.day).map(e => ({type:e.type, day:e.day, text:[...new Set([e.summary,e.original].filter(Boolean))].join('\n\n')})),
+    ...(detail.items || detail.deal.items || []).filter(e => calendarDay(e.due_on)).map(e => ({type:'Deal item', day:calendarDay(e.due_on), text:noteText(e.title)})),
+    ...view.dates.map(e => ({type:'Critical date', day:e.day, text:[e.label,e.original].filter(Boolean).join(' · ')})),
+    ...view.phases.filter(e => e.day).map(e => ({type:'Phase', day:e.day, text:e.label})),
+    ...(calendarDay(detail.deal.next_date) && noteText(detail.deal.next_step) && !(detail.next_actions || []).some(e => calendarDay(e.due_on) === calendarDay(detail.deal.next_date) && noteText(e.description) === noteText(detail.deal.next_step)) ? [{type:'Action', day:calendarDay(detail.deal.next_date), text:`Due · ${noteText(detail.deal.next_step)}`}] : []),
+    ...(detail.next_actions || []).flatMap(e => [['due_on','Due'],['hold_until','Held until']].filter(([key]) => calendarDay(e[key])).map(([key,label]) => ({type:'Action', day:calendarDay(e[key]), text:`${label} · ${noteText(e.description)}`}))),
+    ...(detail.history || []).filter(e => calendarDay(e.recorded_at) && !view.entries.some(entry => entry.id === e.id)).map(e => ({type:'Change', day:calendarDay(e.recorded_at), text:noteText(e.summary) || `${fieldLabel(e.field)} · ${readableValue(e.field, e.new_value)}`})),
+  ].sort((a,b) => b.day.localeCompare(a.day));
+  if (!events.some(event => event.type === timelineType)) timelineType = '';
+  return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
+}
+function workspaceHtml(detail) {
+  const d = detail.deal;
+  const nextStep = noteText(d.next_step);
+  const items = detail.items || d.items || [];
+  const showNextStep = nextStep && !items.some(item => item.status === 'open' && item.title === nextStep);
   const prospect = state.deals.get(d.id);
   const pendingProspect = engagementWriterFor(state.client).get(prospect?.client_id, state.selfActor);
-  const nextStep = noteText(d.next_step).trim();
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
-    <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : !parked && !isClosedDeal(d) ? nextStepHtml(d) : ''}
+    <section id="workspace-overview" role="tabpanel" aria-labelledby="tab-overview"><section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
+      <div class="deal-alert">${renderDealItems({...d,items:detail.items || d.items},{today:todayIso(),buttons:true})}</div>
+      ${showNextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span>: <strong>${esc(nextStep)}</strong>${d.next_date ? ` · <span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
+    <section data-detail-read="next-actions" aria-label="Next actions"><h2>Next actions</h2><ul>${(detail.next_actions || []).filter(action => action.status === 'open').map(action => `<li>${esc(noteText(action.description))}${calendarDay(action.due_on) ? ` · <time datetime="${esc(action.due_on)}">${esc(dateCaption(calendarDay(action.due_on)))}</time>` : ''}</li>`).join('') || '<li>No next actions recorded.</li>'}</ul></section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
-    <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
+    <form id="detailUpdateForm" class="deal-update-form" novalidate><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><label for="dealUpdateStep">Next step</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${todayIso()}"${d.next_date && d.next_date < todayIso() ? ' aria-describedby="detailUpdateDateHint"' : ''}>${d.next_date && d.next_date < todayIso() ? '<small id="detailUpdateDateHint">Current next date is overdue.</small>' : ''}<button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
     ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
+    ${clientPortalHtml(d, controlsAvailable)}
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
-    ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>
-    <details id="panelEvidenceSection"><summary>Evidence</summary><div id="panelEvidence"></div></details>`;
+    <h2>Critical dates</h2>${renderCriticalDates(detail)}
+    <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
+    <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
+    <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
+}
+function clientPortalHtml(d, canRegister) {
+  if (d.client_portal_url) return `<div data-detail-read="client-portal">${renderClientPortalLink(d.client_portal_url)}</div>`;
+  if (!canRegister) return '';
+  return `<div data-detail-read="client-portal"><details class="client-portal-register"><summary>Set up client portal</summary><form id="detailClientPortalForm" class="client-portal-form"><label for="clientPortalSlug">Portal name</label><input id="clientPortalSlug" name="slug" required maxlength="63" pattern="[a-z0-9][a-z0-9\\-]*" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="practice-name" data-detail-focus="client-portal-slug"><label for="clientPortalPassword">Password</label><input id="clientPortalPassword" type="password" name="password" required maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" data-detail-focus="client-portal-password"><button class="btn" type="submit">Register portal</button></form></details><p id="detailClientPortalStatus" role="status"></p></div>`;
+}
+async function registerClientPortal(id, form) {
+  const slug = String(form.get('slug')).trim().toLowerCase();
+  const status = $('detailClientPortalStatus');
+  status.textContent = 'Registering…';
+  const result = await runFollowUp(`client-portal:${id}`, {
+    verb: 'register-client-portal', args: { deal: id, slug, password: String(form.get('password')) },
+    summary: 'Client portal',
+  });
+  if (state.panelDeal !== id) return;
+  if (result?.status === 'ok') {
+    await refreshPanel();
+  } else if ($('detailClientPortalStatus')) {
+    $('detailClientPortalStatus').textContent = result?.message || 'Client portal not confirmed';
+  }
 }
 function refreshPanel({ changed = false } = {}) {
   const id = state.panelDeal;
@@ -967,7 +1120,8 @@ async function readPanel(id) {
       syncUpdateForm();
       $('detailReadStatus').textContent = '';
       $('panelTitle').textContent = dealTitle(detail.deal);
-      const template = document.createElement('div'); template.innerHTML = detailHtml(detail);
+      renderWorkspaceFacts(detail);
+      const template = document.createElement('div'); template.innerHTML = workspaceHtml(detail);
       for (const fresh of template.querySelectorAll('[data-detail-read]')) {
         const current = $('panelBody').querySelector(`[data-detail-read="${fresh.dataset.detailRead}"]`);
         if (!current) continue;
@@ -1028,33 +1182,43 @@ async function refreshEvidence(detail, id, seq) {
 }
 function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
-  $('panelBody').innerHTML = detailHtml(detail);
+  renderWorkspaceFacts(detail);
+  $('panelBody').innerHTML = workspaceHtml(detail);
   disposeEvidence?.(); disposeEvidence = null;
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
+  selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
 }
-async function openPanel(dealId, trigger, { fromHistory = false } = {}) {
+async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
+  if (!state.panelDeal) boardScroll = history.state?.boardScroll ?? scrollY;
+  workspaceTab = 'overview'; timelineType = '';
   state.panelDeal = dealId; state.panelDetail = null; updateDraft = null;
   const url = new URL(location.href);
   if (!fromHistory && url.searchParams.get('deal') !== dealId) {
     url.searchParams.set('deal',dealId);
-    history.pushState({doctorcreDealPanel:true},'',url);
+    history.replaceState({...history.state, boardScroll:scrollY}, '', location.href);
+    history.pushState({doctorcreDealWorkspace:true},'',url);
   }
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
   $('panelBody').innerHTML = '<p>Updating…</p>';
-  if (!panel.open) panel.showModal();
+  $('workspaceFacts').replaceChildren();
+  $('workspaceTabs').innerHTML = workspaceTabs.map(tab => `<button class="workspace-tab" type="button" role="tab" id="tab-${tab.id}" aria-controls="workspace-${tab.id}" aria-selected="${tab.id === workspaceTab}" tabindex="${tab.id === workspaceTab ? 0 : -1}" data-workspace-tab="${tab.id}">${tab.label}</button>`).join('');
+  $('main').hidden = true; panel.hidden = false;
+  document.body.classList.add('workspace-open');
+  scrollTo(0, 0);
+  $('panelTitle').focus({preventScroll:true});
   await refreshPanel();
 }
-function closePanel({ fromHistory = false } = {}) {
-  if (!fromHistory && history.state?.doctorcreDealPanel) { history.back(); return; }
+function closeWorkspace({ fromHistory = false } = {}) {
+  if (!fromHistory && history.state?.doctorcreDealWorkspace) { history.back(); return; }
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');
   ++panelReadSequence; ++contextReadSequence;
@@ -1063,7 +1227,10 @@ function closePanel({ fromHistory = false } = {}) {
   disposeEvidence?.(); disposeEvidence=null;
   disposePanelEmailFollowups();
   if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url); }
-  $('recordPanel').close(); state.panelDeal = null; state.panelDetail = null;
+  $('recordPanel').hidden = true; $('main').hidden = false;
+  document.body.classList.remove('workspace-open');
+  state.panelDeal = null; state.panelDetail = null;
+  scrollTo(0, history.state?.boardScroll ?? boardScroll);
   state.panelReturnTo = null;
   setContextOpenVisible(false);
   if (id) document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus({preventScroll:true});
@@ -1077,7 +1244,7 @@ async function setOperatingState(id, value) {
     const accepted = result.request.value;
     confirmLocalWrite(id, fieldPatch('operating_state', accepted));
     showToast(accepted.state === 'active' ? 'Deal revived' : 'Deal parked');
-    if (state.panelDeal === id) closePanel();
+    if (state.panelDeal === id) closeWorkspace();
   } else if (result.conflict) showConflict(result.conflict);
   else { showToast(fieldWriteMessage(result,'Operating state') || 'Change not confirmed', {error:true}); state.boardSync.requestRefresh('operating-state'); }
   renderPendingWrites();
@@ -1099,7 +1266,7 @@ async function markProspectInactive(form,id,reason) {
       },
     });
     await state.boardSync.refreshBoard({reason:'prospect-inactive'});
-    if (state.panelDeal === id) closePanel();
+    if (state.panelDeal === id) closeWorkspace();
     showToast(status === 'inactive' ? 'Prospect returned to Leads' : 'Prospect returned to the deal board');
   } catch (error) {
     await state.boardSync.refreshBoard({reason:'prospect-check'});
@@ -1120,7 +1287,7 @@ async function markProspectInactive(form,id,reason) {
 
 function setContextOpenVisible(visible) {
   const wrap = $('panelContextOpenWrap');
-  if (wrap) wrap.hidden = !visible;
+  if (wrap) wrap.hidden = !visible || workspaceTab !== 'overview';
 }
 
 
@@ -1163,6 +1330,15 @@ function beginMove(dealId, toSlug) {
 function wireBoard() {
   const board = $('kanban');
   if (!board) return;
+
+  board.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-collapse-stage]');
+    if (!toggle) return;
+    const slug = toggle.dataset.collapseStage;
+    if (state.collapsedColumns.has(slug)) state.collapsedColumns.delete(slug);
+    else state.collapsedColumns.add(slug);
+    renderBoard();
+  });
 
   board.addEventListener('pointerdown', (event) => {
     if (event.target.closest('.kanban-card')) board.dataset.pressed = 'true';
@@ -1210,7 +1386,7 @@ function wireBoard() {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
     if (event.target.closest('button,input,select,a,.deal-vendor-details')) return;
-    if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPanel(card.dataset.id, card); } return; }
+    if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openWorkspace(card.dataset.id, card); } return; }
     const id = card.dataset.id;
     const deal = state.deals.get(id);
     if (!deal) return;
@@ -1268,19 +1444,21 @@ function wire() {
   });
 
   document.addEventListener('click', async (event) => {
+    const item = event.target.closest('[data-deal-item]');
+    if (item) { itemSheet.open(item.dataset.itemDeal,item.dataset.dealItem,item); return; }
     const revive = event.target.closest('button[data-revive]');
     if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
-    if (open) { openPanel(open.dataset.open, open); return; }
+    if (open) { openWorkspace(open.dataset.open, open); return; }
     const retry = event.target.closest('button[data-retry-write]');
     if (retry) { retryFieldWrite(retry.dataset.retryWrite); return; }
     const undo = event.target.closest('button[data-undo]');
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
     const card = event.target.closest('.kanban-card');
-    if (card && card.dataset.dragging !== 'true' && !event.target.closest('button,input,select,a,.deal-vendor-details')) { openPanel(card.dataset.id, card); return; }
+    if (card && card.dataset.dragging !== 'true' && !event.target.closest('button,input,select,a,.deal-vendor-details')) { openWorkspace(card.dataset.id, card); return; }
     if (openDeal) {
-      openPanel(openDeal.dataset.openDeal, null);
+      openWorkspace(openDeal.dataset.openDeal, null);
     }
   });
 
@@ -1293,11 +1471,23 @@ function wire() {
 
   addEventListener('popstate', () => {
     const deal = new URL(location.href).searchParams.get('deal');
-    if (deal) void openPanel(deal, null, {fromHistory:true});
-    else closePanel({fromHistory:true});
+    if (deal) void openWorkspace(deal, null, {fromHistory:true});
+    else closeWorkspace({fromHistory:true});
   });
-  $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
-  $('panelClose')?.addEventListener('click', closePanel);
+  $('panelClose')?.addEventListener('click', () => closeWorkspace());
+  $('workspaceTabs').addEventListener('click', event => {
+    const tab = event.target.closest('[data-workspace-tab]');
+    if (tab) { selectWorkspaceTab(tab.dataset.workspaceTab); scrollTo(0,0); }
+  });
+  $('workspaceTabs').addEventListener('keydown', event => {
+    if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = workspaceTabs.findIndex(tab => tab.id === workspaceTab);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? workspaceTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + workspaceTabs.length) % workspaceTabs.length;
+    selectWorkspaceTab(workspaceTabs[next].id);
+    $(`tab-${workspaceTab}`).focus();
+    scrollTo(0,0);
+  });
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();
     document.dispatchEvent(new Event('doctorcre:open-today'));
@@ -1358,6 +1548,7 @@ function wire() {
   $('closedSearch').addEventListener('input', renderClosedDeals);
   $('boardView').addEventListener('click', () => changeView('board'));
   $('listView').addEventListener('click', () => changeView('list'));
+  phoneBoard?.addEventListener('change', renderBoard);
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
   $('panelBody').addEventListener('toggle', event => {
@@ -1366,7 +1557,17 @@ function wire() {
     if (state.panelDetail) void refreshEvidence(state.panelDetail, state.panelDeal, panelReadSequence);
   }, true);
   $('panelBody').addEventListener('click', e => {
-    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
+    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal)) && !pendingCommand(commandState, nextStepKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
+    if (e.target.closest('[data-review-update-step]') && updateDraft?.conflict) {
+      const draft = updateDraft;
+      void readDealDetail(draft.id).then(detail => {
+        if (updateDraft !== draft || draftActor !== state.selfActor) return;
+        draft.reviewed = {next_step:detail.deal.next_step, next_date:detail.deal.next_date};
+        draft.conflict = false;
+        draft.message = `Current next step: ${noteText(detail.deal.next_step) || 'None'} (${detail.deal.next_date || 'no date'}). Retry to replace it.`;
+        syncUpdateForm();
+      }).catch(() => { if (updateDraft === draft) $('detailUpdateStatus').textContent = 'Could not read the current next step.'; });
+    }
     if (e.target.closest('[data-refresh-detail]')) {
       void refreshPanel();
       if (panelEmailFollowups) void panelEmailFollowups.refresh();
@@ -1398,9 +1599,14 @@ function wire() {
       Object.assign(draft, Object.fromEntries(new FormData($('requirementEmailForm'))));
       requirementDrafts.set(state.panelDeal, draft);
     }
-    if (e.target.id === 'dealUpdate' && updateDraft) { updateDraft.text = e.target.value; syncUpdateForm(); }
+    if (e.target.closest('#detailUpdateForm') && updateDraft && ['text','step','date'].includes(e.target.name)) { updateDraft[e.target.name] = e.target.value; syncUpdateForm(); }
   });
   $('panelBody').addEventListener('change', async e => {
+    if (e.target.id === 'timelineType') {
+      timelineType = e.target.value;
+      $('workspace-timeline').querySelectorAll('[data-event-type]').forEach(row => { row.hidden = Boolean(e.target.value && row.dataset.eventType !== e.target.value); });
+      return;
+    }
     const id = state.panelDeal;
 
     if (e.target.id === 'detailPhase') {
@@ -1415,6 +1621,7 @@ function wire() {
     if (e.target.id === 'detailParkForm') await setOperatingState(id,{state:'parked',reason:'other',note:String(form.get('reason'))});
     if (e.target.id === 'detailInactiveForm') await markProspectInactive(e.target,id,String(form.get('reason')).trim());
     if (e.target.id === 'detailUpdateForm') await saveUpdate(id);
+    if (e.target.id === 'detailClientPortalForm') await registerClientPortal(id, form);
   });
 
   globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); refreshPanel(); });
@@ -1431,7 +1638,7 @@ function mountDock() {
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
-      else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
+      else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.verb === 'register-client-portal' ? pendingCommand(commandState, operationKey)?.request || entry.args : entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
@@ -1439,7 +1646,7 @@ function mountDock() {
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args && entry?.send) {
-        runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
+        runFollowUp(operationKey, { verb: entry.verb, args: entry.verb === 'register-client-portal' ? pendingCommand(commandState, operationKey)?.request || entry.args : entry.args, summary: entry.summary });
       }
     },
     onUndo: null,
@@ -1448,14 +1655,16 @@ function mountDock() {
 }
 
 
+let itemSheet;
 async function boot() {
   mountPrefs();
 
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
-  state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  state.client = resolved.mode === 'live' ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(state.client);
+  itemSheet = mountDealItemSheet({document,today:todayIso,read:readDealDetail,send:runFollowUp,pending:key => pendingCommand(commandState,key),refresh:() => {state.boardSync.requestRefresh('deal-item');refreshPanel();}});
   state.mode = state.client.mode;
   const identity = deploymentIdentity(state.mode);
   $('deploymentBadge').textContent = identity.label;
@@ -1473,14 +1682,19 @@ async function boot() {
   $('lostView').setAttribute('aria-pressed',String(state.view === 'lost'));
   $('closedView').setAttribute('aria-pressed',String(state.view === 'closed'));
   const linkedDeal = incomingScope.get('deal');
-  if (linkedDeal) void openPanel(linkedDeal);
+  if (linkedDeal) void openWorkspace(linkedDeal).then(() => {
+    if (incomingScope.get('item') && state.panelDeal === linkedDeal) void itemSheet.open(linkedDeal,incomingScope.get('item'));
+  });
   void loadBoard();
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: refreshPanel });
-  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
+  mountVisibilityPoll({ poll: refreshPanel });
+  mountVisibilityPoll({ poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
+  mountVisibilityPoll({ poll: () => { state.boardSync.requestRefresh('periodic'); } });
+
 
 }
 
 if (globalThis.document) boot();
 
 export { state };
+/** Read-only view of the command dock's entries, for tests that prove what it retains. */
+export const dockEntries = () => dock.entries ?? new Map();

@@ -1,3 +1,4 @@
+import { WAIT_MS } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -67,7 +68,7 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   const clock = await first.locator('.cr-row-meta').textContent();
   if(width === 390) await first.tap(); else await first.click();
   const dialog = page.getByRole('dialog', { name: 'Inbox item', exact: true });
-  await dialog.waitFor({ timeout: 2500 });
+  await dialog.waitFor({ timeout: WAIT_MS });
   await page.waitForFunction(({ reason, clock }) => {
     const dialog = document.querySelector('#crInboxDialog');
     const body = document.querySelector('#crInboxBody');
@@ -82,7 +83,7 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   assert.equal(await dialog.isVisible(), false);
   assert.equal(await first.evaluate(node => node === document.activeElement), true);
   await page.keyboard.press('Enter');
-  await dialog.waitFor({ timeout: 2500 });
+  await dialog.waitFor({ timeout: WAIT_MS });
   const inboxClosed = dialog.evaluate(node => new Promise(resolve => node.addEventListener('close', () => resolve(), {once:true})));
   await dialog.getByRole('button', { name: 'Close inbox item', exact: true }).click();
   await inboxClosed;
@@ -91,7 +92,7 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   const secondReason = await second.locator('.cr-row-title').textContent();
   await second.focus();
   await page.keyboard.press('Space');
-  await dialog.waitFor({ timeout: 2500 });
+  await dialog.waitFor({ timeout: WAIT_MS });
   assert.ok((await dialog.innerText()).includes(secondReason));
   assert.ok(!(await dialog.innerText()).includes(reason));
   await page.keyboard.press('Escape');
@@ -131,7 +132,7 @@ for (const theme of ['dark', 'light']) test(`desktop Inbox detail stays within 6
   const page = await open(t, 'inbox', 1440, theme);
   await page.locator('#crInboxList .cr-row').first().click();
   const dialog = page.getByRole('dialog', { name: 'Inbox item', exact: true });
-  await dialog.waitFor({ timeout: 2500 });
+  await dialog.waitFor({ timeout: WAIT_MS });
   const bounds = await dialog.boundingBox();
   assert.ok(bounds.width > 0 && bounds.width <= 640, `rendered dialog width is ${bounds.width}px`);
 });

@@ -20,9 +20,67 @@ function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
+const fixtureScopes = new WeakMap();
+function fixtureScope(t) {
+  if (fixtureScopes.has(t)) return fixtureScopes.get(t);
+  const held = new Set(), pending = new Set(), failures = [];
+  let closing = false;
+  const scope = {
+    hold() {
+      let resolve;
+      const promise = new Promise(done => { resolve = done; });
+      const release = () => { held.delete(release); resolve(); };
+      if (closing) release(); else held.add(release);
+      return {promise, release};
+    },
+    async delay(ms) {
+      const {promise, release} = scope.hold();
+      const timer = setTimeout(release, ms);
+      try { await promise; } finally { clearTimeout(timer); }
+    },
+    async route(page, reply) {
+      await page.route('**/*', route => {
+        const task = (async () => {
+          let response = null;
+          try {
+            if (!closing) response = await reply(route.request());
+          } catch (error) { failures.push(error); }
+          if (closing || response === null) await route.abort();
+          else await route.fulfill(response);
+        })();
+        pending.add(task);
+        return task.then(() => pending.delete(task), error => {
+          pending.delete(task);
+          failures.push(error);
+        });
+      });
+    },
+  };
+  fixtureScopes.set(t, scope);
+  t.after(async () => {
+    closing = true;
+    for (const release of held) release();
+    try {
+      while (pending.size) await Promise.allSettled([...pending]);
+      if (scope.page) {
+        await scope.page.goto('about:blank');
+        await scope.page.unrouteAll({behavior:'wait'});
+      }
+      while (pending.size) await Promise.allSettled([...pending]);
+    } finally {
+      await scope.browser?.close();
+    }
+    assert.deepEqual(failures, [], 'Every fixture route must complete before context teardown');
+    assert.equal(held.size, 0, 'Every held read must be released');
+  });
+  return scope;
+}
+
 async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
-  const browser=await chromium.launch();t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
+  const scope = fixtureScope(t);
+  const browser = scope.browser = await chromium.launch();
+  const page = scope.page = await browser.newPage({viewport:{width,height:900}});
+  await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
     url.searchParams.set('mode', 'live');
@@ -44,13 +102,13 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     add('system',`WORKER SPAWNED — seat dot, a backend worker. Mission: research ${taskId}. Executor: synthetic isolated worker.`,'dot');
     for(let i=0;i<history;i++)add('turn',`Unrelated synthetic historical turn ${i}`,'human');
   }
-  await page.route('**/*',async route=>{
-    const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
-    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
+  await scope.route(page,async request=>{
+    const url=new URL(request.url());if(url.origin!=='http://localhost')return null;
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return ({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if(url.pathname==='/mcp'){
-      const rpc=route.request().postDataJSON().params;calls.push(rpc);
-      if(state.authLost)return route.fulfill({status:401,body:'{}'});
-      if(state.offline)return route.fulfill({status:503,body:'Synthetic offline'});
+      const rpc=request.postDataJSON().params;calls.push(rpc);
+      if(state.authLost)return ({status:401,body:'{}'});
+      if(state.offline)return ({status:503,body:'Synthetic offline'});
       let payload=rpc.name==='read-progress-board'?{ok:true,snapshot:{board_id:rpc.arguments.board_id,version:1,updated_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),snapshot_json:{title:rpc.arguments.board_id==='carr-v5'?'System progress':'Demo project',tasks:empty?{}:{[taskId]:{title:'Demo work detail',status:'review',work_request:'WR-900'}}}},questions:[]}
         :rpc.name==='list-progress-boards'?{schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System progress',updated_at:NOW.toISOString(),task_counts:{}},{board_id:'demo-project',title:'Demo project',updated_at:NOW.toISOString(),task_counts:{review:1}}]}
         :rpc.name==='read-session-identity'?{sessions:sessions || (empty?[]:[{canonical_session_id:'session:fresh',display_name:'Demo builder',surface:'codex',work_state:'working'},{canonical_session_id:'session:other',display_name:'Other builder',surface:'codex'}]),permission_filtered:false}
@@ -58,34 +116,36 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
         :rpc.name==='engineering-passport'?canonicalFixture()
         :rpc.name==='work-request-card'?{ok:true,human_ref:'WR-900',title:'Demo work request',state:'needs_revision',version:1,desired_outcome:'Synthetic acceptance',acting_identity:[{act:'review',performed_by:'actor:builder'}]}
         :rpc.name==='unfinished-work'?{schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true}:{};
-      if (state.rpcReply) payload=await state.rpcReply(rpc,payload);
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
+      if (state.rpcReply) {
+        payload=await state.rpcReply(rpc,payload);
+      }
+      return ({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
     }
     if(url.pathname==='/api/room/turns'){
-      state.turnReads++;if(state.offline)return route.fulfill({status:503,body:'{}'});
+      state.turnReads++;if(state.offline)return ({status:503,body:'{}'});
       const from=Number(url.searchParams.get('after_seq')||0),limit=Number(url.searchParams.get('limit')||200);
       const turns=state.turns.filter(turn=>turn.seq>from).slice(0,limit);
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
+      return ({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     }
     if(url.pathname==='/api/room/queue'){
-      state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
+      state.queueReads++;if(state.authLost)return ({status:401,body:'{}'});if(state.offline)return ({status:503,body:'{}'});
       if(state.queueWait)await state.queueWait;
       const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),events})});
+      return ({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':await page.evaluate(()=>new Date().toISOString()),events})});
     }
     if(url.pathname==='/api/room/turn'){
-      if(state.postDelay) await new Promise(resolve=>setTimeout(resolve,state.postDelay));
-      posts.push({body:route.request().postDataJSON(),csrf:route.request().headers()['x-carr-csrf']});
-      if(state.postFailure)return route.fulfill({status:502,contentType:'application/json',body:'{}'});
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
+      if(state.postDelay)await scope.delay(state.postDelay);
+      posts.push({body:request.postDataJSON(),csrf:request.headers()['x-carr-csrf']});
+      if(state.postFailure)return ({status:502,contentType:'application/json',body:'{}'});
+      return ({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
     }
-    if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
+    if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return ({contentType:'application/json',body:'{}'});
     // Legacy deep links take the Worker's own 308 Location, as in production. Chromium does not
     // re-intercept a fulfilled redirect, so the page follows that Location itself, keeping the
     // fragment the browser never sends, exactly as an HTTP redirect without one does.
-    if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return route.fulfill({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
+    if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return ({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
     const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
-    try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+    try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return ({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return ({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
@@ -101,6 +161,39 @@ function reboundPassport() {
   assert.equal(canonicalPassport(value),true);
   return value;
 }
+
+test('teardown cancels a held queue read before closing the page', async t => {
+  let release;
+  await t.test('page with a pending queue read', async t => {
+    const held = fixtureScope(t).hold();
+    release = held.release;
+    const {page,state} = await open(t);
+    state.queueWait = held.promise;
+    const reads = state.queueReads;
+    await page.clock.runFor(60_100);
+    await assertEventually(() => state.queueReads > reads);
+  });
+  release();
+  await fixtureScope(t).delay(100);
+});
+
+test('teardown finishes held RPC callbacks before closing their context', async t => {
+  let page, completed = false, started = false;
+  await t.test('page with a pending RPC callback', async t => {
+    const {promise:gate} = fixtureScope(t).hold();
+    ({page} = await open(t, {rpcReply:async (rpc,payload) => {
+      if (rpc.name === 'engineering-passport') {
+        started = true;
+        await gate;
+        assert.equal(page.isClosed(), false, 'Held callbacks finish while their page is open');
+        completed = true;
+      }
+      return payload;
+    }}));
+    await assertEventually(() => started);
+  });
+  assert.equal(completed, true, 'Teardown awaits the entire held callback');
+});
 
 test('fresh publication reconciles delivery and derived request evidence and removes obsolete references',async t=>{
   let request = 'WR-900';
@@ -118,7 +211,7 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-900/);
   await page.locator('[data-session-id="session:fresh"]').click();
   await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('synthetic dispatch'));
-  request='WR-901'; await page.clock.runFor(5100);
+  request='WR-901'; await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published WR-901');
   await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Card WR-901'));
   assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-901/);
@@ -127,10 +220,10 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   for(const id of ['workMetadata','workCanonicalBody','workSessionList','workDispatchHistory'])
     assert.doesNotMatch(await page.locator('#'+id).textContent(),/Card WR-900|wr-synthetic-read-only|attempt:a|Prior builder|synthetic dispatch/);
   state.turns.push({seq:100,msg_id:'old-attempt-review',seat:'human',kind:'turn',at:NOW.toISOString(),body:JSON.stringify({attempt_id:'attempt:a',review:'Obsolete attempt review'})});
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   assert.doesNotMatch(await page.locator('#workReviewList').textContent(),/Obsolete attempt review/);
   assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-901');
-  request=null; await page.clock.runFor(5100);
+  request=null; await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published unbound');
   assert.match(await page.locator('#workCanonicalBody').textContent(),/No canonical work-request/);
   assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Card WR-/);
@@ -142,7 +235,7 @@ test('fresh publication reconciles delivery and derived request evidence and rem
 for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{
   const {page,state} = await open(t);
   await page.waitForSelector('[data-session-id="session:fresh"]');
-  let release,started=false; const gate=new Promise(resolve=>release=resolve);
+  let started=false; const {promise:gate,release}=fixtureScope(t).hold();
   state.rpcReply=async(rpc,payload)=>{
     if(rpc.name===late&&!started){started=true;await gate;return late==='read-session-identity'?{sessions:[{canonical_session_id:'session:fresh',display_name:'Obsolete held session'}]}:{events:[{event_id:99,session_id:'session:fresh',stage:'Obsolete held dispatch'}],more:false};}
     if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Unbound publication',status:'review'};
@@ -151,9 +244,9 @@ for(const late of ['read-session-identity','read-dispatch-history'])test(`public
   if(late==='read-session-identity')await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
   else await page.locator('[data-session-id="session:fresh"]').click();
   await assertEventually(()=>started);
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Unbound publication');
-  release(); await new Promise(resolve=>setTimeout(resolve,100));
+  release(); await fixtureScope(t).delay(100);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Obsolete held session/);
   assert.doesNotMatch(await page.locator('#workDispatchHistory').textContent(),/Obsolete held dispatch/);
 });
@@ -162,7 +255,7 @@ test('explicit URL request remains pinned when the published task changes bindin
   const {page,state,calls}=await open(t,{path:taskPath+'&work_request=WR-900'});
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
   state.rpcReply=(rpc,payload)=>{if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Rebound task',status:'review',work_request:'WR-901'};return payload;};
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Rebound task');
   assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-900');
   assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
@@ -242,7 +335,7 @@ test('only explicit bindings and valid source sequences join execution evidence'
   assert.equal(scopedQueueCard({source_seq:8},{...scope,sourceSeqs:[8]}),true);
   const {page,state}=await open(t);
   state.turns.push({seq:100,msg_id:'mention-only',session_id:'session:other',seat:'human',kind:'turn',at:NOW.toISOString(),body:`Discuss ${taskId}.`});
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Other builder/);
 });
 
@@ -286,7 +379,7 @@ test('colliding job-local attempts never add unrelated Dot evidence or native se
     ['contradictory', {work_request_id:value.work_request.id,job_ref:'job:other',attempt_id:'attempt:1',session_ref:'session:other-job',evidence:'CONTRADICTORY JOB EVIDENCE'}],
     ['bound', {job_ref:'job:second',attempt_id:'attempt:1',session_ref:'session:second',evidence:'BOUND JOB EVIDENCE'}],
   ]) state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:id,seat:'dot',kind:'receipt',at:NOW.toISOString(),body:JSON.stringify(body)});
-  await page.clock.runFor(5100);await assertEventually(()=>state.turnReads>priorReads);
+  await page.clock.runFor(60_100);await assertEventually(()=>state.turnReads>priorReads);
   await page.waitForFunction(()=>document.querySelector('#workDotList').textContent.includes('BOUND JOB EVIDENCE'));
   assert.doesNotMatch(await page.locator('#workDotList').textContent(),/UNRELATED JOB EVIDENCE|CONTRADICTORY JOB EVIDENCE/);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Unrelated job builder/);
@@ -441,11 +534,11 @@ test('native adapter reference joins its exact producer host id',async t=>{
 });
 
 test('late Engineering success stays withheld after another protected read loses authentication',async t=>{
-  let release,started=false;const gate=new Promise(resolve=>release=resolve);
+  let started=false;const {promise:gate,release}=fixtureScope(t).hold();
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
-  await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(5100);
+  await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(60_100);
   await page.waitForURL('**/public-shell/session-ended.html');
-  release();await new Promise(resolve=>setTimeout(resolve,100));
+  release();await fixtureScope(t).delay(100);
   assert.equal(await page.locator('.passport-card').count(),0);
   assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic|Demo/);
 });
@@ -453,8 +546,8 @@ test('late Engineering success stays withheld after another protected read loses
 test('latest session lookup wins and refresh retains its query',async t=>{
   const {page,state,calls}=await open(t);
   await page.waitForSelector('[data-session-id="session:fresh"]');
-  let release, oldStarted=false;
-  const old=new Promise(resolve=>release=resolve);
+  let oldStarted=false;
+  const {promise:old,release}=fixtureScope(t).hold();
   state.rpcReply=async (rpc,payload)=>{
     if(rpc.name!=='read-session-identity')return payload;
     if(rpc.arguments.query==='old'){oldStarted=true;await old;}
@@ -464,15 +557,15 @@ test('latest session lookup wins and refresh retains its query',async t=>{
   await assertEventually(()=>oldStarted);
   await page.locator('#workSessionQuery').fill('new');await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
   await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Result new'));
-  release();await new Promise(resolve=>setTimeout(resolve,100));
+  release();await fixtureScope(t).delay(100);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Result old/);
-  await page.clock.runFor(5100);await assertEventually(()=>calls.filter(call=>call.name==='read-session-identity'&&call.arguments.query==='new').length>=2);
+  await page.clock.runFor(60_100);await assertEventually(()=>calls.filter(call=>call.name==='read-session-identity'&&call.arguments.query==='new').length>=2);
   assert.match(await page.locator('#workSessionList').textContent(),/Result new/);
 });
 
 for (const stalled of ['engineering-passport','read-session-identity'])test(`stalled ${stalled} expires, labels evidence stale and resumes refresh`,async t=>{
   let stalledReads=0;
-  const never=new Promise(()=>{});
+  const {promise:never}=fixtureScope(t).hold();
   const {page,calls}=await open(t,{rpcReply:(rpc,payload)=>rpc.name===stalled?(stalledReads++,never):payload});
   await assertEventually(()=>stalledReads>0);
   await page.clock.runFor(11000);
@@ -484,23 +577,22 @@ for (const stalled of ['engineering-passport','read-session-identity'])test(`sta
 
 test('stalled queue expires and recovers instead of remaining live',async t=>{
   const {page,state}=await open(t);await page.waitForSelector('.queue-card',{state:'attached'});
-  state.queueWait=new Promise(()=>{});
-  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1);
+  state.queueWait=fixtureScope(t).hold().promise;
+  await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>1);
   await page.clock.runFor(11000);
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');
   state.queueWait=null;
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Live');
 });
 
 test('concurrent Earlier dispatches clicks append one stable event and preserve cursor',async t=>{
   const {page,state,calls}=await open(t);await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
-  let release, pending=0;const gate=new Promise(resolve=>release=resolve);
+  let pending=0;const {promise:gate,release}=fixtureScope(t).hold();
   state.rpcReply=async(rpc,payload)=>{if(rpc.name==='read-dispatch-history'&&rpc.arguments.cursor){pending++;await gate;return {...payload,events:[...payload.events,...payload.events]};}return payload;};
   await page.locator('#workDispatchMore').evaluate(button=>{button.click();button.click();});
   await assertEventually(()=>pending>0);
-  t.after(()=>release());
   const actedEvent=page.locator('#workDispatchHistory .work-record > h3').filter({hasText:/^acted$/});
   assert.equal(await actedEvent.count(),0);
   assert.equal(await page.locator('#workDispatchMore').isDisabled(),true);
@@ -513,31 +605,31 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
 
 test('fresh queue absence removes projected task metadata and sequence binding',async t=>{
   const {page,state}=await open(t,{rpcReply:(rpc,payload)=>rpc.name==='read-progress-board'?{...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}}:payload});
-  await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  await page.clock.runFor(60_100);await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
   state.queueEmpty=true;
-  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>=3);
-  await page.clock.runFor(5100);await page.waitForFunction(()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>=3);
+  await page.clock.runFor(60_100);await page.waitForFunction(()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
   assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo research/);
   assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Demo research/);
   assert.equal(await page.locator('#queueLive').textContent(),'Live');
   state.turns.push({seq:100,msg_id:'removed-binding',seat:'dot',kind:'turn',at:NOW.toISOString(),body:'Unrelated task after removal'});
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   assert.doesNotMatch(await page.locator('#workDotList').textContent(),/Unrelated task after removal/);
 });
 
 test('late canonical binding restores receipts discarded before the rescan',async t=>{
-  let release;const gate=new Promise(resolve=>release=resolve);
+  const {promise:gate,release}=fixtureScope(t).hold();
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport')await gate;return payload;}});
   await assertEventually(()=>state.turnReads>=1);
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
-    const before=state.turnReads;await page.clock.runFor(5100);await assertEventually(()=>state.turnReads>before);
-    await new Promise(resolve=>setTimeout(resolve,100));
+    const before=state.turnReads;await page.clock.runFor(60_100);await assertEventually(()=>state.turnReads>before);
+    await fixtureScope(t).delay(100);
   }
   assert.equal(await page.locator('.passport-card').count(),0);
-  release();await page.clock.runFor(16000);
+  release();await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-  await page.clock.runFor(5100);await page.waitForSelector('.passport-card');
+  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
@@ -574,7 +666,7 @@ test('task detail exposes sessions, reviews, Dot jobs, dispatch pages and every 
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Other builder/);
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
   await page.locator('#workDispatchMore').click();await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
-  await page.clock.runFor(5100);assert.match(await page.locator('#workDispatchHistory').textContent(),/acted/);
+  await page.clock.runFor(60_100);assert.match(await page.locator('#workDispatchHistory').textContent(),/acted/);
   assert.match(await page.locator('#workReviewList').textContent(),/slice:a|Fix round/);
   assert.match(await page.locator('#workDotList').textContent(),/Demo research/);
   assert.match(await page.locator('#workCanonicalBody').textContent(),/Closure: blocked/);
@@ -611,17 +703,17 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
   assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
-  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
+  await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
 
 test('older task passports survive the current global wire window',async t=>{
   const {page,state,errors}=await open(t,{history:2000});
-  await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
+  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
   assert.match(await page.locator('#workDotList').textContent(),/Observed Dot turn/);
   await page.locator('#viewEverything').click();assert.doesNotMatch(await page.locator('#wireFeed').textContent(),/Unrelated synthetic historical/);
   for(let i=0;i<2000;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`later-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:`Unrelated synthetic later turn ${i}`});
-  await page.clock.runFor(5100);await page.waitForSelector('.passport-card');
+  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');
   assert.deepEqual(errors,[]);
 });
 
@@ -634,7 +726,7 @@ test('wire and queue polling stop while hidden and read at once on return',async
   await show(true);
   await assertEventually(()=>state.queueReads>hidden.queue && state.turnReads>hidden.wire);
   await page.waitForFunction(()=>document.querySelector('#queueSync').textContent.startsWith('Synced'));
-  const visible={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(5100);
+  const visible={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(60_100);
   await assertEventually(()=>state.queueReads>visible.queue && state.turnReads>visible.wire);
 });
 
@@ -642,7 +734,7 @@ test('malformed and conflicting Passport updates stay withheld in task detail',a
   const {page,state,errors}=await open(t);await page.waitForSelector('.passport-card');
   const conflict=structuredClone(fixture.projection);conflict.source_state.canonical_record_digest='sha256:'+'b'.repeat(64);
   const add=payload=>state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`conflict-${state.turns.length}`,kind:'receipt',at:NOW.toISOString(),sponsor:'joe',seat:'codex',body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind:'observatory_projection',payload}})});
-  add(conflict);add({work_request_id:fixture.projection.work_request_id});await page.clock.runFor(5100);
+  add(conflict);add({work_request_id:fixture.projection.work_request_id});await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('.passport-card').dataset.status==='unknown_partial');
   assert.match(await page.locator('#jobPassportSummary').textContent(),/withheld/);assert.deepEqual(errors,[]);
 });
@@ -651,10 +743,10 @@ test('wire history, pause, missed-count and Resume live work through the new pag
   const {page,state,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project'});
   await page.locator('#viewEverything').click();
   for(let seq=16;seq<=515;seq++)state.turns.push({seq,msg_id:`history-${seq}`,at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`Synthetic history turn ${seq}`});
-  await page.clock.runFor(5100);await page.waitForSelector('.wire-earlier');
+  await page.clock.runFor(60_100);await page.waitForSelector('.wire-earlier');
   await page.locator('#wireFeed').evaluate(node=>{node.scrollTop=0;node.dispatchEvent(new Event('scroll'));});
   state.turns.push({seq:516,msg_id:'history-new',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:'Synthetic latest turn'});
-  await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#wireResume').textContent.includes('new'));
+  await page.clock.runFor(60_100);await page.waitForFunction(()=>document.querySelector('#wireResume').textContent.includes('new'));
   await page.locator('.wire-earlier').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic history turn 157'));
   await page.locator('#wireResume').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic latest turn'));
   assert.deepEqual(errors,[]);
@@ -686,8 +778,7 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
-  let releaseSessions;
-  const sessionsReady = new Promise(resolve => { releaseSessions = resolve; });
+  const {promise:sessionsReady,release:releaseSessions} = fixtureScope(t).hold();
   const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks',
     rpcReply: async (rpc,payload) => { if (rpc.name === 'read-session-identity') await sessionsReady; return payload; }});
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Stale');
@@ -695,14 +786,14 @@ test('empty, stale and offline states stay legible without inventing work',async
   await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('No linked native session'));
   assert.match(await page.locator('#workSessionList').textContent(),/No linked native session/);assert.match(await page.locator('#jobPassportSummary').textContent(),/No validated Job Passport/);
   assert.match(await page.locator('#workReviewList').textContent(),/No linked review/);assert.match(await page.locator('#workReadState').textContent(),/Stale publication/);
-  state.offline=true;await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
+  state.offline=true;await page.clock.runFor(60_100);await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
 });
 
 test('confirmed authentication loss clears protected queue and work evidence',async t=>{
   const {page,state,errors}=await open(t);
   await page.waitForSelector('.queue-card',{state:'attached'});await page.waitForSelector('.passport-card');await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
-  state.authLost=true;await page.clock.runFor(5100);
+  state.authLost=true;await page.clock.runFor(60_100);
   await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await page.locator('.queue-card,.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
   assert.doesNotMatch(await page.locator('body').textContent(),/Demo|Synthetic desk|Fix round/);
@@ -801,7 +892,7 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   for(const ref of refs.slice(1))assert.equal(await page.locator('.work-lineage a').filter({hasText:ref}).count(),0);
   assert.match(await page.locator('#workMetadata').textContent(),/task:canonical-900/);
   task.title='Synthetic renamed card';
-  await page.clock.runFor(5100);
+  await page.clock.runFor(60_100);
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Synthetic renamed card');
   assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
   assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
@@ -815,7 +906,7 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   await page.locator('.work-lineage a').filter({hasText:'WR-900'}).click();
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('work_request')==='WR-900');
   assert.equal(new URL(page.url()).searchParams.has('task'),false);
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null);
   assert.deepEqual(errors,[]);
 });
 

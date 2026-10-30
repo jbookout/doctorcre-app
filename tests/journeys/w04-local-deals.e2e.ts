@@ -17,8 +17,12 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
 
   await expect(browser.locator('#pageTitle')).toHaveText('Local Deals');
   await expect(browser.locator('.kanban-column')).toHaveCount(7);
-  const autoMove = browser.locator('[data-column="negotiation"] [data-id="d14"] .auto-move');
-  await expect(autoMove).toContainText('Moved automatically: LOI sent');
+  await expect(browser.locator('[data-column="negotiation"] [data-id="d14"] .auto-move')).toContainText('Moved automatically: LOI sent');
+  await browser.locator('#listView').tap();
+  await expect(browser.locator('.deal-row[data-id="d14"] .deal-stage')).toHaveText('Negotiating');
+  await expect(browser.locator('.deal-row[data-id="d14"] .auto-move')).toContainText('Moved automatically: LOI sent');
+  await expect(browser.locator('.deal-row[data-id="d14"] [data-undo]')).toHaveCount(0);
+  await browser.locator('#boardView').tap();
 
   await expect(browser.locator('[data-id="d14"] [data-undo]')).toHaveCount(0);
 
@@ -30,6 +34,7 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
       await expect(browser.locator('#detailPhase')).toBeVisible();
       await browser.locator('#detailPhase').selectOption({ value: 'legal' });
     } else {
+      await browser.evaluate(() => document.querySelector('[data-column="negotiation"] [data-id="d23"]')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'instant' }));
       await browser.locator('[data-column="negotiation"] [data-id="d23"]').dragTo(browser.locator('[data-column="legal"]'));
     }
   };
@@ -38,7 +43,7 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
   await browser.locator('#completionDialog #completionCancel').tap();
   await expect(browser.locator('#completionDialog')).toBeHidden();
   if (phone) {
-    await browser.locator('#recordPanel [aria-label="Close deal"]').tap();
+    await browser.locator('#panelClose').tap();
     await expect(browser.locator('#recordPanel')).toBeHidden();
   }
   await expect(browser.locator('[data-column="negotiation"] [data-id="d23"]')).toBeVisible();
@@ -47,7 +52,7 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
   await browser.locator('#completionConfirm').tap();
   await expect(browser.locator('#completionDialog')).toBeHidden();
   if (phone) {
-    await browser.locator('#recordPanel [aria-label="Close deal"]').tap();
+    await browser.locator('#panelClose').tap();
     await expect(browser.locator('#recordPanel')).toBeHidden();
   }
   await expect(browser.locator('[data-column="legal"] [data-id="d23"]')).toBeVisible();

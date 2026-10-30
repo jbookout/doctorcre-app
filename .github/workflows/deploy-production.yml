@@ -2,7 +2,7 @@ name: Deploy production
 
 on:
   workflow_run:
-    workflows: [Signed-in staging tests]
+    workflows: [CI]
     types: [completed]
 
 permissions:

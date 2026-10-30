@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { IDLE_CUTOFF_MS, mountLocalClock, mountVisibilityPoll } from '../js/visibility-poll.mjs';
+import { IDLE_CUTOFF_MS, MIN_POLL_MS, mountLocalClock, mountVisibilityPoll } from '../js/visibility-poll.mjs';
 import { mountAutoRefresh } from '../js/auto-refresh.mjs';
 
 function page() {
@@ -61,7 +61,7 @@ test('returning to view refreshes once at once, then resumes the cadence', async
   p.hide(); p.advance(8 * 3600_000);
   p.show(); await settle();
   assert.equal(fixed.polls, 1, 'one immediate poll on return'); assert.equal(reads, 1, 'one immediate read on return');
-  assert.deepEqual(p.delays.sort((a, b) => a - b), [1400, 15_000], 'then each poller is back on its own cadence');
+  assert.deepEqual(p.delays, [60_000, 60_000], 'then each poller is back on the one-minute cadence');
   p.tick(); await settle();
   assert.equal(fixed.polls, 2); assert.equal(reads, 2);
   fixed.handle.dispose(); auto.dispose();
@@ -184,4 +184,18 @@ test('every network poller in the app goes through the shared helper', async () 
   assert.equal(pipeline.match(/mountVisibilityPoll\(\{/g).length, 3, 'pipeline.js: panel, feed and board clocks');
   assert.doesNotMatch(await read('observatory.js'), /setInterval\(/);
   assert.match(await read('auto-refresh.mjs'), /watchPresence\(/, 'auto-refresh shares the same hidden and idle gate');
+});
+
+test('background refresh never runs faster than once a minute', () => {
+  const p = page();
+  assert.equal(MIN_POLL_MS, 60_000);
+  const fixed = poller(p, { intervalMs: 1400 });
+  assert.deepEqual(p.delays, [60_000], 'a 1.4 s poll arms at the one-minute floor');
+  fixed.handle.dispose();
+  const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, intervalMs: 30_000, refresh: () => {} });
+  assert.deepEqual(p.delays, [60_000], 'a 30 s auto-refresh arms at the one-minute floor');
+  auto.dispose();
+  const call = poller(p, { intervalMs: 1600, keepAlive: () => true });
+  assert.deepEqual(p.delays, [1600], 'a keepAlive poll keeps its own interval');
+  call.handle.dispose();
 });

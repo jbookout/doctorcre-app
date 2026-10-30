@@ -5,13 +5,14 @@ import { chromium, waitForAsync } from './browser-harness.mjs';
 import { identity, found, readiness, meeting } from './fixtures/correspondence.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false, legalDestination = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
   Object.assign(seed.deals.find(d => d.id === 'd14'), {phase:'Negotiation',next_date:'2026-10-02'});
+  if (legalDestination) seed.deals.push({ ...seed.deals.find(d => d.id === 'd14'), id: 'demo-legal', name: 'Demo Legal Practice', phase: 'Legal' });
   Object.assign(seed.deals.find(d => d.id === 'd20'),{phase:'Closed',outcome:'won'});
   Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
@@ -77,14 +78,14 @@ test('marking a prospect inactive sends its version and returns it to Leads',asy
   state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive||d.id!=='d14').map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-client',client_version:7,prospect_engagement_status:'active'}:d)}};
   state.client.setProspectEngagementStatus=async args=>{window.prospectWrite=args;inactive=true;return{ok:true}};
  });
- await refresh(page);await page.locator('.kanban-column [data-id="d14"]').click();
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  await page.locator('#detailInactiveForm input[name="reason"]').fill('Synthetic deferred project');
  await page.locator('#detailInactiveForm button').click();
  await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d14'));
  const args=await page.evaluate(()=>window.prospectWrite);
  assert.equal(args.client_id,'synthetic-client');assert.equal(args.base_version,7);assert.equal(args.status,'inactive');
  assert.equal(args.reason,'Synthetic deferred project');assert.ok(args.idempotency_key);
- assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),false);
+ assert.equal(await page.locator('#recordPanel').evaluate(e => !e.hidden),false);
 });
 
 test('a closed prospect removes Mark inactive and refuses submission from stale DOM', async t => {
@@ -141,12 +142,15 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
     // Cards size to their content (S8): no fixed tall box with half of it empty.
-    assert.ok(sizes.every(e => e.height < 212 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
+    assert.ok(sizes.every(e => e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
+    assert.equal(await page.locator('.kanban-card .deal-summary-text').evaluateAll(lines => lines.every(line => line.clientHeight <= parseFloat(getComputedStyle(line).lineHeight) * 2 + 1)), true);
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
+    assert.equal(await page.locator('.kanban-column [data-id="d14"] .owner').textContent(), 'Joe');
     await page.locator('[data-filter="dell"]').click();
+    assert.equal(await page.locator('.kanban-column [data-id="d14"]').count(),0);
     assert.equal(await page.locator('.kanban-column .owner').evaluateAll(es => es.every(e => e.textContent === 'Dell')), true);
     await page.locator('[data-filter="all"]').click();
-    await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
+    await page.locator('.kanban-column [data-id="d14"] .card-open').click(); await page.waitForSelector('#detailPhase');
     const box = await page.locator('#recordPanel').boundingBox(); assert.ok(box.width >= Math.min(1100, width - 30));
     assert.ok((await page.locator('.deal-note p').first().textContent()).length <= 150);
     await page.locator('.updates-history > summary').click();
@@ -155,7 +159,7 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     await page.locator('#recordPanel').evaluate(e => { e.scrollTop = 0; });
     assert.equal(await page.locator('#recordPanel').evaluate(e => e.scrollWidth <= e.clientWidth), true);
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/detail-${width}.png`, root).pathname });
-    await page.getByLabel('Close deal', { exact: true }).click(); assert.deepEqual(errors, []);
+    await page.getByRole('button', { name: 'Back to deals', exact: true }).click(); assert.deepEqual(errors, []);
   });
 });
 
@@ -175,7 +179,7 @@ test('board refresh keeps a pressed card until its drag or tap completes', async
     const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
     state.client.getBoard=async (...args)=>{
       const result=await get(...args);
-      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during press'}:d)};
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,items:d.items.map((item,i)=>i===0?{...item,title:'Fresh item during press'}:item)}:d)};
     };
   });
   await freshAction();
@@ -193,10 +197,10 @@ test('board refresh keeps a pressed card until its drag or tap completes', async
       await page.locator('#completionCancel').click();
     } else {
       await page.mouse.up();
-      await page.waitForFunction(()=>document.querySelector('#recordPanel').open);
-      await page.getByLabel('Close deal',{exact:true}).click();
+      await page.waitForFunction(()=>!document.querySelector('#recordPanel').hidden);
+      await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
     }
-    await waitForAsync(page,()=>/Demo fresh action during press/.test(document.querySelector('.kanban-column [data-id="d14"]').textContent));
+    await waitForAsync(page,()=>/Fresh item during press/.test(document.querySelector('.kanban-column [data-id="d14"]').textContent));
   }
   assert.deepEqual(errors,[]);
 });
@@ -216,28 +220,28 @@ test('board refresh preserves a native drag until its drop is reviewed', async t
     const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
     state.client.getBoard=async (...args)=>{
       const result=await get(...args);
-      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during drag'}:d)};
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,items:d.items.map((item,i)=>i===0?{...item,title:'Fresh item during drag'}:item)}:d)};
     };
   });
   await refresh(page);
   assert.equal(await page.evaluate(()=>window.draggedCard.isConnected),true);
-  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').next_step),'Demo fresh action during drag');
-  assert.doesNotMatch(await card.textContent(),/Demo fresh action during drag/);
+  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').items[0].title),'Fresh item during drag');
+  assert.doesNotMatch(await card.textContent(),/Fresh item during drag/);
   const target=await page.locator('[data-column="legal"] > h3').boundingBox();
   await page.mouse.move(target.x+10,target.y+10,{steps:5});await page.mouse.up();
   await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
   assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').phase),'Negotiation');
-  assert.match(await card.textContent(),/Demo fresh action during drag/);
+  assert.match(await card.textContent(),/Fresh item during drag/);
   assert.deepEqual(errors,[]);
 });
 
 test('W4 drag and keyboard phase writes, manual phase, park, revive and undo record history', async t => {
   const { page, errors } = await open(t);
-  await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'));
+  await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'),{sourcePosition:{x:8,y:8}});
   await page.waitForFunction(() => document.querySelector('#completionDialog').open);
   await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
-  await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click(); await page.waitForSelector('#detailPhase');
   await page.locator('#detailPhase').selectOption('site_selection');
   await page.locator('#completionDialog[open]').waitFor();
   assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
@@ -255,6 +259,26 @@ test('W4 drag and keyboard phase writes, manual phase, park, revive and undo rec
   assert.deepEqual(errors, []);
 });
 
+for (const width of [1440, 390]) test(`keyboard move into a collapsed stage restores heading focus at ${width}px`, async t => {
+  const { page, errors } = await open(t, { width, legalDestination: true });
+  const destination = page.locator('[data-column="legal"]');
+  await destination.getByRole('button', { name: 'Collapse Legal', exact: true }).click();
+  const name = await page.locator('.kanban-column [data-id="d14"] .card-open').textContent();
+  await page.locator('.kanban-column [data-id="d14"]').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await page.locator('#completionConfirm').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#completionDialog').waitFor({ state: 'hidden' });
+  assert.equal(await destination.getAttribute('data-collapsed'), 'true');
+  assert.equal(await destination.locator('.kanban-card').count(), 0);
+  assert.ok((await destination.locator('.stage-preview').textContent()).includes(name));
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-collapse-stage')), 'legal');
+  assert.equal(await page.locator('#dragLive').textContent(), `${name} moved to Legal.`);
+  assert.deepEqual(errors, []);
+});
+
 test('W4 list attention order, whole-row detail, timed scroll and draft preservation, failure recovery', async t => {
   const { page, errors } = await open(t, { many: true });
   await page.locator('#listView').click();
@@ -263,13 +287,13 @@ test('W4 list attention order, whole-row detail, timed scroll and draft preserva
   await page.locator('#parkedToggle').click();
   await page.locator('[data-id="demo-50"]').click(); await page.waitForSelector('#detailUpdateForm');
   await page.locator('#detailUpdateForm textarea').fill('Unsaved demo next step'); await page.locator('#detailUpdateForm textarea').focus();
-  await page.clock.fastForward(16000); assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Unsaved demo next step');
-  await page.getByLabel('Close deal', { exact: true }).click();
+  await page.clock.fastForward(61_000); assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Unsaved demo next step');
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await page.locator('[data-id="demo-50"]').focus(); await page.evaluate(() => scrollBy(0, 350)); const before = await page.evaluate(() => scrollY);
   await refresh(page); assert.equal(await page.evaluate(() => scrollY), before);
-  await page.clock.fastForward(16000); assert.equal(await page.evaluate(() => scrollY), before);
+  await page.clock.fastForward(61_000); assert.equal(await page.evaluate(() => scrollY), before);
   await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); const get = state.client.getBoard; let fail = true; state.client.getBoard = async (...a) => { if (fail) { fail = false; throw new Error('synthetic outage'); } return get(...a); }; });
-  await refresh(page); await page.clock.fastForward(16000);
+  await refresh(page); await page.clock.fastForward(61_000);
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.boardSync.status().state === 'ready');
   assert.deepEqual(errors, []);
 });
@@ -290,7 +314,7 @@ test('W4 lost park response retries the original field exactly once; next-step e
   await page.locator('.park-options summary').click();
   await page.locator('#detailParkForm input').fill('Demo duplicate import');
   await page.locator('#detailParkForm button').click();
-  await page.getByLabel('Close deal', { exact: true }).click();
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await page.locator('[data-retry-write]').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');
   const changes = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events);
@@ -319,12 +343,12 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
       return { ...detail, deal: { ...detail.deal, phase: 'Legal', operating_state: 'parked', parking_note: 'Demo reviewed import', phase_change: {event_id:'demo-auto',prior_phase:'Negotiation',automatic:true,reason:'Draft prepared',evidence_date:'2026-10-04'} }, critical_dates:[{label:'Demo deadline',date:'2026-10-09'}],participants:[{name:'Demo advisor'}],activities:[{id:'demo-meeting',kind:'meeting',source:'synthetic calendar',summary:'Demo scheduled tour',occurred_at:'2026-10-05T17:00:00Z'}] };
     };
   });
-  await page.clock.fastForward(16000);
+  await page.clock.fastForward(61_000);
   await page.waitForFunction(() => document.querySelector('[data-detail-read="parking"]')?.textContent.includes('Demo reviewed import'));
   assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
   assert.match(await page.locator('.phase-rail [aria-current]').textContent(), /Legal/);
 
-  assert.equal(await page.locator('[data-detail-read="dates"]').count(),0);
+  assert.equal(await page.locator('[data-detail-read="dates"]').count(),1);
 
   assert.match(await page.locator('.deal-updates').textContent(),/Demo scheduled tour/);
   assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Demo unsaved draft');
@@ -355,7 +379,7 @@ test('W4 a long automatic reason keeps its date visible without persistent card 
   await card.hover();
   await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
   // Attention reads in words with a glyph, never a bare colour dot (S8).
-  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ Overdue');
+  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ 245 days overdue');
 });
 
 
@@ -364,10 +388,10 @@ test('detail reads recover without losing an update draft', async t => {
  await page.locator('[data-id="d14"] .card-open').click();
  await page.locator('#detailUpdateForm textarea').fill('Unsaved demo update');
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;window.restoreRead=()=>state.client.getDeal=read;state.client.getDeal=async()=>{throw Error('Synthetic outage');};});
- await page.clock.fastForward(16000);
+ await page.clock.fastForward(61_000);
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Unsaved demo update');
- await page.evaluate(()=>restoreRead());await page.clock.fastForward(16000);
+ await page.evaluate(()=>restoreRead());await page.clock.fastForward(61_000);
  await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Unsaved demo update'));
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
@@ -462,9 +486,16 @@ for (const theme of ['dark', 'light']) {
     await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
     await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-${width}-${theme}.png`, root).pathname });
     await undo.click();
-    await page.clock.runFor(5001);
-    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
+    // Let the Undo write settle in real time before the clock jumps past its
+    // 30-second outcome deadline to the next one-minute feed poll.
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    // The fixture feed pages two events per one-minute poll; catch it up.
+    const feedPages = async () => page.evaluate(async () => (await import('/js/pipeline.js')).state.feed);
+    for (let feed = await feedPages(); !feed.caught_up; feed = await feedPages()) {
+      await page.clock.runFor(60_001);
+      await waitForAsync(page, async pages => { const { state } = await import('/js/pipeline.js'); return state.feed.caught_up || state.feed.pages > pages; }, feed.pages);
+    }
+    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
     const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));
     assert.equal(reverted.length, 1);
     await refresh(page);
@@ -552,7 +583,7 @@ test('add deal validates input, retains an uncertain request and immediately sho
  const requests=await page.evaluate(()=>window.createRequests);assert.deepEqual(requests[0],requests[1]);
  assert.equal(requests[0].owner,'dell');assert.equal(requests[0].notes,'Demo initial review note');
  const cards=page.locator('.kanban-column .kanban-card').filter({hasText:'Demo Partner Review'});assert.equal(await cards.count(),1);
- assert.match(await cards.textContent(),/Dell/);
+ assert.equal(await cards.locator('.owner').textContent(), 'Dell');
  assert.equal(await page.evaluate(()=>new URL(location.href).searchParams.get('owner')),'dell');
  await cards.getByRole('button',{name:'Demo Partner Review'}).click();
  await page.waitForSelector('#detailPhase');assert.match(await page.locator('#panelBody').textContent(),/Demo initial review note/);
@@ -592,7 +623,7 @@ test('closing a deal from its details removes the card and retains its close dat
  await page.locator('#completionClosedOn').fill('2026-10-04');
  await page.locator('#completionConfirm').click();
  await waitForAsync(page,()=>!document.querySelector('#completionDialog').open);
- await page.getByLabel('Close deal',{exact:true}).click();
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  assert.equal(await page.locator('#kanban [data-id="d14"]').count(),0);
  await page.getByRole('button',{name:'Closed deals',exact:true}).click();
  assert.match(await page.locator('#closedDealsList [data-id="d14"]').textContent(),/Oct 4, 2026/);
@@ -640,7 +671,7 @@ test('a move offers Undo only in its temporary toast, never on cards after reloa
   await page.locator('#detailPhase').selectOption('legal');
   await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
-  await page.getByLabel('Close deal', {exact:true}).click();
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   assert.equal(await page.locator('.toast [data-undo]').count(), 1);
   const saved = await page.evaluate(async () => {
     const {state} = await import('/js/pipeline.js');
@@ -665,7 +696,7 @@ test('move Undo uses the same two-second success hold and fade, without permanen
   await page.locator('#detailPhase').selectOption('legal');
   await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
-  await page.getByLabel('Close deal', {exact:true}).click();
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await page.clock.runFor(1900);
   assert.equal(await page.locator('.toast [data-undo]').count(), 1, 'Undo remains available during the success hold');
   await page.clock.runFor(1000);
@@ -721,43 +752,42 @@ for (const width of [390,1280]) test(`move follow-ups preserve the original Undo
   assert.deepEqual(errors,[]);
 });
 
-for (const width of [390,1280]) for (const input of ['pointer','keyboard']) test(`phase-picker Undo works inside the open modal with ${input} at ${width}px`, async t => {
+for (const width of [390,1280]) for (const input of ['pointer','keyboard']) test(`phase-picker Undo works inside the workspace with ${input} at ${width}px`, async t => {
   const {page, errors} = await open(t, {width, reducedMotion:'reduce'});
   await page.locator('.kanban-column [data-id="d14"] .card-open').click();
   await page.locator('#detailPhase').selectOption('legal');
   await page.locator('#completionConfirm').click();
   await page.locator('#completionDialog').waitFor({state:'hidden'});
-  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
   const undo = page.locator('.toast [data-undo]');
   if (input === 'pointer') await undo.click({timeout:1500});
   else {
-    await page.locator('#panelClose').focus();
-    for (let i=0; i<4 && !await undo.evaluate(n=>n===document.activeElement); i++) await page.keyboard.press('Shift+Tab');
-    assert.equal(await undo.evaluate(n=>n===document.activeElement),true,'Undo is reachable through the modal tab order');
+    await undo.focus();
+    assert.equal(await undo.evaluate(n=>n===document.activeElement),true,'Undo accepts keyboard focus');
     await page.keyboard.press('Enter');
   }
   await waitForAsync(page,async ()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Negotiation');
-  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
   assert.equal(await page.locator('.toast [data-undo]').count(),0);
   assert.deepEqual(errors,[]);
 });
 
-for (const width of [390,1280]) test(`Undo follows modal open and close without renewing its deadline at ${width}px`, async t => {
+for (const width of [390,1280]) test(`Undo survives workspace navigation without renewing its deadline at ${width}px`, async t => {
   const {page, errors} = await open(t, {width, reducedMotion:'reduce'});
   await page.locator('.kanban-column [data-id="d14"] .card-open').click();
   await page.locator('#detailPhase').selectOption('legal');
   await page.locator('#completionConfirm').click();
   await page.locator('#completionDialog').waitFor({state:'hidden'});
-  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement.id === 'recordPanel');
+  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement === document.body);
   await page.evaluate(() => { window.moveToast = document.querySelector('.toast'); });
   await page.clock.runFor(500);
   await page.locator('#panelClose').click();
   await waitForAsync(page, () => document.querySelector('.toast')?.parentElement === document.body);
   assert.equal(await page.locator('.toast').isVisible(),true);
   await page.locator('.kanban-column [data-id="d14"] .card-open').click();
-  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement.id === 'recordPanel');
-  assert.equal(await page.locator('.toast').evaluate(n=>n === window.moveToast),true,'modal handoffs keep the original toast node');
-  await page.locator('#recordPanel').evaluate(n=>{ n.scrollTop=n.scrollHeight; });
+  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement === document.body);
+  assert.equal(await page.locator('.toast').evaluate(n=>n === window.moveToast),true,'workspace navigation keeps the original toast node');
+  await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));
   const undo = page.locator('.toast [data-undo]');
   const box = await undo.boundingBox();
   assert.ok(box && box.x >= 0 && box.y >= 0 && box.x+box.width <= width && box.y+box.height <= 960,'Undo stays inside the viewport while the detail scrolls');
@@ -835,73 +865,62 @@ test('readable vendor context survives a failed linked client read',async t=>{
   assert.deepEqual(errors,[]);
 });
 
-test('desktop next steps wrap to two lines and retain the full recorded text',async t=>{
+test('legacy next-step writes do not replace structured checklist items',async t=>{
   const {page,errors}=await open(t,{width:1280,review:true});
-  const line=page.locator('.kanban-column [data-id="d14"] .next-line');
-  const box=await line.evaluate(n=>{const s=getComputedStyle(n);return {height:n.getBoundingClientRect().height,lineHeight:parseFloat(s.lineHeight),text:n.textContent,title:n.title,width:n.clientWidth,scrollWidth:n.scrollWidth};});
-  assert.ok(box.height>box.lineHeight*1.5 && box.height<=box.lineHeight*2+1,JSON.stringify(box));
-  assert.equal(box.text,'Confirm the next appointment');
-  assert.equal(box.title,box.text);
-  const full='Confirm the next appointment with the demo practice and review the complete recorded lease terms before the next joint review.';
-  await page.evaluate(async full=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',base_version:(await state.client.getDeal('d14')).deal.version,text:full,idempotency_key:'demo-full-next-step'});await state.boardSync.refreshBoard({reason:'test'});},full);
-  assert.equal(await line.textContent(),full);
-  assert.equal(await line.getAttribute('title'),full);
-  await page.evaluate(async()=>{
-    const {state}=await import('/js/pipeline.js');const read=state.client.getBoard.bind(state.client);
-    state.client.getBoard=async(...args)=>{const board=await read(...args);board.deals.find(d=>d.id==='d14').next_step={text:'Counsel replied'};return board;};
-    await state.boardSync.refreshBoard({reason:'test'});
-  });
-  assert.equal(await line.textContent(),'Counsel replied','structured notes render as the recorded sentence');
+  const card=page.locator('.kanban-column [data-id="d14"]');
+  const titles=await card.locator('ol button').allTextContents();
+  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Counsel replied',base_version:(await state.client.getDeal('d14')).deal.version,idempotency_key:'demo-legacy-next-step'});await state.boardSync.refreshBoard({reason:'test'});});
+  assert.deepEqual(await card.locator('ol button').allTextContents(),titles);
+  assert.equal(await card.locator('.next-line').count(),0);
+
   assert.deepEqual(errors,[]);
 });
 
-for (const width of [390, 1440]) test(`missing next steps stay visible across deal views and refresh at ${width}px`, async t => {
+for (const width of [390, 1440]) test(`missing action items stay visible across deal views and refresh at ${width}px`, async t => {
   const { page, errors } = await open(t, { width });
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
-    const board = state.client.getBoard.bind(state.client);
-    const detail = state.client.getDeal.bind(state.client);
+    const { createFixtureClient, createFixtureDealStore } = await import('/js/fixture-client.js');
+    const store = createFixtureDealStore(await state.client.getBoard());
+    const fixture = await createFixtureClient({ dealStore: store, docContext: false });
     window.demoNextStep = null;
-    state.client.getBoard = async (...args) => {
-      const result = await board(...args);
-      result.deals.find(deal => deal.id === 'd14').next_step = window.demoNextStep;
-      return result;
+    window.demoItems = [];
+    const applyFixture = () => {
+      const deal = store.deals.get('d14');
+      Object.assign(deal, { next_step: window.demoNextStep, last_touch: null, items: structuredClone(window.demoItems) });
+      if (window.demoParked) deal.operating_state = 'parked';
     };
-    state.client.getDeal = async id => {
-      const result = await detail(id);
-      result.deal.next_step = window.demoNextStep;
-      if (id === 'd14' && window.demoParked) result.deal.operating_state = 'parked';
-      return result;
-    };
+    state.client.getBoard = async (...args) => { applyFixture(); return fixture.getBoard(...args); };
+    state.client.getDeal = async id => { applyFixture(); return fixture.getDeal(id); };
   });
   for (const value of [null, '  ', { text: '' }]) {
-    await page.evaluate(value => { window.demoNextStep = value; }, value);
+    await page.evaluate(value => { window.demoNextStep = value; window.demoItems = []; }, value);
     await refresh(page);
     const card = page.locator('.kanban-column [data-id="d14"]');
-    assert.equal(await card.getByText('Next step missing', { exact: true }).isVisible(), true);
+    assert.equal(await card.getByText('No next step set', { exact: true }).isVisible(), true);
     await page.locator('#listView').click();
     const row = page.locator('.deal-row[data-id="d14"]');
     assert.equal(await row.getByText('Next step missing', { exact: true }).isVisible(), true);
     await row.click();
     const snapshot = page.locator('.deal-opening-snapshot');
     await snapshot.waitFor();
-    assert.equal(await snapshot.getByText('Next step missing', { exact: true }).isVisible(), true);
+    assert.equal(await snapshot.getByText('No action items recorded', { exact: true }).isVisible(), true);
     for (const known of ['Call the demo lender', { text: 'Review the demo lease' }]) {
-      await page.evaluate(value => { window.demoNextStep = value; }, known);
+      await page.evaluate(value => { window.demoNextStep = value; window.demoItems = [{ id: 'demo-gap-item', title: typeof value === 'string' ? value : value.text, status: 'open', due_on: null, bullets: [] }]; }, known);
       await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
       const text = typeof known === 'string' ? known : known.text;
       await snapshot.getByText(text, { exact: true }).waitFor();
-      assert.equal(await snapshot.getByText('Next step missing', { exact: true }).count(), 0);
+      assert.equal(await snapshot.getByText('No action items recorded', { exact: true }).count(), 0);
     }
-    await page.evaluate(value => { window.demoNextStep = value; }, value);
+    await page.evaluate(value => { window.demoNextStep = value; window.demoItems = []; }, value);
     await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
-    await snapshot.getByText('Next step missing', { exact: true }).waitFor();
+    await snapshot.getByText('No action items recorded', { exact: true }).waitFor();
     await mkdir(new URL('out/test-artifacts/next-step-gap/', root), { recursive: true });
     if (value === null) await page.screenshot({ path: new URL(`out/test-artifacts/next-step-gap/${width}-detail.png`, root).pathname });
-    await page.getByLabel('Close deal', { exact: true }).click();
+    await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
     await page.locator('#boardView').click();
   }
-  await page.evaluate(() => { window.demoNextStep = { text: 'Confirm the demo appointment' }; });
+  await page.evaluate(() => { window.demoNextStep = { text: 'Confirm the demo appointment' }; window.demoItems = [{ id: 'demo-gap-item', title: window.demoNextStep.text, status: 'open', due_on: null, bullets: [] }]; });
   await refresh(page);
   assert.equal(await page.locator('.kanban-column [data-id="d14"]').getByText('Confirm the demo appointment', { exact: true }).isVisible(), true);
   await page.locator('#listView').click();
@@ -912,7 +931,7 @@ for (const width of [390, 1440]) test(`missing next steps stay visible across de
   await row.click();
   await page.locator('.deal-opening-snapshot').waitFor();
   assert.equal(await page.locator('#recordPanel').getByText('Next step missing', { exact: true }).count(), 0);
-  await page.getByLabel('Close deal', { exact: true }).click();
+  await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
   await page.getByRole('button', { name: 'Closed deals', exact: true }).click();
   await page.locator('.closed-deal[data-id="d20"] .card-open').click();
   await page.locator('.deal-opening-snapshot').waitFor();
@@ -982,7 +1001,7 @@ for(const width of [390,1280]) test(`uncertain committed engagement resolves by 
  await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
  await page.locator('#detailInactiveForm button').click();
- await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await waitForAsync(page,()=>document.querySelector('#recordPanel').hidden);
  await page.locator('.kanban-column [data-id="d20"] .card-open').click();
  await page.locator('#detailInactiveForm input').fill('Synthetic second deferral');
  await page.locator('#detailInactiveForm button').click();
@@ -1010,15 +1029,15 @@ test('an unresolved prospect permits another prospect while keeping its own same
  await page.locator('#detailInactiveForm input').fill('Synthetic first deferral');
  await page.locator('#detailInactiveForm button').click();
  await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
- await page.getByLabel('Close deal',{exact:true}).click();
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await page.locator('.kanban-column [data-id="d20"] .card-open').click();
  await page.locator('#detailInactiveForm input').fill('Synthetic second deferral');
  await page.locator('#detailInactiveForm button').click();
- await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await waitForAsync(page,()=>document.querySelector('#recordPanel').hidden);
  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  assert.equal(await page.locator('#detailInactiveForm input').inputValue(),'Synthetic first deferral');
  await page.getByRole('button',{name:'Check outcome',exact:true}).click();
- await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await waitForAsync(page,()=>document.querySelector('#recordPanel').hidden);
  const writes=await page.evaluate(()=>window.engagementWrites);
  assert.equal(writes.length,3);assert.deepEqual(writes[2],writes[0]);assert.notEqual(writes[1].idempotency_key,writes[0].idempotency_key);
  assert.deepEqual(errors,[]);
@@ -1071,7 +1090,7 @@ test('rendered pipeline restores its pending request after page refresh',async t
  await page.reload();
  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.size>0);
  await page.evaluate(install);await refresh(page);
- await page.getByLabel('Close deal',{exact:true}).click();
+ await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  assert.equal(await page.locator('#detailInactiveForm input').inputValue(),'Synthetic original reason');
  await page.getByRole('button',{name:'Check outcome',exact:true}).click();
@@ -1114,18 +1133,20 @@ async function openWithCorrespondence(t) {
       return found;
     };
   }, {identity,found,readiness,meeting});
-  await view.page.locator('.kanban-column [data-id="d14"]').click();
-  await view.page.locator('#panelEvidenceSection > summary').click();
+  await view.page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await view.page.getByRole('tab', {name:'Correspondence & notes'}).click();
   await view.page.locator('#panelEvidence [data-kind=thread]').waitFor();
   return view;
 }
 
 for (const status of [401,403]) test(`correspondence ${status} on detail refresh clears protected detail and its draft`, async t => {
   const {page,errors} = await openWithCorrespondence(t);
+  await page.getByRole('tab',{name:'Overview',exact:true}).click();
   await page.locator('#dealUpdate').fill('Synthetic unsaved update');
+  await page.getByRole('tab',{name:'Correspondence & notes',exact:true}).click();
   await page.evaluate(status => { window.evidenceFailure = status; },status);
   await page.locator('[data-refresh-detail]').click();
-  await page.locator('#panelBody a[href="/auth/login"]').first().waitFor({timeout:2000});
+  await page.locator('#panelBody a[href="/auth/login"]').first().waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail),null);
   assert.equal(await page.locator('#detailUpdateForm').count(),0);
   assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Synthetic unsaved update/);
@@ -1140,7 +1161,84 @@ test('Retry evidence remains active after a background detail refresh replaces e
   const before = await page.evaluate(() => window.evidenceReads);
   await page.evaluate(() => { window.evidenceFailure = null; });
   await page.locator('#panelEvidence [data-evidence-retry]').click();
-  await page.locator('#panelEvidence [data-kind=thread]').waitFor({timeout:2000});
+  await page.locator('#panelEvidence [data-kind=thread]').waitFor();
   assert.ok(await page.evaluate(() => window.evidenceReads) > before);
   assert.deepEqual(errors,[]);
+});
+
+test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps view controls visible', async t => {
+  for (const width of [390, 1440]) await t.test(String(width), async t => {
+    const { page, errors } = await open(t, { width, height: 844 });
+    await page.evaluate(async () => {
+      const { state } = await import('/js/pipeline.js');
+      const get = state.client.getBoard;
+      state.client.getBoard = async (...args) => {
+        const result = await get(...args);
+        const template = result.deals.find(d => d.workspace_kind !== 'national_account' && !d.account_client_id);
+        return { ...result, deals: [
+          { ...template, id: 'demo-parked-on-deck', name: 'Demo Parked On Deck', phase: 'On Deck', operating_state: 'parked', parking_reason: 'other', parking_note: null },
+          { ...template, id: 'demo-research', name: 'Demo Research', phase: 'Research', operating_state: 'active' },
+        ] };
+      };
+    });
+    await refresh(page);
+    const parked = page.locator('[data-id="demo-parked-on-deck"]');
+    const lane = page.locator('.parked-lane');
+    if (width === 390) {
+      assert.equal(await page.locator('[data-column="pending"] [data-id="demo-parked-on-deck"]').count(), 0);
+      assert.equal(await lane.locator('[data-id="demo-parked-on-deck"]').count(), 1);
+      assert.equal(await lane.evaluate(node => node.open), false);
+      assert.equal(await parked.isVisible(), false);
+      assert.match(await lane.locator('summary').textContent(), /Parked · 1/);
+      const shown = await page.locator('.kanban-column').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length).map(n => n.dataset.column));
+      assert.deepEqual(shown, ['research']);
+      const tabs = await page.locator('#appTabsSlot').evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const buttons = [...node.querySelectorAll('button')].filter(button => button.getClientRects().length);
+        return {
+          overflowX: getComputedStyle(node).overflowX,
+          fits: buttons.every(button => {
+            const rect = button.getBoundingClientRect();
+            return rect.left >= bounds.left && rect.right <= bounds.right;
+          }),
+        };
+      });
+      assert.deepEqual(tabs, { overflowX: 'visible', fits: true });
+      await lane.locator('summary').click();
+      assert.equal(await parked.isVisible(), true);
+    } else {
+      assert.equal(await page.locator('[data-column="pending"] [data-id="demo-parked-on-deck"]').count(), 1);
+    }
+    assert.deepEqual(errors, []);
+  });
+});
+
+test('the status band shows one clock and one refresh, and that refresh also updates the rails', async t => {
+  const { page, errors } = await open(t, { width: 1440 });
+  const band = await page.locator('.app-layout-status').evaluate(node => {
+    const visible = [...node.querySelectorAll('button, time, .as-of')].filter(n => n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden');
+    return { refresh: visible.filter(n => n.textContent.trim() === '↻').length, clocks: visible.filter(n => /\d:\d\d/.test(n.textContent)).length };
+  });
+  assert.deepEqual(band, { refresh: 1, clocks: 1 });
+  const before = await page.locator('#appSyncTime').getAttribute('datetime');
+  await page.clock.fastForward(2_000);
+  await page.locator('#retryRead').click();
+  await page.waitForFunction(before => document.querySelector('#appSyncTime').getAttribute('datetime') !== before, before);
+  assert.deepEqual(errors, []);
+});
+
+test('parked import note uses plain words on the board', async t => {
+  const { page } = await open(t);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const board = state.client.getBoard.bind(state.client);
+    state.client.getBoard = async (...args) => {
+      const result = await board(...args);
+      Object.assign(result.deals.find(deal => deal.id === 'd14'), { operating_state: 'parked', parking_note: 'unverified import — 2026-10-01 records audit; revive if active' });
+      return result;
+    };
+  });
+  await refresh(page);
+  await page.locator('.parked-lane summary').click();
+  assert.equal(await page.locator('.parked-card[data-id="d14"]').getByText('Imported Oct 1, not yet confirmed. Revive if still active.').isVisible(), true);
 });

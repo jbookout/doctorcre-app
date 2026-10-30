@@ -64,10 +64,10 @@ function census(overrides = {}) {
     source: overrides.source ?? {
       source: "work_inventory_census",
       source_ref: Object.values(SOURCE_REFS).join("+"),
-      observed_at: "2026-09-16T14:00:00.000Z", valid_until: "2026-09-16T14:01:00.000Z",
+      observed_at: "2026-09-16T14:00:00.000Z", valid_until: "2026-09-16T14:02:00.000Z",
       freshness: complete ? "fresh" : "unknown", correlation_id: "corr-c10-1",
       safe_explanation: complete
-        ? "Fresh because every source answered a no-store request-time canonical read; valid for 60 seconds."
+        ? "Fresh because every source answered a no-store request-time canonical read; valid for 120 seconds."
         : "This census is INCOMPLETE, not empty: governance_item could not be read.",
     },
   };

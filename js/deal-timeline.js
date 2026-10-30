@@ -80,7 +80,7 @@ export function renderCriticalDates(detail, now = Date.now()) {
   return `<section class="critical-dates" data-detail-read="dates" aria-label="Critical dates">${view.dates.map(d => {
     const count = countdown(d,now);
     return `<article class="critical-date" data-date-id="${esc(d.id)}" data-state="${count.state}"><span>${esc(d.label)}</span><strong data-countdown="${esc(d.day)}" data-deadline="${Boolean(d.deadline)}" data-date-status="${esc(d.status || '')}">${esc(count.text)}</strong><time datetime="${esc(d.day)}">${esc(dateCaption(d.day))}</time>${d.original || d.evidence ? `<details><summary data-detail-focus="date-original:${esc(d.id)}">Details</summary><p class="note-original">${esc(d.original || d.evidence)}</p></details>` : ''}</article>`;
-  }).join('')}${view.missing.map(d => `<button class="critical-date add-date" type="button" data-add-date="${d.kind}"><span>${esc(d.label)}</span><strong>＋ Add date</strong></button>`).join('')}</section>`;
+  }).join('')}${view.missing.map(d => `<article class="critical-date"><span>${esc(d.label)}</span><strong>Not recorded</strong></article>`).join('')}</section>`;
 }
 
 export function renderDealTimeline(detail, now = Date.now()) {

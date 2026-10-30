@@ -8,7 +8,6 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // search and the open idea in the address so Back returns to the same place.
 // Events use CARR's sourced event verbs and keep unsaved form data on refusal.
 
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
@@ -615,7 +614,7 @@ async function boot() {
   render();
   // The inner Ideas host stays fixture-only; the partner workspace owns the live flag.
   if (resolved.mode === "fixture" && reactHost && (!resolved.options.selfActor || ["joe", "dell"].includes(resolved.options.selfActor))) import("./ui.generated.js").then(({ hostNode }) => hostNode($("ideasPanel")));
-  client = resolved.mode === "live" ? createLiveClient({docContext:false}) : await createFixtureClient({...resolved.options,docContext:false});
+  client = resolved.mode === "live" ? createLiveClient({docContext:false}) : await (await import("./fixture-client.js")).createFixtureClient({...resolved.options,docContext:false});
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await loadEvents(); } });
   await load();

@@ -14,7 +14,7 @@ import { mountFeatureGate, SUGGESTION_ACTIONS_OFF } from './feature-switches.js'
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const display = value => value === null ? 'Unknown' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
 
-export function mountDocPresence({ document: root = document, window: win = window, context = pageDocContext, client: supplied, intervalMs = 30_000 } = {}) {
+export function mountDocPresence({ document: root = document, window: win = window, context = pageDocContext, client: supplied, intervalMs } = {}) {
   const main = root.getElementById('appMainSlot');
   if (!main || !context || root.getElementById('docPresence')) return null;
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
@@ -42,7 +42,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   // Keep the same presence reachable in a native record popup. DOM state
   // controls placement only; record identity still comes from the page read.
   function placePresence() {
-    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden])')];
+    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden]), main.deal-workspace:not([hidden])')];
     const workspace = root.getElementById('accountWorkspaceControls');
     const popup = hosts.at(-1);
     const host = popup?.querySelector('[data-doc-presence-slot]') || popup || (workspace && !workspace.hidden ? workspace : root.body);

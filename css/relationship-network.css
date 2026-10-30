@@ -157,8 +157,6 @@
 .relationship-dialog h2 { margin: var(--space-1) 0 0; font-size: var(--font-size-5); overflow-wrap: anywhere; }
 .relationship-kicker { color: var(--fg-muted); font-size: var(--font-size-1); }
 .relationship-detail-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: var(--space-6); }
-.relationship-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.relationship-tags span,
 .relationship-hold { padding: var(--space-1) var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-round); font-size: var(--font-size-1); color: var(--fg-muted); }
 .relationship-hold { display: inline-block; margin-top: var(--space-4); color: var(--status-hold-ink); border-color: var(--status-hold); }
 .relationship-summary,

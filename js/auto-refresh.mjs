@@ -3,22 +3,19 @@
 // cancellation; page callbacks preserve their local drafts.
 import { createCurrentRead } from "./current-read.mjs";
 export { readWithDeadline, fetchRead } from "./current-read.mjs";
-import { watchPresence } from "./visibility-poll.mjs";
+import { MIN_POLL_MS, watchPresence } from "./visibility-poll.mjs";
 
-// A failed read retries on a short backoff (1s, 2s, 4s... capped at the
-// interval), so "reconnecting" holds within seconds rather than a full poll.
-export function mountAutoRefresh({ document, window, refresh, onResume, onWake, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
+export function mountAutoRefresh({ document, window, refresh, onResume, onWake, intervalMs: askedMs = MIN_POLL_MS, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, revalidate: () => {}, poll: () => {}, dispose: () => {} };
+  const intervalMs = Math.max(MIN_POLL_MS, askedMs);
   let timer = null;
   let running = null;
   let queuedResume = null;
   let disposed = false;
   const reads = createCurrentRead({ timeoutMs, clock: window });
-  let failures = 0;
   const schedule = () => {
     window.clearTimeout?.(timer);
-    const delay = failures ? Math.min(intervalMs, retryMs * 2 ** (failures - 1)) : intervalMs;
-    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
+    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, intervalMs); timer?.unref?.(); }
   };
   const run = operation => {
     // Idle stops the clock here; the first input re-reads through the resume.
@@ -26,11 +23,9 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
     if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
-    // A read replaced by a resume settles neither way; the queued read decides.
     running = reads.run(({ signal }) => operation({ signal }), {
-      success: () => { failures = 0; },
-      // Failure stays in the page's own state; the next read comes sooner.
-      failure: () => { failures += 1; },
+      // Failure stays in the page's own state and waits the same poll interval.
+      failure: () => {},
     }).finally(() => { running = null; schedule(); });
     return running;
   };

@@ -8,10 +8,11 @@ export async function openSearch(app, browser) {
   await expect(browser.locator('#searchResults [data-group]')).toHaveCount(9);
 }
 
-export async function refuseReads(browser, status = 503) {
+export async function refuseReads(app, browser, status = 503) {
+  const origin = new URL(app.baseUrl).origin;
   const reject = route => route.fulfill({ status, json: { ok: false, error: status === 401 ? 'unauthorized' : 'temporarily_unavailable', code: status === 401 ? 'unauthorized' : 'temporarily_unavailable' } });
-  await browser.route('**/api/**', reject);
-  await browser.route('**/mcp', reject);
+  await browser.route(`${origin}/api/**`, reject);
+  await browser.route(`${origin}/mcp`, reject);
 }
 
 export async function paintedText(browser, selector) {
@@ -62,6 +63,17 @@ export async function proveVisibleFailure(browser, selector) {
 
 export function reproTest() {
   base.beforeEach(async ({ app, browser }) => {
+    const origin = new URL(app.baseUrl).origin;
+    await browser.route('**/*', async route => {
+      const url = new URL(route.request.url);
+      if (url.origin === origin) return route.continue();
+      if (url.href === 'http://127.0.0.1:4682/api/state' && route.request.method === 'GET') {
+        return route.fulfill({ json: { state: 'idle' } });
+      }
+      if (['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname)) return route.abort();
+      await route.abort();
+      throw new Error(`Unexpected regression request outside fixture origin: ${url.href}`);
+    });
     const response = await fetch(new URL('/api/test/seed', app.baseUrl), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace: `fix-${randomUUID()}`, viewer: 'joe', variant: 'realistic' }) });
     if (!response.ok) throw new Error(`Fixture seed failed: ${response.status}`);
     const seeded = await response.json();

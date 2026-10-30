@@ -77,9 +77,9 @@ test('pending receipt confirmations remain attached to each invoice across popup
   const invoices = page.locator('[data-invoice]');
   const first = await invoices.nth(0).getAttribute('data-invoice');
   await invoices.nth(0).click(); await page.locator('#markInvoicePaid').click();
-  await page.waitForFunction(() => /confirmation pending/.test(document.querySelector('#invoicePaymentNotice').textContent));
+  await page.locator('#invoicePaymentNotice').getByText('Payment confirmation pending.', { exact: true }).waitFor();
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(1).click(); await page.locator('#markInvoicePaid').click();
-  await page.waitForFunction(() => /confirmation pending/.test(document.querySelector('#invoicePaymentNotice').textContent));
+  await page.locator('#invoicePaymentNotice').getByText('Payment confirmation pending.', { exact: true }).waitFor();
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(0).click();
   assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment');
   h.update(data => { data.entries.find(row => row.commission_id === first).gross_amount = '9401'; });

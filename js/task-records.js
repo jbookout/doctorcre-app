@@ -22,7 +22,6 @@ import { selectDocRecord, publishDocRead, setDocFilters } from './doc-context.js
 
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -729,7 +728,7 @@ async function boot() {
   renderQuickAdd();
   renderDrafts();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
-  client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  client = resolved.mode === "live" ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(client);
   viewer = client.selfActor || "joe";
   if (client.selfActor) {
