@@ -59,7 +59,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const notice = loadState === 'denied' ? '<p role="status">Sign in to review email follow-ups.</p>'
       : loadState === 'error' ? `<p role="status">Could not load email follow-ups.${loaded && rows.length ? ' Showing the last successful read.' : ''}</p>${button('retry', 'Retry email follow-ups')}`
         : loadState === 'loading' && !loaded ? '<div class="home-followup-skeleton" role="status">Loading email follow-ups…</div>' : '';
-    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2></header>${notice}${loaded && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && rows.length > visibleCount ? `<span class="home-list-count">Showing ${visibleCount} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${loaded && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {

@@ -28,7 +28,7 @@ for (const width of [320, 390, 1280, 1440]) for (const theme of ['light', 'dark'
     await card.waitFor();
     await card.scrollIntoViewIfNeeded();
     const facts = card.locator('.deal-summary-facts').first();
-    assert.match(await facts.innerText(), national ? /Fri Oct 30 · D/ : /Fri Oct 30/);
+    assert.match(await facts.innerText(), national ? /Fri Oct 30 · Dell/ : /Fri Oct 30/);
     if (!national) assert.doesNotMatch(await facts.innerText(), /· D/);
     const spaced = await card.locator('.deal-summary-facts').evaluateAll(nodes => nodes.filter(node => node.textContent.includes('·')).map(node => {
       const range = document.createRange();
