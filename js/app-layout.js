@@ -1,3 +1,4 @@
+import { todayMoveSentence } from './today-moves.mjs';
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
 import { normalizeBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
@@ -6,7 +7,7 @@ import { businessDay } from './business-date.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
-import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, moveSentence, escapeText as escape } from './change-receipts.mjs';
+import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
 import { localToday, shortDay, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
@@ -179,7 +180,7 @@ export function mountAppLayout(root, host, pathname) {
   };
   const renderMoves = () => {
     const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
-    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${moveSentence(move)} · ${time(move.recorded_at)}`)).join('') || empty);
+    render('#appTodayMoves', moves.map(move => `<button type="button" class="app-layout-item" data-layout-deal="${escape(move.deal_id)}">${escape(todayMoveSentence(move))}</button>`).join('') || empty);
   };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';

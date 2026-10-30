@@ -1,3 +1,4 @@
+import { todayMoveSentence } from './today-moves.mjs';
 import { ACTOR_LABEL, PHASE_BY_SLUG, phaseLabel } from './client.js';
 
 /**
@@ -610,8 +611,7 @@ export function receiptRowHtml(view) {
   // target: an Undo button that succeeds, is refused, or goes pending is
   // removed or replaced, and the keyboard has to land somewhere sensible.
   return `<li class="receipt${view.superseded ? ' superseded' : ''}" data-receipt="${escapeText(view.event_id)}" tabindex="-1">
-    <p class="receipt-line"><button type="button" class="receipt-deal" data-open-deal="${escapeText(view.deal_id)}">${escapeText(view.deal_name)}</button><span class="receipt-action">${escapeText(moveSentence(view))}</span></p>
-    <p class="receipt-meta"><span class="receipt-actor">${escapeText(({joe:'Joe', dell:'Dell', doc:'Doc'})[view.actor] || 'Team member')}</span><span aria-hidden="true">·</span><time class="receipt-time" datetime="${escapeText(view.recorded_at || '')}">${escapeText(view.time_label)}</time>${badge}</p>
+    <p class="receipt-line"><button type="button" class="receipt-deal" data-open-deal="${escapeText(view.deal_id)}">${escapeText(todayMoveSentence(view))}</button>${badge}</p>
     ${undoControl ? `<div class="receipt-actions">${undoControl}</div>` : ''}${message}
   </li>`;
 }

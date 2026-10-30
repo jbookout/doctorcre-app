@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, extname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const narration = String.raw`nothing\s+needs?\s+your?\b|what\s+needs?\s+your?\b|needs?\s+you\b|(?:deals?|things?)\s+that\s+need\s+you\b|(?:one|1)\s+thing\s+is\s+broken\b|nothing\s+is\s+(?:stuck|waiting\s+on\s+you)\b|everything\s+is\s+clear\b`;
 // Internal vocabulary retired from partner screens: say deal, the call recorder, checked.
@@ -15,6 +15,14 @@ export async function checkUiCopy(paths) {
       for (const entry of await readdir(path)) if (entry !== 'vendor') await check(join(path, entry));
     } else if (extensions.has(extname(path))) {
       const source = await readFile(path, 'utf8');
+      if (basename(path) === 'today-moves.mjs') {
+        const { todayMoveSentence } = await import(pathToFileURL(resolve(path)).href);
+        for (const field of ['unknown_internal_field', 'phase', 'owner', 'status', 'client_id', 'document.sent_status']) {
+          const sentinel = 'internal_value_123';
+          const sentence = todayMoveSentence({ deal_name:'Example Deal', field, move_value:sentinel, recorded_at:null, verb:'internal-verb-name' });
+          if (/internal[_-]|\b(?:[a-z]+_)+[a-z0-9]+\b|internal-verb-name|123/.test(sentence)) violations.push(`${path}: unsafe Today move copy`);
+        }
+      }
       const match = banned.exec(source);
       if (match) violations.push(`${path}:${source.slice(0, match.index).split('\n').length}: ${match[0]}`);
     }
