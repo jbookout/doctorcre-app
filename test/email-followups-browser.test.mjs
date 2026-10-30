@@ -146,7 +146,7 @@ test('Home email quality loads separately, retries a failed report, and refreshe
 
 
 test('Home loads email follow-ups offscreen and leaves quality unloaded until its report approaches the viewport', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 100 }, reducedMotion: 'reduce' });
+  const page = await browser.newPage({ viewport: { width: 390, height: 1 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-after-paint', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -157,6 +157,7 @@ test('Home loads email follow-ups offscreen and leaves quality unloaded until it
   await page.locator('#dealFlags .home-flag').first().waitFor();
   assert.equal(downloads, 0, 'the below-fold report does not compete with initial Home work');
   assert.equal(reviewDownloads, 1, 'email follow-ups load with Home without scrolling');
+  await page.locator('#homeEmailFollowups article').first().waitFor();
   assert.equal(await page.locator('#homeEmailFollowups').evaluate(node => node.getBoundingClientRect().top >= innerHeight), true);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#homeEmailQuality').scrollIntoViewIfNeeded();
