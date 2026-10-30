@@ -223,6 +223,7 @@ export function createLiveClient(opts = {}) {
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
+    async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
     async listFactReview(args = {}, { signal } = {}) { return rpc('list-fact-review', args, signal); },
     async recordHumanFact(args) { return write('record-human-fact', args); },
     async resolveFactReview(args) { return write('resolve-fact-review', args); },

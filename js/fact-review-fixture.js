@@ -48,6 +48,7 @@ export function createFactReviewFixture() {
   }
   return {
     attachments: entity => structuredClone(documents.filter(doc => doc.subject_id === entity)),
+    async listDealDocuments({ deal_id }) { return { ok: true, schema_version: 'deal-documents.v1', documents: documents.filter(doc => doc.subject_id === deal_id).map(doc => ({ id: doc.id, display_name: doc.filename, stored_at: '2026-01-01T00:00:00Z', document_type: 'application/pdf', page_count: null, content_hash: 'a'.repeat(64) })), has_more: false, next_cursor: null }; },
     async listFactReview({ entity_ref, include_resolved = false, limit = 50, cursor } = {}) {
       const all = [...fields.values()].filter(field => (!entity_ref || entity_ref === field.entity_ref) && (include_resolved || field.pending))
         .sort((a, b) => `${a.entity_ref}|${a.fact_key}`.localeCompare(`${b.entity_ref}|${b.fact_key}`));

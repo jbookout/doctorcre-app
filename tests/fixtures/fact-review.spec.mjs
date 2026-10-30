@@ -41,7 +41,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await edit.click();
     await review.getByLabel('Decision').selectOption('correct');
     await review.getByLabel('Value', { exact: true }).fill('27');
-    await review.getByLabel('Document', { exact: true }).selectOption({ label: 'Demo Amendment.pdf' });
+    await review.getByLabel('Document', { exact: true }).selectOption({ label: 'Demo Amendment.pdf · 2026-01-01' });
     await review.getByLabel('First page').fill('3');
     await review.getByLabel('Last page').fill('3');
     await review.getByLabel('Cited text').fill('Demo corrected rent is $27 per square foot.');
@@ -126,6 +126,7 @@ test('missing attachment metadata does not turn prepared documents into source c
   await expect(page.locator('.card-open:visible').first()).toBeVisible();
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
+    state.client.listDealDocuments = async () => { throw new Error('Unavailable'); };
     const read = state.client.getDeal.bind(state.client);
     state.client.getDeal = async id => {
       const detail = await read(id); delete detail.attachments;

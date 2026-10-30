@@ -63,6 +63,7 @@
     "lead-board",
     "link-incident-work-request",
     "link-lead-client",
+    "list-deal-documents",
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-email-proposals",
@@ -167,6 +168,7 @@
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
     "/api/tours/*",
+    "/api/v1/fact-review/documents",
     "/api/v1/fact-review/list",
     "/api/v1/fact-review/record",
     "/api/v1/fact-review/resolve"
@@ -1737,6 +1739,6 @@
     "canonical_fact": "normalized_value and canonical_unit with expense_basis, observation_ids and version; null before promotion.",
     "citations": "Observation source retains document_ref, page_start, page_end, cited_text_sha256, cited_text_expires_at. Expired cited_text is null.",
     "conflict": "version_conflict refuses the write. Refresh canonical_version and review_version and ask the partner to review again.",
-    "attachment_read_gap": "The pinned producer exposes no stored deal attachment list or filenames. get-deal-room.documents is prepared-document metadata, not attachment metadata. Live recording/correction and document names remain unavailable until the producer supplies this contract."
+    "documents": { "verb": "list-deal-documents", "schema_version": "deal-documents.v1", "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762", "source_commit": "35dd8142e831a582b532da401e10f34c78df4040" }
   }
 }

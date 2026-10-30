@@ -92,6 +92,7 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args:{deal_id:string,limit?:number,cursor?:string}, options?:{signal?:AbortSignal}) => Promise<{ok:true,schema_version:'deal-documents.v1',documents:{id:string,display_name:string,stored_at:string}[],has_more:boolean,next_cursor:string|null}>} listDealDocuments
  * @property {(args:{entity_ref?:string,limit?:number,cursor?:string,include_resolved?:boolean}, options?:{signal?:AbortSignal}) => Promise<FactReviewList>} listFactReview
  * @property {(args:{idempotency_key:string,entity_ref:string,observation:HumanFact}) => Promise<Object>} recordHumanFact
  * @property {(args:{idempotency_key:string,entity_ref:string,fact_key:string,base_version:number,review_version:string,decision:'approve'|'correct'|'reject',reason:string,observation_id?:string,correction?:HumanFact}) => Promise<Object>} resolveFactReview

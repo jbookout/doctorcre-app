@@ -1159,7 +1159,7 @@ async function readPanel(id) {
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }
-      void factReviewPanel?.refresh(detail.attachments);
+      void factReviewPanel?.refresh();
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1197,7 +1197,7 @@ function paintPanel(detail) {
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
-  factReviewPanel = mountFactReview($('panelTerms'), { client: state.client, entityRef: detail.deal.id, attachments: detail.attachments });
+  factReviewPanel = mountFactReview($('panelTerms'), { client: state.client, entityRef: detail.deal.id });
   disposeEvidence?.(); disposeEvidence = null;
   disposePanelEmailFollowups();
   syncUpdateForm();

@@ -23,7 +23,7 @@ function reviewLabel(item) {
   return item.reasons.map(reason => ({ conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' }[reason] || 'Review required')).join(' · ') || 'Review required';
 }
 function documentName(observation, documents) {
-  return documents.find(doc => doc.id === observation.source.document_ref)?.filename || 'Document name unavailable';
+  return documents.find(doc => doc.id === observation.source.document_ref)?.display_name || 'Document name unavailable';
 }
 function sourceHtml(observation, documents) {
   const source = observation.source;
@@ -37,7 +37,7 @@ function entryHtml(documents, factKey, prefix) {
     <label>Value<input name="value" inputmode="decimal" pattern="(?:0|[1-9][0-9]{0,29})(?:[.][0-9]{1,18})?" maxlength="49" required></label>
     <label>Unit<select aria-label="Unit" name="unit">${Object.keys(FACT_TERMS[factKey || 'base_rent_per_sf'].units).map(unit => `<option>${esc(unit)}</option>`).join('')}</select></label>
     <label data-expense-basis${factKey && factKey !== 'base_rent_per_sf' ? ' hidden' : ''}>Expense basis<select aria-label="Expense basis" name="expense_basis">${Object.entries(BASES).map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select></label>
-    <label>Document<select aria-label="Document" name="document_ref" required>${documents.map(doc => `<option value="${esc(doc.id)}">${esc(doc.filename)}</option>`).join('')}</select></label>
+    <label class="fact-wide">Document<select aria-label="Document" name="document_ref" required>${documents.map(doc => `<option value="${esc(doc.id)}">${esc(doc.display_name)} · ${esc(doc.stored_at.slice(0, 10))}</option>`).join('')}</select></label>
     <label>First page<input name="page_start" type="number" min="1" max="100000" value="1" required></label>
     <label>Last page<input name="page_end" type="number" min="1" max="100000" value="1" required></label>
     <label class="fact-wide">Cited text<textarea name="cited_text" rows="2" maxlength="4000" required aria-describedby="${prefix}-source-hint"></textarea></label>
@@ -58,28 +58,47 @@ function reviewHtml(item, documents, index) {
   </article>`;
 }
 
-export function mountFactReview(root, { client, entityRef, attachments } = {}) {
+export function mountFactReview(root, { client, entityRef } = {}) {
   let disposed = false, generation = 0, items = [], writing = false, dirty = false;
   let documents = [];
   const pending = new Map();
   root.innerHTML = '<h2>Terms</h2><p role="status" data-terms-status>Loading terms…</p><div data-terms-list></div><div data-terms-record></div><button type="button" class="btn" data-refresh-terms>Refresh terms</button>';
   const status = root.querySelector('[data-terms-status]');
   const list = root.querySelector('[data-terms-list]');
-  function setDocuments(attachments) {
-    documents = (attachments || []).filter(doc => doc.subject_type === 'deal' && doc.subject_id === entityRef && !doc.deleted_at && doc.id && doc.filename);
+  function setDocuments(result) {
+    documents = result || [];
     const record = root.querySelector('[data-terms-record]');
     if (record.dataset.documents === JSON.stringify(documents)) return;
     record.dataset.documents = JSON.stringify(documents);
     record.innerHTML = documents.length ? `<details><summary>Record a term</summary><form data-fact-record>${entryHtml(documents, null, 'record-term')}<button class="btn" type="submit">Record term</button><p role="status" data-write-status></p></form></details>`
-      : `<p>${attachments ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>`;
+      : `<p>${result ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>`;
   }
-  setDocuments(attachments);
+  setDocuments(null);
+  const documentLoad = (async () => {
+    try {
+      const loaded = []; let cursor;
+      for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+        const page = await client.listDealDocuments({ deal_id: entityRef, limit: 100, ...(cursor ? { cursor } : {}) });
+        if (page.ok !== true || page.schema_version !== 'deal-documents.v1' || !Array.isArray(page.documents)
+          || page.documents.some(doc => !doc.id || !doc.display_name || typeof doc.stored_at !== 'string')
+          || typeof page.has_more !== 'boolean') throw new Error('Documents unavailable');
+        loaded.push(...page.documents);
+        if (!page.has_more) return loaded;
+        if (!page.next_cursor || page.next_cursor === cursor) throw new Error('Documents unavailable');
+        cursor = page.next_cursor;
+      }
+    } catch { /* The server may not yet provide document metadata. */ }
+    return null;
+  })();
   async function refresh(message = '') {
     if (disposed || writing || pending.size || dirty) return;
     const current = ++generation;
     status.textContent = 'Loading terms…';
     try {
       const loaded = []; let cursor;
+      const listedDocuments = await documentLoad;
+      if (disposed || current !== generation) return;
+      setDocuments(listedDocuments);
       do {
         const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
         if (disposed || current !== generation) return;
@@ -209,10 +228,7 @@ export function mountFactReview(root, { client, entityRef, attachments } = {}) {
   root.addEventListener('input', markDirty);
   root.addEventListener('click', click);
   void refresh();
-  return { refresh(nextAttachments) {
-    if (!disposed && !dirty && !writing && !pending.size) setDocuments(nextAttachments);
-    return refresh();
-  }, dispose() {
+  return { refresh, dispose() {
     disposed = true; generation++;
     root.removeEventListener('submit', submit); root.removeEventListener('change', change); root.removeEventListener('click', click);
     root.removeEventListener('change', markDirty); root.removeEventListener('input', markDirty);
