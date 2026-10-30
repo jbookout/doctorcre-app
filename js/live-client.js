@@ -197,6 +197,11 @@ export function createLiveClient(opts = {}) {
     // to. It passes through untouched: it is the record layer's own identity for
     // an event, in the record layer's own field vocabulary, and translating or
     // rebuilding it would be inventing one.
+    async readMarketTerms(args) {
+      const response = await fetchReadImpl('/api/v1/market-terms/read', { method:'POST', credentials:'same-origin', headers:{'content-type':'application/json'}, body:JSON.stringify(args) });
+      if (!response.ok) throw Object.assign(new Error('Market terms unavailable'), {status:response.status});
+      return response.json();
+    },
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
     async getHomeAgenda({ signal } = {}) {

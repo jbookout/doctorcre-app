@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
+import { mountMarketTerms } from '../js/market-terms.js';
+
+test('comparison shows recorded coverage and filters confirmed terms', async () => {
+  const dom = new JSDOM('<div id="view"></div>');
+  const root = dom.window.document.querySelector('#view');
+  const calls = [];
+  const response = {ok:true,schema_version:'market-terms.v1',rows:[{entity_ref:'d14',fact_key:'rent',value:'35',unit:'USD/sf/year',term_kind:'executed',term_date:'2026-01-01',effective_from:'2026-01-01',effective_to:null,expense_basis:'NNN',confidence:'human_review',sources:[{document_ref:'doc-1',page_start:1,page_end:2}]}],coverage:{recorded_documents:40,canonical_receipts:20,classified_receipts:12,comparable_deals:1}};
+  mountMarketTerms(root, {deal:{submarket:'North',use_type:'Office'},read:async args => { calls.push(args); return response; }});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(root.textContent, /40 recorded documents/);
+  assert.match(root.textContent, /archive.*unknown/i);
+  assert.match(root.textContent, /doc-1/);
+  assert.equal(root.querySelector('a').getAttribute('href'), '/deals?deal=d14');
+  assert.deepEqual(calls[0], {submarket:'North',use_type:'Office'});
+  root.querySelector('[name=submarket]').value = 'South';
+  root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls[1].submarket, 'South');
+});
+
+test('empty and undeployed states are explicit', async () => {
+  const dom = new JSDOM('<div></div>');
+  const root = dom.window.document.querySelector('div');
+  mountMarketTerms(root, {deal:{},read:async () => ({ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:2,canonical_receipts:0,classified_receipts:0,comparable_deals:0}})});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(root.textContent, /No comparable terms/);
+  mountMarketTerms(root, {deal:{},read:async () => { throw Object.assign(new Error(), {status:404}); }});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(root.textContent, /unavailable until the server update is deployed/);
+});

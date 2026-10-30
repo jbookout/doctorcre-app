@@ -98,6 +98,7 @@
     "read-home-agenda",
     "read-invoice-tracker",
     "read-loop",
+    "read-market-terms",
     "read-notification-preferences",
     "read-portfolio",
     "read-post-call-followups",
@@ -163,7 +164,8 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*"
+    "/api/tours/*",
+    "/api/v1/market-terms/read"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -1605,5 +1607,19 @@
       "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
     }
+  },
+  "market_terms": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "d5a930338fe331cbcea7e3edef50196bf28c34d6",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2757"
+    },
+    "verb": "read-market-terms",
+    "schema_version": "market-terms.v1",
+    "arguments": [
+      "submarket",
+      "use_type",
+      "as_of"
+    ]
   }
 }

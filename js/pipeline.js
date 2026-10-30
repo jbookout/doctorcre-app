@@ -1,4 +1,5 @@
 import { workCard } from './work-card.js';
+import { mountMarketTerms } from './market-terms.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
 import { OWNER_FILTERS } from './owner-filters.js';
@@ -1001,6 +1002,7 @@ async function copyRequirementDraft() {
 }
 const workspaceTabs = [
   {id:'overview', label:'Overview'},
+  {id:'market-terms', label:'Compare terms'},
   {id:'timeline', label:'Timeline'},
   {id:'correspondence', label:'Correspondence & notes'},
 ];
@@ -1071,6 +1073,7 @@ function workspaceHtml(detail) {
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     <h2>Critical dates</h2>${renderCriticalDates(detail)}
     <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
+    <section id="workspace-market-terms" role="tabpanel" aria-labelledby="tab-market-terms" hidden></section>
     <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
 }
@@ -1197,6 +1200,7 @@ function paintPanel(detail) {
   updateDetailTimestamp();
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
+  mountMarketTerms($('workspace-market-terms'), { deal:detail.deal, read:args => state.client.readMarketTerms(args) });
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
