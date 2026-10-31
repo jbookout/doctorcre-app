@@ -24,21 +24,5 @@
     "non_adoptable_fields": [
       "problem"
     ]
-  },
-  "write": {
-    "verb": "adopt-rule",
-    "input": [
-      "idempotency_key",
-      "section_id",
-      "base_version",
-      "reason"
-    ],
-    "receipt": [
-      "ok",
-      "rule_id",
-      "retired_section_id"
-    ],
-    "authentication": "Partner's own same-origin session with x-carr-csrf; no machine identity.",
-    "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome."
   }
 }
