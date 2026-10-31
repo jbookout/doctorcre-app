@@ -1,0 +1,14 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "a07acbe0b9be7bd7f3365a0c74a8460c99234a27",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2768"
+  },
+  "verb": "read-market-terms",
+  "schema_version": "market-terms.v1",
+  "arguments": [
+    "submarket",
+    "use_type",
+    "as_of"
+  ]
+}

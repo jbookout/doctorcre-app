@@ -20,6 +20,7 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     expect(await page.evaluate(() => window.marketReads)).toBe(0);
     await page.getByRole('tab', {name:'Compare terms'}).click();
     await expect.poll(() => page.evaluate(() => window.marketReads)).toBe(1);
+    await expect(page.locator('#workspace-market-terms [data-label=Source] strong')).toHaveText(' — Quarantined: not supporting evidence');
     await expect(page.locator('#workspace-market-terms')).toContainText('fixture-lease');
     await expect(page.locator('#workspace-market-terms')).toContainText('Demo Surgical Practice');
     await page.getByRole('tab', {name:'Overview'}).click();

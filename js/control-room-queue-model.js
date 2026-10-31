@@ -5,7 +5,7 @@
 // keeps a readable label, an unknown state lands in "Other", and a census that
 // did not read every source says so in its coverage line.
 
-export const SECTION_KEYS = Object.freeze(["inbox", "waiting", "triage", "queue", "views", "boards",
+export const SECTION_KEYS = Object.freeze(["inbox", "waiting", "triage", "queue", "views", "boards", "approvals",
   "automations", "connections", "agents", "system-map", "sessions"]);
 // Old `?tab=` keys from the seven-tab layout, plus their older aliases.
 const LEGACY_TABS = Object.freeze({ overview: "boards", dashboard: "boards", attention: "views",

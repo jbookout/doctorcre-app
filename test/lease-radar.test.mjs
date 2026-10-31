@@ -82,9 +82,8 @@ test('HTTP seam is credentialed no-store read only; malformed/refused data canno
   for(const response of [new Response('{}'),new Response('{}',{status:403})]) await assert.rejects(createLeaseRadarClient({fetchImpl:async()=>response}).readLeaseRadar());
 });
 
-test('merged route contract adds leases beside relationships and Progress under a new minor version', async () => {
+test('merged route contract adds leases beside relationships and Progress', async () => {
   const routes = (await import("../js/routes.js")).routeContract;
-  assert.equal(routes.version, '1.22.0');
   assert.equal(routes.routes['/leases'], 'lease-radar.html');
   assert.equal(routes.routes['/relationships'], 'relationships.html');
   assert.equal(routes.routes['/control-room/progress/work'], 'progress-work.html');

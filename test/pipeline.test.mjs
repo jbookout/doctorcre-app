@@ -31,6 +31,7 @@ import {
 import {
   ingestChangeEvents, performUndo, receiptViews,
 } from "../js/change-receipts.mjs";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = new URL("..", import.meta.url);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
@@ -638,7 +639,7 @@ test("the route and the verbs this surface needs are pinned in the contracts", a
   const routes = (await import("../js/routes.js")).routeContract;
   assert.equal(routes.redirects["/pipeline"], "/deals?view=board");
   assert.equal(routes.routes["/deals"], "pipeline.html", "the existing Deal Room keeps its route");
-  const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+  const contract = carrInterface;
   for (const verb of ["patch-deal-field", "add-deal-note", "set-next-step", "add-critical-date", "resolve-conflict", "presence-lease", "revert-deal-field"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -739,7 +740,7 @@ test("the fixture takes the outcome write only against the version the deal hold
 
 test("the Closed dialog offers the three outcomes, a picker for the date, and both adapters can send it", async () => {
 
-  const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+  const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes("update-deal"), "the CARR contract exposes update-deal");
 });
 

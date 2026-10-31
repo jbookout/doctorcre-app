@@ -1,0 +1,23 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "c6f99ab0f6c96d03f08aa732492c5c64729ea0a6",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2596",
+    "contract": "mcp-server/contracts/email-thread-filings.v1.json"
+  },
+  "schema": "carr-email-thread-filings.v1",
+  "read": "list-email-thread-filings {} returns {filings} for the authenticated partner. The app shows only subject and sender_name (null shows as unavailable), never summary, addresses or ids. activity_version is the server guard and is null for legacy events; never infer missing fields.",
+  "read_fields": {
+    "event_id": "Filing event UUID, supplied to undo",
+    "deal": "Filed deal UUID",
+    "activity_id": "Source activity UUID",
+    "recorded_at": "Filing event timestamp",
+    "summary": "Source activity summary",
+    "subject": "Source email subject, null when unavailable",
+    "sender_name": "Source email sender display name, null when unavailable",
+    "occurred_at": "Source email timestamp; falls back to filing time when intake did not pass the email time",
+    "activity_version": "Activity version recorded at filing, null for legacy events"
+  },
+  "undo": "undo-email-thread-filing {event_id,idempotency_key} with a new UUID key per attempt. Refusals such as email_thread_filing_changed leave the filing intact and are shown, never retried.",
+  "deployment_order": "The app must not merge before the producer PR is deployed."
+}

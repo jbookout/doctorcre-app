@@ -1,0 +1,10 @@
+{
+  "operation": "read-doc-activity",
+  "schema_version": "doc-activity.v1",
+  "producer_module": "mcp-server/src/doc-activity.js",
+  "undo_operation": "revert-deal-field",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "f3f57f42a881c103bf3eca14bd69b23bec2b41a1"
+  }
+}

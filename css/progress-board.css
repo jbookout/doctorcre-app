@@ -502,3 +502,10 @@ body:has(#board-stages[aria-busy="true"]) :is(#board-directory, .directory-searc
   .progress-main.has-work-views > :is(.intro, nav[aria-label="Breadcrumb"]) { grid-column: 1 / -1; }
   .has-work-views .column-head { top: var(--tabbar-height, 0px); }
 }
+
+/* The queue uses the full center pane; stages stay comparable without squeezing the cards. */
+@media (min-width: 1000px) {
+  .shell .progress-main:has(.queue-board) { display: block; }
+  .shell .progress-main:has(.queue-board) > .directory-panel { margin-bottom: var(--space-3); }
+  .queue-board-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+}

@@ -1,0 +1,18 @@
+{
+  "write": false,
+  "producer_module": "mcp-server/src/schedule-board.js",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "63b4a0d87a142412bb49eca63896891fdb88c15b",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2100"
+  },
+  "response": {
+    "schema_version": "schedule-board/v1",
+    "owners": [
+      "launchd",
+      "claude-code",
+      "cron"
+    ],
+    "coverage": "Each current owner has one source. Missing scheduler observations remain unknown; the retired control-plane owner is absent."
+  }
+}

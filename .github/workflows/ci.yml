@@ -29,7 +29,13 @@ jobs:
         with:
           path: doctorcre-app
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+      - name: Require typed surfaces
+        if: ${{ github.event_name == 'pull_request' }}
+        run: node scripts/check-typed-surfaces.mjs "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
       - run: npm run ci:fast
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -40,7 +46,7 @@ jobs:
       - id: producer
         name: Read the CARR runtime revision from the consumer contract
         run: >-
-          node -e 'const fs = require("node:fs"); const { producer } = JSON.parse(fs.readFileSync("contracts/carr-interface.v1.json", "utf8")); if (producer.repository !== "jbookout/carr-system" || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error("Invalid CARR runtime pin"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + producer.source_commit + "\n");'
+          node -e 'const fs = require("node:fs"); const producer = JSON.parse(fs.readFileSync("contracts/carr-interface.v1/producer.json", "utf8")); if (producer.repository !== "jbookout/carr-system" || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error("Invalid CARR runtime pin"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + producer.source_commit + "\n");'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jbookout/carr-system

@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const metricNames = screen => screen.startsWith('task-') ? ['criticalBytes', 'lcpMs', 'requestCount', 'usefulMs']
-  : ['interactionMs', 'jsBytes', 'lcpMs'];
+  : screen === 'home' ? ['interactionMs', 'lcpMs'] : ['interactionMs', 'jsBytes', 'lcpMs'];
 
 // Same contract as CARR's performance-budget-gate.py: measurements are supplied,
 // validated, and compared; this module never invents successful evidence.
@@ -12,22 +12,31 @@ export function compareBudget(budget, report) {
   if (!isDeepStrictEqual(budget.profile, report.profile)) throw Error('invalid measurement profile');
   if (!Object.keys(budget.screens || {}).length || !isDeepStrictEqual(Object.keys(budget.screens).sort(), Object.keys(report.screens || {}).sort())) throw Error('invalid screen coverage');
   const rows = [];
+  const home = report.screens.home;
+  const policy = budget.homeLoad;
+  const samples = home?.samples?.map(sample => sample.lcpMs);
+  if (!Number.isSafeInteger(policy?.samples) || policy.samples < 5 || policy.samples % 2 !== 1 ||
+      !Number.isFinite(policy.limitMs) || policy.limitMs <= 0 || samples?.length !== policy.samples ||
+      !samples.every(value => Number.isFinite(value) && value > 0)) throw Error('invalid Home load samples or policy');
+  const median = [...samples].sort((a, b) => a - b)[samples.length >> 1];
+  if (home.lcpMs !== median || !Number.isFinite(home.jsBytes) || home.jsBytes <= 0) throw Error('invalid Home load evidence');
   for (const [screen, metrics] of Object.entries(budget.screens)) {
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(screen)) throw Error('invalid screen name');
     const expected = metricNames(screen);
     if (!isDeepStrictEqual(Object.keys(metrics || {}).sort(), expected)) throw Error(`invalid metric coverage: ${screen}`);
     const measured = report.screens?.[screen];
-    for (const [metric, { baseline: before, limit }] of Object.entries(metrics)) {
+    for (const [metric, { baseline: before, limit: configuredLimit }] of Object.entries(metrics)) {
+      const limit = screen === 'home' && metric === 'lcpMs' ? policy.limitMs : configuredLimit;
       const after = measured?.[metric];
       const valid = value => metric === 'requestCount' ? Number.isSafeInteger(value) && value >= 0
         : Number.isFinite(value) && value > 0;
-      if (![before, limit, after].every(valid) || limit < before) {
+      if (![before, limit, after].every(valid) || (limit < before && !(screen === 'home' && metric === 'lcpMs'))) {
         throw Error(`invalid evidence or budget: ${screen} ${metric}`);
       }
       rows.push({ screen, metric, before, after, limit, passed: after <= limit });
     }
   }
-  return { passed: rows.every(row => row.passed), rows };
+  return { passed: rows.every(row => row.passed), rows, homeSamples: samples, homeJsBytes: home.jsBytes };
 }
 
 // The one headroom rule. contracts/performance-budget.v1.json describes it in
@@ -49,7 +58,8 @@ export function rebaseline(budget, report) {
     ...(Object.keys(budget.screens).some(id => id.startsWith('task-'))
       ? { taskBaseline: { ...provenance, measurement: report.taskMeasurement } } : {}),
     screens: Object.fromEntries(Object.keys(budget.screens).map(id => [id,
-      metrics(Object.fromEntries(metricNames(id).map(metric => [metric, report.screens?.[id]?.[metric]])))])) };
+      Object.fromEntries(metricNames(id).map(metric => [metric, id === 'home' && metric === 'lcpMs'
+        ? { baseline: report.screens?.[id]?.[metric] } : metrics({ [metric]: report.screens?.[id]?.[metric] })[metric]]))])) };
   if (!compareBudget(draft, report).passed) throw Error('rebaseline did not reproduce its own report');
   return draft;
 }
@@ -59,6 +69,8 @@ export function renderReport(result) {
     '| Screen | Metric | Before | After | Budget | Result |',
     '| --- | --- | ---: | ---: | ---: | --- |',
     ...result.rows.map(row => `| ${row.screen} | ${row.metric} | ${row.before} | ${row.after} | ${row.limit} | ${row.passed ? 'PASS' : 'FAIL'} |`),
+    '', `Home LCP samples (ms): ${result.homeSamples.join(', ')}. Median: ${[...result.homeSamples].sort((a, b) => a - b)[result.homeSamples.length >> 1]} ms.`,
+    `Home transferred JS: ${result.homeJsBytes} bytes (informational).`,
     '', 'On breach: PR author reduces the named screen/metric and reruns `npm run performance:check`; the check clears when every measurement is within budget.', ''].join('\n');
 }
 

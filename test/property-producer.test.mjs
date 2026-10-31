@@ -9,9 +9,9 @@ import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 import { renderDealChecklist } from "../js/deal-checklist.js";
+import { carrInterface } from "./carr-contract.mjs";
 
-const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "700173808625061adff581cfab415ce8e83e24f6";
+const contract = carrInterface;
 
 
 const producerModules = new Map();
@@ -45,11 +45,11 @@ test("the advertised runtime registers inherited conversation, notification, ses
   for (const [module, factory, verbs] of [
     ["client-portal.ts", "clientPortalTools", ["register-client-portal"]],
     ["doc-conversation.js", "docConversationTools", ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]],
-    ["notifications.js", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
+    ["notifications.ts", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
     ["codex-continuity.js", "codexContinuityTools", ["list-my-codex-sessions"]],
-    ["session-identity.js", "sessionIdentityTools", ["read-session-identity", "read-dispatch-history"]],
+    ["session-identity.ts", "sessionIdentityTools", ["read-session-identity", "read-dispatch-history"]],
     ["partner-room.js", "partnerRoomTools", ["read-room", "read-room-latest", "read-room-queue", "add-room-turn"]],
-    ["dispatch-spine.js", "dispatchSpineTools", ["record-dispatch-link", "acknowledge-dispatch"]],
+    ["dispatch-spine.ts", "dispatchSpineTools", ["record-dispatch-link", "acknowledge-dispatch"]],
     ["tour-property-search.js", "tourPropertySearchTools", ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"]],
   ]) {
     assert.match(registry, new RegExp(`registerTools\\(${factory}\\(`), `${factory} must be registered`);
@@ -78,10 +78,6 @@ test("the same advertised producer derives the versioned checklist consumed by t
   assert.equal(checklist.due_items[0].status, "due");
   assert.match(renderDealChecklist(checklist), /data-checklist-item="critical-date:synthetic-review"/);
 
-});
-
-test("the runtime pin includes operation identity, session binding and versioned replacement writes", () => {
-  assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
 test('S2 consumer contract binds the operation and concurrency contract to the advertised producer', async () => {

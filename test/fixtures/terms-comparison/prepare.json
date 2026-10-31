@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "schema_version": "terms-comparison.v1",
+  "document_id": "00000000-0000-4000-8000-000000000099",
+  "template": { "slug": "loi-grid", "name": "LOI comparison", "source_path": "Templates/grid.xlsx", "template_version": "synthetic-v1", "kind": "xlsx", "output_kinds": ["working", "pdf"] },
+  "basename": "LOI-comparison-DRAFT",
+  "deal": { "id": "00000000-0000-4000-8000-000000000001" },
+  "status": "draft", "owed": [], "partial": [], "carried": [],
+  "edits": [
+    { "where": "cell:LOI Grid!A1", "text": "DRAFT - LOI terms comparison" },
+    { "where": "cell:LOI Grid!B4", "text": "Prior - Confirmed deal fact" },
+    { "where": "cell:LOI Grid!C4", "text": "Current - Confirmed deal fact" },
+    { "where": "cell:LOI Grid!B9", "text": "24 (nnn)" },
+    { "where": "cell:LOI Grid!C9", "text": "27.5 (nnn)" },
+    { "where": "cell:LOI Grid!A9", "text": "Base rent (USD/SF/year)" }
+  ],
+  "remaining": ["Rent schedule"],
+  "human_gate": "Draft for review. Nothing sent."
+}
