@@ -11,6 +11,7 @@ for (const width of [390,1440]) for (const theme of ['light','dark']) {
     await page.goto(`${server.url}/deals`);
     await page.locator('.card-open:visible').first().click();
     await page.getByRole('tab', {name:'Compare terms'}).click();
+    await expect(page.locator('#workspace-market-terms [data-label=Source] strong')).toHaveText(' — Quarantined: not supporting evidence');
     await expect(page.locator('#workspace-market-terms')).toContainText('fixture-lease');
     await expect(page.locator('#workspace-market-terms')).toContainText('1 of 20 receipts eligible; 7 unsupported, 4 superseded without context, 8 unclassified');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

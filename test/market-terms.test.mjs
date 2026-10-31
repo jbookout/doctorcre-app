@@ -70,3 +70,17 @@ test('producer coverage and untrusted text render safely; disposal ignores pendi
   await new Promise(done => setTimeout(done, 30));
   assert.equal(root.textContent, '');
 });
+
+test('quarantined citations are visibly distinguished from supporting sources', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = dom.window.document.querySelector('div');
+  const row = {entity_ref:'d1',fact_key:'rent',value:'25',unit:'USD',term_kind:'executed',term_date:'2024-01-01',effective_from:'2024-01-01',effective_to:null,confidence:'human_review',sources:[{document_ref:'quarantined-doc',page_start:1,page_end:2,quarantined:true},{document_ref:'unaffected-doc',page_start:3,page_end:3,quarantined:false}]};
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:async () => ({ok:true,schema_version:'market-terms.v1',rows:[row],coverage:{recorded_documents:2,canonical_receipts:1,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:1}})}});
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const source = root.querySelector('[data-label="Source"]');
+  assert.match(source.textContent, /quarantined-doc, p\. 1–2.*Quarantined.*not supporting evidence/i);
+  assert.match(source.textContent, /unaffected-doc, p\. 3/);
+  assert.equal(source.querySelectorAll('strong').length, 1);
+  assert.match(root.textContent, /human review/);
+  panel.dispose();
+});
