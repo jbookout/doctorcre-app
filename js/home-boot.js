@@ -20,6 +20,9 @@ async function start() {
   const { mountHome, createInboxClient, fixtureInboxRpc } = await ui;
   if (boot.mode !== 'live') rpc = fixtureInboxRpc();
   mountHome(host, createInboxClient(rpc));
+  host.setAttribute('data-home-mounted', '');
+  document.dispatchEvent(new Event('doctorcre:home-mounted'));
+
 }
 start().catch(() => {
   host.replaceChildren();

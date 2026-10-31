@@ -1,5 +1,4 @@
 import { privateSession } from './private-session.js';
-import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
@@ -58,8 +57,15 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     phone.addEventListener("change", arrangeNavigation);
     arrangeControls();
     arrangeNavigation();
-    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
-    disposeDocPresence = () => docPresence?.dispose();
+    const mountDoc = async () => {
+      const { mountDocPresence } = await import('./doc-presence.js');
+      if (!host.isConnected || privateSession()?.revoked) return;
+      const docPresence = mountDocPresence({ document:root, window:root.defaultView });
+      disposeDocPresence = () => docPresence?.dispose();
+    };
+    const inbox = root.getElementById('homeRoot');
+    if (inbox && !inbox.hasAttribute('data-home-mounted')) root.addEventListener('doctorcre:home-mounted', () => void mountDoc(), { once: true });
+    else void mountDoc();
   }
 }
 

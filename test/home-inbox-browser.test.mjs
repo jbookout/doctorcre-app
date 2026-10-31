@@ -132,3 +132,19 @@ test('sign-in starts while the React module is still downloading', async t => {
   try { await page.waitForRequest('**/auth/session', { timeout: 2000 }); }
   finally { release(); }
 });
+
+test('secondary Doc modules wait for the Home runtime and remain available afterward', async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  let release, docRequested = false;
+  const modules = new Promise(resolve => { release = resolve; }); t.after(() => release());
+  page.on('request', request => { if (new URL(request.url()).pathname === '/js/doc-presence.js') docRequested = true; });
+  await page.route('**/js/ui.generated.js', async route => { await modules; await route.continue(); });
+  await page.goto(`${server.origin}/home`, { waitUntil: 'commit' });
+  await page.locator('#appLayout').waitFor();
+  try { assert.equal(docRequested, false); }
+  finally { release(); }
+  await page.locator('[data-inbox-row]').first().waitFor();
+  await page.locator('#docOpen').waitFor({ state: 'attached' });
+});
