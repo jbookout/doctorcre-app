@@ -162,6 +162,7 @@ jobs:
   live:
     # Live journeys: the built app against the real CARR Worker at the pinned
     # producer commit, on a disposable migrated PostgreSQL (tests/live).
+    # No dependency caches: this job runs producer code, so it never writes one.
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -187,15 +188,9 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: carr-producer/.nvmrc
-          cache: npm
-          cache-dependency-path: |
-            doctorcre-app/package-lock.json
-            carr-producer/mcp-server/package-lock.json
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version-file: carr-producer/.python-version
-          cache: pip
-          cache-dependency-path: carr-producer/requirements.lock
       - name: Install the CARR runtime the way its own CI does
         working-directory: carr-producer
         run: |
