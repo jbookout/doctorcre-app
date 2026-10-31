@@ -79,8 +79,45 @@ export function validScheduleBoardPayload(payload) {
   return true;
 }
 
+const CONVENTION_RECEIPT_FIELDS = [
+  'ok', 'rule_id', 'card_id', 'load_layer', 'packs', 'approval',
+  'retired_rule_ids', 'retired_section_id', 'attach_id', 'generation',
+];
+const CONVENTION_APPROVAL_FIELDS = [
+  'ok', 'replayed', 'rule_id', 'policy_status', 'enforcement_status',
+  'installed_controls', 'pending_controls', 'approval_receipt_id',
+];
+const isUuid = value => typeof value === 'string' && value.length === 36
+  && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
+const listOf = (value, check) => Array.isArray(value) && Array.from(value).every(check);
+const sortedUnique = values => values.every((value, index) => index === 0 || values[index - 1] < value);
+function hasReceiptFields(value, fields, optional = []) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && fields.every(field => Object.hasOwn(value, field))
+    && Object.keys(value).every(field => fields.includes(field) || optional.includes(field));
+}
+
 export function validConventionAdoptionReceipt(receipt, sectionId) {
-  return receipt?.ok === true && isText(sectionId) && receipt.retired_section_id === sectionId
-    && Array.isArray(receipt.retired_rule_ids) && receipt.retired_rule_ids.every(isText)
-    && (receipt.rule_id === null ? receipt.retired_rule_ids.length > 0 : isText(receipt.rule_id));
+  if (!hasReceiptFields(receipt, CONVENTION_RECEIPT_FIELDS, ['replayed'])
+      || receipt.ok !== true || !isUuid(sectionId) || receipt.retired_section_id !== sectionId
+      || !isUuid(receipt.attach_id) || !Number.isSafeInteger(receipt.generation) || receipt.generation < 1
+      || (Object.hasOwn(receipt, 'replayed') && receipt.replayed !== true)
+      || !listOf(receipt.retired_rule_ids, isUuid) || !sortedUnique(receipt.retired_rule_ids)
+      || !listOf(receipt.packs, isText) || !sortedUnique(receipt.packs)) return false;
+  if (receipt.rule_id === null) {
+    return receipt.retired_rule_ids.length > 0 && receipt.card_id === null
+      && receipt.load_layer === null && receipt.packs.length === 0 && receipt.approval === null;
+  }
+  if (!isUuid(receipt.rule_id) || receipt.retired_rule_ids.includes(receipt.rule_id)) return false;
+  const delivery = receipt.card_id === null
+    ? receipt.load_layer === 'pack' && receipt.packs.length > 0
+    : isText(receipt.card_id) && receipt.load_layer === 'control' && receipt.packs.length === 0;
+  const approval = receipt.approval;
+  return delivery && hasReceiptFields(approval, CONVENTION_APPROVAL_FIELDS)
+    && approval.ok === true && approval.replayed === false && approval.rule_id === receipt.rule_id
+    && approval.policy_status === 'active' && approval.enforcement_status === 'authority_enforced'
+    && Array.isArray(approval.installed_controls) && approval.installed_controls.length === 1
+    && approval.installed_controls[0] === 'human_authority_runtime'
+    && Array.isArray(approval.pending_controls) && approval.pending_controls.length === 0
+    && isUuid(approval.approval_receipt_id);
 }
