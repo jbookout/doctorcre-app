@@ -50,6 +50,17 @@ test('follow-up reads preserve tasks and pending email metadata', async () => {
   ]) await assert.rejects(readHomeCallFollowups({ getPostCallFollowups: async () => payload }), { code: 'malformed_response' });
 });
 
+test('Home names the contact on task and email follow-ups', async () => {
+  const email = { ...wire, id: 'demo-email', kind: 'email_draft', contact_name: 'Alex Jones', payload: { deal_id: task.dealId,
+    recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo email', body_sha256: 'a'.repeat(64) } };
+  const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([{ ...wire, contact_name: 'Pat Smith' }, email]) });
+  const h = mount();
+  h.controller.update({ ...ready, tasks });
+  assert.equal(h.host.querySelector('[data-call-task] h3').textContent, 'Pat Smith · Demo deal');
+  assert.equal(h.host.querySelector('[data-call-draft] h3').textContent, 'Alex Jones · Demo deal');
+  h.close();
+});
+
 test('an uncertain task decision keeps its key and blocks the opposite decision after a fresh pending read', async () => {
   const writes = [];
   const h = mount(async args => { writes.push(args); if (writes.length === 1) throw new TypeError('Synthetic response loss'); return receipt; });

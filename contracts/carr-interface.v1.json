@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -979,8 +979,8 @@
       "write": false,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+        "source_commit": "9ce8f9fbb7bd8be5e98a724fd09815a8115bec2d",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2716"
       },
       "response": {
         "schema_version": "post-call-followups.v1",
@@ -991,6 +991,7 @@
           "kind",
           "deal_id",
           "deal_name",
+          "contact_name",
           "payload",
           "evidence_quote",
           "created_at"
@@ -1008,6 +1009,7 @@
           "subject",
           "body_sha256"
         ],
+        "contact_name": "Nullable display name of the resolved contact or email recipient.",
         "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
@@ -1558,6 +1560,16 @@
       "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
       "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
       "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
+    },
+    "non_deal_next_steps": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "ee92d2767bdbac621cab3416e22026d5d5c34357",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2724"
+      },
+      "read": "Home calls list-email-proposals with include_non_deal=true. Non-deal next_step rows have deal=null and subject_type, subject_id and subject_name matching their preview. Deal pages keep their existing deal filter.",
+      "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews remain dismissible.",
+      "deployment_order": "Merge and verify the pinned server producer before merging this consumer. Do not auto-merge this app change."
     }
   },
   "email_thread_filings": {
