@@ -17,7 +17,7 @@ test('QA-004 populated project board filters and lanes stay near the first scree
   });
   for (const viewport of [{width:1440,height:960},{width:390,height:844}]) {
   await browser.setViewport(viewport);
-  await app.open('/progress-board?mode=live&board=demo-board-1');
+  await app.open('/control-room/progress/board/demo-board-1?mode=live');
   await expect(browser.locator('#board-stages [data-card-id="demo"]')).toBeVisible();
   const placement = await browser.evaluate(() => {
     const y = id => { const b = document.getElementById(id).getBoundingClientRect(); return b.top + window.scrollY; };

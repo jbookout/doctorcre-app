@@ -13,6 +13,11 @@
  * contain only opening dates, cutoff and owner filter; brief contents are never cached on disk.
  * @typedef {{state:string,sponsor:string,sections:Object}} MorningBriefResponse
  *
+ * @typedef {{fact_key:string,value:string,unit:string,expense_basis?:string,source:{document_ref:string,page_start:number,page_end:number,cited_text:string}}} HumanFact
+ * @typedef {{id:string,entity_ref:string,fact_key:string,value:string,unit:string,expense_basis:string|null,normalized_value:string,source:{document_ref:string,page_start:number,page_end:number,cited_text:string|null,cited_text_expires_at:string,cited_text_sha256:string}}} FactObservation
+ * @typedef {{entity_ref:string,fact_key:string,canonical_version:number,review_version:string,pending:boolean,reasons:string[],observations:FactObservation[],canonical_fact:Object|null,canonical_history:Object[],review_history:Object[]}} FactReviewItem
+ * @typedef {{ok:true,schema_version:'fact-review.v1',items:FactReviewItem[],has_more:boolean,next_cursor:string|null}} FactReviewList
+ *
  * @typedef {Object} PipelineEvent
  * @property {string} id
  * @property {string} recorded_at ISO-8601
@@ -87,6 +92,10 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args:{deal_id:string,limit?:number,cursor?:string}, options?:{signal?:AbortSignal}) => Promise<{ok:true,schema_version:'deal-documents.v1',documents:{id:string,display_name:string,stored_at:string}[],has_more:boolean,next_cursor:string|null}>} listDealDocuments
+ * @property {(args:{entity_ref?:string,limit?:number,cursor?:string,include_resolved?:boolean}, options?:{signal?:AbortSignal}) => Promise<FactReviewList>} listFactReview
+ * @property {(args:{idempotency_key:string,entity_ref:string,observation:HumanFact}) => Promise<Object>} recordHumanFact
+ * @property {(args:{idempotency_key:string,entity_ref:string,fact_key:string,base_version:number,review_version:string,decision:'approve'|'correct'|'reject',reason:string,observation_id?:string,correction?:HumanFact}) => Promise<Object>} resolveFactReview
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getRelationshipNetwork authenticated relationship-network.v1 snapshot, with observed_at and valid_until
  * @property {(args:Object) => Promise<Object>} readAssuranceHealth read-only assurance-health.v1 for an exact workflow scope
  * @property {(args?:Object) => Promise<Object>} correspondenceReadiness governed installation read, no arguments
@@ -102,6 +111,7 @@
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getPostCallFollowups pending post-call-followups.v1 metadata; email bodies remain local
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
+ * @property {(args:{submarket?:string,use_type?:string,as_of?:string}) => Promise<Object>} readMarketTerms confirmed firm history projection, pinned to carr-system a07acbe0b9be7bd7f3365a0c74a8460c99234a27
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges
  * @property {(args:{deal:string, field:string, idempotency_key:string}) => Promise<{ok:true}>} presenceLease
@@ -116,10 +126,10 @@
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
  * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,to:string[],cc:string[],idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
- * @property {(args?:{deal?:string,limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
+ * @property {(args?:{deal?:string,limit?:number,cursor?:string,include_non_deal?:boolean}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
  * @property {(args:{proposal_id:string,base_version:number,proposal_digest:string,deal?:string,idempotency_key:string}) => Promise<Object>} confirmEmailFiling partner confirmation of a filing proposal
- * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
- * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
+ * @property {(args:{deal?:string|null,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
+ * @property {(args:{deal?:string|null,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailDealProgress Joe-only, exact displayed preview
  * @property {(args:{proposal_id:string,base_version:number,reason:string,idempotency_key:string}) => Promise<Object>} dismissEmailProposal Joe or Dell, observed version and reason
@@ -407,3 +417,10 @@ export async function createClient(mode = 'fixture', opts = {}) {
   const { createFixtureClient } = await import('./fixture-client.js');
   return createFixtureClient(opts);
 }
+
+export const FACT_TERMS = {
+  base_rent_per_sf: { label: 'Base rent', units: { 'USD/SF/year': 1, 'USD/SF/month': 12 } },
+  landlord_ti_per_sf: { label: 'Landlord improvement allowance', units: { 'USD/SF': 1 } },
+  term_months: { label: 'Lease term', units: { months: 1, years: 12 } },
+  free_rent_months: { label: 'Free rent', units: { months: 1 } },
+};

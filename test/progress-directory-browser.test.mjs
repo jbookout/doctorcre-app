@@ -92,7 +92,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
   assert.deepEqual(await page.locator("#board-stages .column").evaluateAll(columns => columns.map(column => column.dataset.stage)),
-    ["queued", "build", "review", "merged", "closed"], "the system board renders every queue stage");
+    ["queued", "running", "build", "review", "merged", "live", "closed"], "the system board renders every queue stage");
   await project.evaluate(node => node.removeAttribute("target"));
   await page.locator('.directory-summary').click();
   await project.click();

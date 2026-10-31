@@ -86,7 +86,7 @@ async function assembleArtifact(commit, paths, readSource) {
     let content = await readSource(path);
     if (path.startsWith("js/") && /\.m?js$/.test(path)) {
       const result = await transform(content.toString("utf8"), {
-        target: "es2022", legalComments: "none", minify: true,
+        target: "es2022", legalComments: "none", minify: true, charset: "utf8",
       });
       content = Buffer.from(result.code);
     }

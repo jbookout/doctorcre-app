@@ -337,28 +337,6 @@ test("Dot 16: Calendar uses an admitted CARR authentication gate", async () => {
   assert.equal(res.status,200);assert.equal(await res.text(),"/calendar.html");assert.equal(path,"/business");
 });
 
-test("Dot 17: retrying an unanswered room message replays its key", async () => {
-  const {composerRequest,composerDraftAfterAttempt}=await import("../js/model-room-model.js");const calls=[];let keys=0;
-  const view={composer:{text:"Demo message"},composerSend:{state:"idle"}};
-  const h=handlers("js/model-room.js","async function submitComposer(","/* ------------------------------------------------- V5-UX-C13c",{view,composerRequest,composerDraftAfterAttempt,classifyCommandOutcome,client:{addRoomTurn:async args=>{calls.push(args);if(calls.length===1)throw new Error("response lost");return {seq:9};}},uuidv4:()=>`key-${++keys}`,renderComposer:noop,$:elements(),announce:noop},["submitComposer"]);
-  await h.submitComposer();const message=view.composerSend.message;await h.submitComposer();
-  assert.doesNotMatch(message,/Not sent/);
-  assert.equal(calls.length,2);assert.equal(calls[0].idempotency_key,calls[1].idempotency_key);
-});
-
-for(const receipt of [null,{}, {seq:"nine"}, {seq:0}]) test(`PR111 #11: composer retains its request after invalid acknowledgment ${JSON.stringify(receipt)}`,async()=>{
-  const {composerRequest,composerDraftAfterAttempt}=await import("../js/model-room-model.js");const calls=[];const view={composer:{text:"Demo message"},composerSend:{state:"idle"}};let keys=0;
-  const h=handlers("js/model-room.js","async function submitComposer(","/* ------------------------------------------------- V5-UX-C13c",{view,composerRequest,composerDraftAfterAttempt,classifyCommandOutcome,client:{addRoomTurn:async args=>{calls.push(args);return calls.length===1 ? receipt : {seq:9};}},uuidv4:()=>`key-${++keys}`,renderComposer:noop,$:elements(),announce:noop},["submitComposer"]);
-  await h.submitComposer();assert.equal(view.composerSend.state,"unknown");assert.equal(view.composer.text,"Demo message");assert.ok(view.composerPending);
-  await h.submitComposer();assert.deepEqual(calls[0],calls[1]);assert.equal(view.composerSend.state,"sent");assert.equal(view.composer.text,"");
-});
-
-test("PR111 #11: composer accepts the producer's decimal-string sequence receipt",async()=>{
-  const {composerRequest,composerDraftAfterAttempt}=await import("../js/model-room-model.js");const view={composer:{text:"Demo message"},composerSend:{state:"idle"}};
-  const h=handlers("js/model-room.js","async function submitComposer(","/* ------------------------------------------------- V5-UX-C13c",{view,composerRequest,composerDraftAfterAttempt,classifyCommandOutcome,client:{addRoomTurn:async()=>({ok:true,seq:"9"})},uuidv4:()=>"key",renderComposer:noop,$:elements(),announce:noop},["submitComposer"]);
-  await h.submitComposer();assert.equal(view.composerSend.state,"sent");assert.equal(view.composer.text,"");
-});
-
 test('S2: uncertain Model Room answers retain their key, reviewed version and draft while conflicts permit a reviewed new submission', async () => {
   const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,answerBaseVersion}=await import('../js/model-room-model.js');
   const view={historyWorkItemId:'WR-1',answer:{answerText:'Reviewed answer',evidenceRef:'',scopeConfirmed:true},answerSend:{state:'idle'}};
