@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import { composeCarrInterface, entryFileName } from "../scripts/carr-interface.mjs";
+import { carrInterfaceText, composeCarrInterface, entryFileName } from "../scripts/carr-interface.mjs";
 import { carrInterface } from "./carr-contract.mjs";
 import { routeEntries } from "../js/routes.js";
 
@@ -17,8 +17,8 @@ test("one file per entry composes into the contract object every consumer reads"
     ["schema.json", json("s")],
     ["mcp_operations/read-b.json", json("read-b")],
     ["mcp_operations/add-a.json", json("add-a")],
-    ["http_surfaces/api-v1-x-id.json", json({ value: "/api/v1/x/{id}", order: 0 })],
-    ["http_surfaces/api-tours-all.json", json({ value: "/api/tours/*", order: 1 })],
+    [`http_surfaces/${entryFileName("/api/v1/x/{id}")}`, json({ value: "/api/v1/x/{id}", order: 0 })],
+    [`http_surfaces/${entryFileName("/api/tours/*")}`, json({ value: "/api/tours/*", order: 1 })],
     ["mcp_read_contracts/read-b.json", json({ write: false })],
     ["zeta_feature.json", json({ read: "read-b {}" })],
   ]);
@@ -34,8 +34,9 @@ test("one file per entry composes into the contract object every consumer reads"
 });
 
 test("a list entry is a string named after itself, so the same addition is the same file", () => {
-  assert.equal(entryFileName("/api/v1/call-sessions/{id}/report"), "api-v1-call-sessions-id-report.json");
-  assert.equal(entryFileName("read-room"), "read-room.json");
+  assert.match(entryFileName("/api/v1/call-sessions/{id}/report"), /^api-v1-call-sessions-id-report-[0-9a-f]{8}\.json$/);
+  assert.equal(entryFileName("/api/v1/call-sessions/{id}/report"), entryFileName("/api/v1/call-sessions/{id}/report"));
+  assert.equal(entryFileName("read-room"), "read-room.json", "a verb is already a safe name and keeps it");
   assert.throws(() => composeCarrInterface([["mcp_operations/other-name.json", json("read-room")]]), /name it read-room\.json/);
   assert.throws(() => composeCarrInterface([["mcp_operations/read-room.json", json({ verb: "read-room" })]]), /JSON string/);
   assert.throws(() => composeCarrInterface([["mcp_read_contracts/a/b.json", json({})]]), /one directory deep/);
@@ -45,15 +46,31 @@ test("a list entry is a string named after itself, so the same addition is the s
 
 test("parallel surface additions with the same order compose deterministically", () => {
   const files = [
-    ["http_surfaces/api-z.json", json({ value: "/api/z", order: 2 })],
-    ["http_surfaces/api-a.json", json({ value: "/api/a", order: 2 })],
-    ["http_surfaces/api-first.json", json({ value: "/api/first", order: 0 })],
+    [`http_surfaces/${entryFileName("/api/z")}`, json({ value: "/api/z", order: 2 })],
+    [`http_surfaces/${entryFileName("/api/a")}`, json({ value: "/api/a", order: 2 })],
+    [`http_surfaces/${entryFileName("/api/first")}`, json({ value: "/api/first", order: 0 })],
   ];
   assert.deepEqual(composeCarrInterface(files).http_surfaces, ["/api/first", "/api/a", "/api/z"]);
   assert.deepEqual(composeCarrInterface(files.toReversed()), composeCarrInterface(files));
   for (const order of [undefined, -1, 0.5]) {
-    assert.throws(() => composeCarrInterface([["http_surfaces/api-a.json", json({ value: "/api/a", order })]]), /nonnegative integer order/);
+    assert.throws(() => composeCarrInterface([[`http_surfaces/${entryFileName("/api/a")}`, json({ value: "/api/a", order })]]), /nonnegative integer order/);
   }
+});
+
+test("entries whose slugs collide still get distinct file names", () => {
+  // Both slug to api-v1-review-items; plain slugs made two branches add the same file.
+  const pair = ["/api/v1/review-items", "/api/v1/review/items"];
+  assert.notEqual(entryFileName(pair[0]), entryFileName(pair[1]));
+  const contract = composeCarrInterface(pair.map((value, order) =>
+    [`http_surfaces/${entryFileName(value)}`, json({ value, order })]));
+  assert.deepEqual(contract.http_surfaces, pair);
+});
+
+test("the digested text does not depend on nested key order", () => {
+  const a = { b: { y: 1, x: [3, { q: 1, p: 2 }] }, a: "s" };
+  const b = { a: "s", b: { x: [3, { p: 2, q: 1 }], y: 1 } };
+  assert.equal(carrInterfaceText(a), carrInterfaceText(b));
+  assert.notEqual(carrInterfaceText({ x: [1, 2] }), carrInterfaceText({ x: [2, 1] }), "array order is meaning, kept");
 });
 
 test("the checked-in interface composes with its header and lists", () => {

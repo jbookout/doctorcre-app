@@ -123,7 +123,7 @@ commit and archive digest; they never import this repository's source tree.
 The pinned consumer contract is `contracts/carr-interface.v1/`, one file per
 entry so that two branches adding verbs never edit the same lines.
 `scripts/carr-interface.mjs` composes it into one object. A feature adds
-`mcp_operations/<verb>.json` (a JSON string), `http_surfaces/<path-slug>.json`
+`mcp_operations/<verb>.json` (a JSON string), `http_surfaces/<slug>-<hash>.json`
 (`{"value":"/api/v1/example","order":28}`), and its own `<section>.json`.
 List filenames use `entryFileName`. Surface order preserves the original contract
 array; append with the next order number. Equal orders from parallel additions
