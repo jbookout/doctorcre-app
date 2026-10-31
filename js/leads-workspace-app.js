@@ -1,3 +1,4 @@
+import { mountContactReasons } from './contact-reasons.js';
 import { workCard } from './work-card.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { toDay } from './calendar-model.js';
@@ -21,6 +22,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
+  const reasons = $("contactReasons") && client.listPracticeOrigination ? mountContactReasons({host:$("contactReasons"),window:win,client}) : null;
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
   const expandedStages = new Set();
@@ -635,6 +637,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
-  return { state, refresh, openReview, readDetail, dispose() { disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
+  return { state, refresh, openReview, readDetail, dispose() { reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("leadBoard")) mountLeadsWorkspace();

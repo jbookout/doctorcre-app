@@ -199,6 +199,7 @@ export function createLiveClient(opts = {}) {
     // rebuilding it would be inventing one.
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
+    async listPracticeOrigination({signal, ...args} = {}) { return rpc('list-practice-origination', args, signal); },
     async getHomeAgenda({ signal } = {}) {
       const agenda = await rpc('read-home-agenda', {}, signal);
       selfActor = agenda.actor || selfActor;
