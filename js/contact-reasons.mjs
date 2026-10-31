@@ -1,6 +1,4 @@
-import { homeListLimit } from './home-list-limit.js';
-import { workCard } from './work-card.js';
-import { escapeText as E } from './change-receipts.mjs';
+import { homeListLimit, createContactReasonsView } from './ui.generated.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 
 const kinds = {
@@ -14,7 +12,6 @@ const sources = {
   'recorder-escambia-fl': 'Escambia County recorder', 'recorder-baldwin-al': 'Baldwin County recorder',
   'recorder-other': 'Other county recorders',
 };
-const date = day => new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', {timeZone:'UTC',month:'short',day:'numeric',year:'numeric'});
 function validate(payload) {
   if (payload?.ok !== true || payload.contract !== 'practice-origination.v1' || payload.outreach_started !== false
     || !Array.isArray(payload.cards) || !Array.isArray(payload.coverage)
@@ -39,47 +36,14 @@ function publicSource(row) {
       : row.source === 'pecos' && url.hostname === 'data.cms.gov');
   } catch { return false; }
 }
-function card(row, home) {
-  const [reason, basis] = kinds[row.kind];
-  const followUp = row.route === 'relationship_follow_up';
-  const title = followUp ? `Follow up with ${row.client_refs[0] || 'client'}` : row.name;
-  const href = home ? '/leads#contactReasons' : followUp ? `/clients?record=${encodeURIComponent(row.client_ids[0])}` : null;
-  return workCard({title:href ? `<a data-reason-key="title:${E(row.id)}" href="${E(href)}">${E(title)}</a>` : E(title),
-    meta:E([row.city,row.state].filter(Boolean).join(' · ')),
-    status:row.route === 'identity_review' ? 'Needs review' : '',
-    body:`${followUp ? `<p>${E(row.name)}</p>` : ''}<p>${E(reason)}</p><p>${basis} · <time datetime="${E(row.evidence_date)}">${date(row.evidence_date)}</time></p>${row.route === 'identity_review' ? '<p>Confirm which practice this belongs to.</p>' : ''}`,
-    actions:`<a data-reason-key="source:${E(row.id)}" href="${E(row.source_url)}" target="_blank" rel="noopener noreferrer">${sources[row.source]} source<span class="sr-only"> for ${E(row.name)} (opens in new tab)</span> ↗</a>`,
-  });
-}
-
 export function mountContactReasons({host,window,client,home = false}) {
   const document = host.ownerDocument;
   let payload = null, error = false, busy = false, retired = false, sequence = 0, visibleCount = homeListLimit(window);
+  const view = createContactReasonsView(host);
   function render() {
     host.hidden = Boolean(home && payload && !error && !retired && !payload.cards.some(row => row.route === 'research'));
     host.setAttribute('aria-busy',String(busy));
-    const parts = [`<header class="${home ? 'home-panel-head' : 'section-heading'}"><h2>Reasons to reach out</h2>${home ? '<a class="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>' : ''}</header>`];
-    if (retired) {
-      parts.push('<p role="status">Sign in to view contact reasons.</p>');
-    } else {
-      if (error) parts.push(`<p role="status">Contact reasons unavailable.${payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>`);
-      if (payload) {
-        const rows = payload.cards.filter(row => !home || row.route === 'research');
-        const shown = rows.slice(0,visibleCount);
-        parts.push(`<div class="contact-reason-list">${shown.map(row=>card(row,home)).join('') || '<p>No new reasons to reach out.</p>'}</div>`);
-        if (rows.length > visibleCount) parts.push(`<button type="button" class="btn home-outline" data-reason-key="show" data-show-reasons>Show ${rows.length - visibleCount} more</button>`);
-        if (!home) {
-          parts.push('<p class="contact-reason-note">Registry and publication dates do not confirm when a practice opened.</p>');
-          parts.push(`<ul class="contact-reason-coverage" aria-label="Source coverage">${payload.coverage.map(row=>`<li>${sources[row.source]} · ${row.status === 'available' ? 'Covered' : row.status === 'blocked' ? 'Updates blocked' : 'Not yet covered'}${row.status === 'available' && row.coverage ? ` <small>${E(row.coverage)}</small>` : ''}</li>`).join('')}</ul>`);
-          if (payload.next_cursor) parts.push(`<button type="button" data-reason-key="more" data-more-reasons${busy ? ' disabled' : ''}>More reasons</button>`);
-        }
-      } else if (!error) parts.push('<p role="status">Loading contact reasons…</p>');
-    }
-    const html = parts.join('');
-    if (host.innerHTML === html) return;
-    const focused = host.contains(document.activeElement) ? document.activeElement.dataset.reasonKey : null;
-    host.innerHTML = html;
-    if (focused) [...host.querySelectorAll('[data-reason-key]')].find(node=>node.dataset.reasonKey === focused)?.focus();
+    view.render({payload,error,busy,retired,home,visibleCount});
   }
   async function read({signal} = {}, more = false) {
     if (retired || busy) return;
@@ -110,5 +74,5 @@ export function mountContactReasons({host,window,client,home = false}) {
   window.addEventListener('doctorcre-session-invalidated',retire);
   render();
   auto.refresh();
-  return {refresh:()=>auto.refresh(),dispose(){retired = true; sequence++; auto.dispose(); host.replaceChildren(); host.removeEventListener('click',click); window.removeEventListener('doctorcre-session-invalidated',retire);}};
+  return {refresh:()=>auto.refresh(),dispose(){retired = true; sequence++; auto.dispose(); view.dispose(); host.removeEventListener('click',click); window.removeEventListener('doctorcre-session-invalidated',retire);}};
 }

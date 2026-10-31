@@ -40,8 +40,8 @@ test('fixture provides dated synthetic routes and explicit source coverage with 
 
 test('rendered reasons preserve date meaning, relationship routing, review holds and coverage', async t => {
   const {JSDOM} = await import('jsdom');
-  const {mountContactReasons} = await import('../js/contact-reasons.js');
-  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
   const dom = new JSDOM('<section id="reasons"></section>', {url:'http://localhost/leads'});
   t.after(()=>dom.window.close());
   const host = dom.window.document.getElementById('reasons');
@@ -67,8 +67,8 @@ test('rendered reasons preserve date meaning, relationship routing, review holds
 
 test('Home caps new research reasons at two and links each to Leads', async t => {
   const {JSDOM} = await import('jsdom');
-  const {mountContactReasons} = await import('../js/contact-reasons.js');
-  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
   const dom = new JSDOM('<section></section>', {url:'http://localhost/'});
   t.after(()=>dom.window.close());
   const host = dom.window.document.querySelector('section');
@@ -82,8 +82,8 @@ test('Home caps new research reasons at two and links each to Leads', async t =>
 
 test('failed reads stay distinct from empty results, retry recovers, and session retirement rejects late data', async t => {
   const {JSDOM} = await import('jsdom');
-  const {mountContactReasons} = await import('../js/contact-reasons.js');
-  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
   const dom = new JSDOM('<section></section>', {url:'http://localhost/leads'});
   t.after(()=>dom.window.close());
   const host = dom.window.document.querySelector('section');
@@ -111,8 +111,8 @@ test('failed reads stay distinct from empty results, retry recovers, and session
 
 test('follow-up identifies the matched client even when its name differs from public evidence', async t => {
   const {JSDOM} = await import('jsdom');
-  const {mountContactReasons} = await import('../js/contact-reasons.js');
-  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
   const dom = new JSDOM('<section></section>', {url:'http://localhost/leads'});
   t.after(()=>dom.window.close());
   const host = dom.window.document.querySelector('section');
@@ -128,8 +128,8 @@ test('follow-up identifies the matched client even when its name differs from pu
 
 test('More reasons pages without duplicates and preserves the focused source on refresh', async t => {
   const {JSDOM} = await import('jsdom');
-  const {mountContactReasons} = await import('../js/contact-reasons.js');
-  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
   const dom = new JSDOM('<section></section>', {url:'http://localhost/leads'});
   t.after(()=>dom.window.close());
   const host = dom.window.document.querySelector('section');
@@ -154,8 +154,8 @@ test('More reasons pages without duplicates and preserves the focused source on 
 
  test('Home hides empty results and skips malformed cards', async t => {
   const {JSDOM} = await import('jsdom');
-  const {mountContactReasons} = await import('../js/contact-reasons.js');
-  const {practiceOriginationFixture} = await import('../js/practice-origination-fixture.js');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
   const dom = new JSDOM('<section></section>', {url:'http://localhost/'});
   t.after(()=>dom.window.close());
   const host = dom.window.document.querySelector('section');
@@ -170,4 +170,20 @@ test('More reasons pages without duplicates and preserves the focused source on 
   assert.equal(host.hidden,false);
   assert.equal(host.querySelectorAll('article').length,2);
   assert.doesNotMatch(host.textContent,/unavailable/);
+});
+
+test('reason content remains text when public evidence contains markup', async t => {
+  const {JSDOM} = await import('jsdom');
+  const {mountContactReasons} = await import('../js/contact-reasons.mjs');
+  const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs');
+  const dom = new JSDOM('<section></section>', {url:'http://localhost/leads'});
+  t.after(() => dom.window.close());
+  const host = dom.window.document.querySelector('section');
+  const payload = practiceOriginationFixture();
+  payload.cards[0].name = '<img src=x onerror=alert(1)>';
+  const view = mountContactReasons({host,window:dom.window,client:{listPracticeOrigination:async()=>payload}});
+  t.after(() => view.dispose());
+  await view.refresh();
+  assert.match(host.textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.equal(host.querySelector('img'), null);
 });

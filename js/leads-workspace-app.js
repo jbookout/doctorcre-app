@@ -1,4 +1,4 @@
-import { mountContactReasons } from './contact-reasons.js';
+import { mountContactReasons } from './contact-reasons.mjs';
 import { workCard } from './work-card.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { toDay } from './calendar-model.js';

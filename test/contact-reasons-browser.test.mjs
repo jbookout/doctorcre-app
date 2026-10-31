@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
 import {chromium} from './browser-harness.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
-import {practiceOriginationFixture} from '../js/practice-origination-fixture.js';
+import {practiceOriginationFixture} from '../data/fixtures/practice-origination.mjs';
 
 for (const width of [1440,390]) for (const theme of ['light','dark']) test(`contact reasons on Leads and Home at ${width}px ${theme}`,async t=>{
   const browser = await chromium.launch();

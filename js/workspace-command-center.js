@@ -340,7 +340,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   function loadSecondaryPanels() {
     if (secondaryRequested) return;
     secondaryRequested = true;
-    if ($('homeContactReasons') && client.listPracticeOrigination) import('./contact-reasons.js').then(({mountContactReasons}) => {
+    if ($('homeContactReasons') && client.listPracticeOrigination) import('./contact-reasons.mjs').then(({mountContactReasons}) => {
       if (disposed || emailRetired) return;
       reasons = mountContactReasons({host:$('homeContactReasons'),window,client,home:true});
     });

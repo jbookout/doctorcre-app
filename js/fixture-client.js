@@ -1255,7 +1255,7 @@ export async function createFixtureClient(opts = {}) {
 
     async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
 
-    async listPracticeOrigination(args = {}) { const {practiceOriginationFixture} = await import('./practice-origination-fixture.js'); return practiceOriginationFixture(args); },
+    async listPracticeOrigination(args = {}) { const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs'); return practiceOriginationFixture(args); },
 
     async getHomeAgenda() {
       const board = await this.getBoard();

@@ -1,4 +1,4 @@
-import { homeListLimit } from './home-list-limit.js';
+import { homeListLimit } from './ui.generated.js';
 import { workCard } from './work-card.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';
