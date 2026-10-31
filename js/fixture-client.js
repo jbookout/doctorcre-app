@@ -57,7 +57,7 @@ const VERSION_CONFLICT = 'version_conflict';
 
 export async function createFixtureClient(opts = {}) {
   let factReview;
-  const factReviews = () => factReview ||= import('./fact-review-fixture.js').then(module => module.createFactReviewFixture());
+  const factReviews = () => factReview ||= import('../data/fixtures/fact-review.mjs').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {

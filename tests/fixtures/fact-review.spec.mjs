@@ -9,6 +9,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.url}/deals?deal=d14`);
     const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
     await expect(terms.getByRole('heading', { name: 'Base rent', exact: true })).toBeVisible();
     await expect(terms.locator('.fact-observation')).toHaveCount(3);
     await expect(terms).toContainText('Demo Lease.pdf');
@@ -79,6 +80,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
 test('stale evidence refreshes the review without applying the old decision', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   const review = terms.locator('form[data-fact-review]');
   await review.getByLabel('Decision', { exact: true }).selectOption('reject');
   await review.getByLabel('Reason').fill('Demo original review.');
@@ -102,6 +104,7 @@ test('stale evidence refreshes the review without applying the old decision', as
 test('unknown save retries the identical request and freezes its reviewed fields', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   const review = terms.locator('form[data-fact-review]');
   await review.getByLabel('Decision', { exact: true }).selectOption('reject');
   await review.getByLabel('Reason').fill('Demo keep the canonical term.');
@@ -140,6 +143,7 @@ test('missing attachment metadata does not turn prepared documents into source c
   });
   await page.locator('.card-open:visible').filter({ hasText: 'Demo Surgical Practice' }).first().click();
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   await expect(terms).toContainText('Stored documents unavailable');
   await expect(terms).toContainText('Document name unavailable');
   await expect(terms.locator('[data-fact-record]')).toHaveCount(0);
@@ -149,6 +153,7 @@ test('missing attachment metadata does not turn prepared documents into source c
 test('a refused record preserves its selected unit and source for correction', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   await terms.getByText('Record a term', { exact: true }).click();
   const record = terms.locator('form[data-fact-record]');
   await record.getByLabel('Term', { exact: true }).selectOption('term_months');
@@ -181,6 +186,7 @@ test('a refused record preserves its selected unit and source for correction', a
 test('distinct decimal term values remain distinct when displayed', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   await terms.getByText('Record a term', { exact: true }).click();
   const record = terms.locator('form[data-fact-record]');
   for (const value of ['24.375', '24.38', '12345678901234567890.123456789012345678']) {
@@ -192,4 +198,18 @@ test('distinct decimal term values remain distinct when displayed', async ({ pag
   await expect(terms).toContainText('$24.375/SF/yr');
   await expect(terms).toContainText('$24.38/SF/yr');
   await expect(terms).toContainText('$12,345,678,901,234,567,890.123456789012345678/SF/yr');
+});
+
+test('terms load the React island only when opened and show an import failure', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/js/ui.generated.js')) requests.push(request.url()); });
+  await page.goto(`${server.url}/deals`);
+  expect(requests).toHaveLength(0);
+  await page.route('**/js/ui.generated.js', route => route.abort());
+  await page.goto(`${server.url}/deals?deal=d14`);
+  const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
+  await terms.scrollIntoViewIfNeeded();
+  await expect(terms).toContainText('Terms unavailable. Reopen this deal to try again.');
+  expect(requests.length).toBeGreaterThan(0);
 });
