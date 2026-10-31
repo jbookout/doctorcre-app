@@ -199,3 +199,27 @@ test('background refresh never runs faster than once a minute', () => {
   assert.deepEqual(p.delays, [1600], 'a keepAlive poll keeps its own interval');
   call.handle.dispose();
 });
+
+test('automatic polling backs off and stops after a bounded number of attempts', async () => {
+  const p = page(); let calls = 0;
+  const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now,
+    poll: () => { calls++; throw new Error('unavailable'); } });
+  const delays = [];
+  for (let i = 0; i < 30 && p.count; i++) { delays.push(p.delays[0]); p.tick(); await settle(); }
+  assert.ok(calls > 0 && calls < 30, 'polling stops at a hard cap');
+  assert.ok(delays[1] > delays[0], 'failed reads back off');
+  assert.equal(p.count, 0);
+  handle.dispose();
+});
+
+test('auto refresh backs off failures and stops after bounded attempts', async () => {
+  const p = page(); let calls = 0;
+  const handle = mountAutoRefresh({ document: p.document, window: p.window, now: p.now,
+    refresh: () => { calls++; throw new Error('unavailable'); } });
+  const delays = [];
+  for (let i = 0; i < 30 && p.count; i++) { delays.push(p.delays[0]); p.tick(); await settle(); }
+  assert.ok(calls > 0 && calls < 30, 'refresh stops at a hard cap');
+  assert.ok(delays[1] > delays[0], 'failed reads back off');
+  assert.equal(p.count, 0);
+  handle.dispose();
+});

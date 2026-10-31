@@ -3,7 +3,7 @@
 // cancellation; page callbacks preserve their local drafts.
 import { createCurrentRead } from "./current-read.mjs";
 export { readWithDeadline, fetchRead } from "./current-read.mjs";
-import { MIN_POLL_MS, watchPresence } from "./visibility-poll.mjs";
+import { MAX_BACKOFF_MS, MAX_POLL_ATTEMPTS, MIN_POLL_MS, watchPresence } from "./visibility-poll.mjs";
 
 export function mountAutoRefresh({ document, window, refresh, onResume, onWake, intervalMs: askedMs = MIN_POLL_MS, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, revalidate: () => {}, poll: () => {}, dispose: () => {} };
@@ -12,10 +12,12 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   let running = null;
   let queuedResume = null;
   let disposed = false;
+  let attempts = 0;
+  let failures = 0;
   const reads = createCurrentRead({ timeoutMs, clock: window });
   const schedule = () => {
     window.clearTimeout?.(timer);
-    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, intervalMs); timer?.unref?.(); }
+    if (!disposed && presence.active() && attempts < MAX_POLL_ATTEMPTS && window.setTimeout) { timer = window.setTimeout(read, Math.min(MAX_BACKOFF_MS, intervalMs * 2 ** failures)); timer?.unref?.(); }
   };
   const run = operation => {
     // Idle stops the clock here; the first input re-reads through the resume.
@@ -23,9 +25,10 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
     if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
+    attempts++;
     running = reads.run(({ signal }) => operation({ signal }), {
-      // Failure stays in the page's own state and waits the same poll interval.
-      failure: () => {},
+      success: value => { failures = 0; return value; },
+      failure: () => { failures++; },
     }).finally(() => { running = null; schedule(); });
     return running;
   };
@@ -33,7 +36,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   // A person pressing refresh is present by definition: refresh() reads even
   // after the idle cutoff, exactly as before the idle pause. poll() is for a
   // page's own clock and waits while hidden or idle, like the interval itself.
-  const manualRead = () => { presence.touch(); return read(); };
+  const manualRead = () => { attempts = 0; failures = 0; presence.touch(); return read(); };
   const resumeRead = invalidate => {
     invalidate?.();
     if (!invalidate || !running) return read();
@@ -44,7 +47,8 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
   document.addEventListener("visibilitychange", visibility);
-  const presence = watchPresence({ document, window, onResume: () => resumeRead(onResume), onWake: () => resumeRead(onWake), idleMs, now });
+  const restart = invalidate => { attempts = 0; failures = 0; return resumeRead(invalidate); };
+  const presence = watchPresence({ document, window, onResume: () => restart(onResume), onWake: () => restart(onWake), onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) restart(); }, idleMs, now });
   const online = () => { if (presence.active()) resumeRead(onResume); };
   window.addEventListener("online", online);
   schedule();

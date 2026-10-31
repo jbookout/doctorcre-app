@@ -10,6 +10,8 @@ export const IDLE_CUTOFF_MS = 30 * 60_000;
 // No background read runs more often than once a minute; a person who wants
 // fresher data presses refresh.
 export const MIN_POLL_MS = 60_000;
+export const MAX_POLL_ATTEMPTS = 20;
+export const MAX_BACKOFF_MS = 15 * 60_000;
 const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wheel", "scroll"];
 
 // active() says whether a network read may run now. onResume runs once per
@@ -18,7 +20,7 @@ const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wh
 // cutoff in a tab that never left view, so it must only read: a page's
 // return-from-hidden hook (closing private views) never runs on a wake.
 // touch() records input from a caller that reads for itself, without either.
-export function watchPresence({ document, window, onResume, onWake, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
+export function watchPresence({ document, window, onResume, onWake, onInput = () => {}, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
   let lastInput = now();
   const hidden = () => document.visibilityState === "hidden";
   const idle = () => now() - lastInput >= idleMs;
@@ -26,6 +28,7 @@ export function watchPresence({ document, window, onResume, onWake, idleMs = IDL
     const waking = idle() && !hidden();
     lastInput = now();
     if (waking) onWake();
+    else if (!hidden()) onInput();
   };
   const resume = mountReadOnResume({ document, window, refresh: () => { lastInput = now(); return onResume(); } });
   const options = { capture: true, passive: true };
@@ -52,21 +55,22 @@ export function mountVisibilityPoll({
   let timer = null;
   let generation = 0;
   let disposed = false;
+  let attempts = 0;
+  let failures = 0;
   const asked = () => (typeof intervalMs === "function" ? intervalMs() : intervalMs);
   // Call mode's keepAlive poll reads the local companion, not CARR.
-  const delay = () => (keepAlive() ? asked() : Math.max(MIN_POLL_MS, asked()));
+  const delay = () => Math.min(MAX_BACKOFF_MS, (keepAlive() ? asked() : Math.max(MIN_POLL_MS, asked())) * 2 ** failures);
   const stop = () => { if (timer !== null) clearTimeout(timer); timer = null; generation += 1; };
-  const arm = () => { timer = setTimeout(tick, delay()); };
+  const arm = () => { if (attempts < MAX_POLL_ATTEMPTS && (presence.active() || keepAlive())) timer = setTimeout(tick, delay()); };
   const refresh = () => {
     stop();
     if (disposed) return Promise.resolve();
     const mine = generation;
-    return Promise.resolve().then(() => poll()).catch(() => {
-      // The page's poll renders its own failure; the cadence carries on.
-    }).finally(() => { if (mine === generation && !disposed) arm(); });
+    attempts++;
+    return Promise.resolve().then(() => poll()).then(() => { failures = 0; }, () => { failures++; }).finally(() => { if (mine === generation && !disposed) arm(); });
   };
   const tick = () => { timer = null; if (presence.active() || keepAlive()) refresh(); };
-  const presence = watchPresence({ document, window, idleMs, now, onResume: refresh, onWake: refresh });
+  const presence = watchPresence({ document, window, idleMs, now, onResume: () => { attempts = 0; failures = 0; return refresh(); }, onWake: () => { attempts = 0; failures = 0; return refresh(); }, onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) { attempts = 0; failures = 0; refresh(); } } });
   const visibility = () => { if (document.visibilityState === "hidden" && !keepAlive()) stop(); };
   document.addEventListener("visibilitychange", visibility);
   if (presence.active() || keepAlive()) arm();
