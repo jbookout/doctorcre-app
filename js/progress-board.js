@@ -7,6 +7,7 @@ import { governanceTasks, withGovernance } from "./control-room-workspace-model.
 import { createLiveClient } from "./live-client.js";
 import { mountVisibilityPoll } from "./visibility-poll.mjs";
 import { mountSystemWorkBoard } from "./system-work-board.js";
+import { classifyCommandOutcome, commandMessage } from "./command-feedback.mjs";
 import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
 import { mountCostView } from './progress-board-costs.js';
@@ -57,6 +58,8 @@ export function mountBoard(deps = {}) {
   const completedNodes = new Map();
   const blockedNodes = new Map();
   const pendingRequests = new Map();
+  const conventionCards = new Map();
+  const adoptedConventions = new Set();
   // Per question: the form's message, whether a write or read is in flight,
   // and whether the form is obsolete and must be reloaded before any write.
   const formState = new Map();
@@ -1155,7 +1158,10 @@ export function mountBoard(deps = {}) {
       state.expanded.clear(); state.scroll = 0; state.cardId = null;
     }
     boardState = state;
-    governanceRead = null;
+    if (state !== "unpublished") {
+      governanceRead = null;
+      byId("conventionProposals")?.replaceChildren(); conventionCards.clear();
+    }
     deps.onTasks?.([], {state});
     censusPipeline = null;
     if (byId("board-data-mode")) byId("board-data-mode").textContent = "";
@@ -1301,6 +1307,99 @@ export function mountBoard(deps = {}) {
     return result;
   }
 
+  function renderConventions() {
+    const container = byId("conventionProposals");
+    if (!container) return;
+    const rows = (governanceRead?.pending_convention_proposals || []).filter(row => !adoptedConventions.has(row.section_id));
+    for (const [id, card] of conventionCards) {
+      const current = rows.find(row => row.section_id === id);
+      if (!card.request && (!current || JSON.stringify(current) !== JSON.stringify(card.row))) {
+        card.node.remove(); conventionCards.delete(id);
+      } else if (!card.request && card.status !== "reload") {
+        card.button.disabled = governanceState !== "read" || !card.row.body_text?.trim() || card.row.adoptable === false;
+      }
+    }
+    if (rows.length && !conventionCards.size) container.replaceChildren();
+    for (const row of rows) {
+      if (conventionCards.has(row.section_id)) continue;
+      const node = el("article", "convention-proposal", undefined, { "data-convention": row.section_id });
+      const time = el("time", "", formatTime(row.updated_at) || "Time unavailable");
+      if (row.updated_at) time.dateTime = row.updated_at;
+      const meta = el("p", "work-meta", `Proposed by ${row.last_writer || "Unknown proposer"} · `);
+      meta.append(time);
+      node.append(el("h3", "", row.title || row.statement || row.section_key), meta,
+        el("p", "convention-body", row.body_text ?? "Proposal text unavailable. Adoption requires the full text."));
+      if (row.adoptable === false) node.append(el("p", "", row.problem || "This proposal cannot be adopted."));
+      const form = el("form");
+      const whyId = `convention-why-${row.section_id}`;
+      const reason = el("textarea", "", "", { id: whyId, required: "", maxlength: "1000", rows: "2" });
+      const button = el("button", "btn", "Adopt", { type: "submit" });
+      const message = el("p", "form-message", "", { role: "status" });
+      form.append(el("label", "", "Why", { for: whyId }), reason, button, message);
+      node.append(form);
+      const card = { node, row, reason, button, message, request: null, status: "ready" };
+      button.disabled = typeof row.body_text !== "string" || !row.body_text.trim() || row.adoptable === false || governanceState !== "read";
+      const reload = async () => {
+        const read = await client.governanceQueue();
+        if (!governanceTasks(read)) throw new Error("Invalid approvals read");
+        if (disposed) return;
+        governanceRead = read; governanceState = "read";
+        if (conventionCards.get(row.section_id) === card) {
+          node.remove(); conventionCards.delete(row.section_id);
+        }
+        renderConventions();
+      };
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        if (disposed || button.disabled) return;
+        if (card.status === "reload") {
+          button.disabled = true;
+          try { await reload(); }
+          catch { message.textContent = "Could not reload the proposal. Reload before adopting."; button.disabled = false; }
+          return;
+        }
+        if (!reason.value.trim()) return;
+        card.request ||= { idempotency_key: uuidv4(), section_id: row.section_id,
+          base_version: row.base_version, reason: reason.value.trim() };
+        button.disabled = true; reason.disabled = true;
+        byId("conventionStatus").textContent = "";
+        try {
+          const result = await client.adoptRule(card.request);
+          if (result?.ok !== true || !result.rule_id || result.retired_section_id !== row.section_id)
+            throw new Error("Adoption receipt unavailable");
+          if (disposed) return;
+          adoptedConventions.add(row.section_id);
+          node.remove(); conventionCards.delete(row.section_id);
+          renderConventions();
+          byId("conventionStatus").textContent = "Adopted";
+        } catch (error) {
+          if (disposed) return;
+          const outcome = classifyCommandOutcome({ error, retry: card.status === "unknown" });
+          if (outcome.status === "conflict") {
+            card.request = null; card.status = "reload";
+            button.textContent = "Reload proposal";
+            byId("conventionStatus").textContent = "Proposal changed. Read the current text and look again before adopting.";
+            try { await reload(); }
+            catch { message.textContent = "Could not reload the proposal. Reload before adopting."; button.disabled = false; }
+          } else if (outcome.status === "refused") {
+            card.request = null; card.status = "ready";
+            message.textContent = commandMessage(outcome);
+            button.textContent = "Adopt";
+            button.disabled = false; reason.disabled = false;
+          } else {
+            card.status = "unknown";
+            message.textContent = "Outcome unknown. Keep this tab open and check outcome.";
+            button.textContent = "Check outcome";
+            button.disabled = false;
+          }
+        }
+      });
+      container.append(node);
+      conventionCards.set(row.section_id, card);
+    }
+    if (!rows.length && !conventionCards.size) container.textContent = governanceState === "read" ? "No pending convention proposals." : "";
+  }
+
   function start() {
     renderStages(currentView);
     if (!orchestratorView && boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
@@ -1336,6 +1435,7 @@ export function mountBoard(deps = {}) {
     byId("board-stages").removeEventListener("focusin", rememberWorkCard);
     cardNodes.clear(); completedNodes.clear(); blockedNodes.clear(); questionCards.clear();
     fingerprints.clear(); formState.clear(); pendingRequests.clear(); badgeTimes.clear();
+    byId("conventionProposals")?.replaceChildren(); conventionCards.clear(); adoptedConventions.clear();
   }
   win.addEventListener?.('doctorcre-session-invalidated', dispose);
 
@@ -1345,10 +1445,14 @@ export function mountBoard(deps = {}) {
       const tasks = governanceTasks(read);
       governanceState = tasks ? "read" : "unknown";
       if (tasks) governanceRead = read;
-      else if (observation.reason === "Sign in required") governanceRead = null;
+      else if (observation.reason === "Sign in required") {
+        governanceRead = null;
+        byId("conventionProposals")?.replaceChildren(); conventionCards.clear();
+      }
       const status = byId("governanceState");
       status.hidden = governanceState === "read";
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
+      renderConventions();
       renderStages(currentView);
     },
     dispose,

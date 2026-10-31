@@ -38,3 +38,12 @@ Hierarchy, work-queue, Orchestrator and embedded boards keep their existing
 navigation. Status membership uses the current producer-derived stage and
 health. These tests do not prove production delivery, authoritative work
 versions or staging access. Snapshot generation is not a product version.
+
+Control Room also has an Approvals tab at `/control-room?tab=approvals`.
+Run `node --test test/convention-adoption.test.mjs` and
+`npx playwright test --project=fixtures tests/fixtures/convention-adoption.spec.mjs`
+to check two full-text proposals, required Why, session-bound adoption,
+conflict rereads and retained Check outcome requests. Browser coverage includes
+1440px and 390px in both themes. The pinned producer omits proposal body and
+writer metadata; adoption stays disabled without the full text. Fixture writes
+do not prove production adoption or signed-in staging.
