@@ -521,11 +521,11 @@
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "js/private-session.js:event-refresh:c2da8ff4de95b99f5ee3df51cecddba2b1b5abe2b65beddf27aa0b25845cb76d": {
+  "js/private-session.js:event-refresh:e54ff44312c1a8506c2c6b2fc2c003ea4c68dad25c9412bbf79bf9f7ced9baa4": {
     "cap": 20,
-    "boundary": "20 automatic dispatches; document transport also caps at 600 HTTP attempts",
+    "boundary": "20 automatic session-verification attempts; document transport also caps at 600 HTTP attempts",
     "backoff": "Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes",
-    "idleStop": "Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts"
+    "idleStop": "Hidden or 30-minute idle stops verification; refused restores finish a local paused render with inert cached controls and manual page refresh. Lifecycle events never renew presence or attempts."
   },
   "js/progress-board-costs.js:event-refresh:5870a37f246c4f6a1cf7b7bd6514c34ce898f89f12a912258ffe1d3886256fa4": {
     "cap": 0,

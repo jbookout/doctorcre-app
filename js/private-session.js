@@ -123,17 +123,40 @@ export function privateSession() {
       });
     },
   });
+  const paused = win.document.createElement('aside'), refresh = win.document.createElement('button');
+  const fenced = new Map();
+  paused.dataset.sessionRestorePaused = ''; paused.setAttribute('role', 'status');
+  paused.style.cssText = 'position:fixed;inset:1rem 1rem auto;z-index:2147483647;padding:1rem;border:1px solid;background:Canvas;color:CanvasText';
+  refresh.type = 'button'; refresh.textContent = 'Refresh page'; refresh.onclick = () => win.location.reload();
+  paused.append('Updates paused. Showing last loaded data. ', refresh);
+  const renderRestore = unavailable => {
+    if (unavailable && !browserBoundary.revoked) {
+      Array.from(win.document.body.children).forEach(node => {
+        if (node === paused) return;
+        if (!fenced.has(node)) fenced.set(node, node.inert);
+        node.inert = true;
+      });
+      win.document.body.prepend(paused);
+    } else {
+      fenced.forEach((inert, node) => { node.inert = inert; });
+      fenced.clear(); paused.remove();
+    }
+  };
   const restore = mountVisibilityPoll({ document: win.document, window: win, periodic: false, poll: async () => {
-    try { await browserBoundary.verify(); } finally { win.document.documentElement.style.visibility = ''; }
+    const session = await browserBoundary.verify();
+    renderRestore(false);
+    return session;
   } });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
   win.addEventListener('pageshow', event => {
     if (!event.persisted) return;
     if (browserBoundary.revoked) { win.location.replace('/public-shell/session-ended.html'); return; }
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
-    // A history restore must verify its binding before exposing cached DOM.
+    // Verification unlocks cached controls; a refused read still renders a paused view.
     win.document.documentElement.style.visibility = 'hidden';
-    void restore.poll();
+    void restore.poll().then(session => renderRestore(!session)).finally(() => {
+      win.document.documentElement.style.visibility = '';
+    });
   });
   return browserBoundary;
 }
