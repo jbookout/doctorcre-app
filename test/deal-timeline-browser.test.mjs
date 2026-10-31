@@ -118,7 +118,9 @@ for (const theme of ['light','dark']) test(`phone phase labels are legible along
 for(const width of [1440,390]) for(const theme of ['light','dark']) test(`newest update preview and recorded history at ${width} ${theme}`, async t=>{
  const {page,errors}=await open(t,{width,noteOrder:true,reducedMotion:'reduce'});
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
- assert.equal(await page.getByLabel('Latest recorded update').textContent(),'Synthetic latest update. Landlord accepted the revised terms.');
+ assert.match(await page.locator('.updates-history > summary').textContent(), /3 updates.*Oct 1, 2026.*Synthetic latest update/);
+ assert.equal(await page.locator('.updates-overview').count(), 0);
+ assert.equal(await page.locator('.updates-history').evaluate(e=>e.open), false);
  await mkdir('out/test-artifacts/newest-updates',{recursive:true});
  await page.locator('.deal-updates').scrollIntoViewIfNeeded();
  await page.screenshot({path:`out/test-artifacts/newest-updates/preview-${width}-${theme}.png`});

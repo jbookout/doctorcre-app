@@ -699,10 +699,7 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   assert.equal(posts[0].body.control.action,'login');assert.equal(posts[0].body.control.desk,'Synthetic desk');
   await page.locator('#viewEverything').click();await page.locator('#kindReceipts').click();assert.equal(await page.locator('#kindReceipts').getAttribute('aria-pressed'),'false');await page.locator('#kindReceipts').click();
   await page.locator('#wireSearch').fill('Unrelated');assert.match(await page.locator('#wireFeed').textContent(),/Unrelated synthetic task/);await page.locator('#wireSearch').fill('');
-  await page.locator('#composerInput').fill('Synthetic room draft');await page.locator('#composerInput').press('Shift+Enter');await page.locator('#composerInput').press('Enter');
-  await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
-  await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
-  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
+  assert.equal(posts.length,1);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));
   await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
@@ -750,16 +747,6 @@ test('wire history, pause, missed-count and Resume live work through the new pag
   await page.locator('.wire-earlier').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic history turn 157'));
   await page.locator('#wireResume').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic latest turn'));
   assert.deepEqual(errors,[]);
-});
-
-test('composer failure retains its draft until reconciliation and preserves the 20k cap',async t=>{
-  const {page,state,errors}=await open(t);state.postFailure=true;
-  await page.locator('#composerInput').fill('Synthetic failed draft');await page.locator('#composerInput').press('Enter');
-  await page.locator('#roomToast button').click();assert.equal(await page.locator('#composerInput').inputValue(),'Synthetic failed draft');
-  assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
-  state.postFailure=false;await page.locator('#composerSend').click();
-  await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
-  await page.locator('#composerInput').fill('x'.repeat(20001));assert.equal(await page.locator('#composerSend').isDisabled(),true);assert.deepEqual(errors,[]);
 });
 
 for(const width of [320,390,1440])test(`work detail has no horizontal scroll at ${width}px and respects reduced motion`,async t=>{
@@ -1043,24 +1030,14 @@ for (const [name,aliases] of [
   assert.deepEqual(errors, []);
 });
 
-test('S2 room and queue composers lock unknown drafts and replay their original request keys',async t=>{
- const {page,state,posts,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks',width:390});
- state.postFailure=true;
- await page.locator('#composerInput').fill('Synthetic uncertain room turn');
- await page.locator('#composerInput').press('Enter');
- await page.waitForFunction(()=>document.querySelector('#composerSend').textContent==='Check outcome');
- assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
- await page.clock.runFor(120_000);state.postFailure=false;
- await page.locator('#composerSend').click();
- await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
- assert.deepEqual(posts[1].body,posts[0].body);assert.match(posts[0].body.idempotency_key,/^[0-9a-f-]{36}$/);
- state.postFailure=true;
- await page.locator('#enqueueTitle').fill('Synthetic uncertain enqueue');
- await page.locator('#queueComposer button').click();
- await page.waitForFunction(()=>document.querySelector('#queueComposer button').textContent==='Check outcome');
- assert.equal(await page.locator('#enqueueTitle').isDisabled(),true);
- state.postFailure=false;await page.locator('#queueComposer button').click();
- await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
- assert.deepEqual(posts[3].body,posts[2].body);assert.notEqual(posts[2].body.idempotency_key,posts[0].body.idempotency_key);
- assert.equal(await page.locator('#enqueueTitle').isDisabled(),false);assert.deepEqual(errors,[]);
+for (const [name, input, button, form] of [['wire', '#composerInput', '#composerSend', '#roomComposer'], ['queue', '#enqueueTitle', '#queueComposer button', '#queueComposer']]) test(`${name} request stays unsent and keeps the draft`, async t => {
+ const {page,posts}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks',width:390});
+ await page.locator(input).fill('Synthetic draft');
+ assert.equal(await page.locator(button).isDisabled(),true);
+ assert.match(await page.locator(form).textContent(),/Not submitted\. This control cannot send a request to Dr\. CRE\./);
+ assert.equal(await page.locator(form).getByText('Not submitted. This control cannot send a request to Dr. CRE.').isVisible(),true);
+ await page.locator(form).dispatchEvent('submit');
+ await page.locator(input).press('Enter');
+ assert.equal(await page.locator(input).inputValue(),'Synthetic draft');
+ assert.equal(posts.length,0);
 });

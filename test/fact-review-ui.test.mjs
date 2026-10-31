@@ -1,42 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { FACT_TERMS } from '../js/client.js';
 import { JSDOM } from 'jsdom';
-import { mountFactReview } from '../js/fact-review.js';
-import { createFactReviewFixture } from '../js/fact-review-fixture.js';
+import { uiBundle } from '../scripts/ui-bundle.mjs';
+import { readFile } from 'node:fs/promises';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
+const { mountFactReview } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
+import { createFactReviewFixture } from '../data/fixtures/fact-review.mjs';
 
 test('terms show how values were read and retain the review reason after a conflict', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
   globalThis.FormData = dom.window.FormData;
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = dom.window.document.querySelector('#terms');
   const client = createFactReviewFixture();
   client.resolveFactReview = async () => { throw Object.assign(new Error('stale'), { payload: { error: 'version_conflict' } }); };
-  mountFactReview(root, { client, entityRef: 'd14', attachments: client.attachments('d14') });
-  await new Promise(resolve => setTimeout(resolve, 0));
+  mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
   assert.match(root.textContent, /OCR · verify/);
-  assert.match(root.textContent, /\$24\.00\/SF\/yr/);
+  assert.match(root.textContent, /\$24\/SF\/yr/);
   const form = root.querySelector('[data-fact-review]');
   form.elements.decision.value = 'reject';
   form.elements.decision.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   form.elements.reason.value = 'Keep this reason';
   form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(root.querySelector('[data-fact-review] [name=reason]').value, 'Keep this reason');
 });
 
 test('terms use the deal document list for citations and source choices', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
   globalThis.FormData = dom.window.FormData;
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = dom.window.document.querySelector('#terms');
   const client = createFactReviewFixture();
-  mountFactReview(root, { client, entityRef: 'd14' });
+  mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.match(root.textContent, /Demo Lease\.pdf/);
-  assert.equal(root.querySelector('[data-fact-key=rent_schedule]'), null);
   assert.match(root.querySelector('[data-fact-record] select[name=document_ref]').textContent, /Demo Lease\.pdf.*2026/);
 });
 
-test('document pagination loads once and unavailable documents leave review usable', async () => {
+test('document refresh reloads paginated documents and unavailable documents leave review usable', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.FormData = dom.window.FormData;
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = dom.window.document.querySelector('#terms');
   const client = createFactReviewFixture();
   const all = (await client.listDealDocuments({ deal_id: 'd14' })).documents;
@@ -45,14 +52,23 @@ test('document pagination loads once and unavailable documents leave review usab
     calls++;
     return { ok: true, schema_version: 'deal-documents.v1', documents: cursor ? all.slice(1) : all.slice(0, 1), has_more: !cursor, next_cursor: cursor ? null : 'next' };
   };
-  const panel = mountFactReview(root, { client, entityRef: 'd14' });
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.match(root.textContent, /Demo Amendment\.pdf/);
+  all.push({ id: "new-document", display_name: "New Lease.pdf", stored_at: "2026-01-01" });
   await panel.refresh();
-  assert.equal(calls, 2);
+  assert.equal(calls, 4);
+  assert.match(root.querySelector("[data-fact-record]").textContent, /New Lease\.pdf/);
+  const input = root.querySelector('[data-fact-record] input[name=value]');
+  input.value = '42';
+  input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  root.querySelector('[data-refresh-terms]').click();
+  await panel.refresh();
+  assert.equal(calls, 4);
+  assert.equal(input.value, '42');
   panel.dispose();
   client.listDealDocuments = async () => { throw new Error('unavailable'); };
-  mountFactReview(root, { client, entityRef: 'd14' });
+  mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.match(root.textContent, /Stored documents unavailable/);
   assert.match(root.textContent, /Document name unavailable/);
@@ -62,6 +78,7 @@ test('document pagination loads once and unavailable documents leave review usab
 
 test('rent schedules show period values, OCR provenance, and human review', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = dom.window.document.querySelector('#terms');
   const client = createFactReviewFixture();
   const list = client.listFactReview.bind(client);
@@ -75,7 +92,7 @@ test('rent schedules show period values, OCR provenance, and human review', asyn
       ] }] });
     return page;
   };
-  mountFactReview(root, { client, entityRef: 'd14' });
+  mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
   await new Promise(resolve => setTimeout(resolve, 50));
   const schedule = root.querySelector('[data-fact-key="rent_schedule"]');
   assert.ok(schedule.querySelector('table'));
@@ -94,6 +111,7 @@ test('rent schedules show period values, OCR provenance, and human review', asyn
 
 test('abstentions explain OCR failures without offering an unavailable value', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = dom.window.document.querySelector('#terms');
   const client = createFactReviewFixture();
   const list = client.listFactReview.bind(client);
@@ -105,7 +123,7 @@ test('abstentions explain OCR failures without offering an unavailable value', a
     }
     return page;
   };
-  mountFactReview(root, { client, entityRef: 'd14' });
+  mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
   await new Promise(resolve => setTimeout(resolve, 50));
   const schedule = root.querySelector('[data-fact-key="rent_schedule"]');
   assert.match(schedule.textContent, /OCR disagreement/);

@@ -1,4 +1,3 @@
-import { mountFactReview } from './fact-review.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
@@ -15,7 +14,7 @@ import { performCommand, pendingCommand } from './command-feedback.mjs';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
-import { ACTOR_LABEL } from './client.js';
+import { ACTOR_LABEL, FACT_TERMS } from './client.js';
 import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
@@ -1064,7 +1063,7 @@ function workspaceHtml(detail) {
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <section data-detail-read="next-actions" aria-label="Next actions"><h2>Next actions</h2><ul>${(detail.next_actions || []).filter(action => action.status === 'open').map(action => `<li>${esc(noteText(action.description))}${calendarDay(action.due_on) ? ` · <time datetime="${esc(action.due_on)}">${esc(dateCaption(calendarDay(action.due_on)))}</time>` : ''}</li>`).join('') || '<li>No next actions recorded.</li>'}</ul></section>
-    <section id="panelTerms" aria-label="Terms"></section>
+    <section id="panelTerms" aria-label="Terms"><h2>Terms</h2><button type="button" class="btn" data-open-terms>Show sourced terms</button></section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
     <form id="detailUpdateForm" class="deal-update-form" novalidate><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><label for="dealUpdateStep">Next step</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${todayIso()}"${d.next_date && d.next_date < todayIso() ? ' aria-describedby="detailUpdateDateHint"' : ''}>${d.next_date && d.next_date < todayIso() ? '<small id="detailUpdateDateHint">Current next date is overdue.</small>' : ''}<button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
@@ -1197,7 +1196,31 @@ function paintPanel(detail) {
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
-  factReviewPanel = mountFactReview($('panelTerms'), { client: state.client, entityRef: detail.deal.id });
+  const terms = $('panelTerms');
+  let disposed = false, loading = false, mounted;
+  const observer = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) void loadTerms();
+  });
+  async function loadTerms() {
+    if (disposed || loading) return;
+    loading = true;
+    observer.disconnect();
+    terms.textContent = 'Loading terms…';
+    try {
+      const { mountFactReview } = await import('./ui.generated.js');
+      if (disposed) return;
+      terms.replaceChildren();
+      mounted = mountFactReview(terms, { client: state.client, entityRef: detail.deal.id, terms: FACT_TERMS });
+    } catch {
+      if (!disposed) terms.textContent = 'Terms unavailable. Reopen this deal to try again.';
+    }
+  }
+  terms.querySelector('[data-open-terms]').addEventListener('click', loadTerms);
+  observer.observe(terms);
+  factReviewPanel = {
+    refresh() { return mounted?.refresh(); },
+    dispose() { disposed = true; observer.disconnect(); mounted?.dispose(); },
+  };
   disposeEvidence?.(); disposeEvidence = null;
   disposePanelEmailFollowups();
   syncUpdateForm();

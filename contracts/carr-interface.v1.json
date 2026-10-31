@@ -171,7 +171,11 @@
     "/api/v1/fact-review/documents",
     "/api/v1/fact-review/list",
     "/api/v1/fact-review/record",
-    "/api/v1/fact-review/resolve"
+    "/api/v1/fact-review/resolve",
+    "/api/v1/call-sessions",
+    "/api/v1/call-sessions/{id}",
+    "/api/v1/call-sessions/{id}/transfer",
+    "/api/v1/call-sessions/{id}/report"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -987,8 +991,8 @@
       "write": false,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+        "source_commit": "9ce8f9fbb7bd8be5e98a724fd09815a8115bec2d",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2716"
       },
       "response": {
         "schema_version": "post-call-followups.v1",
@@ -999,6 +1003,7 @@
           "kind",
           "deal_id",
           "deal_name",
+          "contact_name",
           "payload",
           "evidence_quote",
           "created_at"
@@ -1016,6 +1021,7 @@
           "subject",
           "body_sha256"
         ],
+        "contact_name": "Nullable display name of the resolved contact or email recipient.",
         "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
@@ -1566,6 +1572,16 @@
       "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
       "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
       "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
+    },
+    "non_deal_next_steps": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "ee92d2767bdbac621cab3416e22026d5d5c34357",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2724"
+      },
+      "read": "Home calls list-email-proposals with include_non_deal=true. Non-deal next_step rows have deal=null and subject_type, subject_id and subject_name matching their preview. Deal pages keep their existing deal filter.",
+      "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews remain dismissible.",
+      "deployment_order": "Merge and verify the pinned server producer before merging this consumer. Do not auto-merge this app change."
     }
   },
   "email_thread_filings": {
@@ -1741,6 +1757,101 @@
     "canonical_fact": "normalized_value and canonical_unit with expense_basis, observation_ids and version; null before promotion.",
     "citations": "Observation source retains document_ref, page_start, page_end, cited_text_sha256, cited_text_expires_at. Expired cited_text is null.",
     "conflict": "version_conflict refuses the write. Refresh canonical_version and review_version and ask the partner to review again.",
-    "documents": { "verb": "list-deal-documents", "schema_version": "deal-documents.v1", "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762", "source_commit": "35dd8142e831a582b532da401e10f34c78df4040" }
+    "documents": {
+      "verb": "list-deal-documents",
+      "schema_version": "deal-documents.v1",
+      "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762",
+      "source_commit": "35dd8142e831a582b532da401e10f34c78df4040"
+    }
+  },
+  "phone_call_sessions": {
+    "schema_version": 1,
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "68d99f8a9329d921db0fa18e1ac34f26192e4f70",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2732",
+      "source": "mcp-server/src/phone-call-sessions.js",
+      "follow_up": {
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2753",
+        "source_commit": "bd532aae9f85bd52778718c6cc595f37a2cc6d13"
+      }
+    },
+    "admission": {
+      "method": "POST",
+      "path": "/api/v1/call-sessions",
+      "fields": [
+        "sha256",
+        "byte_count",
+        "duration_seconds",
+        "mime_type",
+        "started_at",
+        "consent_announced_at"
+      ],
+      "deduplication": "Authenticated owner and audio SHA-256. Retain the original metadata across retries."
+    },
+    "transfer": {
+      "method": "PUT",
+      "path": "/api/v1/call-sessions/{id}/transfer",
+      "body": "Audio bytes with admitted MIME and exact Content-Length. The browser supplies Content-Length from the Blob.",
+      "result": "A successful upload can return queued. Retain local audio until a matching status confirms transferred. Retry only after checking status; upload_state_unavailable leaves the outcome unknown."
+    },
+    "status": {
+      "method": "GET",
+      "path": "/api/v1/call-sessions/{id}",
+      "states": [
+        "pending",
+        "queued",
+        "expired",
+        "transferred",
+        "ready_review",
+        "filed"
+      ],
+      "fields": [
+        "schema_version",
+        "session_id",
+        "state",
+        "filed",
+        "transferred"
+      ]
+    },
+    "report": {
+      "method": "GET",
+      "path": "/api/v1/call-sessions/{id}/report",
+      "fields": [
+        "schema_version",
+        "session_id",
+        "state",
+        "filed",
+        "transferred",
+        "report",
+        "actions",
+        "deal_updates"
+      ],
+      "narrative": [
+        "summary",
+        "decisions",
+        "open_questions"
+      ],
+      "actions": [
+        "id",
+        "kind",
+        "deal_id",
+        "assignee",
+        "action",
+        "due_on",
+        "status",
+        "resulting_ref"
+      ],
+      "deal_updates": [
+        "id",
+        "kind",
+        "payload",
+        "status",
+        "resulting_ref"
+      ]
+    },
+    "authentication": "Same-origin partner cookie and x-carr-csrf for POST/PUT, using private-session.js. Server scopes reads to the authenticated owner. A review link provides the session ID on another authorized device; there is no session-list endpoint.",
+    "review": "Pending single-track candidates require explicit partner confirmation through existing resolve-post-call-candidate or resolve-candidate. Applied automatic changes and Undo use read-call-outcomes and undo-call-change. Those operations expose only unreviewed automatic changes and refuse human-confirmed changes. No transcript, Outlook draft creation, or automatic phone candidate application.",
+    "deployment_order": "Depends on DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge."
   }
 }
