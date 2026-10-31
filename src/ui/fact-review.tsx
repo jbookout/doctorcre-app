@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
 type Document = { id: string; display_name: string; stored_at: string };
-type Value = { value: string; unit: string; normalized_value?: string; canonical_unit?: string; expense_basis?: string | null; observation_ids?: string[] };
+type Period = { start_month: number; end_month: number; rate: string; unit: string; expense_basis: string; escalation_percent: string | null };
+type SourcedPeriod = { [K in keyof Period]: { value: Period[K] } };
+type Value = { value: string | SourcedPeriod[]; normalized_schedule?: Period[]; unit: string; normalized_value?: string; canonical_unit?: string; expense_basis?: string | null; observation_ids?: string[] };
 type Observation = Value & { id: string; method: string; confidence_tier: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null; cited_text_expires_at: string } };
-type Item = { entity_ref: string; fact_key: string; pending: boolean; reasons: string[]; canonical_fact: Value | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; review_version: string };
+type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: string; reasons: string[]; canonical_fact: Value | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; review_version: string };
 type HumanFact = { fact_key: string; value: string; unit: string; expense_basis?: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string } };
 type Args = { idempotency_key: string; entity_ref: string } & ({ observation: HumanFact } | { fact_key: string; base_version: number; review_version: string; decision: string; reason: string; observation_id?: string; correction?: HumanFact });
 type Receipt = { ok: boolean; schema_version: string };
@@ -14,6 +16,7 @@ type Options = { client: Client; entityRef: string; terms: Record<string, { labe
 type Controls = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
 const BASES: Record<string, string> = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
 function valueText(value: Value) {
+  if (value.unit === 'schedule' || value.canonical_unit === 'schedule') return 'Rent schedule';
   const amount = value.canonical_unit ? value.normalized_value : value.value;
   const unit = value.canonical_unit || value.unit;
   const units: Record<string, string> = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
@@ -22,12 +25,13 @@ function valueText(value: Value) {
 }
 function readLabel(o: Observation) {
   const method = ({ text_layer: 'Text', ocr: 'OCR', human: 'Typed by a partner' } as Record<string, string>)[o.method] || 'Read method unavailable';
+  if (o.method === 'ocr') return 'OCR · verify';
   const confidence = ({ auto_accept: 'high', verify_band: 'verify', human_review: 'review' } as Record<string, string>)[o.confidence_tier];
   return confidence ? `${method} · ${confidence}` : method;
 }
 function reviewLabel(item: Item) {
   if (!item.pending) return 'Reviewed';
-  return item.reasons.map(reason => ({ conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' } as Record<string, string>)[reason] || 'Review required').join(' · ') || 'Review required';
+  return `${item.priority === 'high' ? 'High priority · ' : ''}${[...new Set(item.reasons.map(reason => ({ ocr_disagreement: 'OCR disagreement', unsupported_ocr: 'OCR could not read this', no_text_layer: 'No text layer', ambiguous: 'Ambiguous value', absent: 'Value not found', conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' } as Record<string, string>)[reason] || 'Review required'))].join(' · ') || 'Review required'}`;
 }
 function documentName(o: Observation, documents: Document[]) { return documents.find(doc => doc.id === o.source.document_ref)?.display_name || 'Document name unavailable'; }
 function Entry({ documents, factKey, prefix, terms }: { documents: Document[]; factKey?: string; prefix: string; terms: Options['terms'] }) {
@@ -45,15 +49,33 @@ function Entry({ documents, factKey, prefix, terms }: { documents: Document[]; f
     <small id={`${prefix}-source-hint`} className="fact-wide">Transcribe the clause from the stored document. This entry does not verify the document text.</small>
   </div>;
 }
+function scheduleRate(p: Period) {
+  const units: Record<string, string> = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
+  const [whole = '', fraction = ''] = String(p.rate).split('.');
+  return `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction.padEnd(2, '0')}${units[p.unit] ?? ` ${p.unit}`}`;
+}
+function scheduleLabel(o: Observation) { return `Schedule ${o.id}`; }
+function scheduleSummary(o: Observation) {
+  return Array.isArray(o.value) ? sourcedPeriods(o.value).map(p => `${p.start_month}–${p.end_month} months: ${scheduleRate(p)}`).join('; ') : '';
+}
+function Schedule({ periods }: { periods: Period[] }) {
+  return <table className="fact-schedule"><thead><tr><th>Period</th><th>Rate</th><th>Escalation</th><th>Expense basis</th></tr></thead><tbody>{periods.map((p, i) => {
+    return <tr key={i}><td data-label="Period">{p.start_month}–{p.end_month} months</td><td data-label="Rate">{scheduleRate(p)}</td><td data-label="Escalation">{p.escalation_percent == null ? '—' : `${p.escalation_percent}%`}</td><td data-label="Expense basis">{BASES[p.expense_basis] ?? p.expense_basis}</td></tr>;
+  })}</tbody></table>;
+}
+function sourcedPeriods(periods: SourcedPeriod[]): Period[] {
+  return periods.map(p => ({ start_month: p.start_month.value, end_month: p.end_month.value, rate: p.rate.value, unit: p.unit.value, expense_basis: p.expense_basis.value, escalation_percent: p.escalation_percent.value }));
+}
 function Review({ item, documents, index, terms }: { item: Item; documents: Document[]; index: number; terms: Options['terms'] }) {
+  const schedule = item.fact_key === 'rent_schedule';
   return <article className="fact-term" data-fact-key={item.fact_key}><header><h3>{terms[item.fact_key]?.label || item.fact_key.replaceAll('_', ' ')}</h3><span className="fact-state">{reviewLabel(item)}</span></header>
-    <div className="fact-canonical"><small>Canonical value</small><p className={item.canonical_fact ? undefined : 'fact-empty'}>{item.canonical_fact ? valueText(item.canonical_fact) : 'No canonical value recorded'}</p></div>
-    <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation"><strong>{valueText(o)}</strong>{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
+    <div className="fact-canonical"><small>Canonical value</small>{schedule && item.canonical_fact?.normalized_schedule ? <Schedule periods={item.canonical_fact.normalized_schedule} /> : <p className={item.canonical_fact ? undefined : 'fact-empty'}>{item.canonical_fact ? valueText(item.canonical_fact) : 'No canonical value recorded'}</p>}</div>
+    <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <><strong>{scheduleLabel(o)}</strong><Schedule periods={sourcedPeriods(o.value)} /></> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
     <button type="button" className="btn" data-review-term hidden={item.pending}>Review term</button>
     <form data-fact-review={index} hidden={!item.pending}>
-      <label>Decision<select aria-label="Decision" name="decision"><option value="approve">Approve a sourced value</option><option value="correct" disabled={!documents.length}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
-      <label data-choose-value>Choose a value<select aria-label="Choose a value" name="observation_id" required><option value="">Choose a sourced value</option>{item.observations.map(o => <option key={o.id} value={o.id}>{valueText(o)} · {documentName(o, documents)}</option>)}</select></label>
-      <fieldset data-correction hidden disabled><legend>Corrected term</legend><Entry documents={documents} factKey={item.fact_key} prefix={`correction-${index}`} terms={terms} /></fieldset>
+      <label>Decision<select aria-label="Decision" name="decision" defaultValue={item.observations.length ? "approve" : "reject"}><option value="approve" disabled={!item.observations.length}>Approve a sourced value</option><option value="correct" disabled={!documents.length || schedule}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
+      <label data-choose-value hidden={!item.observations.length}>Choose a value<select aria-label="Choose a value" name="observation_id" required disabled={!item.observations.length}><option value="">Choose a sourced value</option>{item.observations.map(o => <option key={o.id} value={o.id}>{schedule ? `${scheduleLabel(o)} · ${scheduleSummary(o)}` : valueText(o)} · {documentName(o, documents)}{schedule ? ` · ${o.method === 'ocr' ? 'OCR' : o.method === 'text_layer' ? 'Text' : o.method} · Page ${o.source.page_start}${o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}` : ''}</option>)}</select></label>
+      <fieldset data-correction hidden disabled><legend>Corrected term</legend>{!schedule && <Entry documents={documents} factKey={item.fact_key} prefix={`correction-${index}`} terms={terms} />}</fieldset>
       <label>Reason<textarea name="reason" rows={2} maxLength={2000} required /></label><button type="submit" className="btn btn-primary">Save review</button><p role="status" data-write-status />
     </form>
     {!!item.review_history.length && <details className="fact-history"><summary>Review history</summary><ul>{item.review_history.map((row, i) => <li key={i}><strong>{({ approve: 'Approved', correct: 'Corrected', reject: 'Rejected' } as Record<string, string>)[row.decision] || row.decision}</strong><p>{row.reason}</p></li>)}</ul></details>}
@@ -75,14 +97,15 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   }
   function setDocuments(result: Document[] | null) {
     const next = result || [];
+    const signature = JSON.stringify(result);
     documentsAvailable = result !== null;
-    if (documentSignature === JSON.stringify(next)) return;
+    if (documentSignature === signature) return;
     documents = next;
-    documentSignature = JSON.stringify(documents);
+    documentSignature = signature;
     render();
   }
   setDocuments(null);
-  const documentLoad = (async () => {
+  async function documentLoad() {
     try {
       const loaded: Document[] = []; let cursor: string | undefined;
       for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
@@ -97,7 +120,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       }
     } catch { /* The server may not yet provide document metadata. */ }
     return null;
-  })();
+  }
   const status = root.querySelector<HTMLElement>('[data-terms-status]')!;
   const list = root.querySelector<HTMLElement>('[data-terms-list]')!;
   async function refresh(message = '') {
@@ -106,12 +129,12 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     status.textContent = 'Loading terms…';
     try {
       const loaded: Item[] = []; let cursor: string | null | undefined;
-      const listedDocuments = await documentLoad;
-      if (disposed || current !== generation) return;
+      const listedDocuments = await documentLoad();
+      if (disposed || current !== generation || writing || pending.size || dirty) return;
       setDocuments(listedDocuments);
       do {
         const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
-        if (disposed || current !== generation) return;
+        if (disposed || current !== generation || writing || pending.size || dirty) return;
         if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef)) throw new Error('Terms unavailable');
         loaded.push(...page.items);
         if (page.has_more && (!page.next_cursor || page.next_cursor === cursor)) throw new Error('Terms unavailable');
@@ -123,7 +146,6 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       status.textContent = message;
     } catch {
       if (!disposed && current === generation) {
-        listContent = null; render();
         status.textContent = 'Terms unavailable. Refresh terms to try again.';
       }
     }
@@ -224,7 +246,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   }
   function click(event: Event) {
     const target = event.target as HTMLElement;
-    if (target.closest('[data-refresh-terms]')) { dirty = false; void refresh(); }
+    if (target.closest('[data-refresh-terms]')) void refresh();
     const button = target.closest<HTMLElement>('[data-review-term]');
     if (button) { button.hidden = true; (button.nextElementSibling as HTMLElement).hidden = false; }
   }
