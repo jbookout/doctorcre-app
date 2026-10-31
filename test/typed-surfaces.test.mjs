@@ -24,8 +24,10 @@ test('added surfaces require TSX while existing files and non-surfaces remain ed
   write('js/existing.js', 'fixed');
   write('scripts/helper.js');
   write('src/ui/NewSurface.tsx');
+  write('tours/vendor/library.js');
+  write('js/lib/vendor/nested.js');
   git('add', '.'); git('commit', '-qm', 'allowed');
-  assert.equal(run(base).status, 0, 'existing JS edits, helper JS and TSX pass');
+  assert.equal(run(base).status, 0, 'existing JS edits, helper JS, vendored JS and TSX pass');
   write('js/new-page.js');
   write('tours/new-component.jsx');
   git('add', '.'); git('commit', '-qm', 'plain JS surfaces');

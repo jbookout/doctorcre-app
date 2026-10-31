@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
 // These directories contain the app's first-party browser surfaces.
-const surfacePath = /^(?:js|src\/ui|tours|reports|public-shell)\/(?!.*(?:^|\/)vendor\/).*\.(?:js|jsx)$/;
+const surfacePath = /^(?:js|src\/ui|tours|reports|public-shell)\/(?!(?:.*\/)?vendor\/).*\.(?:js|jsx)$/;
 try {
   const base = process.argv[2];
   if (!base) throw new Error('A base commit is required');
