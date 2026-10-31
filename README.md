@@ -130,8 +130,11 @@ Every PR runs `npm run performance:check` after the build in the required CI
 `test` job. It measures Home, Local Deals, Vendors, Tours, Relationships, and
 Invoices from `dist/site`, with synthetic records and cold Chromium contexts:
 390×844 mobile viewport, 4× CPU slowdown, 150 ms latency, 1.6 Mbps download.
-Three runs produce median LCP and scripted interaction latency; screen JS is
-the largest unique script-byte total loaded through that interaction. Total
+Home uses five cold loads and fails if median LCP exceeds 4,000 ms. All samples
+and the median are reported. Other screens use three runs for median LCP and
+scripted interaction latency; screen JS is
+the largest unique script-byte total loaded through that interaction. Home JS
+bytes are informational and have no budget. Total
 shipped JS includes every `.js`/`.mjs` in the static artifact; gzip is reported
 as the sum of per-file compressed sizes.
 
@@ -141,7 +144,7 @@ after, and budget. PR authors reduce the failing metric and rerun the check;
 budget increases require visible review in the budget diff. To re-measure the
 baseline, save a hosted `test` job log (it holds one `performance-report <base64url>` line) and run
 `node scripts/performance-budget.mjs --rebaseline contracts/performance-budget.v1.json <file>`;
-it applies the one headroom rule, which a test holds every committed limit to. This is a lab
+it applies the headroom rule to other metrics and preserves the Home load limit. This is a lab
 regression guard: interaction latency runs from the browser pointer timestamp
 to the verified UI change plus two animation frames, and is not field INP.
 The baseline preserves existing slow screens; it does not certify speed.

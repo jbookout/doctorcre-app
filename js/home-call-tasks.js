@@ -17,6 +17,7 @@ export async function readHomeCallFollowups(client, { signal } = {}) {
   for (const row of payload.candidates) {
     if (!record(row) || !text(row.id) || ids.has(row.id) || !['assigned_action', 'email_draft'].includes(row.kind)
       || !text(row.session_id) || !text(row.deal_id) || !text(row.deal_name) || !record(row.payload)
+      || !(row.contact_name == null || text(row.contact_name))
       || row.payload.deal_id !== row.deal_id || !text(row.created_at) || !Number.isFinite(Date.parse(row.created_at))
       || !(row.evidence_quote === null || typeof row.evidence_quote === 'string')) throw malformed();
     ids.add(row.id);
@@ -24,13 +25,13 @@ export async function readHomeCallFollowups(client, { signal } = {}) {
     if (row.kind === 'email_draft') {
       if (!text(p.recipient_party_id) || !text(p.recipient_ref) || !text(p.subject) || !/^[a-f0-9]{64}$/.test(p.body_sha256)) throw malformed();
       tasks.push({ kind: 'email_draft', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id,
-        dealName: row.deal_name, createdAt: row.created_at, subject: p.subject, recipientRef: p.recipient_ref, evidence: row.evidence_quote || '' });
+        dealName: row.deal_name, ...(row.contact_name ? { contactName: row.contact_name } : {}), createdAt: row.created_at, subject: p.subject, recipientRef: p.recipient_ref, evidence: row.evidence_quote || '' });
       continue;
     }
     if (!ownerLabel(p.assignee) || !text(p.action)
       || !(p.due_on === null || typeof p.due_on === 'string' && toDay(p.due_on) === p.due_on)) throw malformed();
     tasks.push({ kind: 'assigned_action', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id, dealName: row.deal_name,
-      createdAt: row.created_at, owner: p.assignee, description: p.action, dueOn: p.due_on, evidence: row.evidence_quote || '' });
+      ...(row.contact_name ? { contactName: row.contact_name } : {}), createdAt: row.created_at, owner: p.assignee, description: p.action, dueOn: p.due_on, evidence: row.evidence_quote || '' });
   }
   return tasks;
 }
@@ -55,11 +56,12 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
     host.hidden = false;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
     const source = task => `<p class="home-call-source">From your call with ${E(task.dealName)}, <time datetime="${E(task.createdAt)}" title="${E(sourceTime(task.createdAt))}">${E(relativeAge(task.createdAt))}</time></p>`;
+    const title = task => `<a ${task.contactName ? 'class="home-call-contact" ' : ''}href="/deals?deal=${encodeURIComponent(task.dealId)}">${task.contactName ? `<span>${E(`${task.contactName} · ${task.dealName}`)}</span>` : E(task.dealName)}</a>`;
     const markup = `<header class="home-panel-head"><h2>Call follow-ups to review</h2></header>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${view.busy && !tasks.length ? '<div class="home-followup-skeleton" role="status">Loading call follow-ups…</div>' : !tasks.length && !unavailable ? '<p class="home-empty">No call follow-ups</p>' : ''}${tasks.map(task => {
       if (task.kind === 'email_draft') {
         const disabled = !admitted() || openingDraft !== null;
       return workCard({ className: 'home-call-task', attributes: `data-call-draft="${E(task.candidateId)}"`,
-        title: `<a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a>`, meta: source(task), status: 'Needs reply',
+        title: title(task), meta: source(task), status: 'Needs reply',
         body: `<p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${task.evidence ? `<details><summary>What was said</summary><p>${E(task.evidence)}</p></details>` : ''}`, actions: `<div class="home-call-task-controls"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div>` });
       }
       const decision = decisions.get(task.candidateId);
@@ -67,7 +69,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
       const uncertain = decision?.state === 'uncertain';
       const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No due date';
       return workCard({ className: 'home-call-task', attributes: `data-call-task="${E(task.candidateId)}"`,
-        title: `<a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a>`, meta: source(task), status: uncertain ? 'Unconfirmed' : '',
+        title: title(task), meta: source(task), status: uncertain ? 'Unconfirmed' : '',
         body: `<p>${E(task.description)}</p>${task.evidence ? `<details><summary>What was said</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}`, actions: `<div class="home-call-task-controls"><span>${task.dueOn ? `Due <time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div>` });
     }).join('')}`;
     if (markup !== painted) { host.innerHTML = markup; painted = markup; }

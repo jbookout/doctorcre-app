@@ -30,11 +30,11 @@ const task = (id, owner = 'joe', due_on = '2026-10-02') => ({
   evidence_quote: 'Joe will call the demo lender.', created_at: '2026-10-01T14:00:00Z',
 });
 
-async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null, outcomes = [], holdCommands = false } = {}) {
+async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null, outcomes = [], holdCommands = false, theme = 'dark' } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
-  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
   assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `call-tasks-${width}`, viewer: 'joe', reset: true } })).status(), 200);
   const pending = structuredClone(candidates), actions = [], writes = [], reads = [], errors = [], gate = { hold: null };
   page.on('pageerror', error => errors.push(error.message));
@@ -270,4 +270,19 @@ test('Home outcome handoff never substitutes the latest call for an unavailable 
   assert.deepEqual(companionRequests.filter(row => row.path === '/api/post-call').map(row => row.session), ['demo-missing-call']);
   assert.equal(await page.locator('.vendor-draft').count(), 0);
   assert.deepEqual(writes, []);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`call contact and deal fit at ${width}px in ${theme}`, async t => {
+  const named = { ...task('named'), contact_name: 'Pat Smith' };
+  const unnamed = { ...task('unnamed'), contact_name: null };
+  const { page } = await open(t, { width, theme, candidates: [named, unnamed] });
+  const first = page.locator('[data-call-task="named"]');
+  const second = page.locator('[data-call-task="unnamed"]');
+  await first.waitFor();
+  await mkdir(join(root, 'out/test-artifacts/call-contact'), { recursive: true });
+  await page.locator('#homeCallTasks').screenshot({ path: join(root, `out/test-artifacts/call-contact/${width}-${theme}-${process.env.CONTACT_CAPTURE || 'after'}.png`) });
+  assert.equal(await first.locator('.work-card-title').innerText(), 'Pat Smith · Demo coastal purchase');
+  assert.equal(await second.locator('.work-card-title').innerText(), 'Demo coastal purchase');
+  assert.equal(await first.locator('.work-card-title a').getAttribute('href'), '/deals?deal=qa-deal-1');
+  assert.equal((await first.boundingBox()).height, (await second.boundingBox()).height);
 });
