@@ -1,3 +1,4 @@
+import { JSDOM } from 'jsdom';
 import { parse } from '@babel/parser';
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
@@ -64,7 +65,7 @@ export async function scanLoops(root) {
         const source = await readFile(path, 'utf8');
         const name = relative(root, path);
         if (entry.name.endsWith('.html')) {
-          for (const match of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) result.push(...loopSites(match[1], name));
+          for (const script of JSDOM.fragment(source).querySelectorAll('script')) result.push(...loopSites(script.textContent, name));
         } else result.push(...loopSites(source, name));
       }
     }
@@ -72,7 +73,7 @@ export async function scanLoops(root) {
   for (const dir of ['js', 'src', 'reports', 'tours', 'public-shell']) await walk(join(root, dir));
   for (const entry of await readdir(root)) if (entry.endsWith('.html')) {
     const source = await readFile(join(root, entry), 'utf8');
-    for (const match of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) result.push(...loopSites(match[1], entry));
+    for (const script of JSDOM.fragment(source).querySelectorAll('script')) result.push(...loopSites(script.textContent, entry));
   }
   return result;
 }

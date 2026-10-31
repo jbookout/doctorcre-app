@@ -147,8 +147,18 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     await expect(email.locator('article')).toHaveCount(3);
   }
   await call.locator('summary').click();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
   await page.clock.fastForward(60 * 60 * 1000);
   await expect(call.locator('details')).toHaveAttribute('open', '');
+  await expect(call.locator('.home-call-source')).toContainText('2h ago');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(60_000);
   await expect(call.locator('.home-call-source')).toContainText('3h ago');
   await expect(email.locator('.email-source').first()).toContainText('0 days waiting');
 });

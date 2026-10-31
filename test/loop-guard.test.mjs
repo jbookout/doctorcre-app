@@ -43,9 +43,10 @@ test('changing an approved loop invalidates its inventory and all boundary field
   assert.equal(auditLoops(loopSites('const cap = Infinity; setInterval(read, 1000)', 'scratch.js'), approved).length, 2, 'changing a surrounding cap also requires review');
 });
 
-test('guard scans executable JavaScript and TypeScript extension variants', async t => {
+test('guard scans executable JS/TS variants and HTML script end tags with whitespace', async t => {
   const root = temporaryDirectory('client-loop-extensions-', t);
   await Promise.all(['js', 'src', 'reports', 'tours', 'public-shell'].map(dir => mkdir(join(root, dir))));
   for (const extension of ['jsx', 'mts', 'cts']) await writeFile(join(root, 'js', `unbounded.${extension}`), 'setInterval(read, 1);');
-  assert.equal(auditLoops(await scanLoops(root), {}).length, 3);
+  await writeFile(join(root, 'inline.html'), '<script>setInterval(read, 1);</script >');
+  assert.equal(auditLoops(await scanLoops(root), {}).length, 4);
 });
