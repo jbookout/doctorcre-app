@@ -743,3 +743,12 @@ test('completed hierarchy jobs restore a visible originating control on dialog c
  assert.equal(await job.isVisible(),true);
  assert.equal(await job.evaluate(n=>n===document.activeElement),true);
 });
+
+test('Model Room composer keeps its draft without submitting',async t=>{
+ const {page,calls}=await open(t,{path:'/control-room?tab=model-room'});
+ const input=page.locator('#modelRoomComposerText'); await input.fill('Synthetic draft');
+ assert.equal(await page.locator('#modelRoomComposerSend').isDisabled(),true);
+ assert.equal(await page.locator('#modelRoomComposerResult').textContent(),'Not submitted. This control cannot send a request to Dr. CRE.');
+ await page.locator('#modelRoomComposerForm').dispatchEvent('submit');
+ assert.equal(await input.inputValue(),'Synthetic draft'); assert.equal(calls.includes('add-room-turn'),false);
+});
