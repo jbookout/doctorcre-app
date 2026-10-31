@@ -31,12 +31,12 @@ export const routeEntries = [
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.23.0",
+  version: "1.24.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
   "/control-room/automations": "/control-room?tab=automations",
   "/automations.html": "/control-room?tab=automations",
-  "/progress-board": "/control-room/progress",
+  "/progress-board": "/control-room/progress/board/carr-v5",
   "/workspace": "/",
   "/queue.html": "/control-room/progress/work?view=tasks",
   "/control-room/agents/queue": "/control-room/progress/work?view=tasks",
@@ -186,7 +186,7 @@ export const sectionForRoute = {
   "/control-room/agents/queue": "/control-room/progress/work",
   "/agent-room": "/control-room/progress/work",
   "/room.html": "/control-room/progress/work",
-  "/progress-board": "/control-room/progress",
+  "/progress-board": "/control-room/progress/board/carr-v5",
   "/tours/day.html": "/tours",
   "/share": "/tours",
   "/notifications": "/updates",
