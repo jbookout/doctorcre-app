@@ -15,25 +15,7 @@ test("QA-002 Home takes text colour from the theme tokens, with no per-theme hex
   assert.doesNotMatch(css, /\.home-shell\s*\{[^}]*--(text|muted|quiet|fg)[\w-]*:/, ".home-shell does not redefine text tokens");
 });
 
-test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", async () => {
-  const sheets = [...(await read("workspace.html")).matchAll(/<link rel="stylesheet" href="\/(css\/[^"]+)">/g)].map((match) => match[1]);
-  const css = (await Promise.all(sheets.map(read))).join("\n");
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
-  const page = await browser.newPage();
-  await page.route('**/*', route => route.abort());
-  try {
-    await page.setContent(`<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main class="shell home-shell"><section class="home-panel glass"><div class="home-week"><div class="home-day"><header><span>Mon</span><strong>28</strong></header></div><div class="home-day today"><header><span>Tue</span><strong>29</strong></header></div></div></section></main></body></html>`);
-    const ratios = await page.evaluate(() => {
-      const rgba = (value) => value.match(/[\d.]+/g).map(Number);
-      const over = ([r, g, b, a = 1], [R, G, B]) => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a)];
-      const fill = (element) => element ? over(rgba(getComputedStyle(element).backgroundColor), fill(element.parentElement)) : [255, 255, 255];
-      const luminance = (rgb) => rgb.map((c) => c / 255).map((c) => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
-      const ratio = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
-      return [...document.querySelectorAll(".home-day")].flatMap((day) => ["span", "strong"].map((tag) => ({ text: day.querySelector(tag).textContent, ratio: ratio(rgba(getComputedStyle(day.querySelector(tag)).color), fill(day)) })));
-    });
-    for (const { text, ratio } of ratios) assert.ok(ratio >= 4.5, `${text} contrast ${ratio.toFixed(2)}:1`);
-  } finally { await browser.close(); }
-});
+
 
 
 test("QA-009 thread controls are disabled until a conversation is selected", async () => {

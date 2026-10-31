@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.67.0",
+  "version": "1.68.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -96,6 +96,7 @@
     "read-doc-conversation",
     "read-doc-outcome-cards",
     "read-home-agenda",
+    "read-home-inbox",
     "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
@@ -129,7 +130,9 @@
     "set-notification-preference",
     "set-prospect-engagement-status",
     "set-work-shape-disposition",
+    "settle-home-inbox",
     "share-doc-conversation",
+    "snooze-home-inbox",
     "start-deal-review",
     "submit-email-draft",
     "supersede-work-request",
@@ -138,6 +141,7 @@
     "undo-call-change",
     "undo-email-thread-filing",
     "unfinished-work",
+    "unsettle-home-inbox",
     "update-deal",
     "update-industry-event",
     "update-lead",
@@ -1617,5 +1621,27 @@
       "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
     }
+  },
+  "home_inbox_contract": {
+    "schema_version": "home-inbox.v1",
+    "command_schema_version": "home-inbox-command.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "pull_request": 2801,
+      "source_commit": "6fa49011c03a477d6bed638d6783511b2f33276b"
+    },
+    "read": "read-home-inbox",
+    "commands": [
+      "snooze-home-inbox",
+      "settle-home-inbox",
+      "unsettle-home-inbox"
+    ],
+    "max_items": 1000,
+    "max_notification_rows": 10000,
+    "command_min_items": 1,
+    "command_max_items": 100,
+    "versions": "opaque strings",
+    "retry": "same idempotency key and exact arguments",
+    "merge_dependency": "Server contract must be deployed before this application is merged."
   }
 }

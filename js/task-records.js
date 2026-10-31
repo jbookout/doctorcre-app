@@ -742,6 +742,12 @@ async function boot() {
   renderDrafts();
   if (!client.selfActor) await refreshVerified();
   else await load();
+  if (location.pathname.startsWith('/tasks/')) {
+    let id = ''; try { id = decodeURIComponent(location.pathname.slice('/tasks/'.length)); } catch {}
+    const row = view.rows.find(row => row.loop_id === id || `${row.kind}:${row.number}` === id);
+    if (row) openTask(`${row.kind}:${row.number}`);
+    else { view.message = 'This task is not available on the task board. Return to Home to view its inbox card.'; render(); }
+  }
 }
 
 boot();

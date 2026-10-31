@@ -156,19 +156,6 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
  const recovered=await page.evaluate(async()=>{const v=(await import('/js/atlas.js')).view;return {count:v.payload.nodes.length,selected:v.selected,present:v.payload.nodes.some(n=>n.id===v.selected)};});
  assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
 });
-test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
- const hooks=`const read=c.getHomeAgenda;window.homeReads??=0;c.getHomeAgenda=async args=>{const p=await read.call(c,args);if(!args?.signal)return p;if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
- const {page,errors}=await open(t,{clientHooks:hooks});
- await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
- const expected=await page.locator('#dealCounts').textContent();
- await online(page);await page.waitForFunction(()=>window.homeWaiting);
- await page.clock.fastForward(120_000);await online(page);
- await page.waitForFunction(expected=>window.homeReads>=3 && document.querySelector('#dealCounts')?.textContent===expected,expected);
- await page.evaluate(()=>window.releaseHome());
- await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
- assert.equal(await page.locator('#dealCounts').textContent(),expected);
- assert.equal(await page.locator('#retryHome').count(),0);assert.deepEqual(errors,[]);
-});
 test('PR119 finding 10: retained Act caller reaches a supported work lookup and create flow',async t=>{
  const {page,errors}=await open(t);await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const link=page.locator('.suggestion-card a').filter({hasText:/Open Tasks|Choose work/}).first();

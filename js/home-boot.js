@@ -1,24 +1,32 @@
-// Home's data client, started before the dashboard's module graph finishes
-// loading. workspace.html loads this as an async module, so the client
-// download overlaps the shell instead of queuing behind it, and each mode
-// fetches only its own client: live never downloads the fixture client.
 import { resolveDealroomBoot } from './boot-mode.js';
+import { createMcpRequests } from './mcp-requests.mjs';
+import { privateSession } from './private-session.js';
+const ui = import('./ui.generated.js');
 
-async function createHomeClient(boot) {
+const host = document.getElementById('homeRoot');
+const boot = resolveDealroomBoot(location);
+async function start() {
+  let rpc;
   if (boot.mode === 'live') {
-    const [{ createLiveClient }, { createLeadBoardClient }, { createLeaseRadarClient }] = await Promise.all([
-      import('./live-client.js'), import('./leads-client.js'), import('./lease-radar-client.js')]);
-    const client = createLiveClient({ docContext: false });
-    client.getLeadBoard = createLeadBoardClient({ docContext: false }).getLeadBoard;
-    client.readLeaseRadar = createLeaseRadarClient().readLeaseRadar;
-    return client;
+    await privateSession().verify();
+    const request = createMcpRequests();
+    rpc = async (name, args, signal) => {
+      const result = await request(name, args, { signal, timeoutMs: 10000 });
+      if (result.kind !== 'payload') throw Error('Server confirmation unavailable.');
+      if (result.isError) throw Error('Inbox unavailable. The server refused this request.');
+      return result.payload;
+    };
   }
-  const [{ createFixtureClient }, { leaseRadarFixture }] = await Promise.all([
-    import('./fixture-client.js'), import('./lease-radar-fixture.js')]);
-  const client = await createFixtureClient({ ...boot.options, docContext: false });
-  client.getLeadBoard = async () => ({ leads: [] });
-  client.readLeaseRadar = async () => leaseRadarFixture();
-  return client;
-}
+  const { mountHome, createInboxClient, fixtureInboxRpc } = await ui;
+  if (boot.mode !== 'live') rpc = fixtureInboxRpc();
+  mountHome(host, createInboxClient(rpc));
+  host.setAttribute('data-home-mounted', '');
+  document.dispatchEvent(new Event('doctorcre:home-mounted'));
 
-export const homeClient = typeof location === 'undefined' ? null : createHomeClient(resolveDealroomBoot(location));
+}
+start().catch(() => {
+  host.replaceChildren();
+  const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = 'Inbox unavailable. Sign in or refresh to try again.';
+  const link = document.createElement('a'); link.href = '/auth/login'; link.textContent = 'Sign in';
+  host.append(notice, link);
+});

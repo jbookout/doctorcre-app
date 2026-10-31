@@ -1,5 +1,4 @@
 import { privateSession } from './private-session.js';
-import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
@@ -58,8 +57,16 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     phone.addEventListener("change", arrangeNavigation);
     arrangeControls();
     arrangeNavigation();
-    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
-    disposeDocPresence = () => docPresence?.dispose();
+    const mountDoc = async () => {
+      const { mountDocPresence } = await import('./doc-presence.js');
+      if (!host.isConnected || privateSession()?.revoked) return;
+      const docPresence = mountDocPresence({ document:root, window:root.defaultView });
+      disposeDocPresence = () => docPresence?.dispose();
+      root.dispatchEvent(new root.defaultView.Event('doctorcre:doc-ready'));
+    };
+    const inbox = root.getElementById('homeRoot');
+    if (inbox && !inbox.hasAttribute('data-home-mounted')) root.addEventListener('doctorcre:home-mounted', () => void mountDoc(), { once: true });
+    else void mountDoc();
   }
 }
 
@@ -191,6 +198,17 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
   const sessionStatus = root.createElement('p');
   sessionStatus.setAttribute('role','status'); sessionStatus.hidden = true;
   host.after(sessionStatus);
+  const showFirstWalkthrough = () => {
+    const identity = partnerIdentity(session);
+    if (boot.mode === "live" && ["/", "/home"].includes(pathname) && identity && help && root.getElementById('docOpen') && !preferences.hasSeenWalkthrough(identity.slug)) {
+      void import("./app-walkthrough.js").then(({ openWalkthrough }) => {
+        if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
+        openWalkthrough(root);
+        preferences.rememberWalkthrough(identity.slug);
+      }).catch(() => {});
+    }
+  };
+  root.addEventListener('doctorcre:doc-ready', showFirstWalkthrough, { once: true });
   const readIdentity = async () => {
     try {
       if (boot.mode === "fixture") session = { actor: { slug: boot.options.selfActor || "joe" } };
@@ -202,13 +220,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       const identity = partnerIdentity(session);
       showPartner(identity);
       workspace?.setIdentity(identity);
-      if (boot.mode === "live" && pathname === "/" && identity && help && !preferences.hasSeenWalkthrough(identity.slug)) {
-        void import("./app-walkthrough.js").then(({ openWalkthrough }) => {
-          if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
-          openWalkthrough(root);
-          preferences.rememberWalkthrough(identity.slug);
-        }).catch(() => {});
-      }
+      showFirstWalkthrough();
     } catch {
       if (!boundary?.revoked) {
         sessionStatus.textContent = lastVerified ? `Connection unavailable · Last verified ${lastVerified}` : 'Sign-in unavailable';

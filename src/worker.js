@@ -1,5 +1,5 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
-import { routeContract } from "../js/routes.js";
+import { routeContract, recordRouteKey, compressedAssetPath } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
@@ -26,7 +26,7 @@ const UNGATED_PAGES = new Set(["/status"]);
 const GATE_PATHS = new Map(Object.entries(routeContract.gatePaths));
 
 function gateRequestFor(request, pathname) {
-  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : recordRouteKey(pathname));
   if (!gatePath || gatePath === pathname) return request;
   const url = new URL(request.url);
   url.pathname = gatePath;
@@ -78,7 +78,7 @@ function secure(response, path) {
   headers.set("permissions-policy", `camera=(), geolocation=(), microphone=${capture ? "(self)" : "()"}, payment=(), usb=()`);
   headers.set("cross-origin-opener-policy", "same-origin");
   headers.set("cross-origin-resource-policy", "same-origin");
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers, encodeBody: "manual" });
 }
 
 function assetPath(pathname) {
@@ -90,17 +90,27 @@ function assetPath(pathname) {
 async function assetResponse(request, env, path) {
   if (!env?.ASSETS?.fetch) return json({ error: "app_assets_unavailable" }, 503);
   const url = new URL(request.url);
-  url.pathname = path;
+  const compressed = compressedAssetPath(path, request.headers.get("accept-encoding") || "");
+  url.pathname = compressed || path;
   url.search = "";
-  const response = await env.ASSETS.fetch(new Request(url, {
+  let response = await env.ASSETS.fetch(new Request(url, {
     method: request.method === "HEAD" ? "HEAD" : "GET",
     headers: { accept: request.headers.get("accept") || "*/*" },
   }));
+  if (compressed && response.status === 404) {
+    url.pathname = path;
+    response = await env.ASSETS.fetch(new Request(url, {method: request.method === "HEAD" ? "HEAD" : "GET"}));
+  }
   const headers = new Headers(response.headers);
+  if (path === "/js/ui.generated.js") {
+    headers.set("vary", "Accept-Encoding");
+    headers.set("content-type", "text/javascript; charset=utf-8");
+    if (compressed && url.pathname === compressed && response.ok) headers.set("content-encoding", "gzip");
+  }
   headers.set("cache-control", path.endsWith(".html") || path.endsWith(".js") || path.endsWith(".css")
     ? "no-cache" : "public, max-age=300");
   if (path === "/public-shell/sw.js") headers.set("service-worker-allowed", "/");
-  return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), path);
+  return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers, encodeBody: "manual" }), path);
 }
 
 async function carrResponse(request, env, documentRequest = false) {
@@ -173,7 +183,7 @@ async function handleRequest(request, env) {
 
   const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
     : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : recordRouteKey(pathname));
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     const gateRequest = gateRequestFor(request, pathname);

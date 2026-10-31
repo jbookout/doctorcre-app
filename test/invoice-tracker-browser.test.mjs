@@ -65,13 +65,6 @@ test('uncertain receipt reconciles without another write; conflict keeps the dra
   const h = await open(t, { receipt: 'uncertain' }); await h.page.locator('[data-invoice]').first().click(); await h.page.locator('#markInvoicePaid').click(); await h.page.waitForFunction(() => /Paid/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.equal(h.writes, 1);
   const c = await open(t, { receipt: 'conflict' }); await c.page.locator('[data-invoice]').first().click(); await c.page.locator('#invoicePaidDate').fill('2026-09-30'); await c.page.locator('#markInvoicePaid').click(); await c.page.waitForFunction(() => /Invoice changed/.test(document.querySelector('#invoicePaymentNotice').textContent)); assert.equal(await c.page.locator('#invoicePaidDate').inputValue(), '2026-09-30'); assert.equal(c.writes, 1); assert.equal(await c.page.locator('#markInvoicePaid').isDisabled(), false);
 });
-test('Home attention shares invoice identity, scope and refreshed paid state', async t => {
-  const h = await open(t, { home: true }), page = h.page; assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 3);
-  await page.locator('[data-scope="mine"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 2);
-  h.update(data => { for (const row of data.entries) if (row.owner === 'joe' && row.status === 'invoiced') { row.status = 'received'; row.received_on = today; } });
-  await page.clock.runFor(61000); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
-  await page.screenshot({ path: new URL('out/test-artifacts/w15/home-attention-1440.png', root).pathname });
-});
 test('pending receipt confirmations remain attached to each invoice across popup changes', async t => {
   const h = await open(t, { receipt: 'pending' }), page = h.page;
   const invoices = page.locator('[data-invoice]');
@@ -95,14 +88,6 @@ test('deep link, reduced motion and authentication loss keep the screen contract
   await h.page.locator('#closeInvoiceDetail').click(); assert.equal(await h.page.locator('.invoice-row.overdue .invoice-state').first().evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
   await h.page.screenshot({ path: new URL('out/test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForURL('**/public-shell/session-ended.html'); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
 });
-for (const width of [1440, 390]) test(`Home invoice attention fits ${width}px`, async t => {
-  const h = await open(t, { home: true, width });
-  const overflow = await h.page.evaluate(() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('body *')].filter(node=>node.getBoundingClientRect().right>innerWidth+1).map(node=>({id:node.id,cls:String(node.className),right:node.getBoundingClientRect().right})).slice(0,12)}));
-  assert.ok(overflow.scroll<=overflow.width, JSON.stringify(overflow));
-  await h.page.screenshot({ path: new URL(`out/test-artifacts/w15/home-attention-${width}.png`, root).pathname });
-  assert.deepEqual(h.errors, []);
-});
-
 test('status controls reconcile unpaid aging before showing Paid or Awaiting invoice',async t=>{
  const {page}=await open(t);
  for(const status of ['paid','awaiting']){

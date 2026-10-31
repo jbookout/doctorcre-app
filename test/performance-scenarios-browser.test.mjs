@@ -44,7 +44,7 @@ test('the phone Relationships performance scenario opens the visible connection 
 
 test('phone task guard exercises useful outcomes against the built fixture', async t => {
   const scenarios = await import('../scripts/performance-scenarios.mjs');
-  const expected = ['task-agenda', 'task-leads', 'task-deal-link', 'task-deal-draft', 'task-tour-library', 'task-tour-offline'];
+  const expected = ['task-react-home', 'task-agenda', 'task-leads', 'task-deal-link', 'task-deal-draft', 'task-tour-library', 'task-tour-offline'];
   assert.deepEqual(scenarios.tasks?.map(task => task.id), expected);
   const outDir = await temporaryDirectory('doctorcre-task-artifact-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
@@ -71,13 +71,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
       assert.ok(Number.isInteger(result.requestCount) && result.requestCount > 0);
       assert.ok(result.criticalBytes > 0);
       assert.equal(result.reads.length, result.requestCount);
-      if (task.id === 'task-agenda') {
-        assert.equal(result.reads.filter(name => name === 'getDeal').length, 0);
-        assert.equal(result.reads.filter(name => name === 'getHomeAgenda').length, 1);
-        assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
-        assert.ok(result.reads.includes('getLeadBoard'), 'count the lead board read assigned during home boot');
-        assert.equal(result.reads.includes('readLeaseRadar'), false, 'past-client reads wait for the secondary Home grid');
-      }
+      if (task.fixture === 'inbox') assert.equal(result.reads.filter(name => name === 'read-home-inbox').length, 1);
       if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
       if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
       assert.deepEqual(result.errors, []);
@@ -101,6 +95,7 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   page.on('response', response => {
     if (response.request().resourceType() === 'script') reads.push((async () => {
       assert.equal(response.ok(), true, response.url());
+      if (new URL(response.url()).pathname === '/js/ui.generated.js') assert.equal(response.headers()['content-encoding'], 'gzip');
       return (await response.body()).length;
     })());
   });
@@ -109,32 +104,30 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   await page.locator(home.ready).first().waitFor();
   await page.locator(home.tap).tap();
   await page.waitForFunction(home.complete);
-  const link = page.locator('#dealFlags h3 a').first();
-  assert.match(await link.getAttribute('href'), /^\/deals\?deal=/);
+  const link = page.locator('[data-inbox-row] h3 a').first();
+  assert.match(await link.getAttribute('href'), /^\/home\/card\//);
   assert.ok((await link.innerText()).trim());
   const bytes = (await Promise.all(reads)).reduce((total, size) => total + size, 0);
   t.diagnostic(`Home transferred ${bytes} JavaScript bytes`);
-  await page.locator('.home-grid').scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: 'Refresh past-client touches', exact: true }).waitFor();
-  await page.locator('#homeIntroductions button:not([disabled])').first().waitFor();
   assert.deepEqual(errors, []);
 });
 
-test('Home discovers its boot mode while the client bootstrap is downloading', async t => {
-  const outDir = await temporaryDirectory('doctorcre-home-boot-');
-  t.after(() => rm(outDir, { recursive: true, force: true }));
-  await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
+test('React Home phone load waits for bounded inbox and an injected delay fails the unchanged limit', async t => {
+  const { runTaskScenario, tasks, applyPhoneProfile } = await import('../scripts/performance-scenarios.mjs');
+  const outDir = await temporaryDirectory('doctorcre-inbox-budget-', t);
+  await buildArtifact({ root: process.cwd(), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
   t.after(() => server.stop());
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
-  t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: profile.viewport, isMobile: true, hasTouch: true });
-  let release;
-  const bootstrap = new Promise(resolve => { release = resolve; });
-  await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => { await bootstrap; await route.continue(); });
-  const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: WAIT_MS });
-  await page.goto(server.url + '/', { waitUntil: 'commit' });
-  try { await mode; } finally { release(); }
-  await page.locator('#dealFlags .home-flag').first().waitFor();
-  assert.ok(await page.locator('#dealFlags .home-flag').count() > 0);
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const task = tasks.find(task => task.id === 'task-react-home');
+  for (const delayMs of [75, 4100]) {
+    const context = await browser.newContext({ viewport: profile.viewport, isMobile: true, hasTouch: true });
+    try {
+      const page = await context.newPage();
+      const cdp = await applyPhoneProfile(context, page);
+      const run = () => runTaskScenario({ page, context, origin: server.url, task: { ...task, delayMs }, cdp });
+      if (delayMs === 4100) await assert.rejects(run(), /exceeds 4000ms/);
+      else { const result = await run(); assert.equal(result.reads.filter(name => name === 'read-home-inbox').length, 1); assert.ok(result.usefulMs <= 4000); }
+    } finally { await context.close(); }
+  }
 });

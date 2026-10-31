@@ -14,7 +14,7 @@ export async function applyPhoneProfile(context, page) {
 }
 
 export const screens = [
-  { id: 'home', route: '/', ready: '#dealFlags .home-flag', tap: '[data-scope="mine"]', complete: () => document.querySelectorAll('#dealFlags .home-flag').length === 2 },
+  { id: 'home', route: '/', ready: '[data-inbox-row]', tap: '[data-scope="mine"]', complete: () => document.querySelector('[data-scope="mine"]')?.getAttribute('aria-pressed') === 'true' },
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailUpdateForm')?.getClientRects().length > 0 },
   { id: 'vendors', route: '/vendors', ready: '.record-row', tap: '.record-row', complete: () => document.querySelector('#recordPanel')?.getClientRects().length > 0 },
   { id: 'tours', route: '/tours', ready: '[data-market="Pensacola, FL"]', tap: '[data-market="Pensacola, FL"]', complete: () => document.querySelector('#space-area')?.value === 'Pensacola, FL' },
@@ -23,10 +23,11 @@ export const screens = [
 ];
 
 export const tasks = [
-  { id: 'task-agenda', route: '/', fixture: 'agenda', conditions: '40 active synthetic deals; agenda snapshot delayed 75ms',
-    ready: '#homeBrief a',
+  { id: 'task-react-home', route: '/home?mode=live', fixture: 'inbox', conditions: 'React Home; one bounded read; 40 synthetic cards; returning signed-in fixture partner; no per-item reads', ready: '[data-inbox-row]', async verify(page) { await page.waitForFunction(() => document.querySelectorAll('[data-inbox-row]').length === 40); } },
+  { id: 'task-agenda', route: '/', fixture: 'inbox', conditions: '40 synthetic inbox items; one snapshot delayed 75ms',
+    ready: '[data-inbox-row]',
     async verify(page) {
-      await page.waitForFunction(() => document.querySelectorAll('#homeBrief a').length >= 40);
+      await page.waitForFunction(() => document.querySelectorAll('[data-inbox-row]').length >= 40);
     } },
   { id: 'task-leads', route: '/leads', fixture: 'leads', conditions: '375 synthetic leads; board and detail reads delayed 75ms; intercepted telephone link and persisted pageshow',
     ready: '#leadBoard .lead-open',
@@ -183,8 +184,9 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
     });
     await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'example-partner' }, csrf_token: 'synthetic-performance-session' } }));
   }
+  if (task.fixture === 'inbox') await installInboxScenario(page, { delayMs: task.delayMs ?? 75 });
   const started = performance.now();
-  await page.goto(origin + task.route, { waitUntil: 'domcontentloaded' });
+  await page.goto(origin + (task.fixture === 'inbox' ? (task.route.includes('?') ? task.route : task.route + '?mode=live') : task.route), { waitUntil: 'domcontentloaded' });
   await page.locator(task.ready).first().waitFor({ state: 'visible' });
   const taskMs = await task.verify(page, context, cdp);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -194,8 +196,29 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
   page.off('request', onRequest);
   context.off('response', onResponse);
   const completedReads = reads.slice();
+  if (task.fixture === 'inbox') {
+    const inboxReads = completedReads.filter(name => name === 'read-home-inbox');
+    if (inboxReads.length !== 1 || completedReads.some(name => ['read-home-agenda', 'get-deal-room', 'read-task'].includes(name))) throw Error('Inbox must use one bounded read without per-item fan-out');
+    if (usefulMs > 4000) throw Error(`React Home useful row ${usefulMs}ms exceeds 4000ms`);
+  }
   const criticalBytes = (await Promise.all(bodies)).reduce((total, bytes) => total + bytes, 0);
   if (errors.length) throw Error(`Task errors: ${errors.join('; ')}`);
   return { lcpMs, usefulMs, requestCount: completedReads.length, criticalBytes, reads: completedReads,
     resources, errors, conditions: task.conditions };
+}
+
+export async function installInboxScenario(page, { delayMs = 75 } = {}) {
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true } })));
+
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-performance-session' } }));
+  await page.route('**/mcp', async route => {
+    const name = route.request().postDataJSON().params.name;
+    let value = { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
+    if (name === 'read-home-inbox') {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      value = { ok: true, schema_version: 'home-inbox.v1', working_collapsed: true, auto_settle_enabled: false,
+        items: Array.from({ length: 40 }, (_, index) => ({ item_id: `synthetic-${index}`, source_type: 'task', source_id: `synthetic-${index}`, source_version: 'v1', source_state: index % 2 ? 'done' : 'needs_attention', title: `Synthetic practice follow-up ${index + 1}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: index % 2 === 1, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' })) };
+    }
+    await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
+  });
 }

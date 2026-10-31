@@ -1,5 +1,10 @@
 export const routeEntries = [
   ["/","workspace.html","/"],
+  ["/home","workspace.html","/"],
+  ["/home/card/:item_id","workspace.html","/"],
+  ["/deals/:id","pipeline.html","/deals"],
+  ["/contacts/:id","business.html","/clients"],
+  ["/tasks/:id","tasks.html","/tasks"],
   ["/control-room","control-room.html","/control-room"],
   ["/control-room/progress","progress-board.html","/control-room"],
   ["/control-room/progress/board/:boardId","progress-board.html","/control-room"],
@@ -30,7 +35,7 @@ export const routeEntries = [
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.22.0",
+  version: "1.23.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
   "/control-room/automations": "/control-room?tab=automations",
@@ -165,6 +170,11 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
+  "/home": "/",
+  "/home/card/:item_id": "/",
+  "/deals/:id": "/deals",
+  "/contacts/:id": "/clients",
+  "/tasks/:id": "/",
   "/work-inventory": "/all-work",
   "/control-room/progress": "/control-room",
   "/control-room/automations": "/control-room",
@@ -190,3 +200,18 @@ export const sectionForRoute = {
   "/notifications": "/updates",
   "/system-work.html": "/work-requests"
 };
+
+export function recordRouteKey(pathname) {
+  return ['/home/card/:item_id', '/deals/:id', '/contacts/:id', '/tasks/:id'].find(pattern => {
+    const prefix = pattern.slice(0, pattern.lastIndexOf('/') + 1);
+    return pathname.startsWith(prefix) && pathname.slice(prefix.length).length > 0 && !pathname.slice(prefix.length).includes('/');
+  }) || pathname;
+}
+
+export function compressedAssetPath(path, acceptEncoding = '') {
+  if (path !== '/js/ui.generated.js') return null;
+  const gzip = acceptEncoding.split(',').map(value => value.trim()).find(value => /^gzip(?:;|$)/i.test(value));
+  if (!gzip) return null;
+  const quality = /;\s*q=([\d.]+)/i.exec(gzip);
+  return quality && Number(quality[1]) <= 0 ? null : `${path}.gz`;
+}

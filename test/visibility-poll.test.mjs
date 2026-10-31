@@ -111,24 +111,7 @@ test('the first input after idle in a visible tab only reads: the hidden-return 
   auto.dispose();
 });
 
-test('a local clock keeps repainting while idle; only its read sleeps', async () => {
-  const p = page(); let ticks = 0, reads = 0; const intervals = [];
-  const clock = mountLocalClock({ document: p.document, window: p.window, now: p.now, intervalMs: 5000,
-    setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; }, clearInterval: () => {},
-    tick: () => { ticks++; }, read: () => { reads++; } });
-  assert.deepEqual(intervals.map(job => job.ms), [5000], 'the repaint keeps the 5s cadence');
-  p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
-  assert.equal(reads, 0, 'idle: the read does not run');
-  assert.equal(p.count, 0, 'and its timer is not re-armed');
-  intervals[0].fn(); intervals[0].fn();
-  assert.equal(ticks, 2, 'idle: the local repaint still runs');
-  p.input(); await settle();
-  assert.equal(reads, 1, 'the first input reads once');
-  clock.dispose();
-  const home = await readFile(new URL('../js/workspace-command-center.js', import.meta.url), 'utf8');
-  assert.match(home, /const expiry = window\.setInterval\(\(\) => \{[^]*?render\(\);\s*auto\.poll\(\);/,
-    'Home repaints an expired snapshot locally; its re-read is the gated poll, never an ungated refresh');
-});
+
 
 test('input keeps a visible tab active past the cutoff', async () => {
   const p = page(); const fixed = poller(p);

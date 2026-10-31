@@ -45,6 +45,9 @@ const $ = (id) => document.getElementById(id);
 const esc = escapeText;
 const actorName = (slug) => ACTOR_LABEL[slug] || slug || 'Unassigned';
 const incomingScope = new URLSearchParams(globalThis.location?.search);
+if (globalThis.location?.pathname.startsWith('/deals/')) {
+  try { incomingScope.set('deal', decodeURIComponent(location.pathname.slice('/deals/'.length))); } catch {}
+}
 
 const state = {
   client: null,

@@ -312,7 +312,7 @@ test("the Calendar is a routed, shipped surface that reads only pinned verbs", a
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.22.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.23.0", "record routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
   assert.equal(await hasArtifactPage("calendar.html"), true, "the page ships in the verified artifact");
   assert.match(summary, /calendar\.html/);

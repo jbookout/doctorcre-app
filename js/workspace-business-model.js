@@ -70,6 +70,7 @@ export const RECORD_KEYS = {
 // ------------------------------------------------------------------ URL state
 
 export function datasetForPath(pathname) {
+  if (pathname.startsWith('/contacts/')) return 'clients';
   return DATASETS.find((dataset) => DATASET_ROUTE[dataset] === pathname) || null;
 }
 

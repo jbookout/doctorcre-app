@@ -7,7 +7,7 @@ import { atlasFixtureResponse } from "./atlas-fixture.mjs";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const root = process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL("../", import.meta.url));
-const routeContract = (await import("../js/routes.js")).routeContract;
+const { routeContract, recordRouteKey, compressedAssetPath } = await import("../js/routes.js");
 const carrContract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const routes = routeContract.routes;
 const redirects = routeContract.redirects || {};
@@ -71,12 +71,19 @@ createServer(async (request, response) => {
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
     const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : url.pathname] || url.pathname.replace(/^\//, "");
+      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : recordRouteKey(url.pathname)] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");
     const repositoryPath = relative(root, path);
     if (repositoryPath.startsWith("..") || isAbsolute(repositoryPath) || !(await stat(path)).isFile()) throw new Error("not found");
-    response.writeHead(200, {"content-type": types[extname(path)] || "application/octet-stream", "cache-control":"no-store"});
-    response.end(await readFile(path));
+    const compressed = compressedAssetPath(`/${requested}`, request.headers['accept-encoding'] || '');
+    let body;
+    if (compressed) {
+      try { body = await readFile(resolve(root, compressed.slice(1))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    response.writeHead(200, {"content-type": types[extname(path)] || "application/octet-stream", "cache-control":"no-store",
+      ...(requested === 'js/ui.generated.js' ? {vary:'Accept-Encoding'} : {}),
+      ...(body ? {'content-encoding':'gzip'} : {})});
+    response.end(body || await readFile(path));
   } catch {
     response.writeHead(404, {"content-type":"text/plain; charset=utf-8"});
     response.end("Not found\n");
