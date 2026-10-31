@@ -251,7 +251,7 @@ test('Home and Tasks retain their routes while retired Home implementation leave
   for (const path of ['business-workspace.html', 'js/business-workspace.js', 'js/business-workspace-model.js']) {
     assert.equal(paths.includes(path), false, `${path} is retired`);
   }
-  for (const path of ['workspace.html', 'js/workspace-command-center.js', 'tasks.html', 'js/task-records.js', 'js/task-records-model.js', 'js/local-drafts.mjs', 'js/visual-system.js', 'js/command-feedback.mjs', 'css/business-workspace.css']) {
+  for (const path of ['workspace.html', 'js/home-boot.js', 'tasks.html', 'js/task-records.js', 'js/task-records-model.js', 'js/local-drafts.mjs', 'js/visual-system.js', 'js/command-feedback.mjs', 'css/business-workspace.css']) {
     assert.equal(paths.includes(path), true, `${path} still serves live callers`);
   }
 });

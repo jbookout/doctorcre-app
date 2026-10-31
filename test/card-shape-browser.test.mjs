@@ -11,24 +11,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`sh
   const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
-  for (const [surface, path, selector] of [['email', '/', '#homeEmailFollowups article'], ['brief', '/', '#homeBrief article'], ['attention', '/', '#dealFlags article'], ['call-followups', '/', '#homeCallTasks article'], ['meeting-reviews', '/', '#homeMeetingReviews article'], ['deals-board', '/deals', '.kanban-column .kanban-card'], ['deals-list', '/deals?view=list', '.deal-row'], ['parked', '/deals', '.parked-card'], ['email-deal', '/deals?deal=d01', '#panelEmailFollowups article'], ['leads', '/leads', '.lead-card'], ['leads-list', '/leads', '.filtered-list .lead-card']]) {
+  for (const [surface, path, selector] of [['deals-board', '/deals', '.kanban-column .kanban-card'], ['deals-list', '/deals?view=list', '.deal-row'], ['parked', '/deals', '.parked-card'], ['email-deal', '/deals?deal=d01', '#panelEmailFollowups article'], ['leads', '/leads', '.lead-card'], ['leads-list', '/leads', '.filtered-list .lead-card']]) {
     if (surface.startsWith('leads')) await routeLeads(page);
     await page.goto(`${surface.startsWith('leads') ? 'http://localhost' : server.origin}${path}`);
     if (surface === 'leads-list') { await page.locator('.lead-card').first().waitFor(); await page.locator('#stageFilter').selectOption('archived'); }
     if (surface === 'parked') await page.locator('.parked-lane > summary').click();
-    if (['call-followups', 'meeting-reviews'].includes(surface)) await page.locator('#homeEmailFollowups article').first().waitFor();
-    if (surface === 'call-followups') await page.evaluate(async () => {
-      const { mountHomeCallTasks } = await import('/js/home-call-tasks.js');
-      const host = document.getElementById('homeCallTasks');
-      mountHomeCallTasks({ document, client: {}, host }).update({ actor: 'joe', scope: 'mine', read: { state: 'read' }, tasks: [
-        { candidateId: 'demo-card-call', kind: 'assigned_action', owner: 'joe', dealId: 'd14', dealName: 'Demo clinic', description: 'Call the lender', dueOn: '2026-10-02', evidence: 'Joe will call the lender.', createdAt: '2026-10-01T14:00:00Z' },
-        { candidateId: 'demo-card-draft', kind: 'email_draft', owner: 'joe', dealId: 'd14', dealName: 'Demo clinic', subject: 'Demo lender follow-up', recipientRef: 'Demo lender', createdAt: '2026-10-01T14:00:00Z' }
-      ] });
-    });
-    if (surface === 'meeting-reviews') await page.evaluate(async () => {
-      const { mountHomeMeetingReviews } = await import('/js/home-meeting-reviews.js');
-      mountHomeMeetingReviews({ document, client: {}, host: document.getElementById('homeMeetingReviews'), storage: sessionStorage }).update({ actor: 'joe', deals: [{ id: 'd14', name: 'Demo clinic', owner: 'joe' }], calendar: { follow_up_reviews: [{ key: 'aaaaaaaaaaaaaaaa', state: 'needs_review', title: 'Demo lender meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }] } });
-    });
     await page.locator(selector).first().waitFor();
     await page.locator(selector).first().scrollIntoViewIfNeeded();
     const dir = 'out/test-artifacts/card-shape/after';

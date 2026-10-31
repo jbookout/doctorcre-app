@@ -330,16 +330,16 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
   assert.deepEqual(h.errors, []);
 });
 for (const width of [1440, 390])
-  test(`W14 Home shares reason and opens card at ${width}px`, async (t) => {
+  test(`W14 Relationships shares reason and opens card at ${width}px`, async (t) => {
     const h = await open(t, width),
       { page } = h;
-    await page.goto("http://localhost/?mode=live");
-    await page.waitForSelector("#homeIntroductions [data-intro-node]");
+    await page.goto("http://localhost/relationships?mode=live");
+    await page.waitForSelector("#networkIntroductions [data-intro-node]");
     assert.match(
-      await page.locator("#homeIntroductions").innerText(),
+      await page.locator("#networkIntroductions").innerText(),
       /Worked together on equipment financing/,
     );
-    await page.locator("#homeIntroductions button").click();
+    await page.locator("#networkIntroductions button").click();
     assert.match(
       await page.locator("#relationshipTitle").innerText(),
       /Demo Dental Expansion/,
@@ -351,11 +351,11 @@ for (const width of [1440, 390])
     await page.keyboard.press("Escape");
     h.setMode("fail");
     await page.clock.runFor(61000);
-    await page.waitForFunction(() => document.querySelector('#homeIntroductions').hidden);
+    await page.waitForFunction(() => document.querySelector('#networkIntroductions').hidden);
     assert.equal(await page.locator('.relationship-dialog').isVisible(), false);
     h.setMode("ok");
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    await page.waitForSelector('#homeIntroductions [data-intro-node]');
+    await page.waitForSelector('#networkIntroductions [data-intro-node]');
     assert.deepEqual(h.errors, []);
   });
 
@@ -456,7 +456,6 @@ test('Relationships live boot loads its selected adapter without the fixture ada
 
 
 for (const [entry, url, region, button] of [
-  ['Home', '/', '#homeIntroductions', '[data-intro-node]'],
   ['Relationships', '/relationships', '#networkIntroductions', '[data-node]'],
 ]) for (const width of [1440, 390]) for (const theme of ['light', 'dark'])
   test(`H05 ${entry} keeps the recorded introduction path at ${width}px ${theme}`, async t => {
@@ -489,8 +488,8 @@ for (const [entry, url, region, button] of [
 test('H05 introduction details omit internal tags and repeated evidence', async t => {
   const { page, errors, setMode } = await open(t);
   setMode('duplicate');
-  await page.goto('http://localhost/?mode=live');
-  await page.locator('#homeIntroductions [data-intro-node]').click();
+  await page.goto('http://localhost/relationships?mode=live');
+  await page.locator('#networkIntroductions [data-intro-node]').click();
   await page.locator('.relationship-dialog[open]').waitFor();
   const text = await page.locator('.relationship-dialog').innerText();
   assert.doesNotMatch(text, /dental|joe|party:|demo-offer|Details/);
@@ -502,8 +501,8 @@ test('H05 introduction details omit internal tags and repeated evidence', async 
 
 test('H05 dates identify the recorded relationship without inventing a meeting', async t => {
   const { page, errors } = await open(t);
-  await page.goto('http://localhost/?mode=live');
-  await page.locator('#homeIntroductions [data-intro-node]').click();
+  await page.goto('http://localhost/relationships?mode=live');
+  await page.locator('#networkIntroductions [data-intro-node]').click();
   await page.locator('.relationship-dialog[open]').waitFor();
   const dates = page.locator('.relationship-dialog time');
   assert.deepEqual(await dates.allTextContents(), ['Can introduce · Oct 1, 2026', 'Referred · Oct 1, 2026']);
@@ -514,7 +513,6 @@ test('H05 dates identify the recorded relationship without inventing a meeting',
 
 
 for (const [entry, url, region] of [
-  ['Home', '/', '#homeIntroductions'],
   ['Relationships', '/relationships', '#networkIntroductions'],
 ]) test(`H05 ${entry} renders route names as literal text`, async t => {
   const { page, errors, setMode } = await open(t);
@@ -524,31 +522,5 @@ for (const [entry, url, region] of [
   await route.waitFor();
   assert.equal(await route.innerText(), 'Demo <em>Lending</em> & Partners → Demo Dental Expansion');
   assert.equal(await route.locator('em').count(), 0);
-  assert.deepEqual(errors, []);
-});
-
-
-test('Home loads introduction details on keyboard entry', async t => {
-  const { page, errors } = await open(t, 390);
-  let release;
-  const requested = Promise.withResolvers();
-  const download = new Promise(resolve => { release = resolve; });
-  t.after(() => release());
-  await page.route('**/js/relationship-dialog.js', async route => {
-    requested.resolve();
-    await download;
-    await route.fallback();
-  });
-  await page.goto('http://localhost/?mode=live');
-  const path = page.locator('#homeIntroductions [data-intro-node]');
-  await path.waitFor();
-  assert.equal(await path.isEnabled(), true, 'keyboard entry can request its dialog');
-  await path.focus();
-  await page.keyboard.press('Enter');
-  await requested.promise;
-  assert.equal(await page.locator('.relationship-dialog[open]').count(), 0);
-  release();
-  await page.locator('.relationship-dialog[open]').waitFor();
-  assert.equal(await page.locator('#relationshipTitle').innerText(), 'Demo Dental Expansion');
   assert.deepEqual(errors, []);
 });

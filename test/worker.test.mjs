@@ -238,7 +238,7 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: carrContractIdentity,
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.22.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.23.0" },
   });
 });
 
@@ -308,5 +308,21 @@ test('client portal uses the existing authenticated business gate and restores i
     assert.equal(assets, status === 200 ? 1 : 0);
     if (status === 200) assert.equal(await response.text(), '/client-portal.html');
     if (status === 302) assert.equal(new URL(response.headers.get('location')).searchParams.get('return_to'), '/client-portal');
+  }
+});
+
+test('stable record routes gate signed-in partners and preserve signed-out deep links', async () => {
+  for (const [path, asset, gatePath] of [['/home', 'workspace.html', '/'], ['/home/card/task%3Ademo', 'workspace.html', '/'], ['/deals/demo', 'pipeline.html', '/deals'], ['/contacts/demo', 'business.html', '/clients'], ['/tasks/demo', 'tasks.html', '/tasks']]) {
+    for (const signedIn of [true, false]) {
+      let gated;
+      const response = await handleDoctorcreRequest(request(path, signedIn ? { headers: { cookie: 'session=synthetic' } } : {}), environment({ carr: { fetch: async value => {
+        gated = new URL(value.url).pathname;
+        return value.headers.has('cookie') ? new Response(null) : new Response(null, { status: 302, headers: { location: request('/auth/login').url } });
+      } } }));
+      assert.equal(gated, gatePath);
+      assert.equal(response.status, signedIn ? 200 : 302);
+      if (signedIn) assert.equal(await response.text(), `asset:/${asset}`);
+      else assert.equal(new URL(response.headers.get('location')).searchParams.get('return_to'), path);
+    }
   }
 });

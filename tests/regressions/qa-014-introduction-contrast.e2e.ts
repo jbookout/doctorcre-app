@@ -3,11 +3,10 @@ import { reproTest, textContrast } from './support.mjs';
 
 const test = reproTest();
 test('QA-014 dark suggested introduction description has readable contrast', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
-  await app.open('/');
-  await screen.getByRole('button', 'Just me', { exact: true }).tap();
-  const reason = browser.locator('#homeIntroductions .relationship-card strong').first();
+  await app.open('/relationships');
+  const reason = browser.locator('#networkIntroductions .relationship-card strong').first();
   await expect(reason).toBeVisible();
   await reason.scrollIntoView();
-  const color = await textContrast(browser, '#homeIntroductions .relationship-card strong');
+  const color = await textContrast(browser, '#networkIntroductions .relationship-card strong');
   expect(color.ratio, JSON.stringify(color)).toBeGreaterThanOrEqual(4.5);
 });

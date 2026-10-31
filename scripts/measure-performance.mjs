@@ -42,6 +42,7 @@ try {
         isMobile: true, hasTouch: true, serviceWorkers: 'block' });
       const trace = `${screen.id}-${index + 1}.zip`;
       await context.tracing.start({ screenshots: true, snapshots: true });
+      await context.route('**/*', route => new URL(route.request().url()).origin === url ? route.continue() : route.abort());
       const page = await context.newPage();
       page.setDefaultTimeout(30000);
       // Reuse the directory journey's populated fixture; no CARR endpoint is used.
@@ -106,7 +107,7 @@ try {
   }
   for (const task of tasks) {
     const samples = [];
-    for (let index = 0; index < profile.samples; index++) {
+    for (let index = 0; index < (task.id === 'task-react-home' ? homeLoad.samples : profile.samples); index++) {
       const context = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.deviceScaleFactor,
         isMobile: true, hasTouch: true, serviceWorkers: task.id === 'task-tour-offline' ? 'allow' : 'block' });
       const trace = `${task.id}-${index + 1}.zip`;
@@ -129,7 +130,10 @@ try {
     };
     console.log(`${task.id}: LCP=${measured[task.id].lcpMs}ms useful=${measured[task.id].usefulMs}ms requests=${measured[task.id].requestCount} critical=${measured[task.id].criticalBytes}B`);
   }
-  const report = { schema: 'doctorcre-performance-report.v1',
+  const reactHome = measured['task-react-home'];
+  if (reactHome.samples.length !== 5 || reactHome.lcpMs > homeLoad.limitMs || reactHome.usefulMs > homeLoad.limitMs) throw Error('React Home phone load budget failed');
+  delete measured['task-react-home'];
+  const report = { reactHome, schema: 'doctorcre-performance-report.v1',
     taskMeasurement: {
       usefulMs: 'Navigation start through verified useful task outcome, including scripted actions. Offline measures the same-tab reload after online preparation.',
       requestCount: 'API, session, MCP and change-feed requests plus in-memory fixture public client calls through the useful outcome. Includes offline preparation. Maximum across cold samples.',

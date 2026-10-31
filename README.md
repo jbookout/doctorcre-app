@@ -8,7 +8,8 @@ versioned CARR HTTP and MCP interfaces. It never connects to the CARR database.
 `data/board-seed.json` is a visibly fictional fixture for local development and
 tests; it cannot become production state.
 
-The product remains a no-framework static application. Its small edge Worker
+Home is a React and TypeScript partner inbox built with Vite, React Router and
+TanStack Query. Other pages retain their existing static modules. The edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
