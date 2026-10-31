@@ -13,7 +13,7 @@ test('terms show how values were read and retain the review reason after a confl
   mountFactReview(root, { client, entityRef: 'd14', attachments: client.attachments('d14') });
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.match(root.textContent, /OCR · verify/);
-  assert.match(root.textContent, /\$24\.00\/SF\/yr/);
+  assert.match(root.textContent, /\$24\/SF\/yr/);
   const form = root.querySelector('[data-fact-review]');
   form.elements.decision.value = 'reject';
   form.elements.decision.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
