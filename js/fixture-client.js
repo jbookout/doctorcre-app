@@ -1266,9 +1266,10 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async listDealDocuments(args) { return (await factReviews()).listDealDocuments(args); },
+    async prepareTermsComparison(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.prepareTermsComparison(args); },
     async listFactReview(args) { return (await factReviews()).listFactReview(args); },
-    async recordHumanFact(args) { return (await factReviews()).recordHumanFact(args); },
-    async resolveFactReview(args) { return (await factReviews()).resolveFactReview(args); },
+    async recordHumanFact(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.recordHumanFact(args); },
+    async resolveFactReview(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.resolveFactReview(args); },
 
     async readMarketTerms(args = {}) { return readMarketTerms(args); },
     async getDeal(dealId) {

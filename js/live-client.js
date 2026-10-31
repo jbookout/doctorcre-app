@@ -133,7 +133,11 @@ export function createLiveClient(opts = {}) {
     return payload;
   }
 
-  async function write(verb, args, timeoutMs) {
+  function requireActive(signal) {
+    if (signal?.aborted) throw Object.assign(new Error('Write cancelled before dispatch'), { code: 'not_sent' });
+  }
+
+  async function write(verb, args, timeoutMs, signal) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
     if (!online()) {
@@ -150,8 +154,11 @@ export function createLiveClient(opts = {}) {
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
     const retained = sessionWrites.has(verb) ? sessionCommands : commands;
-    return retained.send(operationKey, args, (request, binding) => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000,
-      sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
+    return retained.send(operationKey, args, (request, binding) => {
+      requireActive(signal);
+      return rawRpc(verb, request, signal, timeoutMs || opts.writeTimeoutMs || 10_000,
+        sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined);
+    });
   }
 
   // CARR phase slugs and board labels map one-to-one in both directions.
@@ -231,9 +238,17 @@ export function createLiveClient(opts = {}) {
     },
 
     async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
+    async prepareTermsComparison(args, { signal } = {}) {
+      if (!online()) throw Object.assign(new Error('Offline'), { payload: { error: 'offline' } });
+      return sessionCommands.send(JSON.stringify(['prepare-terms-comparison', args.deal_id]), args, async (request, binding) => {
+        const { prepareComparisonHttp } = await (opts.loadComparison ? opts.loadComparison() : import('./terms-comparison-http.mjs'));
+        requireActive(signal);
+        return prepareComparisonHttp(fetchImpl, request, binding.slice(binding.indexOf(':') + 1), opts.writeTimeoutMs || 10_000, signal);
+      });
+    },
     async listFactReview(args = {}, { signal } = {}) { return rpc('list-fact-review', args, signal); },
-    async recordHumanFact(args) { return write('record-human-fact', args); },
-    async resolveFactReview(args) { return write('resolve-fact-review', args); },
+    async recordHumanFact(args, { signal } = {}) { return write('record-human-fact', args, undefined, signal); },
+    async resolveFactReview(args, { signal } = {}) { return write('resolve-fact-review', args, undefined, signal); },
 
     async getDeal(dealId, { signal } = {}) {
       const page = await rpc('get-deal-room', { deal: dealId }, signal);
