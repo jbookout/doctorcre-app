@@ -630,7 +630,9 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  // 2. The page still reads on, but CARR switched it off after the last poll.
  await page.waitForLoadState('networkidle');
  available=true;
- await page.clock.fastForward(15*60_000);
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+ await page.locator('#docRefresh').click();
+ await page.waitForLoadState('networkidle');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await action.waitFor({state:'visible'});
  available=false;refuse=true;
@@ -646,7 +648,9 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  // 3. Switched back on: the same suggestion version can be approved again.
  await page.waitForLoadState('networkidle');
  refuse=false;
- await page.clock.fastForward(15*60_000);
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+ await page.locator('#docRefresh').click();
+ await page.waitForLoadState('networkidle');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await action.waitFor({state:'visible'});
  await action.click();
