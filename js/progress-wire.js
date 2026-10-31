@@ -716,7 +716,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     counted: new Map(),
   };
   const roomWrites = createRoomTurnClient({ session: async () => state.csrf });
-  let composerSending = false;
+  $("composerSend").disabled = true;
+  $("composerSend").insertAdjacentHTML("afterend", '<span class="composer-unavailable">Not submitted. This control cannot send a request to Dr. CRE.</span>');
 
   /* --------------------------------------------------------- small helpers */
 
@@ -1854,48 +1855,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       ? `${value.length} / ${BODY_MAX} — too long to post`
       : `${value.length} / ${BODY_MAX}`;
     counter.classList.toggle("is-over", over);
-    const retained = roomWrites.pending('composer');
-    $("composerInput").readOnly = Boolean(retained);
-    $("composerSend").disabled = composerSending || over || !value.trim();
-    if (!composerSending) $("composerSend").textContent = retained ? 'Check outcome' : 'Send';
+    $("composerSend").disabled = true;
     sizeComposer(value);
-  }
-
-  async function sendComposer() {
-    if (composerSending) return;
-    const input = $("composerInput");
-    const body = roomWrites.pending('composer')?.body ?? input.value;
-    if (!body.trim() || body.length > BODY_MAX) return;
-    const localId = 'pending:composer';
-    state.pending.set(localId, { seq: Number.MAX_SAFE_INTEGER, at: new Date().toISOString(),
-      seat: "human", sponsor: state.viewer, kind: "turn", body, msg_id: localId });
-    composerSending = true;
-    updateCounter();
-    render();
-    scrollToBottom(false);
-
-    const send = $("composerSend");
-    send.disabled = true;
-    const spinner = el("span", "composer-spinner");
-    send.prepend(spinner);
-    try {
-      await postTurn({ body });
-      state.pending.delete(localId);
-      input.value = '';
-      await wirePoll.refresh();
-    } catch (error) {
-      state.pending.delete(localId);
-      render();
-      input.value = body;
-      toast(error?.payload?.error === "body_too_long"
-        ? "That turn is over the room's 20,000-character cap."
-        : roomWrites.pending('composer') ? 'Turn outcome unknown. Check outcome before editing or posting another turn.' : 'The room refused this turn. Review it before sending again.',
-      () => { input.value = body; updateCounter(); input.focus(); });
-    } finally {
-      composerSending = false;
-      spinner.remove();
-      updateCounter();
-    }
   }
 
   async function requestReconnect(deskName) {
@@ -2149,9 +2110,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   $("wireResume").addEventListener("click", () => { state.historyGeneration = (state.historyGeneration || 0) + 1; state.historyTurns = null; state.following = true; render(); scrollToBottom(true); });
   $("composerInput").addEventListener("input", updateCounter);
   $("composerInput").addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendComposer(); }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); }
   });
-  $("roomComposer").addEventListener("submit", (event) => { event.preventDefault(); sendComposer(); });
+  $("roomComposer").addEventListener("submit", (event) => { event.preventDefault(); });
 
   // Cursor parallax: the stage leans toward the pointer, and each ring is
   // displaced by its depth. Pointer-driven only, so a touch device simply never
