@@ -1,5 +1,5 @@
-import { FACT_TERMS } from './client.js';
-import { uuidv4 } from './uuid.js';
+import { FACT_TERMS } from '../../js/client.js';
+import { uuidv4 } from '../../js/uuid.js';
 
 export function createFactReviewFixture() {
   const documents = ['Demo Lease.pdf', 'Demo Counteroffer.pdf', 'Demo Amendment.pdf'].map((filename, i) => ({
@@ -48,6 +48,7 @@ export function createFactReviewFixture() {
   }
   return {
     attachments: entity => structuredClone(documents.filter(doc => doc.subject_id === entity)),
+    async listDealDocuments({ deal_id }) { return { ok: true, schema_version: 'deal-documents.v1', documents: documents.filter(doc => doc.subject_id === deal_id).map(doc => ({ id: doc.id, display_name: doc.filename, stored_at: '2026-01-01T00:00:00Z', document_type: 'application/pdf', page_count: null, content_hash: 'a'.repeat(64) })), has_more: false, next_cursor: null }; },
     async listFactReview({ entity_ref, include_resolved = false, limit = 50, cursor } = {}) {
       const all = [...fields.values()].filter(field => (!entity_ref || entity_ref === field.entity_ref) && (include_resolved || field.pending))
         .sort((a, b) => `${a.entity_ref}|${a.fact_key}`.localeCompare(`${b.entity_ref}|${b.fact_key}`));
@@ -117,7 +118,7 @@ export function createFactReviewFixture() {
         field.canonical_version++;
         field.canonical_fact = { entity_ref: field.entity_ref, fact_key: field.fact_key, normalized_value: chosen.normalized_value,
           canonical_unit: Object.keys(FACT_TERMS[field.fact_key].units)[0], expense_basis: chosen.expense_basis || null, version: field.canonical_version,
-          observation_ids: [chosen.id], basis: 'human_review', promoted_at: new Date(Date.UTC(2026, 9, 28 + field.canonical_version)).toISOString() };
+          observation_ids: [chosen.id], basis: 'human_review' };
         field.canonical_history.push(structuredClone(field.canonical_fact));
       }
       const review_receipt = { decision: args.decision, reason: args.reason, canonical_version: field.canonical_version, chosen_observation_id: chosen?.id || null };

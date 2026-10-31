@@ -92,7 +92,7 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
- * @property {(args:{idempotency_key:string,deal_id:string,fields:{fact_key:string,prior_version:number,current_version:number}[]}) => Promise<Object>} prepareTermsComparison
+ * @property {(args:{deal_id:string,limit?:number,cursor?:string}, options?:{signal?:AbortSignal}) => Promise<{ok:true,schema_version:'deal-documents.v1',documents:{id:string,display_name:string,stored_at:string}[],has_more:boolean,next_cursor:string|null}>} listDealDocuments
  * @property {(args:{entity_ref?:string,limit?:number,cursor?:string,include_resolved?:boolean}, options?:{signal?:AbortSignal}) => Promise<FactReviewList>} listFactReview
  * @property {(args:{idempotency_key:string,entity_ref:string,observation:HumanFact}) => Promise<Object>} recordHumanFact
  * @property {(args:{idempotency_key:string,entity_ref:string,fact_key:string,base_version:number,review_version:string,decision:'approve'|'correct'|'reject',reason:string,observation_id?:string,correction?:HumanFact}) => Promise<Object>} resolveFactReview
@@ -125,10 +125,10 @@
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
  * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,to:string[],cc:string[],idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
- * @property {(args?:{deal?:string,limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
+ * @property {(args?:{deal?:string,limit?:number,cursor?:string,include_non_deal?:boolean}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
  * @property {(args:{proposal_id:string,base_version:number,proposal_digest:string,deal?:string,idempotency_key:string}) => Promise<Object>} confirmEmailFiling partner confirmation of a filing proposal
- * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
- * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
+ * @property {(args:{deal?:string|null,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
+ * @property {(args:{deal?:string|null,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailDealProgress Joe-only, exact displayed preview
  * @property {(args:{proposal_id:string,base_version:number,reason:string,idempotency_key:string}) => Promise<Object>} dismissEmailProposal Joe or Dell, observed version and reason

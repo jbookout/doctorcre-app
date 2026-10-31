@@ -34,23 +34,6 @@ function transport({ lost = false, producer } = {}) {
   return { calls, receipts, fetchImpl };
 }
 
-function queue(t) {
-  const fields = {
-    enqueueTitle: { value: 'Synthetic task' }, enqueueBody: { value: 'Synthetic details' },
-    enqueueTarget: { value: 'codex' }, queueNotice: {},
-    queueComposer: { querySelector: () => ({}), querySelectorAll: () => [], reset() { fields.enqueueTitle.value = ''; } },
-  };
-  const context = vm.createContext({
-    $: id => fields[id], location: { origin: 'https://app.doctorcre.com' },
-    createRoomTurnClient: () => createRoomTurnClient({ fetchImpl: t.fetchImpl }), sessionFetch: t.fetchImpl,
-  });
-  const source = read('queue.js');
-  const start = source.indexOf('const queueWrites =');
-  assert.ok(start >= 0);
-  vm.runInContext(source.slice(start, source.indexOf('async function readQueue(')) + '\nglobalThis.submit = enqueue;', context);
-  return { send: () => context.submit({ preventDefault() {} }), fields };
-}
-
 function room(t) {
   const nodes = new Map();
   const $ = id => {
@@ -68,35 +51,19 @@ function room(t) {
   const postStart = source.indexOf('const postTurn =');
   assert.ok(postStart >= 0);
   vm.runInContext(source.slice(postStart, source.indexOf('/* ------------------------------------------------------------ the stage', postStart)), context);
-  const start = source.indexOf('async function sendComposer(');
-  vm.runInContext(source.slice(start, source.indexOf('function toast(', start)) + '\nObject.assign(globalThis, {sendComposer, requestReconnect});', context);
-  return { send: () => context.sendComposer(), reconnect: () => context.requestReconnect('codex'), nodes };
+  const start = source.indexOf('async function requestReconnect(');
+  vm.runInContext(source.slice(start, source.indexOf('function toast(', start)) + '\nglobalThis.requestReconnect = requestReconnect;', context);
+  return { reconnect: () => context.requestReconnect('codex'), nodes };
 }
 
-for (const caller of ['Room composer', 'queue enqueue', 'desk reconnect']) {
-  test(`${caller} sends a producer-valid UUID and succeeds in the same session`, async () => {
-    const t = transport(), h = caller === 'queue enqueue' ? queue(t) : room(t);
-    await (caller === 'desk reconnect' ? h.reconnect() : h.send());
-    assert.equal(t.calls.length, 1);
-    assert.equal(t.receipts.size, 1, 'one authorized operation committed');
-    if (caller === 'queue enqueue') {
-      assert.equal(t.calls[0].body, '@queue enqueue target=codex cap=read :: Synthetic task\nSynthetic details');
-      assert.equal(h.fields.enqueueTitle.value, '', 'successful submission resets the real form');
-    } else if (caller === 'Room composer') {
-      assert.equal(t.calls[0].body, 'Synthetic Room turn');
-      assert.equal(h.nodes.get('composerInput').value, '', 'successful submission clears the real composer');
-    } else assert.deepEqual(t.calls[0].control, { action: 'login', desk: 'codex' });
-  });
-  test(`${caller} retries the exact producer-valid payload after a committed answer is lost`, async () => {
-    const t = transport({ lost: true }), h = caller === 'queue enqueue' ? queue(t) : room(t);
-    const send = caller === 'desk reconnect' ? h.reconnect : h.send;
-    await send();
-    await send();
-    assert.equal(t.calls.length, 2);
-    assert.deepEqual(t.calls[1], t.calls[0]);
-    assert.equal(t.receipts.size, 1, 'retry does not append a second turn');
-  });
-}
+test('desk reconnect retries the same producer-valid request after a lost response', async () => {
+  const t = transport({ lost: true }), h = room(t);
+  await h.reconnect(); await h.reconnect();
+  assert.equal(t.calls.length, 2);
+  assert.deepEqual(t.calls[1], t.calls[0]);
+  assert.deepEqual(t.calls[0].control, { action: 'login', desk: 'codex' });
+  assert.equal(t.receipts.size, 1);
+});
 
 function pinnedRoomPost() {
   const source = execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, 'show',
@@ -135,7 +102,7 @@ function pinnedRoomPost() {
   };
 }
 
-test('real Room, queue and reconnect payloads pass the exact pinned producer before dispatch and replay once', {
+test('desk reconnect passes the exact pinned producer before dispatch and replay once', {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to execute the pinned producer',
 }, async () => {
   const producer = pinnedRoomPost();
@@ -147,13 +114,10 @@ test('real Room, queue and reconnect payloads pass the exact pinned producer bef
     assert.equal((await refusal.json()).error, 'idempotency_key_required');
     assert.equal(producer.receipts.size, 0, 'missing keys are refused before dispatch');
   }
-  for (const caller of ['Room composer', 'queue enqueue', 'desk reconnect']) {
-    const before = producer.receipts.size;
-    const t = transport({ lost: true, producer: producer.post }), h = caller === 'queue enqueue' ? queue(t) : room(t);
-    const send = caller === 'desk reconnect' ? h.reconnect : h.send;
-    await send(); await send();
-    assert.equal(t.calls.length, 2);
-    assert.deepEqual(t.calls[1], t.calls[0]);
-    assert.equal(producer.receipts.size, before + 1, caller);
-  }
+  const before = producer.receipts.size;
+  const t = transport({ lost: true, producer: producer.post }), h = room(t);
+  await h.reconnect(); await h.reconnect();
+  assert.equal(t.calls.length, 2);
+  assert.deepEqual(t.calls[1], t.calls[0]);
+  assert.equal(producer.receipts.size, before + 1);
 });

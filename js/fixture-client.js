@@ -53,9 +53,11 @@ export function createFixtureDealStore(seed) {
  * @param {string} [opts.selfActor]
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
+const VERSION_CONFLICT = 'version_conflict';
+
 export async function createFixtureClient(opts = {}) {
   let factReview;
-  const factReviews = () => factReview ||= import('./fact-review-fixture.js').then(module => module.createFactReviewFixture());
+  const factReviews = () => factReview ||= import('../data/fixtures/fact-review.mjs').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
@@ -64,6 +66,14 @@ export async function createFixtureClient(opts = {}) {
   });
 
   const selfActor = opts.selfActor || seed.actors?.self || 'joe';
+  const conventionProposals = [1, 2].map((number) => {
+    const section_id = `d0000000-0000-4000-8000-00000000c15${number}`;
+    return { section_id, section_key: `conventions/proposed/demo-${number}`, base_version: number,
+      updated_at: '2026-10-28T12:00:00Z', adoptable: true, statement: `Demo convention ${number}.`,
+      card_id: null, packs: ['demo'], approve_with: { verb: 'adopt-rule', section_id, base_version: number } };
+  });
+  const conventionReceipts = new Map();
+
   const partnerActor = seed.actors?.partner || 'dell';
 
   const dealStore = opts.dealStore || createFixtureDealStore(seed);
@@ -168,7 +178,7 @@ export async function createFixtureClient(opts = {}) {
     }
     if (Number(baseVersion) !== Number(row.version)) {
       const error = new Error('fixture update-loop refused: version_conflict');
-      error.payload = { error: 'version_conflict', hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
+      error.payload = { error: VERSION_CONFLICT, hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
       throw error;
     }
   }
@@ -419,7 +429,7 @@ export async function createFixtureClient(opts = {}) {
   function guardWorkRequestVersion(verb, row, baseVersion) {
     if (!Number.isInteger(baseVersion)) refuse(verb, 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
     if (Number(baseVersion) !== Number(row.version)) {
-      refuse(verb, 'version_conflict', { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
+      refuse(verb, VERSION_CONFLICT, { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
     }
   }
 
@@ -1220,7 +1230,7 @@ export async function createFixtureClient(opts = {}) {
         if (!rows.length || rows.some(d => d.client_status !== 'prospect') || !rows.some(d => !isClosedDeal(d))) refuse('set-prospect-engagement-status', 'not_a_prospect');
         if (args.expected_actor && args.expected_actor !== selfActor) refuse('set-prospect-engagement-status', 'account_changed');
         if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) refuse('set-prospect-engagement-status', 'invalid_engagement_status');
-        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', 'version_conflict');
+        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', VERSION_CONFLICT);
         const client_version = args.base_version + 1;
         rows.forEach(d => Object.assign(d, { prospect_engagement_status: args.status, client_version }));
         return { ok:true, client_id:args.client_id, prospect_engagement_status:args.status, client_version };
@@ -1262,6 +1272,7 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
+    async listDealDocuments(args) { return (await factReviews()).listDealDocuments(args); },
     async prepareTermsComparison(args) { return (await factReviews()).prepareTermsComparison(args); },
     async listFactReview(args) { return (await factReviews()).listFactReview(args); },
     async recordHumanFact(args) { return (await factReviews()).recordHumanFact(args); },
@@ -1384,7 +1395,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('update-deal', 'missing_base_version', { hint: 'Re-read the deal and send the version it holds now.' });
         }
         if (Number(base_version) !== Number(row.version)) {
-          refuse('update-deal', 'version_conflict', { deal, resolution: 're-read the deal and decide from what it holds now' });
+          refuse('update-deal', VERSION_CONFLICT, { deal, resolution: 're-read the deal and decide from what it holds now' });
         }
         if ('outcome' in patch) {
           if (!DEAL_OUTCOMES.includes(patch.outcome)) {
@@ -1887,7 +1898,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('answer-work-request-for-joe', 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
         }
         if (Number(base_version) !== Number(card.version)) {
-          refuse('answer-work-request-for-joe', 'version_conflict', { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
+          refuse('answer-work-request-for-joe', VERSION_CONFLICT, { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
         }
         if (scope_confirmed !== true) refuse('answer-work-request-for-joe', 'scope_not_confirmed', { human_ref: ref });
         const text = String(answer_text ?? '').trim();
@@ -2171,7 +2182,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('set-notification-preference', 'notification_preference_timezone_unknown', { timezone });
         }
         if (!Number.isInteger(base_version) || base_version !== preference.version) {
-          refuse('set-notification-preference', 'version_conflict', { current_version: preference.version });
+          refuse('set-notification-preference', VERSION_CONFLICT, { current_version: preference.version });
         }
         if (typeof device_opt_in === 'boolean') preference.device_opt_in = device_opt_in;
         if (clear) {
@@ -2309,7 +2320,7 @@ export async function createFixtureClient(opts = {}) {
         { suggestion_id, base_version, choice, snoozed_until, work_ref });
       if (docSuggestionResults.has(idempotency_key))
         return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
-      if (row.version !== base_version) refuse('decide-doc-suggestion', 'version_conflict', { current: { ...row } });
+      if (row.version !== base_version) refuse('decide-doc-suggestion', VERSION_CONFLICT, { current: { ...row } });
       if (!['act','discuss','snooze','dismiss'].includes(choice)) refuse('decide-doc-suggestion', 'choice_invalid');
       if (choice === 'act') {
         const found = loops.filter(item => item.number === String(work_ref || '').replace(/^#/, '')
@@ -2336,7 +2347,7 @@ export async function createFixtureClient(opts = {}) {
         { suggestion_id, base_version, proposed_text, source_conversation_id, source_sequence });
       if (docSuggestionResults.has(idempotency_key))
         return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
-      if (row.version !== base_version) refuse('propose-doc-correction', 'version_conflict', { current: { ...row } });
+      if (row.version !== base_version) refuse('propose-doc-correction', VERSION_CONFLICT, { current: { ...row } });
       if (row.conversation_id !== source_conversation_id || row.source_sequence !== source_sequence)
         refuse('propose-doc-correction', 'source_scope_mismatch');
       if (!String(proposed_text || '').trim()) refuse('propose-doc-correction', 'correction_text_invalid');
@@ -2507,7 +2518,7 @@ export async function createFixtureClient(opts = {}) {
           refuse(verb, 'doc_conversation_no_change_requested', { conversation_id: id });
         }
         if (!Number.isInteger(base_version) || base_version !== row.version) {
-          refuse(verb, 'version_conflict', { conversation_id: id, current_version: row.version });
+          refuse(verb, VERSION_CONFLICT, { conversation_id: id, current_version: row.version });
         }
         if (name !== undefined) {
           // The PRIOR title, appended to an immutable history no verb reads back.
@@ -2609,6 +2620,23 @@ export async function createFixtureClient(opts = {}) {
       const coverage=[...new Set(rows.map(r=>r.kind))].map(kind=>({kind,source_ref:`demo.${kind}`,state:kind==='defect'?'partial':'complete',count_total:rows.filter(r=>r.kind===kind).length,count_returned:items.filter(r=>r.kind===kind).length,reason:kind==='defect'?'fix_status_not_recorded':null}));
       return {schema:'unfinished-work.v1',items,coverage,census_complete:false,as_of:at,next_cursor:next,limit:size};
     },
+    async adoptRule(args) {
+      const previous = conventionReceipts.get(args.idempotency_key);
+      if (previous) {
+        if (JSON.stringify(previous.args) !== JSON.stringify(args))
+          throw Object.assign(new Error('key_reuse'), { payload: { error: 'key_reuse' } });
+        return structuredClone(previous.result);
+      }
+      const index = conventionProposals.findIndex(row => row.section_id === args.section_id);
+      const error = index < 0 ? 'convention_proposal_not_found'
+        : conventionProposals[index].base_version !== args.base_version ? 'version_conflict'
+          : !args.reason?.trim() ? 'missing_required' : null;
+      if (error) throw Object.assign(new Error(error), { payload: { error } });
+      const result = { ok: true, rule_id: uuidv4(), retired_section_id: args.section_id };
+      conventionProposals.splice(index, 1);
+      conventionReceipts.set(args.idempotency_key, { args: structuredClone(args), result });
+      return structuredClone(result);
+    },
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -2624,14 +2652,16 @@ export async function createFixtureClient(opts = {}) {
       ];
       return {
         ok: true,
+        pending_convention_proposals: structuredClone(conventionProposals),
         pending_rule_approvals: rules,
         pending_guidance_import_batches: batches,
         pending_retrieval_proposals: proposals,
         counts: {
+          pending_convention_proposals: conventionProposals.length,
           pending_rule_approvals: rules.length,
           pending_guidance_import_batches: batches.length,
           pending_retrieval_proposals: proposals.length,
-          total: rules.length + batches.length + proposals.length,
+          total: conventionProposals.length + rules.length + batches.length + proposals.length,
         },
       };
     },
@@ -3047,7 +3077,7 @@ export async function createFixtureClient(opts = {}) {
   };
 
   let emailFixture;
-  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true }));
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([
     'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
     'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',

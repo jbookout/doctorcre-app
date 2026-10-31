@@ -26,6 +26,7 @@ test('deal Terms prepares the HTTP fill plan across phone, desktop and both them
         return route.fulfill({ status: response.status, json: response.body });
       });
       await page.goto(`${server.url}/deals?deal=d14`);
+      await page.getByRole('region', { name: 'Terms', exact: true }).scrollIntoViewIfNeeded();
       await page.locator('[data-prepare-comparison]').waitFor();
       await page.evaluate(async () => {
         const { state } = await import('/js/pipeline.js');

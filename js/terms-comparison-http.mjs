@@ -1,4 +1,4 @@
-import { COMPARISON_ROWS } from './terms-comparison-fields.js';
+import { COMPARISON_ROWS } from './terms-comparison-fields.mjs';
 import { fetchRead } from './current-read.mjs';
 
 export async function prepareComparisonHttp(fetchImpl, args, csrf, timeoutMs) {

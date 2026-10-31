@@ -13,6 +13,7 @@ export const routeEntries = [
   ["/ideas-events","ideas.html","/control-room"],
   ["/work-requests","system-work.html","/system-work.html"],
   ["/tours","tours/index.html","/tours"],
+  ["/calls","calls.html","/business"],
   ["/share","reports/share.html","/share"],
   ["/design-lab","design.html","/control-room"],
   ["/all-work","work-inventory.html","/work-inventory"],
@@ -30,7 +31,7 @@ export const routeEntries = [
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.22.0",
+  version: "1.23.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
   "/control-room/automations": "/control-room?tab=automations",
@@ -83,6 +84,7 @@ export const navigationItems = [
     "label": "Control Room",
     "href": "/control-room"
   },
+  { label: "Phone capture", href: "/calls", group: "Workspace" },
   {
     "label": "Relationships",
     "href": "/relationships",

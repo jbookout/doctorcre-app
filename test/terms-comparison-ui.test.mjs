@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { mountFactReview } from '../js/fact-review.js';
+import { FACT_TERMS } from '../js/client.js';
+import { uiBundle } from '../scripts/ui-bundle.mjs';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
+const { mountFactReview } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
 const plan = JSON.parse(await readFile(new URL('./fixtures/terms-comparison/prepare.json', import.meta.url)));
 const tick = () => new Promise(resolve => setTimeout(resolve, 30));
 const rent = { entity_ref: 'd14', fact_key: 'base_rent_per_sf', canonical_version: 3, pending: false,
@@ -10,9 +13,10 @@ const rent = { entity_ref: 'd14', fact_key: 'base_rent_per_sf', canonical_versio
   canonical_history: [{ version: 1 }, { version: 3, promoted_at: '2026-10-30T12:00:00Z' }, { version: 2, promoted_at: '2026-10-29T12:00:00Z' }] };
 async function mount(prepare, items = [rent]) {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.FormData = dom.window.FormData;
   const root = dom.window.document.querySelector('#terms');
-  const client = { listFactReview: async () => ({ ok: true, schema_version: 'fact-review.v1', items, has_more: false }), prepareTermsComparison: prepare };
-  const panel = mountFactReview(root, { client, entityRef: 'd14', attachments: [] });
+  const client = { listDealDocuments: async () => ({ok: true, schema_version: 'deal-documents.v1', documents: [], has_more: false}), listFactReview: async () => ({ ok: true, schema_version: 'fact-review.v1', items, has_more: false }), prepareTermsComparison: prepare };
+  const panel = mountFactReview(root, { client, entityRef: 'd14', terms: FACT_TERMS });
   await tick();
   root.querySelector('[data-prepare-comparison]').click();
   await tick();

@@ -9,6 +9,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.url}/deals?deal=d14`);
     const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
     await expect(terms.getByRole('heading', { name: 'Base rent', exact: true })).toBeVisible();
     await expect(terms.locator('.fact-observation')).toHaveCount(3);
     await expect(terms).toContainText('Demo Lease.pdf');
@@ -41,7 +42,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await edit.click();
     await review.getByLabel('Decision').selectOption('correct');
     await review.getByLabel('Value', { exact: true }).fill('27');
-    await review.getByLabel('Document', { exact: true }).selectOption({ label: 'Demo Amendment.pdf' });
+    await review.getByLabel('Document', { exact: true }).selectOption({ label: 'Demo Amendment.pdf · 2026-01-01' });
     await review.getByLabel('First page').fill('3');
     await review.getByLabel('Last page').fill('3');
     await review.getByLabel('Cited text').fill('Demo corrected rent is $27 per square foot.');
@@ -79,6 +80,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
 test('stale evidence refreshes the review without applying the old decision', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   const review = terms.locator('form[data-fact-review]');
   await review.getByLabel('Decision', { exact: true }).selectOption('reject');
   await review.getByLabel('Reason').fill('Demo original review.');
@@ -102,6 +104,7 @@ test('stale evidence refreshes the review without applying the old decision', as
 test('unknown save retries the identical request and freezes its reviewed fields', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   const review = terms.locator('form[data-fact-review]');
   await review.getByLabel('Decision', { exact: true }).selectOption('reject');
   await review.getByLabel('Reason').fill('Demo keep the canonical term.');
@@ -132,6 +135,7 @@ test('missing attachment metadata does not turn prepared documents into source c
   await expect(page.locator('.card-open:visible').first()).toBeVisible();
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
+    state.client.listDealDocuments = async () => { throw new Error('Unavailable'); };
     const read = state.client.getDeal.bind(state.client);
     state.client.getDeal = async id => {
       const detail = await read(id); delete detail.attachments;
@@ -140,6 +144,7 @@ test('missing attachment metadata does not turn prepared documents into source c
   });
   await page.locator('.card-open:visible').filter({ hasText: 'Demo Surgical Practice' }).first().click();
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   await expect(terms).toContainText('Stored documents unavailable');
   await expect(terms).toContainText('Document name unavailable');
   await expect(terms.locator('[data-fact-record]')).toHaveCount(0);
@@ -149,6 +154,7 @@ test('missing attachment metadata does not turn prepared documents into source c
 test('a refused record preserves its selected unit and source for correction', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   await terms.getByText('Record a term', { exact: true }).click();
   const record = terms.locator('form[data-fact-record]');
   await record.getByLabel('Term', { exact: true }).selectOption('term_months');
@@ -181,6 +187,7 @@ test('a refused record preserves its selected unit and source for correction', a
 test('distinct decimal term values remain distinct when displayed', async ({ page }) => {
   await page.goto(`${server.url}/deals?deal=d14`);
   const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
   await terms.getByText('Record a term', { exact: true }).click();
   const record = terms.locator('form[data-fact-record]');
   for (const value of ['24.375', '24.38', '12345678901234567890.123456789012345678']) {
@@ -193,3 +200,48 @@ test('distinct decimal term values remain distinct when displayed', async ({ pag
   await expect(terms).toContainText('$24.38/SF/yr');
   await expect(terms).toContainText('$12,345,678,901,234,567,890.123456789012345678/SF/yr');
 });
+
+test('terms load the React island only when opened and show an import failure', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/js/ui.generated.js')) requests.push(request.url()); });
+  await page.goto(`${server.url}/deals`);
+  expect(requests).toHaveLength(0);
+  await page.route('**/js/ui.generated.js', route => route.abort());
+  await page.goto(`${server.url}/deals?deal=d14`);
+  const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
+  await terms.scrollIntoViewIfNeeded();
+  await expect(terms).toContainText('Terms unavailable. Reopen this deal to try again.');
+  expect(requests.length).toBeGreaterThan(0);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+  test(`rent schedule at ${width} in ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await page.goto(`${server.url}/deals?deal=d14`);
+    const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await expect(terms.getByRole('heading', { name: 'Base rent' })).toBeVisible();
+    await page.evaluate(async () => {
+      const { state } = await import('/js/pipeline.js');
+      const list = state.client.listFactReview.bind(state.client);
+      const field = value => ({ value, source: { page: 1, region_id: 'row-1', method: 'ocr' } });
+      state.client.listFactReview = async args => {
+        const result = await list(args);
+        result.items.push({ entity_ref: 'd14', fact_key: 'rent_schedule', canonical_version: 0, review_version: '0'.repeat(64), pending: true, priority: 'normal', reasons: ['human_review'], review_history: [], canonical_fact: null,
+          observations: [{ id: 'schedule', method: 'ocr', confidence_tier: 'human_review', unit: 'schedule', source: { document_ref: '00000000-0000-4000-8000-000000000030', page_start: 1, page_end: 1, cited_text: 'Year 1 | $24 | NNN. Year 2 | $24.72 | NNN | 3%.', cited_text_expires_at: '2099-01-01T00:00:00Z' }, value: [
+            { start_month: field(1), end_month: field(12), rate: field('24'), unit: field('USD/SF/year'), expense_basis: field('nnn'), escalation_percent: field(null) },
+            { start_month: field(13), end_month: field(24), rate: field('24.72'), unit: field('USD/SF/year'), expense_basis: field('nnn'), escalation_percent: field('3') },
+          ] }] });
+        return result;
+      };
+    });
+    await terms.getByRole('button', { name: 'Refresh terms' }).click();
+    const schedule = terms.locator('[data-fact-key="rent_schedule"]');
+    await expect(schedule).toContainText('$24.72/SF/yr');
+    await expect(schedule).toContainText('OCR · verify');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await schedule.evaluate(node => window.scrollTo(0, window.scrollY + node.getBoundingClientRect().top - 300));
+    await page.screenshot({ path: `.github/pr-evidence/WR39.S3.J7/schedule-${width}-${theme}.png`, animations: 'disabled' });
+  });
+}
