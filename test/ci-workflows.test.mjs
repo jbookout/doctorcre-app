@@ -50,7 +50,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
   t.after(() => rm(workspace, { recursive: true, force: true }));
   const steps = ci.split(/^      - /m).slice(1);
   const appCheckout = steps.find(step => /^uses: actions\/checkout@/m.test(step));
-  const producerCheckout = steps.find(step => /repository: jbookout\/carr-system/.test(step));
+  const producerCheckout = steps.find(step => /repository: DoctorCRE\/carr-system/.test(step));
   const app = resolve(workspace, appCheckout.match(/path: (\S+)/)?.[1] ?? ".");
   const producer = resolve(workspace, producerCheckout.match(/path: (\S+)/)[1]);
   await mkdir(app, { recursive: true });
