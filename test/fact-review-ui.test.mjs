@@ -130,3 +130,51 @@ test('abstentions explain OCR failures without offering an unavailable value', a
   assert.equal(schedule.querySelector('[name=decision]').value, 'reject');
   assert.match(root.querySelector('[data-fact-key="term_months"]').textContent, /OCR could not read this/);
 });
+
+test('a failed in-flight refresh preserves a review draft', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture();
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  let rejectRead, started;
+  const reading = new Promise(resolve => { started = resolve; });
+  client.listFactReview = () => new Promise((resolve, reject) => { rejectRead = reject; started(); });
+  const refresh = panel.refresh();
+  await reading;
+  const reason = root.querySelector('[data-fact-review] [name=reason]');
+  reason.value = 'Keep my draft';
+  reason.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  rejectRead(new Error('offline'));
+  await refresh;
+  assert.equal(root.querySelector('[data-fact-review] [name=reason]').value, 'Keep my draft');
+  assert.ok(root.querySelector('[data-fact-review] button[type=submit]'));
+  assert.match(root.querySelector('[data-terms-status]').textContent, /unavailable/i);
+  panel.dispose();
+});
+
+test('schedule choices identify the corresponding observations with distinct rates', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture();
+  const list = client.listFactReview.bind(client);
+  const field = value => ({ value });
+  client.listFactReview = async args => {
+    const page = await list(args);
+    const observations = ['24', '26'].map((rate, i) => ({ id: `schedule-${i}`, method: 'ocr', confidence_tier: 'human_review', unit: 'schedule', source: { document_ref: '00000000-0000-4000-8000-000000000030', page_start: 1, page_end: 1, cited_text: 'Rent', cited_text_expires_at: '2099-01-01T00:00:00Z' }, value: [{ start_month: field(1), end_month: field(12), rate: field(rate), unit: field('USD/SF/year'), expense_basis: field('nnn'), escalation_percent: field(null) }] }));
+    page.items.push({ entity_ref: 'd14', fact_key: 'rent_schedule', pending: true, reasons: ['conflict'], canonical_fact: null, observations, review_history: [], canonical_version: 0, review_version: '0'.repeat(64) });
+    return page;
+  };
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const schedule = root.querySelector('[data-fact-key=rent_schedule]');
+  const options = [...schedule.querySelectorAll('[name=observation_id] option')].slice(1);
+  const observations = [...schedule.querySelectorAll('.fact-observation')];
+  assert.match(options[0].textContent, /Schedule schedule-0.*1–12.*\$24\.00\/SF\/yr/);
+  assert.match(options[1].textContent, /Schedule schedule-1.*1–12.*\$26\.00\/SF\/yr/);
+  assert.match(observations[0].textContent, /Schedule schedule-0/);
+  assert.match(observations[1].textContent, /Schedule schedule-1/);
+  panel.dispose();
+});

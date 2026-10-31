@@ -49,12 +49,18 @@ function Entry({ documents, factKey, prefix, terms }: { documents: Document[]; f
     <small id={`${prefix}-source-hint`} className="fact-wide">Transcribe the clause from the stored document. This entry does not verify the document text.</small>
   </div>;
 }
-function Schedule({ periods }: { periods: Period[] }) {
+function scheduleRate(p: Period) {
   const units: Record<string, string> = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
+  const [whole = '', fraction = ''] = String(p.rate).split('.');
+  return `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction.padEnd(2, '0')}${units[p.unit] ?? ` ${p.unit}`}`;
+}
+function scheduleLabel(o: Observation) { return `Schedule ${o.id}`; }
+function scheduleSummary(o: Observation) {
+  return Array.isArray(o.value) ? sourcedPeriods(o.value).map(p => `${p.start_month}–${p.end_month} months: ${scheduleRate(p)}`).join('; ') : '';
+}
+function Schedule({ periods }: { periods: Period[] }) {
   return <table className="fact-schedule"><thead><tr><th>Period</th><th>Rate</th><th>Escalation</th><th>Expense basis</th></tr></thead><tbody>{periods.map((p, i) => {
-    const [whole = '', fraction = ''] = String(p.rate).split('.');
-    const rate = `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction.padEnd(2, '0')}${units[p.unit] ?? ` ${p.unit}`}`;
-    return <tr key={i}><td data-label="Period">{p.start_month}–{p.end_month} months</td><td data-label="Rate">{rate}</td><td data-label="Escalation">{p.escalation_percent == null ? '—' : `${p.escalation_percent}%`}</td><td data-label="Expense basis">{BASES[p.expense_basis] ?? p.expense_basis}</td></tr>;
+    return <tr key={i}><td data-label="Period">{p.start_month}–{p.end_month} months</td><td data-label="Rate">{scheduleRate(p)}</td><td data-label="Escalation">{p.escalation_percent == null ? '—' : `${p.escalation_percent}%`}</td><td data-label="Expense basis">{BASES[p.expense_basis] ?? p.expense_basis}</td></tr>;
   })}</tbody></table>;
 }
 function sourcedPeriods(periods: SourcedPeriod[]): Period[] {
@@ -64,11 +70,11 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
   const schedule = item.fact_key === 'rent_schedule';
   return <article className="fact-term" data-fact-key={item.fact_key}><header><h3>{terms[item.fact_key]?.label || item.fact_key.replaceAll('_', ' ')}</h3><span className="fact-state">{reviewLabel(item)}</span></header>
     <div className="fact-canonical"><small>Canonical value</small>{schedule && item.canonical_fact?.normalized_schedule ? <Schedule periods={item.canonical_fact.normalized_schedule} /> : <p className={item.canonical_fact ? undefined : 'fact-empty'}>{item.canonical_fact ? valueText(item.canonical_fact) : 'No canonical value recorded'}</p>}</div>
-    <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <Schedule periods={sourcedPeriods(o.value)} /> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
+    <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <><strong>{scheduleLabel(o)}</strong><Schedule periods={sourcedPeriods(o.value)} /></> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
     <button type="button" className="btn" data-review-term hidden={item.pending}>Review term</button>
     <form data-fact-review={index} hidden={!item.pending}>
       <label>Decision<select aria-label="Decision" name="decision" defaultValue={item.observations.length ? "approve" : "reject"}><option value="approve" disabled={!item.observations.length}>Approve a sourced value</option><option value="correct" disabled={!documents.length || schedule}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
-      <label data-choose-value hidden={!item.observations.length}>Choose a value<select aria-label="Choose a value" name="observation_id" required disabled={!item.observations.length}><option value="">Choose a sourced value</option>{item.observations.map(o => <option key={o.id} value={o.id}>{valueText(o)} · {documentName(o, documents)}{schedule ? ` · ${o.method === 'ocr' ? 'OCR' : o.method === 'text_layer' ? 'Text' : o.method} · Page ${o.source.page_start}${o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}` : ''}</option>)}</select></label>
+      <label data-choose-value hidden={!item.observations.length}>Choose a value<select aria-label="Choose a value" name="observation_id" required disabled={!item.observations.length}><option value="">Choose a sourced value</option>{item.observations.map(o => <option key={o.id} value={o.id}>{schedule ? `${scheduleLabel(o)} · ${scheduleSummary(o)}` : valueText(o)} · {documentName(o, documents)}{schedule ? ` · ${o.method === 'ocr' ? 'OCR' : o.method === 'text_layer' ? 'Text' : o.method} · Page ${o.source.page_start}${o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}` : ''}</option>)}</select></label>
       <fieldset data-correction hidden disabled><legend>Corrected term</legend>{!schedule && <Entry documents={documents} factKey={item.fact_key} prefix={`correction-${index}`} terms={terms} />}</fieldset>
       <label>Reason<textarea name="reason" rows={2} maxLength={2000} required /></label><button type="submit" className="btn btn-primary">Save review</button><p role="status" data-write-status />
     </form>
@@ -140,7 +146,6 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       status.textContent = message;
     } catch {
       if (!disposed && current === generation) {
-        listContent = null; render();
         status.textContent = 'Terms unavailable. Refresh terms to try again.';
       }
     }
