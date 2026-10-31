@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { renderDealAlert, renderDealItemDetail, renderDealSummary, renderDealItems } from '../js/deal-items.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 const deal = { id: 'synthetic-deal', short_name: "Dr. Demo's Sample Deal", next_step: 'A legacy paragraph that must not appear.',
   items: [
@@ -58,7 +59,7 @@ test('the item sheet keeps the overdue date visible as a due chip', () => {
 
 test('the instruction input accepts only the length supported by the record verb', async () => {
   const { readFile } = await import('node:fs/promises');
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   const doc = new JSDOM(renderDealItemDetail(deal.items[0])).window.document;
   assert.equal(doc.querySelector('textarea').maxLength, contract.mcp_write_contracts['instruct-deal-item'].inputSchema.properties.text.maxLength);
 });

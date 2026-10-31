@@ -2,16 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { queueBoard, prLinks, QUEUE_STAGES, QUEUE_REFRESH_MS, QUEUE_IDLE_MS } from '../js/work-queue-board-model.js';
 
-const job = (card_id, stage, extra = {}) => ({ card_id, work_request: 'WR-000557', work_request_title: 'Queue', stage, stale: false, prs: [], ...extra });
-const read = (jobs, github = []) => ({ ok: true, stale_after_hours: 24, jobs, github });
+const job = (card_id, stage, extra = {}) => ({ card_id, work_request: 'WR-000557', work_request_title: 'Queue', stage, stale: false, pr_evidence_complete: true, prs: [], ...extra });
+const complete = ['DoctorCRE/carr-system', 'jbookout/doctorcre-app', 'jbookout/software-factory'].map(repo => ({ repo, state: 'ok', truncated: false }));
+const read = (jobs, github = complete) => ({ ok: true, stale_after_hours: 24, jobs, github });
 
 test('every stage is present in order, even when empty, and jobs group by Work Request in queue order', () => {
   const board = queueBoard(read([job('WR557.S4.J1', 'review'), job('WR9.S1.J1', 'review', { work_request: 'WR-000009', work_request_title: 'Other' }),
     job('WR557.S4.J2', 'review')]));
-  assert.deepEqual(board.stages.map(stage => [stage.id, stage.count]), [['queued', 0], ['build', 0], ['review', 3], ['merged', 0], ['closed', 0]]);
-  assert.deepEqual(board.stages[2].groups.map(group => [group.work_request, group.title, group.jobs.map(item => item.card_id)]),
+  assert.deepEqual(board.stages.map(stage => [stage.id, stage.count]), [['queued', 0], ['running', 0], ['build', 0], ['review', 3], ['merged', 0], ['live', 0], ['closed', 0]]);
+  assert.deepEqual(board.stages[3].groups.map(group => [group.work_request, group.title, group.jobs.map(item => item.card_id)]),
     [['WR-000557', 'Queue', ['WR557.S4.J1', 'WR557.S4.J2']], ['WR-000009', 'Other', ['WR9.S1.J1']]]);
-  assert.equal(QUEUE_STAGES.length, 5);
+  assert.equal(QUEUE_STAGES.length, 7);
 });
 
 test('staleness and stage come only from the server read', () => {
@@ -21,7 +22,7 @@ test('staleness and stage come only from the server read', () => {
 });
 
 test('a malformed read is refused instead of drawing a partial board', () => {
-  for (const bad of [null, { ok: true, jobs: [] }, read([job('WR557', 'review')]), read([job('WR557.S4.J1', 'live')]),
+  for (const bad of [null, { ok: true, jobs: [] }, read([job('WR557', 'review')]), read([job('WR557.S4.J1', 'bogus')]),
     read([{ ...job('WR557.S4.J1', 'review'), stale: 'yes' }])])
     assert.throws(() => queueBoard(bad), /incomplete/);
 });
@@ -42,4 +43,24 @@ test('only GitHub pull request URLs become links, labelled with their WR.S.J.rep
 
 test('the refresh clock is 60 seconds with a 5-minute idle cutoff', () => {
   assert.deepEqual([QUEUE_REFRESH_MS, QUEUE_IDLE_MS], [60_000, 300_000]);
+});
+
+test('started and production-verified jobs appear in their own stages', () => {
+  const board = queueBoard(read([
+    job('WR557.S4.J1', 'running'),
+    job('WR557.S4.J2', 'merged', { prs: [{ state: 'merged', production_live: true }] }),
+    job('WR557.S4.J3', 'merged', { prs: [{ state: 'merged', production_live: null }] }),
+  ]));
+  assert.equal(board.stages.find(stage => stage.id === 'running').count, 1);
+  assert.equal(board.stages.find(stage => stage.id === 'live').count, 1);
+  assert.equal(board.stages.find(stage => stage.id === 'merged').count, 1);
+});
+
+test('incomplete GitHub evidence and unverified paired PRs stay merged', () => {
+  const merged = job('WR557.S4.J1', 'merged', { prs: [{ state: 'merged', production_live: true }] });
+  for (const github of [[{ repo: 'server', state: 'unavailable' }], [{ repo: 'server', state: 'ok', truncated: true }]])
+    assert.equal(queueBoard(read([merged], github)).jobs[0].stage, 'merged');
+  assert.equal(queueBoard(read([{ ...merged, prs: [...merged.prs, { state: 'closed', production_live: null }] }], [{ repo: 'server', state: 'ok' }])).jobs[0].stage, 'merged');
+  assert.equal(queueBoard(read([{ ...merged, pr_evidence_complete: false }])).jobs[0].stage, 'merged');
+  assert.equal(queueBoard(read([job('WR557.S4.J2', 'live')], [])).jobs[0].stage, 'merged');
 });

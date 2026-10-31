@@ -1,0 +1,65 @@
+{
+  "version": "1.1.0",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "de206d43ff03f1a5cef9584164755c24832b725c"
+  },
+  "read": "morning-brief",
+  "arguments": {},
+  "audience": "authenticated sponsor; no caller-selected audience",
+  "sections_consumed": [
+    "needs_joe",
+    "today",
+    "claim_card",
+    "deals",
+    "loops",
+    "renewals",
+    "assurance_cadence",
+    "costs",
+    "calendar"
+  ],
+  "section_states": [
+    "ready",
+    "empty",
+    "partial",
+    "unavailable"
+  ],
+  "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
+  "content_storage": "memory only",
+  "calendar": {
+    "version": "1.0.0",
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "89068720b406b26541cc25f2ba0f17b0ad02d229"
+    },
+    "optional": true,
+    "rows": "items with start, title, location, attendee_count and all_day; server order retained",
+    "warnings": "Render notes plainly, including partial responses with no rows. An omitted section is not an empty calendar."
+  },
+  "queue_reads": {
+    "version": "1.0.0",
+    "queues": [
+      "today",
+      "loops",
+      "needs_joe",
+      "assurance_cadence"
+    ],
+    "read": "morning-brief-queue",
+    "assurance_read": "morning-assurance-queue",
+    "arguments": "queue and opaque cursor only; authenticated sponsor",
+    "coverage": "total, returned, remaining when supplied, has_more, next_cursor; partial totals cover available sources only",
+    "consistency": "live urgency keyset; restart after changed rows; not a snapshot",
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "1c9f59d59b0ab3c25c765099c057ade49cd5f0b5"
+    }
+  },
+  "coverage": {
+    "schema": "morning-brief-coverage.v1",
+    "count_scope": "returned_rows_only",
+    "required_sections": "Needs Joe for Joe only; all other sections for both sponsors. Missing sections are unavailable. Expandable sections retain all returned items, accounts and providers.",
+    "incomplete_sources": "Safe category and state only; no driver diagnostics."
+  },
+  "business_timezone": "America/Chicago",
+  "overnight_cutoff": "Previous Chicago calendar day at 17:00 when no saved briefing window exists; date-only fields retain their calendar date."
+}

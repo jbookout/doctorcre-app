@@ -25,6 +25,7 @@ import {
   phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage, validBoardPayload,
   waitingSummary, writeChartsView,
 } from "../js/charts-model.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
@@ -32,7 +33,7 @@ const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 const pageJs = await read("js/charts.js");
 const modelJs = await read("js/charts-model.js");
 const css = await read("css/business-workspace.css");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 const routes = (await import("../js/routes.js")).routeContract;
 
 /** The synthetic fixture, generated from contract-shaped examples. */
@@ -390,7 +391,7 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
-  assert.equal(contract.producer.source_commit, "700173808625061adff581cfab415ce8e83e24f6");
+  assert.equal(contract.mcp_read_contracts["deal-room-board"].producer.source_commit, "b281ef8c69dad3c1dab98229074de1b167f06e02");
 
 
   // No route is added. `/business` already resolves, and the gate does not

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Phone capture · DoctorCRE</title>
+<link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/phone-calls.css"><link rel="stylesheet" href="/css/call-outcomes.css"><script type="module" src="/js/phone-calls.js"></script></head>
+<body><script src="/js/theme-boot.js"></script><div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+<main id="phoneCalls">
+<header class="phone-heading"><div><p class="eyebrow">Call Mode</p><h1>Capture the conversation.</h1><p>Bring a recording from your phone. Review the follow-through here.</p></div><a href="/">Back to Home</a></header>
+<p id="phoneNotice" role="status" aria-live="polite">Checking your session…</p>
+<div class="phone-grid">
+<section class="phone-panel"><p class="eyebrow">01 · Capture</p><h2>A call, ready to review</h2>
+<p>Import a native call recording or voice memo. Use the microphone for in-person audio or a post-call recap. It does not record both sides of a cellular call on this phone.</p>
+<form id="phoneImport"><label class="phone-consent"><input id="phoneConsent" type="checkbox" required>Everyone was told that this conversation would be recorded.</label>
+<label for="phoneFile">Recording file</label><input id="phoneFile" type="file" accept="audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/x-m4a,audio/mpeg,audio/webm,.m4a,.mp3,.wav,.webm">
+<div class="phone-times"><label>Recording started<input id="phoneStarted" type="datetime-local" required></label><label>Consent announced<input id="phoneConsentAt" type="datetime-local" required></label></div><p class="phone-hint">Enter the original recording and consent times for an import. The microphone uses the current time.</p>
+<p class="phone-hint">Up to 60 minutes and 50 MiB. Keep the screen on and this page open. The screen stays awake while recording when your phone supports it. Audio stays on this device until transfer is confirmed.</p>
+<button type="submit" id="phoneSave" disabled>Save recording</button><button type="button" id="phoneRecord" disabled>Record microphone</button><button type="button" id="phoneStop" hidden>Stop recording</button></form>
+<div id="phonePending"></div></section>
+<section class="phone-panel" aria-labelledby="phoneReviewTitle"><p class="eyebrow">02 · Review</p><h2 id="phoneReviewTitle">The follow-through</h2>
+<p>Open a review link on any device signed in to the same authorized partner account.</p>
+<form id="phoneOpen"><label for="phoneSession">Review link or call session ID</label><div class="phone-inline"><input id="phoneSession" autocomplete="off" required><button>Open review</button></div></form>
+<div id="phoneReview" aria-live="polite"><p class="phone-empty">Your summary, assigned actions and deal changes will appear here.</p></div>
+</section></div></main></body></html>

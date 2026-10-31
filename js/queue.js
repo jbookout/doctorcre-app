@@ -6,7 +6,6 @@ import {
   QUEUE_COLUMNS, queueColumnFor, queueIsStale, queueProjection,
 } from "./queue-model.mjs";
 import { workScope, workDetailUrl, scopedQueueCard } from './progress-work-model.js';
-import { createRoomTurnClient } from './room-turn-client.js';
 
 
 let docBody = null, docObservedAt = null, pollSequence = 0;
@@ -58,32 +57,6 @@ function setTargets(cards) {
   const select = $("queueTarget"), prior = select.value; select.replaceChildren(new Option("All targets", ""));
   for (const target of [...new Set(cards.map((card) => card.target))].sort()) select.append(new Option(target, target)); select.value = prior;
 }
-const queueWrites = createRoomTurnClient();
-let queueSending = false;
-async function enqueue(event) {
-  event.preventDefault();
-  if (queueSending) return;
-  const retained = queueWrites.pending('enqueue');
-  const title = $("enqueueTitle").value.trim(), body = $("enqueueBody").value.trim();
-  if (!retained && !title) return;
-  const command = retained?.body ?? `@queue enqueue target=${$("enqueueTarget").value} cap=read :: ${title}${body ? `\n${body}` : ""}`;
-  queueSending = true;
-  const button = $('queueComposer').querySelector('button[type="submit"], button');
-  button.disabled = true;
-  for (const control of $('queueComposer').querySelectorAll('input,textarea,select')) control.disabled = true;
-  try {
-    await queueWrites.send('enqueue', { body: command });
-    $("queueComposer").reset(); $("queueNotice").textContent = "Task submitted; waiting for the board to update.";
-  } catch (error) {
-    $("queueNotice").textContent = queueWrites.pending('enqueue')
-      ? 'Task outcome unknown. Check outcome before changing this command.' : error.message;
-  } finally {
-    queueSending = false;
-    const unresolved = Boolean(queueWrites.pending('enqueue'));
-    for (const control of $('queueComposer').querySelectorAll('input,textarea,select')) control.disabled = unresolved;
-    button.disabled = false; button.textContent = unresolved ? 'Check outcome' : 'Enqueue';
-  }
-}
 async function readQueue() {
   const controller = new AbortController(); let timer;
   const deadline = new Promise((_,reject) => { timer = setTimeout(() => { reject(new Error('Queue read timed out')); controller.abort(); },10000); });
@@ -117,6 +90,8 @@ if (typeof document !== "undefined") {
   buildColumns(); let latest = { cards: [] }; const originalRender = render;
   render = model => { latest = model; originalRender(model); };
   ["queueTarget", "queueStatus"].forEach(id => $(id).addEventListener("change", () => originalRender(latest)));
-  $("queueComposer").addEventListener("submit", enqueue);
+  $("queueComposer").querySelector('button[type="submit"]').disabled = true;
+  $("queueComposer").insertAdjacentHTML('beforeend', '<p>Not submitted. This control cannot send a request to Dr. CRE.</p>');
+  $("queueComposer").addEventListener("submit", event => event.preventDefault());
   mountVisibilityPoll({ poll }).refresh();
 }

@@ -316,3 +316,15 @@ test('deletion does no checks, invalid or unchecked source refuses, and deadline
 });
 
 }
+
+test('required CI runs the strict no-emit UI typecheck', async () => {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const config = JSON.parse(await readFile(new URL('../tsconfig.json', import.meta.url), 'utf8'));
+  const checks = ci.split(/^  checks:\n/m)[1].split(/^  \w+:/m)[0];
+  assert.equal(config.compilerOptions.strict, true);
+  assert.equal(config.compilerOptions.noEmit, true);
+  assert.ok(config.include.includes('src/ui'));
+  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
+  assert.match(pkg.scripts.check, /npm run typecheck/);
+  assert.match(checks, /run: npm run check/);
+});

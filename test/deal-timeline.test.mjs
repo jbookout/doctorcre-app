@@ -10,7 +10,8 @@ const dealTimeline = (d, n) => view.dealTimeline(prepareDealDetail(d), n);
 const renderDealTimeline = (d, n) => view.renderDealTimeline(prepareDealDetail(d), n);
 const renderDealUpdates = (d, n) => view.renderDealUpdates(prepareDealDetail(d), n);
 import { createLiveClient } from '../js/live-client.js';
-import { readFile } from 'node:fs/promises';
+import { carrInterface } from "./carr-contract.mjs";
+
 const now = Date.parse('2026-10-04T17:00:00Z');
 const detail = {deal:{id:'demo',phase:'Legal',phase_started_on:{research:'2026-09-20',legal:'2026-10-03'}},history:[
   {id:'p1',field:'phase',new_value:{phase:'research'},recorded_at:'2026-09-20T12:00:00Z'},
@@ -57,7 +58,7 @@ test('updates preserve escaped originals, author, exact date and newest-first or
  assert.equal(new JSDOM(renderDealTimeline(detail)).window.document.querySelectorAll('.phase-rail').length,1);
 });
 test('the live adapter preserves the versioned lease and explicit absence behind getDeal',async()=>{
- const contract=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['get-deal-room'];
+ const contract=carrInterface.mcp_read_contracts['get-deal-room'];
  assert.equal(contract.response.schema_version,'deal-timeline.v1');
  assert.match(contract.producer.source_commit,/^[a-f0-9]{40}$/);
  const calls=[];
@@ -106,14 +107,14 @@ test('review 2: recorded and projected lease expiration share urgency while comm
 
 test('updates show the latest excerpt and expand into recorded history',()=>{
  const root=new JSDOM(renderDealUpdates(detail)).window.document;
- const overview=root.querySelector('.updates-overview');
+ const overview=root.querySelector('.updates-history > summary');
  assert.ok(overview);
  assert.match(overview.textContent,/Demo negotiated allowance/);
  assert.doesNotMatch(overview.textContent,/Demo note/);
  assert.ok(overview.textContent.length<400);
  const history=root.querySelector('.updates-history');
  assert.equal(history.open,false);
- assert.match(history.querySelector('summary').textContent,/Recorded updates.*2/);
+ assert.match(history.querySelector('summary').textContent,/2 updates/);
  assert.match(history.textContent,/Original demo email <script>data only<\/script>/);
  assert.equal(root.querySelectorAll('.deal-note').length,2);
 });
@@ -140,13 +141,13 @@ test('the live adapter preserves authoritative start dates in both board and det
 });
 
 
-test('a capped activity feed never claims to be full history',()=>{
+test('history includes all activities and discloses the source limit',()=>{
  const allActivities=Array.from({length:51},(_,i)=>({id:`activity-${i}`,kind:'note',summary:`Demo activity ${i}`,occurred_at:new Date(Date.UTC(2026,9,20,12,0,-i)).toISOString()}));
- const root=new JSDOM(renderDealUpdates({activities:allActivities.slice(0,50)})).window.document;
- assert.equal(root.querySelectorAll('.deal-note').length,50);
+ const root=new JSDOM(renderDealUpdates({activities:allActivities})).window.document;
+ assert.equal(root.querySelectorAll('.deal-note').length,51);
  assert.doesNotMatch(root.body.textContent,/Full history/i);
- assert.match(root.querySelector('.updates-history > summary').textContent,/Recorded updates \(50\)/);
- assert.match(root.body.textContent,/latest 50 activities.*older activities may be omitted/i);
+ assert.match(root.querySelector('.updates-history > summary').textContent,/51 updates/);
+ assert.match(root.body.textContent,/latest 50 activities/i);
 });
 
 test('held task history names the hold date and retains the recorded action', () => {
@@ -171,7 +172,7 @@ test('Updates preview and Recorded updates use precise newest-first instants wit
   {id:'historic',at:'1969-12-31T12:00:00Z',text:'Synthetic historic update'},
  ]};
  const root = new JSDOM(renderDealUpdates(value)).window.document;
- assert.equal(root.querySelector('[aria-label="Latest recorded update"]').textContent,'Synthetic latest update');
+ assert.match(root.querySelector('.updates-history > summary').textContent,/Synthetic latest update/);
  assert.deepEqual([...root.querySelectorAll('.deal-note')].map(row=>row.dataset.id),['newer','older','historic','undated','invalid']);
  assert.deepEqual(value.thread.map(row=>row.id),['undated','older','newer','invalid','historic']);
 });

@@ -26,7 +26,7 @@ export async function offlineTourShell(readSource) {
       // without the optional engine, worker and provider styling.
       if (url.pathname.startsWith('/tours/vendor/maplibre-gl-')) continue;
       if (!/\.(?:html|css|m?js)$/.test(url.pathname)) continue;
-      assert.ok(/^\/(?:js|css|tours)\/.+\.(?:html|css|m?js)$/.test(url.pathname), `unsupported offline code dependency: ${reference}`);
+      assert.ok(url.pathname === '/data/fixtures/fact-review.mjs' || /^\/(?:js|css|tours)\/.+\.(?:html|css|m?js)$/.test(url.pathname), `unsupported offline code dependency: ${reference}`);
       await visit(url.pathname);
     }
   }

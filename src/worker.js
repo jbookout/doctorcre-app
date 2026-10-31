@@ -1,4 +1,5 @@
-import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
+import carrSchema from "../contracts/carr-interface.v1/schema.json" with { type: "json" };
+import carrVersion from "../contracts/carr-interface.v1/version.json" with { type: "json" };
 import { routeContract } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
@@ -63,7 +64,7 @@ function unavailable(documentRequest) {
 
 function secure(response, path) {
   const headers = new Headers(response.headers);
-  const capture = path === "/tours/day.html";
+  const capture = path === "/tours/day.html" || path === "/calls" || path === "/calls.html";
   headers.set("content-security-policy", [
     "default-src 'self'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'",
     "form-action 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
@@ -132,7 +133,7 @@ function release(env) {
     provider_version_id: provider.id || null,
     provider_version_tag: provider.tag || null,
     provider_version_created_at: provider.timestamp || null,
-    carr_contract: { schema: carrContract.schema, version: carrContract.version },
+    carr_contract: { schema: carrSchema, version: carrVersion },
     route_contract: { schema: routeContract.schema, version: routeContract.version },
   });
 }
