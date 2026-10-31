@@ -30,7 +30,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
             payload = { error: 'version_conflict' };
           } else if (outcome === 'unknown') payload = { ok: true };
           else {
-            payload = { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+            payload = { ok: true, rule_id: null, retired_rule_ids: ['demo-retired-rule'], retired_section_id: args.section_id };
             queue.pending_convention_proposals = queue.pending_convention_proposals.filter(row => row.section_id !== args.section_id);
             queue.counts.pending_convention_proposals--; queue.counts.total--;
           }

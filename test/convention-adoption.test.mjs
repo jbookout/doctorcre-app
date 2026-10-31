@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import { mountBoard } from '../js/progress-board.js';
 import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
-import { validGovernanceQueuePayload } from '../js/operations-model.js';
+import { validConventionAdoptionReceipt, validGovernanceQueuePayload } from '../js/operations-model.js';
 
 const html = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
 const seed = await readFile(new URL('../data/board-seed.json', import.meta.url), 'utf8');
@@ -184,4 +184,47 @@ test('unpublished progress snapshot does not hide independently loaded approvals
   const page = await mount(t, { readProgressBoard: async () => ({ snapshot: null }) });
   await page.board.refresh(true);
   assert.equal(page.doc.querySelectorAll('[data-convention]').length, 2);
+});
+
+test('retirement-only adoption confirms the consumed proposal without a replacement rule', async t => {
+  const page = await mount(t, { adoptRule: async args => ({ ok: true, rule_id: null,
+    retired_rule_ids: ['demo-retired-rule'], retired_section_id: args.section_id }) });
+  const form = page.doc.querySelector('[data-convention] form');
+  form.querySelector('textarea').value = 'Retire the obsolete demo instruction.';
+  await page.submit(form);
+  assert.equal(page.doc.querySelectorAll('[data-convention]').length, 1);
+  assert.equal(page.doc.querySelector('#conventionStatus').textContent, 'Adopted');
+});
+
+test('live retirement-only receipts confirm a replay with the original request and CSRF', async () => {
+  const writes = [];
+  const args = { idempotency_key: crypto.randomUUID(), section_id: 'demo-retirement-section', base_version: 1, reason: 'Retire the demo rule.' };
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-joe' });
+    writes.push({ call: JSON.parse(init.body).params, csrf: new Headers(init.headers).get('x-carr-csrf') });
+    const receipt = writes.length === 1 ? { ok: true } : { ok: true, rule_id: null,
+      retired_rule_ids: ['demo-retired-rule'], retired_section_id: args.section_id };
+    return Response.json({ result: { content: [{ text: JSON.stringify(receipt) }] } });
+  } });
+  await assert.rejects(client.adoptRule(args), { code: 'unknown_outcome' });
+  const receipt = await client.adoptRule(args);
+  assert.deepEqual(receipt.retired_rule_ids, ['demo-retired-rule']);
+  assert.equal(receipt.rule_id, null);
+  assert.deepEqual(writes, [1, 2].map(() => ({ call: { name: 'adopt-rule', arguments: args }, csrf: 'synthetic-joe' })));
+});
+
+
+test('adoption receipts require a matching proposal and a new rule or nonempty retirement list', () => {
+  const section = 'demo-section';
+  const valid = { ok: true, retired_section_id: section };
+  assert.equal(validConventionAdoptionReceipt({ ...valid, rule_id: 'demo-replacement' }, section), true);
+  assert.equal(validConventionAdoptionReceipt({ ...valid, rule_id: null, retired_rule_ids: ['demo-old'] }, section), true);
+  for (const receipt of [
+    null, valid, { ...valid, rule_id: null, retired_rule_ids: [] },
+    { ...valid, rule_id: null, retired_rule_ids: [null] },
+    { ...valid, rule_id: null, retired_rule_ids: [''] },
+    { ...valid, rule_id: null, retired_rule_ids: 'demo-old' },
+    { ...valid, ok: false, retired_rule_ids: ['demo-old'] },
+    { ...valid, retired_section_id: 'different', retired_rule_ids: ['demo-old'] },
+  ]) assert.equal(validConventionAdoptionReceipt(receipt, section), false);
 });

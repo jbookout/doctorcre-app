@@ -1,7 +1,7 @@
 {
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "728fc86bcc54eb15a7b129a8a0500b25ada6dcc0",
+    "source_commit": "1557e82ab39058ffac076c5eb6e849e5639edffd",
     "source": "mcp-server/src/org-conventions.js"
   },
   "read": {
@@ -36,9 +36,11 @@
     "receipt": [
       "ok",
       "rule_id",
-      "retired_section_id"
+      "retired_section_id",
+      "retired_rule_ids"
     ],
     "authentication": "Partner's own same-origin session with x-carr-csrf; no machine identity.",
-    "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome."
+    "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome.",
+    "confirmation": "ok:true and the requested retired_section_id, plus a nonempty rule_id or a nonempty list of retired_rule_ids. Retirement-only adoption returns rule_id:null."
   }
 }
