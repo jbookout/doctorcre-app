@@ -1,7 +1,7 @@
 import { resolveDealroomBoot } from './boot-mode.js';
 import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
-import { mountHome, createInboxClient, fixtureInboxRpc } from './ui.generated.js';
+const ui = import('./ui.generated.js');
 
 const host = document.getElementById('homeRoot');
 const boot = resolveDealroomBoot(location);
@@ -16,7 +16,9 @@ async function start() {
       if (result.isError) throw Error('Inbox unavailable. The server refused this request.');
       return result.payload;
     };
-  } else rpc = fixtureInboxRpc();
+  }
+  const { mountHome, createInboxClient, fixtureInboxRpc } = await ui;
+  if (boot.mode !== 'live') rpc = fixtureInboxRpc();
   mountHome(host, createInboxClient(rpc));
 }
 start().catch(() => {

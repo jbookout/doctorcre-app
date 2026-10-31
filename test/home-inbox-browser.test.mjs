@@ -119,3 +119,16 @@ test('keyboard movement and phone swipes act on the selected card; un-settle has
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.locator('details [data-inbox-row="a"]').waitFor();
 });
+
+test('sign-in starts while the React module is still downloading', async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  let release;
+  const modules = new Promise(resolve => { release = resolve; }); t.after(() => release());
+  await page.route(/\/js\/(ui\.generated|app-shell)\.js$/, async route => { await modules; await route.continue(); });
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
+  await page.goto(`${server.origin}/home?mode=live`, { waitUntil: 'commit' });
+  try { await page.waitForRequest('**/auth/session', { timeout: 2000 }); }
+  finally { release(); }
+});
