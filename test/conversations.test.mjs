@@ -381,7 +381,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the route version, the producer pin and the five verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.22.0");
+  assert.equal(routes.version, "1.23.0");
   assert.equal(contract.producer.source_commit, "700173808625061adff581cfab415ce8e83e24f6");
 
   assert.equal(routes.routes["/doc-chats"], "conversations.html");

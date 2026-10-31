@@ -238,7 +238,7 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: carrContractIdentity,
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.22.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.23.0" },
   });
 });
 
@@ -309,4 +309,15 @@ test('client portal uses the existing authenticated business gate and restores i
     if (status === 200) assert.equal(await response.text(), '/client-portal.html');
     if (status === 302) assert.equal(new URL(response.headers.get('location')).searchParams.get('return_to'), '/client-portal');
   }
+});
+
+test('phone capture ships behind the existing partner gate with narrowly scoped microphone permission', async () => {
+  const env = environment({ carr: { fetch: async value => new Response(null, { status: new URL(value.url).pathname === '/business' ? 200 : 404 }) } });
+  const response = await handleDoctorcreRequest(request('/calls?session=synthetic'), env);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), 'asset:/calls.html');
+  assert.match(response.headers.get('permissions-policy'), /microphone=\(self\)/);
+  assert.match(response.headers.get('content-security-policy'), /media-src 'self' blob:/);
+  const home = await handleDoctorcreRequest(request('/css/app-shell.css'), env);
+  assert.match(home.headers.get('permissions-policy'), /microphone=\(\)/);
 });
