@@ -12,6 +12,10 @@
     "studio_status": {
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2746",
       "source_commit": "91bbf3b4c2b516fa693dcd817fccb31c4fb4059b"
+    },
+    "questions_follow_up": {
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2769",
+      "source_commit": "a5434cb2269de6a846c38f74561d26875a278e0c"
     }
   },
   "admission": {
@@ -53,7 +57,8 @@
       "filed",
       "transferred",
       "reason",
-      "open_questions"
+      "open_questions",
+      "review_questions"
     ],
     "studio_status": "Active Studio states take precedence over transfer states. Reasons are extraction_failed, transcript_unavailable, transient_ceiling, summary_repeats_transcript, or open_review_questions. Budget is reserved for a follow-up."
   },
@@ -95,5 +100,16 @@
   },
   "authentication": "Same-origin partner cookie and x-carr-csrf for POST/PUT, using private-session.js. Server scopes reads to the authenticated owner. A review link provides the session ID on another authorized device; there is no session-list endpoint.",
   "review": "Pending single-track candidates require explicit partner confirmation through existing resolve-post-call-candidate or resolve-candidate. Applied automatic changes and Undo use read-call-outcomes and undo-call-change. Those operations expose only unreviewed automatic changes and refuse human-confirmed changes. No transcript, Outlook draft creation, or automatic phone candidate application.",
-  "deployment_order": "Depends on DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge."
+  "deployment_order": "Depends on DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge.",
+  "answer": {
+    "method": "POST",
+    "path": "/api/v1/call-sessions/{id}/answers",
+    "fields": [
+      "idempotency_key",
+      "session_id",
+      "question_id",
+      "answer"
+    ],
+    "answer": "Nonempty string up to 1000 characters. Retain the key and exact answer on retry."
+  }
 }
