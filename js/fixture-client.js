@@ -52,7 +52,11 @@ export function createFixtureDealStore(seed) {
  * @param {string} [opts.selfActor]
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
+const VERSION_CONFLICT = 'version_conflict';
+
 export async function createFixtureClient(opts = {}) {
+  let factReview;
+  const factReviews = () => factReview ||= import('../data/fixtures/fact-review.mjs').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
@@ -165,7 +169,7 @@ export async function createFixtureClient(opts = {}) {
     }
     if (Number(baseVersion) !== Number(row.version)) {
       const error = new Error('fixture update-loop refused: version_conflict');
-      error.payload = { error: 'version_conflict', hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
+      error.payload = { error: VERSION_CONFLICT, hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
       throw error;
     }
   }
@@ -416,7 +420,7 @@ export async function createFixtureClient(opts = {}) {
   function guardWorkRequestVersion(verb, row, baseVersion) {
     if (!Number.isInteger(baseVersion)) refuse(verb, 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
     if (Number(baseVersion) !== Number(row.version)) {
-      refuse(verb, 'version_conflict', { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
+      refuse(verb, VERSION_CONFLICT, { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
     }
   }
 
@@ -1211,7 +1215,7 @@ export async function createFixtureClient(opts = {}) {
         if (!rows.length || rows.some(d => d.client_status !== 'prospect') || !rows.some(d => !isClosedDeal(d))) refuse('set-prospect-engagement-status', 'not_a_prospect');
         if (args.expected_actor && args.expected_actor !== selfActor) refuse('set-prospect-engagement-status', 'account_changed');
         if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) refuse('set-prospect-engagement-status', 'invalid_engagement_status');
-        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', 'version_conflict');
+        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', VERSION_CONFLICT);
         const client_version = args.base_version + 1;
         rows.forEach(d => Object.assign(d, { prospect_engagement_status: args.status, client_version }));
         return { ok:true, client_id:args.client_id, prospect_engagement_status:args.status, client_version };
@@ -1253,6 +1257,11 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
+    async listDealDocuments(args) { return (await factReviews()).listDealDocuments(args); },
+    async listFactReview(args) { return (await factReviews()).listFactReview(args); },
+    async recordHumanFact(args) { return (await factReviews()).recordHumanFact(args); },
+    async resolveFactReview(args) { return (await factReviews()).resolveFactReview(args); },
+
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
@@ -1274,7 +1283,7 @@ export async function createFixtureClient(opts = {}) {
         activities: activitiesFor(dealId).slice(0, 4),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
+        premises: [], negotiation_rounds: [], attachments: (await factReviews()).attachments(dealId), documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {
@@ -1370,7 +1379,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('update-deal', 'missing_base_version', { hint: 'Re-read the deal and send the version it holds now.' });
         }
         if (Number(base_version) !== Number(row.version)) {
-          refuse('update-deal', 'version_conflict', { deal, resolution: 're-read the deal and decide from what it holds now' });
+          refuse('update-deal', VERSION_CONFLICT, { deal, resolution: 're-read the deal and decide from what it holds now' });
         }
         if ('outcome' in patch) {
           if (!DEAL_OUTCOMES.includes(patch.outcome)) {
@@ -1873,7 +1882,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('answer-work-request-for-joe', 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
         }
         if (Number(base_version) !== Number(card.version)) {
-          refuse('answer-work-request-for-joe', 'version_conflict', { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
+          refuse('answer-work-request-for-joe', VERSION_CONFLICT, { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
         }
         if (scope_confirmed !== true) refuse('answer-work-request-for-joe', 'scope_not_confirmed', { human_ref: ref });
         const text = String(answer_text ?? '').trim();
@@ -2159,7 +2168,7 @@ export async function createFixtureClient(opts = {}) {
           refuse('set-notification-preference', 'notification_preference_timezone_unknown', { timezone });
         }
         if (!Number.isInteger(base_version) || base_version !== preference.version) {
-          refuse('set-notification-preference', 'version_conflict', { current_version: preference.version });
+          refuse('set-notification-preference', VERSION_CONFLICT, { current_version: preference.version });
         }
         if (typeof device_opt_in === 'boolean') preference.device_opt_in = device_opt_in;
         if (clear) {
@@ -2297,7 +2306,7 @@ export async function createFixtureClient(opts = {}) {
         { suggestion_id, base_version, choice, snoozed_until, work_ref });
       if (docSuggestionResults.has(idempotency_key))
         return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
-      if (row.version !== base_version) refuse('decide-doc-suggestion', 'version_conflict', { current: { ...row } });
+      if (row.version !== base_version) refuse('decide-doc-suggestion', VERSION_CONFLICT, { current: { ...row } });
       if (!['act','discuss','snooze','dismiss'].includes(choice)) refuse('decide-doc-suggestion', 'choice_invalid');
       if (choice === 'act') {
         const found = loops.filter(item => item.number === String(work_ref || '').replace(/^#/, '')
@@ -2324,7 +2333,7 @@ export async function createFixtureClient(opts = {}) {
         { suggestion_id, base_version, proposed_text, source_conversation_id, source_sequence });
       if (docSuggestionResults.has(idempotency_key))
         return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
-      if (row.version !== base_version) refuse('propose-doc-correction', 'version_conflict', { current: { ...row } });
+      if (row.version !== base_version) refuse('propose-doc-correction', VERSION_CONFLICT, { current: { ...row } });
       if (row.conversation_id !== source_conversation_id || row.source_sequence !== source_sequence)
         refuse('propose-doc-correction', 'source_scope_mismatch');
       if (!String(proposed_text || '').trim()) refuse('propose-doc-correction', 'correction_text_invalid');
@@ -2495,7 +2504,7 @@ export async function createFixtureClient(opts = {}) {
           refuse(verb, 'doc_conversation_no_change_requested', { conversation_id: id });
         }
         if (!Number.isInteger(base_version) || base_version !== row.version) {
-          refuse(verb, 'version_conflict', { conversation_id: id, current_version: row.version });
+          refuse(verb, VERSION_CONFLICT, { conversation_id: id, current_version: row.version });
         }
         if (name !== undefined) {
           // The PRIOR title, appended to an immutable history no verb reads back.

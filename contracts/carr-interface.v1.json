@@ -3,7 +3,7 @@
   "version": "1.68.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -64,10 +64,12 @@
     "lead-board",
     "link-incident-work-request",
     "link-lead-client",
+    "list-deal-documents",
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-email-proposals",
     "list-email-thread-filings",
+    "list-fact-review",
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
@@ -112,10 +114,12 @@
     "record-commission-receipt",
     "record-deal-item",
     "record-dispatch-link",
+    "record-human-fact",
     "register-client-portal",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
+    "resolve-fact-review",
     "resolve-post-call-candidate",
     "revert-deal-field",
     "review-and-triage",
@@ -164,7 +168,15 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*"
+    "/api/tours/*",
+    "/api/v1/fact-review/documents",
+    "/api/v1/fact-review/list",
+    "/api/v1/fact-review/record",
+    "/api/v1/fact-review/resolve",
+    "/api/v1/call-sessions",
+    "/api/v1/call-sessions/{id}",
+    "/api/v1/call-sessions/{id}/transfer",
+    "/api/v1/call-sessions/{id}/report"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -708,7 +720,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
@@ -804,7 +816,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+          "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
         },
         "template_states": [
           "current",
@@ -838,7 +850,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -988,8 +1000,8 @@
       "write": false,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+        "source_commit": "9ce8f9fbb7bd8be5e98a724fd09815a8115bec2d",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2716"
       },
       "response": {
         "schema_version": "post-call-followups.v1",
@@ -1000,6 +1012,7 @@
           "kind",
           "deal_id",
           "deal_name",
+          "contact_name",
           "payload",
           "evidence_quote",
           "created_at"
@@ -1017,6 +1030,7 @@
           "subject",
           "body_sha256"
         ],
+        "contact_name": "Nullable display name of the resolved contact or email recipient.",
         "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
@@ -1316,7 +1330,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+      "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
@@ -1325,7 +1339,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
       },
       "inputSchema": {
         "type": "object",
@@ -1360,7 +1374,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
       },
       "inputSchema": {
         "type": "object",
@@ -1389,7 +1403,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
       },
       "inputSchema": {
         "type": "object",
@@ -1670,5 +1684,227 @@
       "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
     }
+  },
+  "fact_review": {
+    "schema_version": "fact-review.v1",
+    "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2739",
+    "list": {
+      "verb": "list-fact-review",
+      "input": [
+        "entity_ref?",
+        "limit? (1..100)",
+        "cursor?",
+        "include_resolved?"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "items",
+        "has_more",
+        "next_cursor"
+      ],
+      "item": [
+        "entity_ref",
+        "fact_key",
+        "canonical_version",
+        "review_version",
+        "pending",
+        "reasons",
+        "observations",
+        "canonical_fact",
+        "canonical_history",
+        "review_history"
+      ]
+    },
+    "record": {
+      "verb": "record-human-fact",
+      "input": [
+        "idempotency_key",
+        "entity_ref",
+        "observation"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "replayed",
+        "batch_id",
+        "observations",
+        "observation"
+      ],
+      "promotes": false
+    },
+    "resolve": {
+      "verb": "resolve-fact-review",
+      "input": [
+        "idempotency_key",
+        "entity_ref",
+        "fact_key",
+        "base_version",
+        "review_version",
+        "decision",
+        "reason",
+        "observation_id?",
+        "correction?"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "replayed",
+        "canonical_fact",
+        "review_receipt"
+      ],
+      "decisions": {
+        "approve": "Requires observation_id; forbids correction.",
+        "correct": "Requires correction with the same fact_key; forbids observation_id.",
+        "reject": "Forbids observation_id and correction; preserves canonical value."
+      }
+    },
+    "human_fact": {
+      "fields": [
+        "fact_key",
+        "value",
+        "unit",
+        "expense_basis?",
+        "source"
+      ],
+      "source": [
+        "document_ref",
+        "page_start",
+        "page_end",
+        "cited_text"
+      ],
+      "entity_ref": "Deal UUID",
+      "document_ref": "Existing undeleted attachment UUID bound to this deal",
+      "value": "Nonnegative decimal string; at most 30 integer and 18 fractional digits.",
+      "fact_keys": {
+        "base_rent_per_sf": {
+          "units": [
+            "USD/SF/year",
+            "USD/SF/month"
+          ],
+          "expense_basis": [
+            "nnn",
+            "modified_gross",
+            "full_service_gross",
+            "gross"
+          ]
+        },
+        "landlord_ti_per_sf": {
+          "units": [
+            "USD/SF"
+          ]
+        },
+        "term_months": {
+          "units": [
+            "months",
+            "years"
+          ]
+        },
+        "free_rent_months": {
+          "units": [
+            "months"
+          ]
+        }
+      }
+    },
+    "canonical_fact": "normalized_value and canonical_unit with expense_basis, observation_ids and version; null before promotion.",
+    "citations": "Observation source retains document_ref, page_start, page_end, cited_text_sha256, cited_text_expires_at. Expired cited_text is null.",
+    "conflict": "version_conflict refuses the write. Refresh canonical_version and review_version and ask the partner to review again.",
+    "documents": {
+      "verb": "list-deal-documents",
+      "schema_version": "deal-documents.v1",
+      "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762",
+      "source_commit": "35dd8142e831a582b532da401e10f34c78df4040"
+    }
+  },
+  "phone_call_sessions": {
+    "schema_version": 1,
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "68d99f8a9329d921db0fa18e1ac34f26192e4f70",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2732",
+      "source": "mcp-server/src/phone-call-sessions.js",
+      "follow_up": {
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2753",
+        "source_commit": "bd532aae9f85bd52778718c6cc595f37a2cc6d13"
+      }
+    },
+    "admission": {
+      "method": "POST",
+      "path": "/api/v1/call-sessions",
+      "fields": [
+        "sha256",
+        "byte_count",
+        "duration_seconds",
+        "mime_type",
+        "started_at",
+        "consent_announced_at"
+      ],
+      "deduplication": "Authenticated owner and audio SHA-256. Retain the original metadata across retries."
+    },
+    "transfer": {
+      "method": "PUT",
+      "path": "/api/v1/call-sessions/{id}/transfer",
+      "body": "Audio bytes with admitted MIME and exact Content-Length. The browser supplies Content-Length from the Blob.",
+      "result": "A successful upload can return queued. Retain local audio until a matching status confirms transferred. Retry only after checking status; upload_state_unavailable leaves the outcome unknown."
+    },
+    "status": {
+      "method": "GET",
+      "path": "/api/v1/call-sessions/{id}",
+      "states": [
+        "pending",
+        "queued",
+        "expired",
+        "transferred",
+        "ready_review",
+        "filed"
+      ],
+      "fields": [
+        "schema_version",
+        "session_id",
+        "state",
+        "filed",
+        "transferred"
+      ]
+    },
+    "report": {
+      "method": "GET",
+      "path": "/api/v1/call-sessions/{id}/report",
+      "fields": [
+        "schema_version",
+        "session_id",
+        "state",
+        "filed",
+        "transferred",
+        "report",
+        "actions",
+        "deal_updates"
+      ],
+      "narrative": [
+        "summary",
+        "decisions",
+        "open_questions"
+      ],
+      "actions": [
+        "id",
+        "kind",
+        "deal_id",
+        "assignee",
+        "action",
+        "due_on",
+        "status",
+        "resulting_ref"
+      ],
+      "deal_updates": [
+        "id",
+        "kind",
+        "payload",
+        "status",
+        "resulting_ref"
+      ]
+    },
+    "authentication": "Same-origin partner cookie and x-carr-csrf for POST/PUT, using private-session.js. Server scopes reads to the authenticated owner. A review link provides the session ID on another authorized device; there is no session-list endpoint.",
+    "review": "Pending single-track candidates require explicit partner confirmation through existing resolve-post-call-candidate or resolve-candidate. Applied automatic changes and Undo use read-call-outcomes and undo-call-change. Those operations expose only unreviewed automatic changes and refuse human-confirmed changes. No transcript, Outlook draft creation, or automatic phone candidate application.",
+    "deployment_order": "Depends on DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge."
   }
 }

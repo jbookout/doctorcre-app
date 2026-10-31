@@ -46,7 +46,7 @@ test('Doc command bar searches page navigation and opens Clients', async ({ page
   await page.goto('/');
   await page.getByRole('button', { name: 'Open Doc', exact: true }).click();
   await expect(page.locator('#docDetail')).toBeVisible();
-  await page.getByRole('combobox', { name: 'Search anything or ask Doc', exact: true }).fill('Clients');
+  await page.getByRole('combobox', { name: 'Search anything', exact: true }).fill('Clients');
   await page.getByRole('option', { name: /Clients/ }).first().click();
   await expect(page).toHaveURL('/clients');
   await page.locator('#listRegion[aria-busy="false"]').waitFor();

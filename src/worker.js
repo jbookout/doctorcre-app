@@ -63,7 +63,7 @@ function unavailable(documentRequest) {
 
 function secure(response, path) {
   const headers = new Headers(response.headers);
-  const capture = path === "/tours/day.html";
+  const capture = path === "/tours/day.html" || path === "/calls" || path === "/calls.html";
   headers.set("content-security-policy", [
     "default-src 'self'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'",
     "form-action 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",

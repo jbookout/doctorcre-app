@@ -67,6 +67,8 @@
 .app-shell-profile-identity span { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; border: var(--hairline-width) solid var(--hairline-strong); background: var(--surface-3); color: var(--fg); font-size: var(--font-size-5); }
 #callModeDialog button, .app-shell-profile button { min-height: var(--touch); min-width: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: inherit; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out); }
 @media (hover: hover) { #callModeDialog button:hover, .app-shell-profile button:hover { background: var(--surface-3); } }
+#callModeDialog [data-resolve-question] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+@media (hover: hover) { #callModeDialog [data-resolve-question]:hover { border-color: var(--accent-hover); background: var(--accent-hover); } }
 #callModeDialog .call-mode-starts { display: flex; gap: var(--space-3); flex-wrap: wrap; margin: var(--space-4) 0; }
 #callModeDialog .call-mode-consent { min-height: var(--touch); display: flex; gap: var(--space-3); align-items: center; }
 #callModeDialog a { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
