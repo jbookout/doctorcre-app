@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountMarketTerms } from '../js/market-terms.js';
+globalThis.history = {};
+const { mountMarketTerms } = await import('../js/pipeline.js');
+delete globalThis.history;
 
 test('comparison shows recorded coverage and filters confirmed terms', async () => {
   const dom = new JSDOM('<div id="view"></div>');

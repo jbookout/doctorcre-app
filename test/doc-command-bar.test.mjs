@@ -151,3 +151,5 @@ test('R5 ArrowUp after highlight removal starts from the last remaining result',
  rows=[party('C-A','Demo A'),party('C-B','Demo B')];await env.bar.refresh();assert.equal(selectedTitle(env),undefined);
  env.input.dispatchEvent(new env.win.KeyboardEvent('keydown',{key:'ArrowUp',cancelable:true}));assert.match(selectedTitle(env),/Demo B/);
 });
+
+test('Doc search placeholder describes search', t => { const {input}=setup(t); assert.equal(input.placeholder,'Search anything'); });

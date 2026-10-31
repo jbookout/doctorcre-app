@@ -60,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -112,6 +112,12 @@ export function createLiveClient(opts = {}) {
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
+    if (['list-fact-review', 'record-human-fact', 'resolve-fact-review'].includes(verb) && (payload?.ok !== true || payload.schema_version !== 'fact-review.v1'))
+      throw unknownMcpOutcome(new Error('Term review receipt unavailable'));
+    if (verb === 'record-human-fact' && !payload?.observation?.id)
+      throw unknownMcpOutcome(new Error('Recorded term receipt unavailable'));
+    if (verb === 'resolve-fact-review' && (!Object.hasOwn(payload, 'canonical_fact') || payload.review_receipt?.decision !== args.decision))
+      throw unknownMcpOutcome(new Error('Term decision receipt unavailable'));
     if (verb === 'start-deal-review') requireReviewReceipt(payload);
     if (['confirm-email-next-step', 'confirm-email-deal-progress'].includes(verb)) {
       const contract = verb === 'confirm-email-next-step' ? 'email-next-step.v1' : 'email-deal-progress.v1';
@@ -138,7 +144,7 @@ export function createLiveClient(opts = {}) {
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
     const target = ['proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
-      'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
+      'entity_ref', 'fact_key', 'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
     const retained = sessionWrites.has(verb) ? sessionCommands : commands;
@@ -221,6 +227,11 @@ export function createLiveClient(opts = {}) {
         lost_deals: Array.isArray(board.lost_deals) ? board.lost_deals.map(dealToUi) : undefined,
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
+
+    async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
+    async listFactReview(args = {}, { signal } = {}) { return rpc('list-fact-review', args, signal); },
+    async recordHumanFact(args) { return write('record-human-fact', args); },
+    async resolveFactReview(args) { return write('resolve-fact-review', args); },
 
     async getDeal(dealId, { signal } = {}) {
       const page = await rpc('get-deal-room', { deal: dealId }, signal);

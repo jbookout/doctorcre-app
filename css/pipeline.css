@@ -272,6 +272,31 @@
 }
 .kanban-card .attention-flag { align-self: flex-start; align-items: flex-start; margin-block: 0 -20px; }
 .work-card--row .deal-row-next .attention-flag { padding-inline: 0; }
+
+#panelTerms { margin-block: var(--space-4); }
+.fact-term { border-top: var(--hairline-width) solid var(--hairline); padding-block: var(--space-3); }
+.fact-term > header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.fact-term h3 { margin: 0; }
+.fact-empty, .fact-state, .fact-read, .fact-source, .fact-excerpt-unavailable, .fact-canonical > small { color: var(--fg-muted); font-size: var(--font-size-1); }
+.fact-canonical { margin-block: var(--space-3); }
+.fact-canonical:has(> small + p:not(.fact-empty)) > p:first-of-type { font-size: var(--font-size-3); font-weight: var(--font-weight-strong); margin-top: var(--space-1); }
+.fact-observations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--space-3); margin-block: var(--space-3); }
+.fact-observation { min-width: 0; padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
+.fact-observation blockquote, .fact-canonical blockquote { margin: var(--space-2) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fact-source { overflow-wrap: anywhere; }
+.fact-term form, [data-fact-record] { display: grid; gap: var(--space-3); margin-block: var(--space-3); }
+#panelTerms label { display: grid; gap: var(--space-1); min-width: 0; }
+#panelTerms :is(input, select, textarea) { width: 100%; min-width: 0; min-height: var(--touch); }
+.fact-entry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: var(--space-3); }
+.fact-wide { grid-column: 1 / -1; }
+#panelTerms fieldset { min-width: 0; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); padding: var(--space-3); }
+#panelTerms [hidden] { display: none; }
+.fact-history { margin-block: var(--space-3); }
+.fact-term form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.fact-term form > :is(fieldset, label:has(textarea), [role="status"]) { grid-column: 1 / -1; }
+.fact-term form > button { grid-column: 1 / -1; justify-self: start; }
+
+@media (min-width: 1100px) { [data-fact-record] .fact-entry { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 .market-filters { display:flex; flex-wrap:wrap; gap:1rem; align-items:end; margin:1rem 0; }
 .market-filters label { display:grid; gap:.3rem; }
 .market-terms-table { width:100%; border-collapse:collapse; font-size:.875rem; }
