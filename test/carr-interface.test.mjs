@@ -1,7 +1,8 @@
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import { composeCarrInterface, entryFileName } from "../scripts/carr-interface.mjs";
+import { carrInterfaceText, composeCarrInterface, entryFileName } from "../scripts/carr-interface.mjs";
 import { carrInterface } from "./carr-contract.mjs";
 import { routeEntries } from "../js/routes.js";
 
@@ -10,15 +11,16 @@ import { routeEntries } from "../js/routes.js";
 // second copy of a list or pin that the next feature would have to edit.
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const json = (value) => JSON.stringify(value);
+const file = (group, value) => `${group}/${entryFileName(value)}`;
 
 test("one file per entry composes into the contract object every consumer reads", () => {
   const contract = composeCarrInterface([
     ["version.json", json("1.0.0")],
     ["schema.json", json("s")],
-    ["mcp_operations/read-b.json", json("read-b")],
-    ["mcp_operations/add-a.json", json("add-a")],
-    ["http_surfaces/api-v1-x-id.json", json({ value: "/api/v1/x/{id}", order: 0 })],
-    ["http_surfaces/api-tours-all.json", json({ value: "/api/tours/*", order: 1 })],
+    [file("mcp_operations", "read-b"), json("read-b")],
+    [file("mcp_operations", "add-a"), json("add-a")],
+    [file("http_surfaces", "/api/v1/x/{id}"), json({ value: "/api/v1/x/{id}", order: 0 })],
+    [file("http_surfaces", "/api/tours/*"), json({ value: "/api/tours/*", order: 1 })],
     ["mcp_read_contracts/read-b.json", json({ write: false })],
     ["zeta_feature.json", json({ read: "read-b {}" })],
   ]);
@@ -34,10 +36,11 @@ test("one file per entry composes into the contract object every consumer reads"
 });
 
 test("a list entry is a string named after itself, so the same addition is the same file", () => {
-  assert.equal(entryFileName("/api/v1/call-sessions/{id}/report"), "api-v1-call-sessions-id-report.json");
-  assert.equal(entryFileName("read-room"), "read-room.json");
-  assert.throws(() => composeCarrInterface([["mcp_operations/other-name.json", json("read-room")]]), /name it read-room\.json/);
-  assert.throws(() => composeCarrInterface([["mcp_operations/read-room.json", json({ verb: "read-room" })]]), /JSON string/);
+  assert.equal(entryFileName("/api/v1/call-sessions/{id}/report"), `${Buffer.from("/api/v1/call-sessions/{id}/report").toString("hex")}.json`);
+  assert.equal(entryFileName("read-room"), "726561642d726f6f6d.json");
+  assert.throws(() => entryFileName("\ud800"), /well-formed Unicode/);
+  assert.throws(() => composeCarrInterface([["mcp_operations/other-name.json", json("read-room")]]), /name it/);
+  assert.throws(() => composeCarrInterface([[file("mcp_operations", "read-room"), json({ verb: "read-room" })]]), /JSON string/);
   assert.throws(() => composeCarrInterface([["mcp_read_contracts/a/b.json", json({})]]), /one directory deep/);
   assert.throws(() => composeCarrInterface([["version.txt", "1"]]), /\.json file/);
   assert.throws(() => composeCarrInterface([["producer.json", json({})], ["producer/x.json", json({})]]), /both a file and a directory/);
@@ -45,14 +48,14 @@ test("a list entry is a string named after itself, so the same addition is the s
 
 test("parallel surface additions with the same order compose deterministically", () => {
   const files = [
-    ["http_surfaces/api-z.json", json({ value: "/api/z", order: 2 })],
-    ["http_surfaces/api-a.json", json({ value: "/api/a", order: 2 })],
-    ["http_surfaces/api-first.json", json({ value: "/api/first", order: 0 })],
+    [file("http_surfaces", "/api/z"), json({ value: "/api/z", order: 2 })],
+    [file("http_surfaces", "/api/a"), json({ value: "/api/a", order: 2 })],
+    [file("http_surfaces", "/api/first"), json({ value: "/api/first", order: 0 })],
   ];
   assert.deepEqual(composeCarrInterface(files).http_surfaces, ["/api/first", "/api/a", "/api/z"]);
   assert.deepEqual(composeCarrInterface(files.toReversed()), composeCarrInterface(files));
   for (const order of [undefined, -1, 0.5]) {
-    assert.throws(() => composeCarrInterface([["http_surfaces/api-a.json", json({ value: "/api/a", order })]]), /nonnegative integer order/);
+    assert.throws(() => composeCarrInterface([[file("http_surfaces", "/api/a"), json({ value: "/api/a", order })]]), /nonnegative integer order/);
   }
 });
 
@@ -82,4 +85,25 @@ test("tests read moving pins and lists from the contract instead of copying them
     for (const [pattern, what] of copies) if (pattern.test(source)) offenders.push(`${name}: ${what}`);
   }
   assert.deepEqual(offenders, []);
+});
+
+test("nested object key permutations retain the same canonical digest and array order", () => {
+  const first = { section: { z: [{ y: 2, a: { z: 3, a: 1 } }, "last"], a: 0 } };
+  const second = { section: { a: 0, z: [{ a: { a: 1, z: 3 }, y: 2 }, "last"] } };
+  const digest = value => createHash("sha256").update(carrInterfaceText(value)).digest("hex");
+  assert.equal(digest(first), digest(second));
+  assert.deepEqual(JSON.parse(carrInterfaceText(first)), first);
+  assert.notEqual(digest(first), digest({ section: { ...first.section, z: first.section.z.toReversed() } }));
+});
+
+test("near-identical surface paths have distinct reversible filenames and compose together", () => {
+  const paths = ["/api/v1/review-items", "/api/v1/review/items", "GET /api/Items", "GET /api/items", "/api/café"];
+  const names = paths.map(entryFileName);
+  assert.equal(new Set(names.map(name => name.toLowerCase())).size, paths.length);
+  for (const [i, name] of names.entries()) {
+    assert.equal(Buffer.from(name.slice(0, -5), "hex").toString("utf8"), paths[i]);
+  }
+  const files = paths.map((value, order) => [`http_surfaces/${entryFileName(value)}`, json({ value, order })]);
+  assert.deepEqual(composeCarrInterface(files).http_surfaces, paths);
+  assert.throws(() => composeCarrInterface([files[0], [files[0][0], files[1][1]]]), /duplicate.*file/i);
 });

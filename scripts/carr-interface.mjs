@@ -3,8 +3,8 @@
 // and never edit the same lines:
 //
 //   <key>.json                  the value of top-level key <key>
-//   mcp_operations/<verb>.json  one list entry, a JSON string
-//   http_surfaces/<slug>.json   {value, order} preserves the contract array order
+//   mcp_operations/<encoded-verb>.json  one list entry, a JSON string
+//   http_surfaces/<encoded-path>.json   {value, order} preserves the contract array order
 //   <key>/<name>.json           the value of <key>.<name> (mcp_read_contracts, ...)
 //
 // composeCarrInterface rebuilds the one object every consumer reads; its
@@ -15,15 +15,20 @@ import { fileURLToPath } from "node:url";
 
 export const CARR_INTERFACE = "contracts/carr-interface.v1";
 const LISTS = new Set(["mcp_operations", "http_surfaces"]);
-/** The file name of a list entry: "/api/v1/x/{id}" is http_surfaces/api-v1-x-id.json. */
-export const entryFileName = (entry) => `${entry.replace(/\*/g, "all").replace(/[{}]/g, "")
-  .replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}.json`;
+/** UTF-8 hex is reversible and distinct even on case-insensitive filesystems. */
+export const entryFileName = (entry) => {
+  if (!entry.isWellFormed()) throw new Error("contract entry must be a well-formed Unicode string");
+  return `${Buffer.from(entry, "utf8").toString("hex")}.json`;
+};
 const sorted = (entries) => Object.fromEntries([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
 export function composeCarrInterface(files) {
+  const paths = new Set();
   const top = new Map();
   const groups = new Map();
   for (const [path, text] of files) {
+    if (paths.has(path)) throw new Error(`${CARR_INTERFACE}/${path}: duplicate entry file`);
+    paths.add(path);
     const parts = path.split("/");
     const stem = (name) => {
       if (!name.endsWith(".json") || name === ".json") throw new Error(`${CARR_INTERFACE}/${path}: every entry is a .json file`);
@@ -54,7 +59,10 @@ export function composeCarrInterface(files) {
   return sorted(top);
 }
 
-export const carrInterfaceText = (contract) => `${JSON.stringify(contract, null, 2)}\n`;
+const canonical = value => Array.isArray(value) ? value.map(canonical)
+  : value !== null && typeof value === "object" ? sorted(Object.entries(value).map(([key, item]) => [key, canonical(item)]))
+    : value;
+export const carrInterfaceText = (contract) => `${JSON.stringify(canonical(contract), null, 2)}\n`;
 
 export async function readCarrInterface(root = new URL("../", import.meta.url)) {
   const directory = join(fileURLToPath(root), CARR_INTERFACE);
