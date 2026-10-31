@@ -233,10 +233,10 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   const {page,errors}=await open(t,width,{theme,nextStep:'Confirm the appointment and review the lease draft'});
   assert.equal(await page.locator('.deal-opening-snapshot ol button').first().textContent(),'Vendor Introductions');
   assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
-  assert.equal(await page.locator('.updates-overview').count(),1);
+  assert.equal(await page.locator('.updates-history > summary').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
-  assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
-  assert.doesNotMatch(await page.locator('.updates-overview').textContent(),/Older demo update/);
+  assert.match(await page.locator('.updates-history > summary').textContent(),/Newest demo update/);
+  assert.doesNotMatch(await page.locator('.updates-history > summary').textContent(),/Older demo update/);
   await page.getByRole('tab',{name:'Timeline',exact:true}).click();
   assert.equal(await page.locator('.phase-rail time:visible').count(),4);
   await page.getByRole('tab',{name:'Overview',exact:true}).click();
@@ -244,7 +244,7 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   await page.screenshot({path:new URL(`${width}-${theme}.png`,dir).pathname,animations:'disabled'});
-  await page.locator('.updates-overview').scrollIntoViewIfNeeded();
+  await page.locator('.updates-history > summary').scrollIntoViewIfNeeded();
   const title=await page.locator('#panelTitle').boundingBox(),doc=await page.locator('#recordPanel #docPresence').boundingBox();
   assert.ok(title.y>=doc.y+doc.height || title.x>=doc.x+doc.width,'the scrolled title clears Doc');
   await page.screenshot({path:new URL(`${width}-${theme}-summary.png`,dir).pathname,animations:'disabled'});
@@ -284,13 +284,13 @@ test('refresh removes and restores Updates as recorded notes change',async t=>{
 
 test('thirty notes show one concise summary and expand inline at phone width',async t=>{
  const {page}=await open(t,390,{manyUpdates:true});
- const overview=page.locator('.updates-overview p');
+ const overview=page.locator('.updates-history > summary span');
  assert.ok((await overview.textContent()).length<=180);
  assert.match(await overview.textContent(),/Demo update 29/);
  assert.doesNotMatch(await overview.textContent(),/Demo update 28/);
  const box=await overview.evaluate(n=>({height:n.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),overflow:getComputedStyle(n).overflowY}));
  assert.ok(box.height<=box.lineHeight*2+1,JSON.stringify(box));
- assert.equal(box.overflow,'visible');
+ assert.equal(box.overflow,'hidden');
  assert.equal(await page.locator('.deal-note:visible').count(),0);
  await page.locator('.updates-history > summary').click();
  assert.equal(await page.locator('.deal-note[data-id^="demo-note-"]:visible').count(),30);

@@ -1,5 +1,5 @@
-import { FACT_TERMS } from './client.js';
-import { uuidv4 } from './uuid.js';
+import { FACT_TERMS } from '../../js/client.js';
+import { uuidv4 } from '../../js/uuid.js';
 
 export function createFactReviewFixture() {
   const documents = ['Demo Lease.pdf', 'Demo Counteroffer.pdf', 'Demo Amendment.pdf'].map((filename, i) => ({

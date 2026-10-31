@@ -107,3 +107,23 @@ test("offline tour shell caches required local modules without the optional base
   }
   for (const path of files) await check(path);
 });
+
+test('recorder honors caller duration and byte limits and persists why it stopped', async () => {
+  for (const limit of ['duration', 'bytes']) {
+    const store = memory([]); let timeout, delay, mic;
+    const window = { crypto, Blob, setTimeout(fn, ms) { timeout = fn; delay = ms; }, clearTimeout() {}, navigator: { locks: { request: async (name, options, fn) => fn({ name }) }, mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } }, MediaRecorder: class {
+      static isTypeSupported() { return true; }
+      constructor() { mic = this; this.mimeType = 'audio/mp4'; }
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable({ data: new Blob(['audio']) }); void this.onstop(); }
+    } };
+    const capture = createDayRecorder({ window, store, maxDurationMs: 3600000, maxBytes: 5 });
+    await capture.start(base());
+    assert.equal(delay, 3600000);
+    if (limit === 'duration') timeout();
+    else mic.ondataavailable({ data: new Blob(['audio']) });
+    await new Promise(r => setImmediate(r));
+    assert.equal(store.rows[0].stop_reason, limit);
+    assert.equal(store.rows[0].status, 'local');
+  }
+});
