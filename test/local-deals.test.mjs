@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { localDeals, needsAttention } from '../js/deal-review-model.js';
 import { urgencyOrder, automaticMove, noteEntries, PHASE_TRIGGERS } from '../js/local-deals-model.js';
+import { carrInterface } from "./carr-contract.mjs";
+
 const base={id:'demo-1',name:'Demo One',phase:'Research',owner:'joe',next_step:'Confirm tour',last_touch:'2026-10-01',last_review_at:'2026-10-01T16:00:00Z'};
 const now=Date.parse('2026-10-01T17:00:00Z');
 test('local scope excludes national and invoiced assignments and filters only owner',() => {
@@ -40,7 +42,7 @@ test('notes summarize but retain original entry, including hostile text as data'
 
 test('W4 read binds the separate producer revision and versioned phase/parking fields', async () => {
  const {readFile} = await import('node:fs/promises');
- const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['deal-room-board'];
+ const contract = carrInterface.mcp_read_contracts['deal-room-board'];
  assert.equal(contract.producer.source_commit,'b281ef8c69dad3c1dab98229074de1b167f06e02');
  assert.equal(contract.response.schema_version,'local-deals-board.v2');
  for(const key of ['operating_state','parking_note','phase_change','invoiced_on','phase_started_on','vendors','short_name','items','client_portal_url','prospect_engagement_status','client_version']) assert.ok(contract.response.deal_keys.includes(key));

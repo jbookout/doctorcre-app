@@ -12,18 +12,10 @@ export function mountDealItemSheet({ document, read, send, refresh, pending = ()
   const same = selection => selected === selection && dialog.open;
   const operationKey = (verb, selection) => `${verb}:${selection.deal}:${selection.item}`;
   function syncPending() {
-    const instruction = pending(operationKey('instruct-deal-item', selected));
     const completion = pending(operationKey('complete-deal-item', selected));
     const textarea = body.querySelector('textarea');
     const submit = body.querySelector('[type="submit"]');
     const done = body.querySelector('[data-complete-item]');
-    if (instruction) {
-      textarea.value = instruction.request.text;
-      textarea.readOnly = true;
-      submit.textContent = 'Check outcome';
-      submit.disabled = instruction.status === 'pending';
-      done.disabled = true;
-    }
     if (completion) {
       textarea.readOnly = true;
       submit.disabled = true;
@@ -55,43 +47,41 @@ export function mountDealItemSheet({ document, read, send, refresh, pending = ()
   dialog.addEventListener('input', event => {
     if (selected && event.target.matches('textarea')) drafts.set(selected.item, event.target.value);
   });
-  async function save(verb) {
+  async function save() {
+    const verb = 'complete-deal-item';
     const selection = selected;
     if (!selection || body.getAttribute('aria-busy') === 'true') return;
-    const retained = pending(operationKey(verb, selection));
-    const text = retained?.request.text ?? body.querySelector('textarea')?.value.trim();
-    if (verb === 'instruct-deal-item' && !text) return;
     body.setAttribute('aria-busy', 'true');
     body.querySelectorAll('button,textarea').forEach(node => { node.disabled = true; });
     let result;
     try {
       result = await send(operationKey(verb, selection), { verb,
-        args: { deal: selection.deal, item_id: selection.item, ...(verb === 'instruct-deal-item' ? { text } : {}) },
-        summary: verb === 'instruct-deal-item' ? 'Item instruction' : 'Complete item' });
+        args: { deal: selection.deal, item_id: selection.item },
+        summary: 'Complete item' });
     } catch { result = { message: 'Change not confirmed. Check outcome before trying again.' }; }
     if (result?.status === 'ok') {
-      if (verb === 'instruct-deal-item') drafts.delete(selection.item);
       refresh();
     }
     const visible = selected;
     if (!visible || !dialog.open || visible.deal !== selection.deal || visible.item !== selection.item) return;
     body.removeAttribute('aria-busy');
-    if (result?.status === 'ok') await load(visible, verb === 'instruct-deal-item' ? 'Instruction saved' : 'Item marked done');
+    if (result?.status === 'ok') await load(visible, 'Item marked done');
     else {
       body.querySelectorAll('button,textarea').forEach(node => { node.disabled = false; });
+      body.querySelector('[type="submit"]').disabled = true;
       body.querySelector('[data-item-status]').textContent = result?.message || 'Change not confirmed';
       syncPending();
       if (result?.status !== 'failed') {
         body.querySelector('textarea').readOnly = true;
-        const button = body.querySelector(verb === 'instruct-deal-item' ? '[type="submit"]' : '[data-complete-item]');
+        const button = body.querySelector('[data-complete-item]');
         button.textContent = 'Check outcome';
       }
     }
   }
-  dialog.addEventListener('submit', event => { event.preventDefault(); save('instruct-deal-item'); });
+  dialog.addEventListener('submit', event => { event.preventDefault(); });
   dialog.addEventListener('click', event => {
     if (event.target.closest('[data-close-item]')) dialog.close();
-    if (event.target.closest('[data-complete-item]')) save('complete-deal-item');
+    if (event.target.closest('[data-complete-item]')) save();
     if (event.target.closest('[data-retry-item]')) load(selected);
   });
   dialog.addEventListener('close', () => {

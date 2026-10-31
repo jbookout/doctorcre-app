@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { renderDealChecklist } from '../js/deal-checklist.js';
 import { createLiveClient } from '../js/live-client.js';
-import { readFile } from 'node:fs/promises';
+import { carrInterface } from "./carr-contract.mjs";
 
 const checklist = {
   schema_version: 'deal-checklist.v1', template_state: 'current',
@@ -52,7 +52,7 @@ test('unsupported contracts and changed doctrine retain their explicit review me
 });
 
 test('the checklist contract pins the runtime revision that owns derivation', async () => {
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8')).mcp_read_contracts['get-deal-room'].checklist;
+  const contract = carrInterface.mcp_read_contracts['get-deal-room'].checklist;
   assert.equal(contract.schema_version, 'deal-checklist.v1');
   assert.equal(contract.producer.repository, 'jbookout/carr-system');
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);

@@ -97,10 +97,11 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: profile.viewport, isMobile: true, hasTouch: true });
   await page.route('**/*', route => new URL(route.request().url()).origin === server.url ? route.continue() : route.abort());
-  const reads = [], errors = [];
+  const reads = [], errors = [], scriptUrls = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => {
     if (response.request().resourceType() === 'script') reads.push((async () => {
+      scriptUrls.push(response.url());
       assert.equal(response.ok(), true, response.url());
       return (await response.body()).length;
     })());
@@ -115,6 +116,7 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   assert.ok((await link.innerText()).trim());
   const bytes = (await Promise.all(reads)).reduce((total, size) => total + size, 0);
   t.diagnostic(`Home transferred ${bytes} JavaScript bytes`);
+  assert.ok(scriptUrls.every(url => !url.includes('terms-comparison')), 'Terms comparison loads only in the deal workspace');
   await page.locator('.home-grid').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Refresh past-client touches', exact: true }).waitFor();
   await page.locator('#homeIntroductions button:not([disabled])').first().waitFor();

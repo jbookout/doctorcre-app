@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClientPortalClient } from '../js/client-portal-client.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 const portal = {
   slug: 'demo-practice',
@@ -52,7 +53,7 @@ test('portal projection never exposes additional internal fields from a response
 
 test('portal read pins the exact isolated server contract without widening other consumers', async () => {
   const { readFile } = await import('node:fs/promises');
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('read-client-portal'));
   assert.equal(contract.mcp_read_contracts['read-client-portal'].write, true);
   assert.equal(contract.mcp_read_contracts['read-client-portal'].schema_version, 'client-portal.v1');

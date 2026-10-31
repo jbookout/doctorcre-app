@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { identity, unavailable } from './fixtures/correspondence.mjs';
+import { carrInterface } from "./carr-contract.mjs";
 
 test('both read verbs use same-origin MCP and send exact server arguments', async () => {
   const calls = [];
@@ -27,7 +28,7 @@ test('fixture adapter also implements both read verbs and honestly returns unava
 });
 
 test('versioned interface pins the two read schemas exactly; no correspondence write is added', async () => {
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('correspondence-readiness'));
   assert.ok(contract.mcp_operations.includes('read-correspondence-thread'));
   assert.deepEqual(contract.mcp_read_contracts['correspondence-readiness'].inputSchema, { type: 'object', additionalProperties: false, properties: {} });

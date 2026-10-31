@@ -9,9 +9,9 @@ import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 import { renderDealChecklist } from "../js/deal-checklist.js";
+import { carrInterface } from "./carr-contract.mjs";
 
-const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "95826fa82e8b6976ad1eb9e8b0c3b19f00f9c925";
+const contract = carrInterface;
 
 
 const producerModules = new Map();
@@ -78,10 +78,6 @@ test("the same advertised producer derives the versioned checklist consumed by t
   assert.equal(checklist.due_items[0].status, "due");
   assert.match(renderDealChecklist(checklist), /data-checklist-item="critical-date:synthetic-review"/);
 
-});
-
-test("the runtime pin includes operation identity, session binding and versioned replacement writes", () => {
-  assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
 test('S2 consumer contract binds the operation and concurrency contract to the advertised producer', async () => {

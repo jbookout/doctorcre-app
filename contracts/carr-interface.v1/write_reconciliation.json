@@ -1,0 +1,9 @@
+{
+  "contract": "contracts/app-write-reconciliation.v1.json",
+  "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
+  }
+}
