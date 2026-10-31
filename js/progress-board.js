@@ -1316,7 +1316,7 @@ export function mountBoard(deps = {}) {
       if (!card.request && (!current || JSON.stringify(current) !== JSON.stringify(card.row))) {
         card.node.remove(); conventionCards.delete(id);
       } else if (!card.request && card.status !== "reload") {
-        card.button.disabled = governanceState !== "read" || !card.row.body_text?.trim() || card.row.adoptable === false;
+        card.button.disabled = governanceState !== "read" || card.row.adoptable !== true;
       }
     }
     if (rows.length && !conventionCards.size) container.replaceChildren();
@@ -1325,11 +1325,14 @@ export function mountBoard(deps = {}) {
       const node = el("article", "convention-proposal", undefined, { "data-convention": row.section_id });
       const time = el("time", "", formatTime(row.updated_at) || "Time unavailable");
       if (row.updated_at) time.dateTime = row.updated_at;
-      const meta = el("p", "work-meta", `Proposed by ${row.last_writer || "Unknown proposer"} · `);
+      const meta = el("p", "work-meta");
       meta.append(time);
-      node.append(el("h3", "", row.title || row.statement || row.section_key), meta,
-        el("p", "convention-body", row.body_text ?? "Proposal text unavailable. Adoption requires the full text."));
-      if (row.adoptable === false) node.append(el("p", "", row.problem || "This proposal cannot be adopted."));
+      node.append(el("h3", "", row.section_key.split("/").at(-1)), meta);
+      if (row.adoptable === true) {
+        node.append(el("p", "convention-body", row.statement), el("p", "", `Packs: ${row.packs.join(", ")}`));
+      } else {
+        node.append(el("p", "", row.problem));
+      }
       const form = el("form");
       const whyId = `convention-why-${row.section_id}`;
       const reason = el("textarea", "", "", { id: whyId, required: "", maxlength: "1000", rows: "2" });
@@ -1338,7 +1341,7 @@ export function mountBoard(deps = {}) {
       form.append(el("label", "", "Why", { for: whyId }), reason, button, message);
       node.append(form);
       const card = { node, row, reason, button, message, request: null, status: "ready" };
-      button.disabled = typeof row.body_text !== "string" || !row.body_text.trim() || row.adoptable === false || governanceState !== "read";
+      button.disabled = row.adoptable !== true || governanceState !== "read";
       const reload = async () => {
         const read = await client.governanceQueue();
         if (!governanceTasks(read)) throw new Error("Invalid approvals read");
@@ -1359,8 +1362,8 @@ export function mountBoard(deps = {}) {
           return;
         }
         if (!reason.value.trim()) return;
-        card.request ||= { idempotency_key: uuidv4(), section_id: row.section_id,
-          base_version: row.base_version, reason: reason.value.trim() };
+        card.request ||= { idempotency_key: uuidv4(), section_id: row.approve_with.section_id,
+          base_version: row.approve_with.base_version, reason: reason.value.trim() };
         button.disabled = true; reason.disabled = true;
         byId("conventionStatus").textContent = "";
         try {

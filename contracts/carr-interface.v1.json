@@ -1867,15 +1867,18 @@
         "section_key",
         "base_version",
         "updated_at",
-        "adoptable",
-        "statement"
+        "adoptable"
       ],
-      "review_fields": [
-        "title",
-        "body_text",
-        "last_writer"
+      "availability": "Adoptable proposals provide the statement, packs, and approve_with command; non-adoptable proposals provide a problem.",
+      "adoptable_fields": [
+        "statement",
+        "card_id",
+        "packs",
+        "approve_with"
       ],
-      "availability": "The pinned producer strips body_text and omits title and last_writer. The app displays missing metadata honestly and disables adoption until the full body is supplied."
+      "non_adoptable_fields": [
+        "problem"
+      ]
     },
     "write": {
       "verb": "adopt-rule",

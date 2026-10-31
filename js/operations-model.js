@@ -29,8 +29,11 @@ export function validGovernanceQueuePayload(payload) {
       || !rows.every(row => row && isText(row.section_id) && isText(row.section_key)
         && Number.isInteger(row.base_version) && row.base_version > 0
         && orNull(row.updated_at, isTime)
-        && ['title', 'body_text', 'last_writer', 'statement', 'problem'].every(field => orNull(row[field], value => typeof value === 'string'))
-        && orNull(row.adoptable, value => typeof value === 'boolean'))) return false;
+        && (row.adoptable === false ? isText(row.problem) : row.adoptable === true
+          && isText(row.statement) && orNull(row.card_id, isText)
+          && Array.isArray(row.packs) && row.packs.every(isText)
+          && row.approve_with?.verb === 'adopt-rule' && isText(row.approve_with.section_id)
+          && Number.isInteger(row.approve_with.base_version) && row.approve_with.base_version > 0))) return false;
     total += rows.length;
   }
   return Number.isInteger(counts.total) && counts.total === total;

@@ -9,7 +9,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await page.setViewportSize({ width, height: 900 });
     const fixture = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}`, docContext: false });
     const queue = await fixture.governanceQueue();
-    queue.pending_convention_proposals[0].body_text += '\n<script>window.demoInjected = true</script>\n<b>Demo literal text</b>';
+    queue.pending_convention_proposals[0].statement += '\n<script>window.demoInjected = true</script>\n<b>Demo literal text</b>';
     const writes = [];
     let outcome = 'conflict';
     const methods = { 'read-progress-board': 'readProgressBoard', 'governance-queue': 'governanceQueue', 'deal-room-board': 'getBoard' };
@@ -25,7 +25,8 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
           writes.push({ args, csrf: route.request().headers()['x-carr-csrf'] });
           if (outcome === 'conflict') {
             queue.pending_convention_proposals[0].base_version = 9;
-            queue.pending_convention_proposals[0].body_text += '\nDemo revision nine.';
+            queue.pending_convention_proposals[0].approve_with.base_version = 9;
+            queue.pending_convention_proposals[0].statement += '\nDemo revision nine.';
             payload = { error: 'version_conflict' };
           } else if (outcome === 'unknown') payload = { ok: true };
           else {
@@ -51,8 +52,8 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await expect(page.locator('#tabApprovals')).toHaveAttribute('aria-selected', 'true');
     const cards = page.locator('[data-convention]');
     await expect(cards).toHaveCount(2);
-    const first = cards.filter({ has: page.getByRole('heading', { name: 'Demo convention 1', exact: true }) });
-    await expect(first.locator('.convention-body')).toHaveText(queue.pending_convention_proposals[0].body_text);
+    const first = cards.filter({ has: page.getByRole('heading', { name: 'demo-1', exact: true }) });
+    await expect(first.locator('.convention-body')).toHaveText(queue.pending_convention_proposals[0].statement);
     await expect(first.locator('script,b')).toHaveCount(0);
     await first.getByRole('button', { name: 'Adopt', exact: true }).click();
     expect(writes).toHaveLength(0);

@@ -22,7 +22,7 @@ async function mount(t, overrides = {}) {
     submit: async form => { form.dispatchEvent(new dom.window.Event('submit', { cancelable: true })); await settle(); await settle(); } };
 }
 
-test('Approvals lists two fixture conventions as full text with their proposer and time', async t => {
+test('Approvals lists two fixture conventions with statement, slug, packs and time', async t => {
   const page = await mount(t);
   const queue = await page.client.governanceQueue();
   assert.equal(validGovernanceQueuePayload(queue), true);
@@ -30,9 +30,9 @@ test('Approvals lists two fixture conventions as full text with their proposer a
   const cards = page.doc.querySelectorAll('[data-convention]');
   assert.equal(cards.length, 2);
   for (const [index, row] of queue.pending_convention_proposals.entries()) {
-    assert.equal(cards[index].querySelector('h3').textContent, row.title);
-    assert.equal(cards[index].querySelector('.convention-body').textContent, row.body_text);
-    assert.match(cards[index].textContent, new RegExp(row.last_writer));
+    assert.equal(cards[index].querySelector('h3').textContent, row.section_key.split('/').at(-1));
+    assert.equal(cards[index].querySelector('.convention-body').textContent, row.statement);
+    assert.match(cards[index].textContent, /demo/);
     assert.equal(cards[index].querySelector('time').dateTime, row.updated_at);
   }
 });
@@ -51,8 +51,8 @@ test('Adopt requires Why, sends the reviewed version and a fresh key, then remov
   await page.submit(form);
   assert.equal(writes.length, 1);
   assert.match(writes[0].idempotency_key, /^[0-9a-f-]{36}$/);
-  assert.deepEqual(writes[0], { idempotency_key: writes[0].idempotency_key, section_id: row.section_id,
-    base_version: row.base_version, reason: 'Reviewed the demo convention.' });
+  assert.deepEqual(writes[0], { idempotency_key: writes[0].idempotency_key, section_id: row.approve_with.section_id,
+    base_version: row.approve_with.base_version, reason: 'Reviewed the demo convention.' });
   assert.equal(page.doc.querySelectorAll('[data-convention]').length, 1);
   assert.equal(page.doc.querySelector('#conventionStatus').textContent, 'Adopted');
   assert.equal((await client.governanceQueue()).pending_convention_proposals.length, 1);
@@ -67,7 +67,8 @@ test('version conflict rereads the proposal and requires another review with a f
     writes.push(args);
     if (writes.length === 1) {
       queue.pending_convention_proposals[0].base_version = 9;
-      queue.pending_convention_proposals[0].body_text = 'Convention: Demo changed text.';
+      queue.pending_convention_proposals[0].approve_with.base_version = 9;
+      queue.pending_convention_proposals[0].statement = 'Demo changed text.';
       throw Object.assign(new Error('conflict'), { payload: { error: 'version_conflict' } });
     }
     return { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
@@ -112,18 +113,16 @@ test('unknown outcome retains the full request and visible proposal even if a po
   assert.equal(page.doc.querySelector('#conventionStatus').textContent, 'Adopted');
 });
 
-test('proposal HTML is rendered literally and missing body prevents adoption', async t => {
+test('proposal content is literal and non-adoptable proposals explain why', async t => {
   const queue = await (await fixture()).governanceQueue();
-  Object.assign(queue.pending_convention_proposals[0], { title: '<img src=x onerror=alert(1)>',
-    body_text: '<script>bad()</script>\n<b>Demo text</b>', last_writer: '<iframe>' });
-  delete queue.pending_convention_proposals[1].body_text;
+  Object.assign(queue.pending_convention_proposals[0], { statement: '<script>bad()</script><b>Demo text</b>' });
+  Object.assign(queue.pending_convention_proposals[1], { adoptable: false, problem: 'Missing Packs', statement: undefined, packs: undefined, approve_with: undefined });
   const page = await mount(t, { governanceQueue: async () => queue });
   const cards = page.doc.querySelectorAll('[data-convention]');
-  assert.equal(cards[0].querySelector('h3').textContent, '<img src=x onerror=alert(1)>');
-  assert.equal(cards[0].querySelector('.convention-body').textContent, '<script>bad()</script>\n<b>Demo text</b>');
-  assert.equal(cards[0].querySelectorAll('img,script,b,iframe').length, 0);
+  assert.equal(cards[0].querySelector('.convention-body').textContent, '<script>bad()</script><b>Demo text</b>');
+  assert.equal(cards[0].querySelectorAll('script,b').length, 0);
   assert.equal(cards[1].querySelector('button').disabled, true);
-  assert.match(cards[1].textContent, /text unavailable/);
+  assert.match(cards[1].textContent, /Missing Packs/);
 });
 
 test('live adoption sends exact args under the partner session and CSRF, retaining an unknown receipt', async () => {

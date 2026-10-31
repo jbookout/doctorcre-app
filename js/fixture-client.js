@@ -66,12 +66,12 @@ export async function createFixtureClient(opts = {}) {
   });
 
   const selfActor = opts.selfActor || seed.actors?.self || 'joe';
-  const conventionProposals = [1, 2].map((number) => ({
-    section_id: `d0000000-0000-4000-8000-00000000c15${number}`,
-    section_key: `conventions/proposed/demo-${number}`, base_version: number,
-    title: `Demo convention ${number}`, body_text: `Convention: Demo convention ${number}.\nPacks: demo\nWhy: Keep the full demo text visible.`,
-    last_writer: 'demo-agent', updated_at: '2026-10-28T12:00:00Z', adoptable: true,
-  }));
+  const conventionProposals = [1, 2].map((number) => {
+    const section_id = `d0000000-0000-4000-8000-00000000c15${number}`;
+    return { section_id, section_key: `conventions/proposed/demo-${number}`, base_version: number,
+      updated_at: '2026-10-28T12:00:00Z', adoptable: true, statement: `Demo convention ${number}.`,
+      card_id: null, packs: ['demo'], approve_with: { verb: 'adopt-rule', section_id, base_version: number } };
+  });
   const conventionReceipts = new Map();
 
   const partnerActor = seed.actors?.partner || 'dell';
