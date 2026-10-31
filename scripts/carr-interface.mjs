@@ -3,7 +3,8 @@
 // and never edit the same lines:
 //
 //   <key>.json                  the value of top-level key <key>
-//   mcp_operations/<verb>.json  one list entry, a JSON string (also http_surfaces)
+//   mcp_operations/<verb>.json  one list entry, a JSON string
+//   http_surfaces/<slug>.json   {value, order} preserves the contract array order
 //   <key>/<name>.json           the value of <key>.<name> (mcp_read_contracts, ...)
 //
 // composeCarrInterface rebuilds the one object every consumer reads; its
@@ -37,13 +38,18 @@ export function composeCarrInterface(files) {
   for (const [key, entries] of groups) {
     if (top.has(key)) throw new Error(`${CARR_INTERFACE}: ${key} is both a file and a directory`);
     if (!LISTS.has(key)) { top.set(key, sorted(entries)); continue; }
-    const values = entries.map(([, value, path]) => {
+    if (key === "http_surfaces") entries.sort(([, a], [, b]) => a.order - b.order || String(a.value).localeCompare(String(b.value), "en"));
+    const values = entries.map(([, entry, path]) => {
+      if (key === "http_surfaces" && (!Number.isSafeInteger(entry?.order) || entry.order < 0)) {
+        throw new Error(`${CARR_INTERFACE}/${path}: a surface needs a nonnegative integer order`);
+      }
+      const value = key === "http_surfaces" ? entry.value : entry;
       if (typeof value !== "string") throw new Error(`${CARR_INTERFACE}/${path}: a ${key} entry is a JSON string`);
       if (path !== `${key}/${entryFileName(value)}`) throw new Error(`${CARR_INTERFACE}/${path}: name it ${entryFileName(value)}`);
       return value;
     });
     if (new Set(values).size !== values.length) throw new Error(`${CARR_INTERFACE}/${key}: duplicate entry`);
-    top.set(key, values.sort());
+    top.set(key, key === "http_surfaces" ? values : values.sort());
   }
   return sorted(top);
 }

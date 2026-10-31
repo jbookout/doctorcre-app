@@ -1,1 +1,4 @@
-"/api/v1/call-sessions/{id}/transfer"
+{
+  "value": "/api/v1/call-sessions/{id}/transfer",
+  "order": 25
+}

@@ -1,1 +1,4 @@
-"/api/share/comment"
+{
+  "value": "/api/share/comment",
+  "order": 11
+}

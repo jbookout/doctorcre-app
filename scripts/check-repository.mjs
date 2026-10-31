@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCarrInterface } from "./carr-interface.mjs";
@@ -8,6 +8,12 @@ const ROOT = new URL("../", import.meta.url);
 const ROOT_PATH = fileURLToPath(ROOT);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
 const json = async (path) => JSON.parse(await read(path));
+
+await assert.rejects(
+  access(new URL("contracts/carr-interface.v1.json", ROOT)),
+  { code: "ENOENT" },
+  "contracts/carr-interface.v1.json is retired; add entries to contracts/carr-interface.v1/ and read through scripts/carr-interface.mjs",
+);
 
 const fixture = await json("data/board-seed.json");
 assert.equal(fixture.fixture?.synthetic, true, "the local board fixture must be explicitly synthetic");

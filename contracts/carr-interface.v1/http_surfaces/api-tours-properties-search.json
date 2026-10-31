@@ -1,1 +1,4 @@
-"/api/tours/properties/search"
+{
+  "value": "/api/tours/properties/search",
+  "order": 12
+}

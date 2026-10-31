@@ -1,1 +1,4 @@
-"/api/room/*"
+{
+  "value": "/api/room/*",
+  "order": 6
+}

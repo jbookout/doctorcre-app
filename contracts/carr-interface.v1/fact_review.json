@@ -1,6 +1,8 @@
 {
   "schema_version": "fact-review.v1",
   "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2739",
+  "schedule_producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2764",
+  "schedule_producer_revision": "011949983afbe4de99cf1034636a50ed620fd368",
   "list": {
     "verb": "list-fact-review",
     "input": [

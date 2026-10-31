@@ -1,1 +1,4 @@
-"/api/system-work/*"
+{
+  "value": "/api/system-work/*",
+  "order": 7
+}

@@ -1,1 +1,4 @@
-"/api/v1/business/*"
+{
+  "value": "/api/v1/business/*",
+  "order": 1
+}

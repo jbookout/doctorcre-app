@@ -17,13 +17,13 @@ test("one file per entry composes into the contract object every consumer reads"
     ["schema.json", json("s")],
     ["mcp_operations/read-b.json", json("read-b")],
     ["mcp_operations/add-a.json", json("add-a")],
-    ["http_surfaces/api-v1-x-id.json", json("/api/v1/x/{id}")],
-    ["http_surfaces/api-tours-all.json", json("/api/tours/*")],
+    ["http_surfaces/api-v1-x-id.json", json({ value: "/api/v1/x/{id}", order: 0 })],
+    ["http_surfaces/api-tours-all.json", json({ value: "/api/tours/*", order: 1 })],
     ["mcp_read_contracts/read-b.json", json({ write: false })],
     ["zeta_feature.json", json({ read: "read-b {}" })],
   ]);
   assert.deepEqual(contract, {
-    http_surfaces: ["/api/tours/*", "/api/v1/x/{id}"],
+    http_surfaces: ["/api/v1/x/{id}", "/api/tours/*"],
     mcp_operations: ["add-a", "read-b"],
     mcp_read_contracts: { "read-b": { write: false } },
     schema: "s",
@@ -41,6 +41,19 @@ test("a list entry is a string named after itself, so the same addition is the s
   assert.throws(() => composeCarrInterface([["mcp_read_contracts/a/b.json", json({})]]), /one directory deep/);
   assert.throws(() => composeCarrInterface([["version.txt", "1"]]), /\.json file/);
   assert.throws(() => composeCarrInterface([["producer.json", json({})], ["producer/x.json", json({})]]), /both a file and a directory/);
+});
+
+test("parallel surface additions with the same order compose deterministically", () => {
+  const files = [
+    ["http_surfaces/api-z.json", json({ value: "/api/z", order: 2 })],
+    ["http_surfaces/api-a.json", json({ value: "/api/a", order: 2 })],
+    ["http_surfaces/api-first.json", json({ value: "/api/first", order: 0 })],
+  ];
+  assert.deepEqual(composeCarrInterface(files).http_surfaces, ["/api/first", "/api/a", "/api/z"]);
+  assert.deepEqual(composeCarrInterface(files.toReversed()), composeCarrInterface(files));
+  for (const order of [undefined, -1, 0.5]) {
+    assert.throws(() => composeCarrInterface([["http_surfaces/api-a.json", json({ value: "/api/a", order })]]), /nonnegative integer order/);
+  }
 });
 
 test("the checked-in interface composes with its header and lists", () => {

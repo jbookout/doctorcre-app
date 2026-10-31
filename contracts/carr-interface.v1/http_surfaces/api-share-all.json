@@ -1,1 +1,4 @@
-"/api/share/*"
+{
+  "value": "/api/share/*",
+  "order": 8
+}

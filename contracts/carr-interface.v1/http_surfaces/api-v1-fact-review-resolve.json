@@ -1,1 +1,4 @@
-"/api/v1/fact-review/resolve"
+{
+  "value": "/api/v1/fact-review/resolve",
+  "order": 20
+}

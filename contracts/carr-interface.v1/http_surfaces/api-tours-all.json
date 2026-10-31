@@ -1,1 +1,4 @@
-"/api/tours/*"
+{
+  "value": "/api/tours/*",
+  "order": 16
+}

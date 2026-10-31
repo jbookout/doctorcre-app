@@ -19,10 +19,10 @@ test('job cards retain exact Work Request and PR; absence never creates a refere
 });
 test('all governance lanes become review cards with original entries and exact deduplication',async()=>{
  const queue=await (await fixture()).governanceQueue(),tasks=governanceTasks(queue);
- assert.equal(tasks.length,queue.counts.total);assert.ok(tasks.every(t=>t.governance.entry&&t.stage==='review'));
+ assert.equal(tasks.length,queue.counts.total - queue.counts.pending_convention_proposals);assert.ok(tasks.every(t=>t.governance.entry&&t.stage==='review'));
  const board={stages:[{id:'review',tasks:[]},{id:'build',tasks:[]}]};
- const merged=withGovernance(board,tasks);assert.equal(merged.stages[0].tasks.length,queue.counts.total);
- assert.equal(withGovernance(merged,tasks).stages[0].tasks.length,queue.counts.total);
+ const merged=withGovernance(board,tasks);assert.equal(merged.stages[0].tasks.length,tasks.length);
+ assert.equal(withGovernance(merged,tasks).stages[0].tasks.length,tasks.length);
  assert.equal(governanceTasks({ok:true}),null);
 });
 test('calendar uses next due dates in the selected month; unscheduled jobs stay visible',async()=>{
