@@ -510,7 +510,7 @@ for (const width of [390, 1440]) {
         && url.searchParams.get('board') === 'demo-project' && url.searchParams.get('task') === 'blocked'
         && url.searchParams.get('work_request') === (change === 'updated' ? 'WR-102' : 'WR-101'));
     } else {
-      assert.equal(await card.count(), 0);
+      await card.waitFor({ state: 'detached' });
       const count = change === 'empty' ? 0 : 1;
       assert.equal(await page.locator('#board-blocked .blocked-card').count(), count);
       assert.equal(await page.locator('#blocked-count').textContent(), `${count} BLOCKED`);
