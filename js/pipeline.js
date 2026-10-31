@@ -1,5 +1,4 @@
 import { workCard } from './work-card.js';
-import { invoiceMoney } from './invoice-tracker-model.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
 import { OWNER_FILTERS } from './owner-filters.js';
@@ -1025,6 +1024,7 @@ function selectWorkspaceTab(id) {
     $(`tab-${tab.id}`).tabIndex = selected ? 0 : -1;
     if ($(`workspace-${tab.id}`)) $(`workspace-${tab.id}`).hidden = !selected;
   }
+  if (id === 'market-terms') void marketTermsPanel?.load();
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
     $('panelEvidenceSection').open = true;
@@ -1047,7 +1047,7 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
-let factReviewPanel;
+let factReviewPanel, marketTermsPanel;
 
 function workspaceHtml(detail) {
   const d = detail.deal;
@@ -1162,6 +1162,7 @@ async function readPanel(id) {
         }
       }
       void factReviewPanel?.refresh();
+      void marketTermsPanel?.refresh();
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1198,6 +1199,7 @@ function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
+  marketTermsPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
   const terms = $('panelTerms');
   let disposed = false, loading = false, mounted;
@@ -1228,13 +1230,29 @@ function paintPanel(detail) {
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
+  let marketDisposed = false, marketLoading = false, marketMounted;
+  marketTermsPanel = {
+    async load() {
+      if (marketDisposed || marketLoading) return;
+      marketLoading = true;
+      const root = $('workspace-market-terms');
+      root.textContent = 'Loading comparable terms…';
+      try {
+        const { mountMarketTerms } = await import('./ui.generated.js');
+        if (!marketDisposed) marketMounted = mountMarketTerms(root, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type });
+      } catch { if (!marketDisposed) { marketLoading = false; root.textContent = 'Could not load comparable terms. Try again.'; } }
+    },
+    refresh() { return marketMounted?.refresh(); },
+    dispose() { marketDisposed = true; marketMounted?.dispose(); },
+  };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
-  mountMarketTerms($('workspace-market-terms'), { deal:detail.deal, read:args => state.client.readMarketTerms(args) });
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   factReviewPanel?.dispose();
   factReviewPanel = null;
+  marketTermsPanel?.dispose();
+  marketTermsPanel = null;
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
@@ -1263,6 +1281,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
 function closeWorkspace({ fromHistory = false } = {}) {
   factReviewPanel?.dispose();
   factReviewPanel = null;
+  marketTermsPanel?.dispose();
+  marketTermsPanel = null;
   if (!fromHistory && history.state?.doctorcreDealWorkspace) { history.back(); return; }
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');
@@ -1744,36 +1764,3 @@ if (globalThis.document) boot();
 export { state };
 /** Read-only view of the command dock's entries, for tests that prove what it retains. */
 export const dockEntries = () => dock.entries ?? new Map();
-
-export function mountMarketTerms(root, { deal, read }) {
-  root.innerHTML = `<h2>Compare terms</h2><p>Confirmed terms from recorded firm history. This is not a complete market survey.</p><form class="market-filters"><label>Submarket<input name="submarket" maxlength="200" value="${escapeText(deal.submarket || '')}"></label><label>Use type<input name="use_type" maxlength="200" value="${escapeText(deal.use_type || '')}"></label><button class="btn" type="submit">Compare</button></form><div data-market-results role="status"></div>`;
-  const form = root.querySelector('form');
-  const result = root.querySelector('[data-market-results]');
-  let sequence = 0;
-  async function load() {
-    const current = ++sequence;
-    result.textContent = 'Loading comparable terms…';
-    const args = Object.fromEntries(['submarket','use_type'].map(name => [name, form.elements[name].value.trim()]).filter(([,value]) => value));
-    try {
-      const data = await read(args);
-      if (current !== sequence) return;
-      if (!data?.ok || data.schema_version !== 'market-terms.v1' || !Array.isArray(data.rows) || !data.coverage) throw new Error('Invalid response');
-      const c = data.coverage;
-      const coverage = `<p><strong>${data.rows.length} comparable ${data.rows.length === 1 ? "term" : "terms"} across ${escapeText(c.comparable_deals)} ${c.comparable_deals === 1 ? "deal" : "deals"}.</strong></p><p>Firm-wide history coverage (not filtered): ${escapeText(c.eligible_receipts)} of ${escapeText(c.canonical_receipts)} receipts eligible; ${escapeText(c.unsupported_receipts)} unsupported, ${escapeText(c.superseded_without_context)} superseded without context, ${escapeText(c.unclassified_receipts)} unclassified. From ${escapeText(c.recorded_documents)} recorded documents. Archive coverage is unknown.</p>`;
-      if (!data.rows.length) { result.innerHTML = `${coverage}<p>No comparable terms match these filters.</p>`; return; }
-      const rows = data.rows.map(row => {
-        const superseded = row.effective_to && row.effective_to <= new Date().toISOString().slice(0, 10) && data.rows.some(next => next.entity_ref === row.entity_ref && next.fact_key === row.fact_key && next.term_kind === row.term_kind && next.effective_from === row.effective_to);
-        const number = Number(row.value);
-        const value = /^USD/i.test(row.unit || '') && row.value !== '' && Number.isFinite(number) ? invoiceMoney(number) : row.value;
-        const source = (row.sources || []).map(s => `${s.document_ref}${s.page_start ? `, p. ${s.page_start}${s.page_end && s.page_end !== s.page_start ? `–${s.page_end}` : ''}` : ''}`).join('; ') || row.context_source?.document_ref || 'Source unavailable';
-        return `<tr${superseded ? ' class="superseded"' : ''}><td data-label="Date">${escapeText(row.term_date)}</td><td data-label="Deal"><a href="/deals?deal=${encodeURIComponent(row.entity_ref)}">${escapeText(row.entity_ref)}</a></td><td data-label="Stage">${escapeText(row.term_kind)}</td><td data-label="Term">${escapeText(row.fact_key)}: ${escapeText(value)} ${escapeText(/^USD/i.test(row.unit || '') && Number.isFinite(number) ? row.unit.replace(/^USD/i, '') : (row.unit || ''))}</td><td data-label="Expense basis">${escapeText(row.expense_basis || 'Not recorded')}</td><td data-label="Confidence">${escapeText((row.confidence || '').replaceAll('_',' '))}</td><td data-label="Effective period">${escapeText(row.effective_from)} to ${escapeText(row.effective_to || 'present')}${superseded ? ' · superseded' : ''}</td><td data-label="Source">${escapeText(source)}</td></tr>`;
-      }).join('');
-      result.innerHTML = `${coverage}<table class="market-terms-table"><thead><tr><th>Date</th><th>Deal</th><th>Stage</th><th>Term</th><th>Expense basis</th><th>Confidence</th><th>Effective period</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>`;
-    } catch (error) {
-      if (current !== sequence) return;
-      result.textContent = error.status === 404 || error.code === 'unknown_tool' ? 'Term comparison is unavailable until the server update is deployed.' : 'Could not load comparable terms. Try again.';
-    }
-  }
-  form.addEventListener('submit', event => { event.preventDefault(); void load(); });
-  void load();
-}

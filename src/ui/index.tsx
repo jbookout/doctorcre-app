@@ -16,3 +16,5 @@ export function hostNode(node: Element): Root {
 }
 
 export { mountFactReview } from "./fact-review";
+
+export { mountMarketTerms } from "./market-terms";
