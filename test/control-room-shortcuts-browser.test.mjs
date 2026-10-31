@@ -48,7 +48,7 @@ for (const modifier of ['Meta', 'Control']) test(`${modifier}-K opens, filters, 
   assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
   const input = dialog.getByRole('combobox', { name: 'Find a command' });
   assert.equal(await input.evaluate(node => node === document.activeElement), true);
-  assert.equal(await dialog.getByRole('option').count(), 16);
+  assert.equal(await dialog.getByRole('option').count(), 17);
   assert.equal(await dialog.getByRole('option', { name: 'Go to Automations', exact: true }).count(), 1);
   await input.fill('waiting');
   await page.keyboard.press('Enter');
@@ -82,10 +82,10 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await dialog.waitFor();
     assert.equal(await dialog.locator('footer').getByText('Select', { exact: false }).isVisible(), false);
     const tabs = dialog.getByRole('definition').filter({ hasText: /^g/ });
-    assert.equal(await tabs.count(), 11);
+    assert.equal(await tabs.count(), 12);
     const heading = dialog.getByRole('heading', { name: 'Go to a tab', exact: true });
     assert.equal(await heading.isVisible(), true);
-    assert.equal(await dialog.getByLabel('Go to a tab', { exact: true }).getByRole('definition').count(), 11);
+    assert.equal(await dialog.getByLabel('Go to a tab', { exact: true }).getByRole('definition').count(), 12);
     const spacing = await dialog.evaluate(node => {
       const header = node.querySelector('header').getBoundingClientRect();
       const intro = node.querySelector('[data-command-sheet] p').getBoundingClientRect();
@@ -119,6 +119,9 @@ test('g sequences jump to tabs, ? explains shortcuts, and typing stays untouched
   await page.keyboard.press('g');
   await page.keyboard.press('i');
   await page.waitForFunction(() => location.search.includes('tab=inbox'));
+  await page.keyboard.press('g');
+  await page.keyboard.press('p');
+  await page.waitForFunction(() => location.search.includes('tab=approvals'));
   await page.keyboard.press('?');
   const sheet = page.getByRole('dialog', { name: 'Keyboard shortcuts', exact: true });
   await sheet.waitFor();
@@ -130,7 +133,7 @@ test('g sequences jump to tabs, ? explains shortcuts, and typing stays untouched
   const input = page.getByRole('combobox', { name: 'Find a command' });
   await input.fill('gij?k');
   assert.equal(await input.inputValue(), 'gij?k');
-  assert.match(page.url(), /tab=inbox/);
+  assert.match(page.url(), /tab=approvals/);
   await page.keyboard.press('Escape');
 });
 
