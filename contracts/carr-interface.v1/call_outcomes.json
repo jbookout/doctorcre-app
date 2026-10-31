@@ -1,0 +1,11 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "2ffc87b617b59553a84b54b3146a5c96f46beff6",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2362"
+  },
+  "schema_version": "call-outcomes.v1",
+  "read": "read-call-outcomes {} returns calls[] not yet reviewed: session_id, call_date, recorder, applied[] (candidate_id, kind next_step|phase_move, deal_id, deal_name, deal_version, payload, evidence_quote, applied_at, undone_at) and open_cards[] (candidate_id, resolver, kind, deal_id, deal_name, payload, evidence_quote). send is always false.",
+  "write": "undo-call-change {candidate_id, base_version} reverts one applied change; newer_change_exists and version conflicts are refusals to show, never retried. review-call-outcome {session_id} takes one call off Home.",
+  "review": "Show each applied change with what changed, its transcript quote and one Undo. Count open cards; they are decided in their own review lists."
+}

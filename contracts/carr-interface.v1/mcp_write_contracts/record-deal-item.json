@@ -1,0 +1,80 @@
+{
+  "write": true,
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "idempotency_key": {
+        "type": "string"
+      },
+      "deal": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "due_on": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "bullets": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 60,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "promised",
+                "call",
+                "suggestion",
+                "status"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ]
+        }
+      },
+      "source_ref": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "required": [
+      "idempotency_key",
+      "deal",
+      "title",
+      "bullets",
+      "source_ref"
+    ]
+  },
+  "effect": "Add one sourced deal checklist item. It never replaces sibling actions. Repeating source_ref and title returns the existing item."
+}

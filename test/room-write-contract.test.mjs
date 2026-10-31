@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import vm from 'node:vm';
 import { createRoomTurnClient } from '../js/room-turn-client.js';
+import { carrInterface } from "./carr-contract.mjs";
 
-const contract = JSON.parse(readFileSync(new URL('../contracts/carr-interface.v1.json', import.meta.url)));
+const contract = carrInterface;
 const reconciliation = JSON.parse(readFileSync(new URL(`../${contract.write_reconciliation.contract}`, import.meta.url)));
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const csrf = 'synthetic-session-a';

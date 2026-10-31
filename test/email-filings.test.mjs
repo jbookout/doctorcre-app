@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { mountEmailFilings } from '../js/email-filings.js';
 import { createLiveClient } from '../js/live-client.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 const filing = (n, extra = {}) => ({ event_id: `40000000-0000-4000-8000-00000000000${n}`, deal: '20000000-0000-4000-8000-000000000001',
   activity_id: `30000000-0000-4000-8000-00000000000${n}`, recorded_at: '2026-10-27T15:00:00Z', summary: `Private body text ${n}`,
@@ -70,7 +70,7 @@ test('live client forwards the exact read and undo arguments, and the contract p
   await live.listEmailThreadFilings();
   await live.undoEmailThreadFiling({ event_id: filing(1).event_id, idempotency_key: 'k' });
   assert.deepEqual(calls, [{ name: 'list-email-thread-filings', arguments: {} }, { name: 'undo-email-thread-filing', arguments: { event_id: filing(1).event_id, idempotency_key: 'k' } }]);
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('list-email-thread-filings') && contract.mcp_operations.includes('undo-email-thread-filing'));
   assert.deepEqual(Object.keys(contract.email_thread_filings.read_fields), ['event_id', 'deal', 'activity_id', 'recorded_at', 'summary', 'subject', 'sender_name', 'occurred_at', 'activity_version']);
 });

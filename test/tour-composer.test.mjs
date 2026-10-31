@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { webcrypto, createHash } from "node:crypto";
 import { openDom } from "./jsdom-harness.mjs";
 import { animationsSettled, chromium, settles } from "./browser-harness.mjs";
+import { carrInterface } from "./carr-contract.mjs";
 
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
@@ -1292,7 +1293,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned detail producer",
 }, async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
-  const advertised = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8")).producer;
+  const advertised = carrInterface.producer;
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${advertised.source_commit}:${path}`], { encoding: "utf8" });
   const migration = committed(contract.reviewed_route.producer.migration);
   assert.match(migration, /create or replace function ops\.read_tour_internal_detail\b/);

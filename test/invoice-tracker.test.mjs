@@ -5,6 +5,8 @@ import { projectInvoices, invoiceSummary, validInvoiceTracker, invoiceHref } fro
 import { invoiceTrackerFixture, createInvoiceFixture } from '../js/invoice-tracker-fixture.js';
 import { createLiveClient } from '../js/live-client.js';
 import { readHomeDashboard } from '../js/home-dashboard-model.js';
+import { carrInterface } from "./carr-contract.mjs";
+
 const today='2026-10-02';
 const payload=()=>invoiceTrackerFixture(today);
 test('aging buckets retain unknown amounts separately from confirmed zero',()=>{
@@ -85,7 +87,7 @@ test('Home reads the same invoice snapshot and fails closed when it is malformed
  client.getInvoiceTracker=async()=>({entries:[]});const bad=await readHomeDashboard(client);assert.equal(bad.invoices,null);assert.equal(bad.reads.invoices.state,'error');assert.equal(invoiceHref('demo 1'),'/invoices?invoice=demo%201');
 });
 test('invoice route and deterministic artifact input bind the exact separate CARR PR contract',async()=>{
- const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');const contract=JSON.parse(await read('contracts/carr-interface.v1.json'));const routes=(await import("../js/routes.js")).routeContract;
+ const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');const contract=carrInterface;const routes=(await import("../js/routes.js")).routeContract;
  assert.equal(routes.routes['/invoices'],'invoices.html');
  assert.match(contract.invoice_tracker.producer.source_commit,/^[a-f0-9]{40}$/);assert.equal(contract.invoice_tracker.amount,'commission.gross_amount');
  for(const name of ['read-invoice-tracker','record-commission-receipt'])assert.ok(contract.mcp_operations.includes(name));

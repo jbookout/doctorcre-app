@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { ACTIVITY_LIMIT, activityCopy, activityRequest, activityState } from "../js/record-activity-model.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
@@ -74,7 +75,7 @@ test("every state has plain copy, and the unverifiable ones say why nothing is s
 });
 
 test("the Vendors and Clients panel reads activity through the pinned verb and never guesses", async () => {
-  const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
+  const carr = carrInterface;
   assert.ok(carr.mcp_operations.includes("find-and-catch-up"));
   const js = await read("js/workspace-business.js");
   assert.match(js, /findAndCatchUp\(/);

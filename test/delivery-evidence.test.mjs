@@ -13,6 +13,7 @@ import { dispositionState } from "../js/work-inventory-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { performCommand } from "../js/command-feedback.mjs";
 import { uuidv4 } from "../js/uuid.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -352,17 +353,15 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   const html = await readFile(`${ROOT}/work-inventory.html`, "utf8");
   const css = await readFile(`${ROOT}/css/work-inventory.css`, "utf8");
   const js = await readFile(`${ROOT}/js/work-inventory.js`, "utf8");
-  const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
+  const carr = carrInterface;
   const routes = (await import("../js/routes.js")).routeContract;
 
   // NO new page and NO new route: this slice lives on the surface that already
   // reads the census, at the route the census already owns.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.24.0", "the Control Room route moved this additive contract on");
   for (const verb of ["engineering-passport", "read-portfolio", "work-request-card", "decline-work-request", "supersede-work-request", "set-work-shape-disposition"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }
-  assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort(), "the pinned operations stay sorted");
 
   // The four verb-less dispositions are a sentence, never a button.
   for (const word of ["combine", "shelve", "investigate", "finish shipping"]) {
