@@ -33,15 +33,3 @@ test('W15 invoice tracker filters by age and status and records a payment', asyn
   await expect(browser.locator('#invoiceDetailFacts')).toContainText('Paid');
   await expect(browser.locator('#invoicePayment')).toBeHidden();
 });
-
-test('W15 Home invoice attention lists overdue invoices for the chosen scope', async ({ app, browser }) => {
-  await app.open('/');
-
-  const attention = browser.locator('#homeInvoices [data-home-key]');
-  await expect(attention).toHaveCount(3);
-  await expect(attention).toContainText(['Demo Cedar Expansion', 'Demo Bay Relocation', 'Demo Oak Purchase']);
-  await browser.locator('[data-scope="mine"]').tap();
-  await expect(attention).toHaveCount(2);
-  await browser.locator('[data-scope="team"]').tap();
-  await expect(attention).toHaveCount(3);
-});

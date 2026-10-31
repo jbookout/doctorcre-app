@@ -12,12 +12,12 @@ before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); awai
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
 const row = (item_id, fields = {}) => ({ item_id, source_type: 'task', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', ...fields });
-async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false } = {}) {
+async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
-  const items = [row('a'), row('b', { source_state: 'done', unseen: true }), row('working', { source_state: 'working', section: 'working' })];
+  const items = [row('a', { hold_until: holdUntil }), row('b', { source_state: 'done', unseen: true }), row('working', { source_state: 'working', section: 'working' })];
   const calls = []; let writes = 0;
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
@@ -147,4 +147,10 @@ test('secondary Doc modules wait for the Home runtime and remain available after
   finally { release(); }
   await page.locator('[data-inbox-row]').first().waitFor();
   await page.locator('#docOpen').waitFor({ state: 'attached' });
+});
+
+test('date-only task holds keep the recorded day in the partner timezone', async t => {
+  const { page } = await open(t, { holdUntil: '2026-10-30' });
+  const row = page.locator('[data-inbox-row="a"]'); await row.waitFor();
+  assert.match(await row.textContent(), /On hold until 2026-10-30/);
 });

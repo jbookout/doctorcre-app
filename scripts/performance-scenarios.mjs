@@ -23,7 +23,7 @@ export const screens = [
 ];
 
 export const tasks = [
-  { id: 'task-react-home', route: '/home?mode=live', fixture: 'inbox', conditions: 'React Home; one bounded read; 40 synthetic cards; signed-in fixture; no per-item reads', ready: '[data-inbox-row]', async verify(page) { await page.waitForFunction(() => document.querySelectorAll('[data-inbox-row]').length === 40); } },
+  { id: 'task-react-home', route: '/home?mode=live', fixture: 'inbox', conditions: 'React Home; one bounded read; 40 synthetic cards; returning signed-in fixture partner; no per-item reads', ready: '[data-inbox-row]', async verify(page) { await page.waitForFunction(() => document.querySelectorAll('[data-inbox-row]').length === 40); } },
   { id: 'task-agenda', route: '/', fixture: 'inbox', conditions: '40 synthetic inbox items; one snapshot delayed 75ms',
     ready: '[data-inbox-row]',
     async verify(page) {
@@ -208,6 +208,8 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
 }
 
 export async function installInboxScenario(page, { delayMs = 75 } = {}) {
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true } })));
+
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-performance-session' } }));
   await page.route('**/mcp', async route => {
     const name = route.request().postDataJSON().params.name;
