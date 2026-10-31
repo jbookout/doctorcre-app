@@ -103,3 +103,15 @@ test('fixture list pages resolved and pending terms and normalizes a recorded le
   assert.equal(final.observations[0].value, '5');
   assert.equal(final.observations[0].unit, 'years');
 });
+
+test('live client lists deal document metadata through CARR', async () => {
+  const calls = [];
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    calls.push(JSON.parse(init.body).params);
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, schema_version: 'deal-documents.v1', documents: [], has_more: false, next_cursor: null }) }] } });
+  } });
+  const args = { deal_id: '00000000-0000-4000-8000-000000000039', limit: 100 };
+  assert.equal((await client.listDealDocuments(args)).schema_version, 'deal-documents.v1');
+  assert.deepEqual(calls, [{ name: 'list-deal-documents', arguments: args }]);
+});

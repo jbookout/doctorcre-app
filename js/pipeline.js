@@ -1158,7 +1158,7 @@ async function readPanel(id) {
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }
-      void factReviewPanel?.refresh(detail.attachments);
+      void factReviewPanel?.refresh();
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1198,7 +1198,6 @@ function paintPanel(detail) {
   $('panelBody').innerHTML = workspaceHtml(detail);
   const terms = $('panelTerms');
   let disposed = false, loading = false, mounted;
-  let attachments = detail.attachments;
   const observer = new IntersectionObserver(entries => {
     if (entries.some(entry => entry.isIntersecting)) void loadTerms();
   });
@@ -1211,7 +1210,7 @@ function paintPanel(detail) {
       const { mountFactReview } = await import('./ui.generated.js');
       if (disposed) return;
       terms.replaceChildren();
-      mounted = mountFactReview(terms, { client: state.client, entityRef: detail.deal.id, attachments, terms: FACT_TERMS });
+      mounted = mountFactReview(terms, { client: state.client, entityRef: detail.deal.id, terms: FACT_TERMS });
     } catch {
       if (!disposed) terms.textContent = 'Terms unavailable. Reopen this deal to try again.';
     }
@@ -1219,7 +1218,7 @@ function paintPanel(detail) {
   terms.querySelector('[data-open-terms]').addEventListener('click', loadTerms);
   observer.observe(terms);
   factReviewPanel = {
-    refresh(nextAttachments) { attachments = nextAttachments; return mounted?.refresh(nextAttachments); },
+    refresh() { return mounted?.refresh(); },
     dispose() { disposed = true; observer.disconnect(); mounted?.dispose(); },
   };
   disposeEvidence?.(); disposeEvidence = null;
