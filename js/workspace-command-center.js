@@ -31,6 +31,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
+  let taskDone;
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
   const retirePendingEmail = () => {
     emailRetired = true;
@@ -143,12 +144,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
     const today = localToday(new Date(now()));
     renderMeetings(signedOut);
+    if (!signedOut) taskDone?.retain($('homeBrief'), snapshot);
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar unavailable.'; }
     const tasks = agenda?.briefTasks || [];
     const briefMessage = signedOut ? 'Sign in to view tasks' : !agenda && (!snapshot || snapshot.reads.board?.state === 'loading') ? 'Updating tasks…' : !agenda ? 'Tasks unavailable' : agenda.failed.length ? 'Some tasks unavailable' : !tasks.length ? 'No open tasks' : '';
-    widget('homeBrief', `<header class="home-panel-head"><h2>Your brief</h2>${agenda && !signedOut && !agenda.failed.length ? `<span class="home-period">${tasks.length} open</span>` : ''}</header>${tasks.map(task => workCard({ className: 'home-brief-card', title: `<a data-home-key="brief:${E(task.key)}" href="${E(dealHref(task.deal_id))}">${E(task.label)}</a>`, meta: `${E(task.deal_name)}${task.owner ? ` · ${E(({ joe: 'Joe', dell: 'Dell' })[task.owner] || task.owner)}` : ''} · ${task.day ? `Due <time datetime="${E(task.day)}">${E(dateLabel(task.day))}</time>` : 'No due date'}` })).join('')}${briefMessage ? `<p class="home-empty" role="status">${briefMessage}</p>` : ''}`);
+    widget('homeBrief', `<header class="home-panel-head"><h2>Your brief</h2>${agenda && !signedOut && !agenda.failed.length ? `<span class="home-period">${tasks.length} open</span>` : ''}</header>${tasks.map(task => workCard({ className: 'home-brief-card', actions: client.completeOneAction && Number.isSafeInteger(task.version) && task.version > 0 ? `<button type="button" class="home-outline" data-home-key="done:${E(task.action_id)}" data-task-done="${E(task.action_id)}" data-version="${task.version}" data-deal="${E(task.deal_id)}">Done</button>` : '', title: `<a data-home-key="brief:${E(task.key)}" href="${E(dealHref(task.deal_id))}">${E(task.label)}</a>`, meta: `${E(task.deal_name)}${task.owner ? ` · ${E(({ joe: 'Joe', dell: 'Dell' })[task.owner] || task.owner)}` : ''} · ${task.day ? `Due <time datetime="${E(task.day)}">${E(dateLabel(task.day))}</time>` : 'No due date'}` })).join('')}${briefMessage ? `<p class="home-empty" role="status">${briefMessage}</p>` : ''}`);
+    taskDone?.paint($('homeBrief'));
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;
@@ -237,6 +240,19 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         }
       } if (latest) { latest.loading = false; snapshot = project(latest); } render(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
   };
+  $('homeBrief').addEventListener('click', async event => {
+    const button = event.target.closest('[data-task-done]');
+    if (!button || disposed || emailRetired) return;
+    try { taskDone = await import('./home-task-done.js'); }
+    catch { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Could not load Done. Try again.'; return; }
+    if (disposed || emailRetired) return;
+    taskDone.complete($('homeBrief'), button, client, row => {
+      if (disposed || emailRetired) return;
+      const detail = snapshot?.details.get(button.dataset.deal);
+      if (detail) detail.next_actions = [...detail.next_actions.filter(task => task.id !== row.id), row];
+      render();
+    }, () => !disposed && !emailRetired && !snapshot?.unauthorized, snapshot);
+  });
   const paintLeadDetail = lead => {
     const expanded = $('homeDetail').querySelector('details')?.open;
     const focused = $('homeDetail').contains(document.activeElement) ? document.activeElement.dataset.homeKey : null;
