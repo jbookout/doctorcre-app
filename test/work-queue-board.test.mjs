@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { queueBoard, prLinks, QUEUE_STAGES, QUEUE_REFRESH_MS, QUEUE_IDLE_MS } from '../js/work-queue-board-model.js';
 
-const job = (card_id, stage, extra = {}) => ({ card_id, work_request: 'WR-000557', work_request_title: 'Queue', stage, stale: false, prs: [], ...extra });
-const read = (jobs, github = []) => ({ ok: true, stale_after_hours: 24, jobs, github });
+const job = (card_id, stage, extra = {}) => ({ card_id, work_request: 'WR-000557', work_request_title: 'Queue', stage, stale: false, pr_evidence_complete: true, prs: [], ...extra });
+const complete = ['DoctorCRE/carr-system', 'jbookout/doctorcre-app', 'jbookout/software-factory'].map(repo => ({ repo, state: 'ok', truncated: false }));
+const read = (jobs, github = complete) => ({ ok: true, stale_after_hours: 24, jobs, github });
 
 test('every stage is present in order, even when empty, and jobs group by Work Request in queue order', () => {
   const board = queueBoard(read([job('WR557.S4.J1', 'review'), job('WR9.S1.J1', 'review', { work_request: 'WR-000009', work_request_title: 'Other' }),
@@ -53,4 +54,13 @@ test('started and production-verified jobs appear in their own stages', () => {
   assert.equal(board.stages.find(stage => stage.id === 'running').count, 1);
   assert.equal(board.stages.find(stage => stage.id === 'live').count, 1);
   assert.equal(board.stages.find(stage => stage.id === 'merged').count, 1);
+});
+
+test('incomplete GitHub evidence and unverified paired PRs stay merged', () => {
+  const merged = job('WR557.S4.J1', 'merged', { prs: [{ state: 'merged', production_live: true }] });
+  for (const github of [[{ repo: 'server', state: 'unavailable' }], [{ repo: 'server', state: 'ok', truncated: true }]])
+    assert.equal(queueBoard(read([merged], github)).jobs[0].stage, 'merged');
+  assert.equal(queueBoard(read([{ ...merged, prs: [...merged.prs, { state: 'closed', production_live: null }] }], [{ repo: 'server', state: 'ok' }])).jobs[0].stage, 'merged');
+  assert.equal(queueBoard(read([{ ...merged, pr_evidence_complete: false }])).jobs[0].stage, 'merged');
+  assert.throws(() => queueBoard(read([job('WR557.S4.J2', 'live')], [])), /incomplete/);
 });

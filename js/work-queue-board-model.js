@@ -16,7 +16,8 @@ export const QUEUE_REFRESH_MS = MIN_POLL_MS;
 export const QUEUE_IDLE_MS = 5 * 60_000;
 
 const JOB_ID = /^WR\d+\.S\d+\.J\d+$/;
-const STAGE_IDS = new Set(QUEUE_STAGES.map(stage => stage.id));
+const STAGE_IDS = new Set(QUEUE_STAGES.filter(stage => stage.id !== 'live').map(stage => stage.id));
+const REPOSITORIES = ['DoctorCRE/carr-system', 'jbookout/doctorcre-app', 'jbookout/software-factory'];
 const text = value => typeof value === 'string' && value.trim() !== '';
 
 export function queueBoard(read) {
@@ -24,8 +25,9 @@ export function queueBoard(read) {
     && read.jobs.every(job => JOB_ID.test(job?.card_id) && STAGE_IDS.has(job.stage) && text(job.work_request)
       && typeof job.stale === 'boolean' && Array.isArray(job.prs));
   if (!valid) throw new Error('The work queue read is incomplete, so it cannot be shown.');
-  const jobs = read.jobs.map(job => ({ ...job, stage: job.stage === 'merged' && job.prs.some(pr => pr.state === 'merged')
-    && job.prs.filter(pr => pr.state === 'merged').every(pr => pr.production_live === true) ? 'live' : job.stage }));
+  const complete = REPOSITORIES.every(repo => read.github.some(source => source.repo === repo && source.state === 'ok' && source.truncated === false));
+  const jobs = read.jobs.map(job => ({ ...job, stage: complete && job.pr_evidence_complete === true && job.stage === 'merged' && job.prs.length > 0
+    && job.prs.every(pr => pr.state === 'merged' && pr.production_live === true) ? 'live' : job.stage }));
   const stages = QUEUE_STAGES.map(stage => {
     const groups = [];
     for (const job of jobs.filter(job => job.stage === stage.id)) {

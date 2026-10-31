@@ -1613,13 +1613,13 @@
   "work_queue": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "55cbf1b302b4fc2c9511246a0639fa4919940558",
-      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2547"
+      "source_commit": "ed43972ec0b3cb205e6dabe252aa089bb414809d",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2819"
     },
-    "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|running|build|review|merged|closed), stale and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr,production_live (true|false|null)}.",
-    "review": "Stage, PR links and staleness are derived by the server from Card lines on GitHub PRs; the page never recomputes them. A github source that is not ok means its PR stages may be behind and the page says so.",
+    "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|running|build|review|merged|closed), stale, pr_evidence_complete and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr,production_live (true|false|null)}.",
+    "review": "Stage, PR links and staleness are derived from GitHub Card lines. The page derives Live only when all repositories are complete, pr_evidence_complete is true and every PR is merged with production_live true. Unknown verification remains Merged.",
     "refresh": "One work-queue call per 60-second refresh through mountAutoRefresh, none while hidden, none after 5 idle minutes. The published carr-v5 snapshot is read once for costs and never polled.",
-    "deployment_order": "Hold auto-merge until server PR #2547 is merged and the work-queue verb is live in production."
+    "deployment_order": "Server PR #2819 must merge and deploy before this app change; app auto-merge remains off."
   },
   "vendor_directory_people": {
     "schema": "carr-vendor-directory.v2",
