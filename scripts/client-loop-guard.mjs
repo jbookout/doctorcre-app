@@ -57,10 +57,10 @@ export async function scanLoops(root) {
   const result = [];
   async function walk(dir) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
-      if (entry.name === 'vendor' || entry.name.endsWith('.generated.js')) continue;
+      if (entry.name === 'vendor' || entry.name.endsWith('.generated.js') || /\.d\.[cm]?ts$/.test(entry.name)) continue;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) await walk(path);
-      else if (/\.(?:m?js|cjs|tsx?|html)$/.test(entry.name)) {
+      else if (/\.(?:[cm]?[jt]s|[jt]sx|html)$/.test(entry.name)) {
         const source = await readFile(path, 'utf8');
         const name = relative(root, path);
         if (entry.name.endsWith('.html')) {

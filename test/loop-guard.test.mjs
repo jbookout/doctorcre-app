@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { join } from 'node:path';
 import { auditLoops, loopSites, scanLoops } from '../scripts/client-loop-guard.mjs';
@@ -41,4 +41,11 @@ test('changing an approved loop invalidates its inventory and all boundary field
   assert.deepEqual(auditLoops(sites, approved), []);
   assert.equal(auditLoops(loopSites('setInterval(read, 1)', 'scratch.js'), approved).length, 2);
   assert.equal(auditLoops(loopSites('const cap = Infinity; setInterval(read, 1000)', 'scratch.js'), approved).length, 2, 'changing a surrounding cap also requires review');
+});
+
+test('guard scans executable JavaScript and TypeScript extension variants', async t => {
+  const root = temporaryDirectory('client-loop-extensions-', t);
+  await Promise.all(['js', 'src', 'reports', 'tours', 'public-shell'].map(dir => mkdir(join(root, dir))));
+  for (const extension of ['jsx', 'mts', 'cts']) await writeFile(join(root, 'js', `unbounded.${extension}`), 'setInterval(read, 1);');
+  assert.equal(auditLoops(await scanLoops(root), {}).length, 3);
 });
