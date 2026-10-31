@@ -79,8 +79,8 @@ function Inbox({ client }: { client: InboxClient }) {
         if (touch.clientX > start.x) act(primary === 'Settle' ? 'settle' : 'unsettle', [item]);
         else setSnooze([item]);
       }}>
-      <input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.item_id)} disabled={busy}
-        onChange={event => select(previous => { const next = new Set(previous); if (event.target.checked) next.add(item.item_id); else next.delete(item.item_id); return next; })} />
+      <label className="inbox-select"><input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.item_id)} disabled={busy}
+        onChange={event => select(previous => { const next = new Set(previous); if (event.target.checked) next.add(item.item_id); else next.delete(item.item_id); return next; })} /></label>
       <div className="inbox-copy"><p className="inbox-meta"><span>{item.source_type.replaceAll('_', ' ')}</span><span className={`inbox-badge inbox-${item.source_state}`}>{item.source_state === 'done' ? `Done${item.unseen ? ' · Unseen' : ''}` : item.source_state.replaceAll('_', ' ')}</span></p>
         <h3><Link to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
         <p className="inbox-detail">{item.disposition === 'snoozed' && item.snoozed_until ? `Snoozed until ${new Date(item.snoozed_until).toLocaleString()}` : item.disposition === 'settled' ? 'Settled by you' : item.source_state === 'working' ? 'Dr. CRE is working. You can come back to this.' : 'Ready for your attention'}{item.hold_until ? ` · On hold until ${new Date(item.hold_until).toLocaleString()}` : ''}</p>

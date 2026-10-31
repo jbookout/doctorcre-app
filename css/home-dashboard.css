@@ -7,3 +7,6 @@
 .inbox-filters{display:flex;gap:8px;margin-top:24px}.inbox-filters button{font-size:12px}.inbox-filters button[aria-pressed="true"]{background:var(--surface-3);border-color:var(--hairline-strong)}
 
 .inbox-snooze::backdrop{background:var(--scrim)}
+
+.inbox-shell{box-sizing:border-box}.inbox-select{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:44px;height:44px}.inbox-row input[type="checkbox"]{min-width:18px;min-height:18px;margin:0}.skip{position:fixed;top:-100px;left:16px;padding:12px;background:var(--surface-1);color:var(--fg);z-index:200}.skip:focus{top:16px}
+@media(max-width:700px){.inbox-row{column-gap:8px}.inbox-actions{margin-left:52px;width:calc(100% - 52px)}}
