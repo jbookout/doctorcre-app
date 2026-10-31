@@ -376,8 +376,8 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
   assert.deepEqual(contract.mcp_operations.slice(dispatch - 2, dispatch + 2), [
-    "read-correspondence-thread",
     "read-deal-reconciliation",
+    "read-deal-update-reviews",
     "read-dispatch-history",
     "read-doc-activity",
   ]);
@@ -398,7 +398,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "700173808625061adff581cfab415ce8e83e24f6",
+  assert.equal(contract.producer.source_commit, "d5dffad624bb4ced1719afde96cedd1c04699832",
 
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);

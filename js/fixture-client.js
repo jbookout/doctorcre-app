@@ -3041,6 +3041,9 @@ export async function createFixtureClient(opts = {}) {
 
   };
 
+  client.readDealUpdateReviews = async () => ({ schema_version: 'deal-update-reviews.v1', proposals: [] });
+  client.reviewDealUpdate = async () => { throw Object.assign(new Error('Assessment not found'), { payload: { error: 'assessment_not_found' } }); };
+
   let emailFixture;
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([

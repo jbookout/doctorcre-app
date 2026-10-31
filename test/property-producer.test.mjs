@@ -11,7 +11,7 @@ import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-
 import { renderDealChecklist } from "../js/deal-checklist.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "700173808625061adff581cfab415ce8e83e24f6";
+const pinnedProducer = "d5dffad624bb4ced1719afde96cedd1c04699832";
 
 
 const producerModules = new Map();
@@ -45,11 +45,11 @@ test("the advertised runtime registers inherited conversation, notification, ses
   for (const [module, factory, verbs] of [
     ["client-portal.ts", "clientPortalTools", ["register-client-portal"]],
     ["doc-conversation.js", "docConversationTools", ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]],
-    ["notifications.js", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
+    ["notifications.ts", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
     ["codex-continuity.js", "codexContinuityTools", ["list-my-codex-sessions"]],
-    ["session-identity.js", "sessionIdentityTools", ["read-session-identity", "read-dispatch-history"]],
+    ["session-identity.ts", "sessionIdentityTools", ["read-session-identity", "read-dispatch-history"]],
     ["partner-room.js", "partnerRoomTools", ["read-room", "read-room-latest", "read-room-queue", "add-room-turn"]],
-    ["dispatch-spine.js", "dispatchSpineTools", ["record-dispatch-link", "acknowledge-dispatch"]],
+    ["dispatch-spine.ts", "dispatchSpineTools", ["record-dispatch-link", "acknowledge-dispatch"]],
     ["tour-property-search.js", "tourPropertySearchTools", ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"]],
   ]) {
     assert.match(registry, new RegExp(`registerTools\\(${factory}\\(`), `${factory} must be registered`);

@@ -3,7 +3,7 @@
   "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+    "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -91,6 +91,7 @@
     "read-client-portal",
     "read-correspondence-thread",
     "read-deal-reconciliation",
+    "read-deal-update-reviews",
     "read-dispatch-history",
     "read-doc-activity",
     "read-doc-conversation",
@@ -120,6 +121,7 @@
     "review-and-triage",
     "review-call-outcome",
     "review-deal",
+    "review-deal-update",
     "schedule-board",
     "search-tour-properties",
     "set-lead",
@@ -711,7 +713,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
@@ -801,7 +803,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+          "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
         },
         "template_states": [
           "current",
@@ -835,7 +837,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -1313,7 +1315,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+      "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
@@ -1322,7 +1324,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
       },
       "inputSchema": {
         "type": "object",
@@ -1357,7 +1359,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
       },
       "inputSchema": {
         "type": "object",
@@ -1386,7 +1388,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
       },
       "inputSchema": {
         "type": "object",
@@ -1461,6 +1463,46 @@
         ]
       },
       "effect": "Add one sourced deal checklist item. It never replaces sibling actions. Repeating source_ref and title returns the existing item."
+    },
+    "review-deal-update": {
+      "write": true,
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2729",
+        "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "assessment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "resolve",
+              "dismiss",
+              "undo"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "assessment_id",
+          "decision",
+          "reason"
+        ]
+      }
     }
   },
   "email_proposals": {
@@ -1620,6 +1662,47 @@
       "repository": "jbookout/carr-system",
       "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
+    }
+  },
+  "deal_update_reviews": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2729",
+      "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
+    },
+    "schema_version": "deal-update-reviews.v1",
+    "read": {
+      "verb": "read-deal-update-reviews",
+      "arguments": {},
+      "proposal_fields": [
+        "assessment_id",
+        "deal_id",
+        "deal_name",
+        "assessment",
+        "confirm_verb"
+      ],
+      "limit": 200
+    },
+    "review": {
+      "verb": "review-deal-update",
+      "arguments": [
+        "idempotency_key",
+        "assessment_id",
+        "decision",
+        "reason"
+      ],
+      "decisions": {
+        "resolve": "Complete the exact unchanged action.",
+        "dismiss": "Remove the proposal while leaving the action open.",
+        "undo": "Reopen an unchanged automatic completion and reverse its coupled plan while no newer plan change exists."
+      },
+      "receipt": {
+        "ok": true,
+        "decision": "resolve|dismiss|undo",
+        "action_id": "uuid"
+      },
+      "replay": "Retry the original key and exact arguments. Changed actions and newer plans refuse."
     }
   },
   "phone_call_sessions": {
