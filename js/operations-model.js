@@ -81,6 +81,6 @@ export function validScheduleBoardPayload(payload) {
 
 export function validConventionAdoptionReceipt(receipt, sectionId) {
   return receipt?.ok === true && isText(sectionId) && receipt.retired_section_id === sectionId
-    && (isText(receipt.rule_id) || (Array.isArray(receipt.retired_rule_ids)
-      && receipt.retired_rule_ids.length > 0 && receipt.retired_rule_ids.every(isText)));
+    && Array.isArray(receipt.retired_rule_ids) && receipt.retired_rule_ids.every(isText)
+    && (receipt.rule_id === null ? receipt.retired_rule_ids.length > 0 : isText(receipt.rule_id));
 }

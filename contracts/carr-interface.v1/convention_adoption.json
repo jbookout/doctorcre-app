@@ -41,6 +41,6 @@
     ],
     "authentication": "Partner's own same-origin session with x-carr-csrf; no machine identity.",
     "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome.",
-    "confirmation": "ok:true and the requested retired_section_id, plus a nonempty rule_id or a nonempty list of retired_rule_ids. Retirement-only adoption returns rule_id:null."
+    "confirmation": "ok:true and the requested retired_section_id; rule_id and retired_rule_ids are both required. retired_rule_ids is always an array of nonempty rule IDs. A replacement has a nonempty rule_id and may retire zero or more rules. Retirement-only adoption has rule_id:null and at least one retired rule ID."
   }
 }

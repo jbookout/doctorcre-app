@@ -2628,7 +2628,7 @@ export async function createFixtureClient(opts = {}) {
         : conventionProposals[index].base_version !== args.base_version ? 'version_conflict'
           : !args.reason?.trim() ? 'missing_required' : null;
       if (error) throw Object.assign(new Error(error), { payload: { error } });
-      const result = { ok: true, rule_id: uuidv4(), retired_section_id: args.section_id };
+      const result = { ok: true, rule_id: uuidv4(), retired_rule_ids: [], retired_section_id: args.section_id };
       conventionProposals.splice(index, 1);
       conventionReceipts.set(args.idempotency_key, { args: structuredClone(args), result });
       return structuredClone(result);

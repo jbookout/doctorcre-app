@@ -71,7 +71,7 @@ test('version conflict rereads the proposal and requires another review with a f
       queue.pending_convention_proposals[0].statement = 'Demo changed text.';
       throw Object.assign(new Error('conflict'), { payload: { error: 'version_conflict' } });
     }
-    return { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+    return { ok: true, rule_id: 'demo-rule', retired_rule_ids: [], retired_section_id: args.section_id };
   } });
   let form = page.doc.querySelector('[data-convention] form');
   form.querySelector('textarea').value = 'Demo reviewed.';
@@ -92,7 +92,7 @@ test('unknown outcome retains the full request and visible proposal even if a po
   const page = await mount(t, { adoptRule: async args => {
     writes.push(structuredClone(args));
     if (writes.length === 1) throw new Error('Demo lost response');
-    return { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+    return { ok: true, rule_id: 'demo-rule', retired_rule_ids: [], retired_section_id: args.section_id };
   } });
   const form = page.doc.querySelector('[data-convention] form');
   const reason = form.querySelector('textarea');
@@ -133,7 +133,7 @@ test('live adoption sends exact args under the partner session and CSRF, retaini
     if (path === '/auth/session') return Response.json({ actor: { slug: actor }, csrf_token: `synthetic-${actor}` });
     const call = JSON.parse(init.body).params;
     writes.push({ call, headers: init.headers });
-    const result = writes.length === 1 ? { ok: true } : { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+    const result = writes.length === 1 ? { ok: true } : { ok: true, rule_id: 'demo-rule', retired_rule_ids: [], retired_section_id: args.section_id };
     return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
   } });
   await assert.rejects(client.adoptRule(args), { code: 'unknown_outcome' });
@@ -217,10 +217,14 @@ test('live retirement-only receipts confirm a replay with the original request a
 test('adoption receipts require a matching proposal and a new rule or nonempty retirement list', () => {
   const section = 'demo-section';
   const valid = { ok: true, retired_section_id: section };
-  assert.equal(validConventionAdoptionReceipt({ ...valid, rule_id: 'demo-replacement' }, section), true);
+  assert.equal(validConventionAdoptionReceipt({ ...valid, rule_id: 'demo-replacement', retired_rule_ids: [] }, section), true);
+  assert.equal(validConventionAdoptionReceipt({ ...valid, rule_id: 'demo-replacement', retired_rule_ids: ['demo-old'] }, section), true);
   assert.equal(validConventionAdoptionReceipt({ ...valid, rule_id: null, retired_rule_ids: ['demo-old'] }, section), true);
   for (const receipt of [
     null, valid, { ...valid, rule_id: null, retired_rule_ids: [] },
+    { ...valid, rule_id: 'demo-replacement' },
+    { ...valid, rule_id: 'demo-replacement', retired_rule_ids: [null] },
+    { ...valid, rule_id: false, retired_rule_ids: ['demo-old'] },
     { ...valid, rule_id: null, retired_rule_ids: [null] },
     { ...valid, rule_id: null, retired_rule_ids: [''] },
     { ...valid, rule_id: null, retired_rule_ids: 'demo-old' },
@@ -228,3 +232,44 @@ test('adoption receipts require a matching proposal and a new rule or nonempty r
     { ...valid, retired_section_id: 'different', retired_rule_ids: ['demo-old'] },
   ]) assert.equal(validConventionAdoptionReceipt(receipt, section), false);
 });
+
+for (const [name, malformed] of [
+  ['missing rule_id', section => ({ ok: true, retired_section_id: section, retired_rule_ids: ['demo-retired-rule'] })],
+  ['replacement with a non-array retirement list', section => ({ ok: true, retired_section_id: section,
+    rule_id: 'demo-replacement', retired_rule_ids: 'bad' })],
+]) {
+  test(`live client keeps ${name} unknown and retains the request for replay`, async () => {
+    const writes = [];
+    const args = { idempotency_key: crypto.randomUUID(), section_id: 'demo-section', base_version: 1, reason: 'Demo reviewed.' };
+    const client = createLiveClient({ fetchImpl: async (path, init) => {
+      if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-joe' });
+      writes.push(JSON.parse(init.body).params.arguments);
+      const receipt = writes.length === 1 ? malformed(args.section_id) : { ok: true, rule_id: null,
+        retired_rule_ids: ['demo-retired-rule'], retired_section_id: args.section_id };
+      return Response.json({ result: { content: [{ text: JSON.stringify(receipt) }] } });
+    } });
+    await assert.rejects(client.adoptRule(args), { code: 'unknown_outcome' });
+    assert.deepEqual((await client.adoptRule(args)).retired_rule_ids, ['demo-retired-rule']);
+    assert.deepEqual(writes, [args, args]);
+  });
+
+  test(`board keeps ${name} unknown and preserves the proposal for replay`, async t => {
+    const writes = [];
+    const page = await mount(t, { adoptRule: async args => {
+      writes.push(structuredClone(args));
+      return writes.length === 1 ? malformed(args.section_id) : { ok: true, rule_id: null,
+        retired_rule_ids: ['demo-retired-rule'], retired_section_id: args.section_id };
+    } });
+    const form = page.doc.querySelector('[data-convention] form');
+    form.querySelector('textarea').value = 'Demo reviewed.';
+    await page.submit(form);
+    assert.equal(page.doc.querySelectorAll('[data-convention]').length, 2);
+    assert.equal(form.querySelector('button').textContent, 'Check outcome');
+    assert.equal(form.querySelector('textarea').disabled, true);
+    assert.match(form.textContent, /Outcome unknown/i);
+    await page.submit(form);
+    assert.deepEqual(writes[1], writes[0]);
+    assert.equal(page.doc.querySelectorAll('[data-convention]').length, 1);
+    assert.equal(page.doc.querySelector('#conventionStatus').textContent, 'Adopted');
+  });
+}
