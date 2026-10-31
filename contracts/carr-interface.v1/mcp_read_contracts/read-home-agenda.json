@@ -1,0 +1,86 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "5cd06ac7d6d27f55eabc50a6db5b96eb42b6bae3",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2765"
+  },
+  "response": {
+    "schema_version": "home-agenda.v1",
+    "keys": [
+      "schema_version",
+      "actor",
+      "deals"
+    ],
+    "deal_keys": [
+      "id",
+      "name",
+      "phase",
+      "owner",
+      "type",
+      "attention",
+      "next_step",
+      "next_date",
+      "last_touch",
+      "last_review_at",
+      "workspace_kind",
+      "account_client_id",
+      "operating_state",
+      "outcome",
+      "closed_on",
+      "invoiced_on",
+      "client_status",
+      "prospect_engagement_status",
+      "critical_dates",
+      "next_actions",
+      "short_name",
+      "item_schema_version",
+      "items"
+    ],
+    "critical_date_keys": [
+      "id",
+      "kind",
+      "due_on",
+      "note",
+      "status"
+    ],
+    "action_keys": [
+      "id",
+      "owner",
+      "description",
+      "due_on",
+      "status",
+      "hold_until",
+      "version"
+    ],
+    "membership": "Active deals without a closed phase, outcome, close date or invoice date. Includes both owners and national accounts. Open actions retain hold dates; Home applies Chicago business dates and owner scope.",
+    "limits": {
+      "deals": 1000,
+      "critical_dates": 10000,
+      "open_actions": 10000,
+      "checklist_items": 10000
+    },
+    "overflow": "agenda_limit_exceeded; no truncated or partial snapshot is returned.",
+    "item_keys": [
+      "id",
+      "title",
+      "due_on",
+      "status",
+      "bullets",
+      "source_ref"
+    ],
+    "item_schema_version": "deal-items.v1",
+    "bullet_keys": [
+      "date",
+      "kind",
+      "text"
+    ],
+    "bullet_kinds": [
+      "promised",
+      "call",
+      "suggestion",
+      "status"
+    ],
+    "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
+  }
+}

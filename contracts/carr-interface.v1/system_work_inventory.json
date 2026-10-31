@@ -1,0 +1,22 @@
+{
+  "schema": "unfinished-work.v1",
+  "endpoint": "/api/v1/work-inventory?system=true",
+  "ordering": "opened_at ascending, kind and id in C text order; Live library last_activity_at descending",
+  "personal_scope": "server-derived owner only",
+  "live_limit": 10,
+  "filters": [
+    "source",
+    "kinds",
+    "age",
+    "text",
+    "live_library",
+    "cursor",
+    "id",
+    "limit"
+  ],
+  "cache": "GitHub comes from published producer cache; no GitHub requests per page load",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "ee8fd95ec7b1c82591089b7694fd558bec9034e2"
+  }
+}

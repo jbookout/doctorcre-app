@@ -3,7 +3,7 @@
  *
  * The record layer's contract is explicit about what a key means: "generate a
  * UUID per intended action; retries reuse the SAME key (the pinned CARR
- * interface contract in `contracts/carr-interface.v1.json`).
+ * interface contract in `contracts/carr-interface.v1`).
  * A second call under the same key returns the STORED answer instead of writing
  * again, and a call whose arguments differ under a key that was already spent is
  * refused as `key_reuse`. Undo already honours that (change-receipts.mjs); the

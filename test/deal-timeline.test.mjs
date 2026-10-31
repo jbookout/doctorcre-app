@@ -10,7 +10,8 @@ const dealTimeline = (d, n) => view.dealTimeline(prepareDealDetail(d), n);
 const renderDealTimeline = (d, n) => view.renderDealTimeline(prepareDealDetail(d), n);
 const renderDealUpdates = (d, n) => view.renderDealUpdates(prepareDealDetail(d), n);
 import { createLiveClient } from '../js/live-client.js';
-import { readFile } from 'node:fs/promises';
+import { carrInterface } from "./carr-contract.mjs";
+
 const now = Date.parse('2026-10-04T17:00:00Z');
 const detail = {deal:{id:'demo',phase:'Legal',phase_started_on:{research:'2026-09-20',legal:'2026-10-03'}},history:[
   {id:'p1',field:'phase',new_value:{phase:'research'},recorded_at:'2026-09-20T12:00:00Z'},
@@ -57,7 +58,7 @@ test('updates preserve escaped originals, author, exact date and newest-first or
  assert.equal(new JSDOM(renderDealTimeline(detail)).window.document.querySelectorAll('.phase-rail').length,1);
 });
 test('the live adapter preserves the versioned lease and explicit absence behind getDeal',async()=>{
- const contract=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['get-deal-room'];
+ const contract=carrInterface.mcp_read_contracts['get-deal-room'];
  assert.equal(contract.response.schema_version,'deal-timeline.v1');
  assert.match(contract.producer.source_commit,/^[a-f0-9]{40}$/);
  const calls=[];

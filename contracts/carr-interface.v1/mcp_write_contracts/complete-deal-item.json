@@ -1,0 +1,29 @@
+{
+  "write": true,
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "idempotency_key": {
+        "type": "string"
+      },
+      "deal": {
+        "type": "string"
+      },
+      "item_id": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "idempotency_key",
+      "deal",
+      "item_id"
+    ]
+  },
+  "effect": "Mark exactly one deal checklist item done. Other items, due dates, and the deal next_step stay unchanged."
+}

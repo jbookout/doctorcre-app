@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createFixtureClient} from '../js/fixture-client.js';
 import {createLiveClient} from '../js/live-client.js';
 import {agendaSnapshot, dealSnapshot, readHomeDashboard} from '../js/home-dashboard-model.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 const fixture = async () => createFixtureClient({seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`});
 
@@ -132,7 +133,7 @@ test('Home counts unique local deals using the agenda overdue membership and mar
 });
 
 test('the Home contract carries the stored checklist shape used by deal alerts', async () => {
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   const home = contract.mcp_read_contracts['read-home-agenda'];
   const items = contract.mcp_read_contracts['get-deal-room'].response;
   for (const field of ['short_name', 'item_schema_version', 'items']) assert.ok(home.response.deal_keys.includes(field), field);
@@ -140,7 +141,7 @@ test('the Home contract carries the stored checklist shape used by deal alerts',
   assert.deepEqual(home.response.item_keys, items.item_keys);
   assert.deepEqual(home.response.bullet_keys, items.bullet_keys);
   assert.deepEqual(home.response.bullet_kinds, items.bullet_kinds);
-  assert.equal(home.producer.source_commit, 'a6ec28c308ed5244a5afa64edbc1e4d1ef548af5');
+  assert.equal(home.producer.source_commit, '5cd06ac7d6d27f55eabc50a6db5b96eb42b6bae3');
   assert.ok(home.response.action_keys.includes('version'));
   assert.deepEqual(contract.mcp_write_contracts['complete-one-action'].producer, home.producer);
 });

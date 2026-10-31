@@ -60,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review', 'adopt-rule']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -118,6 +118,8 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(new Error('Recorded term receipt unavailable'));
     if (verb === 'resolve-fact-review' && (!Object.hasOwn(payload, 'canonical_fact') || payload.review_receipt?.decision !== args.decision))
       throw unknownMcpOutcome(new Error('Term decision receipt unavailable'));
+    if (verb === 'adopt-rule' && (payload?.ok !== true || !payload.rule_id || payload.retired_section_id !== args.section_id))
+      throw unknownMcpOutcome(new Error('Adoption receipt unavailable'));
     if (verb === 'start-deal-review') requireReviewReceipt(payload);
     if (['confirm-email-next-step', 'confirm-email-deal-progress'].includes(verb)) {
       const contract = verb === 'confirm-email-next-step' ? 'email-next-step.v1' : 'email-deal-progress.v1';
@@ -131,7 +133,11 @@ export function createLiveClient(opts = {}) {
     return payload;
   }
 
-  async function write(verb, args, timeoutMs) {
+  function requireActive(signal) {
+    if (signal?.aborted) throw Object.assign(new Error('Write cancelled before dispatch'), { code: 'not_sent' });
+  }
+
+  async function write(verb, args, timeoutMs, signal) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
     if (!online()) {
@@ -144,12 +150,15 @@ export function createLiveClient(opts = {}) {
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
     const target = ['proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
-      'entity_ref', 'fact_key', 'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
+      'section_id', 'entity_ref', 'fact_key', 'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
     const retained = sessionWrites.has(verb) ? sessionCommands : commands;
-    return retained.send(operationKey, args, (request, binding) => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000,
-      sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
+    return retained.send(operationKey, args, (request, binding) => {
+      requireActive(signal);
+      return rawRpc(verb, request, signal, timeoutMs || opts.writeTimeoutMs || 10_000,
+        sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined);
+    });
   }
 
   // CARR phase slugs and board labels map one-to-one in both directions.
@@ -203,6 +212,11 @@ export function createLiveClient(opts = {}) {
     // to. It passes through untouched: it is the record layer's own identity for
     // an event, in the record layer's own field vocabulary, and translating or
     // rebuilding it would be inventing one.
+    async readMarketTerms(args) {
+      const response = await fetchReadImpl('/api/v1/market-terms/read', { method:'POST', credentials:'same-origin', headers:{'content-type':'application/json'}, body:JSON.stringify(args) });
+      if (!response.ok) throw Object.assign(new Error('Market terms unavailable'), {status:response.status});
+      return response.json();
+    },
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
     async getHomeAgenda({ signal } = {}) {
@@ -224,9 +238,17 @@ export function createLiveClient(opts = {}) {
     },
 
     async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
+    async prepareTermsComparison(args, { signal } = {}) {
+      if (!online()) throw Object.assign(new Error('Offline'), { payload: { error: 'offline' } });
+      return sessionCommands.send(JSON.stringify(['prepare-terms-comparison', args.deal_id]), args, async (request, binding) => {
+        const { prepareComparisonHttp } = await (opts.loadComparison ? opts.loadComparison() : import('./terms-comparison-http.mjs'));
+        requireActive(signal);
+        return prepareComparisonHttp(fetchImpl, request, binding.slice(binding.indexOf(':') + 1), opts.writeTimeoutMs || 10_000, signal);
+      });
+    },
     async listFactReview(args = {}, { signal } = {}) { return rpc('list-fact-review', args, signal); },
-    async recordHumanFact(args) { return write('record-human-fact', args); },
-    async resolveFactReview(args) { return write('resolve-fact-review', args); },
+    async recordHumanFact(args, { signal } = {}) { return write('record-human-fact', args, undefined, signal); },
+    async resolveFactReview(args, { signal } = {}) { return write('resolve-fact-review', args, undefined, signal); },
 
     async getDeal(dealId, { signal } = {}) {
       const page = await rpc('get-deal-room', { deal: dealId }, signal);
@@ -640,8 +662,9 @@ export function createLiveClient(opts = {}) {
     // ------------------------------------------------- Operations cards (C14)
     // One read-only verb, passed through untouched. It takes NO arguments and
     // refuses any field, so none is sent. It grants no authority: the decisions
-    // it lists are taken with their own partner verbs, none of which is pinned.
+    // it lists are taken with their own partner verbs. Adoption uses the session write path.
     async readConnections({ signal } = {}) { return (await rpc('read-resource-dashboard', {}, signal)).connections; },
+    async adoptRule(args) { return write('adopt-rule', args); },
     async governanceQueue() { return rpc('governance-queue', {}); },
     async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 

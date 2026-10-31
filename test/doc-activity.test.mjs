@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { activityFilters, activityRows, undoArgs } from '../js/doc-activity-model.js';
 import { createDocActivityFixture } from '../js/doc-activity-fixture.js';
 import { createLiveClient } from '../js/live-client.js';
-import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { mountDocPresence } from '../js/doc-presence.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 test('activity filters have inclusive local calendar days and no caller identity', () => {
   const args = activityFilters({ partner:'joe', record_type:'deal', from:'2026-10-01', to:'2026-10-01' });
@@ -44,7 +44,7 @@ test('live read uses pinned scoped verb, cancellation and stable undo request', 
   assert.equal(calls[0].body.params.name,'read-doc-activity');
   assert.deepEqual(calls[0].body.params.arguments,{partner:'dell',limit:1}); assert.ok(calls[0].init.signal);
   assert.equal(calls[1].body.params.name,'revert-deal-field'); assert.equal(calls[1].body.params.arguments.idempotency_key,'demo-key');
-  const contract=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url)));
+  const contract=carrInterface;
   assert.ok(contract.mcp_operations.includes('read-doc-activity'));
 });
 
