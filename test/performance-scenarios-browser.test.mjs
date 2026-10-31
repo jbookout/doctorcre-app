@@ -95,6 +95,7 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
   page.on('response', response => {
     if (response.request().resourceType() === 'script') reads.push((async () => {
       assert.equal(response.ok(), true, response.url());
+      if (new URL(response.url()).pathname === '/js/ui.generated.js') assert.equal(response.headers()['content-encoding'], 'gzip');
       return (await response.body()).length;
     })());
   });

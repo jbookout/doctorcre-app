@@ -116,9 +116,21 @@ test('S1 browser: a history restore verifies its session before revealing the ol
  await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
  await app.page.waitForFunction(()=>document.documentElement.style.visibility==='');
  assert.match(await app.page.locator('#conversationList').textContent(),/Demo — Crestview/);
- app.switchActor();
- await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
- await app.page.waitForURL('**/public-shell/session-ended.html');
+ let started, release;
+ const received = new Promise(resolve => { started = resolve; });
+ const held = new Promise(resolve => { release = resolve; });
+ t.after(() => release());
+ await app.context.route('**/auth/session', async route => {
+   started(); await held;
+   await route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-joe'}}).catch(() => {});
+ }, {times:1});
+ await app.page.evaluate(() => { void import('/js/private-session.js').then(({privateSession}) => privateSession().verify().catch(() => {})); });
+ await received;
+ try {
+   app.switchActor();
+   await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+   await app.page.waitForURL('**/public-shell/session-ended.html');
+ } finally { release(); }
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
 

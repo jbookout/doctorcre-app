@@ -326,3 +326,18 @@ test('stable record routes gate signed-in partners and preserve signed-out deep 
     }
   }
 });
+
+ test("UI encoding negotiation serves verified gzip bytes and honors explicit refusal", async () => {
+  for (const [accept, expected] of [["gzip, deflate, br", true], ["gzip;q=0, br", false], ["identity", false]]) {
+    let path;
+    const response = await handleDoctorcreRequest(request("/js/ui.generated.js", {headers:{"accept-encoding":accept}}), environment({assets:{fetch: async value => {
+      path = new URL(value.url).pathname;
+      return new Response(path.endsWith(".gz") ? "compressed" : "identity");
+    }}}));
+    assert.equal(path, `/js/ui.generated.js${expected ? ".gz" : ""}`);
+    assert.equal(response.headers.get("content-encoding"), expected ? "gzip" : null);
+    assert.equal(response.headers.get("vary"), "Accept-Encoding");
+    assert.match(response.headers.get("content-type"), /javascript/);
+    assert.equal(await response.text(), expected ? "compressed" : "identity");
+  }
+});

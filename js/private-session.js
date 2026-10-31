@@ -123,7 +123,7 @@ export function privateSession() {
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
     // A history restore must verify its binding before exposing cached DOM.
     win.document.documentElement.style.visibility = 'hidden';
-    void browserBoundary.verify().catch(() => {}).finally(() => {
+    void browserBoundary.verify({ fresh: true }).catch(() => {}).finally(() => {
       win.document.documentElement.style.visibility = '';
     });
   });

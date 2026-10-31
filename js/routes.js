@@ -207,3 +207,11 @@ export function recordRouteKey(pathname) {
     return pathname.startsWith(prefix) && pathname.slice(prefix.length).length > 0 && !pathname.slice(prefix.length).includes('/');
   }) || pathname;
 }
+
+export function compressedAssetPath(path, acceptEncoding = '') {
+  if (path !== '/js/ui.generated.js') return null;
+  const gzip = acceptEncoding.split(',').map(value => value.trim()).find(value => /^gzip(?:;|$)/i.test(value));
+  if (!gzip) return null;
+  const quality = /;\s*q=([\d.]+)/i.exec(gzip);
+  return quality && Number(quality[1]) <= 0 ? null : `${path}.gz`;
+}
