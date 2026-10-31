@@ -1,0 +1,35 @@
+{
+  "write": true,
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "idempotency_key": {
+        "type": "string"
+      },
+      "deal": {
+        "type": "string"
+      },
+      "item_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      }
+    },
+    "required": [
+      "idempotency_key",
+      "deal",
+      "item_id",
+      "text"
+    ]
+  },
+  "effect": "Record a partner instruction for exactly one open deal item. This records a request and never claims the requested work was executed."
+}

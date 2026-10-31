@@ -1,0 +1,122 @@
+{
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
+  },
+  "response": {
+    "schema_version": "deal-timeline.v1",
+    "lease_keys": [
+      "id",
+      "version",
+      "status",
+      "executed_on",
+      "commencement_on",
+      "expiration_on",
+      "options_note",
+      "evidence_kind",
+      "evidence_ref",
+      "source"
+    ],
+    "lease_absence": null,
+    "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+    "client_portal_url": "https://share.doctorcre.com/<slug> for the deal's active, non-disabled client portal; null otherwise. Derived at read time; never carries a password or hash.",
+    "engagement_keys": [
+      "client_status",
+      "client_version",
+      "prospect_engagement_status"
+    ],
+    "phase_started_on": {
+      "shape": "object keyed by phase slug; YYYY-MM-DD values",
+      "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+    },
+    "vendors": {
+      "shape": "Current detail returns an array of explicit active assignments; empty array when none. The archived-detail fallback may omit this field.",
+      "item_keys": [
+        "party_id",
+        "role",
+        "company",
+        "contact",
+        "note",
+        "updated_at"
+      ],
+      "company_keys": [
+        "id",
+        "name"
+      ],
+      "contact_keys": [
+        "id",
+        "name",
+        "email",
+        "phone"
+      ],
+      "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
+      "order": "Role, company name, contact name, vendor party id."
+    },
+    "next_actions": {
+      "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
+    },
+    "item_schema_version": "deal-items.v1",
+    "item_keys": [
+      "id",
+      "title",
+      "due_on",
+      "status",
+      "bullets",
+      "source_ref"
+    ],
+    "bullet_keys": [
+      "date",
+      "kind",
+      "text"
+    ],
+    "bullet_kinds": [
+      "promised",
+      "call",
+      "suggestion",
+      "status"
+    ],
+    "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+    "email_threads": {
+      "shape": "Optional array of {conversation_id, subject, latest_message_at}, newest message first; conversation_id and subject may be null. Missing on older servers.",
+      "source": "DoctorCRE/carr-system PR #2694 at b36239232aca073d062530d23f74e4aed40dd760: subject is outside-origin email_context.subject; latest_message_at is the latest email activity occurred_at."
+    }
+  },
+  "critical_date_write": "add-critical-date",
+  "never_derive": [
+    "rent_start",
+    "option_window"
+  ],
+  "checklist": {
+    "schema_version": "deal-checklist.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
+    },
+    "template_states": [
+      "current",
+      "source_changed",
+      "deal_type_unknown",
+      "unavailable"
+    ],
+    "statuses": [
+      "not_recorded",
+      "complete",
+      "due",
+      "overdue",
+      "upcoming"
+    ],
+    "phase_keys": [
+      "research",
+      "site_selection",
+      "negotiation",
+      "legal",
+      "closing",
+      "invoice"
+    ],
+    "source_of_truth": "CARR doctrine sections, with runtime content-hash validation; the app renders producer items and statuses.",
+    "due_basis": "Only open, sourced critical_date records. No legal or payment deadline is inferred.",
+    "first_slice": "Current lease, expiration, invoice and full commission receipt derive completion. Unlinked documents and lifecycle LOI records remain not_recorded.",
+    "unavailable": "Missing checklist storage returns no phases or due items; retain deal detail and its update form. Retry storage on each read."
+  }
+}

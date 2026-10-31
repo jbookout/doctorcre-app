@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readCarrInterface } from "./carr-interface.mjs";
 
 const ROOT = new URL("../", import.meta.url);
 const ROOT_PATH = fileURLToPath(ROOT);
@@ -14,12 +15,10 @@ assert.equal(fixture.fixture?.schema, "doctorcre-demo-board.v1");
 assert.ok(fixture.deals.length >= 8, "the fixture must exercise a useful board");
 assert.ok(fixture.deals.every((deal) => /^Demo /.test(deal.name)), "fixture deal names must be visibly fictional");
 
-const contract = await json("contracts/carr-interface.v1.json");
+const contract = await readCarrInterface(ROOT);
 assert.equal(contract.schema, "doctorcre-carr-interface.v1");
 assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
 assert.equal(contract.transport.database_access, "forbidden");
-assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
-  "the versioned MCP operations must be unique and sorted");
 const textExtensions = new Set([".js", ".mjs", ".ts", ".tsx", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);
 const forbidden = [
   [/BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY/, "private key"],

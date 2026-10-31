@@ -6,6 +6,8 @@ import {jobLinks} from '../js/progress-board-model.js';
 import {connectionView,meteredSpend} from '../js/connections-model.js';
 import {createFixtureClient} from '../js/fixture-client.js';
 import {createLiveClient} from '../js/live-client.js';
+import { carrInterface } from "./carr-contract.mjs";
+
 const stamp='2026-10-02T12:00:00Z';
 const fixture=async()=>createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json',import.meta.url))).toString('base64')}`});
 test('job cards retain exact Work Request and PR; absence never creates a reference',()=>{
@@ -44,7 +46,7 @@ test('live Connections uses the pinned read-only MCP contract',async()=>{
  const connections={ok:true,schema:'doctorcre-connections.v1',providers:[]};
  const calls=[];const client=createLiveClient({fetchImpl:async(url,options)=>{calls.push(JSON.parse(options.body));return new Response(JSON.stringify({result:{content:[{text:JSON.stringify({ok:true,connections})}]}}));}});
  assert.deepEqual(await client.readConnections(),connections);assert.equal(calls[0].params.name,'read-resource-dashboard');assert.deepEqual(calls[0].params.arguments,{});
- const contract=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url)));assert.ok(contract.mcp_operations.includes('read-resource-dashboard'));
+ const contract=carrInterface;assert.ok(contract.mcp_operations.includes('read-resource-dashboard'));
 });
 
 test('finding 4: exact census governance identity is enriched once and moved to Review',async()=>{

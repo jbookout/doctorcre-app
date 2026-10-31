@@ -1,0 +1,113 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "fdff8d243116dbe0bff1f6f301ae2b2757fac4c0",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2361"
+  },
+  "schema_version": "email-proposals.v1",
+  "read": "list-email-proposals {deal?,limit,cursor?} filters pending proposals by the optional deal UUID before paging. Deal cursors must belong to that deal and remain valid after resolution. Deal filter producer: DoctorCRE/carr-system@5069155258335a44686086fcfa74ee8b7871c01a (#2477). It returns proposals oldest first, send:false, more and next_cursor. Paging producer: DoctorCRE/carr-system@81099219dff8270cee6be8150cfd00d7888437d3. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
+  "source_fields": [
+    "activity_id",
+    "sender",
+    "subject",
+    "evidence_quote",
+    "occurred_at"
+  ],
+  "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; phase and next-step cards never display raw addresses or infer a role. Null preview remains dismissible. Reply drafts display the exact server-provided To/CC addresses before submission and retain them in the submission request.",
+  "next_step_arguments": [
+    "deal",
+    "activity_id",
+    "evidence_quote",
+    "text",
+    "next_date",
+    "owner"
+  ],
+  "phase_arguments": [
+    "deal",
+    "activity_id",
+    "evidence_quote"
+  ],
+  "confirmation": "Joe only. Fetch and display a fresh matching preview before confirming the same fields plus its proposal_digest and a retained idempotency_key. Do not infer a digest or move a phase locally.",
+  "dismiss_arguments": [
+    "proposal_id",
+    "base_version",
+    "reason",
+    "idempotency_key"
+  ],
+  "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
+  "deployment_order": "Existing proposal verbs are live. Reply submission waits for the pinned producer PR #2522 to be live. No intake, router, outbox or sender write is consumed.",
+  "reply_drafts": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "247a4125dd1a16fc90bba4eaa9806bee14ad2b0b",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2522"
+    },
+    "read": "carr-email-reply-draft.v1 at the pinned producer revision in PR #2522, not yet live. Pending reply_draft items carry reply_draft {subject,body,owner,to,cc}, status, null preview and confirm_verb submit-email-draft. to and cc each contain one exact routable address. Review displays those addresses before Submit. Missing source or copy addresses omit both arrays, set preview_error to email_draft_source_missing or email_draft_copy_address_missing and set confirm_verb:null. Keep that row readable and dismissible with reply review disabled.",
+    "submit_arguments": [
+      "proposal_id",
+      "base_version",
+      "subject",
+      "body",
+      "to",
+      "cc",
+      "idempotency_key"
+    ],
+    "submission": "Only the owning authenticated human partner can submit. Preserve exact text, displayed to/cc arrays, reviewed version and original idempotency key on uncertain retries. The server compares displayed recipients with the current captured sender and other partner actor.email and refuses email_draft_recipients_mismatch if they differ. That refusal and version_conflict require explicit fresh review, never automatic resubmission. A successful receipt has ok:true, proposal_id, status:approved_to_send, version, subject, body, sha256, to and cc matching the reviewed request. It queues sending on the partner Mac and does not confirm delivery.",
+    "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live.",
+    "recent_outcomes": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "616c2f4592315c5fa4533ca8eadc5d5395b78027",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2608"
+      },
+      "schema_version": "email-reply-outcomes.v1",
+      "read": "list-email-proposals {mode:recent_outcomes,limit:20,cursor?}. No status argument. The producer defaults limit to 20 with maximum 50. Authenticated partner scope matches proposal owner and captured mailbox owner. Optional deal UUID restricts results; Home reads across deals.",
+      "fields": [
+        "id",
+        "deal",
+        "subject",
+        "outcome",
+        "result_recorded_at",
+        "failure_reason_code"
+      ],
+      "ordering": "Recorded sent/failed outcomes only, result_recorded_at descending then proposal id descending. Historical null result timestamps are excluded. The recorded time is not submission time or recipient delivery time.",
+      "pagination": "Response includes proposals, send:false, more and next_cursor. Cursor is the last returned proposal UUID when more is true, null otherwise. Pass the cursor to request one additional bounded page. The cursor must identify a matching outcome in the same partner/deal scope.",
+      "failure_reason_codes": [
+        "invalid_submission",
+        "submission_hash_mismatch",
+        "submission_recipients_invalid",
+        "aborted_before_dispatch",
+        "unconfirmed_after_dispatch",
+        "delivery_failed"
+      ],
+      "errors": [
+        "email_outcomes_arguments_invalid",
+        "email_proposals_cursor_invalid",
+        "email_sender_identity_required"
+      ],
+      "pending": "Use the existing list-email-proposals {status:approved_to_send,limit:20,cursor?} read, which returns email-proposals.v1 in creation order oldest first. Home filters reply_draft.owner against the verified signed-in partner and displays submitted_email.subject with pending delivery wording. The recent mode does not include pending replies. Each stream pages only on request; a filtered pending page may have no matching rows and more:true.",
+      "privacy": "Recent outcomes contain no body, recipients, addresses or free-text failure reason. Home projects only subject, deal, status, recorded time and allowlisted reason labels; it never renders pending body or addresses. Team scope does not broaden reply delivery. Session loss or identity change clears retained rows and fences in-flight reads.",
+      "deployment_order": "Do not enable auto-merge. Production must serve server PR #2608 at the pinned merged revision before the orchestrator merges this consumer."
+    }
+  },
+  "filing": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "63a27918b5fdaae4b51ec257940a9049d93c51f1",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2503"
+    },
+    "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
+    "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
+    "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
+  },
+  "non_deal_next_steps": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "ee92d2767bdbac621cab3416e22026d5d5c34357",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2724"
+    },
+    "read": "Home calls list-email-proposals with include_non_deal=true. Non-deal next_step rows have deal=null and subject_type, subject_id and subject_name matching their preview. Deal pages keep their existing deal filter.",
+    "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews remain dismissible.",
+    "deployment_order": "Merge and verify the pinned server producer before merging this consumer. Do not auto-merge this app change."
+  }
+}

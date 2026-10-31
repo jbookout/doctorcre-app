@@ -28,7 +28,7 @@ Open the printed loopback URL. The server selects a free port. No credentials, d
 
 ## Doctor
 
-Require rendered controls and readable fixture data, not just a listening server. `/app-release` must identify `doctorcre-app`, environment `fixture`, and the current `contracts/carr-interface.v1.json` version. Its zero source SHA is a fixture marker, so it cannot prove a deployed revision.
+Require rendered controls and readable fixture data, not just a listening server. `/app-release` must identify `doctorcre-app`, environment `fixture`, and the current `contracts/carr-interface.v1/version.json` version. Its zero source SHA is a fixture marker, so it cannot prove a deployed revision.
 
 ```sh
 npm run check

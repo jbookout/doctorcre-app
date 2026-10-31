@@ -25,6 +25,7 @@ import {
 } from "../js/doc-outcome-cards-model.js";
 import { NO_OPEN_SENTENCE } from "../js/sessions-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -32,7 +33,7 @@ const html = await read("conversations.html");
 const pageJs = await read("js/conversations.js");
 const pageCss = await read("css/conversations.css");
 const tokensCss = await read("css/tokens.css");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 
 const fixture = async (options = {}) => {
   const seed = await read("data/board-seed.json");

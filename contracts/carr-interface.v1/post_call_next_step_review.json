@@ -1,0 +1,11 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "3183aa765dfc29f2ee7cb7e2fb97fbcfef668294",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2297"
+  },
+  "schema_version": 1,
+  "read": "Loopback companion GET /api/post-call returns report.deal_updates[].next_step as null, omitted or an object with text, next_date, optional candidate_id and candidate_status.",
+  "write": "Existing resolve-candidate through resolveConfirm. The nested candidate uses its own proposal_id and retained idempotency key. Confirming or skipping it never disposes the parent note.",
+  "review": "Display the replacement text, exact date and disposition. A null next_date clears the current date. Only a pending proposal with a candidate_id offers Confirm next step and Skip next step."
+}
