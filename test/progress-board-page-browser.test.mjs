@@ -553,6 +553,8 @@ const stagedQueue = queueRead([
   queueJob('WR557.S4.J1', 'review', { work_request_title: 'One Work Request queue', prs: [prFact('WR557.S4.J1', 12, 'open')] }),
   queueJob('WR557.S4.J2', 'build', { work_request_title: 'One Work Request queue', card_title: 'Delete board path', stale: true, prs: [prFact('WR557.S4.J2', 13, 'open', true)] }),
   queueJob('WR557.S1.J2', 'merged', { work_request_title: 'One Work Request queue', card_title: 'Record lean jobs', prs: [prFact('WR557.S1.J2', 9, 'merged')] }),
+  queueJob('WR557.S4.J3', 'running', { work_request_title: 'One Work Request queue' }),
+  queueJob('WR557.S4.J4', 'merged', { work_request_title: 'One Work Request queue', prs: [{ ...prFact('WR557.S4.J4', 14, 'merged'), production_live: true }] }),
   queueJob('WR562.S1.J1', 'queued', { work_request_title: 'Team memory', card_title: 'Memory design' }),
 ], [{ repo: 'DoctorCRE/carr-system', state: 'unavailable', reason: 'github_http_403' }, { repo: 'jbookout/doctorcre-app', state: 'ok', truncated: false }]);
 
@@ -562,7 +564,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark'])
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     await page.locator('#board-stages [data-card-id="WR557.S4.J1"]').waitFor();
     assert.deepEqual(await page.locator('#board-stages .column').evaluateAll(columns => columns.map(column =>
-      `${column.dataset.stage}:${column.querySelectorAll('[data-card-id]').length}`)), ['queued:1', 'build:1', 'review:1', 'merged:1', 'closed:0']);
+      `${column.dataset.stage}:${column.querySelectorAll('[data-card-id]').length}`)), ['queued:1', 'running:1', 'build:1', 'review:1', 'merged:1', 'live:1', 'closed:0']);
     assert.match(await page.locator('.column[data-stage="closed"]').textContent(), /PR closed without merging/);
     const review = page.locator('[data-card-id="WR557.S4.J1"]');
     assert.match(await review.textContent(), /WR557\.S4\.J1.*Synthetic queue work/);
@@ -572,9 +574,9 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark'])
     assert.equal(await page.locator('[data-card-id="WR557.S4.J2"] a').textContent(), 'WR557.S4.J2.app#13 · draft');
     assert.deepEqual(await page.locator('#board-stages .flag-stale').evaluateAll(flags => flags.map(flag => flag.closest('[data-card-id]').dataset.cardId)),
       ['WR557.S4.J2'], 'only the server-flagged job is stale');
-    assert.match(await page.locator('.queue-board-status').textContent(), /4 jobs · 1 stale \(no progress for 24 hours while queued or building\)/);
+    assert.match(await page.locator('.queue-board-status').textContent(), /6 jobs · 1 stale \(no progress for 24 hours while queued or building\)/);
     assert.match(await page.locator('.queue-board-notices').textContent(), /GitHub could not be read for DoctorCRE\/carr-system/);
-    assert.equal(await page.locator('#task-count').textContent(), '4 jobs');
+    assert.equal(await page.locator('#task-count').textContent(), '6 jobs');
     for (const id of ['board-questions', 'board-blocked', 'board-ledger', 'board-deliverables', 'board-decisions', 'board-notes', 'board-completed'])
       assert.equal(await page.locator(`#${id}`).evaluate(el => el.closest('.panel').hidden), true, `${id} stays hidden on the queue board`);
     assert.equal(await page.locator('.headline').isVisible(), false, 'the retired snapshot headline is gone');

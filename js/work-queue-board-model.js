@@ -4,9 +4,11 @@ import { MIN_POLL_MS } from './visibility-poll.mjs';
 
 export const QUEUE_STAGES = [
   { id: 'queued', label: 'Queued', color: 'var(--fg-quiet)', meaning: 'Dispatched; no PR yet' },
+  { id: 'running', label: 'Running', color: 'var(--data-2)', meaning: 'Started; no PR yet' },
   { id: 'build', label: 'Building', color: 'var(--data-2)', meaning: 'Draft PR open' },
   { id: 'review', label: 'Review', color: 'var(--data-3)', meaning: 'PR open for review and CI' },
   { id: 'merged', label: 'Merged', color: 'var(--data-1)', meaning: 'PR merged' },
+  { id: 'live', label: 'Live', color: 'var(--data-1)', meaning: 'Merged PRs in production' },
   { id: 'closed', label: 'Closed', color: 'var(--status-danger)', meaning: 'PR closed without merging' },
 ];
 export const QUEUE_REFRESH_MS = MIN_POLL_MS;
@@ -22,9 +24,11 @@ export function queueBoard(read) {
     && read.jobs.every(job => JOB_ID.test(job?.card_id) && STAGE_IDS.has(job.stage) && text(job.work_request)
       && typeof job.stale === 'boolean' && Array.isArray(job.prs));
   if (!valid) throw new Error('The work queue read is incomplete, so it cannot be shown.');
+  const jobs = read.jobs.map(job => ({ ...job, stage: job.stage === 'merged' && job.prs.some(pr => pr.state === 'merged')
+    && job.prs.filter(pr => pr.state === 'merged').every(pr => pr.production_live === true) ? 'live' : job.stage }));
   const stages = QUEUE_STAGES.map(stage => {
     const groups = [];
-    for (const job of read.jobs.filter(job => job.stage === stage.id)) {
+    for (const job of jobs.filter(job => job.stage === stage.id)) {
       let group = groups.find(item => item.work_request === job.work_request);
       if (!group) groups.push(group = { work_request: job.work_request, title: job.work_request_title || '', jobs: [] });
       group.jobs.push(job);
@@ -34,7 +38,7 @@ export function queueBoard(read) {
   const notices = read.github.flatMap(source => source.state !== 'ok'
     ? [`GitHub could not be read for ${source.repo}; its PR stages may be behind.`]
     : source.truncated ? [`Only the 100 most recently updated ${source.repo} PRs were read.`] : []);
-  return { jobs: read.jobs, stages, stale: read.jobs.filter(job => job.stale).length,
+  return { jobs, stages, stale: read.jobs.filter(job => job.stale).length,
     staleAfterHours: read.stale_after_hours, notices };
 }
 
