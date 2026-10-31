@@ -815,65 +815,71 @@
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/visibility-poll.mjs:event-refresh:f7d03941d3040d3119cfd1c8ef644ba03bb7cbc3ebe04e8216411377a0bed77c": {
+  "js/visibility-poll.mjs:event-refresh:d5ed330ed7156fafadeca727d4271eacc511eb3f90fd396bf24b2a1d9307626f": {
     "cap": 0,
     "boundary": "0 automatic HTTP reads; local state or input handling only",
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "js/visibility-poll.mjs:setTimeout:f5a88de265078cf8f8e978ed36655887e5520bb14a3254d8d63539beafd0d26c": {
+  "js/visibility-poll.mjs:setTimeout:2c151cfa045a17b42e872391ce5bd23bbdf4823f500dd86054d70e6a8b097386": {
     "cap": 20,
     "boundary": "20 automatic reads shared by clocks and lifecycle events; only trusted input can renew attempts",
     "backoff": "Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes",
     "idleStop": "Hidden or 30-minute idle; no lifecycle or scroll renewal. Live recorder keepAlive is still capped at 20"
   },
-  "js/visibility-poll.mjs:setTimeout:abeccfde81f3e90fea4f4467f0be13708e94280bb415fe4c04fd8fbe53ebce2f": {
+  "js/visibility-poll.mjs:setTimeout:f1c178523980a7f1b8b1f0bd140e6da86216f84c818a7f38e095c1df6a3bb1b3": {
     "cap": 20,
     "boundary": "20 automatic reads shared by clocks and lifecycle events; only trusted input can renew attempts",
     "backoff": "Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes",
     "idleStop": "Hidden or 30-minute idle; no lifecycle or scroll renewal. Live recorder keepAlive is still capped at 20"
   },
-  "js/visibility-poll.mjs:setTimeout:c26d70f24fbc0db6be4f189ab00cfa5ad6d5747fc6367f1194377b53d3904d09": {
+  "js/visibility-poll.mjs:setTimeout:61d621561f57f1e4e7a04e815b70e3b82be762fecbe3ff567ea69eeba8afbee2": {
     "cap": 20,
     "boundary": "20 automatic reads shared by clocks and lifecycle events; only trusted input can renew attempts",
     "backoff": "Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes",
     "idleStop": "Hidden or 30-minute idle; no lifecycle or scroll renewal. Live recorder keepAlive is still capped at 20"
   },
-  "js/visibility-poll.mjs:event-refresh:c069c3dbc8f157b9ad543713d02ccd70e4f0410316d202237513e960f5387807": {
+  "js/visibility-poll.mjs:event-refresh:2fe400ac72bae5af1acfdea1b732e057d649dd66a34dea19f899abb61400843a": {
     "cap": 0,
     "boundary": "0 automatic HTTP reads; local state or input handling only",
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "js/visibility-poll.mjs:event-refresh:d5521904f32fe5447e63abbd3a69d479b5c57abe186b4bb9bb74816f0b4b92fa": {
+  "js/visibility-poll.mjs:event-refresh:a836cea730cc9e6ce81e71d4e5a8a4d760615c88b3e807aca6d862a86b85b1de": {
     "cap": 20,
     "boundary": "20 automatic dispatches; document transport also caps at 600 HTTP attempts",
     "backoff": "Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes",
     "idleStop": "Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts"
   },
-  "js/visibility-poll.mjs:event-refresh:cb7092836016bdbaf503e2db5c93bdd5581662ad7bd19a017e56accb53ea5659": {
+  "js/visibility-poll.mjs:event-refresh:cc0e43452faca7de0ca6f35c3ee8c3269f3b29b7676aba85fa0468cd64a4b60e": {
     "cap": 20,
     "boundary": "20 automatic dispatches; document transport also caps at 600 HTTP attempts",
     "backoff": "Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes",
     "idleStop": "Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts"
   },
-  "js/visibility-poll.mjs:setInterval:5ecddfea4ad3f359f8f749a533e2c8da92a64ebea0e996c109f6c691375d27a6": {
+  "js/visibility-poll.mjs:setInterval:94c61fd190b8d0b988d519319d5fbb2708ea5fd139ab1efe36df37ac0ad036c2": {
     "cap": 7200,
-    "boundary": "ceil(30 minutes / intervalMs) local ticks per presence period",
+    "boundary": "ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint",
     "backoff": "Local repaint only; a failed callback stops the clock without retry",
-    "idleStop": "watchPresence and visibilitychange stop hidden or 30-minute idle; dispose clears the interval and rejects stale ticks"
+    "idleStop": "Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence."
   },
-  "js/visibility-poll.mjs:setInterval:5e62e0848e5296bd22e925420ef782ce23b559bf02eddfa53331916d75080e4c": {
+  "js/visibility-poll.mjs:setInterval:107546e9f3f1a64726e19923b3ab1cc973ba8349da3b0924702dd008f5c3cb9f": {
     "cap": 7200,
-    "boundary": "ceil(30 minutes / intervalMs) local ticks per presence period",
+    "boundary": "ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint",
     "backoff": "Local repaint only; a failed callback stops the clock without retry",
-    "idleStop": "watchPresence and visibilitychange stop hidden or 30-minute idle; dispose clears the interval and rejects stale ticks"
+    "idleStop": "Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence."
   },
-  "js/visibility-poll.mjs:setInterval:2443e38d2aa66a5ce7950b64b667c5f6a176a2263b940ffea6ce9355ff2ec003": {
+  "js/visibility-poll.mjs:setInterval:7d14a20c21e9d3d49fb72d4df74499a03631a623ec6c88c8642f472e0a5931be": {
     "cap": 7200,
-    "boundary": "ceil(30 minutes / intervalMs) local ticks per presence period",
+    "boundary": "ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint",
     "backoff": "Local repaint only; a failed callback stops the clock without retry",
-    "idleStop": "watchPresence and visibilitychange stop hidden or 30-minute idle; dispose clears the interval and rejects stale ticks"
+    "idleStop": "Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence."
+  },
+  "js/visibility-poll.mjs:setInterval:ed86a50b5267551cf7b60195f31ee600e9d75d0c67c51daf1188e5053f37621f": {
+    "cap": 7200,
+    "boundary": "ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint",
+    "backoff": "Local repaint only; a failed callback stops the clock without retry",
+    "idleStop": "Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence."
   },
   "js/visual-system.js:retry-option:02b75eccb83b727fab97acc7c2231cb59888dd8c3548e918ff6504e35a99836a": {
     "cap": 0,

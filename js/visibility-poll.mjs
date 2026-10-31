@@ -98,27 +98,33 @@ export function mountLocalClock({
   return { dispose() { timer.dispose(); network.dispose(); } };
 }
 
-// Local repaint clocks stop after thirty minutes of ticks as well as on
-// absence. They never retry failed callbacks or perform network reads.
+// Local repaint clocks have their own bounded visible period. Returning to
+// view repaints immediately without renewing any network poller's presence.
 export function mountLocalTicker({ tick, intervalMs, document = globalThis.document, window = document?.defaultView || globalThis,
-  maxTicks = Math.ceil(IDLE_CUTOFF_MS / intervalMs), idleMs, now,
+  maxTicks = Math.ceil(IDLE_CUTOFF_MS / intervalMs), idleMs = IDLE_CUTOFF_MS, now = () => Date.now(),
   setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id) }) {
-  let timer = null, ticks = 0, disposed = false;
+  let timer = null, ticks = 0, disposed = false, lastActivity = now();
+  const active = () => document.visibilityState !== 'hidden' && now() - lastActivity < idleMs;
   const stop = () => { if (timer !== null) clearInterval(timer); timer = null; };
-  const start = () => {
-    if (disposed || timer !== null || !presence.active()) return;
+  const repaint = () => {
+    if (disposed || !active() || ticks >= maxTicks) { stop(); return false; }
+    ticks++;
+    try { tick(); } catch { stop(); return false; }
+    if (ticks >= maxTicks) stop();
+    return ticks < maxTicks;
+  };
+  const start = (immediate = false) => {
+    if (disposed || timer !== null || !active()) return;
     ticks = 0;
-    timer = setInterval(() => {
-      if (disposed || timer === null || !presence.active() || ticks >= maxTicks) { stop(); return; }
-      ticks++;
-      try { tick(); } catch { stop(); }
-      if (ticks >= maxTicks) stop();
-    }, intervalMs);
+    if (immediate && !repaint()) return;
+    timer = setInterval(() => { if (timer !== null) repaint(); }, intervalMs);
     timer?.unref?.();
   };
-  const presence = watchPresence({ document, window, idleMs, now, onResume: start, onWake: start, onInput: () => { if (ticks >= maxTicks) start(); } });
+  const resume = () => { lastActivity = now(); start(true); };
+  const input = listenForHumanInput(document, resume);
+  const returned = mountReadOnResume({ document, window, refresh: () => { stop(); resume(); } });
   const visibility = () => { if (document.visibilityState === 'hidden') stop(); };
   document.addEventListener('visibilitychange', visibility);
   start();
-  return { dispose() { disposed = true; stop(); presence.dispose(); document.removeEventListener('visibilitychange', visibility); } };
+  return { dispose() { disposed = true; stop(); input(); returned.dispose(); document.removeEventListener('visibilitychange', visibility); } };
 }

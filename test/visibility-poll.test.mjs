@@ -259,7 +259,7 @@ test('a resolved false read backs off and an active-call exception still has a h
   handle.dispose();
 });
 
-test('local clocks have a tick cap, stop hidden, and resume only with presence', async () => {
+test('local clocks cap each visible period, stop hidden, and repaint on return', async () => {
   const { mountLocalTicker } = await import('../js/visibility-poll.mjs');
   const p = page(); let ticks = 0, fire, scheduled = false;
   p.window.setInterval = fn => { fire = fn; scheduled = true; return 1; };
@@ -267,8 +267,9 @@ test('local clocks have a tick cap, stop hidden, and resume only with presence',
   const clock = mountLocalTicker({ document: p.document, window: p.window, now: p.now, intervalMs: 1000, maxTicks: 2, tick: () => { ticks++; } });
   fire(); fire(); fire();
   assert.equal(ticks, 2); assert.equal(scheduled, false);
-  p.hide(); p.show(); await settle(); fire();
-  assert.equal(ticks, 3);
+  p.hide(); p.show(); await settle();
+  assert.equal(ticks, 3, 'returning repaints immediately');
+  fire();assert.equal(ticks, 4);
   p.hide(); assert.equal(scheduled, false);
   clock.dispose(); p.show(); assert.equal(scheduled, false);
 });
@@ -279,4 +280,26 @@ test('callbacks that render and absorb their own failures still back off', async
   for (let attempt = 0; attempt < 5; attempt++) { p.tick(); await settle(); }
   assert.deepEqual(p.delays, [120_000]);
   handle.dispose();
+});
+
+test('local repaint resumes immediately after an idle hidden return without waking network reads', async () => {
+  const { mountLocalTicker } = await import('../js/visibility-poll.mjs');
+  const p = page(); let ticks = 0, reads = 0, fire; const active = new Set();
+  p.window.setInterval = (fn, ms) => { assert.equal(ms,60_000);fire=fn;const id={};active.add(id);return id; };
+  p.window.clearInterval = id => active.delete(id);
+  const network = mountAutoRefresh({ document:p.document,window:p.window,now:p.now,refresh:()=>{reads++;} });
+  const local = mountLocalTicker({ document:p.document,window:p.window,now:p.now,intervalMs:60_000,tick:()=>{ticks++;network.poll();} });
+  p.hide();p.advance(60*60_000);fire();await settle();
+  assert.equal(ticks,0);assert.equal(active.size,0);
+  p.show();await settle();
+  assert.equal(ticks,1,'visibility return repaints local labels immediately, even after idle');
+  assert.equal(active.size,1,'one local interval resumes');
+  fire();assert.equal(ticks,2,'the next minute repaints again');
+  p.window.dispatchEvent(new Event('pagehide'));p.advance(60*60_000);
+  p.window.dispatchEvent(Object.assign(new Event('pageshow'),{persisted:true}));await settle();
+  assert.equal(ticks,3,'BFCache return also repaints when no visibility event cleared the old interval');
+  assert.equal(active.size,1,'a restored interval replaces the frozen interval');
+  p.hide();fire();assert.equal(ticks,3);assert.equal(active.size,0);
+  assert.equal(reads,0,'local repaint cannot renew network presence or bypass its idle stop');
+  local.dispose();network.dispose();p.show();await settle();assert.equal(ticks,3);
 });

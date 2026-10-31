@@ -1066,7 +1066,8 @@ for (const path of [taskPath, '/control-room/progress/board/demo-project']) test
         window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
       }
     });
-    await page.clock.runFor(60*60_000);
+    // The transport budget is already exhausted; coalesce local repaint ticks.
+    await page.clock.fastForward(60*60_000);
   }
   const app=requests.filter(request=>new URL(request.url).origin==='http://localhost');
   const fetches=app.filter(request=>['fetch','xhr'].includes(request.type));
