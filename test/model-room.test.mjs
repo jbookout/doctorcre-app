@@ -619,7 +619,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.ok(contract.mcp_operations.indexOf("add-room-turn") < answerAt);
   assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
   assert.ok(contract.mcp_operations.indexOf("capture-queue") > answerAt);
-  assert.equal(contract.producer.source_commit, "700173808625061adff581cfab415ce8e83e24f6");
+  assert.equal(contract.producer.source_commit, "7bed3266d88755566ec5862555cd084f74448ae2");
 
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
@@ -632,8 +632,9 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
     "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
     "/api/share/feedback", "/api/share/shortlist", "/api/share/comment",
     "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*",
+    "/api/v1/fact-review/list", "/api/v1/fact-review/record", "/api/v1/fact-review/resolve",
     "/api/v1/call-sessions", "/api/v1/call-sessions/{id}", "/api/v1/call-sessions/{id}/transfer", "/api/v1/call-sessions/{id}/report",
-  ], "http_surfaces includes the versioned Tour and phone session routes");
+  ], "http_surfaces includes the versioned Tour, fact review and phone session routes");
 });
 
 /* ------------------------------------------- the validators, on real payloads */

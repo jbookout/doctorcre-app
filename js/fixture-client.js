@@ -56,6 +56,8 @@ export function createFixtureDealStore(seed) {
 const VERSION_CONFLICT = 'version_conflict';
 
 export async function createFixtureClient(opts = {}) {
+  let factReview;
+  const factReviews = () => factReview ||= import('../data/fixtures/fact-review.mjs').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
@@ -1262,6 +1264,10 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
+    async listFactReview(args) { return (await factReviews()).listFactReview(args); },
+    async recordHumanFact(args) { return (await factReviews()).recordHumanFact(args); },
+    async resolveFactReview(args) { return (await factReviews()).resolveFactReview(args); },
+
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
@@ -1283,7 +1289,7 @@ export async function createFixtureClient(opts = {}) {
         activities: activitiesFor(dealId).slice(0, 4),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
+        premises: [], negotiation_rounds: [], attachments: (await factReviews()).attachments(dealId), documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {

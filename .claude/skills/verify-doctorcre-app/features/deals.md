@@ -37,6 +37,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 - Board cards read Next from the earliest `open_actions` row and Last from a dated `last_step`. Fixture boards derive these fields from the same actions and history as deal detail. `test/deal-items.test.mjs` crosses both adapters; `test/deal-board-summary-browser.test.mjs` verifies visible dates and partner initials at 390, 1280 and 1440 in both themes. Synthetic board captures are retained under `.github/pr-evidence/WR586.S1.J6/round-1/`.
 
 
+- Terms in Overview loads its React island on first visibility or Show sourced terms. Scroll the region into view before expecting its content. It shows canonical values and cited observations. `node --test test/fact-review-client.test.mjs` covers both adapters. `npx playwright test --project=fixtures tests/fixtures/fact-review.spec.mjs --trace=on` resolves the three-document conflict at 390px and 1440px in both themes and writes captures and traces under `.e2e/fixture-playwright/`. It also covers stale evidence, draft retention, uncertain saves, unit preservation and unavailable stored-document metadata. The synthetic `d14` fixture has three stored attachments. Live document names, recording and corrections require a producer attachment-list contract, which the pinned #2739 head does not expose.
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.
