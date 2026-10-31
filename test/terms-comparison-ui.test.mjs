@@ -116,3 +116,27 @@ test('leaving Terms during the comparison read does not create a draft', async (
   await tick();
   assert.equal(writes, 0);
 });
+
+for (const delay of ['session', 'adapter']) test(`leaving Terms during ${delay} preparation prevents the live comparison POST`, async () => {
+  const { createLiveClient } = await import('../js/live-client.js');
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.FormData = dom.window.FormData;
+  const root = dom.window.document.querySelector('#terms');
+  let release, started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  let posts = 0;
+  const client = createLiveClient({ selfActor: 'joe', loadComparison: async () => {
+    if (delay === 'adapter') { started(); await gate; }
+    return import('../js/terms-comparison-http.mjs');
+  }, fetchImpl: async path => {
+    if (path === '/auth/session') { if (delay === 'session') { started(); await gate; } return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' }); }
+    posts++; return Response.json(plan);
+  } });
+  client.listDealDocuments = async () => ({ ok: true, schema_version: 'deal-documents.v1', documents: [], has_more: false });
+  client.listFactReview = async () => ({ ok: true, schema_version: 'fact-review.v1', items: [rent], has_more: false });
+  const panel = mountFactReview(root, { client, entityRef: 'd14', terms: FACT_TERMS });
+  await tick(); root.querySelector('[data-prepare-comparison]').click();
+  await waiting; panel.dispose(); release(); await tick();
+  assert.equal(posts, 0);
+});

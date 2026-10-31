@@ -1,9 +1,9 @@
 import { COMPARISON_ROWS } from './terms-comparison-fields.mjs';
 import { fetchRead } from './current-read.mjs';
 
-export async function prepareComparisonHttp(fetchImpl, args, csrf, timeoutMs) {
+export async function prepareComparisonHttp(fetchImpl, args, csrf, timeoutMs, signal) {
   const response = await fetchRead('/api/v1/fact-review/comparison', {
-    method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    method: 'POST', credentials: 'same-origin', cache: 'no-store', signal,
     headers: { 'content-type': 'application/json', 'x-carr-csrf': csrf }, body: JSON.stringify(args),
   }, { fetchImpl, timeoutMs });
   let payload;

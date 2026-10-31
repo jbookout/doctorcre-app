@@ -11,7 +11,8 @@ type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?:
 type HumanFact = { fact_key: string; value: string; unit: string; expense_basis?: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string } };
 type Args = { idempotency_key: string; entity_ref: string } & ({ observation: HumanFact } | { fact_key: string; base_version: number; review_version: string; decision: string; reason: string; observation_id?: string; correction?: HumanFact });
 type Receipt = { ok: boolean; schema_version: string };
-type Client = { prepareTermsComparison(args: ComparisonRequest): Promise<Plan>; listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }): Promise<{ ok: boolean; schema_version: string; documents: Document[]; has_more: boolean; next_cursor: string | null }>; listFactReview(args: { entity_ref: string; include_resolved: boolean; limit: number; cursor?: string }): Promise<{ schema_version: string; items: Item[]; has_more: boolean; next_cursor: string | null }>; recordHumanFact(args: Args): Promise<Receipt>; resolveFactReview(args: Args): Promise<Receipt> };
+type WriteOptions = { signal: AbortSignal };
+type Client = { prepareTermsComparison(args: ComparisonRequest, options: WriteOptions): Promise<Plan>; listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }): Promise<{ ok: boolean; schema_version: string; documents: Document[]; has_more: boolean; next_cursor: string | null }>; listFactReview(args: { entity_ref: string; include_resolved: boolean; limit: number; cursor?: string }): Promise<{ schema_version: string; items: Item[]; has_more: boolean; next_cursor: string | null }>; recordHumanFact(args: Args, options: WriteOptions): Promise<Receipt>; resolveFactReview(args: Args, options: WriteOptions): Promise<Receipt> };
 type ComparisonField = { fact_key: string; prior_version: number; current_version: number };
 type ComparisonRequest = { idempotency_key: string; deal_id: string; fields: ComparisonField[] };
 type Plan = { template: { name: string }; human_gate: string; edits: { where: string; text: string }[]; remaining: string[] };
@@ -86,7 +87,7 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
 }
 
 const comparisonRows: Record<string, number> = { base_rent_per_sf: 9, term_months: 13, free_rent_months: 14, landlord_ti_per_sf: 15 };
-function Comparison({ client, entityRef, terms, isDisposed }: Options & { isDisposed: () => boolean }) {
+function Comparison({ client, entityRef, terms, signal }: Options & { signal: AbortSignal }) {
   const [loading, setLoading] = useState(false);
   const [label, setLabel] = useState('Prepare terms comparison');
   const [result, setResult] = useState<ReactNode>(null);
@@ -106,7 +107,7 @@ function Comparison({ client, entityRef, terms, isDisposed }: Options & { isDisp
         const items: Item[] = []; let cursor: string | undefined;
         do {
           const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
-          if (isDisposed()) return;
+          if (signal.aborted) return;
           if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef) || (page.has_more && (!page.next_cursor || page.next_cursor === cursor))) throw new Error('Terms unavailable');
           items.push(...page.items); cursor = page.has_more ? page.next_cursor || undefined : undefined;
         } while (cursor);
@@ -117,9 +118,9 @@ function Comparison({ client, entityRef, terms, isDisposed }: Options & { isDisp
         if (!fields.length) { setResult(<><p>Confirm prior and current versions before preparing the comparison.</p><ul>{Object.keys(comparisonRows).map(key => <li key={key}>{fieldLink(key)} · Missing confirmed prior or current version.</li>)}</ul></>); return; }
         pending.current = { idempotency_key: crypto.randomUUID(), deal_id: entityRef, fields };
       }
-      if (isDisposed()) return;
+      if (signal.aborted) return;
       const request = pending.current;
-      const plan = await client.prepareTermsComparison(request);
+      const plan = await client.prepareTermsComparison(request, { signal });
       const edits = new Map(plan.edits.map(edit => [edit.where, edit.text]));
       const cell = (address: string) => edits.get(`cell:LOI Grid!${address}`);
       const version = (key: string, n: number) => { const fact = snapshot.current.find(item => item.fact_key === key)?.canonical_history.find(f => f.version === n); return `v${n}${fact?.promoted_at && Number.isFinite(Date.parse(fact.promoted_at)) ? ` · ${new Date(fact.promoted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}` : ''}`; };
@@ -149,6 +150,7 @@ function Comparison({ client, entityRef, terms, isDisposed }: Options & { isDisp
 function control(form: HTMLFormElement, name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement { return form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement; }
 export function mountFactReview(root: HTMLElement, { client, entityRef, terms: FACT_TERMS }: Options) {
   let disposed = false, generation = 0, items: Item[] = [], writing = false, dirty = false;
+  const lifetime = new AbortController();
   let documents: Document[] = [];
   let documentsAvailable = false;
   const pending = new Map<HTMLFormElement, { method: "recordHumanFact" | "resolveFactReview"; args: Args }>();
@@ -157,7 +159,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   let recordRevision = 0;
   let documentSignature: string | undefined;
   function render() {
-    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} isDisposed={() => disposed} /><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} signal={lifetime.signal} /><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
   }
   function setDocuments(result: Document[] | null) {
     const next = result || [];
@@ -264,7 +266,8 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       writing = true; generation++;
       for (const control of root.querySelectorAll<Controls>('input, select, textarea, button')) control.disabled = true;
       output.textContent = 'Saving…';
-      const result = await client[request.method](request.args);
+      const result = await client[request.method](request.args, { signal: lifetime.signal });
+      if (disposed) return;
       if (result.ok !== true || result.schema_version !== 'fact-review.v1') throw new Error('Receipt unavailable');
       pending.delete(form);
       dirty = false;
@@ -323,7 +326,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   root.addEventListener('click', click);
   void refresh();
   return { refresh, dispose() {
-    disposed = true; generation++;
+    disposed = true; generation++; lifetime.abort();
     reactRoot.unmount();
     root.removeEventListener('submit', submit); root.removeEventListener('change', onChange); root.removeEventListener('click', click);
     root.removeEventListener('change', markDirty); root.removeEventListener('input', markDirty);
