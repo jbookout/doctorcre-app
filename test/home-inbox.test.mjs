@@ -42,3 +42,9 @@ test('commands retain exact retry identity and inspect mixed and missing results
   try { await assert.rejects(client.run(request), /Offline/); assert.equal(calls.length, 2); }
   finally { Object.defineProperty(globalThis, 'navigator', offline); }
 });
+
+test('unexpected command results cannot confirm another item', async () => {
+  const { command, parseResults } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const request = command('settle', [item('a')]);
+  assert.throws(() => parseResults({ ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'other', ok: true, item: item('other') }] }, request), /uncertain/);
+});

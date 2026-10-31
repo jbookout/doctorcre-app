@@ -7,7 +7,8 @@ export type InboxItem = Readonly<{
 }>;
 export type Snapshot = Readonly<{ ok: true; schema_version: 'home-inbox.v1'; items: InboxItem[]; working_collapsed: true; auto_settle_enabled: false }>;
 export type Action = 'snooze' | 'settle' | 'unsettle';
-export type Command = Readonly<{ action: Action; args: Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>>; until?: string }> }>;
+type CommandArgs = Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>> }>;
+export type Command = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
 export type ItemResult = { item_id: string; ok: true; item: InboxItem } | { item_id: string; ok: false; error: string; current_version?: string };
 export function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -39,11 +40,17 @@ export function shelves(items: readonly InboxItem[], currentId?: string) {
 export function command(action: Action, items: readonly InboxItem[], until?: string): Command {
   if (!items.length || items.length > 100 || new Set(items.map(item => item.item_id)).size !== items.length) throw Error('Select between 1 and 100 distinct cards.');
   if (action === 'snooze' && (!until || Date.parse(until) <= Date.now() || !timestamp(until))) throw Error('Choose a future snooze time.');
-  return { action, args: { idempotency_key: crypto.randomUUID(), items: items.map(({ item_id, base_version }) => ({ item_id, base_version })), ...(action === 'snooze' && until ? { until } : {}) } };
+  const args = { idempotency_key: crypto.randomUUID(), items: items.map(({ item_id, base_version }) => ({ item_id, base_version })) };
+  if (action === 'snooze') {
+    if (!until) throw Error('Choose a future snooze time.');
+    return { action, args: { ...args, until } };
+  }
+  return { action, args };
 }
 export function parseResults(value: unknown, request: Command): ItemResult[] {
   if (!object(value) || value.ok !== true || value.schema_version !== 'home-inbox-command.v1' || !Array.isArray(value.results)) throw Error('Result uncertain. Retry the same request.');
   const rows = value.results;
+  if (rows.some(row => !object(row) || !request.args.items.some(item => item.item_id === row.item_id))) throw Error('Result uncertain. Unexpected items in command response.');
   return request.args.items.map(({ item_id }) => {
     const matches = rows.filter((row: unknown) => object(row) && row.item_id === item_id);
     const row: unknown = matches.length === 1 ? matches[0] : null;

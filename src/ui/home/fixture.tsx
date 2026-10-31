@@ -10,7 +10,7 @@ export function fixtureInboxRpc() {
     const results = request.args.items.map(({ item_id, base_version }) => {
       const item = items.find(item => item.item_id === item_id);
       if (!item || item.base_version !== base_version) return { item_id, ok: false, error: 'version_conflict', current_version: item?.base_version };
-      const next = { ...item, disposition: request.action === 'settle' ? 'settled' : request.action === 'snooze' ? 'snoozed' : 'inbox', snoozed_until: request.args.until || null, explicit_unsettle: request.action === 'unsettle', base_version: crypto.randomUUID() };
+      const next = { ...item, disposition: request.action === 'settle' ? 'settled' : request.action === 'snooze' ? 'snoozed' : 'inbox', snoozed_until: request.action === 'snooze' ? request.args.until : null, explicit_unsettle: request.action === 'unsettle', base_version: crypto.randomUUID() };
       Object.assign(item, next); return { item_id, ok: true, item: { ...item } };
     });
     const result = { ok: true, schema_version: 'home-inbox-command.v1', results }; parseResults(result, request);

@@ -113,7 +113,9 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
 
 test('React Home phone load waits for bounded inbox and an injected delay fails the unchanged limit', async t => {
   const { runTaskScenario, tasks, applyPhoneProfile } = await import('../scripts/performance-scenarios.mjs');
-  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(process.cwd(), 'dist/site') } });
+  const outDir = await temporaryDirectory('doctorcre-inbox-budget-', t);
+  await buildArtifact({ root: process.cwd(), outDir });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
   t.after(() => server.stop());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const task = tasks.find(task => task.id === 'task-react-home');

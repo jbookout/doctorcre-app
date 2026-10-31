@@ -1,9 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { startFixtureServer } from '../../scripts/fixture-server.mjs';
 import { join } from 'node:path';
-let server;
-test.beforeAll(async () => { server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(process.cwd(), 'dist/site') } }); });
-test.afterAll(async () => { await server?.stop(); });
+import { rm } from 'node:fs/promises';
+import { temporaryDirectory } from '../../scripts/temp-directory.mjs';
+import { buildArtifact } from '../../scripts/artifact.mjs';
+let server, outDir;
+test.beforeAll(async () => { outDir = await temporaryDirectory('doctorcre-inbox-playwright-'); await buildArtifact({ root: process.cwd(), outDir }); server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } }); });
+test.afterAll(async () => { await server?.stop(); if (outDir) await rm(outDir, { recursive: true, force: true }); });
 for (const state of ['populated', 'empty', 'loading', 'unavailable']) for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Home inbox ${state} at ${width} in ${theme}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);

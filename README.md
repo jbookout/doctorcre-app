@@ -13,6 +13,13 @@ TanStack Query. Other pages retain their existing static modules. The edge Worke
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
+The stable record route contract is `src/ui/home/routes.tsx`: `/home`,
+`/home/card/:item_id`, `/deals/:id`, `/contacts/:id` and `/tasks/:id`.
+The Worker gates each through CARR. Links contain encoded IDs and no credentials.
+Home and card routes render the inbox. Deals open the existing workspace by ID.
+Contact detail and canonical task detail remain follow-ups; their routes retain
+existing pages and state the missing detail capability.
+
 Local development and the e2e runner require Node.js 22.22.3 or newer on Node 22, or 24.8.0 or newer.
 
 ```bash
