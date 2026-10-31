@@ -86,7 +86,7 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
 }
 
 const comparisonRows: Record<string, number> = { base_rent_per_sf: 9, term_months: 13, free_rent_months: 14, landlord_ti_per_sf: 15 };
-function Comparison({ client, entityRef, terms }: Options) {
+function Comparison({ client, entityRef, terms, isDisposed }: Options & { isDisposed: () => boolean }) {
   const [loading, setLoading] = useState(false);
   const [label, setLabel] = useState('Prepare terms comparison');
   const [result, setResult] = useState<ReactNode>(null);
@@ -106,6 +106,7 @@ function Comparison({ client, entityRef, terms }: Options) {
         const items: Item[] = []; let cursor: string | undefined;
         do {
           const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
+          if (isDisposed()) return;
           if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef) || (page.has_more && (!page.next_cursor || page.next_cursor === cursor))) throw new Error('Terms unavailable');
           items.push(...page.items); cursor = page.has_more ? page.next_cursor || undefined : undefined;
         } while (cursor);
@@ -116,6 +117,7 @@ function Comparison({ client, entityRef, terms }: Options) {
         if (!fields.length) { setResult(<><p>Confirm prior and current versions before preparing the comparison.</p><ul>{Object.keys(comparisonRows).map(key => <li key={key}>{fieldLink(key)} · Missing confirmed prior or current version.</li>)}</ul></>); return; }
         pending.current = { idempotency_key: crypto.randomUUID(), deal_id: entityRef, fields };
       }
+      if (isDisposed()) return;
       const request = pending.current;
       const plan = await client.prepareTermsComparison(request);
       const edits = new Map(plan.edits.map(edit => [edit.where, edit.text]));
@@ -155,7 +157,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   let recordRevision = 0;
   let documentSignature: string | undefined;
   function render() {
-    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} /><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} isDisposed={() => disposed} /><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
   }
   function setDocuments(result: Document[] | null) {
     const next = result || [];

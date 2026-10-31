@@ -94,3 +94,25 @@ test('missing prior versions are named without creating a comparison', async () 
   assert.equal(called, false);
   panel.dispose();
 });
+
+test('leaving Terms during the comparison read does not create a draft', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.FormData = dom.window.FormData;
+  const root = dom.window.document.querySelector('#terms');
+  let resolveRead, reads = 0, writes = 0;
+  const page = { ok: true, schema_version: 'fact-review.v1', items: [rent], has_more: false, next_cursor: null };
+  const client = {
+    listDealDocuments: async () => ({ ok: true, schema_version: 'deal-documents.v1', documents: [], has_more: false, next_cursor: null }),
+    listFactReview: async () => ++reads === 1 ? page : new Promise(resolve => { resolveRead = resolve; }),
+    prepareTermsComparison: async () => { writes++; return plan; },
+  };
+  const panel = mountFactReview(root, { client, entityRef: 'd14', terms: FACT_TERMS });
+  await tick();
+  root.querySelector('[data-prepare-comparison]').click();
+  await tick();
+  assert.equal(reads, 2);
+  panel.dispose();
+  resolveRead(page);
+  await tick();
+  assert.equal(writes, 0);
+});
