@@ -256,6 +256,11 @@
   .workspace-events li { padding-block: var(--space-2); }
 }
 
+@media (max-width: 360px) {
+  #workspaceTabs { flex-wrap: wrap; }
+  .workspace-tab { flex: 1 1 45%; }
+}
+
 @media (min-width: 651px) {
   .deal-workspace .deal-update-form { max-width: 48rem; }
 }
@@ -317,3 +322,15 @@
 .terms-draft dd small { display: block; margin-top: var(--space-1); color: var(--fg-muted); }
 .fact-term[id] { scroll-margin-top: 280px; }
 @media (max-width: 600px) { .terms-draft-groups { grid-template-columns: 1fr; } .fact-term[id] { scroll-margin-top: 80px; } }
+.market-filters { display:flex; flex-wrap:wrap; gap:1rem; align-items:end; margin:1rem 0; }
+.market-filters label { display:grid; gap:.3rem; }
+.market-terms-table { width:100%; border-collapse:collapse; font-size:.875rem; }
+.market-terms-table th, .market-terms-table td { padding:.6rem; text-align:left; vertical-align:top; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.market-terms-table .superseded { opacity:.65; }
+@media (max-width: 700px) {
+  .market-filters label, .market-filters input { width:100%; }
+  .market-terms-table, .market-terms-table tbody, .market-terms-table tr, .market-terms-table td { display:block; width:100%; }
+  .market-terms-table thead { display:none; }
+  .market-terms-table tr { border:1px solid var(--border); margin:1rem 0; }
+  .market-terms-table td::before { content:attr(data-label); display:block; font-weight:600; }
+}

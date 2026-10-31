@@ -671,7 +671,7 @@ test("B12-9 the current contract still pins both preference verbs and their orde
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 
   const at = contract.mcp_operations.indexOf("read-notification-preferences");
-  assert.equal(contract.mcp_operations[at - 1], "read-loop");
+  assert.equal(contract.mcp_operations[at - 1], "read-market-terms");
   assert.equal(contract.mcp_operations[at + 1], "read-portfolio");
   const set = contract.mcp_operations.indexOf("set-notification-preference");
   assert.equal(contract.mcp_operations[set - 1], "set-next-step");
