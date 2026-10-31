@@ -14,3 +14,5 @@ export function hostNode(node: Element): Root {
   flushSync(() => root.render(<NodeHost node={node} />));
   return root;
 }
+
+export { mountDealUpdateReviews } from "./deal-update-reviews";

@@ -3,7 +3,7 @@
   "version": "1.67.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee"
+    "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -713,7 +713,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
@@ -803,7 +803,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee"
+          "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
         },
         "template_states": [
           "current",
@@ -837,7 +837,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -1315,7 +1315,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
+      "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
@@ -1324,7 +1324,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee"
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
       },
       "inputSchema": {
         "type": "object",
@@ -1359,7 +1359,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee"
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
       },
       "inputSchema": {
         "type": "object",
@@ -1388,7 +1388,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee"
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832"
       },
       "inputSchema": {
         "type": "object",
@@ -1468,7 +1468,7 @@
       "write": true,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
+        "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2729",
         "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
       },
@@ -1667,7 +1667,7 @@
   "deal_update_reviews": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
+      "source_commit": "d5dffad624bb4ced1719afde96cedd1c04699832",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2729",
       "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
     },

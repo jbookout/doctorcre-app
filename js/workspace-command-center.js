@@ -376,7 +376,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (result?.schema_version === 'deal-update-reviews.v1' && Array.isArray(result.proposals) && !result.proposals.length) {
         paint('No overdue reviews.'); return;
       }
-      const { mountDealUpdateReviews } = await import('./deal-update-reviews.js');
+      const { mountDealUpdateReviews } = await import('./ui.generated.js');
       if (disposed || emailRetired || ticket !== overdueEpoch) return;
       overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result,
         onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });

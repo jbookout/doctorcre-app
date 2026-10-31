@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountDealUpdateReviews } from '../js/deal-update-reviews.js';
+import { mountDealUpdateReviews } from '../js/ui.generated.js';
 
 const proposal = () => ({ assessment_id: 'demo-assessment', deal_id: 'demo-deal', deal_name: 'Demo Harbor expansion',
   confirm_verb: 'review-deal-update', assessment: { action: { id: 'demo-action', description: 'Request revised terms', due_on: '2026-10-01' },

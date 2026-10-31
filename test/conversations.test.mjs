@@ -382,7 +382,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 
 test("clause 10: the route, the route version, the producer pin and the five verbs are in the contracts", () => {
   assert.equal(routes.version, "1.23.0");
-  assert.equal(contract.producer.source_commit, "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee");
+  assert.equal(contract.producer.source_commit, "d5dffad624bb4ced1719afde96cedd1c04699832");
 
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
