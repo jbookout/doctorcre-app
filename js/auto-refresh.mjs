@@ -17,17 +17,17 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   const reads = createCurrentRead({ timeoutMs, clock: window });
   const schedule = () => {
     window.clearTimeout?.(timer);
-    if (!disposed && presence.active() && attempts < MAX_POLL_ATTEMPTS && window.setTimeout) { timer = window.setTimeout(read, Math.min(MAX_BACKOFF_MS, intervalMs * 2 ** failures)); timer?.unref?.(); }
+    if (!disposed && presence.active() && attempts < MAX_POLL_ATTEMPTS && window.setTimeout) { timer = window.setTimeout(read, Math.min(MAX_BACKOFF_MS, intervalMs * 2 ** Math.max(failures, Math.floor(attempts / 5)))); timer?.unref?.(); }
   };
   const run = operation => {
     // Idle stops the clock here; the first input re-reads through the resume.
-    if (disposed || !presence.active()) return Promise.resolve();
-    if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
+    if (disposed || !presence.active() || attempts >= MAX_POLL_ATTEMPTS) return Promise.resolve();
+    if (!shouldRefresh()) { attempts++; schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
     attempts++;
     running = reads.run(({ signal }) => operation({ signal }), {
-      success: value => { failures = 0; return value; },
+      success: value => { failures = value === false ? failures + 1 : 0; return value; },
       failure: () => { failures++; },
     }).finally(() => { running = null; schedule(); });
     return running;

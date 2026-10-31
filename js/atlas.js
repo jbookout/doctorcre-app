@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C07 — the Atlas tab: DOM wiring only.
 //
@@ -147,7 +148,9 @@ async function read(cursor = null, { background = false, signal } = {}) {
       return;
     }
     if (background) {
+      const takePage = createPageBudget();
       for (let page = 1; page < view.loadedPages && incoming.next_cursor; page++) {
+        takePage();
         const next = await fetchRead(atlasRequestPath(requestOptions(incoming.next_cursor)), { headers: { accept: "application/json" }, cache: "no-store", signal });
         if (sequence !== view.sequence) return;
         if (!next.ok) throw new Error("Atlas page unavailable");

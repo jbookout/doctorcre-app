@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
@@ -472,7 +473,9 @@ async function takeConversation({ after = null, background = false, signal } = {
     let payload = await readClient("readDocConversation", args, signal);
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
+      const takePage = createPageBudget();
       for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
+        takePage();
         const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
         if (view.sequence !== sequence || signal?.aborted) return;
         payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
@@ -509,7 +512,9 @@ async function takeList({ cursor = null, background = false, signal } = {}) {
     );
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
+      const takePage = createPageBudget();
       for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
+        takePage();
         const incoming = await readClient("listDocConversations", listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }), signal);
         if (view.sequence !== sequence || signal?.aborted) return;
         payload = { ...incoming, conversations: [...payload.conversations, ...incoming.conversations] };
@@ -547,7 +552,9 @@ async function takeOutcomeCards({ cursor = null, background = false, signal } = 
     ]);
     if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
     if (background && !refuseDocOutcomeCards(payload)) {
+      const takePage = createPageBudget();
       for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
+        takePage();
         const incoming = await readClient("docOutcomeCards", outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }), signal);
         if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
         if (refuseDocOutcomeCards(incoming)) throw new Error("Outcome page unavailable");

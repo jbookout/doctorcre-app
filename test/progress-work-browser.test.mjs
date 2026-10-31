@@ -623,13 +623,13 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   await assertEventually(()=>state.turnReads>=1);
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
-    const before=state.turnReads;await page.clock.runFor(60_100);await assertEventually(()=>state.turnReads>before);
+    const before=state.turnReads;await page.clock.runFor(120_100);await assertEventually(()=>state.turnReads>before);
     await fixtureScope(t).delay(100);
   }
   assert.equal(await page.locator('.passport-card').count(),0);
-  release();await page.clock.runFor(60_100);
+  release();await page.clock.runFor(120_100);
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');
+  await page.clock.runFor(120_100);await page.waitForSelector('.passport-card');
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 

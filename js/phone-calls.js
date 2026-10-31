@@ -1,3 +1,5 @@
+import { createPageBudget } from './read-budget.mjs';
+import { watchPresence } from './visibility-poll.mjs';
 import { createDayStore } from '../tours/day-store.js';
 import { createDayRecorder } from '../tours/day-recorder.js';
 import { createPhoneCallClient, sessionId } from './phone-call-client.js';
@@ -12,6 +14,7 @@ const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
 const tour_id = 'calls';
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
+const pollPresence = watchPresence({ document, window, onResume: schedulePoll, onWake: schedulePoll });
 async function acquireWakeLock() {
   const generation = ++wakeGeneration;
   try {
@@ -89,17 +92,23 @@ async function applyStatus(id, session) {
   }
 }
 function schedulePoll() {
-  if (pollTimer || disposed || pollAttempts >= 10) return;
+  if (pollTimer || disposed || !store || !pollPresence.active() || pollAttempts >= 10) return;
   pollTimer = setTimeout(async () => {
     pollTimer = null;
+    if (disposed || !pollPresence.active()) return;
     pollAttempts++;
+    try {
     const rows = await store.list(scope, tour_id);
+    const takePage = createPageBudget();
     for (const row of rows.filter(r => r.status === 'queued' && r.session_id)) {
+      takePage();
+      if (disposed || !pollPresence.active()) return;
       try { await applyStatus(row.id, await api.status(row.session_id)); } catch { /* Keep the saved audio and retry later. */ }
     }
     await pending();
     pollDelay = Math.min(pollDelay * 2, 120000);
     if ((await store.list(scope, tour_id)).some(r => r.status === 'queued')) schedulePoll();
+    } catch { notice('Transfer status is unavailable. Check status to try again.'); }
   }, pollDelay);
 }
 async function transfer(id) {
@@ -201,12 +210,13 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();
   else if (!wakeLock || wakeLock.released) recorder.stop('hidden');
 });
 document.addEventListener('freeze', () => recorder?.stop('hidden'));
-window.addEventListener('pagehide', () => { recorder?.stop('hidden'); releaseWakeLock(); }, { once: true });
+window.addEventListener('pagehide', () => { clearTimeout(pollTimer); pollTimer = null; recorder?.stop('hidden'); releaseWakeLock(); }, { once: true });
 void start().catch(error => notice(error.message));

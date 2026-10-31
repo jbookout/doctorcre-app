@@ -227,3 +227,12 @@ test("a refresh in flight while Load more lands cannot overwrite the page just l
   const fresher = addPage(addPage(createQueue(), pages[""]), pages.c1);
   assert.equal(settleRefresh(queue, fresher), fresher, "an equal or larger refresh replaces the queue");
 });
+
+test('queue refresh cannot drain an unbounded sequence of distinct pages', async () => {
+  let reads = 0;
+  await assert.rejects(refreshQueue({ ...createQueue(), pages: 1000 }, async () => {
+    reads++;
+    return census([], { next_cursor: `next-${reads}` });
+  }), /page_limit/);
+  assert.equal(reads, 100);
+});

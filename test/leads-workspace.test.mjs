@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
 import {createLeadBoardClient} from '../js/leads-client.js';
 const tick=()=>new Promise(r=>setTimeout(r,10));
-async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})){
+async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}}),configure=()=>{}){
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){if(this.open){this.open=false;this.dispatchEvent(new w.Event('close'))}};
  let board=workspace(),actor='example-partner',writes=[];
@@ -10,6 +10,7 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  recordStage:async(l,stage,review,key)=>{writes.push({l,stage,review,key});let r=board.leads.find(x=>x.id===l.id);r.stage=stage;r.base_version++;r.last_stage_move={idempotency_key:key};return{ok:true}},
  linkClient:async(l,clientId,key)=>{writes.push({l,clientId,key});board.leads.find(x=>x.id===l.id).client_id=clientId;return{ok:true}},
  claimLead:async(l,key)=>{writes.push({l,key});board.leads.find(x=>x.id===l.id).owner=actor;return{ok:true}},...overrides};
+ configure(w);
  const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
@@ -593,11 +594,21 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });
-test('a failed first read waits the one-minute floor before reconnecting',async()=>{
- let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
- try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
-  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,1);
-  await new Promise(r=>setTimeout(r,59_000));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+test('a failed first read backs off before reconnecting',async()=>{
+ let reads=0,next=0;const pending=new Map();
+ const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}},undefined,w=>{
+  w.setTimeout=(fn,ms)=>{pending.set(++next,{fn,ms});return next};
+  w.clearTimeout=id=>pending.delete(id);
+ });
+ try{
+  assert.equal(s.d.querySelectorAll('.lead-card').length,0);
+  assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
+  const retry=[...pending.values()].find(timer=>timer.ms===120_000);
+  assert.ok(retry,'a failed first read doubles the one-minute cadence');
+  assert.equal(reads,1);
+  retry.fn();await tick();
+  assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);
+  assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 

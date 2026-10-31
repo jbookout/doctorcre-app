@@ -339,7 +339,18 @@ test('queued upload is checked automatically and clears audio after Studio trans
   });
   await page.getByRole('button', { name: 'Transfer recording' }).click();
   await page.getByRole('button', { name: 'Check status' }).waitFor();
+  const beforeHidden = reads;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(120000);
+  assert.equal(reads, beforeHidden, 'queued transfers do not poll while hidden');
   transferred = true;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
   await page.clock.runFor(30000);
   await page.getByText('Transferred', { exact: true }).waitFor();
   assert.ok(reads >= 1);

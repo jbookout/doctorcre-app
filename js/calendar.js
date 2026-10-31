@@ -1,3 +1,4 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { selectDocRecord, pageDocContext } from './doc-context.js';
 // V5-UX-B04 — Calendar: DOM wiring only.
 //
@@ -370,12 +371,12 @@ function wire() {
   });
   window.addEventListener("online", () => load());
   // A page left open past midnight moves "today" with the clock.
-  setInterval(() => {
+  mountLocalTicker({ intervalMs: TODAY_TICK_MS, tick: () => {
     const today = localToday();
     if (today === view.today) return;
     view.today = today;
     render();
-  }, TODAY_TICK_MS);
+  } });
 }
 
 /* ----------------------------------------------------------------- reading */

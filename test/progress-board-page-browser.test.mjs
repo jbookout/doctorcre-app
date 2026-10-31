@@ -776,21 +776,21 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     });
     for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
       setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
-      await page.clock.runFor(60_100);
+      await page.clock.runFor(index <= 5 ? 60_100 : 120_100);
       await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
       assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
       assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
       assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
     }
     setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
-    await page.clock.runFor(60_100);
+    await page.clock.runFor(120_100);
     await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
     assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
     const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
     paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
     paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
-    setSnapshot(paged);await page.clock.runFor(60_100);
+    setSnapshot(paged);await page.clock.runFor(120_100);
     await page.locator('[data-orchestrator-more]').click();
     await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
@@ -802,12 +802,12 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await older.locator('summary').focus();
     const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
     const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
-    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(60_100);
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(120_100);
     assert.equal(await older.locator('details').getAttribute('open'),'');
     assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
     assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
-    setSnapshot({tasks:{}});await page.clock.runFor(60_100);
-    setSnapshot(changed);await page.clock.runFor(180_300);
+    setSnapshot({tasks:{}});await page.clock.runFor(120_100);
+    setSnapshot(changed);await page.clock.runFor(240_300);
     assert.equal(await older.count(),1);
 
 

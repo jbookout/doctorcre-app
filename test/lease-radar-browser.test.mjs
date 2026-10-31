@@ -155,7 +155,7 @@ test('polling updates an open detail and preserves focus, while refusals clear s
   state.fail(503); await online(page); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 0);
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
-  state.fail(null); await page.clock.runFor(61_000); await settled(page);
+  state.fail(null); await page.clock.runFor(121_000); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
   state.fail(403); await online(page); await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await page.getByRole('link', { name: 'Sign in again', exact: true }).isVisible(), true);
@@ -167,7 +167,7 @@ test('timeout clears stale details and automatically recovers', async t => {
   await page.clock.runFor(10_001); await settled(page);
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 0);
-  state.fail(null); await page.clock.runFor(61_000); await settled(page);
+  state.fail(null); await page.clock.runFor(121_000); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
 });
 test('urgency lights stay still and cards never lift, with or without reduced motion', async t => {

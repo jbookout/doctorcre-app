@@ -59,15 +59,16 @@ export function mountVisibilityPoll({
   let failures = 0;
   const asked = () => (typeof intervalMs === "function" ? intervalMs() : intervalMs);
   // Call mode's keepAlive poll reads the local companion, not CARR.
-  const delay = () => Math.min(MAX_BACKOFF_MS, (keepAlive() ? asked() : Math.max(MIN_POLL_MS, asked())) * 2 ** failures);
+  // Absorbed failures still back off after every five automatic attempts.
+  const delay = () => Math.min(MAX_BACKOFF_MS, (keepAlive() ? asked() : Math.max(MIN_POLL_MS, asked())) * 2 ** Math.max(failures, Math.floor(attempts / 5)));
   const stop = () => { if (timer !== null) clearTimeout(timer); timer = null; generation += 1; };
   const arm = () => { if (attempts < MAX_POLL_ATTEMPTS && (presence.active() || keepAlive())) timer = setTimeout(tick, delay()); };
   const refresh = () => {
     stop();
-    if (disposed) return Promise.resolve();
+    if (disposed || attempts >= MAX_POLL_ATTEMPTS) return Promise.resolve();
     const mine = generation;
     attempts++;
-    return Promise.resolve().then(() => poll()).then(() => { failures = 0; }, () => { failures++; }).finally(() => { if (mine === generation && !disposed) arm(); });
+    return Promise.resolve().then(() => poll()).then(value => { failures = value === false ? failures + 1 : 0; }, () => { failures++; }).finally(() => { if (mine === generation && !disposed) arm(); });
   };
   const tick = () => { timer = null; if (presence.active() || keepAlive()) refresh(); };
   const presence = watchPresence({ document, window, idleMs, now, onResume: () => { attempts = 0; failures = 0; return refresh(); }, onWake: () => { attempts = 0; failures = 0; return refresh(); }, onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) { attempts = 0; failures = 0; refresh(); } } });
@@ -75,20 +76,43 @@ export function mountVisibilityPoll({
   document.addEventListener("visibilitychange", visibility);
   if (presence.active() || keepAlive()) arm();
   return {
-    refresh,
+    refresh() { attempts = 0; failures = 0; return refresh(); },
     dispose() { disposed = true; stop(); presence.dispose(); document.removeEventListener?.("visibilitychange", visibility); },
   };
 }
 
-// A local clock with one network read in it. tick() is local work, such as a
-// repaint against the wall clock, and keeps its fixed cadence hidden or idle,
-// because it costs CARR nothing. read() goes to CARR, so it runs through
-// mountVisibilityPoll and sleeps while the person is away.
+// A bounded local repaint clock paired with a bounded network poll. Both
+// clocks stop while hidden or idle; their work keeps separate budgets.
 export function mountLocalClock({
   tick, read, intervalMs, window = globalThis,
   setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id), ...pollOptions
 }) {
-  const timer = setInterval(tick, intervalMs);
+  const timer = mountLocalTicker({ tick, intervalMs, window, setInterval, clearInterval, ...pollOptions });
   const network = mountVisibilityPoll({ poll: read, intervalMs, window, ...pollOptions });
-  return { dispose() { clearInterval(timer); network.dispose(); } };
+  return { dispose() { timer.dispose(); network.dispose(); } };
+}
+
+// Local repaint clocks stop after thirty minutes of ticks as well as on
+// absence. They never retry failed callbacks or perform network reads.
+export function mountLocalTicker({ tick, intervalMs, document = globalThis.document, window = document?.defaultView || globalThis,
+  maxTicks = Math.ceil(IDLE_CUTOFF_MS / intervalMs), idleMs, now,
+  setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id) }) {
+  let timer = null, ticks = 0, disposed = false;
+  const stop = () => { if (timer !== null) clearInterval(timer); timer = null; };
+  const start = () => {
+    if (disposed || timer !== null || !presence.active()) return;
+    ticks = 0;
+    timer = setInterval(() => {
+      if (disposed || timer === null || !presence.active() || ticks >= maxTicks) { stop(); return; }
+      ticks++;
+      try { tick(); } catch { stop(); }
+      if (ticks >= maxTicks) stop();
+    }, intervalMs);
+    timer?.unref?.();
+  };
+  const presence = watchPresence({ document, window, idleMs, now, onResume: start, onWake: start, onInput: () => { if (ticks >= maxTicks) start(); } });
+  const visibility = () => { if (document.visibilityState === 'hidden') stop(); };
+  document.addEventListener('visibilitychange', visibility);
+  start();
+  return { dispose() { disposed = true; stop(); presence.dispose(); document.removeEventListener('visibilitychange', visibility); } };
 }

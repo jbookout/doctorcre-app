@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { sessionFetch } from './private-session.js';
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -790,7 +791,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     state.counted.set(node.id ?? node, target);
     if (REDUCED() || from === target) { node.textContent = format(target); return; }
     const started = performance.now();
+    let frames = 0;
     const step = (stamp) => {
+      if (document.visibilityState === 'hidden' || ++frames >= 180) { node.textContent = format(target); return; }
       const t = Math.min(1, (stamp - started) / 300);
       const eased = 1 - (1 - t) * (1 - t);
       node.textContent = format(Math.round(from + (target - from) * eased));
@@ -1125,7 +1128,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
     const duration = arc ? 2200 : 1800;
     const started = performance.now();
+    let frames = 0;
     const step = (stamp) => {
+      if (document.visibilityState === 'hidden' || ++frames >= 600) { comet.remove(); cometCounts.set(nodeId, Math.max(0, (cometCounts.get(nodeId) || 1) - 1)); return; }
       const t = Math.min(1, (stamp - started) / duration);
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       const at = direction === "out" ? eased : 1 - eased;
@@ -1966,7 +1971,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       let from = state.rescanRequested ? 0 : state.cursor;
       state.rescanRequested = false;
       let payload, turns = [];
+      const takePage = createPageBudget();
       do {
+        takePage();
         payload = await fetchTurns(from, 200);
         if (!authReadable(epoch)) return;
         validateTurnPage(payload, from);
@@ -2009,6 +2016,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       setState($("healthCycleDot"), "urgent");
       banner("Wire offline — last-known activity; retrying.");
       $('roomHealth').dataset.stale = 'true';
+      return false;
     }
   }
 
@@ -2026,7 +2034,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       let from = 0, earlier = state.turns.filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters)).slice(-PAGE_SIZE);
       if (earlier.length < PAGE_SIZE) {
         earlier = [];
+        const takePage = createPageBudget();
         while (true) {
+          takePage();
           const page = await fetchTurns(from, 200);
           if (!current()) return;
           validateTurnPage(page, from);

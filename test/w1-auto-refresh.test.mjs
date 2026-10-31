@@ -98,7 +98,7 @@ test('R1 resume invalidation fires before a coalesced in-flight read and never f
  handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
  release();await settle();handle.dispose();
 });
-test('failed reads wait at least one minute before the next background read', async (t) => {
+test('failed reads use capped exponential backoff before recovering', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget();
@@ -111,14 +111,14 @@ test('failed reads wait at least one minute before the next background read', as
   t.after(() => handle.dispose());
   t.mock.timers.tick(60_000); await settle();
   assert.equal(reads, 1);
-  for (let expected = 2; expected <= 5; expected++) {
-    t.mock.timers.tick(59_999); await settle();
-    assert.equal(reads, expected - 1, 'no background read before the one-minute floor');
+  for (const [expected, delay] of [[2, 120_000], [3, 240_000], [4, 480_000], [5, 60_000]]) {
+    t.mock.timers.tick(delay - 1); await settle();
+    assert.equal(reads, expected - 1, 'no background read before its backoff delay');
     t.mock.timers.tick(1); await settle();
-    assert.equal(reads, expected, 'background reads recover at the one-minute floor');
+    assert.equal(reads, expected, 'background reads recover after the backoff delay');
   }
 });
-test('a read replaced on resume preserves the poll interval after failure', async () => {
+test('a read replaced on resume applies failure backoff to the next read', async () => {
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget(); const delays = []; let job = null;
   window.setTimeout = (fn, ms) => { if (ms === 5_000) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
@@ -132,5 +132,5 @@ test('a read replaced on resume preserves the poll interval after failure', asyn
   document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
   document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
   await settle(); await settle();
-  assert.equal(reads, 2); assert.deepEqual(delays, [60_000, 60_000, 60_000]); handle.dispose();
+  assert.equal(reads, 2); assert.deepEqual(delays, [60_000, 60_000, 120_000]); handle.dispose();
 });

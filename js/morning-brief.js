@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { mountBriefQueues } from './brief-queues.js';
 import { overnightCutoff } from './business-date.js';
 import { toDay } from './calendar-model.js';
@@ -124,7 +125,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       }
       let caughtUp = false;
       try {
+        const takePage = createPageBudget();
         for (let page=0; page<4; page++) {
+          takePage();
           const changes = await readWithDeadline(() => client.getChanges(cursor,{signal,since}),{signal});
           if (!Array.isArray(changes?.events)) throw new Error('Invalid changes');
           if (!current()) return;

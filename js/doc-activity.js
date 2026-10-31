@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { createLiveClient } from './live-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
@@ -66,7 +67,9 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
       if (args.since && args.until && Date.parse(args.since) >= Date.parse(args.until)) { message('Invalid date range'); return; }
       const filters = JSON.stringify(args), boundary = filters === view.filters ? view.rows.at(-1) : null;
       const entries = [], cursors = new Set(); let answer, cursor = null, pages = 0;
+      const takePage = createPageBudget();
       while (true) {
+        takePage();
         answer = await readWithDeadline(current => client.readDocActivity({ ...args, ...(cursor ? { cursor } : {}) }, { signal: current }), { signal });
         if (seq !== view.sequence) return;
         const rows = activityRows(answer);

@@ -1,1 +1,777 @@
-{}
+{
+  "js/app-layout.js:requestAnimationFrame:572900874c09b01af8be3f906eee07437f4b4c3f1e9e8c9e46d5ae08c547ec89": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/app-layout.js:loop:5b010510bb5a738761b8a5b156f75024d878a5acfaeb9760957120d61e226a7c": {
+    "cap": "4 recent-change pages per refresh",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/app-walkthrough.js:requestAnimationFrame:0c6dd648c186516b1a1fd91f45327c74f7c9085f6fa87bc1f1a263f7c5b9de43": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/app.js:setTimeout:1de327f430644e9a858625374669e714648a161a747bfcae9d3d10ae4c6dfecf": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/app.js:retry:e36d06853f83752a351b5c7110f45c1f6b2447936572dcf480e3d58070d31536": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/assurance-health-model.js:setTimeout:f325489e51e58e154bad8018b65c62fcf9408ed4986d1c2d4caa3a164943e577": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/atlas.js:loop:69af5c252c4f1a71f80a90dcf25e768a028da0fc75da2f7dbe026b9342e56f12": {
+    "cap": "100 additional retained pages plus the initial page",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/atlas.js:setTimeout:cd92d3cf32650dd68f13d70953df891f6a97da4e3a79a2b27f094506a76e1b75": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/auto-refresh.mjs:setTimeout:211fd8f9067928dd0b2497dd39c13c64f9f7e0ba32c3513ac1d25bedf7a4b5a1": {
+    "cap": "20 scheduling/read attempts; poll() and shouldRefresh=false also consume/check the same budget",
+    "backoff": "Rejected/false results double the delay; every five attempts also doubles it for swallowed errors; ceiling 15 minutes",
+    "idleStop": "watchPresence stops hidden or after 30 minutes without input; only explicit refresh, presence return/wake or post-cap user input resets the budget"
+  },
+  "js/auto-refresh.mjs:setTimeout:251e613c26a69a91407a7558606c219e332fe52a19e0f9ffbbc5cf4199c73ee5": {
+    "cap": "20 scheduling/read attempts; poll() and shouldRefresh=false also consume/check the same budget",
+    "backoff": "Rejected/false results double the delay; every five attempts also doubles it for swallowed errors; ceiling 15 minutes",
+    "idleStop": "watchPresence stops hidden or after 30 minutes without input; only explicit refresh, presence return/wake or post-cap user input resets the budget"
+  },
+  "js/board-sync.mjs:retry-option:e2351f28be95afec213dd8e8ff8ca13938bfebb748d2d17475eb6560cbaa63db": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/calendar-model.js:loop:fe495fe4a6f9f1458cd066c48804f42a617de4666670ac6e3375da449955fbd4": {
+    "cap": "100 deal reads across all workers, plus one board read; remaining deals are reported unread",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/calendar.js:loop:1bb28622c3525a0537a504984ba47f7212905b1aa39006a8ee7bf3071bcb6da7": {
+    "cap": "One week per seven cells in the finite month layout",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/call-mode.js:loop:21a21235b9c0696c50193be1c93f336207d0c8ff0b962570017fd2269d2a124d": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/call-mode.js:setInterval:b3f6063c1d4811f229d30b0b92d9ebf963cdbeaa5fd952d2958d3566def3e1ef": {
+    "cap": "Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks",
+    "backoff": "Local repaint only; callback error stops the clock without retry",
+    "idleStop": "The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal"
+  },
+  "js/call-mode.js:setTimeout:216fcdb5c8fcf74f79dda5b1d96f575c9a994574df665c12c18b05f8238b170a": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/charts-model.js:retry-option:1cd0aa33d753aa80c7af892c9e646cfb3c53d75a67fbf635264887da9a0a3819": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/charts-model.js:retry-option:6bb9a0a5cb0c927dcaeba7ece8bd91a4d8b4820b49278d2e94e446a5cff23af0": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-dock.js:retry-option:d7b7c996068bebb51601f04c7c5a97620357328e8ccc90ab7863a27bafc8bae4": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-dock.js:retry-option:a02b619f62d036b7cc689258a42ef7f8db086d21679ce21fd66724718d2e0c2e": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-dock.js:loop:5218878283035b4bf6ba5772f0d2ed4178113caf33c4f64dbf9567e2e21251ab": {
+    "cap": "At most entries.size removals; each pass deletes one confirmed entry or returns",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/command-feedback.mjs:retry-option:d82bdde8a6f86b9829bb63562fff2ab5b5d9e905b7b41bf1fb0abf577520b701": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-feedback.mjs:retry-option:3e8ccb7e0f4ac4a202f83055f47675df68d1e6cdf91e317a9daee9e76c83cbae": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-feedback.mjs:retry-option:dde937f413688e73e5241823323fbba63bbee35c35ce1293913fdfa0e227c338": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-feedback.mjs:setTimeout:bb54479a93b22ddc74950494e6f57c3d74be218eb65cddf93c69bd7485064675": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/command-feedback.mjs:retry-option:19e138cc6e88947a57546b3873a9e99aabb0653534271d87c8b1d8e2ac0266d0": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-feedback.mjs:retry-option:0cc78443b7db4d0ca1e96ad2056f07ad9168544bf61a1dcf33b3963f85f1a38a": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/command-feedback.mjs:retry-option:0f2fb43c0472dfdbda84df4b4311b3ae8104c753ecda1d49b04817903da0381f": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/connections-model.js:retry-option:319f9b1fb9b1db8a55f4e14868acb51066fd4b7bff020432274af6854fc42295": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/control-room-commands.js:setTimeout:e8bf8242aa1284474cc6e36d74f7500235b6664977694da7d779933ffc2bf294": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/control-room-queue-model.js:loop:61f8f94dff15a073bd55bf28a4c04cd48210f583859ebe13a5b536be75482493": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/conversations.js:read-loop:38b8917ca57f7b0deb79265db0ca039607f0934fd1418cf484bb24a8c4eeeff3": {
+    "cap": "One event-listener registration per rendered copy button; asynchronous read is inside the user click handler",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/conversations.js:loop:0e0841009df547b4bfebab82af850019741e7e72077b11013c1cfc1c9bfd279b": {
+    "cap": "100 additional retained pages plus the initial page",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/conversations.js:loop:4b1df01fcaca9f31c843b24b157802b83ca2944f809404c7e9ed1b1e432e7011": {
+    "cap": "100 additional retained pages plus the initial page",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/conversations.js:loop:cc11acf286ef20177d74e1d88b4700a64efe1f7976022bc0723911d17dbf0192": {
+    "cap": "100 additional retained pages plus the initial page",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/conversations.js:retry-option:a5777df56d201b3959b7f802825fe93943682eb1789fbbea13c8a646af7f6b46": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/correspondence.js:setTimeout:789f34da0cc26488f4ca235948d2421b7cf5829a5ad3b2128f982d8fbc596c9f": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/current-read.mjs:setTimeout:17e279d705726e2d84a5fa78ea3e38d7f612db526c45e349bd63563b465a9a29": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/design-prototype.js:setTimeout:d1d1936990b8ea4a888b45ba7086ac328b2e4b88665651db8ee780f2e8793b40": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/design-prototype.js:retry-option:6d312a5dcd4e8d137d1bcd11739cc155b9381b790260efc883cb4c989b1f7fb0": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/design-prototype.js:retry-option:b47304a4713f0ffe1fc741331eddfdda1db8a7d3bbd0f6bd9f3fa03ca028b9dd": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/doc-activity.js:loop:5991f466189ba16280c429524c63bf56460a0ad69fc6a2ebfb619d7d8462997b": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/doc-activity.js:setTimeout:125756c7328c7dc6fde61fa16d9681624e9e91c3cc5d3fdbecb1b588e714b737": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/doc-command-bar.js:setTimeout:9ecce8dbd144b163cf256fda9df7bfb77140c5af2c6caf2956ad66f9c6ee3884": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/doc-context.js:read-loop:efd27d6dbb2fc3c8cc2b4fcb53b7bcc79afc2296871d0e30aaf49c99348bcf0b": {
+    "cap": "One wrapper registration per admitted method name; asynchronous read is deferred to a caller",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/email-followups.js:loop:cfe88e9e5d4724814274faceaa29882c95e1d3301504bcc0a85e96badcb0bb9e": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/email-proposals-fixture.js:read-loop:d124b5f5fbb77eda6549f5a5a8b23fc6e6b139fea1e7507168cdd01eaa62eab1": {
+    "cap": "One item per pending synthetic proposal, truncated to requested limit",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/field-write-reconciliation.mjs:retry-option:8d8117166bdd9bc5bedc0be75372c7f7c11b5bbbe67ba51dfd995e19336bd2a8": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/fixture-client.js:loop:3285ed776d75945e2bffe3ba31d423978e6c65a278bf06289ebd36c63cbce88b": {
+    "cap": "At most padded string length, incrementing i each pass; no reads",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/ideas.js:setTimeout:ae6d96b4ef86503e3a6dd68489fd6a0d84b7ef93cdd62ad241a2eee210aec36b": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/incidents.js:retry-option:d693441f97541e675431bf5bd236bdc82c85dba8d46cb729ba9c0344f57626b5": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/job-passport.js:loop:4fd60fe3f2fb7cdfc05dd47014ff5d5dfeac1a818f29a84466fa1919c0107336": {
+    "cap": "SHA-256 has 16/48/64 rounds per finite 64-byte block; comparison stops at the shorter input length",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/job-passport.js:loop:8803a4371f8a6d2a2f8d97d34a96a65259fb1f2b926bc32a4a4b2cc979174c9b": {
+    "cap": "SHA-256 has 16/48/64 rounds per finite 64-byte block; comparison stops at the shorter input length",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/job-passport.js:loop:ef3f6289057305ba3603aaf213c35364ef12b60d57017aaa90f0dbbfe9994e25": {
+    "cap": "SHA-256 has 16/48/64 rounds per finite 64-byte block; comparison stops at the shorter input length",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/job-passport.js:loop:777dfd94f61442dbf7926775569cbf06e08a9cd977076bcbb0d4a9fa1da408cc": {
+    "cap": "SHA-256 has 16/48/64 rounds per finite 64-byte block; comparison stops at the shorter input length",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/job-passport.js:loop:6846508f06ee41e3aeb60982b72897c7767c0808b545ec209746d6c8a0379c76": {
+    "cap": "SHA-256 has 16/48/64 rounds per finite 64-byte block; comparison stops at the shorter input length",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/leads-territory-map.js:loop:67aefbffb3317d4fb4b49ca53b736426a98cf9915d5587aa5c6b40961257da61": {
+    "cap": "Four rectangle sides, SIDES.length; local geometry only",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/leads-workspace-app.js:read-loop:25e90a4252d5f25cb0bcba7976d1084d84ecc5e336bc3cdd08b1d1f96785e015": {
+    "cap": "100 older pages per history kind, two kinds, plus the initial detail read",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/leads-workspace-app.js:loop:10b579407422f728c449ebc31e1fff6eac6d9be5a197e6c9d313678f47d886dd": {
+    "cap": "100 older pages per history kind, two kinds, plus the initial detail read",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/leads-workspace-app.js:requestAnimationFrame:49ad0c20ed52eb73163bedb2abea40a6974d55a061027d565302128dbd7d1303": {
+    "cap": "1800 drag frames, then stopTouch",
+    "backoff": "No reads or retries; browser frame cadence",
+    "idleStop": "Stops when hidden, on pointer release/cancel, when touch is absent, or at the frame cap"
+  },
+  "js/lease-radar-model.js:loop:394449139b4fba1300c01690f793861f7c48a9fd0b353eb0b4e5cb024b0bbcda": {
+    "cap": "Nine quarter buckets at most across the fixed 24-month horizon; advances three months each pass",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/morning-brief.js:loop:54439d654557050da944beb97490cdcec181ff13a4bb920d05634b3f1a40f4a6": {
+    "cap": "4 recent-change pages per refresh",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/notifications.js:loop:95e5dd973afa848f68cc7e37374e7e25ca4928d0c2d4d6056f960c0a4cbb5a58": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/notifications.js:requestAnimationFrame:d376ba18e739fa8864b9fc9351561f8f2f936860ca1eb8139d4313819ae4927e": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/notifications.js:retry-option:44419d23e8abecae1aca27e5e68b7bdeb79f7e3ba1e92419145428deed38547c": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/observatory.js:setTimeout:941ff1804e1ead28fc013739254efac9fefec32fce4afea3ce63bb485dae246c": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/observatory.js:loop:13384057dfe8fc8f76f1636119c845b93c266e7109ab128e2fe66c5d37bc3622": {
+    "cap": "5 deep-link history pages per initial walk",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/offline-tour-session.js:loop:4dccc9d1e2cfec913e9c3fa74eec2cef3f70636b1e655dd0d361e48c84590cf8": {
+    "cap": "Initial storage length, descending index; local storage cleanup only",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/open-session-model.js:retry-option:a73b8e0c3c7cccb71219b045e6e2e852ba821ae60a23c6651b22b0c90268ea0b": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/phone-calls.js:setTimeout:5df3ea5e400eab11a1627e1031be91d5f5d0e95b047fe0021e941f81e4599886": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/phone-calls.js:setTimeout:d417164410aa2ad7024873bc8ffa37e8f1558653c43a1374846a6175de31da52": {
+    "cap": "10 transfer polling attempts; at most 100 queued status reads per attempt",
+    "backoff": "30 seconds, doubling each attempt to 120-second ceiling; audio stays local after failure",
+    "idleStop": "watchPresence checked before scheduling and every row; hidden clears timer; 30-minute idle, pagehide and session invalidation stop; a new transfer explicitly resets the budget"
+  },
+  "js/phone-calls.js:read-loop:fb93a23500951b3135cd833948eaa337dd80c89586fc2ede467a84a8df053644": {
+    "cap": "100 queued recording status reads per polling attempt; 10 polling attempts",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/pipeline.js:retry-option:ff25efa2af9246438dc26549038491b4cc0d2fc84d0dc441c6cf86ff7754e336": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/pipeline.js:retry-option:0019eb0fe19c8178ada99a193dc0ce66eebad03c47ee5b1d3ec8fcaf978c83be": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/pipeline.js:retry-option:67bedc2c3a9d650a118ef6c7949ee837911e19a23da36a42def3b1164d0eb7b9": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/pipeline.js:retry-option:44e41cfcdec0770be13891f950171370cbcaf7eb4e3902022f99cf011614804e": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/pipeline.js:read-loop:322d974436d22bd1ab46fac91eeaa2466c1bab0e49dd97df03600e0346418567": {
+    "cap": "Finite planned followUps array, one command per step; journal retains the request identity and errors stop the sequence",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/pipeline.js:setTimeout:f71f8be1381ce104680fd93bb5017a186e0f5bbb069f184e6e67ef048356980a": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/pipeline.js:setTimeout:326daadf12df9c0737bd3609a97fc8b5658d93c85466bac3d94200502aabc700": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/pipeline.js:retry:5998db7ff30f85af9041c699e620ba8f6936c0b4cf7081a887e6fa8a820f250f": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/pipeline.js:retry:04a6fddb5deaba2d4c7fffefcaeca6d2050655a3ae74635728f69c87530dcd0a": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/progress-board.js:setInterval:f8e26a114b45668308c2c2c8c051d1109360e8683ffc1ab0087ec47eef795ad7": {
+    "cap": "Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks",
+    "backoff": "Local repaint only; callback error stops the clock without retry",
+    "idleStop": "The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal"
+  },
+  "js/progress-board.js:setTimeout:ee19635ac727ff2dc94e72ad19e122fb99d7dd21bff676a0465a195e33c2d7ef": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-board.js:requestAnimationFrame:89648ffe38999d32dfb865c30b4e00b646a25fcb548b6df3f100c003756b855b": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-board.js:setTimeout:6d4f1c1dc182db379152b6e5a9a314ba5627b864f0f174ef554e810642a1fbe3": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-board.js:setTimeout:726b754a3cd3f2f1b528c62debf886d4e9734d76054b6a7fe87b41e2d52dc4fc": {
+    "cap": "1800 local freshness timer dispatches per wake/return",
+    "backoff": "No reads or retries; next publication boundary, at most 60 seconds",
+    "idleStop": "agePresence stops hidden or 30-minute idle; disposal clears timer and presence listeners"
+  },
+  "js/progress-board.js:loop:2b6ab22ae064dff95be135c630533cf54bab35b6508bc0bc93ae683cc84e3903": {
+    "cap": "Three skeleton cards or one listener per convention row; asynchronous work is inside user click handlers",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/progress-board.js:requestAnimationFrame:be025756413856e74ee2b569e47285ed3e1e2ba644a930838f427fc7e7def10e": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-board.js:loop:92947decdc9b6e577f0a9dd6b4f9d307966ce1b9f3cda36a81dc2f2873634b09": {
+    "cap": "20 superseded read handoffs, then false",
+    "backoff": "Awaits an already-running distinct read; never starts a retry or request",
+    "idleStop": "Returns at the hard cap or when no newer read exists; the owning poller has the hidden/30-minute idle stop"
+  },
+  "js/progress-board.js:read-loop:7fb46ea867bab048c89f29091f7cff2b50a8f3758c4fcc7c8811a5b17acf6f7b": {
+    "cap": "Three skeleton cards or one listener per convention row; asynchronous work is inside user click handlers",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/progress-board.js:retry-option:c1551297d46da228ca769402e5075caef77cd6ec7328740dd2d5e365911767a5": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/progress-hierarchy.js:loop:85d3d4f509b4abee07f67a74fbe4d8041e43285ae01929733b49db9c5fc4561e": {
+    "cap": "Visited alias keys prevent cycles; DOM expansion advances to a strict ancestor each pass",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/progress-hierarchy.js:loop:d282b961b580ceab639ceaa040d0d6eff412dbf0036364fe0eca7e52c32af77f": {
+    "cap": "Visited alias keys prevent cycles; DOM expansion advances to a strict ancestor each pass",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/progress-orchestrator.js:loop:56560e4d7fcdcf30be57ec4ab785385179ab354975907bac61b45467627520a2": {
+    "cap": "Finite DOM ancestors, parentElement advances every pass; no reads",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/progress-orchestrator.js:read-loop:438f69b1e46ed10e34bc25e5428c4be6bea4bf25b91dd4b92c6667b3f9fb1aab": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/progress-wire.js:loop:a44966fdeba6cf11457bee3dccca51e47b9162445a4079f666f15f4733029ffa": {
+    "cap": "At most initial host child count removals, removing lastElementChild each pass",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/progress-wire.js:requestAnimationFrame:62db6613129ee5f8055edce7c703cd9bf208b1ba375cbae4836593bdd67f5898": {
+    "cap": "180 count frames / 300ms; 600 comet frames / at most 2200ms",
+    "backoff": "No reads or retries; browser frame cadence",
+    "idleStop": "Hidden stops the animation and removes the comet; duration and frame caps always terminate"
+  },
+  "js/progress-wire.js:retry:96fca42b1aa28679514f7a125f51ebbb2bc24b2cb7b3aee211fd6832c85dae01": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/progress-wire.js:setTimeout:63e24a05758793640e3eb3aa04b76faa93b9e35e95f93147b4a5fcace00d1435": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-wire.js:retry:8a01e5fa48e443b3cfa662d182f413a3e3bde0fe0388fb10ee7ce41d8d50ee5e": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/progress-wire.js:retry:b465f529971abda0b07a32593667a5d9a6bbfaf5de81e07cbdc8056066e21ea4": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/progress-wire.js:retry:9e4a45ac42bea0c59304f0d1b715240e30147cc9a75d031b81bd840b0175c502": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/progress-wire.js:setTimeout:0c89a7303f2a2ae42b3113f47f183c6cb90b8e6116d7a5576cf645e80ec0779a": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-wire.js:setTimeout:c59d09d5e42e58a078fcaee37019e6d9812d34a450e51eb0404b3bebdaa2c454": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-wire.js:loop:87a7094ebf3e779e352ad9c251f6b1791fa50bdfececee7c701c9495a0628a0f": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/progress-wire.js:loop:9b4dcd0a98e968ee5bbd7663f696f123e61a047e04a2b6b62c2c9cfcec3221e7": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/progress-wire.js:setTimeout:0a5ef150977b6ce09c7063254280911524f9ea5c4fd2620b1af461c83c5b4a52": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/progress-work.js:loop:f31a7d59fdbdf4bb90583ba30bd264cb4c4f3848154b9ad12ddcd278f47a79e0": {
+    "cap": "Visited task aliases prevent cycles, at most the finite aliases key count",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/prospect-engagement.mjs:loop:d6a17a933b45ef723fac4db797bf016ae5ba1064c8008e4e9dd192dd87f33a2c": {
+    "cap": "At most initial storage length, increasing i; local storage scan only",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/queue.js:setTimeout:842e9f8a4c1312e1698bccadb6e7936599a5c1148b7085e3f71230a7e7ce4b31": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/read-budget.mjs:page-budget:c7be36a6707a07e09271b8089e1377daec0c2bd3a24164f83d11780f9f248fa3": {
+    "cap": "100 pages per batch",
+    "backoff": "No automatic retry; capped and failed reads return to caller error state",
+    "idleStop": "Hidden state or 30-minute batch deadline, checked before each page"
+  },
+  "js/retained-commands.mjs:retry-option:1fb3f4821b939c32088315cbb198526227b4725fdd2456543dede64a12eef2c0": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/search-model.js:retry-option:22ce56d98da77c614676be20dc34899af6e265a8f9829293649385c99867458c": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/search.js:setTimeout:257605f093153ab8e1fa458b2372776eda84a0018acd5685f77859a583f85dd2": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/sessions.js:read-loop:da538e0c6b72bba0b58a461fab6bf08a433a68501927dae27bdee9f7d15b32bf": {
+    "cap": "One event-listener registration per copy button; asynchronous clipboard read is in a user click handler",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/sessions.js:setTimeout:cede8f984755b6e4bf0b440db7ccee03d841253e8736a9a81d8b67429a744045": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/system-work-board.js:loop:dfcb6dfde491c1b7449c9824b8e623ee478d481a1efe967735653dbbd657b922": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/task-records-model.js:loop:4accd5e3d885393ac8d54f88b1c774ffb482277c11096008e73f08b4d5da6a19": {
+    "cap": "One hash step per character in the finite value string",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/task-records.js:retry:27104275b694b47c31389f11a663f37853c2460f77272578d86d2f3a0c5e2c46": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/task-records.js:retry-option:275e3babb7037d88657279c96cc32715e959619912d43899114da9016cfbc2ff": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/toast.js:setTimeout:062c24581beff2848c9a00e72cf76acb404ef226d6cd67a66063a3b45d76ea3b": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/visibility-poll.mjs:setTimeout:6d8101148df32b48d5300480e2837d5da1ec250cff6de456bba789bd1ceece7a": {
+    "cap": "20 automatic reads per presence period; timer adapters inherit the owning helper budget",
+    "backoff": "Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes",
+    "idleStop": "Hidden or 30-minute idle; live recorder keepAlive is permitted only while recording, still capped at 20"
+  },
+  "js/visibility-poll.mjs:setTimeout:01646e94b3b2c3ee86304aae8adb1db17a31d953b3a79f8211d9f2502f07e6b7": {
+    "cap": "20 automatic reads per presence period; timer adapters inherit the owning helper budget",
+    "backoff": "Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes",
+    "idleStop": "Hidden or 30-minute idle; live recorder keepAlive is permitted only while recording, still capped at 20"
+  },
+  "js/visibility-poll.mjs:setTimeout:ff6da7c81c78ea7a56e20227ee11c03155ca378093c0a5bf3568753c8e341eba": {
+    "cap": "20 automatic reads per presence period; timer adapters inherit the owning helper budget",
+    "backoff": "Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes",
+    "idleStop": "Hidden or 30-minute idle; live recorder keepAlive is permitted only while recording, still capped at 20"
+  },
+  "js/visibility-poll.mjs:setInterval:806f0c0b0c3d74fb3d1bdae83c22c5c179d3bfd7e646780209572b666f6866ad": {
+    "cap": "ceil(30 minutes / intervalMs) local ticks per presence period",
+    "backoff": "Local repaint only; a failed callback stops the clock without retry",
+    "idleStop": "watchPresence and visibilitychange stop hidden or 30-minute idle; dispose clears the interval and rejects stale ticks"
+  },
+  "js/visibility-poll.mjs:setInterval:949206f0d9bda507da1e58bda74470fcf2bbfa80b73724d46349102f53ada57f": {
+    "cap": "ceil(30 minutes / intervalMs) local ticks per presence period",
+    "backoff": "Local repaint only; a failed callback stops the clock without retry",
+    "idleStop": "watchPresence and visibilitychange stop hidden or 30-minute idle; dispose clears the interval and rejects stale ticks"
+  },
+  "js/visibility-poll.mjs:setInterval:0d121401ee6ca20711978bf3e2ecaac084d3f8a800eb449bb9ef3a4690d007cd": {
+    "cap": "ceil(30 minutes / intervalMs) local ticks per presence period",
+    "backoff": "Local repaint only; a failed callback stops the clock without retry",
+    "idleStop": "watchPresence and visibilitychange stop hidden or 30-minute idle; dispose clears the interval and rejects stale ticks"
+  },
+  "js/visual-system.js:retry-option:02b75eccb83b727fab97acc7c2231cb59888dd8c3548e918ff6504e35a99836a": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/visual-system.js:retry-option:e307c8ceea01046e487b8dc6b072e77c96958543d11dfb0344d9e1bd0f01cf80": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/work-inventory.js:retry-option:17dfac8f7fadd0180cc29349e5aae4bcfda5dc35c6990d17d4a36664eb222e75": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/work-inventory.js:loop:432754a3766295da397fcd600404f48ec640f03736ff641313aa77dad89c23d9": {
+    "cap": "100 additional retained pages plus the initial page",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/workspace-business-model.js:loop:45ef8371f4918709c0b7a06a6b222cdcf3f5b42ab99a0d0fbbc54b4e61477509": {
+    "cap": "At most initial cache size removals; delete one key each pass until the size limit",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/workspace-business.js:setTimeout:684cf8363f115ec6e141f2d55fceb1c30ecba2e824e6fb97226b68eb7091c2cb": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-business.js:retry-option:80bd86698ce80ec0abe6f583a3a0ad28090ec8fb1f295af4cdee1048ad47b678": {
+    "cap": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
+    "backoff": "No retry scheduler; another operator action is required after failure",
+    "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
+  },
+  "js/workspace-business.js:loop:8b3c65f5e09306c05ba28321154015eff58f00ce42ee7a6ff20a75dc2174c699": {
+    "cap": "100 additional retained pages plus the initial page",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/workspace-business.js:setTimeout:da66b71d402fe17e2ea75ed115821437122751a5cc097344730b095957a640c6": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-business.js:setTimeout:612f5e14fb8ed0d8202de3b1aeab8e943af8e2b8c8b086b48581ac69fa60bb76": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-business.js:setTimeout:1a29bd4d99896c8967631aa9c7af18219116c74db3d03cfb99c8d460e6d46c25": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-command-center.js:setTimeout:88bc53c29daee236d6bc83c1fca2413936c8e2af9563963cd5efbad482ee216b": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-command-center.js:setTimeout:155f993ad0f76a7d6b18d8b538b013afe45b060c525da3cff97d4feca560c143": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-command-center.js:setTimeout:505dd58ca8e84ea8dbfa28ebe9592ac95e65d58cc50c64bb1ca16b01f9ca5cf2": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "src/ui/fact-review.tsx:loop:2aca7db59685abef41b5e0b8491bc66cd53f8c84dd9a983ef5e0427ccf2c8cd9": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "src/ui/fact-review.tsx:loop:5196049732668d7ca7e823b2e36a481ab8b23b59bfa2782bb8f717d45600a7e1": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "src/ui/fact-review.tsx:loop:e5093cf8c97395c0a17c5b005d45cee8f6eaf22e546997dd476f7ee83874126a": {
+    "cap": "100 pages per batch",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "reports/share.js:setTimeout:1a935be8a6a02ac63cfd6e6975c4e4ba8980043cb2fd1e3e489ac0ddcf29e8d8": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "tours/app.js:setTimeout:23ffdf6ff96584e1fc1c68b5204b1e06ccccfc5709065e8509d94f9375a2065d": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "tours/app.js:loop:f96a56251bf489dd97fe4a5aee1e87075332781431d0785e7b96888881971a30": {
+    "cap": "20 client lookup pages per hydration",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "tours/app.js:read-loop:43a098960b18d261095de56af8d2f5dfdc7465c95db957153f8f47997f054895": {
+    "cap": "Finite operator-selected rows or precomputed plan.steps, advancing plan.index once per step; no automatic replay after failure",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "tours/app.js:loop:7576f70039aeb143ae7d2bc4bcc688215bb6c837eeb480bf3f4a19d30c6f5df9": {
+    "cap": "Finite operator-selected rows or precomputed plan.steps, advancing plan.index once per step; no automatic replay after failure",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "tours/app.js:setTimeout:49f02da324dd036116217cc4d8cab9d2b84da3d935f82716198defad4bdf75ee": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "tours/day-recorder.js:read-loop:914738ee2f93905a3074104ff0ae5831485f721f218f6d5ed58b89ffc791be47": {
+    "cap": "At most the finite IndexedDB recording rows, one local recovery per note",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "tours/day-recorder.js:setTimeout:8abb38dc72597156a4a51aaeab82f702f5c71b24961405a9317d9edaabe373f6": {
+    "cap": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "tours/day-sw.js:read-loop:e707a7bac495c903cc976ad65e26b4ab17c7e334adf5097bf49e034047ea54a5": {
+    "cap": "At most the finite CacheStorage keys, one local delete per retired shell; no network",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "tours/planner.js:read-loop:8c27308699ebe9569e7befd733bfddd7eef1a05e75b886c2c283f3428b4a3221": {
+    "cap": "At most three upcoming tour reads, or two distinct selected client IDs",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "tours/planner.js:read-loop:00aeeb724e7f1c2ee5cac8d3326b78abe75af92b5d97bf8b1eb5d9674cc2606d": {
+    "cap": "At most three upcoming tour reads, or two distinct selected client IDs",
+    "backoff": "No automatic retry; one finite traversal per invocation",
+    "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  }
+}
