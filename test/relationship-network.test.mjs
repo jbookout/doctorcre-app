@@ -13,12 +13,14 @@ import {
 } from "../js/relationship-network-model.js";
 import { escapeText } from "../js/change-receipts.mjs";
 import { createLiveClient } from "../js/live-client.js";
+import { carrInterface } from "./carr-contract.mjs";
+
 test("relationship rendering uses the shared HTML escaping rule", () => {
   assert.equal(escapeHtml, escapeText);
   assert.equal(escapeHtml(`<a title="O'Brien">&`), '&lt;a title=&quot;O&#39;Brien&quot;&gt;&amp;');
 });
 test("relationship contract pins canonical bytes and the versioned selector", async () => {
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url)));
+  const contract = carrInterface;
   const bytes = await readFile(new URL('../contracts/relationship-network.v1.json', import.meta.url));
   const digest = createHash('sha256').update(bytes).digest('hex');
   assert.equal(contract.relationship_network.sha256, digest);

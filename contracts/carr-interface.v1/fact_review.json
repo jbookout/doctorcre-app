@@ -1,0 +1,132 @@
+{
+  "schema_version": "fact-review.v1",
+  "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2739",
+  "list": {
+    "verb": "list-fact-review",
+    "input": [
+      "entity_ref?",
+      "limit? (1..100)",
+      "cursor?",
+      "include_resolved?"
+    ],
+    "output": [
+      "ok",
+      "schema_version",
+      "items",
+      "has_more",
+      "next_cursor"
+    ],
+    "item": [
+      "entity_ref",
+      "fact_key",
+      "canonical_version",
+      "review_version",
+      "pending",
+      "reasons",
+      "observations",
+      "canonical_fact",
+      "canonical_history",
+      "review_history"
+    ]
+  },
+  "record": {
+    "verb": "record-human-fact",
+    "input": [
+      "idempotency_key",
+      "entity_ref",
+      "observation"
+    ],
+    "output": [
+      "ok",
+      "schema_version",
+      "replayed",
+      "batch_id",
+      "observations",
+      "observation"
+    ],
+    "promotes": false
+  },
+  "resolve": {
+    "verb": "resolve-fact-review",
+    "input": [
+      "idempotency_key",
+      "entity_ref",
+      "fact_key",
+      "base_version",
+      "review_version",
+      "decision",
+      "reason",
+      "observation_id?",
+      "correction?"
+    ],
+    "output": [
+      "ok",
+      "schema_version",
+      "replayed",
+      "canonical_fact",
+      "review_receipt"
+    ],
+    "decisions": {
+      "approve": "Requires observation_id; forbids correction.",
+      "correct": "Requires correction with the same fact_key; forbids observation_id.",
+      "reject": "Forbids observation_id and correction; preserves canonical value."
+    }
+  },
+  "human_fact": {
+    "fields": [
+      "fact_key",
+      "value",
+      "unit",
+      "expense_basis?",
+      "source"
+    ],
+    "source": [
+      "document_ref",
+      "page_start",
+      "page_end",
+      "cited_text"
+    ],
+    "entity_ref": "Deal UUID",
+    "document_ref": "Existing undeleted attachment UUID bound to this deal",
+    "value": "Nonnegative decimal string; at most 30 integer and 18 fractional digits.",
+    "fact_keys": {
+      "base_rent_per_sf": {
+        "units": [
+          "USD/SF/year",
+          "USD/SF/month"
+        ],
+        "expense_basis": [
+          "nnn",
+          "modified_gross",
+          "full_service_gross",
+          "gross"
+        ]
+      },
+      "landlord_ti_per_sf": {
+        "units": [
+          "USD/SF"
+        ]
+      },
+      "term_months": {
+        "units": [
+          "months",
+          "years"
+        ]
+      },
+      "free_rent_months": {
+        "units": [
+          "months"
+        ]
+      }
+    }
+  },
+  "canonical_fact": "normalized_value and canonical_unit with expense_basis, observation_ids and version; null before promotion.",
+  "citations": "Observation source retains document_ref, page_start, page_end, cited_text_sha256, cited_text_expires_at. Expired cited_text is null.",
+  "conflict": "version_conflict refuses the write. Refresh canonical_version and review_version and ask the partner to review again.",
+  "documents": {
+    "verb": "list-deal-documents",
+    "schema_version": "deal-documents.v1",
+    "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762",
+    "source_commit": "35dd8142e831a582b532da401e10f34c78df4040"
+  }
+}
