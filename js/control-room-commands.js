@@ -2,7 +2,7 @@ import {onDialogClosed} from './dialog-lifecycle.js';
 import { escapeText } from './change-receipts.mjs';
 import { ignoreKey } from './control-room-list.js';
 
-const TAB_KEYS = { inbox: 'i', waiting: 'w', triage: 't', queue: 'q', views: 'v', boards: 'b',
+const TAB_KEYS = { inbox: 'i', waiting: 'w', triage: 't', queue: 'q', views: 'v', boards: 'b', approvals: 'p',
   automations: 'u', connections: 'c', agents: 'a', 'system-map': 'm', sessions: 's' };
 const LINK_COMMANDS = [
   ['Project progress', '#switch-project'], ['All repositories', '#switch-all'],

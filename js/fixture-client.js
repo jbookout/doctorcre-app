@@ -65,6 +65,14 @@ export async function createFixtureClient(opts = {}) {
   });
 
   const selfActor = opts.selfActor || seed.actors?.self || 'joe';
+  const conventionProposals = [1, 2].map((number) => {
+    const section_id = `d0000000-0000-4000-8000-00000000c15${number}`;
+    return { section_id, section_key: `conventions/proposed/demo-${number}`, base_version: number,
+      updated_at: '2026-10-28T12:00:00Z', adoptable: true, statement: `Demo convention ${number}.`,
+      card_id: null, packs: ['demo'], approve_with: { verb: 'adopt-rule', section_id, base_version: number } };
+  });
+  const conventionReceipts = new Map();
+
   const partnerActor = seed.actors?.partner || 'dell';
 
   const dealStore = opts.dealStore || createFixtureDealStore(seed);
@@ -2607,6 +2615,23 @@ export async function createFixtureClient(opts = {}) {
       const coverage=[...new Set(rows.map(r=>r.kind))].map(kind=>({kind,source_ref:`demo.${kind}`,state:kind==='defect'?'partial':'complete',count_total:rows.filter(r=>r.kind===kind).length,count_returned:items.filter(r=>r.kind===kind).length,reason:kind==='defect'?'fix_status_not_recorded':null}));
       return {schema:'unfinished-work.v1',items,coverage,census_complete:false,as_of:at,next_cursor:next,limit:size};
     },
+    async adoptRule(args) {
+      const previous = conventionReceipts.get(args.idempotency_key);
+      if (previous) {
+        if (JSON.stringify(previous.args) !== JSON.stringify(args))
+          throw Object.assign(new Error('key_reuse'), { payload: { error: 'key_reuse' } });
+        return structuredClone(previous.result);
+      }
+      const index = conventionProposals.findIndex(row => row.section_id === args.section_id);
+      const error = index < 0 ? 'convention_proposal_not_found'
+        : conventionProposals[index].base_version !== args.base_version ? 'version_conflict'
+          : !args.reason?.trim() ? 'missing_required' : null;
+      if (error) throw Object.assign(new Error(error), { payload: { error } });
+      const result = { ok: true, rule_id: uuidv4(), retired_section_id: args.section_id };
+      conventionProposals.splice(index, 1);
+      conventionReceipts.set(args.idempotency_key, { args: structuredClone(args), result });
+      return structuredClone(result);
+    },
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -2622,14 +2647,16 @@ export async function createFixtureClient(opts = {}) {
       ];
       return {
         ok: true,
+        pending_convention_proposals: structuredClone(conventionProposals),
         pending_rule_approvals: rules,
         pending_guidance_import_batches: batches,
         pending_retrieval_proposals: proposals,
         counts: {
+          pending_convention_proposals: conventionProposals.length,
           pending_rule_approvals: rules.length,
           pending_guidance_import_batches: batches.length,
           pending_retrieval_proposals: proposals.length,
-          total: rules.length + batches.length + proposals.length,
+          total: conventionProposals.length + rules.length + batches.length + proposals.length,
         },
       };
     },

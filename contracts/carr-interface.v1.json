@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.67.0",
+  "version": "1.68.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
@@ -23,6 +23,7 @@
     "add-loop",
     "add-party",
     "add-room-turn",
+    "adopt-rule",
     "advance-workflow-cutover-stage",
     "answer-board-question",
     "answer-work-request-for-joe",
@@ -1867,5 +1868,49 @@
       "use_type",
       "as_of"
     ]
+  },
+  "convention_adoption": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "728fc86bcc54eb15a7b129a8a0500b25ada6dcc0",
+      "source": "mcp-server/src/org-conventions.js"
+    },
+    "read": {
+      "verb": "governance-queue",
+      "lane": "pending_convention_proposals",
+      "fields": [
+        "section_id",
+        "section_key",
+        "base_version",
+        "updated_at",
+        "adoptable"
+      ],
+      "availability": "Adoptable proposals provide the statement, packs, and approve_with command; non-adoptable proposals provide a problem.",
+      "adoptable_fields": [
+        "statement",
+        "card_id",
+        "packs",
+        "approve_with"
+      ],
+      "non_adoptable_fields": [
+        "problem"
+      ]
+    },
+    "write": {
+      "verb": "adopt-rule",
+      "input": [
+        "idempotency_key",
+        "section_id",
+        "base_version",
+        "reason"
+      ],
+      "receipt": [
+        "ok",
+        "rule_id",
+        "retired_section_id"
+      ],
+      "authentication": "Partner's own same-origin session with x-carr-csrf; no machine identity.",
+      "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome."
+    }
   }
 }

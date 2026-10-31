@@ -60,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review', 'adopt-rule']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -118,6 +118,8 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(new Error('Recorded term receipt unavailable'));
     if (verb === 'resolve-fact-review' && (!Object.hasOwn(payload, 'canonical_fact') || payload.review_receipt?.decision !== args.decision))
       throw unknownMcpOutcome(new Error('Term decision receipt unavailable'));
+    if (verb === 'adopt-rule' && (payload?.ok !== true || !payload.rule_id || payload.retired_section_id !== args.section_id))
+      throw unknownMcpOutcome(new Error('Adoption receipt unavailable'));
     if (verb === 'start-deal-review') requireReviewReceipt(payload);
     if (['confirm-email-next-step', 'confirm-email-deal-progress'].includes(verb)) {
       const contract = verb === 'confirm-email-next-step' ? 'email-next-step.v1' : 'email-deal-progress.v1';
@@ -144,7 +146,7 @@ export function createLiveClient(opts = {}) {
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
     const target = ['proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
-      'entity_ref', 'fact_key', 'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
+      'section_id', 'entity_ref', 'fact_key', 'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
     const retained = sessionWrites.has(verb) ? sessionCommands : commands;
@@ -644,8 +646,9 @@ export function createLiveClient(opts = {}) {
     // ------------------------------------------------- Operations cards (C14)
     // One read-only verb, passed through untouched. It takes NO arguments and
     // refuses any field, so none is sent. It grants no authority: the decisions
-    // it lists are taken with their own partner verbs, none of which is pinned.
+    // it lists are taken with their own partner verbs. Adoption uses the session write path.
     async readConnections({ signal } = {}) { return (await rpc('read-resource-dashboard', {}, signal)).connections; },
+    async adoptRule(args) { return write('adopt-rule', args); },
     async governanceQueue() { return rpc('governance-queue', {}); },
     async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 
