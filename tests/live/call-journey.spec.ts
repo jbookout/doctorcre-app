@@ -2,13 +2,19 @@
 // through the real Call Mode path into the real record layer; nothing the app
 // reads here is stubbed.
 import type { Page } from '@playwright/test';
-import { test, expect } from './harness';
+import { test, expect, type FiledCall } from './harness';
 
 test.describe.configure({ mode: 'serial' });
 
 const BAYSIDE = 'Synthetic Bayside Dental Relocation';
 const HARBOR = 'Synthetic Harbor Clinic Expansion';
 const PINECREST = 'Synthetic Pinecrest Lab Lease';
+
+// The companion's capture and post-call logs travel with any failure.
+async function filed(call: FiledCall) {
+  await test.info().attach('call-mode logs', { body: call.logs(), contentType: 'text/plain' });
+  return call;
+}
 
 // Home's call reads have answered, so an empty list means empty, not loading.
 async function openHome(page: Page) {
@@ -20,7 +26,7 @@ async function openHome(page: Page) {
 }
 
 test('a call whose filing fails is not shown as filed, and Home says it needs attention', async ({ signedIn: page, carr, companion }) => {
-  await companion(await carr.fileCall({ distiller: 'failing' }));
+  await companion(await filed(await carr.fileCall({ distiller: 'failing' })));
   await openHome(page);
   await expect(page.locator('#homeCallTasks')).toContainText('No call follow-ups');
   await expect(page.locator('.call-outcome')).toHaveCount(0);
@@ -32,7 +38,7 @@ test('a call whose filing fails is not shown as filed, and Home says it needs at
 });
 
 test('a filed call shows its decisions and tasks on Home and updates the deal page', async ({ signedIn: page, carr }) => {
-  await carr.fileCall();
+  await filed(await carr.fileCall());
   await openHome(page);
 
   // The decisions it applied, each with what was said.

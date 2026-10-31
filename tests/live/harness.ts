@@ -18,7 +18,7 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
   '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 /** One filed (or failed) call: its companion and session name. */
-export type FiledCall = { url: string; name: string };
+export type FiledCall = { url: string; name: string; logs(): string };
 export type LocalCarr = {
   url: string; e2eSecret: string; deals: Record<string, string>; setupMs: number;
   mcp(name: string, args?: object): Promise<any>;
