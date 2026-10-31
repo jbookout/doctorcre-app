@@ -62,5 +62,5 @@ test('incomplete GitHub evidence and unverified paired PRs stay merged', () => {
     assert.equal(queueBoard(read([merged], github)).jobs[0].stage, 'merged');
   assert.equal(queueBoard(read([{ ...merged, prs: [...merged.prs, { state: 'closed', production_live: null }] }], [{ repo: 'server', state: 'ok' }])).jobs[0].stage, 'merged');
   assert.equal(queueBoard(read([{ ...merged, pr_evidence_complete: false }])).jobs[0].stage, 'merged');
-  assert.throws(() => queueBoard(read([job('WR557.S4.J2', 'live')], [])), /incomplete/);
+  assert.equal(queueBoard(read([job('WR557.S4.J2', 'live')], [])).jobs[0].stage, 'merged');
 });
