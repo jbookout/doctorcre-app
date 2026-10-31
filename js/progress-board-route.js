@@ -8,8 +8,7 @@ export function boardIdFromPath(pathname) {
 }
 export function legacyBoardDestination(url) {
   if (!['/control-room/progress', '/progress-board', '/progress-board.html'].includes(url.pathname)) return null;
-  const board = url.searchParams.get('board');
-  if (!board) return null;
+  const board = 'carr-v5';
   const destination = new URL(boardPageUrl(board), url);
   destination.search = url.search;
   destination.searchParams.delete('board');
