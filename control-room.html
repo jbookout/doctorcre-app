@@ -35,6 +35,7 @@
 <button class="cr-nav-item" type="button" role="tab" id="tabQueue" data-tab-key="queue" aria-controls="panelQueue" aria-selected="true"><span class="cr-nav-label">Queue</span><span class="cr-nav-count" aria-hidden="true" data-count-for="queue"></span></button>
 <button class="cr-nav-item" type="button" role="tab" id="tabViews" data-tab-key="views" aria-controls="panelViews" aria-selected="false"><span class="cr-nav-label">Views</span></button>
 <button class="cr-nav-item" type="button" role="tab" id="tabDashboard" data-tab-key="boards" aria-controls="panelDashboard" aria-selected="false"><span class="cr-nav-label">Boards</span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabApprovals" data-tab-key="approvals" aria-controls="panelApprovals" aria-selected="false"><span class="cr-nav-label">Approvals</span></button>
 <span class="cr-nav-group" role="none">System</span>
 <button class="cr-nav-item" type="button" role="tab" id="tabAutomations" data-tab-key="automations" aria-controls="panelAutomations" aria-selected="false"><span class="cr-nav-label">Automations</span></button>
 <button class="cr-nav-item" type="button" role="tab" id="tabConnections" data-tab-key="connections" aria-controls="panelConnections" aria-selected="false"><span class="cr-nav-label">Connections</span></button>
@@ -172,7 +173,9 @@
         <div class="panel-heading"><div><h2 id="completed-title">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
         <div id="completed-list" class="completed-list"></div>
       </section>
-<p id="governanceState" class="state-block" role="status" hidden></p></section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
+</section><section class="tabpanel" id="panelApprovals" role="tabpanel" aria-labelledby="tabApprovals" hidden>
+<section class="panel" aria-labelledby="conventionsTitle"><div class="panel-heading"><h2 id="conventionsTitle">Proposed team conventions</h2></div>
+<p id="governanceState" class="state-block" role="status" hidden></p><p id="conventionStatus" role="status"></p><div id="conventionProposals"></div></section></section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
 <section class="panel"><div class="panel-heading"><h2>Connections</h2><time id="connectionsUpdated">Updating…</time></div><p id="connectionsState" class="small" role="status" hidden></p><div class="connection-columns" aria-hidden="true"><span>Provider</span><span>Status</span><span>Spend</span></div><div id="connectionsProviders" class="connection-grid"></div></section>
 <section class="panel"><h2>Devices</h2><div id="connectionDevices" class="connection-grid"></div><p id="devicesState" role="status"></p></section></section>
 <section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls" id="automationControls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button></div></div><p id="automationState" class="small" role="status" hidden></p><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>

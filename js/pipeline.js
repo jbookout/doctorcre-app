@@ -1001,6 +1001,7 @@ async function copyRequirementDraft() {
 }
 const workspaceTabs = [
   {id:'overview', label:'Overview'},
+  {id:'market-terms', label:'Compare terms'},
   {id:'timeline', label:'Timeline'},
   {id:'correspondence', label:'Correspondence & notes'},
 ];
@@ -1023,6 +1024,7 @@ function selectWorkspaceTab(id) {
     $(`tab-${tab.id}`).tabIndex = selected ? 0 : -1;
     if ($(`workspace-${tab.id}`)) $(`workspace-${tab.id}`).hidden = !selected;
   }
+  if (id === 'market-terms') void marketTermsPanel?.load();
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
     $('panelEvidenceSection').open = true;
@@ -1045,7 +1047,7 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
-let factReviewPanel;
+let factReviewPanel, marketTermsPanel;
 
 function workspaceHtml(detail) {
   const d = detail.deal;
@@ -1074,6 +1076,7 @@ function workspaceHtml(detail) {
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     <h2>Critical dates</h2>${renderCriticalDates(detail)}
     <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
+    <section id="workspace-market-terms" role="tabpanel" aria-labelledby="tab-market-terms" hidden></section>
     <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
 }
@@ -1159,6 +1162,7 @@ async function readPanel(id) {
         }
       }
       void factReviewPanel?.refresh();
+      void marketTermsPanel?.refresh();
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1195,6 +1199,7 @@ function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
+  marketTermsPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
   const terms = $('panelTerms');
   let disposed = false, loading = false, mounted;
@@ -1225,12 +1230,29 @@ function paintPanel(detail) {
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
+  let marketDisposed = false, marketLoading = false, marketMounted;
+  marketTermsPanel = {
+    async load() {
+      if (marketDisposed || marketLoading) return;
+      marketLoading = true;
+      const root = $('workspace-market-terms');
+      root.textContent = 'Loading comparable terms…';
+      try {
+        const { mountMarketTerms } = await import('./ui.generated.js');
+        if (!marketDisposed) marketMounted = mountMarketTerms(root, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type });
+      } catch { if (!marketDisposed) { marketLoading = false; root.textContent = 'Could not load comparable terms. Try again.'; } }
+    },
+    refresh() { return marketMounted?.refresh(); },
+    dispose() { marketDisposed = true; marketMounted?.dispose(); },
+  };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   factReviewPanel?.dispose();
   factReviewPanel = null;
+  marketTermsPanel?.dispose();
+  marketTermsPanel = null;
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
@@ -1259,6 +1281,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
 function closeWorkspace({ fromHistory = false } = {}) {
   factReviewPanel?.dispose();
   factReviewPanel = null;
+  marketTermsPanel?.dispose();
+  marketTermsPanel = null;
   if (!fromHistory && history.state?.doctorcreDealWorkspace) { history.back(); return; }
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');

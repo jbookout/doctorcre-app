@@ -72,7 +72,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(header).toContainText('Legal');
     await expect(header).toContainText('Joe');
     await expect(header).toContainText('Oct 9, 2026');
-    await expect(page.getByRole('tab')).toHaveCount(3);
+    await expect(page.getByRole('tab')).toHaveCount(4);
     await expect(page.locator('#workspace-overview')).toBeVisible();
     await expect(page.locator('.critical-dates')).toContainText('LOI');
     await expect(page.locator('#detailUpdateForm')).toBeVisible();
