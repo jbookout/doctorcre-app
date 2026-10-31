@@ -979,8 +979,8 @@
       "write": false,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+        "source_commit": "9ce8f9fbb7bd8be5e98a724fd09815a8115bec2d",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2716"
       },
       "response": {
         "schema_version": "post-call-followups.v1",
@@ -991,6 +991,7 @@
           "kind",
           "deal_id",
           "deal_name",
+          "contact_name",
           "payload",
           "evidence_quote",
           "created_at"
@@ -1008,6 +1009,7 @@
           "subject",
           "body_sha256"
         ],
+        "contact_name": "Nullable display name of the resolved contact or email recipient.",
         "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
