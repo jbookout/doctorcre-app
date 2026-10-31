@@ -3,7 +3,7 @@ import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // React islands: strict TypeScript under src/ui/, shipped as one generated
-// browser module that a page imports only while its flag is on. The island
+// browser module that a page imports on demand or while its flag is on. The island
 // sources are read through readSource, so an artifact verified from committed
 // bytes compiles committed bytes; React itself resolves from the lockfile's
 // install in this checkout.

@@ -173,7 +173,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.23.0");
+  assert.equal(routes.version, "1.24.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -524,7 +524,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
 
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.23.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.24.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
 
   // The read is lazy: it fires on first selection of the tab, not on boot.

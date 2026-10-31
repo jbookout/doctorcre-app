@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.67.0",
+  "version": "1.68.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -23,6 +23,7 @@
     "add-loop",
     "add-party",
     "add-room-turn",
+    "adopt-rule",
     "advance-workflow-cutover-stage",
     "answer-board-question",
     "answer-work-request-for-joe",
@@ -63,10 +64,12 @@
     "lead-board",
     "link-incident-work-request",
     "link-lead-client",
+    "list-deal-documents",
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-email-proposals",
     "list-email-thread-filings",
+    "list-fact-review",
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
@@ -98,6 +101,7 @@
     "read-home-agenda",
     "read-invoice-tracker",
     "read-loop",
+    "read-market-terms",
     "read-notification-preferences",
     "read-portfolio",
     "read-post-call-followups",
@@ -111,10 +115,12 @@
     "record-commission-receipt",
     "record-deal-item",
     "record-dispatch-link",
+    "record-human-fact",
     "register-client-portal",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
+    "resolve-fact-review",
     "resolve-post-call-candidate",
     "revert-deal-field",
     "review-and-triage",
@@ -164,10 +170,17 @@
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
     "/api/tours/*",
+    "/api/v1/fact-review/documents",
+    "/api/v1/fact-review/list",
+    "/api/v1/fact-review/record",
+    "/api/v1/fact-review/resolve",
+    "/api/v1/fact-review/comparison",
+    "/api/v1/fact-review/comparison/validate",
     "/api/v1/call-sessions",
     "/api/v1/call-sessions/{id}",
     "/api/v1/call-sessions/{id}/transfer",
-    "/api/v1/call-sessions/{id}/report"
+    "/api/v1/call-sessions/{id}/report",
+    "/api/v1/market-terms/read"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -711,7 +724,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
@@ -801,7 +814,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+          "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
         },
         "template_states": [
           "current",
@@ -835,7 +848,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -983,8 +996,8 @@
       "write": false,
       "producer": {
         "repository": "DoctorCRE/carr-system",
-        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+        "source_commit": "9ce8f9fbb7bd8be5e98a724fd09815a8115bec2d",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2716"
       },
       "response": {
         "schema_version": "post-call-followups.v1",
@@ -995,6 +1008,7 @@
           "kind",
           "deal_id",
           "deal_name",
+          "contact_name",
           "payload",
           "evidence_quote",
           "created_at"
@@ -1012,6 +1026,7 @@
           "subject",
           "body_sha256"
         ],
+        "contact_name": "Nullable display name of the resolved contact or email recipient.",
         "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
@@ -1311,7 +1326,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+      "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
@@ -1320,7 +1335,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
       },
       "inputSchema": {
         "type": "object",
@@ -1355,7 +1370,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
       },
       "inputSchema": {
         "type": "object",
@@ -1384,7 +1399,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+        "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2"
       },
       "inputSchema": {
         "type": "object",
@@ -1562,6 +1577,16 @@
       "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
       "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
       "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
+    },
+    "non_deal_next_steps": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "ee92d2767bdbac621cab3416e22026d5d5c34357",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2724"
+      },
+      "read": "Home calls list-email-proposals with include_non_deal=true. Non-deal next_step rows have deal=null and subject_type, subject_id and subject_name matching their preview. Deal pages keep their existing deal filter.",
+      "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews remain dismissible.",
+      "deployment_order": "Merge and verify the pinned server producer before merging this consumer. Do not auto-merge this app change."
     }
   },
   "email_thread_filings": {
@@ -1590,13 +1615,13 @@
   "work_queue": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "55cbf1b302b4fc2c9511246a0639fa4919940558",
-      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2547"
+      "source_commit": "ed43972ec0b3cb205e6dabe252aa089bb414809d",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2819"
     },
-    "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|build|review|merged|closed), stale and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr}.",
-    "review": "Stage, PR links and staleness are derived by the server from Card lines on GitHub PRs; the page never recomputes them. A github source that is not ok means its PR stages may be behind and the page says so.",
+    "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|running|build|review|merged|closed), stale, pr_evidence_complete and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr,production_live (true|false|null)}.",
+    "review": "Stage, PR links and staleness are derived from GitHub Card lines. The page derives Live only when all repositories are complete, pr_evidence_complete is true and every PR is merged with production_live true. Unknown verification remains Merged.",
     "refresh": "One work-queue call per 60-second refresh through mountAutoRefresh, none while hidden, none after 5 idle minutes. The published carr-v5 snapshot is read once for costs and never polled.",
-    "deployment_order": "Hold auto-merge until server PR #2547 is merged and the work-queue verb is live in production."
+    "deployment_order": "Server PR #2819 must merge and deploy before this app change; app auto-merge remains off."
   },
   "vendor_directory_people": {
     "schema": "carr-vendor-directory.v2",
@@ -1608,6 +1633,140 @@
       "repository": "jbookout/carr-system",
       "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
+    }
+  },
+  "fact_review": {
+    "schema_version": "fact-review.v1",
+    "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2739",
+    "schedule_producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2764",
+    "schedule_producer_revision": "011949983afbe4de99cf1034636a50ed620fd368",
+    "list": {
+      "verb": "list-fact-review",
+      "input": [
+        "entity_ref?",
+        "limit? (1..100)",
+        "cursor?",
+        "include_resolved?"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "items",
+        "has_more",
+        "next_cursor"
+      ],
+      "item": [
+        "entity_ref",
+        "fact_key",
+        "canonical_version",
+        "review_version",
+        "pending",
+        "reasons",
+        "observations",
+        "canonical_fact",
+        "canonical_history",
+        "review_history"
+      ]
+    },
+    "record": {
+      "verb": "record-human-fact",
+      "input": [
+        "idempotency_key",
+        "entity_ref",
+        "observation"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "replayed",
+        "batch_id",
+        "observations",
+        "observation"
+      ],
+      "promotes": false
+    },
+    "resolve": {
+      "verb": "resolve-fact-review",
+      "input": [
+        "idempotency_key",
+        "entity_ref",
+        "fact_key",
+        "base_version",
+        "review_version",
+        "decision",
+        "reason",
+        "observation_id?",
+        "correction?"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "replayed",
+        "canonical_fact",
+        "review_receipt"
+      ],
+      "decisions": {
+        "approve": "Requires observation_id; forbids correction.",
+        "correct": "Requires correction with the same fact_key; forbids observation_id.",
+        "reject": "Forbids observation_id and correction; preserves canonical value."
+      }
+    },
+    "human_fact": {
+      "fields": [
+        "fact_key",
+        "value",
+        "unit",
+        "expense_basis?",
+        "source"
+      ],
+      "source": [
+        "document_ref",
+        "page_start",
+        "page_end",
+        "cited_text"
+      ],
+      "entity_ref": "Deal UUID",
+      "document_ref": "Existing undeleted attachment UUID bound to this deal",
+      "value": "Nonnegative decimal string; at most 30 integer and 18 fractional digits.",
+      "fact_keys": {
+        "base_rent_per_sf": {
+          "units": [
+            "USD/SF/year",
+            "USD/SF/month"
+          ],
+          "expense_basis": [
+            "nnn",
+            "modified_gross",
+            "full_service_gross",
+            "gross"
+          ]
+        },
+        "landlord_ti_per_sf": {
+          "units": [
+            "USD/SF"
+          ]
+        },
+        "term_months": {
+          "units": [
+            "months",
+            "years"
+          ]
+        },
+        "free_rent_months": {
+          "units": [
+            "months"
+          ]
+        }
+      }
+    },
+    "canonical_fact": "normalized_value and canonical_unit with expense_basis, observation_ids and version; null before promotion.",
+    "citations": "Observation source retains document_ref, page_start, page_end, cited_text_sha256, cited_text_expires_at. Expired cited_text is null.",
+    "conflict": "version_conflict refuses the write. Refresh canonical_version and review_version and ask the partner to review again.",
+    "documents": {
+      "verb": "list-deal-documents",
+      "schema_version": "deal-documents.v1",
+      "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762",
+      "source_commit": "35dd8142e831a582b532da401e10f34c78df4040"
     }
   },
   "phone_call_sessions": {
@@ -1715,5 +1874,127 @@
       ],
       "answer": "Nonempty string up to 1000 characters. Retain the key and exact answer on retry."
     }
+  },
+  "market_terms": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "a07acbe0b9be7bd7f3365a0c74a8460c99234a27",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2768"
+    },
+    "verb": "read-market-terms",
+    "schema_version": "market-terms.v1",
+    "arguments": [
+      "submarket",
+      "use_type",
+      "as_of"
+    ]
+  },
+  "convention_adoption": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "728fc86bcc54eb15a7b129a8a0500b25ada6dcc0",
+      "source": "mcp-server/src/org-conventions.js"
+    },
+    "read": {
+      "verb": "governance-queue",
+      "lane": "pending_convention_proposals",
+      "fields": [
+        "section_id",
+        "section_key",
+        "base_version",
+        "updated_at",
+        "adoptable"
+      ],
+      "availability": "Adoptable proposals provide the statement, packs, and approve_with command; non-adoptable proposals provide a problem.",
+      "adoptable_fields": [
+        "statement",
+        "card_id",
+        "packs",
+        "approve_with"
+      ],
+      "non_adoptable_fields": [
+        "problem"
+      ]
+    },
+    "write": {
+      "verb": "adopt-rule",
+      "input": [
+        "idempotency_key",
+        "section_id",
+        "base_version",
+        "reason"
+      ],
+      "receipt": [
+        "ok",
+        "rule_id",
+        "retired_section_id"
+      ],
+      "authentication": "Partner's own same-origin session with x-carr-csrf; no machine identity.",
+      "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome."
+    }
+  },
+  "terms_comparison": {
+    "schema_version": "terms-comparison.v1",
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "7a4baa048e778854a8a66402fae5b7dc2657847c",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2760"
+    },
+    "prepare": {
+      "verb": "prepare-terms-comparison",
+      "route": "/api/v1/fact-review/comparison",
+      "method": "POST",
+      "input": [
+        "idempotency_key",
+        "deal_id",
+        "fields"
+      ],
+      "field": [
+        "fact_key",
+        "prior_version",
+        "current_version"
+      ],
+      "output": [
+        "ok",
+        "schema_version",
+        "document_id",
+        "template",
+        "basename",
+        "deal",
+        "status",
+        "owed",
+        "partial",
+        "carried",
+        "edits",
+        "remaining",
+        "human_gate"
+      ]
+    },
+    "validate": {
+      "verb": "validate-terms-comparison",
+      "route": "/api/v1/fact-review/comparison/validate",
+      "input": [
+        "document_id"
+      ],
+      "schema_version": "terms-comparison-validation.v1"
+    },
+    "http_refusal": {
+      "status": 400,
+      "error": "comparison_fact_blocked",
+      "fields": [
+        "field",
+        "reason"
+      ],
+      "reasons": [
+        "missing",
+        "unresolved",
+        "stale_snapshot",
+        "missing_version",
+        "source_not_permitted",
+        "invalid_value"
+      ]
+    },
+    "display": "Read-only LOI Grid fill plan. Only edits contain permitted display values and source labels. No document paths, ids or internal lineage are displayed.",
+    "versions": "Reference fields with confirmed prior and current versions. Use current canonical_version and the greatest confirmed canonical_history version below it. Other fields are named as remaining work and do not block comparable fields."
   }
 }

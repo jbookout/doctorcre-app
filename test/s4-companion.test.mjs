@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { createPostCallClient } from '../js/post-call-client.js';
+import { createPostCallClient } from '../js/post-call-review-client.js';
 import { createCallMode } from '../js/call-mode.js';
 
-for (const phase of ['fetch','json']) for (const method of ['publishCallContext','getStatus','syncStatus','createOutlookDraft']) {
+for (const phase of ['fetch','json']) for (const method of ['publishCallContext','getStatus','syncStatus','createOutlookDraft','resolveQuestion']) {
   test(`F12 ${method} bounds hung ${phase}, including transports ignoring abort`, async () => {
     let signal;
     const client=createPostCallClient({timeoutMs:10,fetchImpl:async (url,init) => {

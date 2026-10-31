@@ -153,3 +153,21 @@ test('synthetic reply submissions are owned, versioned, exact and idempotent wit
   assert.deepEqual(await client.submitEmailDraft(args), result);
   assert.equal((await client.listEmailProposals()).proposals.some(row => row.id === draft.id), false);
 });
+
+test('synthetic non-deal proposals opt into the same review and retain confirmation receipts', async () => {
+  const client = await createFixtureClient({ seedUrl, emailNonDealProposals: true });
+  assert.equal((await client.listEmailProposals()).proposals.length, 2);
+  const rows = (await client.listEmailProposals({ include_non_deal: true })).proposals.filter(row => row.deal === null);
+  assert.deepEqual(rows.map(row => row.subject_type), ['client','lead','vendor']);
+  for (const row of rows) {
+    const args = { deal: null, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+      text: row.preview.text, next_date: row.preview.next_date, owner: row.preview.owner };
+    const preview = await client.previewEmailNextStep(args);
+    const request = { ...args, proposal_digest: preview.proposal_digest, idempotency_key: `non-deal-${row.id}` };
+    const confirmed = await client.confirmEmailNextStep(request);
+    assert.equal(confirmed.status, 'confirmed');
+    assert.equal(confirmed.subject_id, row.subject_id);
+    assert.deepEqual(await client.confirmEmailNextStep(request), confirmed);
+  }
+  assert.equal((await client.listEmailProposals({ include_non_deal: true })).proposals.length, 2);
+});
