@@ -116,10 +116,10 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   assert.deepEqual(errors, []);
 });
 
-for (const id of ['carr-v5', 'demo-project']) test(`legacy query redirects to the ${id} board page`, async t => {
+for (const id of ['carr-v5', 'demo-project']) test(`legacy ${id} query redirects to the work queue`, async t => {
   const { page, errors } = await open(t, { path: `/control-room/progress?board=${id}&view=flow` });
-  await page.locator(`#board-stages [data-card-id="${id === 'carr-v5' ? 'WR14.S1.J1' : 'build'}"]`).waitFor();
-  assert.equal(new URL(page.url()).pathname, `/control-room/progress/board/${id}`);
+  await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
+  assert.equal(new URL(page.url()).pathname, '/control-room/progress/board/carr-v5');
   assert.equal(new URL(page.url()).search, '?view=flow&mode=live');
   assert.deepEqual(errors, []);
 });
