@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 
 const timer = /^(?:setInterval|setTimeout|requestAnimationFrame|requestIdleCallback|EventSource|WebSocket)$/;
 const retry = /retry|reconnect|refetchInterval/i;
+const lifecycle = new Set(['online', 'focus', 'visibilitychange', 'pageshow']);
 export function loopSites(source, path) {
   const file = parse(source, { sourceType: 'unambiguous', plugins: ['typescript', 'jsx'], allowAwaitOutsideFunction: true });
   const sites = [];
@@ -32,11 +33,13 @@ export function loopSites(source, path) {
     if (!node || typeof node !== 'object' || !node.type) return;
     let kind;
     if (node.type === 'FunctionDeclaration' && node.id?.name === 'createPageBudget') kind = 'page-budget';
+    if (node.type === 'FunctionDeclaration' && node.id?.name === 'createRequestBudget') kind = 'request-budget';
     if (['WhileStatement', 'DoWhileStatement', 'ForStatement'].includes(node.type)) kind = 'loop';
     if (['ForOfStatement', 'ForInStatement'].includes(node.type) && /\bawait\b/.test(source.slice(node.body.start, node.body.end))) kind = 'read-loop';
     if (['CallExpression', 'OptionalCallExpression', 'NewExpression'].includes(node.type)) {
       const name = node.callee.property?.name || node.callee.property?.value || node.callee.name || '';
-      if (timer.test(name)) kind = name;
+      if (name === 'addEventListener' && (node.arguments[0]?.type !== 'StringLiteral' || lifecycle.has(node.arguments[0].value))) kind = 'event-refresh';
+      else if (timer.test(name)) kind = name;
       else if (aliases.has(name)) kind = aliases.get(name);
       else if (retry.test(name)) kind = 'retry';
     }
@@ -83,7 +86,8 @@ export function auditLoops(sites, inventory) {
   for (const site of sites) {
     const entry = inventory[site.id];
     if (!entry) { errors.push(`${site.path}:${site.line} ${site.kind} is unaudited`); continue; }
-    for (const field of ['cap', 'backoff', 'idleStop']) if (typeof entry[field] !== 'string' || !entry[field].trim()) errors.push(`${site.id} lacks ${field}`);
+    if (!Number.isFinite(entry.cap) || entry.cap < 0) errors.push(`${site.id} requires a finite cap number`);
+    for (const field of ['backoff', 'idleStop']) if (typeof entry[field] !== 'string' || !entry[field].trim()) errors.push(`${site.id} lacks ${field}`);
   }
   for (const id of Object.keys(inventory)) if (!ids.has(id)) errors.push(`${id} is stale; review the changed source`);
   return errors;

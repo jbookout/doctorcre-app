@@ -635,9 +635,11 @@ test('the system board reads the queue once per 60 seconds, never while hidden, 
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
+  assert.equal(reads(), 3, 'a lifecycle return after idle cannot renew presence');
+  await page.mouse.move(30, 30);
   await page.getByText('Visible refresh completed', { exact: true }).waitFor();
   await page.clock.runFor(500);
-  assert.equal(reads(), 4, 'returning to the tab reads once at once');
+  assert.equal(reads(), 4, 'real input after the idle return reads once');
   await page.clock.runFor(10 * 60_000);
   const idle = reads();
   assert.ok(idle <= 4 + Math.ceil(5 * 60_000 / 60_000), `reads stop at the 5-minute idle cutoff (${idle})`);

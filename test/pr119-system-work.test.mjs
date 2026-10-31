@@ -8,6 +8,7 @@ const settle = async () => { for(let i=0;i<12;i++) await new Promise(r=>setImmed
 const deferred = () => { let resolve; const promise=new Promise(r=>resolve=r); return {promise,resolve}; };
 const base = {human_ref:'WR-000123',version:1,state:'captured',title:'Synthetic concern',desired_outcome:'Safe observation',acceptance_criteria:[{id:'criterion-1',text:'Synthetic evidence'}],source:{label:'Synthetic doctrine',freshness:'current',provenance:'shared doctrine'}};
 async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), index=false, write=null) {
+ t.mock.timers.enable({apis:['Date']});
  const dom=new JSDOM(readFileSync(new URL('../system-work.html',import.meta.url),'utf8'),{url:'http://localhost/work-requests'+(index?'':'?work_request=WR-000123'),runScripts:'outside-only'});
  t.after(()=>dom.window.close()); const w=dom.window,d=w.document,calls=[];
  w.structuredClone=structuredClone;
@@ -20,9 +21,10 @@ async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), inde
  else data=write?await write(path,JSON.parse(init.body)):{human_ref:card.human_ref,challenge:'synthetic'};
  if(data instanceof Response)return data;
  return new Response(JSON.stringify({ok:true,data}));};
+ w.Date.now=Date.now;
  const files=['doc-context-model.js','doc-context.js','uuid.js','system-work-view.js','system-work-client.js','system-work-app.js'];
  w.eval(autoRefreshScript+'\n'+files.map(name=>{const raw=readFileSync(new URL('../js/'+name,import.meta.url),'utf8');const names=[...raw.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map(m=>m[1]);return '(function(){'+raw.replace(/^import [^\n]*\n/gm,'').replace(/^export /gm,'')+';Object.assign(window,{'+names.join(',')+'});})();';}).join('\n'));
- await settle();return {w,d,calls,online:async()=>{w.dispatchEvent(new w.Event('online'));await settle();},submit:async()=>{d.querySelector('#systemWorkForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();}};
+ await settle();return {w,d,calls,online:async()=>{t.mock.timers.tick(120_000);w.dispatchEvent(new w.Event('online'));await settle();},submit:async()=>{d.querySelector('#systemWorkForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();}};
 }
 for(const [kind,card] of [
  ['triage',base],['prepare-plan',{...base,state:'triaged'}],

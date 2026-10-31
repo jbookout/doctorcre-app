@@ -827,7 +827,7 @@ async function boot() {
   view.route = idFromSearch(location.search || "");
   $("retryRead")?.addEventListener("click", () => load());
   $("outcomeCardsRetry")?.addEventListener("click", () => takeOutcomeCards());
-  document.addEventListener('visibilitychange', async () => {
+  mountAutoRefresh({ document, window: globalThis.window, periodic: false, shouldRefresh: () => Boolean(pendingOutcomeOpen && client), refresh: async () => {
     if (document.visibilityState !== 'visible' || !pendingOutcomeOpen || !client) return;
     const attempt = pendingOutcomeOpen;
     pendingOutcomeOpen = null;
@@ -848,7 +848,7 @@ async function boot() {
     } catch {
       announceOutcomeCards('The open result is unknown. Refresh this card before trying again.');
     }
-  });
+  } });
   $("suggestionsRetry")?.addEventListener("click", () => takeSuggestions());
   $("suggestionsParked")?.addEventListener("click", () => {
     view.suggestions.includeParked = !view.suggestions.includeParked;

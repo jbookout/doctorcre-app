@@ -621,7 +621,7 @@ test("Charts background refresh keeps the board, its time and open Details on sc
 });
 
 test("Charts back off a failed read before recovering automatically", async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const s = await chartDom(t, reads => {
     if (reads === 1) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
     return board;

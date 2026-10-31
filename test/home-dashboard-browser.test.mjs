@@ -145,7 +145,8 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
   const refresh = async () => {
     const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'lead-board');
-    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.keyboard.press('Shift');
+    await page.locator('#refreshHome').evaluate(node=>node.click());
     await read; await settled();
   };
   await settled();

@@ -1968,12 +1968,13 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     try {
       // latest_seq is the last returned row, not the room's overall tail.
       // Drain the server's oldest-first pages before showing a current window.
-      let from = state.rescanRequested ? 0 : state.cursor;
+      if (state.rescanRequested) state.catchUp = { from: 0, turns: [] };
       state.rescanRequested = false;
-      let payload, turns = [];
+      let from = state.catchUp?.from ?? state.cursor;
+      let payload, turns = state.catchUp?.turns || [];
       const takePage = createPageBudget();
       do {
-        takePage();
+        const remaining = takePage();
         payload = await fetchTurns(from, 200);
         if (!authReadable(epoch)) return;
         validateTurnPage(payload, from);
@@ -1984,7 +1985,15 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
         const next = Number(payload.latest_seq);
         if (payload.more && !(next > from)) throw new Error("Room cursor did not advance.");
         if (Number.isFinite(next)) from = next;
+        state.catchUp = { from, turns };
+        if (payload.more && remaining === 0) {
+          pageDocContext?.fail(docTicket, new Error('catching_up'));
+          state.offline = true;
+          banner('Catching up with room history. The next bounded read continues from this page.');
+          return false;
+        }
       } while (payload.more);
+      state.catchUp = null;
       payload = { ...payload, turns };
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
@@ -2031,12 +2040,13 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     try {
       // IDs belong to all rooms. Walk the supported oldest-first cursor rather
       // than guessing a predecessor by subtracting a row count from an ID.
-      let from = 0, earlier = state.turns.filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters)).slice(-PAGE_SIZE);
-      if (earlier.length < PAGE_SIZE) {
-        earlier = [];
+      const continuation = state.historyCatchUp?.oldest === oldest ? state.historyCatchUp : null;
+      let from = continuation?.from || 0, earlier = continuation?.earlier || state.turns.filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters)).slice(-PAGE_SIZE);
+      if (earlier.length < PAGE_SIZE || continuation) {
+        if (!continuation) earlier = [];
         const takePage = createPageBudget();
         while (true) {
-          takePage();
+          const remaining = takePage();
           const page = await fetchTurns(from, 200);
           if (!current()) return;
           validateTurnPage(page, from);
@@ -2044,8 +2054,11 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
           if (!page.more || (page.turns || []).some(turn => seqOf(turn) >= oldest)) break;
           if (!(Number(page.latest_seq) > from)) throw new Error("Room cursor did not advance.");
           from = Number(page.latest_seq);
+          state.historyCatchUp = { oldest, from, earlier };
+          if (remaining === 0) { banner('Earlier history is still loading. Load earlier continues from this page.'); return; }
         }
       }
+      state.historyCatchUp = null;
       if (!earlier.length) { state.historyExhausted = oldest; render(); return; }
       const payload = { turns: earlier };
       const rows = new Map([...window, ...payload.turns].map(turn => [String(turn.msg_id || turn.seq), turn]));
@@ -2089,7 +2102,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
   document.addEventListener('progress-auth-lost', () => {
     pageDocContext?.clear();
-    state.turns = []; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
+    state.turns = []; state.catchUp = null; state.historyCatchUp = null; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
     state.historyGeneration = (state.historyGeneration || 0) + 1;
     state.cursor = 0; state.csrf = null; state.model = null;
     state.counted.clear();
@@ -2117,7 +2130,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     render();
   });
   $("wireFeed").addEventListener("scroll", onFeedScroll, { passive: true });
-  $("wireResume").addEventListener("click", () => { state.historyGeneration = (state.historyGeneration || 0) + 1; state.historyTurns = null; state.following = true; render(); scrollToBottom(true); });
+  $("wireResume").addEventListener("click", () => { state.historyGeneration = (state.historyGeneration || 0) + 1; state.historyTurns = null; state.historyCatchUp = null; state.following = true; render(); scrollToBottom(true); });
   $("composerInput").addEventListener("input", updateCounter);
   $("composerInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); }

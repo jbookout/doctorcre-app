@@ -1,3 +1,5 @@
+import { createRequestBudget } from './request-budget.mjs';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 // A browser lifetime belongs to one verified server session. Re-bootstrap in a
 // new document after revocation; never reuse old controllers for a new actor.
 import { resolveDealroomBoot } from './boot-mode.js';
@@ -76,7 +78,12 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
   };
 }
 
-let browserBoundary;
+let browserBoundary, browserRequests;
+function browserFetch(path, init) {
+  if (typeof window === 'undefined' || globalThis !== window || resolveDealroomBoot(window.location).mode !== 'live') return globalThis.fetch(path, init);
+  browserRequests ||= createRequestBudget({ document: window.document, fetchImpl: (...args) => window.fetch(...args) });
+  return browserRequests.fetch(path, init);
+}
 export function privateSession() {
   if (browserBoundary) return browserBoundary;
   if (typeof window === 'undefined' || globalThis !== window || resolveDealroomBoot(window.location).mode !== 'live') return null;
@@ -84,7 +91,7 @@ export function privateSession() {
   const initialEpoch = sessionEpoch(win);
   let anonymousDiagnostics = false;
   try { anonymousDiagnostics = win.location.pathname === '/status' && !win.localStorage.getItem('doctorcre-session-binding-v1'); } catch {}
-  browserBoundary = createSessionBoundary({ anonymousDiagnostics, fetchImpl: (...args) => win.fetch(...args), epoch: () => sessionEpoch(win),
+  browserBoundary = createSessionBoundary({ anonymousDiagnostics, fetchImpl: browserFetch, epoch: () => sessionEpoch(win),
     async acceptSession(session) {
       const bytes = await win.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([session.actor.slug,session.csrf_token])));
       const digest = [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2,'0')).join('');
@@ -116,6 +123,9 @@ export function privateSession() {
       });
     },
   });
+  const restore = mountVisibilityPoll({ document: win.document, window: win, periodic: false, poll: async () => {
+    try { await browserBoundary.verify(); } finally { win.document.documentElement.style.visibility = ''; }
+  } });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
   win.addEventListener('pageshow', event => {
     if (!event.persisted) return;
@@ -123,9 +133,7 @@ export function privateSession() {
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
     // A history restore must verify its binding before exposing cached DOM.
     win.document.documentElement.style.visibility = 'hidden';
-    void browserBoundary.verify().catch(() => {}).finally(() => {
-      win.document.documentElement.style.visibility = '';
-    });
+    void restore.poll();
   });
   return browserBoundary;
 }
@@ -133,9 +141,9 @@ export function privateSession() {
 export async function sessionFetch(path, init) {
   // Release identity is public diagnostic metadata, including on signed-out
   // /status. It carries no actor or record data and needs no private lifetime.
-  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return globalThis.fetch(path,init);
+  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return browserFetch(path,init);
   const boundary = privateSession();
-  if (!boundary) return globalThis.fetch(path,init);
+  if (!boundary) return browserFetch(path,init);
   try { return await boundary.fetch(path,init); }
   catch (error) {
     // Retired page controllers cannot repaint or issue a retry while the

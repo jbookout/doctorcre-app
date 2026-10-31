@@ -582,7 +582,7 @@ export function createCallMode(deps) {
     // Hidden-tab polling is allowed only while the recorder is live.
     // Post-call processing uses the normal visibility and idle boundary.
     state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => callModeActive(),
-      setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+      now, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
       intervalMs: 1600, poll: () => refreshPostCall({ quiet: true }) });
     if (immediate) state.pollTimer.refresh();
   }

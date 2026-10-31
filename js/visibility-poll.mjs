@@ -1,83 +1,89 @@
-// Network polling runs only for a person who is looking. Every read the app
-// repeats on a clock goes to CARR, and CARR's database bills while anything
-// keeps it awake: one forgotten tab polling all night costs a full day of
-// compute. So a hidden tab makes no calls at all, and a visible tab with no
-// input for IDLE_CUTOFF_MS pauses too. A return from either reads once at
-// once, then the normal cadence resumes, so a person never waits on a clock.
+// Clocks and lifecycle refreshes stop when hidden or thirty minutes idle.
+// Trusted human input renews presence; lifecycle events and scrolling do not.
+// A live-call exception may run hidden, within the same hard attempt cap.
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
 export const IDLE_CUTOFF_MS = 30 * 60_000;
-// No background read runs more often than once a minute; a person who wants
-// fresher data presses refresh.
+// Periodic reads run at most once a minute; healthy lifecycle refreshes
+// share their attempt cap and begin backing off after five attempts.
 export const MIN_POLL_MS = 60_000;
 export const MAX_POLL_ATTEMPTS = 20;
 export const MAX_BACKOFF_MS = 15 * 60_000;
-const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wheel", "scroll"];
+const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "touchmove", "wheel"];
 
-// active() says whether a network read may run now. onResume runs once per
-// return to view (visibilitychange or a back-forward cache restore); returning
-// to the tab counts as input. onWake runs once per first input after the idle
-// cutoff in a tab that never left view, so it must only read: a page's
-// return-from-hidden hook (closing private views) never runs on a wake.
-// touch() records input from a caller that reads for itself, without either.
+// Scroll events are also dispatched for scrollIntoView and restored scroll.
+// Pointer, touch, wheel and keyboard input establish user presence instead.
+export function listenForHumanInput(document, callback) {
+  const options = { capture: true, passive: true };
+  const input = event => { if (event.isTrusted === true) callback(event); };
+  INPUT_EVENTS.forEach(type => document?.addEventListener(type, input, options));
+  return () => INPUT_EVENTS.forEach(type => document?.removeEventListener?.(type, input, options));
+}
+
 export function watchPresence({ document, window, onResume, onWake, onInput = () => {}, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
   let lastInput = now();
   const hidden = () => document.visibilityState === "hidden";
   const idle = () => now() - lastInput >= idleMs;
-  const input = () => {
+  const active = () => !hidden() && !idle();
+  const stopInput = listenForHumanInput(document, () => {
     const waking = idle() && !hidden();
     lastInput = now();
     if (waking) onWake();
     else if (!hidden()) onInput();
-  };
-  const resume = mountReadOnResume({ document, window, refresh: () => { lastInput = now(); return onResume(); } });
-  const options = { capture: true, passive: true };
-  INPUT_EVENTS.forEach(type => document.addEventListener(type, input, options));
-  return {
-    active: () => !hidden() && !idle(),
-    touch() { lastInput = now(); },
-    dispose() { resume.dispose(); INPUT_EVENTS.forEach(type => document.removeEventListener?.(type, input, options)); },
-  };
+  });
+  const resume = mountReadOnResume({ document, window, refresh: () => { if (active()) return onResume(); } });
+  return { active, dispose() { resume.dispose(); stopInput(); } };
 }
 
-// One repeating network read. The next tick is armed when the previous poll
-// settles, so a poll that returns its promise never overlaps itself; one that
-// returns nothing keeps a fixed cadence. Going hidden clears the timer; a tick
-// that finds the person idle does not poll and does not re-arm. keepAlive()
-// is the one exception: while it is true the poll runs hidden or idle too.
-// refresh() polls now and restarts the cadence from that read. intervalMs
-// defaults to, and outside keepAlive is floored at, MIN_POLL_MS.
+// All automatic clocks and lifecycle signals share one attempt counter and
+// one next-read deadline. Only trusted input can grant another presence period.
 export function mountVisibilityPoll({
-  poll, intervalMs = MIN_POLL_MS, keepAlive = () => false, idleMs, now,
-  document = globalThis.document, window = globalThis,
+  poll, intervalMs = MIN_POLL_MS, keepAlive = () => false, idleMs, now = () => Date.now(),
+  document = globalThis.document, window = globalThis, periodic = true, lifecycle = false, shouldPoll = () => true,
+  onResume = () => {}, onWake = () => {},
   setTimeout = (fn, ms) => window.setTimeout(fn, ms), clearTimeout = id => window.clearTimeout(id),
 }) {
-  let timer = null;
-  let generation = 0;
-  let disposed = false;
-  let attempts = 0;
-  let failures = 0;
-  const asked = () => (typeof intervalMs === "function" ? intervalMs() : intervalMs);
-  // Call mode's keepAlive poll reads the local companion, not CARR.
-  // Absorbed failures still back off after every five automatic attempts.
+  let timer = null, disposed = false, running = null, attempts = 0, failures = 0, requested = false;
+  const asked = () => typeof intervalMs === 'function' ? intervalMs() : intervalMs;
   const delay = () => Math.min(MAX_BACKOFF_MS, (keepAlive() ? asked() : Math.max(MIN_POLL_MS, asked())) * 2 ** Math.max(failures, Math.floor(attempts / 5)));
-  const stop = () => { if (timer !== null) clearTimeout(timer); timer = null; generation += 1; };
-  const arm = () => { if (attempts < MAX_POLL_ATTEMPTS && (presence.active() || keepAlive())) timer = setTimeout(tick, delay()); };
-  const refresh = () => {
+  let nextReadAt = periodic ? now() + delay() : now();
+  const stop = () => { if (timer !== null) clearTimeout(timer); timer = null; };
+  const eligible = () => !disposed && attempts < MAX_POLL_ATTEMPTS && (presence.active() || keepAlive());
+  const arm = () => {
     stop();
-    if (disposed || attempts >= MAX_POLL_ATTEMPTS) return Promise.resolve();
-    const mine = generation;
-    attempts++;
-    return Promise.resolve().then(() => poll()).then(value => { failures = value === false ? failures + 1 : 0; }, () => { failures++; }).finally(() => { if (mine === generation && !disposed) arm(); });
+    if (eligible()) { timer = setTimeout(() => { timer = null; return run(); }, Math.max(0, nextReadAt - now())); timer?.unref?.(); }
   };
-  const tick = () => { timer = null; if (presence.active() || keepAlive()) refresh(); };
-  const presence = watchPresence({ document, window, idleMs, now, onResume: () => { attempts = 0; failures = 0; return refresh(); }, onWake: () => { attempts = 0; failures = 0; return refresh(); }, onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) { attempts = 0; failures = 0; refresh(); } } });
-  const visibility = () => { if (document.visibilityState === "hidden" && !keepAlive()) stop(); };
-  document.addEventListener("visibilitychange", visibility);
-  if (presence.active() || keepAlive()) arm();
+  const run = (manual = false, beforeRead, event = false) => {
+    if (!eligible()) return Promise.resolve();
+    // Resume hooks only invalidate local state; all I/O belongs to poll.
+    beforeRead?.();
+    if (running) { if (event) requested = true; return running; }
+    if (!manual && !(event && failures === 0 && attempts < 5) && now() < nextReadAt) { arm(); return Promise.resolve(); }
+    stop(); attempts++;
+    let result;
+    try { result = shouldPoll() ? poll() : undefined; } catch { result = false; }
+    running = Promise.resolve(result)
+      .then(value => { failures = value === false ? failures + 1 : 0; return value; }, () => { failures++; return false; })
+      .finally(() => { running = null; nextReadAt = now() + delay(); if (requested && failures === 0 && attempts < 5) nextReadAt = now(); const again = periodic || requested; requested = false; if (again) arm(); });
+    return running;
+  };
+  const restartFromInput = callback => {
+    attempts = 0; failures = 0; nextReadAt = now(); return run(false, callback, true);
+  };
+  const presence = watchPresence({ document, window, idleMs, now,
+    onResume: () => run(false, onResume, true),
+    onWake: () => restartFromInput(onWake),
+    onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) restartFromInput(() => {}); } });
+  const visibility = () => { if (document.visibilityState === 'hidden' && !keepAlive()) stop(); };
+  const eventRead = () => run(false, undefined, true);
+  document.addEventListener('visibilitychange', visibility);
+  const lifecycleRead = () => run(false, onResume, true);
+  if (lifecycle) { window.addEventListener('online', lifecycleRead); window.addEventListener('focus', lifecycleRead); }
+  if (periodic) arm();
   return {
-    refresh() { attempts = 0; failures = 0; return refresh(); },
-    dispose() { disposed = true; stop(); presence.dispose(); document.removeEventListener?.("visibilitychange", visibility); },
+    refresh: () => run(true), poll: eventRead,
+    revalidate() { const pending = running; onResume(); return pending ? pending.then(() => run(true)) : run(true); },
+    dispose() { disposed = true; stop(); presence.dispose(); document.removeEventListener?.('visibilitychange', visibility); window.removeEventListener?.('online', lifecycleRead); window.removeEventListener?.('focus', lifecycleRead); },
   };
 }
 

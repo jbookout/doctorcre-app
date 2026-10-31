@@ -805,7 +805,7 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
   if (mounted) return;
   mounted = true;
   view.outage = outage;
-  document.addEventListener('visibilitychange', async () => {
+  mountAutoRefresh({ document, window: globalThis.window, periodic: false, shouldRefresh: () => Boolean(pendingOpen && client), refresh: async () => {
     if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
     const attempt = pendingOpen;
     pendingOpen = null;
@@ -824,7 +824,7 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
     } catch {
       announce('The open result is unknown. Refresh before trying again.');
     }
-  });
+  } });
   // Written from the model so deleting them from the page alone cannot blur
   // room participation into dispatch acknowledgement.
   const ack = $("modelRoomNoAck");

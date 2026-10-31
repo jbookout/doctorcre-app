@@ -8,5 +8,6 @@ export function createPageBudget({ document = globalThis.document, now = () => D
   return () => {
     if (document?.visibilityState === 'hidden' || now() - started >= 30 * 60_000) throw new Error('read_paused');
     if (pages++ >= MAX_READ_PAGES) throw new Error('page_limit');
+    return MAX_READ_PAGES - pages;
   };
 }

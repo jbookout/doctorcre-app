@@ -598,3 +598,32 @@ test('deal creation honors Dell ownership and retries a lost note without recrea
  const notes=calls.filter(c=>c.name==='add-deal-note');assert.equal(notes.length,2);assert.deepEqual(notes[0],notes[1]);
  assert.equal(notes[0].arguments.text,'Demo opening note');
 });
+
+test('150-page room history resumes after 100 pages without publishing a partial cursor', async () => {
+  const { h, state, reads } = roomHarness(29_999);
+  assert.equal(await h.poll(), false);
+  assert.equal(reads.length, 100);
+  assert.equal(reads[0][0], 0);
+  assert.equal(state.cursor, 0, 'partial catch-up is not advertised as current');
+  assert.equal(state.catchUp.from, 20_000);
+  await h.poll();
+  assert.equal(reads.length, 150);
+  assert.equal(reads[100][0], 20_000, 'second batch continues instead of replaying page zero');
+  assert.equal(state.cursor, 29_999);
+  assert.equal(state.catchUp, null);
+});
+
+
+test('Load earlier continues a 150-page history from the last capped cursor', async () => {
+  const { h, state, reads } = roomHarness(29_999);
+  state.turns = [{ seq:29_999, msg_id:'tail' }];
+  await h.loadEarlier();
+  assert.equal(reads.length,100);
+  assert.equal(state.historyCatchUp.from,20_000);
+  assert.equal(state.historyTurns,undefined,'a partial traversal is withheld');
+  await h.loadEarlier();
+  assert.equal(reads.length,150);
+  assert.equal(reads[100][0],20_000);
+  assert.equal(state.historyCatchUp,null);
+  assert.equal(state.historyTurns[0].seq,29_939);
+});

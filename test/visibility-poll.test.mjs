@@ -7,20 +7,20 @@ import { mountAutoRefresh } from '../js/auto-refresh.mjs';
 function page() {
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget(); const pending = new Map(); let next = 0, time = 0;
-  window.setTimeout = (fn, ms) => { pending.set(++next, { fn, ms }); return next; };
+  window.setTimeout = (fn, ms) => { pending.set(++next, { fn, ms, at: time + ms }); return next; };
   window.clearTimeout = id => pending.delete(id);
   return {
     document, window, now: () => time,
     advance(ms) { time += ms; },
-    tick() { const jobs = [...pending.values()]; pending.clear(); jobs.forEach(job => job.fn()); },
+    tick() { const at = Math.min(...[...pending.values()].map(job => job.at)); if (!Number.isFinite(at)) return; time = Math.max(time, at); for (const [id,job] of [...pending]) if (job.at <= time) { pending.delete(id); job.fn(); } },
     get count() { return pending.size; },
     get delays() { return [...pending.values()].map(job => job.ms); },
     hide() { document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); },
     show() { document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); },
-    input(type = 'pointerdown') { document.dispatchEvent(new Event(type)); },
+    input(type = 'pointerdown') { const event = new Event(type); Object.defineProperty(event, 'isTrusted', { value: true }); document.dispatchEvent(event); },
   };
 }
-const settle = async () => { for (let i = 0; i < 10; ++i) await Promise.resolve(); };
+const settle = async () => { for (let i = 0; i < 30; ++i) await Promise.resolve(); };
 const poller = (p, options = {}) => {
   const calls = { polls: 0 };
   const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now, intervalMs: 1400, poll: () => { calls.polls++; }, ...options });
@@ -54,13 +54,15 @@ test('a poll in flight when the tab hides does not re-arm the clock', async () =
   handle.dispose();
 });
 
-test('returning to view refreshes once at once, then resumes the cadence', async () => {
+test('an idle visibility return waits for real input before reading', async () => {
   const p = page(); const fixed = poller(p);
   let reads = 0;
   const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, intervalMs: 15_000, refresh: () => { reads++; } });
   p.hide(); p.advance(8 * 3600_000);
   p.show(); await settle();
-  assert.equal(fixed.polls, 1, 'one immediate poll on return'); assert.equal(reads, 1, 'one immediate read on return');
+  assert.equal(fixed.polls, 0); assert.equal(reads, 0);
+  p.input(); await settle();
+  assert.equal(fixed.polls, 1); assert.equal(reads, 1);
   assert.deepEqual(p.delays, [60_000, 60_000], 'then each poller is back on the one-minute cadence');
   p.tick(); await settle();
   assert.equal(fixed.polls, 2); assert.equal(reads, 2);
@@ -92,7 +94,7 @@ test('a manual refresh after the idle cutoff reads once, as before the pause; th
   p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
   assert.equal(reads, 0, 'the timer issues no read once idle'); assert.equal(p.count, 0);
   await auto.poll(); assert.equal(reads, 0, 'nor does a page clock calling poll()');
-  await auto.refresh(); await settle();
+  p.input(); await auto.refresh(); await settle();
   assert.equal(reads, 1, 'the refresh button reads exactly once');
   assert.equal(p.count, 1, 'and the person counts as present, so the cadence re-arms');
   auto.dispose();
@@ -107,7 +109,7 @@ test('the first input after idle in a visible tab only reads: the hidden-return 
   assert.equal(reads, 1, 'the wake reads exactly once');
   assert.equal(suspends, 0, 'and never closes the private view (leads suspendPrivateView)');
   p.hide(); p.show(); await settle();
-  assert.equal(suspends, 1, 'a real return from hidden still runs the hook');
+  assert.equal(suspends, 1, 'a visible return without active backoff still invalidates private details');
   auto.dispose();
 });
 
@@ -154,11 +156,12 @@ test('repeated hide and show leaves exactly one timer per poller', async () => {
   const p = page(); let release = null; let polls = 0;
   const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now, intervalMs: 1400,
     poll: () => { polls++; return new Promise(resolve => { release = resolve; }); } });
+  handle.refresh(); await settle();
   for (let i = 0; i < 5; ++i) { p.hide(); p.show(); await settle(); }
   assert.equal(polls, 1, 'returns during an open read do not stack reads');
   assert.equal(p.count, 0);
   release(); await settle();
-  assert.equal(polls, 2, 'the queued return reads once when the open read settles');
+  assert.equal(polls, 2, 'one coalesced return spends another attempt after the successful read');
   release(); await settle();
   assert.equal(p.count, 1, 'reads that settle late never arm a second timer');
   for (let i = 0; i < 3; ++i) { p.input(); p.input('wheel'); }
@@ -183,7 +186,7 @@ test('every network poller in the app goes through the shared helper', async () 
   assert.doesNotMatch(pipeline, /setInterval\([^;]*(pollOnce|requestRefresh|refreshPanel)/, 'pipeline.js has no raw network interval');
   assert.equal(pipeline.match(/mountVisibilityPoll\(\{/g).length, 3, 'pipeline.js: panel, feed and board clocks');
   assert.doesNotMatch(await read('observatory.js'), /setInterval\(/);
-  assert.match(await read('auto-refresh.mjs'), /watchPresence\(/, 'auto-refresh shares the same hidden and idle gate');
+  assert.match(await read('auto-refresh.mjs'), /mountVisibilityPoll\(/, 'auto-refresh shares the same hidden and idle gate');
 });
 
 test('background refresh never runs faster than once a minute', () => {
@@ -227,11 +230,12 @@ test('auto refresh backs off failures and stops after bounded attempts', async (
 test('automatic entry points cannot bypass the attempt budget', async () => {
   const p = page(); let reads = 0;
   const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, refresh: () => { reads++; } });
-  for (let i = 0; i < 20; i++) { await auto.poll(); await settle(); }
+  for (let i = 0; i < 20; i++) { await auto.refresh(); await settle(); }
   await auto.poll(); await auto.poll();
   assert.equal(reads, 20);
-  await auto.refresh();
-  assert.equal(reads, 21, 'explicit refresh grants a new budget');
+  await auto.refresh(); assert.equal(reads, 20, 'method calls cannot replenish the budget');
+  p.input(); await settle();
+  assert.equal(reads, 21, 'real input grants another budget');
   auto.dispose();
 });
 
