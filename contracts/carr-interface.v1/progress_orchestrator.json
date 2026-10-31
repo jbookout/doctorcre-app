@@ -1,0 +1,29 @@
+{
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "2d6f77b543255d27d61cc796a48aee4815493fee"
+  },
+  "schema": "doctorcre-orchestrator/v1",
+  "board_id": "orchestrator",
+  "read_verb": "read-progress-board",
+  "route": "/control-room/progress/board/orchestrator",
+  "states": [
+    "waiting",
+    "working",
+    "review",
+    "fixing",
+    "merging",
+    "merged",
+    "live",
+    "blocked"
+  ],
+  "freshness": "Queue events use the existing publisher. Scheduled GitHub and release refresh runs independently of a model. Page polling does not prove fresh upstream observations.",
+  "pagination": {
+    "first_page": 100,
+    "page_size": 100,
+    "pages": "Two reusable banks of stable page slots, CAS-written and verified before publishing the root manifest last. Local publishers share a host lock across checkouts.",
+    "counts": "total_cards and state_counts include every unresolved item. cards is newest changes first.",
+    "unavailable": "Version mismatches refuse mixed observations. Loaded older pages refresh together; page failure retains the complete displayed observation. Queue outage retains all previous queue pages.",
+    "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
+  }
+}

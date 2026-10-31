@@ -12,7 +12,7 @@ import { compareInstants } from './change-receipts.mjs';
 // another party is ever put under this record's name.
 //
 // `catch-me-up` takes the exact ref and would remove the name step entirely,
-// but it is not pinned in contracts/carr-interface.v1.json; that gap is
+// but it is not pinned in contracts/carr-interface.v1; that gap is
 // reported rather than widened here.
 
 export const ACTIVITY_LIMIT = 10;

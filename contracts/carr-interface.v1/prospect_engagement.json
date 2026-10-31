@@ -1,0 +1,10 @@
+{
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
+  },
+  "write": "set-prospect-engagement-status",
+  "inactive_stage": "nurture_drip",
+  "active_stage": "opportunity",
+  "history": "Existing prospects and new prospects created over leads start active. Migration initialization is audited without changing board membership or client versions. Only an explicit partner engagement choice returns a prospect to Leads. Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
+}

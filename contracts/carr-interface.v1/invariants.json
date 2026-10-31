@@ -1,0 +1,10 @@
+[
+  "The browser never receives database credentials.",
+  "The browser never selects its actor, tenant, sponsor, or authority class.",
+  "A refused write and an unanswered write remain distinct states.",
+  "Retries reuse the same idempotency key and reconcile against CARR.",
+  "Fixture data is synthetic and cannot become production state.",
+  "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
+  "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one.",
+  "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
+]

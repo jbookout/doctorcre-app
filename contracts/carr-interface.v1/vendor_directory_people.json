@@ -1,0 +1,12 @@
+{
+  "schema": "carr-vendor-directory.v2",
+  "version": "2.0.0",
+  "path": "contracts/vendor-directory.v2.json",
+  "sha256": "f492e28c6049e11b1fd212acc41d600071b9a95ca69c6c81c747c839a6783309",
+  "request_selector": "contract=vendor-directory.v2",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "3ade6e86dbf7260114cd64f0b23a80d689b64e15",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/2667"
+  }
+}
