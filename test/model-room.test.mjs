@@ -634,6 +634,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
     "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*",
     "/api/v1/fact-review/documents", "/api/v1/fact-review/list", "/api/v1/fact-review/record", "/api/v1/fact-review/resolve",
     "/api/v1/call-sessions", "/api/v1/call-sessions/{id}", "/api/v1/call-sessions/{id}/transfer", "/api/v1/call-sessions/{id}/report",
+    "/api/v1/market-terms/read",
   ], "http_surfaces includes the versioned Tour, fact review and phone session routes");
 });
 

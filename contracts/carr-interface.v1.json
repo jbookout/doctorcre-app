@@ -101,6 +101,7 @@
     "read-home-agenda",
     "read-invoice-tracker",
     "read-loop",
+    "read-market-terms",
     "read-notification-preferences",
     "read-portfolio",
     "read-post-call-followups",
@@ -176,7 +177,8 @@
     "/api/v1/call-sessions",
     "/api/v1/call-sessions/{id}",
     "/api/v1/call-sessions/{id}/transfer",
-    "/api/v1/call-sessions/{id}/report"
+    "/api/v1/call-sessions/{id}/report",
+    "/api/v1/market-terms/read"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -1854,6 +1856,20 @@
     "authentication": "Same-origin partner cookie and x-carr-csrf for POST/PUT, using private-session.js. Server scopes reads to the authenticated owner. A review link provides the session ID on another authorized device; there is no session-list endpoint.",
     "review": "Pending single-track candidates require explicit partner confirmation through existing resolve-post-call-candidate or resolve-candidate. Applied automatic changes and Undo use read-call-outcomes and undo-call-change. Those operations expose only unreviewed automatic changes and refuse human-confirmed changes. No transcript, Outlook draft creation, or automatic phone candidate application.",
     "deployment_order": "Depends on DoctorCRE/carr-system#2721 being merged and deployed. Do not enable auto-merge."
+  },
+  "market_terms": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "a07acbe0b9be7bd7f3365a0c74a8460c99234a27",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2768"
+    },
+    "verb": "read-market-terms",
+    "schema_version": "market-terms.v1",
+    "arguments": [
+      "submarket",
+      "use_type",
+      "as_of"
+    ]
   },
   "convention_adoption": {
     "producer": {
