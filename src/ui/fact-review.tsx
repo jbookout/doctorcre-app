@@ -2,15 +2,15 @@ import { useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
-type Document = { id: string; filename: string; subject_type: string; subject_id: string; deleted_at?: string | null };
+type Document = { id: string; display_name: string; stored_at: string };
 type Value = { value: string; unit: string; normalized_value?: string; canonical_unit?: string; expense_basis?: string | null; observation_ids?: string[] };
 type Observation = Value & { id: string; method: string; confidence_tier: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null; cited_text_expires_at: string } };
 type Item = { entity_ref: string; fact_key: string; pending: boolean; reasons: string[]; canonical_fact: Value | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; review_version: string };
 type HumanFact = { fact_key: string; value: string; unit: string; expense_basis?: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string } };
 type Args = { idempotency_key: string; entity_ref: string } & ({ observation: HumanFact } | { fact_key: string; base_version: number; review_version: string; decision: string; reason: string; observation_id?: string; correction?: HumanFact });
 type Receipt = { ok: boolean; schema_version: string };
-type Client = { listFactReview(args: { entity_ref: string; include_resolved: boolean; limit: number; cursor?: string }): Promise<{ schema_version: string; items: Item[]; has_more: boolean; next_cursor: string | null }>; recordHumanFact(args: Args): Promise<Receipt>; resolveFactReview(args: Args): Promise<Receipt> };
-type Options = { client: Client; entityRef: string; attachments?: Document[]; terms: Record<string, { label: string; units: Record<string, number> }> };
+type Client = { listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }): Promise<{ ok: boolean; schema_version: string; documents: Document[]; has_more: boolean; next_cursor: string | null }>; listFactReview(args: { entity_ref: string; include_resolved: boolean; limit: number; cursor?: string }): Promise<{ schema_version: string; items: Item[]; has_more: boolean; next_cursor: string | null }>; recordHumanFact(args: Args): Promise<Receipt>; resolveFactReview(args: Args): Promise<Receipt> };
+type Options = { client: Client; entityRef: string; terms: Record<string, { label: string; units: Record<string, number> }> };
 type Controls = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
 const BASES: Record<string, string> = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
 function valueText(value: Value) {
@@ -29,7 +29,7 @@ function reviewLabel(item: Item) {
   if (!item.pending) return 'Reviewed';
   return item.reasons.map(reason => ({ conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' } as Record<string, string>)[reason] || 'Review required').join(' · ') || 'Review required';
 }
-function documentName(o: Observation, documents: Document[]) { return documents.find(doc => doc.id === o.source.document_ref)?.filename || 'Document name unavailable'; }
+function documentName(o: Observation, documents: Document[]) { return documents.find(doc => doc.id === o.source.document_ref)?.display_name || 'Document name unavailable'; }
 function Entry({ documents, factKey, prefix, terms }: { documents: Document[]; factKey?: string; prefix: string; terms: Options['terms'] }) {
   const [selectedTerm, setSelectedTerm] = useState(factKey || 'base_rent_per_sf');
   const units = Object.keys(terms[selectedTerm]?.units || {});
@@ -38,7 +38,7 @@ function Entry({ documents, factKey, prefix, terms }: { documents: Document[]; f
     <label>Value<input name="value" inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,29})(?:[.][0-9]{1,18})?" maxLength={49} required /></label>
     <label>Unit<select aria-label="Unit" name="unit" key={units.join("|")}>{units.map(unit => <option key={unit}>{unit}</option>)}</select></label>
     <label data-expense-basis hidden={selectedTerm !== 'base_rent_per_sf'}>Expense basis<select aria-label="Expense basis" name="expense_basis" disabled={selectedTerm !== 'base_rent_per_sf'}>{Object.entries(BASES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-    <label>Document<select aria-label="Document" name="document_ref" required>{documents.map(doc => <option key={doc.id} value={doc.id}>{doc.filename}</option>)}</select></label>
+    <label className="fact-wide">Document<select aria-label="Document" name="document_ref" required>{documents.map(doc => <option key={doc.id} value={doc.id}>{doc.display_name} · {doc.stored_at.slice(0, 10)}</option>)}</select></label>
     <label>First page<input name="page_start" type="number" min="1" max="100000" defaultValue="1" required /></label>
     <label>Last page<input name="page_end" type="number" min="1" max="100000" defaultValue="1" required /></label>
     <label className="fact-wide">Cited text<textarea name="cited_text" rows={2} maxLength={4000} required aria-describedby={`${prefix}-source-hint`} /></label>
@@ -61,26 +61,43 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
 }
 
 function control(form: HTMLFormElement, name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement { return form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement; }
-export function mountFactReview(root: HTMLElement, { client, entityRef, attachments, terms: FACT_TERMS }: Options) {
+export function mountFactReview(root: HTMLElement, { client, entityRef, terms: FACT_TERMS }: Options) {
   let disposed = false, generation = 0, items: Item[] = [], writing = false, dirty = false;
   let documents: Document[] = [];
+  let documentsAvailable = false;
   const pending = new Map<HTMLFormElement, { method: "recordHumanFact" | "resolveFactReview"; args: Args }>();
   const reactRoot = createRoot(root);
   let listContent: ReactNode = null;
   let recordRevision = 0;
   let documentSignature: string | undefined;
   function render() {
-    flushSync(() => reactRoot.render(<><h2>Terms</h2><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{attachments ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    flushSync(() => reactRoot.render(<><h2>Terms</h2><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
   }
-  function setDocuments(nextAttachments?: Document[]) {
-    const next = (nextAttachments || []).filter(doc => doc.subject_type === 'deal' && doc.subject_id === entityRef && !doc.deleted_at && doc.id && doc.filename);
+  function setDocuments(result: Document[] | null) {
+    const next = result || [];
+    documentsAvailable = result !== null;
     if (documentSignature === JSON.stringify(next)) return;
-    attachments = nextAttachments;
     documents = next;
     documentSignature = JSON.stringify(documents);
     render();
   }
-  setDocuments(attachments);
+  setDocuments(null);
+  const documentLoad = (async () => {
+    try {
+      const loaded: Document[] = []; let cursor: string | undefined;
+      for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+        const page = await client.listDealDocuments({ deal_id: entityRef, limit: 100, ...(cursor ? { cursor } : {}) });
+        if (page.ok !== true || page.schema_version !== 'deal-documents.v1' || !Array.isArray(page.documents)
+          || page.documents.some(doc => !doc.id || !doc.display_name || typeof doc.stored_at !== 'string')
+          || typeof page.has_more !== 'boolean') throw new Error('Documents unavailable');
+        loaded.push(...page.documents);
+        if (!page.has_more) return loaded;
+        if (!page.next_cursor || page.next_cursor === cursor) throw new Error('Documents unavailable');
+        cursor = page.next_cursor;
+      }
+    } catch { /* The server may not yet provide document metadata. */ }
+    return null;
+  })();
   const status = root.querySelector<HTMLElement>('[data-terms-status]')!;
   const list = root.querySelector<HTMLElement>('[data-terms-list]')!;
   async function refresh(message = '') {
@@ -89,6 +106,9 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, attachme
     status.textContent = 'Loading terms…';
     try {
       const loaded: Item[] = []; let cursor: string | null | undefined;
+      const listedDocuments = await documentLoad;
+      if (disposed || current !== generation) return;
+      setDocuments(listedDocuments);
       do {
         const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
         if (disposed || current !== generation) return;
@@ -215,10 +235,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, attachme
   root.addEventListener('input', markDirty);
   root.addEventListener('click', click);
   void refresh();
-  return { refresh(nextAttachments?: Document[]) {
-    if (!disposed && !dirty && !writing && !pending.size) setDocuments(nextAttachments);
-    return refresh();
-  }, dispose() {
+  return { refresh, dispose() {
     disposed = true; generation++;
     reactRoot.unmount();
     root.removeEventListener('submit', submit); root.removeEventListener('change', onChange); root.removeEventListener('click', click);
