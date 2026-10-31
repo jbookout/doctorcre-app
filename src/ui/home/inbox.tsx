@@ -3,7 +3,7 @@ export type InboxItem = Readonly<{
   source_state: 'working' | 'needs_attention' | 'done' | 'failed'; title: string;
   activity_at: string; hold_until: string | null; unseen: boolean;
   disposition: 'inbox' | 'snoozed' | 'settled'; snoozed_until: string | null;
-  explicit_unsettle: boolean; section: string; base_version: string;
+  explicit_unsettle: boolean; section: 'inbox' | 'working' | 'snoozed' | 'settled'; base_version: string;
 }>;
 export type Snapshot = Readonly<{ ok: true; schema_version: 'home-inbox.v1'; items: InboxItem[]; working_collapsed: true; auto_settle_enabled: false }>;
 export type Action = 'snooze' | 'settle' | 'unsettle';
@@ -15,8 +15,9 @@ const text = (value: unknown): value is string => typeof value === 'string' && v
 const timestamp = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
 export function parseItem(value: unknown): InboxItem {
   if (!object(value) || !['item_id', 'source_type', 'source_id', 'source_version', 'title', 'section', 'base_version'].every(key => text(value[key])) ||
-    !['working', 'needs_attention', 'done', 'failed'].includes(String(value.source_state)) ||
-    !['inbox', 'snoozed', 'settled'].includes(String(value.disposition)) || !timestamp(value.activity_at) ||
+    !(typeof value.source_state === 'string' && ['working', 'needs_attention', 'done', 'failed'].includes(value.source_state)) ||
+    !(typeof value.disposition === 'string' && ['inbox', 'snoozed', 'settled'].includes(value.disposition)) ||
+    !(typeof value.section === 'string' && ['inbox', 'working', 'snoozed', 'settled'].includes(value.section)) || !timestamp(value.activity_at) ||
     !(value.hold_until === null || timestamp(value.hold_until)) || !(value.snoozed_until === null || timestamp(value.snoozed_until)) ||
     typeof value.unseen !== 'boolean' || typeof value.explicit_unsettle !== 'boolean') throw Error('Inbox returned an unreadable item. Refresh to try again.');
   return value as InboxItem;
@@ -32,8 +33,7 @@ export function shelves(items: readonly InboxItem[], currentId?: string) {
   const result: { inbox: InboxItem[]; working: InboxItem[]; snoozed: InboxItem[]; settled: InboxItem[]; current: InboxItem | undefined } = { inbox: [], working: [], snoozed: [], settled: [], current: undefined };
   for (const item of [...items].sort((a, b) => Date.parse(b.activity_at) - Date.parse(a.activity_at) || a.item_id.localeCompare(b.item_id))) {
     if (item.item_id === currentId) { result.current = item; continue; }
-    const shelf = item.disposition === 'settled' ? 'settled' : item.disposition === 'snoozed' ? 'snoozed' : item.source_state === 'working' ? 'working' : 'inbox';
-    result[shelf].push(item);
+    result[item.section].push(item);
   }
   return result;
 }

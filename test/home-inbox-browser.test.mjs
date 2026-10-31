@@ -32,6 +32,7 @@ async function open(t, { refusal = false, width = 1440, theme = 'light', card = 
         if (partial && item_id === 'b') return { item_id, ok: false, error: 'version_conflict', current_version: 'v9' };
         const item = items.find(item => item.item_id === item_id);
         Object.assign(item, { disposition: name.startsWith('unsettle') ? 'inbox' : name.startsWith('snooze') ? 'snoozed' : 'settled', snoozed_until: args.until || null, base_version: `opaque:${writes + 1}` });
+        item.section = item.disposition !== 'inbox' ? item.disposition : item.source_state === 'working' ? 'working' : 'inbox';
         return { item_id, ok: true, item };
       }) };
     }

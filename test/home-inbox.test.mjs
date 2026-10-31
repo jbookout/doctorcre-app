@@ -48,3 +48,9 @@ test('unexpected command results cannot confirm another item', async () => {
   const request = command('settle', [item('a')]);
   assert.throws(() => parseResults({ ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'other', ok: true, item: item('other') }] }, request), /uncertain/);
 });
+
+test('wire states must be strings and placement uses the canonical section', () => {
+  for (const fields of [{ source_state: ['done'] }, { disposition: ['inbox'] }, { section: 'unknown' }]) assert.throws(() => parseSnapshot(snapshot([item('a', fields)])));
+  const state = parseSnapshot(snapshot([item('a', { source_state: 'working', section: 'inbox' })]));
+  assert.deepEqual(shelves(state.items).inbox.map(row => row.item_id), ['a']);
+});

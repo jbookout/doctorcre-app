@@ -11,7 +11,7 @@ export function fixtureInboxRpc() {
       const item = items.find(item => item.item_id === item_id);
       if (!item || item.base_version !== base_version) return { item_id, ok: false, error: 'version_conflict', current_version: item?.base_version };
       const next = { ...item, disposition: request.action === 'settle' ? 'settled' : request.action === 'snooze' ? 'snoozed' : 'inbox', snoozed_until: request.action === 'snooze' ? request.args.until : null, explicit_unsettle: request.action === 'unsettle', base_version: crypto.randomUUID() };
-      Object.assign(item, next); return { item_id, ok: true, item: { ...item } };
+      Object.assign(item, next, { section: next.disposition !== 'inbox' ? next.disposition : item.source_state === 'working' ? 'working' : 'inbox' }); return { item_id, ok: true, item: { ...item } };
     });
     const result = { ok: true, schema_version: 'home-inbox-command.v1', results }; parseResults(result, request);
     receipts.set(request.args.idempotency_key, result); return result;
