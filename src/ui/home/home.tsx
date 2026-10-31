@@ -22,15 +22,13 @@ function Inbox({ client }: { client: InboxClient }) {
   const [undo, setUndo] = useState<Undo[]>([]);
   const [snooze, setSnooze] = useState<readonly InboxItem[] | null>(null);
   const [online, setOnline] = useState(navigator.onLine);
-  const [now, setNow] = useState(Date.now());
   const root = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ x: number; y: number } | null>(null);
   const inFlight = useRef(false);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     addEventListener('online', update); addEventListener('offline', update);
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => { removeEventListener('online', update); removeEventListener('offline', update); clearInterval(timer); };
+    return () => { removeEventListener('online', update); removeEventListener('offline', update); };
   }, []);
   function focusRow() {
     requestAnimationFrame(() => {
@@ -46,7 +44,7 @@ function Inbox({ client }: { client: InboxClient }) {
       const results = await client.run(operation.request);
       const successes = results.flatMap(result => result.ok ? [result.item] : []);
       const failed = results.filter(result => !result.ok);
-      cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => successes.find(next => next.item_id === item.item_id) || item) } : snapshot);
+      cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => successes.find(next => next.item_id === item.item_id) || item) } : snapshot, { updatedAt: query.dataUpdatedAt });
       setFailures(failed);
       select(new Set(failed.map(result => result.item_id)));
       if (successes.length) {
@@ -96,7 +94,7 @@ function Inbox({ client }: { client: InboxClient }) {
     if (next) { event.preventDefault(); next.focus(); }
   }}>
     <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p><h1>Home</h1><p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
-    <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : now - query.dataUpdatedAt > 60_000 ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
+    <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {result.error === 'version_conflict' ? 'This card changed on the server. Dismiss and refresh before another action.' : result.error}</p>)}
       {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
       {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo([]); act(previous.action, previous.items, previous.until); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
