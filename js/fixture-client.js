@@ -1266,6 +1266,7 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async listDealDocuments(args) { return (await factReviews()).listDealDocuments(args); },
+    async prepareTermsComparison(args) { return (await factReviews()).prepareTermsComparison(args); },
     async listFactReview(args) { return (await factReviews()).listFactReview(args); },
     async recordHumanFact(args) { return (await factReviews()).recordHumanFact(args); },
     async resolveFactReview(args) { return (await factReviews()).resolveFactReview(args); },

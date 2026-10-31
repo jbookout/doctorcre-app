@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
@@ -7,11 +7,14 @@ type Period = { start_month: number; end_month: number; rate: string; unit: stri
 type SourcedPeriod = { [K in keyof Period]: { value: Period[K] } };
 type Value = { value: string | SourcedPeriod[]; normalized_schedule?: Period[]; unit: string; normalized_value?: string; canonical_unit?: string; expense_basis?: string | null; observation_ids?: string[] };
 type Observation = Value & { id: string; method: string; confidence_tier: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null; cited_text_expires_at: string } };
-type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: string; reasons: string[]; canonical_fact: Value | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; review_version: string };
+type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: string; reasons: string[]; canonical_fact: Value | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; canonical_history: { version: number; promoted_at?: string }[]; review_version: string };
 type HumanFact = { fact_key: string; value: string; unit: string; expense_basis?: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string } };
 type Args = { idempotency_key: string; entity_ref: string } & ({ observation: HumanFact } | { fact_key: string; base_version: number; review_version: string; decision: string; reason: string; observation_id?: string; correction?: HumanFact });
 type Receipt = { ok: boolean; schema_version: string };
-type Client = { listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }): Promise<{ ok: boolean; schema_version: string; documents: Document[]; has_more: boolean; next_cursor: string | null }>; listFactReview(args: { entity_ref: string; include_resolved: boolean; limit: number; cursor?: string }): Promise<{ schema_version: string; items: Item[]; has_more: boolean; next_cursor: string | null }>; recordHumanFact(args: Args): Promise<Receipt>; resolveFactReview(args: Args): Promise<Receipt> };
+type Client = { prepareTermsComparison(args: ComparisonRequest): Promise<Plan>; listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }): Promise<{ ok: boolean; schema_version: string; documents: Document[]; has_more: boolean; next_cursor: string | null }>; listFactReview(args: { entity_ref: string; include_resolved: boolean; limit: number; cursor?: string }): Promise<{ schema_version: string; items: Item[]; has_more: boolean; next_cursor: string | null }>; recordHumanFact(args: Args): Promise<Receipt>; resolveFactReview(args: Args): Promise<Receipt> };
+type ComparisonField = { fact_key: string; prior_version: number; current_version: number };
+type ComparisonRequest = { idempotency_key: string; deal_id: string; fields: ComparisonField[] };
+type Plan = { template: { name: string }; human_gate: string; edits: { where: string; text: string }[]; remaining: string[] };
 type Options = { client: Client; entityRef: string; terms: Record<string, { label: string; units: Record<string, number> }> };
 type Controls = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
 const BASES: Record<string, string> = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
@@ -68,7 +71,7 @@ function sourcedPeriods(periods: SourcedPeriod[]): Period[] {
 }
 function Review({ item, documents, index, terms }: { item: Item; documents: Document[]; index: number; terms: Options['terms'] }) {
   const schedule = item.fact_key === 'rent_schedule';
-  return <article className="fact-term" data-fact-key={item.fact_key}><header><h3>{terms[item.fact_key]?.label || item.fact_key.replaceAll('_', ' ')}</h3><span className="fact-state">{reviewLabel(item)}</span></header>
+  return <article className="fact-term" id={`term-${item.fact_key}`} tabIndex={-1} data-fact-key={item.fact_key}><header><h3>{terms[item.fact_key]?.label || item.fact_key.replaceAll('_', ' ')}</h3><span className="fact-state">{reviewLabel(item)}</span></header>
     <div className="fact-canonical"><small>Canonical value</small>{schedule && item.canonical_fact?.normalized_schedule ? <Schedule periods={item.canonical_fact.normalized_schedule} /> : <p className={item.canonical_fact ? undefined : 'fact-empty'}>{item.canonical_fact ? valueText(item.canonical_fact) : 'No canonical value recorded'}</p>}</div>
     <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <><strong>{scheduleLabel(o)}</strong><Schedule periods={sourcedPeriods(o.value)} /></> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
     <button type="button" className="btn" data-review-term hidden={item.pending}>Review term</button>
@@ -82,6 +85,67 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
   </article>;
 }
 
+const comparisonRows: Record<string, number> = { base_rent_per_sf: 9, term_months: 13, free_rent_months: 14, landlord_ti_per_sf: 15 };
+function Comparison({ client, entityRef, terms, isDisposed }: Options & { isDisposed: () => boolean }) {
+  const [loading, setLoading] = useState(false);
+  const [label, setLabel] = useState('Prepare terms comparison');
+  const [result, setResult] = useState<ReactNode>(null);
+  const pending = useRef<ComparisonRequest | null>(null);
+  const snapshot = useRef<Item[]>([]);
+  function fieldLink(key: string) {
+    return <a href={`#term-${key}`} data-comparison-field={key} onClick={event => {
+      event.preventDefault(); event.stopPropagation();
+      const target = document.getElementById(`term-${key}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus({ preventScroll: true });
+    }}>{terms[key]?.label || key}</a>;
+  }
+  async function prepare() {
+    if (loading) return;
+    setLoading(true); setResult(<p role="status">Preparing terms comparison…</p>);
+    try {
+      if (!pending.current) {
+        const items: Item[] = []; let cursor: string | undefined;
+        do {
+          const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
+          if (isDisposed()) return;
+          if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef) || (page.has_more && (!page.next_cursor || page.next_cursor === cursor))) throw new Error('Terms unavailable');
+          items.push(...page.items); cursor = page.has_more ? page.next_cursor || undefined : undefined;
+        } while (cursor);
+        snapshot.current = items;
+        const fields = items.filter(item => Object.hasOwn(comparisonRows, item.fact_key) && item.canonical_version > 0 && item.canonical_history?.some(fact => fact.version < item.canonical_version))
+          .sort((a, b) => comparisonRows[a.fact_key]! - comparisonRows[b.fact_key]!)
+          .map(item => ({ fact_key: item.fact_key, prior_version: Math.max(...item.canonical_history.filter(f => f.version < item.canonical_version).map(f => f.version)), current_version: item.canonical_version }));
+        if (!fields.length) { setResult(<><p>Confirm prior and current versions before preparing the comparison.</p><ul>{Object.keys(comparisonRows).map(key => <li key={key}>{fieldLink(key)} · Missing confirmed prior or current version.</li>)}</ul></>); return; }
+        pending.current = { idempotency_key: crypto.randomUUID(), deal_id: entityRef, fields };
+      }
+      if (isDisposed()) return;
+      const request = pending.current;
+      const plan = await client.prepareTermsComparison(request);
+      const edits = new Map(plan.edits.map(edit => [edit.where, edit.text]));
+      const cell = (address: string) => edits.get(`cell:LOI Grid!${address}`);
+      const version = (key: string, n: number) => { const fact = snapshot.current.find(item => item.fact_key === key)?.canonical_history.find(f => f.version === n); return `v${n}${fact?.promoted_at && Number.isFinite(Date.parse(fact.promoted_at)) ? ` · ${new Date(fact.promoted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}` : ''}`; };
+      setResult(<article className="terms-draft" data-comparison-draft aria-label="Terms comparison draft"><header><h3>{plan.template.name}</h3><span className="fact-state">Draft</span></header><p className="terms-draft-note">{plan.human_gate}</p>
+        {request.fields.map(ref => <p key={ref.fact_key} className="terms-versions"><strong>{terms[ref.fact_key]?.label}</strong> · Prior: {version(ref.fact_key, ref.prior_version)} · Current: {version(ref.fact_key, ref.current_version)}</p>)}
+        <div className="terms-draft-groups">{[['B', 'Prior'], ['C', 'Current']].map(([column, title]) => <section key={column}><h4>{title}</h4><dl>{request.fields.map(ref => <div key={ref.fact_key}><dt>{cell(`A${comparisonRows[ref.fact_key]}`)}</dt><dd><strong>{cell(`${column}${comparisonRows[ref.fact_key]}`)}</strong><small>{cell(`${column}4`)?.replace(`${title} - `, '')}</small></dd></div>)}</dl></section>)}</div>
+        <h4>Remaining work</h4><ul>{plan.remaining.map((text, i) => <li key={i}>{text}</li>)}{Object.keys(comparisonRows).filter(key => !request.fields.some(ref => ref.fact_key === key)).map(key => <li key={key}>{fieldLink(key)} · Missing confirmed versions for comparison.</li>)}</ul></article>);
+      pending.current = null; setLabel('Prepare again');
+    } catch (caught) {
+      const error = caught as Error & { status?: number; payload?: { error?: string; reason?: string; field?: string }; pendingRequest?: ComparisonRequest };
+      const payload = error.payload;
+      if (payload?.reason === 'stale_snapshot' || payload?.error === 'stale_snapshot') { pending.current = null; setResult(<p>A fact changed since this snapshot. Prepare again to compare the latest confirmed versions.</p>); }
+      else if (payload?.error === 'comparison_fact_blocked' && payload.field && Object.hasOwn(comparisonRows, payload.field)) {
+        pending.current = null; const reason = ({ missing: 'Missing confirmed fact', unresolved: 'Unresolved fact', missing_version: 'Missing confirmed version', source_not_permitted: 'Source not permitted', invalid_value: 'Value needs review' } as Record<string, string>)[payload.reason || ''] || 'Fact needs review';
+        setResult(<><p>Review the named field before preparing the comparison.</p><ul><li>{fieldLink(payload.field)} · {reason}.</li></ul></>);
+      } else {
+        const unavailable = !client.prepareTermsComparison || [404, 405, 501, 503].includes(error.status || 0) || payload?.error === 'comparison_template_unavailable';
+        pending.current = error.pendingRequest || null;
+        setResult(<p>{unavailable ? 'Terms comparison unavailable. The server or reviewed template may not be deployed yet.' : error.status === 401 || error.status === 403 ? 'Sign in again before preparing a terms comparison.' : 'Could not prepare the terms comparison.'}{pending.current ? ' Keep this tab open. Check outcome retries the same request.' : ' Try again.'}</p>);
+      }
+      setLabel(pending.current ? 'Check outcome' : 'Prepare again');
+    } finally { setLoading(false); }
+  }
+  return <div data-terms-comparison><button type="button" className="btn" data-prepare-comparison disabled={loading} onClick={() => void prepare()}>{label}</button><div data-comparison-result aria-live="polite">{result}</div></div>;
+}
+
 function control(form: HTMLFormElement, name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement { return form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement; }
 export function mountFactReview(root: HTMLElement, { client, entityRef, terms: FACT_TERMS }: Options) {
   let disposed = false, generation = 0, items: Item[] = [], writing = false, dirty = false;
@@ -93,7 +157,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   let recordRevision = 0;
   let documentSignature: string | undefined;
   function render() {
-    flushSync(() => reactRoot.render(<><h2>Terms</h2><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} isDisposed={() => disposed} /><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
   }
   function setDocuments(result: Document[] | null) {
     const next = result || [];
@@ -142,6 +206,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       } while (cursor);
       items = loaded;
       listContent = items.length ? items.map((item, index) => <Review key={`${generation}-${item.fact_key}`} item={item} index={index} documents={documents} terms={FACT_TERMS} />) : <p>No sourced terms recorded.</p>;
+      listContent = <>{listContent}{Object.keys(comparisonRows).filter(key => !items.some(item => item.fact_key === key)).map(key => <section key={key} className="fact-term fact-empty" id={`term-${key}`} tabIndex={-1}><h3>{FACT_TERMS[key]?.label}</h3><p>No sourced terms recorded.</p></section>)}</>;
       render();
       status.textContent = message;
     } catch {

@@ -62,6 +62,36 @@ export function createFactReviewFixture() {
       const has_more = offset + limit < all.length;
       return response({ items, has_more, next_cursor: has_more ? JSON.stringify({ entity_ref, include_resolved, offset: offset + limit }) : null });
     },
+    async prepareTermsComparison(args) {
+      const prior = receipts.get(args.idempotency_key);
+      if (prior) {
+        if (prior.request !== JSON.stringify(args)) refuse('key_reuse');
+        return structuredClone(prior.result);
+      }
+      const rows = { base_rent_per_sf: [9, 'Base rent (USD/SF/year)'], term_months: [13, 'Term (months)'], free_rent_months: [14, 'Free rent (months)'], landlord_ti_per_sf: [15, 'Landlord TI (USD/SF)'] };
+      const edits = [{ where: 'cell:LOI Grid!A1', text: 'DRAFT - LOI terms comparison' },
+        { where: 'cell:LOI Grid!B4', text: 'Prior - Confirmed deal fact' }, { where: 'cell:LOI Grid!C4', text: 'Current - Confirmed deal fact' }];
+      for (const ref of args.fields) {
+        const field = fields.get(`${args.deal_id}|${ref.fact_key}`);
+        const block = reason => { throw Object.assign(new Error('comparison_fact_blocked'), { payload: { error: 'comparison_fact_blocked', field: ref.fact_key, reason } }); };
+        if (!field?.canonical_version) block('missing');
+        if (field.pending) block('unresolved');
+        if (field.canonical_version !== ref.current_version) block('stale_snapshot');
+        const [row, label] = rows[ref.fact_key];
+        for (const [column, version] of [['B', ref.prior_version], ['C', ref.current_version]]) {
+          const fact = field.canonical_history.find(fact => fact.version === version);
+          if (!fact) block('missing_version');
+          edits.push({ where: `cell:LOI Grid!${column}${row}`, text: fact.normalized_value + (fact.expense_basis ? ` (${fact.expense_basis})` : '') });
+        }
+        edits.push({ where: `cell:LOI Grid!A${row}`, text: label });
+      }
+      const result = { ok: true, schema_version: 'terms-comparison.v1', status: 'draft', document_id: uuidv4(),
+        template: { slug: 'loi-grid', name: 'LOI comparison', source_path: 'Templates/demo-grid.xlsx', template_version: 'synthetic-v1', kind: 'xlsx', output_kinds: ['working', 'pdf'] },
+        basename: 'LOI-comparison-DRAFT', deal: { id: args.deal_id }, owed: [], partial: [], carried: [], edits,
+        remaining: ['Rent schedule'], human_gate: 'Draft for review. Nothing sent.' };
+      receipts.set(args.idempotency_key, { request: JSON.stringify(args), result: structuredClone(result) });
+      return result;
+    },
     async recordHumanFact(args) {
       const prior = replay(args); if (prior) return prior;
       const observation = record(args.entity_ref, args.observation);
