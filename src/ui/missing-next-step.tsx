@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
+const shortDate = (day: string) => new Date(`${day.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+
 type Group = { owner: string | null; deal_ids: string[] };
 type Deal = { id: string; name: string; phase?: string; last_touch?: string | null };
 type Board = { missing_next_action?: Group[]; deals: Deal[]; actor: string };
@@ -18,10 +20,10 @@ function Panel({ board, scope, labels }: { board: Board | null; scope: string; l
     {groups.map(group => {
       const owner = group.owner === null ? 'Unassigned' : (labels[group.owner] || group.owner);
       return <div role="group" aria-label={owner} key={group.owner ?? 'unassigned'}>
-        <p className="subhead">{owner} · {group.deals.length}</p><div className="home-flags">{(expanded ? group.deals : group.deals.slice(0, 1)).map(deal => <a className="home-flag" key={deal.id} href={`/deals?deal=${encodeURIComponent(deal.id)}&focus=next-step`}><div><strong>{deal.name}</strong><span>{deal.last_touch ? `Last touch ${deal.last_touch}` : 'No last touch'}</span></div><span className="work-card-status">{deal.phase || 'Active'}</span><span className="home-arrow" aria-hidden="true">→</span></a>)}</div>
+        <p className="subhead">{owner} · {group.deals.length}</p><div className="home-flags">{(expanded ? group.deals : group.deals.slice(0, 1)).map(deal => <a className="home-flag" key={deal.id} href={`/deals?deal=${encodeURIComponent(deal.id)}&focus=next-step`}><div><strong>{deal.name}</strong><span>{deal.last_touch ? `Last touch ${shortDate(deal.last_touch)}` : 'No last touch'}</span></div><span className="work-card-status">{deal.phase || 'Active'}</span><span className="home-arrow" aria-hidden="true">→</span></a>)}</div>
       </div>;
     })}
-    {total > groups.length && <button type="button" className="home-outline" onClick={() => setExpanded(!expanded)}>{expanded ? 'Show less' : `Show all ${total}`}</button>}
+    {total > groups.length && <button type="button" className="home-outline" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Show less' : `Show all ${total}`}</button>}
   </section>;
 }
 
