@@ -71,7 +71,6 @@ export async function createFixtureClient(opts = {}) {
       updated_at: '2026-10-28T12:00:00Z', adoptable: true, statement: `Demo convention ${number}.`,
       card_id: null, packs: ['demo'], approve_with: { verb: 'adopt-rule', section_id, base_version: number } };
   });
-  const conventionReceipts = new Map();
 
   const partnerActor = seed.actors?.partner || 'dell';
 
@@ -1510,6 +1509,12 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async answerBoardQuestion({ board_id, question_id, base_version, answer_text, idempotency_key }) {
+      if (board_id !== 'calendar-agenda' || !/^[0-9a-f]{16}$/.test(question_id) || base_version !== 1 || answer_text !== 'Dismiss')
+        throw new Error('Invalid calendar answer');
+      return withIdem(idempotency_key, () => ({ ok: true, answer: { question_id, answer_text } }));
+    },
+
     async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         getDealOrThrow(ref);
@@ -2617,29 +2622,6 @@ export async function createFixtureClient(opts = {}) {
       const start=Number.parseInt(cursor||'0',10)||0,size=Math.max(1,Math.min(500,Number(limit)||100)),items=rows.slice(start,start+size),next=start+size<rows.length?String(start+size):null;
       const coverage=[...new Set(rows.map(r=>r.kind))].map(kind=>({kind,source_ref:`demo.${kind}`,state:kind==='defect'?'partial':'complete',count_total:rows.filter(r=>r.kind===kind).length,count_returned:items.filter(r=>r.kind===kind).length,reason:kind==='defect'?'fix_status_not_recorded':null}));
       return {schema:'unfinished-work.v1',items,coverage,census_complete:false,as_of:at,next_cursor:next,limit:size};
-    },
-    async adoptRule(args) {
-      const previous = conventionReceipts.get(args.idempotency_key);
-      if (previous) {
-        if (JSON.stringify(previous.args) !== JSON.stringify(args))
-          throw Object.assign(new Error('key_reuse'), { payload: { error: 'key_reuse' } });
-        return structuredClone(previous.result);
-      }
-      const index = conventionProposals.findIndex(row => row.section_id === args.section_id);
-      const error = index < 0 ? 'convention_proposal_not_found'
-        : conventionProposals[index].base_version !== args.base_version ? 'version_conflict'
-          : !args.reason?.trim() ? 'missing_required' : null;
-      if (error) throw Object.assign(new Error(error), { payload: { error } });
-      const rule_id = uuidv4();
-      const result = { ok: true, rule_id, card_id: null, load_layer: 'pack',
-        packs: [...conventionProposals[index].packs], retired_rule_ids: [], retired_section_id: args.section_id,
-        attach_id: uuidv4(), generation: conventionReceipts.size + 1,
-        approval: { ok: true, replayed: false, rule_id, policy_status: 'active',
-          enforcement_status: 'authority_enforced', installed_controls: ['human_authority_runtime'],
-          pending_controls: [], approval_receipt_id: uuidv4() } };
-      conventionProposals.splice(index, 1);
-      conventionReceipts.set(args.idempotency_key, { args: structuredClone(args), result });
-      return structuredClone(result);
     },
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
