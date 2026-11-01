@@ -12,6 +12,13 @@ const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
+test('signed-in Calendar CI installs the producer PostgreSQL binaries before its real journey', () => {
+  const checks = ci.split(/^  checks:/m)[1].split(/^  shards:/m)[0];
+  assert.match(checks, /run: bash \.\.\/carr-producer\/ops\/ci-postgres\.sh/);
+  const journey = checks.split('name: Verify signed-in Calendar')[1];
+  assert.match(journey, /CARR_LOCAL_PG_BIN_DIR: \/usr\/lib\/postgresql\/17\/bin/);
+});
+
 test("PR jobs build the merge candidate when the branch predates a required npm script", async t => {
   const directory = await temporaryDirectory("doctorcre-old-pr-");
   t.after(() => rm(directory, { recursive: true, force: true }));

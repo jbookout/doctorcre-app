@@ -71,10 +71,11 @@ jobs:
         with:
           python-version-file: carr-producer/.python-version
       - run: python3 -m pip install -r ../carr-producer/requirements.lock
-      - run: sudo apt-get install -y postgresql
+      - run: bash ../carr-producer/ops/ci-postgres.sh
       - name: Verify signed-in Calendar through the app and CARR Workers
         run: node --test test/calendar-access-browser.test.mjs
         env:
+          CARR_LOCAL_PG_BIN_DIR: /usr/lib/postgresql/17/bin
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - name: Verify Control Room attention and title behavior
         if: ${{ github.event_name == 'pull_request' }}
