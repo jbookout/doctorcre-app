@@ -43,6 +43,7 @@ export function projectLeaseRadar(payload, { scope = 'team', today = radarToday(
     .sort((a, b) => a.expiration_on.localeCompare(b.expiration_on) || a.id.localeCompare(b.id));
   const quarters = [];
   let day = `${today.slice(0,4)}-${String(Math.floor((Number(today.slice(5,7)) - 1) / 3) * 3 + 1).padStart(2,'0')}-01`;
+  // eslint-disable-next-line no-restricted-syntax -- Quarter generation advances 3 months and will stop at end; finite date-range rendering, 0 reads.
   while (day <= end) { const key = quarterKey(day); quarters.push({key, label: key.replace(/(\d+)-Q(\d)/, 'Q$2 $1'), leases: dated.filter(row => quarterKey(row.expiration_on) === key)}); day = addMonths(day, 3); }
   return { dated, gaps, quarters, today, end, observedAt: payload.observed_at };
 }

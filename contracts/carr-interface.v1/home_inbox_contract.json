@@ -1,0 +1,22 @@
+{
+  "schema_version": "home-inbox.v1",
+  "command_schema_version": "home-inbox-command.v1",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "pull_request": 2801,
+    "source_commit": "6fa49011c03a477d6bed638d6783511b2f33276b"
+  },
+  "read": "read-home-inbox",
+  "commands": [
+    "snooze-home-inbox",
+    "settle-home-inbox",
+    "unsettle-home-inbox"
+  ],
+  "max_items": 1000,
+  "max_notification_rows": 10000,
+  "command_min_items": 1,
+  "command_max_items": 100,
+  "versions": "opaque strings",
+  "retry": "same idempotency key and exact arguments",
+  "merge_dependency": "Server contract must be deployed before this application is merged."
+}

@@ -74,14 +74,25 @@ jobs:
           import assert from 'node:assert/strict';
           const base = new URL(process.env.DOCTORCRE_SMOKE_URL);
           for (const page of ['/deals', '/leads', '/invoices', '/control-room/progress', '/doc-chats']) {
-            const response = await fetch(new URL(page, base), { redirect: 'manual', signal: AbortSignal.timeout(30_000) });
-            assert.ok([301, 302, 303, 307, 308].includes(response.status), `${page} requires a sign-in redirect`);
-            const target = new URL(response.headers.get('location'), base);
-            assert.equal(target.origin, base.origin);
-            assert.equal(target.pathname, '/auth/login');
+            let target = new URL(page, base);
+            const visited = new Set();
+            while (target.pathname !== '/auth/login') {
+              assert.ok(visited.size < 10 && !visited.has(target.href), `${page}: redirect loop or limit`);
+              visited.add(target.href);
+              const response = await fetch(target, { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(30_000) });
+              assert.ok(!response.headers.has('cf-mitigated'), `${page}: Cloudflare challenge`);
+              assert.ok([301, 302, 303, 307, 308].includes(response.status), `${page} requires a sign-in redirect: HTTP ${response.status}`);
+              const location = response.headers.get('location');
+              assert.ok(location, `${page}: missing redirect location`);
+              target = new URL(location, target);
+              assert.equal(target.origin, base.origin);
+              assert.equal(target.username, '');
+              assert.equal(target.password, '');
+              assert.equal(target.hash, '');
+            }
             assert.equal(target.searchParams.get('return_to'), page);
           }
-          const status = await fetch(new URL('/status', base), { signal: AbortSignal.timeout(30_000) });
+          const status = await fetch(new URL('/status', base), { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(30_000) });
           assert.equal(status.status, 200);
           assert.match(status.headers.get('content-type') || '', /text\/html/);
           NODE

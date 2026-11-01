@@ -344,14 +344,23 @@ export function chartsAddress({ group = null, pick = null } = {}) {
 /* ------------------------------------------------------------------ the states */
 
 export const CHARTS_STATE_COPY = Object.freeze({
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for loading only; 0 automatic attempts, and any retry requires a fresh user action.
   loading: Object.freeze({ title: "Loading…", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for ready only; 0 automatic attempts, and any retry requires a fresh user action.
   ready: Object.freeze({ title: "Open deals", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for empty only; 0 automatic attempts, and any retry requires a fresh user action.
   empty: Object.freeze({ title: "No open deals", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for partial only; 0 automatic attempts, and any retry requires a fresh user action.
   partial: Object.freeze({ title: "No national accounts", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for no_match only; 0 automatic attempts, and any retry requires a fresh user action.
   no_match: Object.freeze({ title: "No matches", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for unreadable only; 0 automatic attempts, and any retry requires a fresh user action.
   unreadable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for refused only; 0 automatic attempts, and any retry requires a fresh user action.
   refused: Object.freeze({ title: "Sign-in required", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for unavailable only; 0 automatic attempts, and any retry requires a fresh user action.
   unavailable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: true }),
+  // eslint-disable-next-line no-restricted-syntax -- Chart state copy for stale only; 0 automatic attempts, and any retry requires a fresh user action.
   stale: Object.freeze({ title: "Updating…", copy: "", retry: false }),
 });
 

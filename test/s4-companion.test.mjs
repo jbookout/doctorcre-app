@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { createPostCallClient } from '../js/post-call-client.js';
+import { createPostCallClient } from '../js/post-call-review-client.js';
 import { createCallMode } from '../js/call-mode.js';
 
-for (const phase of ['fetch','json']) for (const method of ['publishCallContext','getStatus','syncStatus','createOutlookDraft']) {
+for (const phase of ['fetch','json']) for (const method of ['publishCallContext','getStatus','syncStatus','createOutlookDraft','resolveQuestion']) {
   test(`F12 ${method} bounds hung ${phase}, including transports ignoring abort`, async () => {
     let signal;
     const client=createPostCallClient({timeoutMs:10,fetchImpl:async (url,init) => {
@@ -93,14 +93,14 @@ test('F12 malformed post-call report is unavailable rather than waiting for tran
 
 async function recoveryController({fetchImpl, getStatus, ...deps}) {
   const dom = new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
-  const pending = new Map(); let next = 0;
+  const pending = new Map(); let next = 0, time = Date.now();
   const ui = createCallMode({root:dom.window.document,requestTimeoutMs:10,fetchImpl,
-    postCallClient:{getStatus},client:()=>({}),...deps,
-    setTimeout:fn => {pending.set(++next,fn);return next;},clearTimeout:id => pending.delete(id),
+    postCallClient:{getStatus},client:()=>({}),...deps,now:()=>time,
+    setTimeout:(fn,ms) => {pending.set(++next,{fn,at:time+ms});return next;},clearTimeout:id => pending.delete(id),
     setInterval:()=>1,clearInterval:()=>{}});
   return {ui,dom,pending,async tick() {
-    const [id,fn] = pending.entries().next().value;
-    pending.delete(id); fn(); await new Promise(setImmediate);
+    const [id,job] = [...pending].sort((a,b)=>a[1].at-b[1].at)[0];
+    time=job.at; pending.delete(id); job.fn(); await new Promise(setImmediate);
   },dispose() {ui.dispose();dom.window.close();}};
 }
 

@@ -1,3 +1,4 @@
+import { createPageBudget } from '../js/read-budget.mjs';
 import { sessionFetch } from '../js/private-session.js';
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
@@ -29,6 +30,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
           let payload = null; try { payload = await response.json(); } catch { if (response.ok) throw new Error("read_invalid"); }
           return { response, payload };
         })(),
+        // eslint-disable-next-line no-restricted-syntax -- One 15-second tour-request deadline aborts its controller; the timer is cleared in finally.
         new Promise((_, reject) => { timer = setTimeout(() => { reject(new Error("request_timeout")); controller.abort(); }, 15000); }),
       ]);
     } finally { clearTimeout(timer); }
@@ -433,7 +435,10 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     const missing = new Set(state.selectedIds.filter(propertyId => !knownProperty(propertyId)));
     if (!missing.size) return;
     let cursor = null;
+    const takePage = createPageBudget();
+    // eslint-disable-next-line no-restricted-syntax -- Missing tour candidates consume a max of 20 pages, with takePage before every read.
     for (let page = 0; page < 20 && missing.size; page += 1) {
+      takePage();
       const filters = { ...searchFilters(cursor), query: null, counties: [], property_types: [],
         min_square_feet: null, max_square_feet: null, availability: [], entrance_verified: null,
         public_projection_ready: null, photos_available: null, sort: "updated_desc", cursor, limit: 100 };
@@ -590,6 +595,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         if (field === "route_label") control.maxLength = 3;
         const locked = composer.base?.stops.find(old => old.property_id === row.property_id)?.locked_appointment;
         control.disabled = !editable || (locked && field !== "route_label") || (row.stop_state !== "active" && field === "route_label");
+        // eslint-disable-next-line no-restricted-syntax -- Composer handlers only edit local draft state on input/change; they perform no automatic reads.
         control.addEventListener(type === "checkbox" || type === "select" ? "change" : "input", () => {
           if (!editableComposer()) return; rememberEdit();
           row[field] = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
@@ -678,6 +684,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       if (base) plan.steps.push({ path: "/api/tours/route-draft", body: { idempotency_key: uuid(), tour_id: current.tourId,
         route_version: Number(latest?.route_version || state.tour.route_version || 1) + 1, base_route_version_id: base.id,
         expected_route_version: base.route_version, start_point: endpoint("start", "edit-"), end_point: endpoint("end", "edit-") }, resultField: "route_version_id" });
+      // eslint-disable-next-line no-restricted-syntax -- Route preparation visits the finite rows array 1 time and hashes each visible stop at most 1 time.
       for (const row of rows) {
         // Bind the candidate facts visible to the operator; unknown access remains unknown.
         const assertion = row.assertion_set_digest || await sha256(JSON.stringify({ property_id: row.property_id, candidate: knownProperty(row.property_id) || { name: row.name, address: row.address } }));
@@ -701,6 +708,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   async function runComposerPlan(current) {
     const plan = current.plan;
     try {
+      // eslint-disable-next-line no-restricted-syntax -- Save advances plan.index once per successful step and will stop at plan.steps.length; failures return to explicit retry.
       for (; plan.index < plan.steps.length; plan.index++) {
         const step = plan.steps[plan.index];
         if (step.path === "/api/tours/route-stop") step.body.route_version_id = plan.routeId;
@@ -1190,6 +1198,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         if (focused === editor && selection) { editor.setSelectionRange(selection.start, selection.end, selection.direction); editor.scrollTop = selection.scroll; }
       }
     };
+    // eslint-disable-next-line no-restricted-syntax -- Cheat-sheet autosave keeps one 1-second callback after input; cancelSheetAutosave replaces it and failure requires another edit or explicit retry.
     sheetAutosaveTimer = setTimeout(autosave, 1000);
   });
   function prepareSheetPrint() {

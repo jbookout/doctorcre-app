@@ -23,6 +23,19 @@ export function validGovernanceQueuePayload(payload) {
     if (!rows.every((row) => row && typeof row === "object"
       && isText(row[lane.idField]) && orNull(row[lane.sinceField], isTime))) return false;
   }
+  if (payload.pending_convention_proposals !== undefined) {
+    const rows = payload.pending_convention_proposals;
+    if (!Array.isArray(rows) || counts.pending_convention_proposals !== rows.length
+      || !rows.every(row => row && isText(row.section_id) && isText(row.section_key)
+        && Number.isInteger(row.base_version) && row.base_version > 0
+        && orNull(row.updated_at, isTime)
+        && (row.adoptable === false ? isText(row.problem) : row.adoptable === true
+          && isText(row.statement) && orNull(row.card_id, isText)
+          && Array.isArray(row.packs) && row.packs.every(isText)
+          && row.approve_with?.verb === 'adopt-rule' && isText(row.approve_with.section_id)
+          && Number.isInteger(row.approve_with.base_version) && row.approve_with.base_version > 0))) return false;
+    total += rows.length;
+  }
   return Number.isInteger(counts.total) && counts.total === total;
 }
 

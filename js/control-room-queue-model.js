@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 // The Control Room's one queue (V2 step 3, slice C1). Pure: no DOM, no client.
 // Rows arrive in the record layer's own vocabulary (`unfinished-work.v1`,
 // `incident-board`, `current-work-item`) and leave as one issue shape that the
@@ -5,7 +6,7 @@
 // keeps a readable label, an unknown state lands in "Other", and a census that
 // did not read every source says so in its coverage line.
 
-export const SECTION_KEYS = Object.freeze(["inbox", "waiting", "triage", "queue", "views", "boards",
+export const SECTION_KEYS = Object.freeze(["inbox", "waiting", "triage", "queue", "views", "boards", "approvals",
   "automations", "connections", "agents", "system-map", "sessions"]);
 // Old `?tab=` keys from the seven-tab layout, plus their older aliases.
 const LEGACY_TABS = Object.freeze({ overview: "boards", dashboard: "boards", attention: "views",
@@ -109,7 +110,9 @@ export const queueItems = (queue, { includeTriage = false } = {}) =>
 export async function refreshQueue(queue, readPage, context = {}) {
   const wanted = Math.max(1, queue.pages);
   let fresh = createQueue(), cursor = null;
-  do { fresh = addPage(fresh, await readPage(cursor), context); cursor = fresh.nextCursor; }
+  const takePage = createPageBudget();
+  // eslint-disable-next-line no-restricted-syntax -- Queue catch-up calls takePage before each retained page; a max of 100 pages per refresh.
+  do { takePage(); fresh = addPage(fresh, await readPage(cursor), context); cursor = fresh.nextCursor; }
   while (cursor && fresh.pages < wanted);
   return fresh;
 }

@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountDealUpdateReviews } from '../js/deal-update-reviews.js';
+import { build } from 'esbuild';
+import { workCard } from '../js/work-card.js';
+import { sourceTime } from '../js/email-source-line.js';
+import { escapeText } from '../js/change-receipts.mjs';
+import { readWithDeadline } from '../js/current-read.mjs';
+import { uuidv4 } from '../js/uuid.js';
+const compiled = await build({ entryPoints: ['src/ui/home/deal-update-reviews.ts'], bundle: true, write: false, format: 'esm' });
+const { mountDealUpdateReviews: mount } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
+const mountDealUpdateReviews = options => mount({ ...options, workCard, sourceTime, escapeText, readWithDeadline, uuidv4 });
 
 const proposal = () => ({ assessment_id: 'demo-assessment', deal_id: 'demo-deal', deal_name: 'Demo Harbor expansion',
   confirm_verb: 'review-deal-update', assessment: { action: { id: 'demo-action', description: 'Request revised terms', due_on: '2026-10-01' },

@@ -11,4 +11,6 @@ export const leads = [1,2,3,4,5,6,7].map(n => lead(n)).concat([
   lead(19,{possible_clients:[{client_id:id(901),name:'Example Client Match'}]}),lead(20,{owner:'example-partner'}),
 ]);
 export const workspace = () => ({ schema_version:'lead-workspace.v1',generated_at:'2026-10-01T16:00:00Z',last_search_at:'2026-10-01T14:00:00Z',leads:structuredClone(leads.filter(row=>!row.suppressed)) });
+// Echoes the server default. The client never sends these intervals.
+export const emptyQuietFollowUps = () => ({ schema_version:'quiet-follow-ups.v1', cadence:{ lead_days:45, vendor_days:90 }, proposals:[], sent:false, tasks_created:false });
 export const detail = row => ({ ...row,phone:'+1-555-010-0000',email:'example@example.test',notes:'Planning a dental relocation.\n\nOriginal synthetic entry with room requirements.',est_lease_event:'2027-03-01',correspondence:[{id:id(600),kind:'email_in',occurred_at:'2026-10-01T10:00:00Z',summary:'Reply confirms interest in a tour.',detail:'Synthetic original email: please show available dental space.'},{id:id(601),kind:'meeting',occurred_at:'2026-09-30T12:00:00Z',summary:'Space plans discussed.',detail:'Synthetic calendar entry: 2,000 square feet.'}],stage_history:[{event_id:id(500),prior_stage:'outreach_active',stage:'engaged',occurred_at:'2026-10-01T10:00:00Z',reason:'Reply received'}] });

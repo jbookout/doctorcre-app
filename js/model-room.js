@@ -32,7 +32,7 @@ import {
   ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
   TOPIC_HISTORY_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
   answerBaseVersion, answerDraftAfterAttempt, answerWorkRequestRequest, assignmentBoard, assignmentMoveOutcome,
-  composerDraftAfterAttempt, composerRequest, contextPanel, countsLine, dispatchSearchRequest, dispatchView,
+  contextPanel, countsLine, dispatchSearchRequest, dispatchView,
   historyTopics, historyWorkItems, listState, participants, queueFreshness, queueRequest, refuseDispatchHistory,
   refuseRoomQueue, refuseRoomTurns, refuseSessionIdentity, refuseWorkRequestCard, sessionCards, topicHistory,
   turnRequest, turnWindow, workItemLedger, workRequestCardRequest,
@@ -76,11 +76,7 @@ const view = {
   historyTopicId: "",
   historyWorkItemId: "",
   historyCard: { state: "idle", payload: null, refusal: null },
-  // V5-UX-C13b: the composer's draft, and the one real write on this tab
-  // (`add-room-turn`). The draft is kept, in full, whenever a send fails —
-  // see composerDraftAfterAttempt.
   composer: { text: "" },
-  composerSend: { state: "idle", message: null },
   // V5-UX-C13c: the Waiting-for-Joe answer form's draft and send state. Kept
   // per-item only in the sense that choosing a different work item clears it
   // (selectHistoryWorkItem) — the same rule the composer follows for its own
@@ -527,77 +523,11 @@ function renderHistory() {
   renderHistoryPanel();
 }
 
-/* -------------------------------------------------------- V5-UX-C13b: composer */
-
-/**
- * `add-room-turn`, the composer's one write. `composerRequest` validates and
- * builds the verb's own shape (body, seat: "human", room: TURN_ROOM); a send
- * that fails validation, or that the record layer refuses, keeps the draft
- * exactly as typed (composerDraftAfterAttempt) and shows the server's own
- * refusal verbatim rather than a paraphrase.
- */
 function renderComposer() {
-  const submit = $("modelRoomComposerForm")?.querySelector('[type="submit"]');
-  if (submit) submit.textContent = view.composerPending ? "Check outcome" : "Send";
+  const submit = $("modelRoomComposerSend");
   const result = $("modelRoomComposerResult");
-  if (result) {
-    // Animate exactly on a state change — idle->invalid, invalid->sending,
-    // sending->sent, sending->failed — never on a re-render that leaves the
-    // send's own state untouched.
-    const changed = result.dataset.state !== view.composerSend.state;
-    result.hidden = !view.composerSend.message;
-    result.dataset.state = view.composerSend.state;
-    result.textContent = view.composerSend.message ?? "";
-    if (changed && !result.hidden) {
-      result.classList.remove("motion-pulse");
-      void result.offsetWidth; // force a reflow so the animation restarts on every state change
-      result.classList.add("motion-pulse");
-    }
-  }
-}
-
-async function submitComposer() {
-  // A second submit while one is already in flight is refused here rather
-  // than re-entered, so a double click cannot post the draft twice.
-  if (view.composerSend.state === "sending") return;
-  const request = view.composerPending || composerRequest({ text: view.composer.text });
-  if (!request) {
-    view.composer = composerDraftAfterAttempt(view.composer);
-    view.composerSend = { state: "invalid", message: "Enter a message before sending; the draft is kept." };
-    renderComposer();
-    return;
-  }
-  view.composerSend = { state: "sending", message: "Sending…" };
-  renderComposer();
-  try {
-    view.composerPending ||= { ...request, idempotency_key: uuidv4() };
-    const result = await client.addRoomTurn(view.composerPending);
-    const acknowledged = typeof result?.seq === "string" ? /^[1-9]\d*$/.test(result.seq) : Number.isSafeInteger(result?.seq) && result.seq > 0;
-    if (!acknowledged || result.ok === false) throw new Error("Room acknowledgment unavailable.");
-    view.composerPending = null;
-    // Sent, not fabricated: the confirmation is the server's own answer
-    // (its sequence number), never an "ok" this file invented.
-    if (view.composer.text.trim() === request.body) {
-      view.composer = { text: "" };
-      const input = $("modelRoomComposerText");
-      if (input) input.value = "";
-    }
-    view.composerSend = { state: "sent", message: `Sent — recorded as turn ${result?.seq ?? "unknown"}.` };
-    announce("The Model Room request was sent.");
-    if (client.roomTurns) await take("turns", () => client.roomTurns(turnRequest()), refuseRoomTurns);
-  } catch (error) {
-    // A lost response retains the original request for reconciliation.
-    // Explicit refusals preserve the draft and display the refusal.
-    view.composer = composerDraftAfterAttempt(view.composer);
-    const outcome = classifyCommandOutcome({ error });
-    if (outcome.status !== "unknown") view.composerPending = null;
-    view.composerSend = {
-      state: outcome.status === "unknown" ? "unknown" : "failed",
-      message: outcome.status === "unknown" ? "Outcome unknown. Check outcome replays the same message request."
-        : `Not sent: ${String(error?.payload?.error || error?.message || "the write was refused")}.`,
-    };
-  }
-  renderComposer();
+  if (submit) submit.disabled = true;
+  if (result) { result.hidden = false; result.textContent = "Not submitted. This control cannot send a request to Dr. CRE."; }
 }
 
 /* ------------------------------------------------- V5-UX-C13c: answer form */
@@ -875,7 +805,7 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
   if (mounted) return;
   mounted = true;
   view.outage = outage;
-  document.addEventListener('visibilitychange', async () => {
+  mountAutoRefresh({ document, window: globalThis.window, periodic: false, shouldRefresh: () => Boolean(pendingOpen && client), refresh: async () => {
     if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
     const attempt = pendingOpen;
     pendingOpen = null;
@@ -894,7 +824,7 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
     } catch {
       announce('The open result is unknown. Refresh before trying again.');
     }
-  });
+  } });
   // Written from the model so deleting them from the page alone cannot blur
   // room participation into dispatch acknowledgement.
   const ack = $("modelRoomNoAck");
@@ -910,12 +840,9 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
   // other, so the panel below is never asked to render two histories at once.
   $("modelRoomHistoryTopic")?.addEventListener("change", (event) => selectHistoryTopic(event.target.value));
   $("modelRoomHistoryWorkItem")?.addEventListener("change", (event) => selectHistoryWorkItem(event.target.value));
-  // V5-UX-C13b: the composer. Typing is kept in `view.composer`; submitting
-  // calls `add-room-turn` for real (see submitComposer).
   $("modelRoomComposerText")?.addEventListener("input", (event) => { view.composer.text = event.target.value; });
   $("modelRoomComposerForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
-    submitComposer();
   });
   // V5-UX-C13c: the Waiting-for-Joe answer form. Typing is kept in
   // view.answer; submitting calls `answer-work-request-for-joe` for real

@@ -73,6 +73,7 @@ test('a card edited after the call refuses Undo with a plain instruction', async
 
 test('every Undo refusal reads as a plain sentence, never developer text', async () => {
   for (const [error, sentence] of [
+    ['overdue_action_changed', "A task this call closed was changed afterward, so this change can't be undone. Edit the deal's next step and tasks directly instead."],
     ['version_conflict', 'That deal changed since this list loaded. Check it and press Undo again if it is still wrong.'],
     ['applied_change_not_found', 'That change is no longer on the deal. Open the deal to check it.'],
     ['partner_required', 'Only Joe or Dell can undo a change from the call.'],

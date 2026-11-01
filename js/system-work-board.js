@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import {updatedLabel} from './auto-refresh.mjs';
 import {uuidv4} from './uuid.js';
 import {jobLinks} from './progress-board-model.js';
@@ -111,7 +112,8 @@ export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}
   try{
    const query={...queryArgs,...(append?{cursor}: {})};
    let read=validSystemWork(await client.unfinishedWork(query));if(gen!==generation)return;
-   if(!append&&!force&&pageCount>1){for(let page=1;page<pageCount&&read.next_cursor;page++){const next=validSystemWork(await client.unfinishedWork({...queryArgs,cursor:read.next_cursor}));if(gen!==generation)return;read={...next,items:[...read.items,...next.items]};}}
+   // eslint-disable-next-line no-restricted-syntax -- Retained work pages call takePage before each read; a max of 100 additional pages per refresh.
+   if(!append&&!force&&pageCount>1){const takePage=createPageBudget();for(let page=1;page<pageCount&&read.next_cursor;page++){takePage();const next=validSystemWork(await client.unfinishedWork({...queryArgs,cursor:read.next_cursor}));if(gen!==generation)return;read={...next,items:[...read.items,...next.items]};}}
    let liveRead=null,liveError=null;
    if(!queryArgs.live_library){try{liveRead=validSystemWork(await client.unfinishedWork({live_library:true,limit:10}));}catch(cause){if(cause.status===401||cause.status===403)throw cause;liveError=cause;}}
    if(gen!==generation)return;

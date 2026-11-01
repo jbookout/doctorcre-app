@@ -1,3 +1,4 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -338,6 +339,7 @@ export function mountRelationshipNetwork({
     };
   });
   for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
+    // eslint-disable-next-line no-restricted-syntax -- Registers input/change callbacks for only 3 network filters; 0 lifecycle reads.
     $(id).addEventListener(id === "networkSearch" ? "input" : "change", () => {
       currentFilters.q = $("networkSearch").value;
       currentFilters.territory = $("networkTerritory").value;
@@ -374,11 +376,11 @@ export function mountRelationshipNetwork({
   };
   const resize = () => render();
   window.addEventListener("resize", resize);
-  const expiry = window.setInterval(() => {
+  const expiry = mountLocalTicker({ document, window, intervalMs: 1000, tick: () => {
     if (!snapshot || Date.parse(snapshot.valid_until) > Date.now()) return;
     invalidate();
     auto.poll();
-  }, 1000);
+  } });
   selectTab(params.get("view"));
   render();
   auto.refresh();
@@ -389,7 +391,7 @@ export function mountRelationshipNetwork({
       epoch++;
       auto.dispose();
       dialog.dispose();
-      window.clearInterval(expiry);
+      expiry.dispose();
       window.removeEventListener("resize", resize);
     },
   };

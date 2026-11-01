@@ -1,0 +1,34 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "1866b2fc19e5adb5d0addab9f51173ac2e4d4ab4"
+  },
+  "deal_keys": [
+    "name",
+    "phase",
+    "owner",
+    "client_ref",
+    "invoiced_on",
+    "closed_on",
+    "lane",
+    "outcome"
+  ],
+  "deal_sources": [
+    "deals",
+    "deals_via_link"
+  ],
+  "nullable_calendar_days": [
+    "invoiced_on",
+    "closed_on"
+  ],
+  "nullable_strings": [
+    "phase",
+    "owner",
+    "client_ref",
+    "lane",
+    "outcome"
+  ],
+  "unknown_deal_fields": "refused",
+  "contact_lookup": "Exact email, case-insensitive, through the contact party key. Fuzzy names remain supported. No contact columns are returned."
+}

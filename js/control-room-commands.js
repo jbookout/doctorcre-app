@@ -2,7 +2,7 @@ import {onDialogClosed} from './dialog-lifecycle.js';
 import { escapeText } from './change-receipts.mjs';
 import { ignoreKey } from './control-room-list.js';
 
-const TAB_KEYS = { inbox: 'i', waiting: 'w', triage: 't', queue: 'q', views: 'v', boards: 'b',
+const TAB_KEYS = { inbox: 'i', waiting: 'w', triage: 't', queue: 'q', views: 'v', boards: 'b', approvals: 'p',
   automations: 'u', connections: 'c', agents: 'a', 'system-map': 'm', sessions: 's' };
 const LINK_COMMANDS = [
   ['Project progress', '#switch-project'], ['All repositories', '#switch-all'],
@@ -113,6 +113,7 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
       if (command) { event.preventDefault(); command.run(); return; }
     }
     if (event.key === 'g' && !event.repeat) {
+      // eslint-disable-next-line no-restricted-syntax -- One 1-second shortcut-prefix expiry per g keystroke; clears local prefix state only.
       prefixTimer = win.setTimeout(() => { prefixTimer = null; }, 1000); return;
     }
     if (event.key === '?') { event.preventDefault(); open('shortcuts'); }

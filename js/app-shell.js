@@ -1,3 +1,4 @@
+import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
 import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
@@ -237,7 +238,8 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       boundary.revoke('signed-out');
     } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
   };
-  if (!root.getElementById("callModeDialog")) {
+  if (pathname === "/calls") root.querySelector(".app-shell-call-availability").hidden = true;
+  if (pathname !== "/calls" && !root.getElementById("callModeDialog")) {
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
       if (boundary?.revoked) return;
       const call = await mountGlobalCallMode(root);
@@ -248,4 +250,14 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
   }
 }
 
-if (typeof document !== "undefined") mountAppShell();
+if (typeof document !== "undefined") {
+  mountAppShell();
+  const actionHost = document.getElementById('actionLink');
+  if (actionHost && location.pathname.startsWith('/a/')) {
+    const { mountActionLink } = await import(REACT_UI_MODULE);
+    if (!privateSession()?.revoked) {
+      const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests() });
+      window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });
+    }
+  }
+}

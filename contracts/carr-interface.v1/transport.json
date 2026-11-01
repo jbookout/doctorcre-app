@@ -1,0 +1,7 @@
+{
+  "origin": "same-origin",
+  "edge_transport": "private Cloudflare Worker service binding",
+  "authentication": "server-issued host-only session",
+  "writes": "MCP JSON-RPC tools/call with idempotency keys",
+  "database_access": "forbidden"
+}

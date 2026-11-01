@@ -25,6 +25,7 @@ import {
   phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage, validBoardPayload,
   waitingSummary, writeChartsView,
 } from "../js/charts-model.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
@@ -32,7 +33,7 @@ const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 const pageJs = await read("js/charts.js");
 const modelJs = await read("js/charts-model.js");
 const css = await read("css/business-workspace.css");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 const routes = (await import("../js/routes.js")).routeContract;
 
 /** The synthetic fixture, generated from contract-shaped examples. */
@@ -390,7 +391,7 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
-  assert.equal(contract.producer.source_commit, "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee");
+  assert.equal(contract.mcp_read_contracts["deal-room-board"].producer.source_commit, "b281ef8c69dad3c1dab98229074de1b167f06e02");
 
 
   // No route is added. `/business` already resolves, and the gate does not
@@ -620,20 +621,20 @@ test("Charts background refresh keeps the board, its time and open Details on sc
   assert.equal(details().open, true, "and across a slice");
 });
 
-test("Charts recover from an unavailable read after the one-minute floor", async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test("Charts back off a failed read before recovering automatically", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const s = await chartDom(t, reads => {
     if (reads === 1) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
     return board;
   }, { poll: true, ready: false });
   assert.equal(s.charts.view.status, "unavailable");
-  t.mock.timers.tick(59_999);
+  t.mock.timers.tick(119_999);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(s.reads(), 1, "no background read before the one-minute floor");
+  assert.equal(s.reads(), 1, "the first failed read doubles the one-minute cadence");
   assert.equal(s.charts.view.status, "unavailable");
   t.mock.timers.tick(1);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(s.charts.view.status, "ready", "recovers without a Retry press at the one-minute floor");
+  assert.equal(s.charts.view.status, "ready", "recovers after the failure backoff without a Retry press");
   assert.equal(s.reads(), 2);
 });
 

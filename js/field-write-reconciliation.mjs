@@ -3,7 +3,7 @@
  *
  * The record layer's contract is explicit about what a key means: "generate a
  * UUID per intended action; retries reuse the SAME key (the pinned CARR
- * interface contract in `contracts/carr-interface.v1.json`).
+ * interface contract in `contracts/carr-interface.v1`).
  * A second call under the same key returns the STORED answer instead of writing
  * again, and a call whose arguments differ under a key that was already spent is
  * refused as `key_reuse`. Undo already honours that (change-receipts.mjs); the
@@ -333,6 +333,7 @@ export async function performFieldWrite({ deal, field, value, base = null, extra
   // The retained entry carries this board's own sentence, not the general one.
   if (result.status === 'unknown') setState(settleFieldWrite(getState(), cell, outcome));
   return {
+    // eslint-disable-next-line no-restricted-syntax -- Field-write receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     status: result.status, sent: result.sent, retry: result.retry,
     replayed: result.replayed, superseded: result.superseded,
     reason: result.reason, code: result.code, hint: result.hint,

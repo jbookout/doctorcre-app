@@ -46,3 +46,25 @@ for (const path of ['/', '/leads', '/deals']) for (const fonts of ['held', 'avai
     assert.match(await page.locator('body').evaluate(node => getComputedStyle(node).fontFamily), /Arial|system-ui|sans-serif/);
   });
 }
+
+test('Home applies available font CSS before the application modules finish downloading', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const server = await fixtureServer(); t.after(() => server.close());
+  let release;
+  const modules = new Promise(resolve => { release = resolve; });
+  await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => {
+    await modules;
+    await route.continue();
+  });
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({
+    contentType: 'text/css', body: ':root { --synthetic-font-loaded: yes; }',
+  }));
+  await page.goto(server.origin, { waitUntil: 'commit' });
+  try {
+    await page.waitForFunction(() => getComputedStyle(document.documentElement)
+      .getPropertyValue('--synthetic-font-loaded').trim() === 'yes', null, { timeout: 3000 });
+    assert.ok(await page.getByRole('heading', { name: 'Call follow-ups to review', exact: true }).isVisible());
+  } finally { release(); }
+  await page.locator('#dealFlags .home-flag').first().waitFor();
+});

@@ -1,6 +1,7 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach, beforeEach, mock } from 'node:test';
 const windows = [];
-afterEach(() => { windows.splice(0).forEach(win => win.close()); });
+beforeEach(() => mock.timers.enable({ apis: ['setInterval'] }));
+afterEach(() => { windows.splice(0).forEach(win => win.close()); mock.timers.reset(); });
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { mountEmailFollowups } from '../js/email-followups.js';
@@ -21,9 +22,13 @@ function setup(client, options = {}) {
   const dom = new JSDOM('<section id="review"></section>');
   windows.push(dom.window);
   const container = dom.window.document.querySelector('section');
-  const view = mountEmailFollowups({ container, client: { selfActor: 'joe', ...client }, onChange: () => {}, ...options });
-  return { dom, container, view, action: name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) }) };
+  const view = mountEmailFollowups({ container, client: { selfActor: 'joe', ...client }, onChange: () => {}, clock: globalThis, ...options });
+  const action = name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) });
+  // Submit opens the send grace; the reply is submitted only when it runs out.
+  const send = async () => { await action('Submit'); mock.timers.tick(10_000); await settle(); };
+  return { dom, container, view, action, send };
 }
+const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
 
 test('email card shows its subject, absolute Chicago date and waiting age', async () => {
   const row = proposal(); row.source.sender = 'Dana Demo';
@@ -257,14 +262,14 @@ test('Home pages pending proposals and keeps the first page when loading more fa
       : { ...response([first]), more: true, next_cursor: first.id };
   } });
   await view.refresh();
-  assert.deepEqual(calls[0], { limit: 50 });
+  assert.deepEqual(calls[0], { limit: 50, include_non_deal: true });
   await action('Load more email follow-ups');
   assert.match(container.textContent, /Demo Harbor expansion/);
   assert.match(container.textContent, /Could not load/);
   fail = false;
   await action('Retry email follow-ups');
   assert.match(container.textContent, /Demo second deal/);
-  assert.deepEqual(calls.at(-1), { limit: 50, cursor: first.id });
+  assert.deepEqual(calls.at(-1), { limit: 50, include_non_deal: true, cursor: first.id });
   assert.doesNotMatch(container.textContent, /Load more email follow-ups/);
 });
 
@@ -374,7 +379,7 @@ function editDraft(dom, container, field, value) {
 
 test('Home opens a reply draft for editing and Submit queues the exact reviewed text and version', async () => {
   const row = replyDraft(), calls = [];
-  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([row]),
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([row]),
     submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
   await view.refresh();
   assert.match(container.textContent, /Reply draft/);
@@ -384,7 +389,7 @@ test('Home opens a reply draft for editing and Submit queues the exact reviewed 
   assert.equal(calls.length, 0, 'opening a review never submits');
   editDraft(dom, container, 'subject', 'Re: Demo plan reviewed');
   editDraft(dom, container, 'body', '  I reviewed the plan.\nPlease send the dimensions.  ');
-  await action('Submit');
+  await send();
   const { idempotency_key, ...sent } = calls[0];
   assert.ok(idempotency_key);
   assert.deepEqual(sent, { proposal_id: row.id, base_version: 3, subject: 'Re: Demo plan reviewed',
@@ -395,16 +400,119 @@ test('Home opens a reply draft for editing and Submit queues the exact reviewed 
   assert.equal(container.querySelector('[data-email-action="submit-draft"]'), null);
 });
 
+test('Submit opens a 10 second send grace and Undo returns the edited draft without any server call', async () => {
+  const calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Edited before the grace.');
+  await action('Submit');
+  assert.match(container.textContent, /Sending in 10s · Undo/);
+  mock.timers.tick(1000);
+  assert.match(container.textContent, /Sending in 9s · Undo/);
+  mock.timers.tick(8000);
+  assert.match(container.textContent, /Sending in 1s · Undo/);
+  await action('Undo'); await settle();
+  mock.timers.tick(60_000); await settle();
+  assert.equal(calls.length, 0, 'Undo within the grace never reaches the server');
+  assert.equal(container.querySelector('[data-email-body]').value, 'Edited before the grace.');
+  assert.ok(container.querySelector('[data-email-action="submit-draft"]'));
+  assert.doesNotMatch(container.textContent, /Sending in/);
+});
+
+test('the send grace expiring submits exactly once with the key minted at Submit', async () => {
+  const calls = [];
+  const { container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply'); await action('Submit');
+  mock.timers.tick(9999); await settle();
+  assert.equal(calls.length, 0, 'nothing is submitted before the grace ends');
+  mock.timers.tick(1); await settle();
+  assert.equal(calls.length, 1);
+  await action('Undo'); await view.refresh();
+  mock.timers.tick(60_000); await settle();
+  assert.equal(calls.length, 1, 'the grace never submits twice');
+  assert.ok(calls[0].idempotency_key);
+  assert.match(container.textContent, /Submitted for sending/);
+});
+
+for (const leave of ['pagehide', 'dispose']) test(`leaving the page during the send grace (${leave}) submits nothing and keeps the draft unsubmitted`, async () => {
+  const calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Not yet sent.');
+  await action('Submit');
+  if (leave === 'pagehide') dom.window.dispatchEvent(new dom.window.Event('pagehide'));
+  else view.dispose();
+  mock.timers.tick(60_000); await settle();
+  assert.equal(calls.length, 0);
+  if (leave === 'pagehide') {
+    assert.equal(container.querySelector('[data-email-body]').value, 'Not yet sent.');
+    assert.doesNotMatch(container.textContent, /Sending in/);
+  }
+});
+
+for (const leave of ['pagehide', 'session loss', 'dispose']) test(`leaving (${leave}) as the send grace expires, before the command starts, submits nothing`, async () => {
+  const calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Not yet sent.');
+  await action('Submit');
+  mock.timers.tick(10_000);
+  if (leave === 'pagehide') dom.window.dispatchEvent(new dom.window.Event('pagehide'));
+  else if (leave === 'session loss') dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  else view.dispose();
+  await settle();
+  assert.equal(calls.length, 0);
+  if (leave === 'pagehide') {
+    assert.equal(container.querySelector('[data-email-body]').value, 'Not yet sent.');
+    assert.doesNotMatch(container.textContent, /Sending in|Submitted for sending/);
+  }
+});
+
+test('a refusal after the send grace is shown plainly with the edits kept', async () => {
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async () => { throw Object.assign(Error('submitted'), { payload: { error: 'email_draft_already_submitted' } }); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Refused text stays.');
+  await send();
+  assert.match(container.textContent, /This reply has already been submitted\. Refresh to review the current state\./);
+  assert.equal(container.querySelector('[data-email-body]').value, 'Refused text stays.');
+  assert.doesNotMatch(container.textContent, /Sending in|Submitted for sending/);
+});
+
+test('Undo edit restores the draft as it was before the last edit, one step only', async () => {
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]) });
+  await view.refresh(); await action('Review reply');
+  const undo = () => container.querySelector('[data-email-action="undo-edit"]');
+  assert.equal(undo().disabled, true, 'nothing to undo before an edit');
+  editDraft(dom, container, 'body', 'First edit.');
+  container.querySelector('[data-email-body]').dispatchEvent(new dom.window.FocusEvent('focusout', { bubbles: true }));
+  editDraft(dom, container, 'body', 'Second edit');
+  editDraft(dom, container, 'body', 'Second edit, still typing.');
+  assert.equal(undo().disabled, false);
+  await action('Undo edit');
+  assert.equal(container.querySelector('[data-email-body]').value, 'First edit.');
+  assert.equal(container.querySelector('[data-email-subject]').value, 'Re: Demo floor plan');
+  assert.equal(undo().disabled, true, 'undo is one step');
+  editDraft(dom, container, 'subject', 'Re: New subject');
+  await action('Undo edit');
+  assert.equal(container.querySelector('[data-email-subject]').value, 'Re: Demo floor plan');
+  assert.equal(container.querySelector('[data-email-body]').value, 'First edit.');
+});
+
 test('reply edits survive refresh and version refusal without adopting a newer version', async () => {
   const row = replyDraft(), calls = [];
-  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([row]),
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([row]),
     submitEmailDraft: async args => { calls.push(args); throw Object.assign(Error('stale'), { payload: { error: 'version_conflict' } }); } });
   await view.refresh(); await action('Review reply');
   editDraft(dom, container, 'body', 'My unsent reply.');
   row.version = 4; row.reply_draft.body = 'A newer stored draft.';
   await view.refresh();
   assert.equal(container.querySelector('[data-email-body]').value, 'My unsent reply.');
-  await action('Submit');
+  await send();
   assert.equal(calls[0].base_version, 3);
   assert.equal(container.querySelector('[data-email-body]').value, 'My unsent reply.');
   assert.match(container.textContent, /changed.*Refresh and review/);
@@ -412,11 +520,11 @@ test('reply edits survive refresh and version refusal without adopting a newer v
 
 test('reply submission loss locks editing and Check outcome replays the exact request after removal from the list', async () => {
   const row = replyDraft(), calls = []; let listed = [row];
-  const { dom, container, view, action } = setup({ listEmailProposals: async () => response(listed),
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response(listed),
     submitEmailDraft: async args => { calls.push(args); if (calls.length === 1) { listed = []; throw Error('lost response'); } return draftReceipt(args); } });
   await view.refresh(); await action('Review reply');
   editDraft(dom, container, 'body', 'Only send this once.');
-  await action('Submit'); await view.refresh();
+  await send(); await view.refresh();
   assert.match(container.textContent, /Outcome unknown/);
   assert.equal(container.querySelector('[data-email-body]'), null);
   await action('Check outcome');
@@ -427,7 +535,7 @@ test('reply submission loss locks editing and Check outcome replays the exact re
 
 test('reply review cancels without writing, rejects empty text and clears private edits on identity loss', async () => {
   let writes = 0;
-  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
     submitEmailDraft: async () => { writes++; } });
   await view.refresh(); await action('Review reply');
   editDraft(dom, container, 'body', '   ');
@@ -444,9 +552,9 @@ test('reply review cancels without writing, rejects empty text and clears privat
 });
 
 test('a reply receipt for different text is uncertain rather than claiming success', async () => {
-  const { container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+  const { container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
     submitEmailDraft: async args => ({ ...draftReceipt(args), body: 'Wrong text' }) });
-  await view.refresh(); await action('Review reply'); await action('Submit');
+  await view.refresh(); await action('Review reply'); await send();
   assert.match(container.textContent, /Outcome unknown/);
   assert.doesNotMatch(container.textContent, /Submitted for sending/);
 });
@@ -455,19 +563,19 @@ for (const malformed of [
   { to: ['different@example.test'] }, { cc: ['different@example.test'] }, { cc: [] }, { to: ['missing-at.example.test'] }, { cc: ['bad address@example.test'] },
   { version: 99 }, { proposal_id: 'different-proposal' }, { sha256: 'invalid' },
 ]) test(`reply submission never claims success for a malformed ${Object.keys(malformed)[0]} receipt`, async () => {
-  const { container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+  const { container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
     submitEmailDraft: async args => ({ ...draftReceipt(args), ...malformed }) });
-  await view.refresh(); await action('Review reply'); await action('Submit');
+  await view.refresh(); await action('Review reply'); await send();
   assert.match(container.textContent, /Outcome unknown/);
   assert.doesNotMatch(container.textContent, /Submitted for sending/);
 });
 
 test('reply CC-address refusal keeps the edited text available for the owning partner', async () => {
-  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
     submitEmailDraft: async () => { throw Object.assign(Error('missing copy'), { payload: { error: 'email_draft_copy_address_missing' } }); } });
   await view.refresh(); await action('Review reply');
   editDraft(dom, container, 'body', 'Preserve my exact edits.');
-  await action('Submit');
+  await send();
   assert.equal(container.querySelector('[data-email-body]').value, 'Preserve my exact edits.');
   assert.match(container.textContent, /other partner needs an email address/);
   assert.doesNotMatch(container.textContent, /Submitted for sending/);
@@ -475,12 +583,12 @@ test('reply CC-address refusal keeps the edited text available for the owning pa
 
 test('a reply version conflict requires explicit fresh review while preserving partner edits', async () => {
   const row = replyDraft(), calls = []; let conflict = true;
-  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([row]),
+  const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([row]),
     submitEmailDraft: async args => { calls.push(args); if (conflict) throw Object.assign(Error('conflict'), { payload: { error: 'version_conflict' } }); return draftReceipt(args); } });
   await view.refresh(); await action('Review reply');
   editDraft(dom, container, 'body', 'My revised reply must survive.');
   row.version = 4; row.reply_draft.body = 'Updated saved original.';
-  await action('Submit');
+  await send();
   assert.ok([...container.querySelectorAll('button')].some(button => button.textContent === 'Review updated draft'));
   await view.refresh();
   assert.equal(calls.length, 1, 'background refresh never resubmits');
@@ -489,7 +597,7 @@ test('a reply version conflict requires explicit fresh review while preserving p
   assert.match(container.textContent, /Updated saved original\./);
   assert.equal(calls.length, 1, 'fresh review never submits');
   conflict = false;
-  await action('Submit');
+  await send();
   assert.equal(calls[1].base_version, 4);
   assert.equal(calls[1].body, 'My revised reply must survive.');
   assert.notEqual(calls[0].idempotency_key, calls[1].idempotency_key);
@@ -505,7 +613,7 @@ for (const actor of ['joe', 'dell', null]) test(`reply review is offered only to
 
 test('recipient changes preserve reviewed addresses across refresh and require explicit fresh review after refusal', async () => {
   const row = replyDraft(), calls = []; let changed = true;
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+  const { container, view, action, send } = setup({ listEmailProposals: async () => response([row]),
     submitEmailDraft: async args => { calls.push(args); if (changed) throw Object.assign(Error('changed'), { payload: { error: 'email_draft_recipients_mismatch' } }); return { ...draftReceipt(args), to: args.to, cc: args.cc }; } });
   await view.refresh(); await action('Review reply');
   row.reply_draft.to[0] = 'updated-sender@example.test';
@@ -513,7 +621,7 @@ test('recipient changes preserve reviewed addresses across refresh and require e
   await view.refresh();
   assert.match(container.textContent, /To: demo-correspondent@example.test/);
   assert.doesNotMatch(container.textContent, /updated-sender/);
-  await action('Submit');
+  await send();
   assert.deepEqual(calls[0].to, ['demo-correspondent@example.test']);
   assert.deepEqual(calls[0].cc, ['demo-partner@example.test']);
   assert.match(container.textContent, /Recipients changed/);
@@ -523,7 +631,7 @@ test('recipient changes preserve reviewed addresses across refresh and require e
   assert.match(container.textContent, /CC: updated-partner@example.test/);
   assert.equal(calls.length, 1);
   changed = false;
-  await action('Submit');
+  await send();
   assert.deepEqual(calls[1].to, ['updated-sender@example.test']);
   assert.deepEqual(calls[1].cc, ['updated-partner@example.test']);
   assert.match(container.textContent, /Submitted for sending/);
@@ -703,6 +811,7 @@ for (const code of ['unhandled_verb_failure', 'not_a_client', 'deal_name_exists'
     sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   const creates = [], confirmations = [];
   const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const { name, arguments: args } = JSON.parse(init.body).params;
     let result;
     if (name === 'list-email-proposals') result = response([row]);
@@ -779,6 +888,7 @@ for (const failedVerb of ['get-deal-room', 'set-lead']) test(`failure in ${faile
     sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   let creates = 0, failures = 0;
   const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const { name, arguments: args } = JSON.parse(init.body).params;
     if (name === failedVerb && failures++ === 0) return Response.json({ result: { isError: true, content: [{ text: JSON.stringify({ error: 'unhandled_verb_failure' }) }] } });
     const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
@@ -806,6 +916,7 @@ test('offline new-deal creation keeps the original request available after recon
     sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   let online = false, creates = 0;
   const client = createLiveClient({ selfActor: 'joe', online: () => online, fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const { name, arguments: args } = JSON.parse(init.body).params;
     const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
       : name === 'get-deal-room' ? { base_version: 1 } : name === 'set-lead' ? { ok: true }
@@ -851,4 +962,107 @@ test('email refresh keeps the loaded cards without inserting a loading skeleton'
   release(response([proposal()]));
   await pending;
   view.dispose();
+});
+
+for (const subjectType of ['client','lead','vendor']) test(`Home reviews ${subjectType} next steps without requiring a deal`, async () => {
+  const row = proposal();
+  Object.assign(row, { deal: null, deal_name: null, subject_type: subjectType,
+    subject_id: '40000000-0000-4000-8000-000000000001', subject_name: 'Demo contact' });
+  Object.assign(row.preview, { deal: null, deal_name: null, subject_type: row.subject_type,
+    subject_id: row.subject_id, subject_name: row.subject_name });
+  const calls = [];
+  const { container, view, action } = setup({
+    listEmailProposals: async args => { calls.push(['list',args]); return response([row]); },
+    previewEmailNextStep: async args => { calls.push(['preview',args]); return row.preview; },
+    confirmEmailNextStep: async args => { calls.push(['confirm',args]); return { ...row.preview, status: 'confirmed', requires_confirmation: false }; },
+  });
+  await view.refresh();
+  assert.match(container.textContent, /Demo contact/);
+  assert.doesNotMatch(container.textContent, /Possible new deal|Could not load/);
+  assert.equal(calls[0][1].include_non_deal, true);
+  await action('Confirm');
+  assert.match(container.textContent, new RegExp(`change to the ${subjectType}`));
+  assert.match(container.textContent, /Call the landlord/);
+  await action('Confirm change');
+  assert.equal(calls.at(-1)[1].deal, null);
+  assert.equal(calls.at(-1)[1].activity_id, row.source.activity_id);
+  assert.equal(calls.at(-1)[1].proposal_digest, digest);
+  assert.match(container.textContent, /Confirmed/);
+});
+
+test('blocked non-deal evidence stays readable and dismissible without a confirm control', async () => {
+  const row = { ...proposal(), deal: null, deal_name: null, preview: null,
+    subject_type: null, subject_id: null, subject_name: null, preview_error: 'email_next_step_evidence_not_found' };
+  const writes = [];
+  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
+  await view.refresh();
+  assert.match(container.textContent, /Please send the revised plan/);
+  assert.equal(container.querySelector('[data-email-action="preview"]'), null);
+  await action('Not now');
+  assert.equal(writes[0].base_version, row.version);
+  assert.equal(writes[0].reason, 'Not now');
+  assert.match(container.textContent, /Dismissed/);
+});
+
+test('a non-deal preview for a different contact is rejected before offering confirmation', async () => {
+  const row = proposal();
+  Object.assign(row, { deal: null, deal_name: null, subject_type: 'vendor', subject_id: 'vendor-one', subject_name: 'Demo vendor' });
+  Object.assign(row.preview, { deal: null, subject_type: 'vendor', subject_id: 'vendor-two', subject_name: 'Demo vendor' });
+  const { container, view } = setup({ listEmailProposals: async () => response([row]) });
+  await view.refresh();
+  assert.match(container.textContent, /Could not load email follow-ups/);
+  assert.equal(container.querySelector('[data-email-action="preview"]'), null);
+});
+
+test('draft save updates the current card when a refresh replaced its row during the write', async () => {
+  const row = replyDraft(); let release, entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  const pending = new Promise(resolve => { release = resolve; });
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([structuredClone(row)]),
+    editEmailDraft: async args => { entered(); await pending; return { ok: true, proposal_id: args.proposal_id, version: 4, subject: args.subject, body: args.body }; } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo saved during refresh');
+  const saving = action('Save draft'); await started;
+  await view.refresh(); release(); await saving;
+  await action('Cancel'); await action('Review reply');
+  assert.equal(container.querySelector('[data-email-body]').value, 'Demo saved during refresh');
+});
+
+for (const [code, message] of Object.entries({
+  email_draft_not_found: /no longer available/,
+  email_draft_not_owner: /Only the partner/,
+  email_draft_not_pending: /no longer a pending draft/,
+  email_draft_empty_body: /Enter a message/,
+  email_draft_subject_invalid: /Enter a subject without line breaks/,
+  invalid_field_value: /at most 998 characters.*20,000 characters/,
+  key_reuse: /already used for different text/,
+  offline: /offline.*Reconnect/,
+  unexpected_refusal: /could not be saved.*Reload/,
+})) test(`draft save explains ${code} without claiming success or sending`, async () => {
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    editEmailDraft: async () => { throw Object.assign(Error('synthetic refusal'), { payload: { error: code } }); },
+    submitEmailDraft: async () => { assert.fail('save must never submit'); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo unsent edit');
+  await action('Save draft');
+  assert.match(container.textContent, message);
+  assert.doesNotMatch(container.textContent, /Saved as a draft/);
+  assert.equal(container.querySelector('[data-email-body]').value, 'Demo unsent edit');
+});
+
+test('uncertain draft save locks edits and Check outcome replays only the original save', async () => {
+  const calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    editEmailDraft: async args => { calls.push(args); if (calls.length === 1) throw Error('lost response'); return { ok: true, proposal_id: args.proposal_id, version: 4, subject: args.subject, body: args.body }; },
+    submitEmailDraft: async () => { assert.fail('save must never submit'); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo original save'); await action('Save draft');
+  assert.match(container.textContent, /Outcome unknown/);
+  assert.equal(container.querySelector('[data-email-body]'), null);
+  await action('Check outcome');
+  assert.deepEqual(calls[1], calls[0]);
+  assert.match(container.textContent, /Saved as a draft. Nothing was sent/);
+  editDraft(dom, container, 'body', 'Demo new unsaved text');
+  assert.doesNotMatch(container.textContent, /Saved as a draft/);
 });

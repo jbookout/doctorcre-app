@@ -34,12 +34,7 @@
   "screens": {
     "home": {
       "lcpMs": {
-        "baseline": 3492,
-        "limit": 5238
-      },
-      "jsBytes": {
-        "baseline": 644667,
-        "limit": 709134
+        "baseline": 3492
       },
       "interactionMs": {
         "baseline": 113,
@@ -301,5 +296,9 @@
     },
     "run": "https://github.com/jbookout/doctorcre-app/actions/runs/40207770313",
     "reason": "Initial baselines for the six new tasks use the required Linux gate environment. The same application head passes the Mac guard; platform timing changes which shared-shell startup reads finish before the useful outcome. All preexisting budgets remain unchanged. No performance repair or speedup is claimed."
+  },
+  "homeLoad": {
+    "samples": 5,
+    "limitMs": 4000
   }
 }

@@ -177,3 +177,6 @@
   .cr-attention-row { padding-block: var(--space-3); }
   .cr-attention-subject { flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
 }
+
+.convention-proposal { padding-block: 1rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.convention-body { white-space: pre-wrap; }

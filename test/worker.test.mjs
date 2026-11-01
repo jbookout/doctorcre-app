@@ -12,9 +12,32 @@ test('blocking 1: shared map modules, CSS and derived worker URLs pass through d
 });
 
 import { handleDoctorcreRequest } from "../src/worker.js";
+import { routeContract } from "../js/routes.js";
 
 const HOST = "doctorcre-app-staging.joe-bookout-carr-us.workers.dev";
 const request = (path, init) => new Request(`https://${HOST}${path}`, init);
+
+test('legacy progress pages require sign-in before redirecting to the board', async () => {
+  const carr = { fetch: async value => {
+    assert.equal(new URL(value.url).pathname, '/control-room');
+    return value.headers.has('cookie')
+      ? new Response(null, { headers: { 'set-cookie': '__Host-dealroom_session=fresh' } })
+      : new Response(null, { status: 302, headers: { location: request('/auth/login?return_to=%2Fcontrol-room%2Fprogress').url } });
+  } };
+  for (const path of ['/control-room/progress', '/progress-board', '/progress-board.html?board=old&mode=live']) {
+    const signedOut = await handleDoctorcreRequest(request(path), environment({ carr }));
+    assert.equal(signedOut.status, 302, path);
+    const login = new URL(signedOut.headers.get('location'));
+    assert.equal(login.pathname, '/auth/login');
+    assert.equal(login.searchParams.get('return_to'), path);
+    const signedIn = await handleDoctorcreRequest(request(path, { headers: { cookie: '__Host-dealroom_session=opaque' } }), environment({ carr }));
+    assert.equal(signedIn.status, 308);
+    const board = new URL(signedIn.headers.get('location'));
+    assert.equal(board.pathname, '/control-room/progress/board/carr-v5');
+    assert.equal(board.search, path.includes('?') ? '?mode=live' : '');
+    assert.equal(signedIn.headers.get('set-cookie'), '__Host-dealroom_session=fresh');
+  }
+});
 
 test("Doc activity uses an admitted gate and restores signed-out return-to", async () => {
   let forwarded;
@@ -238,7 +261,7 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: carrContractIdentity,
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.22.0" },
+    route_contract: { schema: routeContract.schema, version: routeContract.version },
   });
 });
 
@@ -309,4 +332,15 @@ test('client portal uses the existing authenticated business gate and restores i
     if (status === 200) assert.equal(await response.text(), '/client-portal.html');
     if (status === 302) assert.equal(new URL(response.headers.get('location')).searchParams.get('return_to'), '/client-portal');
   }
+});
+
+test('phone capture ships behind the existing partner gate with narrowly scoped microphone permission', async () => {
+  const env = environment({ carr: { fetch: async value => new Response(null, { status: new URL(value.url).pathname === '/business' ? 200 : 404 }) } });
+  const response = await handleDoctorcreRequest(request('/calls?session=synthetic'), env);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), 'asset:/calls.html');
+  assert.match(response.headers.get('permissions-policy'), /microphone=\(self\)/);
+  assert.match(response.headers.get('content-security-policy'), /media-src 'self' blob:/);
+  const home = await handleDoctorcreRequest(request('/css/app-shell.css'), env);
+  assert.match(home.headers.get('permissions-policy'), /microphone=\(\)/);
 });

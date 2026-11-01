@@ -1,0 +1,161 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "b281ef8c69dad3c1dab98229074de1b167f06e02",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/2670"
+  },
+  "response": {
+    "schema_version": "local-deals-board.v2",
+    "deal_keys": [
+      "operating_state",
+      "parking_note",
+      "invoiced_on",
+      "phase_change",
+      "field_base",
+      "prospect_engagement_status",
+      "client_status",
+      "client_version",
+      "phase_started_on",
+      "vendors",
+      "short_name",
+      "items",
+      "client_portal_url",
+      "open_actions",
+      "last_step"
+    ],
+    "phase_change_keys": [
+      "event_id",
+      "prior_phase",
+      "phase",
+      "automatic",
+      "reason",
+      "evidence_date",
+      "recorded_at"
+    ],
+    "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
+    "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply.",
+    "closed_deals": {
+      "keys": [
+        "id",
+        "name",
+        "client_ref",
+        "client_name",
+        "type",
+        "phase",
+        "outcome",
+        "owner",
+        "closed_on",
+        "invoiced_on",
+        "account_client_id",
+        "workspace_kind",
+        "vendors"
+      ],
+      "membership": "Recorded won outcome, or no outcome with a recorded close/invoice date. Lost and paused outcomes are excluded; same workspace and account scope.",
+      "order": "Close date descending, missing dates last, then name and id."
+    },
+    "lost_deals": {
+      "keys": [
+        "id",
+        "name",
+        "client_ref",
+        "client_name",
+        "type",
+        "phase",
+        "outcome",
+        "owner",
+        "closed_on",
+        "invoiced_on",
+        "account_client_id",
+        "workspace_kind",
+        "vendors"
+      ],
+      "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
+    },
+    "prospect_engagement_status": {
+      "values": [
+        "active",
+        "inactive"
+      ],
+      "owner": "client",
+      "default": "active",
+      "independent_of": [
+        "client_status",
+        "operating_state"
+      ],
+      "presentation": "Only active prospects appear on the deal board. Inactive prospects return to the existing Leads pipeline."
+    },
+    "account_engagement_keys": [
+      "prospect_engagement_status",
+      "client_status",
+      "client_version"
+    ],
+    "phase_started_on": {
+      "shape": "object keyed by phase slug; YYYY-MM-DD values",
+      "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+    },
+    "vendors": {
+      "shape": "Array of explicit active deal-vendor assignments; empty array when none. No assignments inferred from introductions or deal participants.",
+      "item_keys": [
+        "party_id",
+        "role",
+        "company",
+        "contact",
+        "note",
+        "updated_at"
+      ],
+      "company_keys": [
+        "id",
+        "name"
+      ],
+      "contact_keys": [
+        "id",
+        "name",
+        "email",
+        "phone"
+      ],
+      "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
+      "order": "Role, company name, contact name, vendor party id."
+    },
+    "item_schema_version": "deal-items.v1",
+    "item_keys": [
+      "id",
+      "title",
+      "due_on",
+      "status",
+      "bullets",
+      "source_ref"
+    ],
+    "bullet_keys": [
+      "date",
+      "kind",
+      "text"
+    ],
+    "bullet_kinds": [
+      "promised",
+      "call",
+      "suggestion",
+      "status"
+    ],
+    "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+    "open_actions": {
+      "item_keys": [
+        "id",
+        "owner",
+        "description",
+        "due_on"
+      ],
+      "membership": "Up to three open unstructured actions.",
+      "order": "Due date ascending, missing dates last, then id."
+    },
+    "last_step": {
+      "nullable": true,
+      "keys": [
+        "kind",
+        "summary",
+        "occurred_at"
+      ],
+      "source": "Newest recorded activity or completed action, ordered by occurred_at descending then id descending. Never inferred from last_touch."
+    }
+  }
+}

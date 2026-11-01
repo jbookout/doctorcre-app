@@ -1,0 +1,41 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2729",
+    "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
+  },
+  "schema_version": "deal-update-reviews.v1",
+  "read": {
+    "verb": "read-deal-update-reviews",
+    "arguments": {},
+    "proposal_fields": [
+      "assessment_id",
+      "deal_id",
+      "deal_name",
+      "assessment",
+      "confirm_verb"
+    ],
+    "limit": 200
+  },
+  "review": {
+    "verb": "review-deal-update",
+    "arguments": [
+      "idempotency_key",
+      "assessment_id",
+      "decision",
+      "reason"
+    ],
+    "decisions": {
+      "resolve": "Complete the exact unchanged action.",
+      "dismiss": "Remove the proposal while leaving the action open.",
+      "undo": "Reopen an unchanged automatic completion and reverse its coupled plan while no newer plan change exists."
+    },
+    "receipt": {
+      "ok": true,
+      "decision": "resolve|dismiss|undo",
+      "action_id": "uuid"
+    },
+    "replay": "Retry the original key and exact arguments. Changed actions and newer plans refuse."
+  }
+}

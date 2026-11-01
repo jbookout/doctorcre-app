@@ -3,7 +3,7 @@ import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // React islands: strict TypeScript under src/ui/, shipped as one generated
-// browser module that a page imports only while its flag is on. The island
+// browser module that a page imports on demand or while its flag is on. The island
 // sources are read through readSource, so an artifact verified from committed
 // bytes compiles committed bytes; React itself resolves from the lockfile's
 // install in this checkout.
@@ -25,11 +25,15 @@ export async function uiBundle(readSource) {
     tsconfigRaw: "{}", define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "ui-source", setup(builder) {
       // Island imports are relative and extensionless; each must name an
-      // admitted .tsx or .ts file under src/ui/.
+      // admitted .tsx or .ts file under src/ui/, or the shared read budget.
       builder.onResolve({ filter: /^\.|^src\/ui\// }, async (args) => {
         if (args.kind !== "entry-point" && args.namespace !== "ui-source") return undefined;
         const base = args.kind === "entry-point" ? posix.normalize(args.path)
           : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
+        if (base === 'js/read-budget.mjs') {
+          const contents = await read(base);
+          if (contents !== null) return { path: base, namespace: 'ui-source', pluginData: contents };
+        }
         for (const path of [base, `${base}.tsx`, `${base}.ts`]) {
           if (!path.startsWith(`${UI_SOURCE}/`) || !/\.tsx?$/.test(path)) continue;
           const contents = await read(path);

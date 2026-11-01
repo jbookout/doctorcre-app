@@ -29,6 +29,7 @@ test('mounted UI hides on load and on a failed read, and follows flips without r
 });
 
 test('an open page observes an off flip at the next one-minute poll',async t=>{
+ t.mock.timers.enable({apis:['Date']});
  const dom=new JSDOM('<button>Act</button>');
  const timers=new Map();let serial=0,available=true,visible=false;
  dom.window.setTimeout=(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;};
@@ -39,14 +40,14 @@ test('an open page observes an off flip at the next one-minute poll',async t=>{
  await gate.refresh();assert.equal(visible,true);
  available=false;
  const poll=[...timers.values()].find(timer=>timer.ms===60_000);
- assert.ok(poll);await poll.fn();assert.equal(visible,false);
+ assert.ok(poll);t.mock.timers.tick(60_000);await poll.fn();assert.equal(visible,false);
 });
 
-import { readFileSync } from 'node:fs';
 import { createLiveClient } from '../js/live-client.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 test('the pinned switch read carries no caller-selected identity or audience',async()=>{
- const contract=JSON.parse(readFileSync(new URL('../contracts/carr-interface.v1.json',import.meta.url)));
+ const contract=carrInterface;
  const seam=contract.mcp_read_contracts['list-feature-switches'];
  assert.match(seam.producer.source_commit,/^[0-9a-f]{40}$/);
  assert.equal(seam.response.schema,'feature-switches.v1');

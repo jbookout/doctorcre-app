@@ -13,9 +13,10 @@ const inputSchema = { type: 'object', additionalProperties: false, properties: {
   }, required: ['workflow_key', 'workflow_version'],
 } }, required: ['scope'] };
 import { scope, NOW, projection, missingProjection } from './fixtures/assurance-health.mjs';
+import { carrInterface } from "./carr-contract.mjs";
 
 test('read-assurance-health pins the exact producer request and response contract', async () => {
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   const read = contract.mcp_read_contracts['read-assurance-health'];
   assert.equal(read.write, false);
   assert.deepEqual(read.inputSchema, inputSchema);

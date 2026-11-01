@@ -15,12 +15,13 @@ import {readFile} from "node:fs/promises";
 import {GOVERNANCE_LANES, formatScheduleDateTime, validGovernanceQueuePayload, validScheduleBoardPayload} from "../js/operations-model.js";
 import {createFixtureClient} from "../js/fixture-client.js";
 import {createLiveClient} from "../js/live-client.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("control-room.html");
 const pageJs = await read("js/control-room.js");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 
 const QUEUE = {
   ok: true,

@@ -508,6 +508,7 @@ function wire() {
     search.value = view.state.q;
     search.addEventListener("input", () => {
       clearTimeout(searchTimer);
+      // eslint-disable-next-line no-restricted-syntax -- Idea search keeps one pending debounce, clearing its predecessor on input; the query is capped at 200 characters.
       searchTimer = setTimeout(() => {
         closeIdea();
         view.state = { ...view.state, q: search.value.slice(0, 200) };
@@ -586,7 +587,6 @@ function wire() {
   $("eventCancel")?.addEventListener("click", () => closeEvent({ discard: true }));
   window.addEventListener("pagehide", () => { pageDocContext?.clear(); closeIdea(); closeEvent(); });
   window.addEventListener("resize", () => drawTimeline(["ready", "partial"].includes(view.events.status) ? view.events.rows : []));
-  window.addEventListener("online", () => { load(); loadEvents(); });
   window.addEventListener("popstate", () => {
     const next = parseIdeasState(location.search);
     const previousIdea = view.state.idea;

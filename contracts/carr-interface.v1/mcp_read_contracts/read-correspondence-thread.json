@@ -1,0 +1,62 @@
+{
+  "write": false,
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "source_system": {
+        "type": "string"
+      },
+      "native_id": {
+        "type": "string"
+      },
+      "native_id_epoch": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "source_system",
+      "native_id",
+      "native_id_epoch"
+    ]
+  },
+  "response": {
+    "required_keys": [
+      "ok",
+      "decision",
+      "reason_id",
+      "native_identity",
+      "receipts",
+      "dispatchable",
+      "provider_operation",
+      "send_authority_holder",
+      "send_authority_seam",
+      "automatic_internal_update",
+      "effects"
+    ],
+    "decisions": {
+      "unavailable": {
+        "additional_required_keys": [
+          "owed_seam"
+        ],
+        "receipts": []
+      },
+      "receipts_found": {
+        "receipt_keys": [
+          "read_receipt_id",
+          "partner_slug",
+          "adapter_kind",
+          "account_digest",
+          "native_identity",
+          "thread_metadata",
+          "metadata_digest",
+          "consent_in_force",
+          "recorded_at"
+        ]
+      }
+    },
+    "thread_metadata": "Opaque JSON object. Store enforces related relevance, forbids raw content and returns metadata only; no subject/body/attachment bytes.",
+    "identity_source": "Use only native identity already recorded on the deal activity; this verb does not discover threads by deal."
+  }
+}

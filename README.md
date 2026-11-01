@@ -120,8 +120,19 @@ deployment directory. Tagged `app-v*` releases run
 the same checks and publish those three files. Consumers pin the exact source
 commit and archive digest; they never import this repository's source tree.
 
-The pinned consumer contract is `contracts/carr-interface.v1.json`. The live and
-fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
+The pinned consumer contract is `contracts/carr-interface.v1/`, one file per
+entry so that two branches adding verbs never edit the same lines.
+`scripts/carr-interface.mjs` composes it into one object. A feature adds
+`mcp_operations/<encoded-verb>.json` (a JSON string), `http_surfaces/<encoded-path>.json`
+(`{"value":"/api/v1/example","order":28}`), and its own `<section>.json`.
+List filenames use `entryFileName`, a reversible lowercase UTF-8 hex encoding of
+the full verb or surface key. The composer rejects duplicate entry files. The
+contract digest recursively sorts object keys while retaining array order.
+Surface order preserves the original contract
+array; append with the next order number. Equal orders from parallel additions
+sort by value. CI rejects the retired single file. Tests read the
+contract through `test/carr-contract.mjs` and assert only the entries they own.
+The live and fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
 
 The repository is publicly visible. No open-source license has been selected;
 public visibility alone does not grant reuse rights.
@@ -130,8 +141,11 @@ Every PR runs `npm run performance:check` after the build in the required CI
 `test` job. It measures Home, Local Deals, Vendors, Tours, Relationships, and
 Invoices from `dist/site`, with synthetic records and cold Chromium contexts:
 390×844 mobile viewport, 4× CPU slowdown, 150 ms latency, 1.6 Mbps download.
-Three runs produce median LCP and scripted interaction latency; screen JS is
-the largest unique script-byte total loaded through that interaction. Total
+Home uses five cold loads and fails if median LCP exceeds 4,000 ms. All samples
+and the median are reported. Other screens use three runs for median LCP and
+scripted interaction latency; screen JS is
+the largest unique script-byte total loaded through that interaction. Home JS
+bytes are informational and have no budget. Total
 shipped JS includes every `.js`/`.mjs` in the static artifact; gzip is reported
 as the sum of per-file compressed sizes.
 
@@ -141,7 +155,7 @@ after, and budget. PR authors reduce the failing metric and rerun the check;
 budget increases require visible review in the budget diff. To re-measure the
 baseline, save a hosted `test` job log (it holds one `performance-report <base64url>` line) and run
 `node scripts/performance-budget.mjs --rebaseline contracts/performance-budget.v1.json <file>`;
-it applies the one headroom rule, which a test holds every committed limit to. This is a lab
+it applies the headroom rule to other metrics and preserves the Home load limit. This is a lab
 regression guard: interaction latency runs from the browser pointer timestamp
 to the verified UI change plus two animation frames, and is not field INP.
 The baseline preserves existing slow screens; it does not certify speed.
@@ -150,3 +164,18 @@ CI keeps JSON, the performance summary, and Playwright failure traces as artifac
 The CI job publishes the performance summary in its job summary.
 
 `npm run docs:check` warns about broken local Markdown links and unknown documented npm commands.
+
+Client scheduling is checked with `npm run lint`. Use `createPageBudget` /
+`createRequestBudget` for bounded reads and TanStack Query `refetchInterval`
+for React polling. Audited local callbacks carry an inline
+`eslint-disable-next-line no-restricted-syntax -- <reason>` comment naming the
+specific bound or cancellation owner in at least four words; placeholder reasons are rejected.
+Raw scheduler aliases, global-object aliases, and static computed scheduler keys
+are checked. Schedulers reached through function parameters, returned values,
+non-global object properties, or dynamic computed keys are outside this analysis.
+
+`node scripts/prove-loop-lint-coverage.mjs` compares the pinned pre-migration main
+revision with ESLint, lists both coverage sets, and asserts containment. It
+reports historical direct-form inventory diagnostics separately from wrappers and
+name collisions; it gives no scheduler-origin credit to those entries.
+The pinned commit must be present in local Git history.

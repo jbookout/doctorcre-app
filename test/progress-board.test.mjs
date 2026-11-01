@@ -82,16 +82,16 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
   env.ASSETS.fetch = async (request) => new Response(new URL(request.url).pathname);
-  const signedIn = await handleDoctorcreRequest(new Request(`${host}/control-room/progress`), env);
+  const signedIn = await handleDoctorcreRequest(new Request(`${host}/control-room/progress/board/carr-v5`), env);
   assert.equal(await signedIn.text(), "/progress-board.html");
 });
 
-test("/progress-board?board=all-repos keeps its board through the redirect and is accepted", async () => {
+test("/progress-board routes to the work queue", async () => {
   const env = { CARR: { fetch: async () => new Response() }, ASSETS: { fetch: async () => new Response("") } };
   const response = await handleDoctorcreRequest(new Request(`${host}/progress-board?board=all-repos`), env);
   assert.equal(response.status, 308);
   const location = new URL(response.headers.get("location"));
-  assert.equal(location.pathname, "/control-room/progress/board/all-repos");
+  assert.equal(location.pathname, "/control-room/progress/board/carr-v5");
   assert.equal(location.searchParams.has("board"), false);
   assert.equal(boardFromSearch("?board=all-repos"), "all-repos");
   assert.equal(boardFromSearch("?board=<script>"), null);

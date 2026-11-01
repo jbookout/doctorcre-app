@@ -11,6 +11,82 @@ const methods = {
 };
 const seedUrl = `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`;
 
+test('filing confirmation retains its request and binds retries to the reviewed session', async () => {
+  const calls = []; let lost = true;
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    calls.push({ params: JSON.parse(init.body).params, csrf: init.headers['x-carr-csrf'] });
+    if (lost) { lost = false; throw Error('lost response'); }
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+  } });
+  const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
+    proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'filing-once' };
+  await assert.rejects(live.confirmEmailFiling(args));
+  assert.equal((await live.confirmEmailFiling(args)).status, 'confirmed');
+  assert.deepEqual(calls[0], calls[1]);
+  assert.equal(calls[0].csrf, 'synthetic-session');
+  assert.deepEqual(calls[0].params.arguments, args);
+});
+
+test('filing refuses confirmation after the reviewed actor changes', async () => {
+  const calls = [];
+  const live = createLiveClient({ selfActor: 'synthetic-reviewer', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'synthetic-other' }, csrf_token: 'synthetic-other-session' });
+    calls.push(JSON.parse(init.body).params);
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+  } });
+  await assert.rejects(live.confirmEmailFiling({
+    proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
+    proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'changed-actor-filing',
+  }), { code: 'session_changed' });
+  assert.deepEqual(calls, [], 'no filing confirmation is dispatched under the other actor');
+});
+
+test('filing refuses confirmation and unknown-outcome recovery after the session expires', async () => {
+  for (const retry of [false, true]) {
+    const calls = [];
+    let expired = false;
+    const live = createLiveClient({ selfActor: 'synthetic-reviewer', fetchImpl: async (path, init) => {
+      if (path === '/auth/session') return expired ? Response.json({ error: 'authentication_required' }, { status: 401 })
+        : Response.json({ actor: { slug: 'synthetic-reviewer' }, csrf_token: 'synthetic-reviewed-session' });
+      calls.push(JSON.parse(init.body).params);
+      if (retry && calls.length === 1) throw Error('lost filing response');
+      return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+    } });
+    const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
+      proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'expired-session-filing' };
+    if (retry) await assert.rejects(live.confirmEmailFiling(args), /lost filing response/);
+    expired = true;
+    await assert.rejects(live.confirmEmailFiling(args), { status: 401, message: 'Sign in again before checking this write.' });
+    assert.equal(calls.length, retry ? 1 : 0, 'expiration dispatches no additional filing confirmation');
+    if (retry) assert.deepEqual(calls, [{ name: 'confirm-email-filing', arguments: args }]);
+  }
+});
+
+test('filing cannot replay an unknown confirmation under a different session', async () => {
+  for (const changedActor of [false, true]) {
+    const calls = [];
+    const reviewed = { actor: { slug: 'synthetic-reviewer' }, csrf_token: 'synthetic-reviewed-session' };
+    let session = reviewed;
+    const live = createLiveClient({ fetchImpl: async (path, init) => {
+      if (path === '/auth/session') return Response.json(session);
+      calls.push({ params: JSON.parse(init.body).params, csrf: init.headers['x-carr-csrf'] });
+      if (calls.length === 1) throw Error('lost filing response');
+      return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+    } });
+    const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
+      proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'cross-session-filing' };
+    await assert.rejects(live.confirmEmailFiling(args), /lost filing response/);
+    session = { actor: { slug: changedActor ? 'synthetic-other' : 'synthetic-reviewer' }, csrf_token: 'synthetic-new-session' };
+    await assert.rejects(live.confirmEmailFiling(args), { code: 'session_changed' });
+    assert.deepEqual(calls, [{ params: { name: 'confirm-email-filing', arguments: args }, csrf: reviewed.csrf_token }],
+      'the original filing request is never dispatched under the new session');
+    session = reviewed;
+    assert.equal((await live.confirmEmailFiling(args)).status, 'confirmed');
+    assert.deepEqual(calls[1], calls[0], 'the original session can still reconcile the exact retained filing request');
+  }
+});
+
 test('both adapters expose the deployed email review verbs and live forwards exact arguments', async () => {
   const calls = [];
   const live = createLiveClient({ fetchImpl: async (path, init) => {
@@ -152,4 +228,59 @@ test('synthetic reply submissions are owned, versioned, exact and idempotent wit
   assert.deepEqual(result.cc, ['demo-dell@example.test']);
   assert.deepEqual(await client.submitEmailDraft(args), result);
   assert.equal((await client.listEmailProposals()).proposals.some(row => row.id === draft.id), false);
+});
+
+test('synthetic non-deal proposals opt into the same review and retain confirmation receipts', async () => {
+  const client = await createFixtureClient({ seedUrl, emailNonDealProposals: true });
+  assert.equal((await client.listEmailProposals()).proposals.length, 2);
+  const rows = (await client.listEmailProposals({ include_non_deal: true })).proposals.filter(row => row.deal === null);
+  assert.deepEqual(rows.map(row => row.subject_type), ['client','lead','vendor']);
+  for (const row of rows) {
+    const args = { deal: null, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+      text: row.preview.text, next_date: row.preview.next_date, owner: row.preview.owner };
+    const preview = await client.previewEmailNextStep(args);
+    const request = { ...args, proposal_digest: preview.proposal_digest, idempotency_key: `non-deal-${row.id}` };
+    const confirmed = await client.confirmEmailNextStep(request);
+    assert.equal(confirmed.status, 'confirmed');
+    assert.equal(confirmed.subject_id, row.subject_id);
+    assert.deepEqual(await client.confirmEmailNextStep(request), confirmed);
+  }
+  assert.equal((await client.listEmailProposals({ include_non_deal: true })).proposals.length, 2);
+});
+
+test('fixture draft save persists exact text and version without submission', async () => {
+  const client = await createFixtureClient({ seedUrl, emailReplyDrafts: true });
+  const row = (await client.listEmailProposals()).proposals.find(row => row.kind === 'reply_draft');
+  const request = { proposal_id: row.id, base_version: row.version, subject: '  Demo edited subject  ', body: '  Demo saved text\n  ', idempotency_key: 'save-only' };
+  const receipt = await client.editEmailDraft(request);
+  assert.equal(receipt.version, row.version + 1);
+  assert.deepEqual(await client.editEmailDraft(request), receipt);
+  const saved = (await client.listEmailProposals()).proposals.find(item => item.id === row.id);
+  assert.equal(saved.status, 'pending');
+  assert.equal(saved.reply_draft.subject, request.subject);
+  assert.equal(saved.reply_draft.body, request.body);
+  assert.deepEqual(saved.reply_draft.to, row.reply_draft.to);
+  assert.equal(saved.submitted_email, undefined);
+  await assert.rejects(client.editEmailDraft({ ...request, idempotency_key: 'stale-save' }), error => error.payload?.error === 'version_conflict');
+});
+
+test('live draft save binds session, retains unknown requests, and rejects malformed receipts', async () => {
+  const calls = []; let response = 'lost';
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { params } = JSON.parse(init.body); calls.push({ ...params, headers: init.headers });
+    if (response === 'lost') throw Error('synthetic loss');
+    const args = params.arguments;
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, proposal_id: args.proposal_id,
+      version: response === 'malformed' ? 99 : 4, subject: args.subject, body: args.body }) }] } });
+  } });
+  const request = { proposal_id: '10000000-0000-4000-8000-000000000003', base_version: 3, subject: 'Demo subject', body: 'Demo body', idempotency_key: 'retained-save' };
+  await assert.rejects(live.editEmailDraft(request), error => error.pendingRequest?.idempotency_key === request.idempotency_key);
+  response = 'malformed';
+  await assert.rejects(live.editEmailDraft(request));
+  response = 'valid';
+  assert.equal((await live.editEmailDraft(request)).version, 4);
+  assert.deepEqual(calls[0], calls[1]); assert.deepEqual(calls[1], calls[2]);
+  assert.equal(calls[0].name, 'edit-email-draft');
+  assert.equal(calls[0].headers['x-carr-csrf'], 'synthetic-session');
 });

@@ -13,6 +13,7 @@ import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mj
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = join(root, 'test-artifacts/performance');
 await mkdir(output, { recursive: true });
+const { homeLoad } = JSON.parse(await readFile(join(root, 'contracts/performance-budget.v1.json')));
 const manifestBytes = await readFile(join(root, 'dist/doctorcre-app.manifest.json'));
 const manifest = JSON.parse(manifestBytes);
 const archive = await readFile(join(root, 'dist/doctorcre-app.tar'));
@@ -36,7 +37,7 @@ try {
   const measured = {};
   for (const screen of screens) {
     const samples = [];
-    for (let index = 0; index < profile.samples; index++) {
+    for (let index = 0; index < (screen.id === 'home' ? homeLoad.samples : profile.samples); index++) {
       const context = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.deviceScaleFactor,
         isMobile: true, hasTouch: true, serviceWorkers: 'block' });
       const trace = `${screen.id}-${index + 1}.zip`;
@@ -100,6 +101,7 @@ try {
     }
     const median = key => samples.map(sample => sample[key]).sort((a, b) => a - b)[samples.length >> 1];
     measured[screen.id] = { lcpMs: median('lcpMs'), jsBytes: Math.max(...samples.map(sample => sample.jsBytes)), interactionMs: median('interactionMs'), samples };
+    if (screen.id === 'home') console.log(`Home LCP samples (ms): ${samples.map(sample => sample.lcpMs).join(', ')}; median: ${measured.home.lcpMs} ms`);
     console.log(`${screen.id}: LCP=${measured[screen.id].lcpMs}ms JS=${measured[screen.id].jsBytes}B interaction=${measured[screen.id].interactionMs}ms`);
   }
   for (const task of tasks) {
@@ -143,7 +145,7 @@ try {
   // `performance-budget.mjs --rebaseline` after its artifact has expired.
   // Base64url: Actions masking rewrites braces when a multi-line secret is set.
   console.log(`performance-report ${Buffer.from(JSON.stringify({ ...report,
-    screens: Object.fromEntries(Object.entries(measured).map(([id, { samples, ...metrics }]) => [id, metrics])),
+    screens: Object.fromEntries(Object.entries(measured).map(([id, { samples, ...metrics }]) => [id, id === 'home' ? { ...metrics, samples: samples.map(({ lcpMs }) => ({ lcpMs })) } : metrics])),
     bundle: { jsBytes: bundle.jsBytes, gzipBytes: bundle.gzipBytes } })).toString('base64url')}`);
 } finally {
   await browser?.close();

@@ -282,6 +282,7 @@ export async function loadAssuranceHealth(client, scope, { timeoutMs = 8000 } = 
   try {
     return await Promise.race([
       Promise.resolve().then(() => client.readAssuranceHealth(assuranceHealthRequest({ scope }))),
+      // eslint-disable-next-line no-restricted-syntax -- A single timeoutMs deadline per assurance-health read; the timer is cleared in finally and failure returns null without retry.
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('assurance read timeout')), timeoutMs); }),
     ]);
   } catch { return null; }

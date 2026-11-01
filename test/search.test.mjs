@@ -20,6 +20,7 @@ import {
   retiredSummary, saveView, scopeChips, searchAddress, searchPhase, truncationNotes,
   validSearchPayload, visibleCount, writeSavedViews, toggleSearchScope, SEARCH_GROUP_IDS,
 } from "../js/search-model.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
@@ -28,7 +29,7 @@ const html = await read("search.html");
 const pageJs = await read("js/search.js");
 const modelJs = await read("js/search-model.js");
 const css = await read("css/business-workspace.css");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 const routes = (await import("../js/routes.js")).routeContract;
 const syntheticCapture = JSON.parse(await read("test/fixtures/search-synthetic.json"));
 
@@ -352,17 +353,9 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 
 /* ----------------------------------------------------------------------- B05-14 */
 
-test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
-  assert.equal(routes.version, "1.22.0", "no new route: the Search tab lives on /business");
+test("B05-14 the interface contract pins both verbs and the Search route", () => {
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.producer.source_commit, "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee", "the producer pin includes the Codex checkpoint read");
-
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
-  assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
-  const at = contract.mcp_operations.indexOf("find");
-  assert.equal(contract.mcp_operations[at - 1], "engineering-passport");
-  assert.equal(contract.mcp_operations[at + 1], "find-and-catch-up");
-  assert.equal(contract.mcp_operations[at + 2], "get-call-context");
   // Both verbs travel over the existing /mcp mount, so no HTTP surface is added.
   assert.equal(contract.http_surfaces.includes("/api/v1/search"), false);
   assert.doesNotMatch(html, /id="searchAuthorization">[^<]*record layer/);

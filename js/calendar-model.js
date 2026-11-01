@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { businessDay } from './business-date.js';
 // V5-UX-B04 — the critical-dates Calendar: every decision, no DOM.
 //
@@ -7,7 +8,7 @@ import { businessDay } from './business-date.js';
 // next fourteen days, which is a to-do list and not a calendar. So the calendar
 // reads the board once (`deal-room-board`) and then each deal's own record,
 // with a small bound on how many are in flight. Both verbs were already pinned
-// in contracts/carr-interface.v1.json; this surface adds no verb.
+// in contracts/carr-interface.v1; this surface adds no verb.
 //
 // HONESTY RULES, the reason most of this file exists:
 //   - A deal whose record could not be read is NAMED and the page is partial.
@@ -269,8 +270,16 @@ export async function readCalendar(client, { concurrency = READ_CONCURRENCY, onP
   let signedOut = false;
   let next = 0;
 
+  const takePage = createPageBudget();
   async function worker() {
+    // eslint-disable-next-line no-restricted-syntax -- Workers share a max of 100 pages; takePage consumes the budget before each deal read.
     while (!signedOut && next < deals.length) {
+      try { takePage(); }
+      catch {
+        failed.push(...deals.slice(next).map(deal => ({ deal_id: deal.id, deal_name: deal.name || 'Unnamed deal' })));
+        next = deals.length;
+        return;
+      }
       const deal = deals[next++];
       try {
         const detail = await client.getDeal(deal.id);

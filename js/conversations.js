@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
@@ -350,6 +351,7 @@ function renderOutcomeCards() {
       announceOutcomeCards('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
+  // eslint-disable-next-line no-restricted-syntax -- Registers 1 clipboard callback per rendered session button; clipboard access occurs only on click.
   for (const button of list.querySelectorAll('[data-copy-outcome-session]')) {
     button.addEventListener('click', async () => {
       const card = cards.find(item => item.id === button.dataset.copyOutcomeSession);
@@ -472,7 +474,10 @@ async function takeConversation({ after = null, background = false, signal } = {
     let payload = await readClient("readDocConversation", args, signal);
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
+      const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Conversation catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
+        takePage();
         const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
         if (view.sequence !== sequence || signal?.aborted) return;
         payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
@@ -509,7 +514,10 @@ async function takeList({ cursor = null, background = false, signal } = {}) {
     );
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
+      const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Conversation-list catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
+        takePage();
         const incoming = await readClient("listDocConversations", listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }), signal);
         if (view.sequence !== sequence || signal?.aborted) return;
         payload = { ...incoming, conversations: [...payload.conversations, ...incoming.conversations] };
@@ -547,7 +555,10 @@ async function takeOutcomeCards({ cursor = null, background = false, signal } = 
     ]);
     if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
     if (background && !refuseDocOutcomeCards(payload)) {
+      const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Outcome-card catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
+        takePage();
         const incoming = await readClient("docOutcomeCards", outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }), signal);
         if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
         if (refuseDocOutcomeCards(incoming)) throw new Error("Outcome page unavailable");
@@ -651,6 +662,7 @@ async function dispatch(operationKey, args, summary, send) {
   if (result.started) operations.set(operationKey, { args: result.request || args, summary, send });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Conversation command receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
@@ -820,7 +832,7 @@ async function boot() {
   view.route = idFromSearch(location.search || "");
   $("retryRead")?.addEventListener("click", () => load());
   $("outcomeCardsRetry")?.addEventListener("click", () => takeOutcomeCards());
-  document.addEventListener('visibilitychange', async () => {
+  mountAutoRefresh({ document, window: globalThis.window, periodic: false, shouldRefresh: () => Boolean(pendingOutcomeOpen && client), refresh: async () => {
     if (document.visibilityState !== 'visible' || !pendingOutcomeOpen || !client) return;
     const attempt = pendingOutcomeOpen;
     pendingOutcomeOpen = null;
@@ -841,7 +853,7 @@ async function boot() {
     } catch {
       announceOutcomeCards('The open result is unknown. Refresh this card before trying again.');
     }
-  });
+  } });
   $("suggestionsRetry")?.addEventListener("click", () => takeSuggestions());
   $("suggestionsParked")?.addEventListener("click", () => {
     view.suggestions.includeParked = !view.suggestions.includeParked;

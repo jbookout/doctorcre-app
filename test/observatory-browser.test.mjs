@@ -1,3 +1,4 @@
+import { createPageBudget } from '../js/read-budget.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -13,7 +14,7 @@ const page = (seq, more = true, body) => ({ turns: [turn(seq, body)], before_seq
 function openRoom(fetch, thread = 'wr-000001') {
   const dom = openDom(html, { url: `https://app.example/observatory.html?thread=${thread}`, runScripts: 'outside-only', pretendToBeVisual: true });
   let poll;
-  Object.assign(dom.window, { sessionFetch: fetch, fetch, groupConversations, labelFor, modelFor, summarizeNow, matchMedia: () => ({ matches: true }),
+  Object.assign(dom.window, { createPageBudget: () => createPageBudget({ document: dom.window.document }), sessionFetch: fetch, fetch, groupConversations, labelFor, modelFor, summarizeNow, matchMedia: () => ({ matches: true }),
     mountVisibilityPoll: ({ poll: callback }) => { poll = callback; } });
   dom.window.eval(source);
   return { document: dom.window.document, poll: () => poll() };

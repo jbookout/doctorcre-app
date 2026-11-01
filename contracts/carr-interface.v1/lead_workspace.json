@@ -1,0 +1,47 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "911eb36b5c4a859ccd3a090b1468620a0cf724b6"
+  },
+  "schema_version": "lead-workspace.v1",
+  "board": {
+    "verb": "lead-board",
+    "arguments": {
+      "workspace": "leads"
+    }
+  },
+  "detail": {
+    "verb": "lead-board",
+    "arguments": {
+      "workspace": "leads",
+      "lead_id": "exact UUID"
+    },
+    "pagination": {
+      "page_size": 100,
+      "correspondence_cursor": "Optional exact next_cursor object with occurred_at and id from correspondence_page",
+      "stage_history_cursor": "Optional exact next_cursor mutation_order string from stage_history_page",
+      "response": "Independent correspondence_page and stage_history_page each contain total, has_more, and next_cursor. Append only the requested history array.",
+      "ordering": "Correspondence by occurred_at then id descending. Stage history by mutation_order descending."
+    }
+  },
+  "writes": {
+    "stage": "update-lead (base_version, stage_review evidence IDs, same idempotency key on retry)",
+    "undo": "update-lead (latest exact undo_event_id and prior stage)",
+    "claim": "claim-lead (authenticated human, unowned New, exact base_version)",
+    "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)",
+    "engagement": "set-prospect-engagement-status (client_id, client base_version, active or inactive, reason, expected_actor, same idempotency key on retry)"
+  },
+  "coverage": {
+    "correspondence": "captured_entries_only; zero captures do not imply zero communication; Details exposes stored original entry",
+    "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
+    "scores": "existing record score; null shown as missing",
+    "research": "detail.research from the lead-board read. The screen shows that summary and does not call prospect-research again.",
+    "quiet_follow_ups": "quiet-follow-ups with no interval arguments. The server classifies leads, vendors and contacts."
+  },
+  "prospect_keys": [
+    "prospect_client_id",
+    "prospect_client_version",
+    "prospect_engagement_status"
+  ],
+  "prospect_lifecycle": "Inactive prospects remain eligible Leads despite retained exact client and deal links. Active prospects return to the existing deal board."
+}

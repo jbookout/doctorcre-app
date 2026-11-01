@@ -25,7 +25,7 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
   // Reuse installed build and browser dependencies in the temporary clone.
-  for (const name of ['esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
+  for (const name of ['react-router', '@tanstack/react-query', 'esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
     mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
   }
@@ -66,15 +66,17 @@ if (args.includes('upload')) console.log('Worker Version ID: ${versionId}');
 }
 
 test('both actual publishers refuse ancestor, mismatched and external Wrangler entrypoints', t => {
-  for (const lane of ['production', 'staging']) for (const installation of ['missing', 'mismatch', 'symlink']) {
+  for (const installation of ['missing', 'mismatch', 'symlink']) {
     const f = fixture(t, { installation });
     const prepared = f.run('prepare-release');
     assert.equal(prepared.status, 0, prepared.stderr);
-    const result = f.run(`release-${lane}`);
-    assert.notEqual(result.status, 0, `${lane}: ${installation} must refuse`);
-    assert.match(result.stderr, /checkout-local locked Wrangler/);
-    assert.deepEqual(f.rows(), [], 'untrusted executable must never receive credentials');
-    assert.equal(result.stderr.includes(canary), false);
+    for (const lane of ['production', 'staging']) {
+      const result = f.run(`release-${lane}`);
+      assert.notEqual(result.status, 0, `${lane}: ${installation} must refuse`);
+      assert.match(result.stderr, /checkout-local locked Wrangler/);
+      assert.deepEqual(f.rows(), [], 'untrusted executable must never receive credentials');
+      assert.equal(result.stderr.includes(canary), false);
+    }
   }
 });
 
