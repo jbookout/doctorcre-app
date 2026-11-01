@@ -180,6 +180,3 @@
 
 .convention-proposal { padding-block: 1rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .convention-body { white-space: pre-wrap; }
-.convention-proposal form { display: grid; gap: .5rem; max-width: 36rem; }
-.convention-proposal textarea { width: 100%; box-sizing: border-box; }
-.convention-proposal button { justify-self: start; }
