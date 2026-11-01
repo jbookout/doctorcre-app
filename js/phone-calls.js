@@ -16,7 +16,11 @@ const answers = new Map(), answering = new Set();
 const tour_id = 'calls';
 let reviewGeneration = 0;
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
-const pollPresence = watchPresence({ document, window, onResume: schedulePoll, onWake: schedulePoll });
+const pollPresence = watchPresence({ document, window, onResume: resumeReads, onWake: resumeReads });
+function resumeReads() {
+  schedulePoll();
+  if (currentId && !disposed) void review(currentId).catch(() => notice('Call review could not be refreshed. Please retry.'));
+}
 async function acquireWakeLock() {
   const generation = ++wakeGeneration;
   try {
@@ -256,7 +260,6 @@ async function start() {
 window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
-  if (!document.hidden && currentId && !disposed) void review(currentId).catch(() => notice('Call review could not be refreshed. Please retry.'));
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();
   else if (!wakeLock || wakeLock.released) recorder.stop('hidden');

@@ -959,30 +959,6 @@
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "js/phone-calls.js:setTimeout:4ef118ac7267b28b0963a8d253c17b03b6100e668b945dd75835a766a6d5ecdd": {
-    "cap": 1,
-    "boundary": "1 callback per explicit dispatch; no self-rearm",
-    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
-    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
-  },
-  "js/phone-calls.js:setTimeout:1f92d9d496f3a447d4e9eeda99a872cae61e0d6b72547982cb8f5bc07c950adb": {
-    "cap": 10,
-    "boundary": "10 transfer polling attempts; at most 100 queued status reads per attempt",
-    "backoff": "30 seconds, doubling each attempt to 120-second ceiling; audio stays local after failure",
-    "idleStop": "watchPresence checked before scheduling and every row; hidden clears timer; 30-minute idle, pagehide and session invalidation stop; a new transfer explicitly resets the budget"
-  },
-  "js/phone-calls.js:read-loop:9ea033b72c2025f1f4500964d79d2fa556ed3223d4f1f1c4a63e0b234bf82d2d": {
-    "cap": 100,
-    "boundary": "100 queued recording status reads per polling attempt; 10 polling attempts",
-    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
-    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
-  },
-  "js/phone-calls.js:event-refresh:cefbb6bcf1bc13c0158d01936b8b23bedece149b9d8329a9f8baa0599d3f5a74": {
-    "cap": 0,
-    "boundary": "0 automatic HTTP reads; local state or input handling only",
-    "backoff": "No network retry in this listener",
-    "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
-  },
   "js/pipeline.js:retry-option:1d1a04c6db0ce783fc2cf9bcdbe91678c3a0ac394037407ffda2bfad4c18a603": {
     "cap": 0,
     "boundary": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
@@ -1060,5 +1036,29 @@
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/phone-calls.js:setTimeout:0db3cb11892deeb7a7a51de91704b7efc822d6672a2dda3536bd815a160670fa": {
+    "cap": 1,
+    "boundary": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/phone-calls.js:setTimeout:ecfde1280559c3b6361a41e0314bcf0059d601ccf9a89fc0e642e018f39207a0": {
+    "cap": 10,
+    "boundary": "10 transfer polling attempts; at most 100 queued status reads per attempt",
+    "backoff": "30 seconds, doubling each attempt to 120-second ceiling; audio stays local after failure",
+    "idleStop": "watchPresence checked before scheduling and every row; hidden clears timer; 30-minute idle, pagehide and session invalidation stop; a new transfer explicitly resets the budget"
+  },
+  "js/phone-calls.js:read-loop:33e4fe7936a52a52818d69d1cabc848a950ecb476d6fe751ca2832a85fb9aa6a": {
+    "cap": 100,
+    "boundary": "100 queued recording status reads per polling attempt; 10 polling attempts",
+    "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
+    "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/phone-calls.js:event-refresh:72ee0412d1d8829b5e5fd8260f17022edb730bc6660bc2b180c345bc68e47836": {
+    "cap": 0,
+    "boundary": "0 automatic HTTP reads; local state or input handling only",
+    "backoff": "No network retry in this listener",
+    "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   }
 }
