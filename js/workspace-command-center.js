@@ -59,7 +59,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
-  let storage; try { storage = window.localStorage; } catch {}
   let meetingReviews = null, meetingReviewLoad = null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
