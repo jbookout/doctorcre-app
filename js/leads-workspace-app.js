@@ -13,7 +13,7 @@ import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead,
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const shortDate = (value, calendarDate = false) => Number.isFinite(Date.parse(value)) ? new Date(calendarDate && toDay(value) ? `${toDay(value)}T12:00:00Z` : value).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "numeric", day: "numeric" }) : "Date pending";
+const shortDate = (value, calendarDate = false, month = "numeric") => Number.isFinite(Date.parse(value)) ? new Date(calendarDate && toDay(value) ? `${toDay(value)}T12:00:00Z` : value).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month, day: "numeric" }) : "Date pending";
 const stamp = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—";
 const summary = value => String(value || "").split(/\n\s*\n/)[0].slice(0, 230);
 const score = lead => lead.score == null ? "—" : esc(Math.round(Number(lead.score)));
@@ -188,10 +188,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("quietFollowUpsBody").replaceChildren();
   }
   function quietReason(row) {
-    const when = shortDate(row.anchor_on, true);
+    const when = shortDate(row.anchor_on, true, "short");
     const basis = row.basis === "created_at" ? `No contact recorded. Added ${when}.` : row.basis === "last_contact" ? `Last contact ${when}.` : "No recent touch recorded.";
-    const due = row.due_on ? ` Due ${shortDate(row.due_on, true)}.` : "";
-    const late = Number.isSafeInteger(row.days_overdue) && row.days_overdue > 0 ? ` ${row.days_overdue} ${row.days_overdue === 1 ? "day" : "days"} past the recorded due date.` : "";
+    const due = row.due_on ? ` Follow-up due ${shortDate(row.due_on, true, "short")}` : "";
+    const late = Number.isSafeInteger(row.days_overdue) && row.days_overdue > 0 ? ` · ${row.days_overdue} ${row.days_overdue === 1 ? "day" : "days"} overdue` : "";
     return `${basis}${due}${late}`;
   }
   function paintFollowUps(payload) {
@@ -200,7 +200,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     section.hidden = false;
     section.setAttribute("aria-busy", "false");
     const leads = payload.proposals.filter(row => row.subject_type === "lead");
-    $("quietFollowUpsBody").innerHTML = leads.length ? `<ol>${leads.map(row => `<li><a href="/leads?lead=${encodeURIComponent(row.ref)}" data-quiet-lead="${esc(row.subject_id)}">${esc(row.name)}</a><p>${esc(quietReason(row))}</p></li>`).join("")}</ol>` : "<p>No quiet leads.</p>";
+    $("quietFollowUpsBody").innerHTML = leads.length ? `<ol>${leads.map(row => `<li><a href="/leads?lead=${encodeURIComponent(row.ref)}" data-quiet-lead="${esc(row.subject_id)}"><span>${esc(row.name)}</span><p>${esc(quietReason(row))}</p></a></li>`).join("")}</ol>` : "<p>No quiet leads.</p>";
   }
   function startQuietRead(boardEpoch) {
     if (typeof client.getQuietFollowUps !== "function" || !$("quietFollowUps")) return;
@@ -311,9 +311,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const RESEARCH_LABELS = { needs_research: "Needs research", needs_review: "Needs review", verified: "Verified" };
   function factText(value) {
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-    if (Array.isArray(value)) return value.map(factText).filter(Boolean).join(", ");
-    if (value && typeof value === "object") return Object.entries(value).filter(([key]) => !/id$/i.test(key)).map(([, item]) => factText(item)).filter(Boolean).join(", ");
-    return "";
+    if (Array.isArray(value)) return `[${value.map(factText).join(", ")}]`;
+    if (value && typeof value === "object") return `{${Object.entries(value).map(([key, item]) => `${key}: ${factText(item)}`).join("; ")}}`;
+    return "null";
   }
   function sourceMarkup(source) {
     const value = String(source || "").trim();
@@ -323,9 +323,11 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function researchMarkup(research) {
     if (!research) return `<section class="detail-panel" id="sourcedResearch"><h3>Sourced research</h3><p>Sourced research was not included in this read.</p></section>`;
     const facts = research.evidence.map(item => {
-      const words = [item.found ? "Finding recorded." : "Nothing found.", factText(item.value), item.expired ? "Expired" : ""].filter(Boolean).join(" ");
+      const kind = item.kind ? item.kind[0].toUpperCase() + item.kind.slice(1).replaceAll("_", " ") : "Finding";
+      const label = `${kind}${item.proposes_correction ? " · Proposed correction" : ""}`;
+      const words = [item.found ? "Finding recorded." : "Nothing found.", factText(item.value)].join(" ");
       const source = sourceMarkup(item.source);
-      return `<li>${esc(words)}${words && source ? " " : ""}${source}</li>`;
+      return `<li><strong>${esc(label)}</strong><p class="research-finding">${esc(words)}</p>${item.expired ? '<p class="research-expiry">Expired</p>' : ""}${source ? `<p class="research-source">Source: ${source}</p>` : ""}</li>`;
     }).join("");
     const body = facts ? `<p>${esc(RESEARCH_LABELS[research.state])}</p><ol class="research-facts">${facts}</ol>` : `<p>No sourced findings.</p><p>${esc(research.next_step)}</p>`;
     return `<section class="detail-panel" id="sourcedResearch"><h3>Sourced research</h3>${body}${facts && research.next_step ? `<p>${esc(research.next_step)}</p>` : ""}</section>`;
