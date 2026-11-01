@@ -83,10 +83,11 @@ test('the filed call guide keeps pending work through navigation and reopening',
   await expect(guide.locator('blockquote')).toContainText('Bayside moves to negotiation');
   await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
   for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
-    await page.setViewportSize({ width, height: 1000 });
+    await page.setViewportSize({ width, height: 1400 });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; localStorage.setItem('dealroom-theme', theme); }, theme);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(guide).toHaveCSS('padding', width === 390 ? '16px' : '24px');
+    await page.mouse.move(width - 1, 1399);
     await guide.screenshot({ path: `/tmp/wr617-s2-j1-evidence/${width}-${theme}-guide.png` });
   }
   await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
@@ -105,7 +106,8 @@ test('the filed call guide keeps pending work through navigation and reopening',
   await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
   await expect(page.locator('#postCallReport')).toContainText('Creates a draft only.');
   await expect(focused).toHaveAttribute('data-post-call-confirm');
+  const pendingId = await guide.getAttribute('data-review-candidate');
   await focused.click();
-  await expect(guide.locator('dd').last()).not.toHaveText(pendingText || '');
+  await expect(guide).not.toHaveAttribute('data-review-candidate', pendingId || '');
   await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
 });

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { z } from 'zod';
 
 const payloadSchema = z.object({
-  text: z.string().nullish(), next_date: z.string().nullish(), value: z.string().nullish(),
+  summary: z.string().nullish(), text: z.string().nullish(), next_date: z.string().nullish(), value: z.string().nullish(),
   started_on: z.string().nullish(), action: z.string().nullish(), subject: z.string().nullish(),
   base_event_id: z.string().nullable().optional(),
   plan_base: z.record(z.string(), z.string().nullable()).optional(),
@@ -122,7 +122,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   function Guide() {
     const item = current(), index = item ? items.indexOf(item) : 0;
     const ready = load.state === 'ready' && !writing;
-    return <section className="call-review" aria-label="Review this call">
+    return <section className="call-review" aria-label="Review this call" data-review-candidate={item?.candidate.candidate_id}>
       <link rel="stylesheet" href="/css/call-review.css" />
       <h2>Review this call</h2>
       {load.state === 'loading' && <p role="status">Loading call review…</p>}
@@ -135,7 +135,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         <progress aria-label="Call review progress" value={items.filter(complete).length} max={items.length} />
         <h3>{item.candidate.deal_name || 'Deal'}</h3>
         <p className="call-review-meta">{item.state === 'pending' ? 'Needs your decision' : item.state === 'resolved' ? 'No longer pending' : item.state === 'applied' && item.candidate.undone_at ? 'Undone' : 'Already applied'}</p>
-        <dl><div><dt>Before</dt><dd>{item.before}</dd></div><div><dt>{item.state === 'pending' ? 'Proposed' : 'From this call'}</dt><dd>{['next_step', 'phase_move'].includes(item.candidate.kind) ? options.describe(item.candidate) : item.candidate.payload.action || item.candidate.payload.subject || 'Open the decision card for the full proposal.'}</dd></div></dl>
+        <dl><div><dt>Before</dt><dd>{item.before}</dd></div><div><dt>{item.state === 'pending' ? 'Proposed' : 'From this call'}</dt><dd>{['next_step', 'phase_move'].includes(item.candidate.kind) ? options.describe(item.candidate) : item.candidate.payload.action || item.candidate.payload.subject || item.candidate.payload.summary || item.candidate.payload.text || 'Open the decision card for the full proposal.'}</dd></div></dl>
         <blockquote aria-label="What was said">{item.candidate.evidence_quote || 'No transcript quote included. Check the full report below.'}</blockquote>
         <div className="call-review-actions">
           {item.state === 'applied' && <button type="button" className="primary" disabled={!ready || complete(item)} onClick={() => { reviewed.set(item.key, item.signature); selected = outstanding()?.key ?? item.key; notice = ''; render(); }}>Reviewed</button>}
