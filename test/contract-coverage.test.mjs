@@ -57,3 +57,13 @@ test('vendor people pin the negotiated producer revision without changing the v1
   assert.equal(directory.version, '2.0.0');
   assert.equal(createHash('sha256').update(source).digest('hex'), pin.sha256);
 });
+
+test('automatic task review reads and writes share the merged undo producer contract', () => {
+  const read = carrInterface.deal_update_reviews;
+  const write = carrInterface.mcp_write_contracts['review-deal-update'];
+  assert.equal(read.producer.source_commit, '0dbde9c89aad6101d60309447a30e0403860bb61');
+  assert.deepEqual(write.producer, read.producer);
+  assert.equal(read.producer.pull_request, 'https://github.com/DoctorCRE/carr-system/pull/2748');
+  assert.deepEqual(read.read.result, { schema_version: 'deal-update-reviews.v1', proposals: [], automatic_resolutions: [] });
+  assert.deepEqual(read.read.automatic_resolution_fields, ['assessment_id', 'deal_id', 'deal_name', 'action_title', 'quote', 'resolved_at', 'undo_possible']);
+});
