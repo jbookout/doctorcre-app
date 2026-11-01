@@ -1,7 +1,7 @@
 {
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "0dbc827712975e6e33856db0d6e1ebbf2f0684f2",
+    "source_commit": "4dac1adcadce720d2b6e9709b36dd10bdc0e20f6",
     "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
   },
   "response": {
@@ -97,7 +97,7 @@
     "schema_version": "deal-checklist.v1",
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "0dbc827712975e6e33856db0d6e1ebbf2f0684f2"
+      "source_commit": "4dac1adcadce720d2b6e9709b36dd10bdc0e20f6"
     },
     "template_states": [
       "current",
@@ -122,8 +122,8 @@
       "invoice"
     ],
     "source_of_truth": "CARR doctrine sections, with runtime content-hash validation; the app renders producer items and statuses.",
-    "due_basis": "Open, sourced critical_date records and unfulfilled checklist document requests. Confirmed fulfillment leaves document-delivery reminders. No legal or payment deadline is inferred.",
-    "receipt_basis": "A fulfilled request projects received with its stored attachment evidence. The request retains fulfilled_at, fulfilled_by and evidence_attachment_id, with satisfied=false. Quarantined uploads alone do not prove receipt or completion. Authoritative lease, invoice and commission completion takes precedence.",
+    "due_basis": "Open, sourced critical_date records and unfulfilled checklist document requests. Confirmed fulfillment stops document-delivery reminders, including queued reminders. No legal or payment deadline is inferred.",
+    "receipt_basis": "A fulfilled request projects received with its stored attachment file name as evidence_ref. The request retains fulfilled_at, fulfilled_by and evidence_attachment_id, with satisfied=false. Quarantined uploads alone do not prove receipt or completion. Authoritative lease, invoice and commission completion takes precedence.",
     "first_slice": "Current lease, expiration, invoice and full commission receipt derive completion. Unlinked documents and lifecycle LOI records remain not_recorded.",
     "unavailable": "Missing checklist storage returns no phases or due items; retain deal detail and its update form. Retry storage on each read."
   }
