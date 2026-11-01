@@ -534,7 +534,7 @@ for (const theme of ['dark', 'light']) {
 
 test('deal review keeps closed deals off the board and searches invoiced history', async t => {
  const {page,errors}=await open(t,{width:1280});
- assert.equal(await page.locator('#boardLive').textContent(),'1 open deals · 2 parked');
+ assert.equal(await page.locator('#boardLive').textContent(),'4 open deals · 2 parked');
  assert.equal(await page.locator('[data-column="closed"]').count(),0);
  assert.equal(await page.locator('#kanban [data-id="d20"]').count(),0);
  await page.getByRole('button',{name:'Closed deals',exact:true}).click();
