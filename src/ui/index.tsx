@@ -14,9 +14,10 @@ export function hostNode(node: Element): Root {
   flushSync(() => root.render(<NodeHost node={node} />));
   return root;
 }
-export { mountInbox } from './home/home';
-export { createInboxClient } from './home/inbox';
-export { fixtureInboxRpc } from './home/fixture';
+import { bootInbox } from './home/boot';
+// inbox.html loads this bundle directly; every other page imports it on demand.
+const inboxRoot = typeof document === 'undefined' ? null : document.querySelector<HTMLElement>('#homeRoot[data-inbox]');
+if (inboxRoot) void bootInbox(inboxRoot);
 
 export { mountFactReview } from "./fact-review";
 
