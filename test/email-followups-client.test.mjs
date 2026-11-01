@@ -247,3 +247,40 @@ test('synthetic non-deal proposals opt into the same review and retain confirmat
   }
   assert.equal((await client.listEmailProposals({ include_non_deal: true })).proposals.length, 2);
 });
+
+test('fixture draft save persists exact text and version without submission', async () => {
+  const client = await createFixtureClient({ seedUrl, emailReplyDrafts: true });
+  const row = (await client.listEmailProposals()).proposals.find(row => row.kind === 'reply_draft');
+  const request = { proposal_id: row.id, base_version: row.version, subject: '  Demo edited subject  ', body: '  Demo saved text\n  ', idempotency_key: 'save-only' };
+  const receipt = await client.editEmailDraft(request);
+  assert.equal(receipt.version, row.version + 1);
+  assert.deepEqual(await client.editEmailDraft(request), receipt);
+  const saved = (await client.listEmailProposals()).proposals.find(item => item.id === row.id);
+  assert.equal(saved.status, 'pending');
+  assert.equal(saved.reply_draft.subject, request.subject);
+  assert.equal(saved.reply_draft.body, request.body);
+  assert.deepEqual(saved.reply_draft.to, row.reply_draft.to);
+  assert.equal(saved.submitted_email, undefined);
+  await assert.rejects(client.editEmailDraft({ ...request, idempotency_key: 'stale-save' }), error => error.payload?.error === 'version_conflict');
+});
+
+test('live draft save binds session, retains unknown requests, and rejects malformed receipts', async () => {
+  const calls = []; let response = 'lost';
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { params } = JSON.parse(init.body); calls.push({ ...params, headers: init.headers });
+    if (response === 'lost') throw Error('synthetic loss');
+    const args = params.arguments;
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, proposal_id: args.proposal_id,
+      version: response === 'malformed' ? 99 : 4, subject: args.subject, body: args.body }) }] } });
+  } });
+  const request = { proposal_id: '10000000-0000-4000-8000-000000000003', base_version: 3, subject: 'Demo subject', body: 'Demo body', idempotency_key: 'retained-save' };
+  await assert.rejects(live.editEmailDraft(request), error => error.pendingRequest?.idempotency_key === request.idempotency_key);
+  response = 'malformed';
+  await assert.rejects(live.editEmailDraft(request));
+  response = 'valid';
+  assert.equal((await live.editEmailDraft(request)).version, 4);
+  assert.deepEqual(calls[0], calls[1]); assert.deepEqual(calls[1], calls[2]);
+  assert.equal(calls[0].name, 'edit-email-draft');
+  assert.equal(calls[0].headers['x-carr-csrf'], 'synthetic-session');
+});

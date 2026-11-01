@@ -269,19 +269,19 @@
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/email-followups.js:loop:a17c0e71668b776a81e45a8ee267ce2024b5da28b2a2e18197edbb68f07fabb3": {
+  "js/email-followups.js:loop:31b486026a49718923d4a07ac079392b1f9fba216f04ec44569810670158d96f": {
     "cap": 100,
     "boundary": "100 pages per batch",
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
   },
-  "js/email-followups.js:setInterval:18616a5fdecc204f2543b1f2567a530c58620ad574a645739ac44973a585e37a": {
+  "js/email-followups.js:setInterval:828b4d7b84c65f766bc0135fa4862e2a8a32c8e14e7da309be427485ab28f4a9": {
     "cap": 10,
     "boundary": "One 1-second tick per remaining second of a 10-second reply send grace; it clears itself at expiry.",
     "backoff": "No retry: expiry submits once through the existing submit path; refusals and unknown outcomes never resubmit automatically.",
     "idleStop": "Undo, pagehide, session retirement and dispose cancel the Submit token and clear the interval, including after expiry until submit-email-draft starts; it never starts without a partner Submit."
   },
-  "js/email-proposals-fixture.js:read-loop:d124b5f5fbb77eda6549f5a5a8b23fc6e6b139fea1e7507168cdd01eaa62eab1": {
+  "js/email-proposals-fixture.js:read-loop:65680691d1464b9f5bba14519e66451100804aebc66505894c397a4cacdecd95": {
     "cap": 9007199254740991,
     "boundary": "One item per pending synthetic proposal, truncated to requested limit",
     "backoff": "No automatic retry; one finite traversal per invocation",
@@ -293,7 +293,7 @@
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "js/fixture-client.js:loop:4751ef80772723f05f617a4859a9b63f7a91b53f2690bd98ff0dde08239edb12": {
+  "js/fixture-client.js:loop:f9edcaaa9f4a5f402451825af3862cf98a7529ccb56531b16ab05642621682dc": {
     "cap": 9007199254740991,
     "boundary": "At most padded string length, incrementing i each pass; no reads",
     "backoff": "No automatic retry; one finite traversal per invocation",
