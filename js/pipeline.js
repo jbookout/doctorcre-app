@@ -341,6 +341,7 @@ function applyBoardSnapshot(board) {
   const actorChanged = previousActor && previousActor !== state.selfActor;
   bindDraftActor(state.selfActor);
   if (actorChanged) {
+    clearMarketTermsViews();
     pageDocContext?.clear();
     const contextRead = pageDocContext?.begin('getBoard');
     pageDocContext?.finish(contextRead, board);
@@ -850,6 +851,7 @@ function refusePanelDetail(error) {
   if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
   ++panelReadSequence;
   ++contextReadSequence;
+  clearMarketTermsViews();
   state.panelDetail = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
@@ -1048,6 +1050,12 @@ function workspaceEventsHtml(detail) {
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
 let factReviewPanel, marketTermsPanel;
+// Each deal's comparison is kept for the session and reattached when its tab reopens; an access change discards them all.
+const marketTermsViews = new Map();
+function clearMarketTermsViews() {
+  for (const view of marketTermsViews.values()) view.mounted?.dispose();
+  marketTermsViews.clear();
+}
 
 function workspaceHtml(detail) {
   const d = detail.deal;
@@ -1230,20 +1238,27 @@ function paintPanel(detail) {
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
-  let marketDisposed = false, marketLoading = false, marketMounted;
+  let marketDisposed = false, marketLoading = false;
   marketTermsPanel = {
     async load() {
       if (marketDisposed || marketLoading) return;
-      marketLoading = true;
       const root = $('workspace-market-terms');
+      const cached = marketTermsViews.get(detail.deal.id);
+      if (cached) { root.replaceChildren(cached.element); return; }
+      marketLoading = true;
       root.textContent = 'Loading comparable terms…';
       try {
         const { mountMarketTerms } = await import('./ui.generated.js');
-        if (!marketDisposed) marketMounted = mountMarketTerms(root, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type });
-      } catch { if (!marketDisposed) { marketLoading = false; root.textContent = 'Could not load comparable terms. Try again.'; } }
+        if (marketDisposed) return;
+        const element = document.createElement('div');
+        const mounted = mountMarketTerms(element, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type, dealName: ref => { const match = state.deals.get(ref); return match ? dealTitle(match) : null; } });
+        marketTermsViews.set(detail.deal.id, { element, mounted });
+        root.replaceChildren(element);
+      } catch { if (!marketDisposed) root.textContent = 'Could not load comparable terms. Try again.'; }
+      finally { marketLoading = false; }
     },
-    refresh() { return marketMounted?.refresh(); },
-    dispose() { marketDisposed = true; marketMounted?.dispose(); },
+    refresh() { return marketTermsViews.get(detail.deal.id)?.mounted.refresh(); },
+    dispose() { marketDisposed = true; },
   };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
