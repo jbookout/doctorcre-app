@@ -287,7 +287,7 @@
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "js/fixture-client.js:loop:2e2e4e7c017553c95b6504be9c0784815beb499b6a296aa5840a299d0de599e6": {
+  "js/fixture-client.js:loop:97529d25cc65584827372ebe06d5e16c13c6f9ce4d6e79a4a37148bd07fa012f": {
     "cap": 9007199254740991,
     "boundary": "At most padded string length, incrementing i each pass; no reads",
     "backoff": "No automatic retry; one finite traversal per invocation",
@@ -935,19 +935,19 @@
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/workspace-command-center.js:setTimeout:70a2f030e602259dd2e2da99bb14737add7a66aad05bfd0b777d5c0c18dc3c64": {
+  "js/workspace-command-center.js:setTimeout:98894207dc0a37480626ed0581167d11933525a78b062f3749ac169a8e55adc7": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/workspace-command-center.js:setTimeout:87f291545daa41d26d5cbdc540b1017001809a1691299fb30fe8e3a5f4d5242b": {
+  "js/workspace-command-center.js:setTimeout:fde478bfb9489abfc2807cd2f2debc4d7d599d7c790b78ccaaf24573d5c5091a": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/workspace-command-center.js:setTimeout:ff461487177ca7db4ed16f01676c654792cc3f44ec5a8f14a3f58a8f7214761f": {
+  "js/workspace-command-center.js:setTimeout:f986cb4b6624544aa465e133bc636ca251d88a1254ddb4cfc8042d474aa7a8d5": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",

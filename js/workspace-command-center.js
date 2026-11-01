@@ -61,7 +61,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
-  let storage; try { storage = window.localStorage; } catch {}
   let meetingReviews = null, meetingReviewLoad = null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
@@ -91,7 +90,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!meetingReviews && !meetingReviewLoad && $('homeMeetingReviews') && client.logActivity && meetings?.follow_up_reviews?.length) {
       meetingReviewLoad = import('./home-meeting-reviews.js').then(({ mountHomeMeetingReviews }) => {
         if (disposed || snapshot?.unauthorized) return;
-        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now });
+        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews') });
         renderMeetings(snapshot?.unauthorized);
       }).catch(() => {
         meetingReviewLoad = null;

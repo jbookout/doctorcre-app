@@ -73,6 +73,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'list-email-thread-filings': async () => ({ filings: [] }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
     'calendar-meeting-prep': () => client.calendarMeetingPrep(),
+    'answer-board-question': args => client.answerBoardQuestion(args),
   };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
