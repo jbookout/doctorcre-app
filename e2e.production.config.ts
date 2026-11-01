@@ -10,7 +10,7 @@ process.env.E2E_TELEMETRY_DISABLED = '1';
 export default {
   tests: ['smoke/production/**/*.e2e.ts'],
   workers: 1,
-  retries: 2,
+  retries: 0,
   trace: 'on',
   video: 'retain-on-failure',
   targets: [{

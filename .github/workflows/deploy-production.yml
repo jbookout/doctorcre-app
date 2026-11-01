@@ -29,6 +29,15 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Require successful main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          ci_run=$(gh run list --workflow ci.yml --commit "$SOURCE_COMMIT" --event push --branch main --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          test -n "$ci_run" || { echo '::error::No main CI run exists for the staged source'; exit 1; }
+          gh run watch "$ci_run" --exit-status --interval 10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.4
@@ -57,6 +66,36 @@ jobs:
         run: node scripts/verify-app-release.mjs https://app.doctorcre.com/app-release "$SOURCE_COMMIT" production
         env:
           SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+      - name: Verify signed-out page gates
+        env:
+          DOCTORCRE_SMOKE_URL: https://app.doctorcre.com
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const base = new URL(process.env.DOCTORCRE_SMOKE_URL);
+          for (const page of ['/deals', '/leads', '/invoices', '/control-room/progress', '/doc-chats']) {
+            let target = new URL(page, base);
+            const visited = new Set();
+            while (target.pathname !== '/auth/login') {
+              assert.ok(visited.size < 10 && !visited.has(target.href), `${page}: redirect loop or limit`);
+              visited.add(target.href);
+              const response = await fetch(target, { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(30_000) });
+              assert.ok(!response.headers.has('cf-mitigated'), `${page}: Cloudflare challenge`);
+              assert.ok([301, 302, 303, 307, 308].includes(response.status), `${page} requires a sign-in redirect: HTTP ${response.status}`);
+              const location = response.headers.get('location');
+              assert.ok(location, `${page}: missing redirect location`);
+              target = new URL(location, target);
+              assert.equal(target.origin, base.origin);
+              assert.equal(target.username, '');
+              assert.equal(target.password, '');
+              assert.equal(target.hash, '');
+            }
+            assert.equal(target.searchParams.get('return_to'), page);
+          }
+          const status = await fetch(new URL('/status', base), { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(30_000) });
+          assert.equal(status.status, 200);
+          assert.match(status.headers.get('content-type') || '', /text\/html/);
+          NODE
       - name: Run production browser smoke
         run: node node_modules/e2e/dist/cli/bin.js run --config e2e.production.config.ts --target chromium --output .e2e/production-smoke
         env:
