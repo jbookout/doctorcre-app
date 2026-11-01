@@ -1061,12 +1061,12 @@
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "src/ui/action-link.tsx:retry-option:71c3d1748587065155f05633c0ad82adbad679e1e3830bfa530057c823d76828": {
+  "src/ui/action-link.tsx:retry-option:6282024790e715c9f60e4e6423e2d99ab1ac793ef0b41474a841f8a78e346891": {
     "cap": 0,
     "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
     "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
   },
-  "src/ui/action-link.tsx:retry-option:db454a1d39b3fb1211a1bab2477b815ddc80a356354e5e60342dc8f8eef1eee8": {
+  "src/ui/action-link.tsx:retry-option:01da3783cb0334725159e4535a0fc712fa90f40bbb9d9f520ab9edcbf08be9c5": {
     "cap": 0,
     "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
     "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
