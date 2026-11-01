@@ -53,7 +53,7 @@ export function callOutcomesHtml(calls, { busy = new Set(), openCards = false } 
     }).join('');
     return `<section class="call-outcome" data-call-session="${esc(call.session_id)}" aria-label="${esc(title)}">
       <header><h4>${esc(title)}</h4>
-      ${openCards ? '<button type="button" class="call-outcome-action primary-action" data-call-open-cards>Review call</button>' : `<button type="button" class="call-outcome-action primary-action" data-call-reviewed="${esc(call.session_id)}"${busy.has(call.session_id) ? ' disabled' : ''}>Looks right</button>`}</header>
+      ${openCards ? '<button type="button" class="call-outcome-action primary-action" data-call-open-review>Review call</button>' : `<button type="button" class="call-outcome-action primary-action" data-call-reviewed="${esc(call.session_id)}"${busy.has(call.session_id) ? ' disabled' : ''}>Looks right</button>`}</header>
       ${rows ? `<ul>${rows}</ul>` : '<p class="call-outcome-note">Nothing was applied automatically.</p>'}
       ${open ? `<p class="call-outcome-note">${openCards
         ? `<button type="button" class="call-outcome-link" data-call-open-cards>${open} item${open === 1 ? '' : 's'} from this call still need${open === 1 ? 's' : ''} Joe or Dell to decide</button>`
@@ -112,7 +112,7 @@ export function mountCallOutcomes({ container, client, toast = () => {}, filter 
     if (disposed) return;
     const target = event.target;
     if (inside(target.closest?.('[data-call-recheck]'))) return refresh();
-    const open = target.closest?.('[data-call-open-cards]');
+    const open = target.closest?.('[data-call-open-cards], [data-call-open-review]');
     if (inside(open)) {
       const session = open.closest('[data-call-session]')?.dataset.callSession;
       if (calls.some(call => call.session_id === session)) return openCards?.(session);
