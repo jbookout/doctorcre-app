@@ -84,6 +84,8 @@ async function main() {
   console.log('pre-push: repository checks and browser-free Node tests, bounded to 170 seconds');
   let status = await run('npm', ['run', 'check']);
   if (status) return status;
+  status = await run('npm', ['run', 'lint']);
+  if (status) return status;
   if (/(?:^|\s|["'])--test[-_](?:name[-_]pattern|skip[-_]pattern|only|shard|rerun[-_]failures)(?:=|\s|["']|$)/.test(environment.NODE_OPTIONS || '')) throw Error('filtered Node test selection cannot validate a push');
   const touched = [...changes].filter(path => /^test\/[a-z0-9_-]+\.test\.mjs$/i.test(path));
   const tests = await fastTests(touched);

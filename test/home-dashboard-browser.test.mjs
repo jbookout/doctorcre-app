@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { actionCompletion, calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { actionCompletion, calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null, blockUi = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -51,6 +51,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: ['d14', 'd20', 'd23'].includes(args.deal) ? '2026-09-30' : '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
+    'list-practice-origination': () => ({ok:true,contract:'practice-origination.v1',cards:[],coverage:[],next_cursor:null,outreach_started:false}),
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
@@ -74,6 +75,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
     'list-email-thread-filings': async () => ({ filings: [] }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
     'calendar-meeting-prep': () => client.calendarMeetingPrep(),
+    'answer-board-question': args => client.answerBoardQuestion(args),
   };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -94,6 +96,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
     }
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
+    if (blockUi && url.pathname === '/js/ui.generated.js') return route.abort();
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
@@ -102,7 +105,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, resources, completionRequests, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, resources, completionRequests, releaseInitialFeed, responses, blockUi(value) { blockUi = value; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -148,7 +151,8 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
   const refresh = async () => {
     const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'lead-board');
-    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.keyboard.press('Shift');
+    await page.locator('#refreshHome').evaluate(node=>node.click());
     await read; await settled();
   };
   await settled();
@@ -241,7 +245,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'list-practice-origination':1, 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -314,6 +318,8 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
 
 test('a Home flag opens from its row at phone width', async t => {
   const { page } = await open(t, { width: 390, height: 844 });
+  // Deal counts paint before the refresh ends; its last render replaces the flag rows.
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   const flag = page.locator('#dealFlags .home-flag').first();
   const href = await flag.locator('h3 a').getAttribute('href');
   await flag.scrollIntoViewIfNeeded();
@@ -325,6 +331,7 @@ test('a Home flag opens from its row at phone width', async t => {
 test('Home flag link opens with Enter and Space, and item links keep their destination', async t => {
   for (const key of ['Enter', 'Space']) {
     const { page } = await open(t, { width: 390, height: 844 });
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     const flag = page.locator('#dealFlags .home-flag').first();
     const link = flag.locator('h3 a');
     const href = await link.getAttribute('href');
@@ -1399,4 +1406,97 @@ test('Home Done retains its card through a concurrent agenda refresh until readb
   rows[0].status = 'done'; release();
   await page.locator('#homeBrief article').filter({ hasText: 'Demo task 1' }).waitFor({ state: 'detached' });
   assert.equal(await page.locator('#homeBrief article').filter({ hasText: 'Demo task 2' }).count(), 1);
+});
+
+test('Home groups deals with no next step and links each deal room', async t => {
+  for (const width of [390, 1440]) {
+    const { page, responses, calls } = await open(t, { width, height: 844 });
+    const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+    const board = await client.getHomeAgenda();
+    const deals = ['d01', 'd02', 'd03', 'd04'].map(id => board.deals.find(deal => deal.id === id)).map((deal, i) => ({ ...deal, name: `Demo missing ${i + 1}` }));
+    responses.set('read-home-agenda', { ...board, deals, missing_next_action: [
+      { owner: 'joe', deal_ids: [deals[0].id, deals[3].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] },
+    ] });
+    await page.locator('#refreshHome').click();
+    const panel = page.getByRole('region', { name: 'Deals with no next step' });
+    await panel.waitFor();
+    for (const owner of ['Joe', 'Dell', 'Unassigned']) assert.equal(await panel.getByRole('group', { name: owner }).isVisible(), true);
+    assert.equal(await panel.getByText('Joe · 2').isVisible(), true);
+    assert.equal(await panel.getByText('Demo missing 4').count(), 0);
+    if (process.env.W2_SCREENSHOT_DIR) await panel.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `missing-next-step-collapsed-${width}.png`) });
+    await panel.getByRole('button', { name: 'Show all 4' }).click();
+    assert.equal(await panel.getByText('Demo missing 4').isVisible(), true);
+    if (process.env.W2_SCREENSHOT_DIR) await panel.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `missing-next-step-expanded-${width}.png`) });
+    await panel.getByRole('button', { name: 'Show less' }).click();
+    assert.equal(await panel.getByText('Demo missing 4').count(), 0);
+    await page.getByRole('button', { name: 'Just me', exact: true }).click();
+    assert.equal(await panel.getByRole('group', { name: 'Unassigned' }).isVisible(), true);
+    assert.equal(await panel.getByRole('group', { name: 'Dell' }).count(), 0);
+    const groups = [{ owner: 'joe', deal_ids: [deals[0].id, deals[3].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] }];
+    responses.set('read-home-agenda', { ...board, actor: 'dell', deals, missing_next_action: groups });
+    await page.locator('#refreshHome').click();
+    assert.equal(await panel.getByRole('group', { name: 'Unassigned' }).isVisible(), true);
+    await panel.getByRole('group', { name: 'Dell' }).waitFor();
+    assert.equal(await panel.getByRole('group', { name: 'Joe' }).count(), 0);
+    responses.set('read-home-agenda', { ...board, actor: 'joe', deals, missing_next_action: [] });
+    await page.locator('#refreshHome').click();
+    await panel.waitFor({ state: 'hidden' });
+    responses.set('read-home-agenda', { ...board, actor: 'joe', deals, missing_next_action: groups });
+    await page.locator('#refreshHome').click();
+    assert.equal(calls.includes('set-next-action'), false);
+    await panel.getByRole('link', { name: /Demo missing 1/ }).click();
+    const editor = page.getByLabel('Next step', { exact: true });
+    await editor.waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'dealUpdateStep');
+    await page.clock.runFor(100);
+    const box = await editor.boundingBox();
+    assert.ok(box.y >= 0 && box.y + box.height <= 844);
+    assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
+  }
+});
+
+test('Home agenda remains usable while the React bundle is unavailable', async t => {
+  const { page } = await open(t, { blockUi: true });
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
+  assert.equal(await page.locator('#homeBrief a').first().isVisible(), true);
+});
+
+
+test('Home retries the missing next step panel after its bundle fails', async t => {
+  const { page, responses, blockUi } = await open(t, { blockUi: true });
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  const deal = { ...board.deals[0], name: 'Demo missing step' };
+  responses.set('read-home-agenda', { ...board, deals: [deal], missing_next_action: [{ owner: 'joe', deal_ids: [deal.id] }] });
+  await page.locator('#refreshHome').click();
+  const host = page.locator('#homeMissingNextStep');
+  await host.getByText('Deals with no next step unavailable. Refresh Home to try again.').waitFor({ timeout: 5000 });
+  blockUi(false);
+  await page.locator('#refreshHome').click();
+  await page.getByRole('region', { name: 'Deals with no next step' }).getByText('Demo missing step').waitFor({ timeout: 5000 });
+  assert.doesNotMatch(await host.textContent(), /unavailable/i);
+});
+
+test('loading the missing next step panel preserves existing Home card nodes', async t => {
+  const { page, responses, blockUi } = await open(t, { blockUi: true });
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  responses.set('read-home-agenda', { ...board, missing_next_action: [{ owner: 'joe', deal_ids: [board.deals[0].id] }] });
+  await page.locator('#refreshHome').click();
+  await page.getByText('Deals with no next step unavailable. Refresh Home to try again.').waitFor();
+  let releaseBundle;
+  const bundle = new Promise(resolve => { releaseBundle = resolve; });
+  t.after(() => releaseBundle());
+  await page.route('**/js/ui.generated.js*', async route => { await bundle; await route.fallback(); });
+  blockUi(false);
+  await page.locator('#refreshHome').click();
+  await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+  const cards = await page.locator('#homeBrief article, #dealFlags article').elementHandles();
+  assert.ok(cards.length > 0, 'loaded Home has cards before the bundle finishes');
+  const link = await page.locator('#homeBrief article a').first().elementHandle();
+  await link.focus();
+  releaseBundle();
+  await page.getByRole('region', { name: 'Deals with no next step' }).waitFor();
+  for (const card of cards) assert.equal(await card.evaluate(node => node.isConnected), true, 'existing card stays attached');
+  assert.equal(await link.evaluate(node => document.activeElement === node), true, 'focused link stays the same node');
 });

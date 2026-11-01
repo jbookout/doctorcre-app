@@ -1,0 +1,24 @@
+{
+  "schema": "calendar-meeting-answers.v1",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "1866b2fc19e5adb5d0addab9f51173ac2e4d4ab4"
+  },
+  "event_key_pattern": "^[0-9a-f]{16}$",
+  "happened": {
+    "verb": "log-activity",
+    "kind": "meeting",
+    "ref": "chosen deal",
+    "calendar_event_key": "review.key",
+    "deduplication": "calendar_event_key and deal"
+  },
+  "dismiss": {
+    "verb": "answer-board-question",
+    "board_id": "calendar-agenda",
+    "question_id": "review.key",
+    "base_version": 1,
+    "answer_text": "Dismiss"
+  },
+  "read": "morning-brief.sections.calendar.follow_up_reviews carries confirmed and dismissed booleans derived from durable records. Dismissal is tenant and partner scoped.",
+  "persistence": "Never read or write meeting content in browser storage."
+}

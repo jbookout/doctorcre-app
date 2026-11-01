@@ -1,3 +1,5 @@
+import { ACTOR_LABEL } from './client.js';
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { workCard } from './work-card.js';
 import { renderDealAlert } from './deal-items.js';
 import { scopedDeals } from './deal-review-model.js';
@@ -30,6 +32,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const flagKeydown = event => { if (event.key === ' ' && event.target.matches('#dealFlags .deal-alert h3 a')) { event.preventDefault(); event.target.click(); } };
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
+  let missingNextStep = null, missingNextStepLoad = null, missingNextStepAttempts = 0;
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
   let taskDone;
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
@@ -44,7 +47,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   };
   window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
   let snapshotDocObservedAt = null, calendar = null, meetingPrep = null, prepEpoch = 0;
-  let relationshipDialog = null, pastWidget = null, pastRequested = false;
+  let relationshipDialog = null, pastWidget = null, reasons = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard, meetingTimeZone = BUSINESS_TIME_ZONE;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
@@ -59,7 +62,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
-  let storage; try { storage = window.localStorage; } catch {}
   let meetingReviews = null, meetingReviewLoad = null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
@@ -89,7 +91,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!meetingReviews && !meetingReviewLoad && $('homeMeetingReviews') && client.logActivity && meetings?.follow_up_reviews?.length) {
       meetingReviewLoad = import('./home-meeting-reviews.js').then(({ mountHomeMeetingReviews }) => {
         if (disposed || snapshot?.unauthorized) return;
-        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now });
+        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews') });
         renderMeetings(snapshot?.unauthorized);
       }).catch(() => {
         meetingReviewLoad = null;
@@ -137,6 +139,18 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     replyOutcomes?.syncActor();
     emailReview?.update();
     const signedOut = snapshot?.unauthorized;
+    if (!missingNextStep && !missingNextStepLoad && !signedOut && snapshot?.board?.missing_next_action?.length) {
+      missingNextStepLoad = import(missingNextStepAttempts ? `./ui.generated.js?retry=${missingNextStepAttempts}` : './ui.generated.js').then(({ mountMissingNextStep }) => {
+        if (disposed) return;
+        missingNextStep = mountMissingNextStep($('homeMissingNextStep'), ACTOR_LABEL);
+        missingNextStep.update(snapshot?.unauthorized ? null : snapshot?.board || null, scope);
+      }).catch(() => {
+        missingNextStepLoad = null;
+        missingNextStepAttempts++;
+        if (!disposed && !snapshot?.unauthorized) widget('homeMissingNextStep', '<p class="home-empty" role="status">Deals with no next step unavailable. Refresh Home to try again.</p>');
+      });
+    }
+    missingNextStep?.update(signedOut ? null : snapshot?.board || null, scope);
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
       scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
@@ -218,7 +232,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       await readWithDeadline(innerSignal => read(client, { signal: innerSignal, onUpdate: result => {
         if (disposed || epoch !== sequence || innerSignal.aborted) return;
         latest = result; snapshot = project(result); updatedAt = snapshot.board && !result.unauthorized ? result.updatedAt : null; render();
-        if (!snapshot.loading && snapshot.board && !pastRequested) void emailInitialRead.then(() => {
+        if (!snapshot.loading && snapshot.board && !secondaryRequested) void emailInitialRead.then(() => {
           if (disposed || emailRetired || !snapshot?.board || snapshot.loading) return;
           const grid = document.querySelector('.home-grid');
           if (grid) panelObserver.observe(grid);
@@ -309,14 +323,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     relationshipDialog.open(snapshot.relationships, button.dataset.introNode, button);
   });
   const auto = mountAutoRefresh({ document, window, refresh, intervalMs });
-  const expiry = window.setInterval(() => {
+  const expiry = mountLocalTicker({ document, window, intervalMs: 1000, tick: () => {
     if (snapshot?.relationships && Date.parse(snapshot.relationships.valid_until) <= now()) {
       snapshot.relationships = null;
       relationshipDialog?.clear();
       render();
       auto.poll();
     }
-  }, 1000);
+  } });
   const updateCalendar = event => {
     const value = event.detail;
     const valid = value && ['ready', 'empty', 'partial', 'unavailable'].includes(value.state)
@@ -353,9 +367,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
   window.addEventListener('doctorcre-session-invalidated', clearCalendar);
   $('refreshHome').addEventListener('click', () => { auto.refresh(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
-  function loadPastClients() {
-    if (pastRequested) return;
-    pastRequested = true;
+  function loadSecondaryPanels() {
+    if (secondaryRequested) return;
+    secondaryRequested = true;
+    if ($('homeContactReasons') && client.listPracticeOrigination) import('./contact-reasons.mjs').then(({mountContactReasons}) => {
+      if (disposed || emailRetired) return;
+      reasons = mountContactReasons({host:$('homeContactReasons'),window,client,home:true});
+    });
     if ($('homePastClients') && client.readLeaseRadar) import('./lease-radar.js').then(({ mountPastClientWidget }) => {
       if (disposed || emailRetired) return;
       pastWidget = mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope});
@@ -380,9 +398,10 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (!entry.isIntersecting) continue;
       panelObserver.unobserve(entry.target);
       if (disposed || emailRetired) continue;
-      if (entry.target.matches('.home-grid')) loadPastClients();
+      if (entry.target.matches('.home-grid,#homeContactReasons')) loadSecondaryPanels();
     }
   });
+  if ($('homeContactReasons')) panelObserver.observe($('homeContactReasons'));
   const emailActivity = $('homeEmailActivity');
   const openEmailActivity = () => {
     if (!emailActivity.open || disposed || emailRetired) return;
@@ -407,7 +426,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     return emailReview.refresh();
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { missingNextStep?.dispose(); reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
@@ -420,6 +439,7 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const notice = document.getElementById('homeNotice');
   const toast = message => {
     notice.hidden = false; notice.textContent = message;
+    // eslint-disable-next-line no-restricted-syntax -- One local notice-dismiss callback after 6 seconds per toast invocation; no reads.
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
   // The cards still waiting are decided in Call Mode's post-call report.

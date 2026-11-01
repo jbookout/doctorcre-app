@@ -1,6 +1,6 @@
 import carrSchema from "../contracts/carr-interface.v1/schema.json" with { type: "json" };
 import carrVersion from "../contracts/carr-interface.v1/version.json" with { type: "json" };
-import { routeContract } from "../js/routes.js";
+import { routeContract, routeKey, actionLinkRoute } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
@@ -27,7 +27,7 @@ const UNGATED_PAGES = new Set(["/status"]);
 const GATE_PATHS = new Map(Object.entries(routeContract.gatePaths));
 
 function gateRequestFor(request, pathname) {
-  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : routeKey(actionLinkRoute(pathname)));
   if (!gatePath || gatePath === pathname) return request;
   const url = new URL(request.url);
   url.pathname = gatePath;
@@ -143,8 +143,12 @@ async function handleRequest(request, env) {
   const pathname = url.pathname;
   const staging = env?.APP_ENV === 'staging' && url.origin === STAGING_ORIGIN;
   const boardDestination = legacyBoardDestination(url);
-  if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
-    ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
+  if (boardDestination) {
+    if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
+    const gate = await carrResponse(gateRequestFor(request, BOARD_ROUTE), env, true);
+    if (gate.status !== 200) return restoreOriginalReturnTo(gate, request);
+    return copySessionCookies(gate, Response.redirect(boardDestination, 308));
+  }
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
   if (pathname === '/share' && staging) {
     if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
@@ -174,7 +178,7 @@ async function handleRequest(request, env) {
 
   const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
     : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : routeKey(actionLinkRoute(pathname)));
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     const gateRequest = gateRequestFor(request, pathname);

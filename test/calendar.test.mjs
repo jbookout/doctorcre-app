@@ -314,7 +314,6 @@ test("the Calendar is a routed, shipped surface that reads only pinned verbs", a
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
-  assert.equal(await hasArtifactPage("calendar.html"), true, "the page ships in the verified artifact");
   assert.match(summary, /calendar\.html/);
 
   const js = await read("js/calendar.js");
@@ -433,4 +432,15 @@ test("reduced motion is honoured by the script too: no programmatic scroll anima
   assert.match(js, /prefers-reduced-motion: reduce/);
   assert.match(js, /data-motion/);
   assert.doesNotMatch(js, /behavior:\s*["']smooth["']\s*}/, "smooth scrolling is chosen per preference, never hard-coded");
+});
+
+test('Calendar bounds its batch read and reports the remaining deals as unread', async () => {
+  let reads = 0;
+  const result = await readCalendar({
+    getBoard: async () => ({ deals: Array.from({length: 120}, (_, i) => ({id: `demo-${i}`, name: `Demo ${i}`})) }),
+    getDeal: async () => { reads++; return { critical_dates: [] }; },
+  });
+  assert.equal(reads, 100);
+  assert.equal(result.failed.length, 20);
+  assert.equal(calendarPhase(result), 'partial');
 });

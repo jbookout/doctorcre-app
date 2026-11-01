@@ -1,3 +1,5 @@
+import { createRequestBudget } from './request-budget.mjs';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 // A browser lifetime belongs to one verified server session. Re-bootstrap in a
 // new document after revocation; never reuse old controllers for a new actor.
 import { resolveDealroomBoot } from './boot-mode.js';
@@ -76,7 +78,12 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
   };
 }
 
-let browserBoundary;
+let browserBoundary, browserRequests;
+function browserFetch(path, init) {
+  if (typeof window === 'undefined' || globalThis !== window || resolveDealroomBoot(window.location).mode !== 'live') return globalThis.fetch(path, init);
+  browserRequests ||= createRequestBudget({ document: window.document, fetchImpl: (...args) => window.fetch(...args) });
+  return browserRequests.fetch(path, init);
+}
 export function privateSession() {
   if (browserBoundary) return browserBoundary;
   if (typeof window === 'undefined' || globalThis !== window || resolveDealroomBoot(window.location).mode !== 'live') return null;
@@ -84,7 +91,7 @@ export function privateSession() {
   const initialEpoch = sessionEpoch(win);
   let anonymousDiagnostics = false;
   try { anonymousDiagnostics = win.location.pathname === '/status' && !win.localStorage.getItem('doctorcre-session-binding-v1'); } catch {}
-  browserBoundary = createSessionBoundary({ anonymousDiagnostics, fetchImpl: (...args) => win.fetch(...args), epoch: () => sessionEpoch(win),
+  browserBoundary = createSessionBoundary({ anonymousDiagnostics, fetchImpl: browserFetch, epoch: () => sessionEpoch(win),
     async acceptSession(session) {
       const bytes = await win.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([session.actor.slug,session.csrf_token])));
       const digest = [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2,'0')).join('');
@@ -116,14 +123,39 @@ export function privateSession() {
       });
     },
   });
+  const paused = win.document.createElement('aside'), refresh = win.document.createElement('button');
+  const fenced = new Map();
+  paused.dataset.sessionRestorePaused = ''; paused.setAttribute('role', 'status');
+  paused.style.cssText = 'position:fixed;inset:1rem 1rem auto;z-index:2147483647;padding:1rem;border:1px solid;background:Canvas;color:CanvasText';
+  refresh.type = 'button'; refresh.textContent = 'Refresh page'; refresh.onclick = () => win.location.reload();
+  paused.append('Updates paused. Showing last loaded data. ', refresh);
+  const renderRestore = unavailable => {
+    if (unavailable && !browserBoundary.revoked) {
+      Array.from(win.document.body.children).forEach(node => {
+        if (node === paused) return;
+        if (!fenced.has(node)) fenced.set(node, node.inert);
+        node.inert = true;
+      });
+      win.document.body.prepend(paused);
+    } else {
+      fenced.forEach((inert, node) => { node.inert = inert; });
+      fenced.clear(); paused.remove();
+    }
+  };
+  const restore = mountVisibilityPoll({ document: win.document, window: win, periodic: false, poll: async () => {
+    const session = await browserBoundary.verify();
+    renderRestore(false);
+    return session;
+  } });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
+  // eslint-disable-next-line no-restricted-syntax -- Restored pages verify once per persisted pageshow before unlocking controls; the document request budget limits the verifier.
   win.addEventListener('pageshow', event => {
     if (!event.persisted) return;
     if (browserBoundary.revoked) { win.location.replace('/public-shell/session-ended.html'); return; }
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
-    // A history restore must verify its binding before exposing cached DOM.
+    // Verification unlocks cached controls; a refused read still renders a paused view.
     win.document.documentElement.style.visibility = 'hidden';
-    void browserBoundary.verify().catch(() => {}).finally(() => {
+    void restore.poll().then(session => renderRestore(!session)).finally(() => {
       win.document.documentElement.style.visibility = '';
     });
   });
@@ -133,9 +165,9 @@ export function privateSession() {
 export async function sessionFetch(path, init) {
   // Release identity is public diagnostic metadata, including on signed-out
   // /status. It carries no actor or record data and needs no private lifetime.
-  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return globalThis.fetch(path,init);
+  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return browserFetch(path,init);
   const boundary = privateSession();
-  if (!boundary) return globalThis.fetch(path,init);
+  if (!boundary) return browserFetch(path,init);
   try { return await boundary.fetch(path,init); }
   catch (error) {
     // Retired page controllers cannot repaint or issue a retry while the

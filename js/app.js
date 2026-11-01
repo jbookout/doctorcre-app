@@ -1058,6 +1058,7 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, o
   // above it. The body and the submit handler are already replaced above; this
   // only has to make the dialog visible when it is not.
   if (!dialog.open) dialog.showModal();
+  // eslint-disable-next-line no-restricted-syntax -- A single focus callback runs after each dialog opens and performs no reads.
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
@@ -1500,6 +1501,7 @@ function wireEvents() {
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
     const retryWrite = event.target.closest('[data-retry-write]');
+    // eslint-disable-next-line no-restricted-syntax -- Only an explicit retry-button click reconciles the retained cell-write request with its original idempotency key.
     if (retryWrite) { await retryCellWrite(retryWrite.dataset.retryWrite, retryWrite); return; }
     const operating = event.target.closest('[data-operating-state]');
     if (operating) {
@@ -1566,11 +1568,10 @@ function wireEvents() {
   // connection went away rather than queueing behind it. Without the forced
   // poll, a feed read that never answers would leave every later tick skipping
   // as "already polling" for the rest of the session.
+  // eslint-disable-next-line no-restricted-syntax -- Online events only update offline banner and board-sync connectivity; the shared poller owns subsequent reads.
   window.addEventListener('online', () => {
     $('#offlineBanner').hidden = true;
     state.boardSync.setOnline(true);
-    state.boardSync.refreshBoard({ reason:'reconnect', force:true });
-    pollOnce(false, { force:true });
   });
   window.addEventListener('offline', () => {
     $('#offlineBanner').hidden = false;
@@ -1616,8 +1617,8 @@ async function boot() {
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one. Both clocks run once a minute (MIN_POLL_MS) and sleep
   // while the tab is hidden or idle.
-  mountVisibilityPoll({ poll: () => {
-    pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
+  mountVisibilityPoll({ lifecycle: true, poll: () => {
+    return pollOnce().catch((error) => { console.error('Deal Room poll failed to render', error); return false; });
   } });
   // The backstop for what the feed cannot promise. A change whose commit landed
   // out of order with its recorded time can slip past the cursor, and a board
@@ -1626,8 +1627,8 @@ async function boot() {
   // and post-write refreshes through the same single-read queue, so it adds one
   // read per interval at most and none while another is already running. It
   // bounds how long the board goes without asking, never how old a value is.
-  mountVisibilityPoll({ poll: () => {
-    state.boardSync.requestRefresh('periodic');
+  mountVisibilityPoll({ lifecycle: true, poll: () => {
+    return state.boardSync.requestRefresh('periodic');
   } });
   if (linkedDeal && state.deals.has(linkedDeal)) {
     try { await openDeal(linkedDeal); }

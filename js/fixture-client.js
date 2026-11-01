@@ -71,7 +71,6 @@ export async function createFixtureClient(opts = {}) {
       updated_at: '2026-10-28T12:00:00Z', adoptable: true, statement: `Demo convention ${number}.`,
       card_id: null, packs: ['demo'], approve_with: { verb: 'adopt-rule', section_id, base_version: number } };
   });
-  const conventionReceipts = new Map();
 
   const partnerActor = seed.actors?.partner || 'dell';
 
@@ -1029,6 +1028,7 @@ export async function createFixtureClient(opts = {}) {
   function trigrams(value) {
     const padded = `  ${String(value).toLowerCase().trim()} `;
     const out = new Set();
+    // eslint-disable-next-line no-restricted-syntax -- Trigram construction advances 1 character and will stop at padded.length minus 2; 0 reads.
     for (let i = 0; i + 3 <= padded.length; i += 1) out.add(padded.slice(i, i + 3));
     return out;
   }
@@ -1255,9 +1255,15 @@ export async function createFixtureClient(opts = {}) {
 
     async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
 
+    async listPracticeOrigination(args = {}) { const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs'); return practiceOriginationFixture(args); },
+
     async getHomeAgenda() {
       const board = await this.getBoard();
-      return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
+      const missing = new Map();
+      for (const deal of board.deals.filter(deal => deal.phase !== 'On Deck' && !actionsFor(deal).some(action => action.status === 'open'))) {
+        missing.set(deal.owner, [...(missing.get(deal.owner) || []), deal.id]);
+      }
+      return { ...board, schema_version: 'home-agenda.v1', missing_next_action: [...missing].map(([owner, deal_ids]) => ({ owner, deal_ids })).sort((a, b) => a.owner === null ? 1 : b.owner === null ? -1 : a.owner.localeCompare(b.owner)), deals: board.deals.map(deal => ({
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: deal.next_step || 'Follow-up due', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
@@ -1506,6 +1512,12 @@ export async function createFixtureClient(opts = {}) {
         item.status = 'done';
         return { ok: true, item: structuredClone(item) };
       });
+    },
+
+    async answerBoardQuestion({ board_id, question_id, base_version, answer_text, idempotency_key }) {
+      if (board_id !== 'calendar-agenda' || !/^[0-9a-f]{16}$/.test(question_id) || base_version !== 1 || answer_text !== 'Dismiss')
+        throw new Error('Invalid calendar answer');
+      return withIdem(idempotency_key, () => ({ ok: true, answer: { question_id, answer_text } }));
     },
 
     async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
@@ -2616,23 +2628,6 @@ export async function createFixtureClient(opts = {}) {
       const coverage=[...new Set(rows.map(r=>r.kind))].map(kind=>({kind,source_ref:`demo.${kind}`,state:kind==='defect'?'partial':'complete',count_total:rows.filter(r=>r.kind===kind).length,count_returned:items.filter(r=>r.kind===kind).length,reason:kind==='defect'?'fix_status_not_recorded':null}));
       return {schema:'unfinished-work.v1',items,coverage,census_complete:false,as_of:at,next_cursor:next,limit:size};
     },
-    async adoptRule(args) {
-      const previous = conventionReceipts.get(args.idempotency_key);
-      if (previous) {
-        if (JSON.stringify(previous.args) !== JSON.stringify(args))
-          throw Object.assign(new Error('key_reuse'), { payload: { error: 'key_reuse' } });
-        return structuredClone(previous.result);
-      }
-      const index = conventionProposals.findIndex(row => row.section_id === args.section_id);
-      const error = index < 0 ? 'convention_proposal_not_found'
-        : conventionProposals[index].base_version !== args.base_version ? 'version_conflict'
-          : !args.reason?.trim() ? 'missing_required' : null;
-      if (error) throw Object.assign(new Error(error), { payload: { error } });
-      const result = { ok: true, rule_id: uuidv4(), retired_section_id: args.section_id };
-      conventionProposals.splice(index, 1);
-      conventionReceipts.set(args.idempotency_key, { args: structuredClone(args), result });
-      return structuredClone(result);
-    },
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -3076,7 +3071,7 @@ export async function createFixtureClient(opts = {}) {
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([
     'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
-    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
+    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'editEmailDraft', 'submitEmailDraft',
   ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
 }

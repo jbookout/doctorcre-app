@@ -32,7 +32,7 @@
 
   <main id="main" class="shell home-shell">
     <section data-layout-slot="sidebar" class="hero home-hero">
-      <div><h1 id="pageTitle">Home</h1></div>
+      <div><h1 id="pageTitle">Home</h1><a class="home-plain-link" href="/inbox">Try the new inbox</a></div>
       <div class="home-tools">
         <div data-layout-slot="tabs" class="scope-switch" id="scopeSwitch" role="group" aria-label="Home scope">
           <button type="button" class="scope-option on" data-scope="team" aria-pressed="true">Team view</button>
@@ -54,6 +54,7 @@
       <div id="dealFlags" class="home-flags"><p class="home-empty">Updating…</p></div>
       <footer aria-label="Deal counts"><p id="dealCounts" class="home-counts"><span>Active deals: <b>—</b></span> <span>In market: <b>—</b></span> <span>National accounts: <b>—</b></span></p></footer>
     </section>
+    <div id="homeMissingNextStep"></div>
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar</h2></header><p class="home-empty" role="status">Updating calendar…</p></section>
     <details id="homeEmailActivity" class="home-panel home-email-activity">
@@ -64,6 +65,7 @@
       <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
       <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>
+      <section id="homeContactReasons" class="home-panel contact-reasons" aria-label="Reasons to reach out"></section>
       <section id="homeLeads" class="home-panel" aria-label="New leads" hidden></section>
     </div>
 

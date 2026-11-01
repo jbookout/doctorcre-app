@@ -5,9 +5,8 @@ import { resolveDealroomBoot } from './boot-mode.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
-import { mountVisibilityPoll } from "./visibility-poll.mjs";
+import { mountVisibilityPoll, mountLocalTicker, watchPresence } from "./visibility-poll.mjs";
 import { mountSystemWorkBoard } from "./system-work-board.js";
-import { classifyCommandOutcome, commandMessage } from "./command-feedback.mjs";
 import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
 import { mountCostView } from './progress-board-costs.js';
@@ -34,10 +33,9 @@ export function mountBoard(deps = {}) {
   const client = deps.client || createLiveClient();
   const storage = "storage" in deps ? deps.storage : safeStorage(win);
   const now = deps.now || (() => new Date());
-  const schedule = deps.setInterval || ((fn, ms) => win.setInterval(fn, ms));
-  const setTimer = deps.setTimeout || ((fn, ms) => win.setTimeout(fn, ms));
+  // eslint-disable-next-line no-restricted-syntax -- Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks. Local repaint only; callback error stops the clock without retry The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal
+  const schedule = (fn, ms) => deps.setInterval ? deps.setInterval(fn, ms) : win.setInterval(fn, ms);
   const clearTimer = deps.clearTimeout || (id => win.clearTimeout(id));
-  const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
   const orchestratorView = boardId === 'orchestrator';
@@ -58,8 +56,6 @@ export function mountBoard(deps = {}) {
   const completedNodes = new Map();
   const blockedNodes = new Map();
   const pendingRequests = new Map();
-  const conventionCards = new Map();
-  const adoptedConventions = new Set();
   // Per question: the form's message, whether a write or read is in flight,
   // and whether the form is obsolete and must be reloaded before any write.
   const formState = new Map();
@@ -84,7 +80,11 @@ export function mountBoard(deps = {}) {
   let viewSignature = "";
   let directorySignature = "";
   const badgeTimes = new Map();
-  let ageTimer = null;
+  let ageTimer = null, ageAttempts = 0;
+  const agePresence = watchPresence({ document: doc, window: win,
+    now: () => currentNow().getTime(),
+    onResume: () => { ageAttempts = 0; refreshAges(); },
+    onWake: () => { ageAttempts = 0; refreshAges(); } });
   // On the system board the pipeline shows the system-work census (unfinished
   // work plus recent Live) instead of snapshot tasks; every other panel still
   // reads the snapshot.
@@ -159,7 +159,8 @@ export function mountBoard(deps = {}) {
       const next = nextFreshnessChange(updatedAt, at);
       if (next !== null) delay = Math.min(delay, next);
     }
-    if (Number.isFinite(delay)) ageTimer = setTimer(refreshAges, Math.min(delay, 60000));
+    // eslint-disable-next-line no-restricted-syntax -- Badge ages stop at 1800 callbacks or inactive presence; disposal clears the timer.
+    if (Number.isFinite(delay) && agePresence.active() && ageAttempts++ < 1800) ageTimer = deps.setTimeout ? deps.setTimeout(refreshAges, Math.min(delay, 60000)) : win.setTimeout(refreshAges, Math.min(delay, 60000));
   }
 
   function freshnessBadge(updatedAt) {
@@ -539,6 +540,7 @@ export function mountBoard(deps = {}) {
       loading.setAttribute("aria-hidden", "true");
       loading.append(el("div", "hierarchy-toolbar"));
       const rows = el("div", "hierarchy-grid");
+      // eslint-disable-next-line no-restricted-syntax -- Loading placeholders render only 3 skeleton cards; 0 reads.
       for (let index = 0; index < 3; index++) rows.append(el("div", "hierarchy-card hierarchy-skeleton"));
       loading.append(rows);
       container.replaceChildren(loading);
@@ -654,7 +656,10 @@ export function mountBoard(deps = {}) {
     }
     // Cards animate in on the first draw only; later renders (refresh, tick)
     // flash just the cards whose state changed.
-    requestAnimationFrame(() => { container.dataset.settled = "true"; });
+    // eslint-disable-next-line no-restricted-syntax -- A single settlement frame marks the board render complete without reading data.
+    if (win.requestAnimationFrame) win.requestAnimationFrame(() => { container.dataset.settled = "true"; });
+    // eslint-disable-next-line no-restricted-syntax -- A single zero-delay fallback marks this render settled when animation frames are unavailable.
+    else win.setTimeout(() => { container.dataset.settled = "true"; }, 0);
   }
 
   // ── panels ────────────────────────────────────────────────────────────────
@@ -1160,7 +1165,7 @@ export function mountBoard(deps = {}) {
     boardState = state;
     if (state !== "unpublished") {
       governanceRead = null;
-      byId("conventionProposals")?.replaceChildren(); conventionCards.clear();
+      byId("conventionProposals")?.replaceChildren();
     }
     deps.onTasks?.([], {state});
     censusPipeline = null;
@@ -1297,110 +1302,38 @@ export function mountBoard(deps = {}) {
     latestRead = run;
     let observed = run;
     let result = await observed;
-    while (result === "superseded") {
+    let supersededReads = 0;
+    // eslint-disable-next-line no-restricted-syntax -- Superseded read reconciliation stops after 20 waits or when no distinct newer read exists.
+    while (result === "superseded" && supersededReads++ < 20) {
       // A directory denial invalidates this epoch without starting a newer
       // board read. Only a distinct read can settle a superseded caller.
       if (latestRead === observed) return false;
       observed = latestRead;
       result = await observed;
     }
-    return result;
+    return result === "superseded" ? false : result;
   }
 
+  // Agents adopt rules themselves and tell Joe (WR-000631); this list only shows what is pending.
   function renderConventions() {
     const container = byId("conventionProposals");
     if (!container) return;
-    const rows = (governanceRead?.pending_convention_proposals || []).filter(row => !adoptedConventions.has(row.section_id));
-    for (const [id, card] of conventionCards) {
-      const current = rows.find(row => row.section_id === id);
-      if (!card.request && (!current || JSON.stringify(current) !== JSON.stringify(card.row))) {
-        card.node.remove(); conventionCards.delete(id);
-      } else if (!card.request && card.status !== "reload") {
-        card.button.disabled = governanceState !== "read" || card.row.adoptable !== true;
-      }
-    }
-    if (rows.length && !conventionCards.size) container.replaceChildren();
-    for (const row of rows) {
-      if (conventionCards.has(row.section_id)) continue;
+    const rows = governanceRead?.pending_convention_proposals || [];
+    container.replaceChildren(...rows.map(row => {
       const node = el("article", "convention-proposal", undefined, { "data-convention": row.section_id });
       const time = el("time", "", formatTime(row.updated_at) || "Time unavailable");
       if (row.updated_at) time.dateTime = row.updated_at;
       const meta = el("p", "work-meta");
       meta.append(time);
       node.append(el("h3", "", row.section_key.split("/").at(-1)), meta);
-      if (row.adoptable === true) {
-        node.append(el("p", "convention-body", row.statement), el("p", "", `Packs: ${row.packs.join(", ")}`));
-      } else {
-        node.append(el("p", "", row.problem));
+      if (row.adoptable !== true) node.append(el("p", "", row.problem));
+      else {
+        node.append(el("p", "convention-body", row.statement));
+        if (row.packs.length) node.append(el("p", "", `Packs: ${row.packs.join(", ")}`));
       }
-      const form = el("form");
-      const whyId = `convention-why-${row.section_id}`;
-      const reason = el("textarea", "", "", { id: whyId, required: "", maxlength: "1000", rows: "2" });
-      const button = el("button", "btn", "Adopt", { type: "submit" });
-      const message = el("p", "form-message", "", { role: "status" });
-      form.append(el("label", "", "Why", { for: whyId }), reason, button, message);
-      node.append(form);
-      const card = { node, row, reason, button, message, request: null, status: "ready" };
-      button.disabled = row.adoptable !== true || governanceState !== "read";
-      const reload = async () => {
-        const read = await client.governanceQueue();
-        if (!governanceTasks(read)) throw new Error("Invalid approvals read");
-        if (disposed) return;
-        governanceRead = read; governanceState = "read";
-        if (conventionCards.get(row.section_id) === card) {
-          node.remove(); conventionCards.delete(row.section_id);
-        }
-        renderConventions();
-      };
-      form.addEventListener("submit", async event => {
-        event.preventDefault();
-        if (disposed || button.disabled) return;
-        if (card.status === "reload") {
-          button.disabled = true;
-          try { await reload(); }
-          catch { message.textContent = "Could not reload the proposal. Reload before adopting."; button.disabled = false; }
-          return;
-        }
-        if (!reason.value.trim()) return;
-        card.request ||= { idempotency_key: uuidv4(), section_id: row.approve_with.section_id,
-          base_version: row.approve_with.base_version, reason: reason.value.trim() };
-        button.disabled = true; reason.disabled = true;
-        byId("conventionStatus").textContent = "";
-        try {
-          const result = await client.adoptRule(card.request);
-          if (result?.ok !== true || !result.rule_id || result.retired_section_id !== row.section_id)
-            throw new Error("Adoption receipt unavailable");
-          if (disposed) return;
-          adoptedConventions.add(row.section_id);
-          node.remove(); conventionCards.delete(row.section_id);
-          renderConventions();
-          byId("conventionStatus").textContent = "Adopted";
-        } catch (error) {
-          if (disposed) return;
-          const outcome = classifyCommandOutcome({ error, retry: card.status === "unknown" });
-          if (outcome.status === "conflict") {
-            card.request = null; card.status = "reload";
-            button.textContent = "Reload proposal";
-            byId("conventionStatus").textContent = "Proposal changed. Read the current text and look again before adopting.";
-            try { await reload(); }
-            catch { message.textContent = "Could not reload the proposal. Reload before adopting."; button.disabled = false; }
-          } else if (outcome.status === "refused") {
-            card.request = null; card.status = "ready";
-            message.textContent = commandMessage(outcome);
-            button.textContent = "Adopt";
-            button.disabled = false; reason.disabled = false;
-          } else {
-            card.status = "unknown";
-            message.textContent = "Outcome unknown. Keep this tab open and check outcome.";
-            button.textContent = "Check outcome";
-            button.disabled = false;
-          }
-        }
-      });
-      container.append(node);
-      conventionCards.set(row.section_id, card);
-    }
-    if (!rows.length && !conventionCards.size) container.textContent = governanceState === "read" ? "No pending convention proposals." : "";
+      return node;
+    }));
+    if (!rows.length) container.textContent = governanceState === "read" ? "No pending convention proposals." : "";
   }
 
   function start() {
@@ -1410,14 +1343,16 @@ export function mountBoard(deps = {}) {
     // The queue board refreshes itself; its snapshot only carries costs, so it is read once.
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed || queueBoardView) return;
-      poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
-        poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
+      // eslint-disable-next-line no-restricted-syntax -- Poll helper enforces a max of 20 injected timeout callbacks; hidden or idle state stops polling.
+      poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: deps.setTimeout ? (fn, ms) => deps.setTimeout(fn, ms) : undefined, clearTimeout: clearTimer,
+        poll: () => refresh().catch(() => { setError("Progress temporarily unavailable."); return false; }) });
     });
-    timers.push(schedule(tick, TICK_MS));
+    timers.push(mountLocalTicker({ document: doc, window: win, tick, intervalMs: TICK_MS, setInterval: schedule, clearInterval: id => win.clearInterval(id) }));
   }
 
   byId("directory-search").addEventListener("input", filterDirectory);
   byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
+  // eslint-disable-next-line no-restricted-syntax -- Visibility refreshes only cached badge ages; ageAttempts below 1800 and agePresence limit follow-up ticks.
   doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
   wireLegend();
@@ -1430,7 +1365,7 @@ export function mountBoard(deps = {}) {
     disposed = true; readSeq++; boardReadController?.abort();
     orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose();
     workViewResize?.disconnect();
-    timers.forEach(id => win.clearInterval(id)); clearTimer(ageTimer);
+    timers.forEach(timer => timer.dispose()); agePresence.dispose(); clearTimer(ageTimer);
     byId("directory-search").removeEventListener("input", filterDirectory);
     doc.removeEventListener("visibilitychange", refreshAges);
     win.removeEventListener?.('doctorcre-session-invalidated', dispose);
@@ -1438,7 +1373,7 @@ export function mountBoard(deps = {}) {
     byId("board-stages").removeEventListener("focusin", rememberWorkCard);
     cardNodes.clear(); completedNodes.clear(); blockedNodes.clear(); questionCards.clear();
     fingerprints.clear(); formState.clear(); pendingRequests.clear(); badgeTimes.clear();
-    byId("conventionProposals")?.replaceChildren(); conventionCards.clear(); adoptedConventions.clear();
+    byId("conventionProposals")?.replaceChildren();
   }
   win.addEventListener?.('doctorcre-session-invalidated', dispose);
 
@@ -1450,7 +1385,7 @@ export function mountBoard(deps = {}) {
       if (tasks) governanceRead = read;
       else if (observation.reason === "Sign in required") {
         governanceRead = null;
-        byId("conventionProposals")?.replaceChildren(); conventionCards.clear();
+        byId("conventionProposals")?.replaceChildren();
       }
       const status = byId("governanceState");
       status.hidden = governanceState === "read";

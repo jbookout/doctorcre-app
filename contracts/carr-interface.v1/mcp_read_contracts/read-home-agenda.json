@@ -10,7 +10,8 @@
     "keys": [
       "schema_version",
       "actor",
-      "deals"
+      "deals",
+      "missing_next_action"
     ],
     "deal_keys": [
       "id",
@@ -35,7 +36,8 @@
       "next_actions",
       "short_name",
       "item_schema_version",
-      "items"
+      "items",
+      "needs_next_action"
     ],
     "critical_date_keys": [
       "id",
@@ -81,6 +83,11 @@
       "suggestion",
       "status"
     ],
-    "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
+    "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+    "missing_next_action": "Deals past pending without an open ordinary action, grouped by owner and ordered with unassigned last; held actions count as open.",
+    "missing_next_action_group_keys": [
+      "owner",
+      "deal_ids"
+    ]
   }
 }

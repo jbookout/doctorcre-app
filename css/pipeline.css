@@ -251,14 +251,13 @@
   .workspace-facts dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .workspace-facts dd { display: inline; }
   .workspace-date-label { display: none; }
-  #workspaceTabs { gap: 0; overflow: visible; }
-  .workspace-tab { flex: 1 1 auto; min-width: 0; padding: var(--space-2); white-space: normal; overflow-wrap: normal; line-height: 1.2; }
+  #workspaceTabs { gap: 0; overflow-x: auto; padding-right: 32px; scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
+  .workspace-tabs-wrap { position: relative; }
+  .workspace-tabs-wrap::after { content: "›"; position: absolute; right: 0; top: 0; bottom: 0; display: grid; place-items: center; width: 24px; background: var(--surface-2); color: var(--fg-muted); pointer-events: none; }
+  #workspaceTabs::-webkit-scrollbar { height: 8px; background: transparent; }
+  #workspaceTabs::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--hairline-strong); }
+  .workspace-tab { padding: var(--space-2); }
   .workspace-events li { padding-block: var(--space-2); }
-}
-
-@media (max-width: 360px) {
-  #workspaceTabs { flex-wrap: wrap; }
-  .workspace-tab { flex: 1 1 45%; }
 }
 
 @media (min-width: 651px) {

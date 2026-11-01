@@ -1,3 +1,4 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { selectDocRecord, pageDocContext } from './doc-context.js';
 // V5-UX-B04 — Calendar: DOM wiring only.
 //
@@ -104,6 +105,7 @@ function paintGrid() {
   const layout = state.view === "week" ? weekStrip(state.anchor) : monthGrid(state.anchor);
   const header = `<div class="cal-week" role="row">${WEEKDAYS.map((name) => `<div class="cal-weekday" role="columnheader">${name}</div>`).join("")}</div>`;
   const weeks = [];
+  // eslint-disable-next-line no-restricted-syntax -- Calendar rendering advances seven days per iteration and will stop at layout.days.length; 0 reads.
   for (let start = 0; start < layout.days.length; start += 7) {
     const cells = layout.days.slice(start, start + 7).map((cell, offset) => dayHtml(cell, start + offset)).join("");
     weeks.push(`<div class="cal-week" role="row">${cells}</div>`);
@@ -368,14 +370,13 @@ function wire() {
     view.state = parseCalendarState(location.search, view.today);
     render();
   });
-  window.addEventListener("online", () => load());
   // A page left open past midnight moves "today" with the clock.
-  setInterval(() => {
+  mountLocalTicker({ intervalMs: TODAY_TICK_MS, tick: () => {
     const today = localToday();
     if (today === view.today) return;
     view.today = today;
     render();
-  }, TODAY_TICK_MS);
+  } });
 }
 
 /* ----------------------------------------------------------------- reading */

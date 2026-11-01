@@ -107,6 +107,7 @@
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
+ * @property {(args?:{limit?:number,before_id?:string,signal?:AbortSignal}) => Promise<Object>} listPracticeOrigination read-only practice-origination.v1, current relationship routes and source coverage
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getHomeAgenda bounded home-agenda.v1 snapshot with dates and open actions
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getPostCallFollowups pending post-call-followups.v1 metadata; email bodies remain local
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
@@ -125,6 +126,7 @@
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
+ * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,idempotency_key:string}) => Promise<Object>} editEmailDraft saves owned draft text without sending
  * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,to:string[],cc:string[],idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
  * @property {(args?:{deal?:string,limit?:number,cursor?:string,include_non_deal?:boolean}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
  * @property {(args:{proposal_id:string,base_version:number,proposal_digest:string,deal?:string,idempotency_key:string}) => Promise<Object>} confirmEmailFiling partner confirmation of a filing proposal

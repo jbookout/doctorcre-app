@@ -1,3 +1,5 @@
+import { createPageBudget } from './read-budget.mjs';
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { todayMove } from './today-moves.mjs';
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
 import { normalizeBrief } from './morning-brief-model.js';
@@ -135,6 +137,7 @@ export function mountAppLayout(root, host, pathname) {
     if (edge.right > viewport.right) tabs.scrollLeft += edge.right - viewport.right;
     else if (edge.left < viewport.left) tabs.scrollLeft -= viewport.left - edge.left;
   };
+  // eslint-disable-next-line no-restricted-syntax -- A single initial frame scrolls the selected tab into view; it performs no reads.
   win.requestAnimationFrame(showSelectedTab);
   phone.addEventListener('change', showSelectedTab);
   tabs.addEventListener('keydown', event => {
@@ -261,7 +264,10 @@ export function mountAppLayout(root, host, pathname) {
         try {
           // The existing feed starts with history. Never present its oldest
           // page as recent; advance bounded pages until it reaches the present.
+          const takePage = createPageBudget({ document: root });
+          // eslint-disable-next-line no-restricted-syntax -- Recent-change catch-up has a max of four pages and consumes takePage before each read.
           for (let page = 0; page < 4; page++) {
+            takePage();
             const changes = await readWithDeadline(() => client.getChanges(cursor), { signal });
             if (signal?.aborted || win.navigator.onLine === false) return;
             if (!Array.isArray(changes?.events)) throw new Error('Invalid change response');
@@ -313,8 +319,8 @@ export function mountAppLayout(root, host, pathname) {
   pageRefresh?.addEventListener('click', () => { if (!fanOut) auto.refresh(); });
   auto.refresh();
   // Ages are relative to now, so the list repaints each minute; render() skips the DOM when the text is unchanged.
-  const ageTick = win.setInterval(() => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, 60_000);
+  const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
   win.addEventListener('pagehide', event => {
-    if (!event.persisted) { win.clearInterval(ageTick); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
+    if (!event.persisted) { ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
   });
 }

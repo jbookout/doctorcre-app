@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, webkit, pausedClock, settles } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
-import { workspace, detail } from './leads-workspace-fixture.mjs';
+import { workspace, detail, emptyQuietFollowUps } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const contract=(await import("../js/routes.js")).routeContract;
@@ -23,7 +23,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   if(onRoute && await onRoute(route,{url,fixture}))return;
   if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
   if(url.pathname==='/mcp'){
-  const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
+  const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value=name==='quiet-follow-ups'?emptyQuietFollowUps():{ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
    const methods={'read-home-agenda':'getHomeAgenda','read-post-call-followups':'getPostCallFollowups','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
@@ -85,7 +85,7 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
  }
  }
  assert.deepEqual(errors,[]);
- assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|morning-brief|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
+ assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|morning-brief|today-triage|lead-board|quiet-follow-ups|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
 });
 
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
@@ -187,6 +187,7 @@ const sampleTour={id:tourId,name:'Sample Tour',status:'draft',version:1,stops:[]
 async function producerRoute(route,{url,fixture}) {
  if(url.pathname==='/mcp'){
   const {name,arguments:args}=route.request().postDataJSON().params;
+  if(name==='quiet-follow-ups'){await rpc(route,emptyQuietFollowUps());return true;}
   if(name==='lead-board'){const board=workspace();await rpc(route,{...board,...(args.lead_id?{detail:detail(board.leads.find(row=>row.id===args.lead_id))}:{})});return true;}
   if(name==='loop-board'){await rpc(route,{loops:[{number:1,label:'Sample idea',kind:'idea',owner:'sample',version:1}]});return true;}
   if(name==='read-loop'){await rpc(route,{loop:{number:1,loop_id:'sample-idea',title:'Sample idea',kind:'idea',version:1}});return true;}
@@ -608,7 +609,7 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
   if(refuse){await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'feature_disabled',switch:'doc-suggestion-actions',hint:'doc-suggestion-actions is switched off for you.'})}]}})});return true;}
   await rpc(route,await fixture.decideDocSuggestion(args));return true;
  }});
- // A paused clock stops every poll and backoff: each switch read below is one the test or the page prompts.
+ // Advance the capped backoff between reconnects; lifecycle events cannot bypass it.
  await pausedClock(page,Date.parse('2026-10-12T15:00:00Z'));
  await goto('/deals?mode=live');
  await page.locator('#docOpen').click();
@@ -628,7 +629,11 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  assert.equal(writes.length,0,'nothing is sent once the switch is off');
 
  // 2. The page still reads on, but CARR switched it off after the last poll.
+ await page.waitForLoadState('networkidle');
  available=true;
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+ await page.locator('#docRefresh').click();
+ await page.waitForLoadState('networkidle');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await action.waitFor({state:'visible'});
  available=false;refuse=true;
@@ -642,7 +647,11 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  available=true;
 
  // 3. Switched back on: the same suggestion version can be approved again.
+ await page.waitForLoadState('networkidle');
  refuse=false;
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+ await page.locator('#docRefresh').click();
+ await page.waitForLoadState('networkidle');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await action.waitFor({state:'visible'});
  await action.click();

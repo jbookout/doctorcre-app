@@ -341,6 +341,7 @@ function applyBoardSnapshot(board) {
   const actorChanged = previousActor && previousActor !== state.selfActor;
   bindDraftActor(state.selfActor);
   if (actorChanged) {
+    clearMarketTermsViews();
     pageDocContext?.clear();
     const contextRead = pageDocContext?.begin('getBoard');
     pageDocContext?.finish(contextRead, board);
@@ -473,6 +474,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   }
   if (!Number.isInteger(version)) {
     dock.record(operationKey, {
+      // eslint-disable-next-line no-restricted-syntax -- Failed post-move read offers a manual retry button; 0 automatic outcome writes after the failed version read.
       summary: step.summary, status: 'failed', retry: true, undo: false,
       reason: `${intent.name} moved, but the record could not be re-read for its version, so the outcome was not written. Nothing was guessed.`,
     });
@@ -492,6 +494,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   });
   dock.record(operationKey, {
     summary: step.summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Only a manual retry resends the retained outcome command; receipt metadata schedules no attempts.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === 'ok') state.boardSync.requestRefresh('after-write');
@@ -518,12 +521,14 @@ async function runFollowUp(operationKey, step) {
       try { current = (await state.client.getDeal(args.deal))?.deal; }
       catch { /* A missing current version cannot authorize a replacement. */ }
       if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
+        // eslint-disable-next-line no-restricted-syntax -- Missing current record version offers a manual reread; 0 follow-up writes until a valid version is read.
         dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
           reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
         return null;
       }
       const reviewed = step.reviewed || state.deals.get(args.deal);
       if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
+        // eslint-disable-next-line no-restricted-syntax -- Conflict metadata only sets retry=false; it never automatically replaces changed next-step fields.
         dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
           reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
         return {status:'conflict', message:`Current next step: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review before retrying.`};
@@ -556,6 +561,7 @@ async function runFollowUp(operationKey, step) {
     summary: operations.get(operationKey).summary,
     status: result.status === 'blocked' ? 'unknown' : result.status,
     reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Only another dock action can resend the retained follow-up; this receipt exposes retry state.
     retry: result.status === 'blocked' || result.retry, undo: false, request: dockRequest,
   });
   if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
@@ -589,6 +595,7 @@ async function runMove(intent, form) {
   dock.record(cell, {
     summary: moveSummary(intent), status: result.status,
     reason: fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`) || null,
+    // eslint-disable-next-line no-restricted-syntax -- Phase-write receipt only exposes the retained retry flag; it schedules no resends.
     retry: result.retry, undo: false, request: result.request,
   });
 
@@ -623,6 +630,7 @@ async function resumeMoveFollowUps(cell) {
   const move = operations.get(cell);
   if (!move?.followUps || move.followUpsStarted) return;
   move.followUpsStarted = true;
+  // eslint-disable-next-line no-restricted-syntax -- Move follow-ups run once per finite move.followUps entry; followUpsStarted prevents a second automatic pass.
   for (const step of move.followUps) {
     const operationKey = `${step.verb}:${move.intent.deal}:${move.followUpToken}`;
     if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, move.intent);
@@ -640,6 +648,7 @@ async function retryFieldWrite(cell) {
   dock.record(cell, {
     summary: `${row?.name || 'Deal'} · ${fieldLabel(field)}`,
     status: result.status, reason: fieldWriteMessage(result, subject) || null,
+    // eslint-disable-next-line no-restricted-syntax -- Field-write receipt only exposes the retained retry flag; it schedules no resends.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === 'ok' && !result.superseded) {
@@ -850,6 +859,7 @@ function refusePanelDetail(error) {
   if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
   ++panelReadSequence;
   ++contextReadSequence;
+  clearMarketTermsViews();
   state.panelDetail = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
@@ -1048,6 +1058,12 @@ function workspaceEventsHtml(detail) {
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
 let factReviewPanel, marketTermsPanel;
+// Each deal's comparison is kept for the session and reattached when its tab reopens; an access change discards them all.
+const marketTermsViews = new Map();
+function clearMarketTermsViews() {
+  for (const view of marketTermsViews.values()) view.mounted?.dispose();
+  marketTermsViews.clear();
+}
 
 function workspaceHtml(detail) {
   const d = detail.deal;
@@ -1230,20 +1246,27 @@ function paintPanel(detail) {
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
-  let marketDisposed = false, marketLoading = false, marketMounted;
+  let marketDisposed = false, marketLoading = false;
   marketTermsPanel = {
     async load() {
       if (marketDisposed || marketLoading) return;
-      marketLoading = true;
       const root = $('workspace-market-terms');
+      const cached = marketTermsViews.get(detail.deal.id);
+      if (cached) { root.replaceChildren(cached.element); return; }
+      marketLoading = true;
       root.textContent = 'Loading comparable terms…';
       try {
         const { mountMarketTerms } = await import('./ui.generated.js');
-        if (!marketDisposed) marketMounted = mountMarketTerms(root, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type });
-      } catch { if (!marketDisposed) { marketLoading = false; root.textContent = 'Could not load comparable terms. Try again.'; } }
+        if (marketDisposed) return;
+        const element = document.createElement('div');
+        const mounted = mountMarketTerms(element, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type, dealName: ref => { const match = state.deals.get(ref); return match ? dealTitle(match) : null; } });
+        marketTermsViews.set(detail.deal.id, { element, mounted });
+        root.replaceChildren(element);
+      } catch { if (!marketDisposed) root.textContent = 'Could not load comparable terms. Try again.'; }
+      finally { marketLoading = false; }
     },
-    refresh() { return marketMounted?.refresh(); },
-    dispose() { marketDisposed = true; marketMounted?.dispose(); },
+    refresh() { return marketTermsViews.get(detail.deal.id)?.mounted.refresh(); },
+    dispose() { marketDisposed = true; },
   };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
@@ -1274,9 +1297,29 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   $('workspaceTabs').innerHTML = workspaceTabs.map(tab => `<button class="workspace-tab" type="button" role="tab" id="tab-${tab.id}" aria-controls="workspace-${tab.id}" aria-selected="${tab.id === workspaceTab}" tabindex="${tab.id === workspaceTab ? 0 : -1}" data-workspace-tab="${tab.id}">${tab.label}</button>`).join('');
   $('main').hidden = true; panel.hidden = false;
   document.body.classList.add('workspace-open');
-  scrollTo(0, 0);
+  scrollTo({ top: 0, behavior: 'instant' });
   $('panelTitle').focus({preventScroll:true});
   await refreshPanel();
+  if (new URL(location.href).searchParams.get('focus') === 'next-step' && state.panelDeal === dealId) {
+    if (document.readyState !== 'complete') await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+    await document.fonts.ready;
+    if (state.panelDeal !== dealId) return;
+    const editor = $('dealUpdateStep');
+    if (editor) {
+      editor.focus();
+      editor.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const observer = new ResizeObserver(() => {
+        if (document.activeElement !== editor) return observer.disconnect();
+        const rect = editor.getBoundingClientRect();
+        if (rect.bottom > innerHeight || rect.top < 0) editor.scrollIntoView({ block: 'center', behavior: 'instant' });
+      });
+      observer.observe($('recordPanel'));
+      editor.addEventListener('blur', () => observer.disconnect(), { once: true });
+    }
+    const current = new URL(location.href);
+    current.searchParams.delete('focus');
+    history.replaceState(history.state, '', current);
+  }
 }
 function closeWorkspace({ fromHistory = false } = {}) {
   factReviewPanel?.dispose();
@@ -1412,6 +1455,7 @@ function wireBoard() {
   const release = () => {
     if (board.dataset.pressed !== 'true') return;
     delete board.dataset.pressed;
+    // eslint-disable-next-line no-restricted-syntax -- 1 deferred board paint after pointer release, only when paintDeferred is set; 0 HTTP reads.
     if (state.paintDeferred) setTimeout(renderBoard);
   };
   addEventListener('pointerup', release, true);
@@ -1517,6 +1561,7 @@ function wire() {
     const open = event.target.closest('button[data-open]');
     if (open) { openWorkspace(open.dataset.open, open); return; }
     const retry = event.target.closest('button[data-retry-write]');
+    // eslint-disable-next-line no-restricted-syntax -- Only an explicit retry-button click reconciles the retained field write; no automatic resend occurs.
     if (retry) { retryFieldWrite(retry.dataset.retryWrite); return; }
     const undo = event.target.closest('button[data-undo]');
     if (undo) { runUndo(undo.dataset.undo); return; }
@@ -1690,7 +1735,8 @@ function wire() {
     if (e.target.id === 'detailClientPortalForm') await registerClientPortal(id, form);
   });
 
-  globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); refreshPanel(); });
+  // eslint-disable-next-line no-restricted-syntax -- Online events only update board-sync connectivity; the shared capped poller owns reads.
+  globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); });
   globalThis.addEventListener?.('offline', () => state.boardSync.setOnline(false));
 }
 
@@ -1701,6 +1747,7 @@ function mountDock() {
     root,
     onDispatch: (operationKey) => {
       const entry = operations.get(operationKey);
+      // eslint-disable-next-line no-restricted-syntax -- Only a dock retry click reconciles the retained field write; one reconciliation per click.
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
@@ -1708,6 +1755,7 @@ function mountDock() {
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
+      // eslint-disable-next-line no-restricted-syntax -- Only a dock undo/retry action reconciles the retained field write; one reconciliation per action.
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
@@ -1752,9 +1800,9 @@ async function boot() {
     if (incomingScope.get('item') && state.panelDeal === linkedDeal) void itemSheet.open(linkedDeal,incomingScope.get('item'));
   });
   void loadBoard();
-  mountVisibilityPoll({ poll: refreshPanel });
-  mountVisibilityPoll({ poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
-  mountVisibilityPoll({ poll: () => { state.boardSync.requestRefresh('periodic'); } });
+  mountVisibilityPoll({ lifecycle: true, poll: refreshPanel });
+  mountVisibilityPoll({ poll: () => { return pollOnce().catch(() => false); } });
+  mountVisibilityPoll({ poll: () => state.boardSync.requestRefresh('periodic') });
 
 
 }
