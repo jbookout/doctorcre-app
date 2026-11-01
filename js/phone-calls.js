@@ -1,3 +1,5 @@
+import { createPageBudget } from './read-budget.mjs';
+import { watchPresence } from './visibility-poll.mjs';
 import { createDayStore } from '../tours/day-store.js';
 import { createDayRecorder } from '../tours/day-recorder.js';
 import { createPhoneCallClient, sessionId } from './phone-call-client.js';
@@ -14,6 +16,11 @@ const answers = new Map(), answering = new Set();
 const tour_id = 'calls';
 let reviewGeneration = 0;
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
+const pollPresence = watchPresence({ document, window, onResume: resumeReads, onWake: resumeReads });
+function resumeReads() {
+  schedulePoll();
+  if (currentId && !disposed) void review(currentId).catch(() => notice('Call review could not be refreshed. Please retry.'));
+}
 async function acquireWakeLock() {
   const generation = ++wakeGeneration;
   try {
@@ -105,17 +112,23 @@ async function applyStatus(id, session) {
   }
 }
 function schedulePoll() {
-  if (pollTimer || disposed || pollAttempts >= 10) return;
+  if (pollTimer || disposed || !store || !pollPresence.active() || pollAttempts >= 10) return;
   pollTimer = setTimeout(async () => {
     pollTimer = null;
+    if (disposed || !pollPresence.active()) return;
     pollAttempts++;
+    try {
     const rows = await store.list(scope, tour_id);
+    const takePage = createPageBudget();
     for (const row of rows.filter(r => r.status === 'queued' && r.session_id)) {
+      takePage();
+      if (disposed || !pollPresence.active()) return;
       try { await applyStatus(row.id, await api.status(row.session_id)); } catch { /* Keep the saved audio and retry later. */ }
     }
     await pending();
     pollDelay = Math.min(pollDelay * 2, 120000);
     if ((await store.list(scope, tour_id)).some(r => r.status === 'queued')) schedulePoll();
+    } catch { notice('Transfer status is unavailable. Check status to try again.'); }
   }, pollDelay);
 }
 async function transfer(id) {
@@ -244,13 +257,13 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && currentId && !disposed) void review(currentId).catch(() => notice('Call review could not be refreshed. Please retry.'));
+  if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();
   else if (!wakeLock || wakeLock.released) recorder.stop('hidden');
 });
 document.addEventListener('freeze', () => recorder?.stop('hidden'));
-window.addEventListener('pagehide', () => { recorder?.stop('hidden'); releaseWakeLock(); }, { once: true });
+window.addEventListener('pagehide', () => { clearTimeout(pollTimer); pollTimer = null; recorder?.stop('hidden'); releaseWakeLock(); }, { once: true });
 void start().catch(error => notice(error.message));

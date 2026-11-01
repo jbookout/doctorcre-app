@@ -6,13 +6,17 @@ import { createLiveClient } from '../js/live-client.js';
 import { createSystemWorkClient } from '../js/system-work-client.js';
 
 function clock() {
-  const document = new EventTarget(); document.visibilityState = 'visible';
-  const window = new EventTarget(); let pending = new Map(), next = 0;
-  window.setTimeout = fn => { pending.set(++next, fn); return next; };
-  window.clearTimeout = id => pending.delete(id);
-  return { document, window, tick() { const jobs = [...pending.values()]; pending.clear(); jobs.forEach(fn => fn()); }, get count() { return pending.size; }, hide() { document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); }, show() { document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); } };
+ const document=new EventTarget();document.visibilityState='visible';
+ const window=new EventTarget(),pending=new Map();let next=0,time=0;
+ window.setTimeout=(fn,ms)=>{pending.set(++next,{fn,at:time+ms});return next};
+ window.clearTimeout=id=>pending.delete(id);
+ return {document,window,now:()=>time,
+  tick(){const at=Math.min(...[...pending.values()].map(job=>job.at));if(!Number.isFinite(at))return;time=at;for(const [id,job]of [...pending])if(job.at<=time){pending.delete(id);job.fn();}},
+  get count(){return pending.size},get delays(){return [...pending.values()].map(job=>job.at-time)},
+  hide(){document.visibilityState='hidden';document.dispatchEvent(new Event('visibilitychange'))},
+  show(){document.visibilityState='visible';document.dispatchEvent(new Event('visibilitychange'))}};
 }
-const settle = async () => { for (let i = 0; i < 8; ++i) await Promise.resolve(); };
+const settle = async () => { for (let i = 0; i < 30; ++i) await Promise.resolve(); };
 
 test('polling preserves detail; resume and reconnect invalidate before reading', async () => {
   const c=clock();let polls=0,resumes=0;
@@ -26,7 +30,8 @@ test('resume invalidation cancels a hanging read and starts a fresh authorized r
   const c=clock();let firstSignal,resumes=0,reads=0;
   const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:({signal})=>{reads++;if(reads===1){firstSignal=signal;return new Promise(()=>{});}}});
   c.tick();await settle();c.hide();c.show();await settle();await settle();
-  assert.equal(firstSignal.aborted,true);assert.equal(resumes,1);assert.equal(reads,2);handle.dispose();
+  assert.equal(firstSignal.aborted,true);assert.equal(reads,1);
+  c.tick();await settle();assert.equal(resumes,1);assert.equal(reads,2);handle.dispose();
 });
 
 test('background refresh recovers after failure, does not overlap, sleeps hidden and disposes', async () => {
@@ -52,7 +57,7 @@ test('PR119 finding 8: a never-settling callback expires, cancels and lets recov
  const handle=mountAutoRefresh({...c,timeoutMs:10,refresh:({signal}={})=>{reads++;if(reads===1){firstSignal=signal;return new Promise(()=>{});}}});
  c.tick();await settle();assert.equal(reads,1);
  c.tick();await settle();assert.equal(firstSignal?.aborted,true);
- c.window.dispatchEvent(new Event('online'));await settle();assert.equal(reads,2);handle.dispose();
+ c.window.dispatchEvent(new Event('online'));await settle();assert.equal(reads,1);c.tick();await settle();assert.equal(reads,2);handle.dispose();
 });
 for (const phase of ['request','body']) test('PR119 finding 8: ordinary MCP '+phase+' hangs are bounded and cancelled',async()=>{
  let signal;
@@ -96,10 +101,10 @@ test('R1 resume invalidation fires before a coalesced in-flight read and never f
  const c=clock();let release,invalidated=0;
  const handle=mountAutoRefresh({...c,onResume:()=>{invalidated++;},refresh:()=>new Promise(resolve=>{release=resolve;})});
  handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
- release();await settle();handle.dispose();
+ release();await settle();c.tick();await settle();assert.equal(invalidated,1);release();await settle();handle.dispose();
 });
-test('failed reads wait at least one minute before the next background read', async (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test('failed reads use capped exponential backoff before recovering', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget();
   window.setTimeout = setTimeout; window.clearTimeout = clearTimeout;
@@ -111,26 +116,17 @@ test('failed reads wait at least one minute before the next background read', as
   t.after(() => handle.dispose());
   t.mock.timers.tick(60_000); await settle();
   assert.equal(reads, 1);
-  for (let expected = 2; expected <= 5; expected++) {
-    t.mock.timers.tick(59_999); await settle();
-    assert.equal(reads, expected - 1, 'no background read before the one-minute floor');
+  for (const [expected, delay] of [[2, 120_000], [3, 240_000], [4, 480_000], [5, 60_000]]) {
+    t.mock.timers.tick(delay - 1); await settle();
+    assert.equal(reads, expected - 1, 'no background read before its backoff delay');
     t.mock.timers.tick(1); await settle();
-    assert.equal(reads, expected, 'background reads recover at the one-minute floor');
+    assert.equal(reads, expected, 'background reads recover after the backoff delay');
   }
 });
-test('a read replaced on resume preserves the poll interval after failure', async () => {
-  const document = new EventTarget(); document.visibilityState = 'visible';
-  const window = new EventTarget(); const delays = []; let job = null;
-  window.setTimeout = (fn, ms) => { if (ms === 5_000) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
-  let reads = 0;
-  const handle = mountAutoRefresh({ document, window, timeoutMs: 5_000, onResume: () => {}, refresh: () => {
-    reads++;
-    if (reads === 1) return new Promise(() => {}); // ignores abort
-    throw Error('synthetic outage');
-  } });
-  job(); await settle();
-  document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
-  document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
-  await settle(); await settle();
-  assert.equal(reads, 2); assert.deepEqual(delays, [60_000, 60_000, 60_000]); handle.dispose();
+test('a hanging read without a resume invalidation waits for its deadline and failure backoff', async () => {
+ const c=clock();let reads=0;
+ const handle=mountAutoRefresh({...c,timeoutMs:5000,refresh:()=>{if(++reads===1)return new Promise(()=>{});throw Error('synthetic outage')}});
+ c.tick();await settle();c.hide();c.show();await settle();assert.equal(reads,1);
+ c.tick();await settle();assert.equal(reads,1);assert.deepEqual(c.delays,[120_000]);
+ c.tick();await settle();assert.equal(reads,2);assert.deepEqual(c.delays,[240_000]);handle.dispose();
 });

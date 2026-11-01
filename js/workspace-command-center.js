@@ -1,3 +1,4 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { workCard } from './work-card.js';
 import { renderDealAlert } from './deal-items.js';
 import { scopedDeals } from './deal-review-model.js';
@@ -293,14 +294,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     relationshipDialog.open(snapshot.relationships, button.dataset.introNode, button);
   });
   const auto = mountAutoRefresh({ document, window, refresh, intervalMs });
-  const expiry = window.setInterval(() => {
+  const expiry = mountLocalTicker({ document, window, intervalMs: 1000, tick: () => {
     if (snapshot?.relationships && Date.parse(snapshot.relationships.valid_until) <= now()) {
       snapshot.relationships = null;
       relationshipDialog?.clear();
       render();
       auto.poll();
     }
-  }, 1000);
+  } });
   const updateCalendar = event => {
     const value = event.detail;
     const valid = value && ['ready', 'empty', 'partial', 'unavailable'].includes(value.state)
@@ -396,7 +397,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     return emailReview.refresh();
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
