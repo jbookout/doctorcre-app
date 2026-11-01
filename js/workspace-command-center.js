@@ -17,7 +17,7 @@ import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
 import { mountHomeWeek } from './home-week-view.js';
 import { meetingDate, meetingTime } from './home-week.js';
-import { mountMissingNextStep } from './missing-next-step.js';
+import { mountMissingNextStep } from './ui.generated.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
