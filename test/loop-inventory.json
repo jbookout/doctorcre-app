@@ -329,13 +329,13 @@
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/morning-brief.js:loop:54439d654557050da944beb97490cdcec181ff13a4bb920d05634b3f1a40f4a6": {
+  "js/morning-brief.js:loop:8dccb2f10468cde5101b59ceb90b6517a502c8ce6ffa13e017df43b5198094f8": {
     "cap": 4,
     "boundary": "4 recent-change pages per refresh",
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
   },
-  "js/morning-brief.js:event-refresh:7bc452e286c8cc67a6d29702f89842e22487c2e38113d09ff998a8ecb8ec02a0": {
+  "js/morning-brief.js:event-refresh:d7ae4d9abb6761411a4701cce5be90df422a06028798aed08ee905395155c40a": {
     "cap": 0,
     "boundary": "0 automatic HTTP reads; local state or input handling only",
     "backoff": "No network retry in this listener",

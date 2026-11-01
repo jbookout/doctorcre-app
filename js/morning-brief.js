@@ -70,7 +70,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     const doc = $('docDetail'); if (doc?.open) doc.close();
     const pending = auto.revalidate();
     if (!dialog.open) dialog.showModal();
+    await queues.prepare();
     await pending;
+    queues.menu(facts);
     if (dialog.open && sponsor && view) remember();
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
@@ -110,6 +112,8 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     const epoch = readEpoch;
     const current = () => !disposed && !signal?.aborted && epoch === readEpoch;
     try {
+      if (dialog.open) await queues.prepare();
+      if (!current()) return;
       client ||= await getClient();
       if (!current()) return;
       const freshRead = fresh; fresh = false;
@@ -172,5 +176,5 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.dispose(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }
