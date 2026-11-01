@@ -18,7 +18,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable']) for (const
     let payload = { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
     if (name === 'read-home-inbox') {
       if (state === 'loading') await gate;
-      payload = state === 'unavailable' ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v1', working_collapsed: true, auto_settle_enabled: false, items: state === 'empty' ? [] : [{ item_id: 'synthetic-card', source_type: 'task', source_id: 'synthetic-task', source_version: 'v1', source_state: 'done', title: 'Synthetic tour summary ready', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: true, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' }] };
+      payload = state === 'unavailable' ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v1', working_collapsed: true, auto_settle_enabled: false, items: state === 'empty' ? [] : [{ item_id: 'synthetic-card', source_type: 'next_action', source_id: 'synthetic-task', source_version: 'v1', source_state: 'done', title: 'Synthetic tour summary ready', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: true, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' }] };
     }
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });

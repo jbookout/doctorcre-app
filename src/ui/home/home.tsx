@@ -4,12 +4,13 @@ import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { command, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot } from './inbox';
 import { recordRoutes } from './routes';
+import { HomeWorkflows, type HomeWorkflowClient } from './workflows';
 
 type Pending = { request: Command; before: readonly InboxItem[] };
 type Undo = { action: Action; items: readonly InboxItem[]; until?: string };
 const queryKey = ['home-inbox'];
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
-function Inbox({ client }: { client: InboxClient }) {
+function Inbox({ client, workflows }: { client: InboxClient; workflows?: () => Promise<HomeWorkflowClient> }) {
   const { item_id } = useParams();
   const cache = useQueryClient();
   const query = useQuery({ queryKey, queryFn: ({ signal }) => client.read(signal) });
@@ -82,7 +83,7 @@ function Inbox({ client }: { client: InboxClient }) {
       <div className="inbox-copy"><p className="inbox-meta"><span>{item.source_type.replaceAll('_', ' ')}</span><span className={`inbox-badge inbox-${item.source_state}`}>{item.source_state === 'done' ? `Done${item.unseen ? ' · Unseen' : ''}` : item.source_state.replaceAll('_', ' ')}</span></p>
         <h3><Link to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
         <p className="inbox-detail">{item.disposition === 'snoozed' && item.snoozed_until ? `Snoozed until ${new Date(item.snoozed_until).toLocaleString()}` : item.disposition === 'settled' ? 'Settled by you' : item.source_state === 'working' ? 'Dr. CRE is working. You can come back to this.' : 'Ready for your attention'}{item.hold_until ? ` · On hold until ${item.hold_until}` : ''}</p>
-        {item_id === item.item_id && <a className="inbox-source" href={recordRoutes.source(item)}>Open source record ↗</a>}
+        {item_id === item.item_id && recordRoutes.source(item) && <a className="inbox-source" href={recordRoutes.source(item) || undefined}>Open source record ↗</a>}
       </div>
       <div className="inbox-actions"><button type="button" disabled={busy} onClick={() => act(primary === 'Settle' ? 'settle' : 'unsettle', [item])}>{primary}</button><button type="button" disabled={busy} onClick={() => setSnooze([item])}>Snooze</button></div>
     </article>;
@@ -106,15 +107,16 @@ function Inbox({ client }: { client: InboxClient }) {
         {placed.inbox.length ? placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
       {(['working', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
     </>}
+    {workflows && !item_id && !query.isPending && <HomeWorkflows load={workflows} />}
     {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Settle selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Un-settle selected</button><button disabled={busy || picked.length > 100} onClick={() => setSnooze(picked)}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
     {snooze && <dialog className="inbox-snooze" ref={node => { if (node && !node.open) node.showModal(); }} onCancel={() => { setSnooze(null); focusRow(); }} aria-label="Snooze cards"><h2>Snooze {snooze.length === 1 ? 'card' : `${snooze.length} cards`}</h2><p>Return this to your inbox later.</p>{[1, 24].map(hours => <button autoFocus={hours === 1} key={hours} onClick={() => { const rows = snooze; setSnooze(null); act('snooze', rows, new Date(Date.now() + hours * 3_600_000).toISOString()); }}>{hours === 1 ? '1 hour' : '24 hours'}</button>)}<button onClick={() => { setSnooze(null); focusRow(); }}>Cancel</button></dialog>}
     <footer className="inbox-footer">Use ↑ ↓ to move between cards. On your phone, swipe right to settle or wake, left to snooze.</footer>
   </div>;
 }
-export function mountHome(host: HTMLElement, client: InboxClient) {
+export function mountHome(host: HTMLElement, client: InboxClient, workflows?: () => Promise<HomeWorkflowClient>) {
   const query = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: 'always' }, mutations: { retry: false, networkMode: 'always' } } });
   const root = createRoot(host);
-  const home: ReactNode = <Inbox client={client} />;
+  const home: ReactNode = <Inbox client={client} {...(workflows ? { workflows } : {})} />;
   root.render(<QueryClientProvider client={query}><BrowserRouter><Routes><Route path="/" element={home} /><Route path="/workspace.html" element={home} /><Route path="/home" element={home} /><Route path="/home/card/:item_id" element={home} /></Routes></BrowserRouter></QueryClientProvider>);
   addEventListener('doctorcre-session-invalidated', () => { query.clear(); root.unmount(); }, { once: true });
 }

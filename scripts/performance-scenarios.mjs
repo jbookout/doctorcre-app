@@ -217,7 +217,7 @@ export async function installInboxScenario(page, { delayMs = 75 } = {}) {
     if (name === 'read-home-inbox') {
       await new Promise(resolve => setTimeout(resolve, delayMs));
       value = { ok: true, schema_version: 'home-inbox.v1', working_collapsed: true, auto_settle_enabled: false,
-        items: Array.from({ length: 40 }, (_, index) => ({ item_id: `synthetic-${index}`, source_type: 'task', source_id: `synthetic-${index}`, source_version: 'v1', source_state: index % 2 ? 'done' : 'needs_attention', title: `Synthetic practice follow-up ${index + 1}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: index % 2 === 1, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' })) };
+        items: Array.from({ length: 40 }, (_, index) => ({ item_id: `synthetic-${index}`, source_type: 'next_action', source_id: `synthetic-${index}`, source_version: 'v1', source_state: index % 2 ? 'done' : 'needs_attention', title: `Synthetic practice follow-up ${index + 1}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: index % 2 === 1, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' })) };
     }
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
   });

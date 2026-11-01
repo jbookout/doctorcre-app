@@ -7,10 +7,15 @@ export const recordRoutes = {
   deal: (id: string) => `/deals/${encodeURIComponent(id)}`,
   contact: (id: string) => `/contacts/${encodeURIComponent(id)}`,
   task: (id: string) => `/tasks/${encodeURIComponent(id)}`,
-  source(item: InboxItem) {
-    if (item.source_type === 'task') return this.task(item.source_id);
-    if (item.source_type === 'deal') return this.deal(item.source_id);
-    if (item.source_type === 'contact') return this.contact(item.source_id);
-    return this.card(item.item_id);
+  /** The page that owns an inbox card's source record, or null when no page
+   * does. Source types are the ones read-home-inbox emits; a card never links
+   * back to itself. */
+  source(item: InboxItem): string | null {
+    switch (item.source_type) {
+      case 'next_action': return this.task(item.source_id);
+      case 'capture_session': case 'capture_post_call_action': return '/calls';
+      case 'notification': return '/updates';
+      default: return null;
+    }
   },
 };
