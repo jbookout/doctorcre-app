@@ -156,17 +156,19 @@ test('deal email review distinguishes unavailable from empty and clears proposal
   assert.equal(await page.locator('#recordPanel').getByText('Please send the revised plan by November 3.', { exact: true }).count(), 0);
 });
 
-for (const width of [1440, 390]) test(`Home reply card edits and submits exact text at ${width}px`, async t => {
+for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards edit and submit exact text at ${width}px`, async t => {
   const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `reply-${width}`, viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
   const row = { id: '10000000-0000-4000-8000-000000000003', version: 3, kind: 'reply_draft', status: 'pending',
-    deal: 'qa-deal-1', deal_name: 'Demo Harbor expansion', confidence: 0.9, suspected_instruction: null,
-    source: { activity_id: '30000000-0000-4000-8000-000000000003', sender: null, subject: 'Demo floor plan',
+    deal: null, deal_name: null, confidence: 0.9, suspected_instruction: null,
+    source: { activity_id: '30000000-0000-4000-8000-000000000003', sender: 'Dana Demo', subject: 'Demo floor plan',
       evidence_quote: 'Please review the floor plan.', occurred_at: '2026-10-27T12:00:00Z' },
     confirm_verb: 'submit-email-draft', preview: null, preview_error: null,
     reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: 'joe', to: ['demo-correspondent@example.test'], cc: ['demo-dell@example.test'] } };
+  const dealDraft = { ...row, id: '10000000-0000-4000-8000-000000000004', deal: 'qa-deal-1', deal_name: 'Demo Harbor expansion',
+    source: { ...row.source, subject: 'Demo deal floor plan' } };
   let releaseAgenda;
   const agendaGate = new Promise(resolve => { releaseAgenda = resolve; });
   const submitted = [];
@@ -174,7 +176,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
     const { name, arguments: args } = route.request().postDataJSON().params;
     let result;
     if (name === 'read-home-agenda') { await agendaGate; return route.continue(); }
-    if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: submitted.length ? [] : [row], send: false, more: false, next_cursor: null };
+    if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: submitted.length ? [dealDraft] : [dealDraft, row], send: false, more: false, next_cursor: null };
     else if (name === 'submit-email-draft') {
       submitted.push(args);
       result = { ok: true, proposal_id: row.id, status: 'approved_to_send', version: 4, subject: args.subject,
@@ -184,8 +186,17 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   });
   await page.clock.install();
   await page.goto(`${origin}/?mode=live`);
-  const card = page.locator('#homeEmailFollowups');
-  await card.scrollIntoViewIfNeeded();
+  const panel = page.locator('#homeEmailFollowups');
+  await panel.scrollIntoViewIfNeeded();
+  if (width === 390) await panel.getByRole('button', { name: 'Show 1 more', exact: true }).click();
+  const card = panel.locator(`[data-email-id="${row.id}"]`);
+  await card.waitFor();
+  assert.equal(await panel.locator('article').count(), 2);
+  await panel.getByRole('link', { name: 'Demo Harbor expansion', exact: true }).waitFor();
+  await card.getByText('Contact · Dana Demo', { exact: true }).waitFor();
+  assert.equal(await card.locator('a[href^="/deals"]').count(), 0);
+  await mkdir('out/test-artifacts/email-followups', { recursive: true });
+  await panel.screenshot({ path: `out/test-artifacts/email-followups/mixed-replies-${width}-pending.png`, animations: 'disabled' });
   await card.getByText('Reply draft · Re: Demo floor plan · Joe', { exact: true }).waitFor();
   assert.equal(await card.getByRole('button', { name: 'Review reply', exact: true }).count(), 0);
   releaseAgenda();
@@ -199,15 +210,15 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'I reviewed the plan.\nPlease send the dimensions.');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('out/test-artifacts/email-followups', { recursive: true });
-  await card.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-edit.png`, animations: 'disabled' });
+  await panel.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-edit.png`, animations: 'disabled' });
   await card.getByRole('button', { name: 'Submit', exact: true }).click();
   await card.getByText('Sending in 10s ·').waitFor();
   await page.reload();
+  if (width === 390) await panel.getByRole('button', { name: 'Show 1 more', exact: true }).click();
   await page.clock.runFor(30_000);
   assert.equal(submitted.length, 0, 'leaving the page during the grace sends nothing');
   assert.equal(await card.getByText(/Sending in/).count(), 0, 'send intent never survives a reload');
   await card.getByRole('button', { name: 'Review reply', exact: true }).click();
-  // Edits live only in the page: no verb saves reply edits, and draft text never goes to browser storage.
   assert.equal(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue(), row.reply_draft.subject);
   assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), row.reply_draft.body, 'a reload reopens the saved server draft');
   await card.getByRole('textbox', { name: 'Subject', exact: true }).fill('Re: Demo plan reviewed');
@@ -216,7 +227,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   await card.getByText('Sending in 10s ·').waitFor();
   await page.clock.runFor(9_000);
   await card.getByText('Sending in 1s ·').waitFor();
-  await card.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-grace.png`, animations: 'disabled' });
+  await panel.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-grace.png`, animations: 'disabled' });
   await card.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.clock.runFor(30_000);
   assert.equal(submitted.length, 0, 'Undo during the grace reaches no server');
@@ -233,7 +244,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   assert.deepEqual(args, { proposal_id: row.id, base_version: 3, subject: 'Re: Demo plan reviewed', body: 'I reviewed the plan.\nPlease send the dimensions.', to: row.reply_draft.to, cc: row.reply_draft.cc });
   await card.getByText('To: demo-correspondent@example.test', { exact: true }).waitFor();
   await card.getByText('CC: demo-dell@example.test', { exact: true }).waitFor();
-  await card.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-submitted.png`, animations: 'disabled' });
+  await panel.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-submitted.png`, animations: 'disabled' });
 });
 
 test('Home creates a new deal and files its email through the live client at phone width', async t => {

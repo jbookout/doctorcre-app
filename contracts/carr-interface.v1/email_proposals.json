@@ -61,7 +61,7 @@
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2608"
       },
       "schema_version": "email-reply-outcomes.v1",
-      "read": "list-email-proposals {mode:recent_outcomes,limit:20,cursor?}. No status argument. The producer defaults limit to 20 with maximum 50. Authenticated partner scope matches proposal owner and captured mailbox owner. Optional deal UUID restricts results; Home reads across deals.",
+      "read": "list-email-proposals {mode:recent_outcomes,limit:20,cursor?}. No status argument. The producer defaults limit to 20 with maximum 50. Authenticated partner scope matches proposal owner and captured mailbox owner. Optional deal UUID restricts results; Home reads across deals. With the non_deal producer in PR #2866, deal may be null for contact reply outcomes. Render the subject and delivery result without a deal link.",
       "fields": [
         "id",
         "deal",
@@ -85,7 +85,7 @@
         "email_proposals_cursor_invalid",
         "email_sender_identity_required"
       ],
-      "pending": "Use the existing list-email-proposals {status:approved_to_send,limit:20,cursor?} read, which returns email-proposals.v1 in creation order oldest first. Home filters reply_draft.owner against the verified signed-in partner and displays submitted_email.subject with pending delivery wording. The recent mode does not include pending replies. Each stream pages only on request; a filtered pending page may have no matching rows and more:true.",
+      "pending": "Use the existing list-email-proposals {status:approved_to_send,limit:20,cursor?} read, which returns email-proposals.v1 in creation order oldest first. Home filters reply_draft.owner against the verified signed-in partner and displays submitted_email.subject with pending delivery wording. The recent mode does not include pending replies. Each stream pages only on request; a filtered pending page may have no matching rows and more:true. With the non_deal producer in PR #2866, reply drafts may have deal:null. Display their submitted subject without a deal link. Both streams omit malformed rows with a partial-list warning and full-refresh control while preserving valid replies and the original page cursor. Invalid response envelopes still fail the read.",
       "privacy": "Recent outcomes contain no body, recipients, addresses or free-text failure reason. Home projects only subject, deal, status, recorded time and allowlisted reason labels; it never renders pending body or addresses. Team scope does not broaden reply delivery. Session loss or identity change clears retained rows and fences in-flight reads.",
       "deployment_order": "Do not enable auto-merge. Production must serve server PR #2608 at the pinned merged revision before the orchestrator merges this consumer."
     },
@@ -117,6 +117,16 @@
         "key_reuse"
       ],
       "recovery": "Keep edits on refusal. Version conflicts require explicit Reload draft and review, never automatic retry. Unknown outcomes retain the exact request and key for Check outcome. Session loss clears private content."
+    },
+    "non_deal": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "2db8011e01c0833822bbce1cda54dd7ba2745453",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2866"
+      },
+      "read": "A reply_draft may carry deal:null and deal_name:null. Its source.activity_id, source.evidence_quote and reply_draft subject, body and mailbox owner remain required. Actionable drafts retain the exact server-provided to and cc arrays, each with one routable address. The producer binds the to array to the inbound sender and the cc array to the other partner. The source sender labels a draft without a deal; no subject_type, subject_id or subject_name is required for reply drafts. This nullable deal shape also applies to status:approved_to_send and mode:recent_outcomes. Recent outcomes omit source and contact metadata.",
+      "review": "Reuse owner-only edit and submit, exact reviewed recipients, version, idempotency and send grace. Explicit missing-recipient errors stay readable and dismissible with reply review disabled. Omit malformed known rows with a partial-list notice while retaining valid rows; invalid response envelopes still fail the read. Deal-filtered reads never show non-deal or cross-deal rows.",
+      "deployment_order": "Deploy and verify this backward-compatible consumer before enabling producer PR #2866. This consumer also accepts existing deal drafts."
     }
   },
   "filing": {

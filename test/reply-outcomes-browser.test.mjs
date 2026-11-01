@@ -89,6 +89,35 @@ test('Home distinguishes a successful empty reply outcomes read from unavailable
   assert.equal(await card.locator('article').count(), 0);
 });
 
+for (const width of [390, 1440]) test(`Home keeps contact replies and valid deal replies visible at ${width}px`, async t => {
+  let repaired = false;
+  const { page, card } = await open(t, { width,
+    outcomes: () => pageOf([sent, { ...failed, deal: null },
+      { ...sent, id: 'malformed-outcome', subject: repaired ? 'Recovered reply' : null }]),
+    waiting: () => ({ schema_version: 'email-proposals.v1', proposals: [pending('joe'),
+      { ...pending('joe'), id: 'contact-pending', deal: null, submitted_email: { subject: 'Re: Floor plan' } },
+      { ...pending('joe'), id: 'malformed-pending', deal: repaired ? 'demo-deal' : 42 }], send: false, more: false, next_cursor: null }),
+  });
+  await page.waitForFunction(() => document.querySelector('#homeReplyOutcomes')?.getAttribute('aria-busy') === 'false');
+  assert.equal(await card.locator('article').count(), 4, await card.innerText());
+  assert.equal(await card.locator(`[data-reply-outcome="${failed.id}"] a`).count(), 0);
+  assert.equal(await card.locator('[data-reply-outcome="contact-pending"] a').count(), 0);
+  assert.equal(await card.getByRole('link', { name: 'Open deal', exact: true }).count(), 2);
+  assert.match(await card.innerText(), /Re: Floor plan/);
+  assert.match(await card.innerText(), /Failed.*Delivery could not be confirmed/s);
+  assert.equal(await card.locator('[data-reply-refresh]').count(), 2);
+  assert.doesNotMatch(await card.innerText(), /Could not load|No recorded|No replies pending|Private body/);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await card.screenshot({ path: `out/test-artifacts/reply-outcomes/contact-${width}.png`, animations: 'disabled' });
+  repaired = true;
+  await card.getByRole('button', { name: 'Refresh recent reply outcomes', exact: true }).click();
+  await card.getByText('Recovered reply', { exact: true }).waitFor();
+  await card.getByRole('button', { name: 'Refresh pending replies', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#homeReplyOutcomes')?.getAttribute('aria-busy') === 'false');
+  assert.equal(await card.locator('article').count(), 6);
+  assert.equal(await card.locator('[data-reply-refresh]').count(), 0);
+});
+
 test('Home shows a reply outcomes read error with retry while keeping pending replies', async t => {
   let failedRead = true;
   const { card, page } = await open(t, { outcomes: () => { if (failedRead) throw Error('offline'); return pageOf([sent]); } });

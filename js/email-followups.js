@@ -47,6 +47,11 @@ const validPreview = (row, preview) => filing(row) ? preview?.contract === 'emai
   && preview.source?.activity_id === row.source.activity_id && preview.evidence_quote === row.source.evidence_quote
   && (row.kind === 'next_step' ? typeof preview.text === 'string' && preview.text.trim() && /^\d{4}-\d{2}-\d{2}$/.test(preview.next_date)
     && ['joe', 'dell'].includes(preview.owner) : Boolean(PHASE_BY_SLUG[preview.from_phase] && PHASE_BY_SLUG[preview.to_phase]));
+const validProposal = (row, deal) => typeof row.id === 'string' && row.id && Number.isInteger(row.version) && row.version >= 1
+  && (!deal || row.deal === deal) && (row.confirm_verb === KINDS[row.kind].verb || (row.kind === 'reply_draft' && row.confirm_verb === null))
+  && (row.deal === null ? ['possible_new_deal','next_step','reply_draft'].includes(row.kind) : row.deal && row.deal_name)
+  && typeof row.source?.activity_id === 'string' && row.source.activity_id && typeof row.source.evidence_quote === 'string'
+  && (row.kind === 'reply_draft' ? validDraft(row) : row.preview === null || validPreview(row, row.preview));
 // Seconds a submitted reply waits, undoable, before submit-email-draft is called.
 const SEND_GRACE_SECONDS = 10;
 const denied = error => [401, 403].includes(error.status) || error.code === 'session_changed';
@@ -55,7 +60,7 @@ const denied = error => [401, 403].includes(error.status) || error.code === 'ses
 export function mountEmailFollowups({ container, client, deal, onChange = () => {}, clock = container.ownerDocument.defaultView }) {
   const win = container.ownerDocument.defaultView;
   let visibleCount = deal ? Infinity : homeListLimit(win);
-  let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
+  let rows = [], rejectedRows = false, loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
   const refusedCreations = new Map();
   const graces = new Map();
@@ -70,7 +75,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const notice = loadState === 'denied' ? '<p role="status">Sign in to review email follow-ups.</p>'
       : loadState === 'error' ? `<p role="status">Could not load email follow-ups.${loaded && rows.length ? ' Showing the last successful read.' : ''}</p>${button('retry', 'Retry email follow-ups')}`
         : loadState === 'loading' && !loaded ? '<div class="home-followup-skeleton" role="status">Loading email follow-ups…</div>' : '';
-    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && rows.length > visibleCount ? `<span class="home-list-count">Showing ${visibleCount} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${loaded && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
+    const partial = rejectedRows && loadState === 'ready' ? `<p role="status">Some email follow-ups could not be shown. Refresh to try again.</p>${button('refresh-rows', 'Refresh email follow-ups')}` : '';
+    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && rows.length > visibleCount ? `<span class="home-list-count">Showing ${visibleCount} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${partial}${loaded && !rejectedRows && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
@@ -94,7 +100,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       else if (state.status !== 'done') controls = `${row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor ? button('edit-draft', 'Review reply', loadState !== 'ready') : ''}${preview && validPreview(row, preview) ? button(filing(row) ? 'review-filing' : 'preview', filing(row) ? 'Review filing' : 'Confirm', loadState !== 'ready') : ''}<div class="email-dismiss" role="group" aria-label="Dismiss reason"><span>Dismiss</span>${DISMISS_REASONS.map(reason => `<button type="button" class="btn home-outline email-chip" data-email-action="dismiss-chip" data-email-chip="${reason}"${loadState !== 'ready' ? ' disabled' : ''}>${reason}</button>`).join('')}${button('note', 'Add a note', loadState !== 'ready')}</div>`;
       return workCard({ className: 'email-proposal', attributes: `data-email-id="${E(row.id)}"`,
         title: E(row.source.subject || 'Subject unavailable'),
-        meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : row.kind === 'possible_new_deal' ? 'Possible new deal' : `${E(subjectLabel(row.subject_type) || 'Contact')} · ${E(row.subject_name || 'Follow-up')}`}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
+        meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : row.kind === 'possible_new_deal' ? 'Possible new deal' : `${E(subjectLabel(row.subject_type) || 'Contact')} · ${E(row.subject_name || (row.kind === 'reply_draft' ? row.source.sender || 'Unfiled email' : 'Follow-up'))}`}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
         status: state.status === 'done' ? 'Reviewed' : '',
         body: `<q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Review the source email or dismiss it with a reason.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
     }).join('')}${rows.length > visibleCount ? button('show', `Show ${rows.length - visibleCount} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
@@ -136,7 +142,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const leave = () => { if (!graces.size) return; for (const id of [...graces.keys()]) stopGrace(id, true); render(); };
   function retire() {
     for (const id of [...graces.keys()]) stopGrace(id, false);
-    minute.dispose(); epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
+    minute.dispose(); epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; rejectedRows = false; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
@@ -144,7 +150,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     retryCursor = pageCursor;
     loadState = 'loading'; render();
     try {
-      let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
+      let next = pageCursor ? [...rows] : [], nextRejected = pageCursor ? rejectedRows : false, currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       const takePage = createPageBudget({ document: container.ownerDocument });
       // eslint-disable-next-line no-restricted-syntax -- Follow-up pagination calls takePage for each of pageCount retained pages; a max of 100 reads per refresh.
@@ -153,17 +159,17 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : { include_non_deal: true }), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
         if (disposed || ticket !== epoch) return;
         if (result?.schema_version !== 'email-proposals.v1' || result.send !== false || !Array.isArray(result.proposals)
-          || typeof result.more !== 'boolean' || (result.more ? !result.next_cursor || result.next_cursor === currentCursor || result.next_cursor !== result.proposals.at(-1)?.id : result.next_cursor !== null)
-          || result.proposals.filter(row => Object.hasOwn(KINDS, row?.kind)).some(row => !row?.id || !Number.isInteger(row.version) || row.version < 1
-            || (deal && row.deal !== deal) || (row.confirm_verb !== KINDS[row.kind].verb && !(row.kind === 'reply_draft' && row.confirm_verb === null)) || (row.deal === null ? !['possible_new_deal','next_step'].includes(row.kind) : !row.deal || !row.deal_name) || !row.source?.activity_id || typeof row.source.evidence_quote !== 'string'
-            || (row.kind === 'reply_draft' ? !validDraft(row) : row.preview !== null && !validPreview(row, row.preview)))) throw Error('Invalid email proposals');
-        next.push(...result.proposals.filter(item => Object.hasOwn(KINDS, item?.kind) && !next.some(row => row.id === item.id)));
+          || typeof result.more !== 'boolean' || (result.more ? !result.next_cursor || result.next_cursor === currentCursor || result.next_cursor !== result.proposals.at(-1)?.id : result.next_cursor !== null)) throw Error('Invalid email proposals');
+        const known = result.proposals.filter(row => Object.hasOwn(KINDS, row?.kind));
+        const valid = known.filter(row => validProposal(row, deal));
+        nextRejected ||= valid.length !== known.length;
+        next.push(...valid.filter(item => !next.some(row => row.id === item.id)));
         currentCursor = result.next_cursor;
         if (!currentCursor) break;
       }
       cursor = currentCursor;
       for (const row of rows) if (!next.some(item => item.id === row.id) && ['grace', 'submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
-      rows = next; loaded = true; loadState = 'ready';
+      rows = next; rejectedRows = nextRejected; loaded = true; loadState = 'ready';
     } catch (error) {
       if (disposed || ticket !== epoch) return;
       if (denied(error)) return retire();
@@ -221,6 +227,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const action = button.dataset.emailAction;
     if (action === 'show') { visibleCount = rows.length; render(); return; }
     if (action === 'retry') return refresh(retryCursor);
+    if (action === 'refresh-rows') return refresh();
     if (action === 'more' && cursor) { pages++; return refresh(cursor); }
     const row = rows.find(item => item.id === button.closest('[data-email-id]')?.dataset.emailId);
     if (!row) return;

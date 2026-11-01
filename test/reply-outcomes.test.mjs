@@ -32,6 +32,25 @@ test('sent replies explain that sent is not a read receipt', async t => {
   assert.match(container.textContent, /Sent means your email app sent the reply\. It does not confirm recipient delivery or a read receipt\./);
 });
 
+for (const actor of ['joe', 'dell']) for (const stream of ['recent', 'pending']) {
+  test(`${actor} sees contact and deal replies together in ${stream}`, async t => {
+    const contact = { ...row(), id: 'contact-reply', deal: null, subject: 'Re: Floor plan' };
+    const proposals = [contact, row()].map(item => stream === 'recent' ? item : {
+      id: item.id, deal: item.deal, kind: 'reply_draft', status: 'approved_to_send',
+      reply_draft: { owner: actor }, submitted_email: { subject: item.subject }, send_result: null,
+    });
+    const { view, container } = setup(t, () => page(stream === 'recent' ? proposals : []), actor,
+      () => ({ ...waiting(), proposals: stream === 'pending' ? proposals : [] }));
+    await view.refresh();
+    const section = container.querySelector(`[aria-label="${stream === 'recent' ? 'Recent reply outcomes' : 'Pending replies'}"]`);
+    assert.equal(section.querySelectorAll('article').length, 2, section.textContent);
+    assert.match(section.querySelector('[data-reply-outcome="contact-reply"]').textContent, /Re: Floor plan/);
+    assert.equal(section.querySelector('[data-reply-outcome="contact-reply"] a'), null);
+    assert.equal(section.querySelector('[data-reply-outcome="outcome-1"] a').getAttribute('href'), '/deals?deal=deal-1');
+    assert.doesNotMatch(section.textContent, /Could not load|could not be shown/);
+  });
+}
+
 test('sent replies labels all public failure reasons without rendering remote text as HTML', async t => {
   const reasons = {
     invalid_submission: 'The submitted reply was invalid.',
@@ -50,8 +69,8 @@ test('sent replies labels all public failure reasons without rendering remote te
   }
 });
 
-test('old and malformed outcomes reads remain unavailable and never claim empty', async t => {
-  for (const value of [waiting(), page([{ ...row(), result_recorded_at: null }]), page([row('private reason')]),
+test('old and malformed outcomes envelopes remain unavailable and never claim empty', async t => {
+  for (const value of [waiting(),
     { ...page(), more: true, next_cursor: null }, { ...page(), send: true }]) {
     const { view, container } = setup(t, () => value);
     await view.refresh();
@@ -59,6 +78,53 @@ test('old and malformed outcomes reads remain unavailable and never claim empty'
     assert.doesNotMatch(container.textContent, /No recorded reply outcomes|Demo reply/);
   }
 });
+
+for (const stream of ['recent', 'pending']) {
+  test(`${stream} keeps valid replies when a row is malformed`, async t => {
+    const valid = stream === 'recent' ? row() : {
+      id: 'outcome-1', deal: null, kind: 'reply_draft', status: 'approved_to_send',
+      reply_draft: { owner: 'joe' }, submitted_email: { subject: 'Re: Floor plan' }, send_result: null,
+    };
+    const invalid = [{ ...valid, id: '' }, { ...valid, id: 'bad-deal', deal: 42 },
+      stream === 'recent' ? { ...valid, id: 'bad-time', result_recorded_at: null } : { ...valid, id: 'bad-subject', submitted_email: {} },
+      stream === 'recent' ? { ...row('private reason'), id: 'bad-reason' } : { ...valid, id: 'bad-status', status: 'pending' }];
+    const proposals = [valid, ...invalid];
+    const { view, container } = setup(t, () => page(stream === 'recent' ? proposals : []), 'joe',
+      () => ({ ...waiting(), proposals: stream === 'pending' ? proposals : [] }));
+    await view.refresh();
+    const section = container.querySelector(`[aria-label="${stream === 'recent' ? 'Recent reply outcomes' : 'Pending replies'}"]`);
+    assert.equal(section.querySelectorAll('article').length, 1, section.textContent);
+    assert.match(section.textContent, /Some .* could not be shown/);
+    assert.doesNotMatch(section.textContent, /Could not load|private reason/);
+  });
+
+  test(`${stream} retains partial-page warnings until a full refresh recovers rejected replies`, async t => {
+    const valid = stream === 'recent' ? row() : {
+      id: 'outcome-1', deal: null, kind: 'reply_draft', status: 'approved_to_send',
+      reply_draft: { owner: 'joe' }, submitted_email: { subject: 'Re: Floor plan' }, send_result: null,
+    };
+    let repaired = false;
+    const read = args => {
+      const proposals = args.cursor ? [{ ...valid, id: 'next-reply' }] : [repaired ? valid : { ...valid, deal: {} }];
+      return { ...(stream === 'recent' ? page(proposals) : { ...waiting(), proposals }), more: !args.cursor,
+        next_cursor: args.cursor ? null : 'outcome-1' };
+    };
+    const { view, container, requests } = setup(t, stream === 'recent' ? read : () => page([]), 'joe', stream === 'pending' ? read : waiting);
+    await view.refresh();
+    const section = () => container.querySelector(`[aria-label="${stream === 'recent' ? 'Recent reply outcomes' : 'Pending replies'}"]`);
+    assert.match(section().textContent, /Some .* could not be shown/);
+    assert.doesNotMatch(section().textContent, /No recorded|No replies pending|No matching/);
+    section().querySelector('[data-reply-more]').click(); await tick();
+    assert.equal(section().querySelectorAll('article').length, 1);
+    assert.match(section().textContent, /Some .* could not be shown/);
+    repaired = true;
+    const refresh = section().querySelector('[data-reply-refresh]');
+    refresh.focus(); refresh.click(); await tick();
+    assert.match(section().textContent, /Floor plan|Demo reply/);
+    assert.doesNotMatch(section().textContent, /could not be shown/);
+    assert.equal(Object.hasOwn(requests.at(-1).args, 'cursor'), false);
+  });
+}
 
 test('refresh errors retain explicit last-successful outcomes and retry through the record client', async t => {
   let fail = false;

@@ -10,25 +10,28 @@ const REASONS = {
   delivery_failed: 'Delivery failed.',
 };
 const E = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-const initial = () => ({ status: 'idle', rows: [], more: false, cursor: null, loaded: false });
+const initial = () => ({ status: 'idle', rows: [], more: false, cursor: null, loaded: false, rejectedRows: false });
 const partner = actor => ['joe', 'dell'].includes(actor);
 function pageRows(value, stream, actor) {
   if (value?.schema_version !== (stream === 'recent' ? 'email-reply-outcomes.v1' : 'email-proposals.v1') || value.send !== false
     || !Array.isArray(value.proposals) || value.proposals.length > PAGE_SIZE || typeof value.more !== 'boolean'
-    || (value.more ? !value.proposals.length || value.next_cursor !== value.proposals.at(-1)?.id : value.next_cursor !== null)
-    || value.proposals.some(row => !row || typeof row.id !== 'string' || !row.id)
-    || new Set(value.proposals.map(row => row.id)).size !== value.proposals.length) throw Error('Invalid reply outcomes page');
-  const rows = stream === 'recent' ? value.proposals : value.proposals.filter(row => row.kind === 'reply_draft' && row.reply_draft?.owner === actor);
-  return rows.map(row => {
+    || (value.more ? !value.proposals.length || typeof value.next_cursor !== 'string' || !value.next_cursor
+      || value.next_cursor !== value.proposals.at(-1)?.id : value.next_cursor !== null)) throw Error('Invalid reply outcomes page');
+  const ids = value.proposals.map(row => row?.id).filter(id => typeof id === 'string' && id);
+  if (new Set(ids).size !== ids.length) throw Error('Invalid reply outcomes page');
+  const rows = stream === 'recent' ? value.proposals : value.proposals.filter(row => row?.kind === 'reply_draft' && row.reply_draft?.owner === actor);
+  const valid = rows.flatMap(row => {
+    if (!row || typeof row.id !== 'string' || !row.id) return [];
     const subject = stream === 'recent' ? row.subject : row.submitted_email?.subject;
-    if (typeof subject !== 'string' || !subject.trim() || typeof row.deal !== 'string' || !row.deal
+    if (typeof subject !== 'string' || !subject.trim() || !(row.deal === null || typeof row.deal === 'string' && row.deal)
       || (stream === 'recent' ? !['sent', 'failed'].includes(row.outcome) || typeof row.result_recorded_at !== 'string'
         || !Number.isFinite(Date.parse(row.result_recorded_at)) || (row.outcome === 'sent' ? row.failure_reason_code !== null : !Object.hasOwn(REASONS, row.failure_reason_code))
-        : row.status !== 'approved_to_send' || row.send_result != null)) throw Error('Invalid reply outcome');
-    return { id: row.id, deal: row.deal, subject, outcome: stream === 'recent' ? row.outcome : 'pending',
+        : row.status !== 'approved_to_send' || row.send_result != null)) return [];
+    return [{ id: row.id, deal: row.deal, subject, outcome: stream === 'recent' ? row.outcome : 'pending',
       recordedAt: stream === 'recent' ? row.result_recorded_at : null,
-      reason: stream === 'recent' && row.outcome === 'failed' ? REASONS[row.failure_reason_code] : null };
+      reason: stream === 'recent' && row.outcome === 'failed' ? REASONS[row.failure_reason_code] : null }];
   });
+  return { rows: valid, rejectedRows: valid.length !== rows.length };
 }
 
 export function mountReplyOutcomes({ container, client }) {
@@ -38,7 +41,7 @@ export function mountReplyOutcomes({ container, client }) {
   function render() {
     if (disposed) return;
     const focused = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
-    const focusStream = focused?.dataset.replyRetry || focused?.dataset.replyMore;
+    const focusStream = focused?.dataset.replyRetry || focused?.dataset.replyMore || focused?.dataset.replyRefresh;
     const focusReply = focused?.closest('[data-reply-outcome]')?.dataset.replyOutcome;
     const focusHref = focused?.getAttribute('href');
     container.setAttribute('aria-busy', String(Object.values(streams).some(state => state.status === 'loading')));
@@ -49,12 +52,13 @@ export function mountReplyOutcomes({ container, client }) {
         <h3>${name === 'recent' ? 'Recent outcomes' : 'Pending replies'}</h3>
         ${state.status === 'loading' ? '<p role="status">Updating sent replies…</p>' : ''}
         ${state.status === 'error' ? `<p role="status">Could not load ${title}.${state.loaded ? ' Showing the last successful read.' : ''}</p><button type="button" class="home-outline" data-reply-retry="${name}">Retry ${title}</button>` : ''}
-        ${state.loaded && state.status === 'ready' && !rows.length ? `<p class="home-empty">${state.more ? 'No matching replies on this page. More replies are available.' : name === 'recent' ? 'No recorded reply outcomes.' : 'No replies pending delivery.'}</p>` : ''}
+        ${state.rejectedRows && state.status === 'ready' ? `<p role="status">Some ${title} could not be shown. Refresh to try again.</p><button type="button" class="home-outline" data-reply-refresh="${name}">Refresh ${title}</button>` : ''}
+        ${state.loaded && state.status === 'ready' && !state.rejectedRows && !rows.length ? `<p class="home-empty">${state.more ? 'No matching replies on this page. More replies are available.' : name === 'recent' ? 'No recorded reply outcomes.' : 'No replies pending delivery.'}</p>` : ''}
         ${rows.map(row => `<article class="email-proposal" data-reply-outcome="${E(row.id)}">
           <h4>${E(row.subject)}</h4>
           <p>${row.outcome === 'sent' ? 'Sent' : row.outcome === 'failed' ? `Failed · ${E(row.reason)}` : 'Pending · Delivery is not yet confirmed.'}</p>
           ${row.recordedAt ? `<p>Result recorded <time datetime="${E(row.recordedAt)}">${E(new Date(row.recordedAt).toLocaleString())}</time></p>` : ''}
-          <a href="/deals?deal=${encodeURIComponent(row.deal)}">Open deal</a>
+          ${row.deal === null ? '' : `<a href="/deals?deal=${encodeURIComponent(row.deal)}">Open deal</a>`}
         </article>`).join('')}
         ${state.more && state.status !== 'error' ? `<button type="button" class="home-outline" data-reply-more="${name}"${state.status === 'loading' ? ' disabled' : ''}>Load more ${name === 'recent' ? 'outcomes' : 'pending replies'}</button>` : ''}
       </section>`;
@@ -64,7 +68,7 @@ export function mountReplyOutcomes({ container, client }) {
         : `<p>Replies submitted for sending. Sent means your email app sent the reply. It does not confirm recipient delivery or a read receipt.</p>${sections}`}`;
     if (focused) {
       const replyLink = focusReply && [...container.querySelectorAll('[data-reply-outcome]')].find(node => node.dataset.replyOutcome === focusReply)?.querySelector('a');
-      (replyLink?.getAttribute('href') === focusHref ? replyLink : container.querySelector(`[data-reply-retry="${focusStream}"], [data-reply-more="${focusStream}"]`) || container.querySelector('h2'))?.focus();
+      (replyLink?.getAttribute('href') === focusHref ? replyLink : container.querySelector(`[data-reply-retry="${focusStream}"], [data-reply-more="${focusStream}"], [data-reply-refresh="${focusStream}"]`) || container.querySelector('h2'))?.focus();
     }
   }
   function retire() {
@@ -81,9 +85,9 @@ export function mountReplyOutcomes({ container, client }) {
       const value = await readWithDeadline(() => client.listEmailProposals({ ...(name === 'recent' ? { mode: 'recent_outcomes' } : { status: 'approved_to_send' }), limit: PAGE_SIZE, ...(append ? { cursor: current.cursor } : {}) }), { timeoutMs: 10_000 });
       if (disposed || retired || ticket !== epoch) return;
       if (client.selfActor !== actor) return retire();
-      const rows = pageRows(value, name, actor);
+      const { rows, rejectedRows } = pageRows(value, name, actor);
       streams[name] = { status: 'ready', rows: append ? [...current.rows, ...rows.filter(row => !current.rows.some(old => old.id === row.id))] : rows,
-        more: value.more, cursor: value.next_cursor, loaded: true };
+        more: value.more, cursor: value.next_cursor, loaded: true, rejectedRows: rejectedRows || append && current.rejectedRows };
     } catch (error) {
       if (disposed || retired || ticket !== epoch) return;
       if ([401, 403].includes(error.status) || error.code === 'session_changed' || client.selfActor !== actor) return retire();
@@ -104,6 +108,8 @@ export function mountReplyOutcomes({ container, client }) {
     else if (actor && client.selfActor !== actor) retire();
   }
   const click = event => {
+    const refresh = event.target?.closest('[data-reply-refresh]');
+    if (refresh) void load(refresh.dataset.replyRefresh);
     const retry = event.target?.closest('[data-reply-retry]');
     if (retry) void load(retry.dataset.replyRetry, streams[retry.dataset.replyRetry].failedAppend === true);
     const more = event.target?.closest('[data-reply-more]');
