@@ -25,15 +25,17 @@ const payloads = () => ({
   'resolve-post-call-candidate': { ok: true, candidate_id: 'synthetic-candidate-1', status: 'confirmed', ref: 'synthetic-task-1', assignee: 'joe' },
 });
 
-async function openHome(page, width) {
+async function openHome(page, width, override = {}) {
   await page.setViewportSize({ width, height: 900 });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme: 'light', walkthroughSeen: { joe: true } })));
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-workflows' } }));
-  const calls = [], data = payloads();
+  const calls = [], data = { ...payloads(), ...override };
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
     calls.push({ name, args });
-    const payload = data[name] ?? { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
+    const answer = typeof data[name] === 'function' ? data[name](calls.filter(call => call.name === name).length) : data[name];
+    if (answer?.isError) return route.fulfill({ json: { result: { isError: true, content: [{ type: 'text', text: JSON.stringify(answer.payload) }] } } });
+    const payload = answer ?? { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(server.url + '/home?mode=live');
@@ -78,20 +80,56 @@ for (const width of [1440, 390]) {
   });
 }
 
-test('Open source record links each server source type to its own page, or not at all', async ({ page }) => {
+test('Open source record links each server source type to a page that opens it, or not at all', async ({ page }) => {
   const card = (item_id, source_type, source_id) => ({ item_id, source_type, source_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${source_type}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' });
-  const items = [card('next_action:t1', 'next_action', 't1'), card('capture_session:s1', 'capture_session', 's1'), card('email_proposal:p1', 'email_proposal', 'p1'), card('notification:n1', 'notification', '["deal","d1"]')];
+  const items = [card('next_action:t1', 'next_action', 't1'), card('capture_session:s1', 'capture_session', 's1'), card('capture_post_call_action:a1', 'capture_post_call_action', 'a1'), card('email_proposal:p1', 'email_proposal', 'p1'), card('notification:n1', 'notification', '["deal","d1"]')];
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-workflows' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
     const payload = name === 'read-home-inbox' ? { ok: true, schema_version: 'home-inbox.v1', working_collapsed: true, auto_settle_enabled: false, items } : { ok: true };
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
-  for (const [itemId, href] of [['next_action:t1', '/tasks/t1'], ['capture_session:s1', '/calls'], ['notification:n1', '/updates'], ['email_proposal:p1', null]]) {
+  for (const [itemId, href] of [['next_action:t1', null], ['capture_session:s1', '/calls'], ['capture_post_call_action:a1', '/calls'], ['notification:n1', '/updates'], ['email_proposal:p1', null]]) {
     await page.goto(`${server.url}/home/card/${encodeURIComponent(itemId)}?mode=live`);
     await expect(page.getByRole('heading', { name: 'Current card' })).toBeVisible();
     const link = page.getByRole('link', { name: 'Open source record ↗' });
     if (href) await expect(link).toHaveAttribute('href', href);
     else await expect(link).toHaveCount(0);
   }
+});
+
+test('A meeting log after a server fault retries with the same idempotency key', async ({ page }) => {
+  const calls = await openHome(page, 1440, { 'log-activity': n => n === 1 ? { isError: true, payload: { error: 'carr_unavailable' } } : { ok: true, activity_id: 'synthetic-meeting-1' } });
+  const panel = page.getByRole('region', { name: 'Did these meetings happen?' });
+  await panel.getByLabel('Deal for Synthetic site tour').selectOption('demo-deal');
+  await panel.getByRole('button', { name: 'It happened' }).click();
+  await expect(panel.getByText('Not confirmed yet. Check the meeting log before choosing again.')).toBeVisible();
+  await panel.getByRole('button', { name: 'Check meeting log' }).click();
+  await expect(panel.getByText('Meeting logged on Demo Clinic Lease.')).toBeVisible();
+  const keys = calls.filter(call => call.name === 'log-activity').map(call => call.args.idempotency_key);
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+});
+
+test('A refused meeting log offers a fresh attempt with a new key', async ({ page }) => {
+  const calls = await openHome(page, 1440, { 'log-activity': n => n === 1 ? { isError: true, payload: { error: 'deal_not_found' } } : { ok: true, activity_id: 'synthetic-meeting-1' } });
+  const panel = page.getByRole('region', { name: 'Did these meetings happen?' });
+  await panel.getByLabel('Deal for Synthetic site tour').selectOption('demo-deal');
+  await panel.getByRole('button', { name: 'It happened' }).click();
+  await expect(panel.getByText('The meeting was not logged. Try again or choose another deal.')).toBeVisible();
+  await panel.getByRole('button', { name: 'It happened' }).click();
+  await expect(panel.getByText('Meeting logged on Demo Clinic Lease.')).toBeVisible();
+  const keys = calls.filter(call => call.name === 'log-activity').map(call => call.args.idempotency_key);
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).not.toBe(keys[0]);
+});
+
+test('The meeting deal picker lists only open deals', async ({ page }) => {
+  await openHome(page, 1440, { 'deal-room-board': { actor: 'joe', deals: [
+    { id: 'demo-deal', name: 'Demo Clinic Lease', owner: 'joe', phase: 'research', type: 'startup' },
+    { id: 'demo-closed', name: 'Demo Closed Purchase', owner: 'joe', phase: 'closed', type: 'startup' },
+    { id: 'demo-paused', name: 'Demo Paused Lease', owner: 'joe', phase: 'research', type: 'startup', operating_state: 'paused' },
+  ] } });
+  const picker = page.getByRole('region', { name: 'Did these meetings happen?' }).getByLabel('Deal for Synthetic site tour');
+  await expect(picker.locator('option')).toHaveText(['Choose a deal', 'Demo Clinic Lease']);
 });

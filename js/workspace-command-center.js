@@ -7,7 +7,6 @@ import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '
 import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
 import { introductionSuggestions, introductionRouteLabel } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
-import { homeClient } from './home-boot.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
@@ -44,7 +43,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   };
   window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
   let snapshotDocObservedAt = null, calendar = null, meetingPrep = null, prepEpoch = 0;
-  let relationshipDialog = null, pastWidget = null, reasons = null, secondaryRequested = false;
+  let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard, meetingTimeZone = BUSINESS_TIME_ZONE;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
@@ -341,10 +340,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   function loadSecondaryPanels() {
     if (secondaryRequested) return;
     secondaryRequested = true;
-    if ($('homeContactReasons') && client.listPracticeOrigination) import('./contact-reasons.mjs').then(({mountContactReasons}) => {
-      if (disposed || emailRetired) return;
-      reasons = mountContactReasons({host:$('homeContactReasons'),window,client,home:true});
-    });
     if ($('homePastClients') && client.readLeaseRadar) import('./lease-radar.js').then(({ mountPastClientWidget }) => {
       if (disposed || emailRetired) return;
       pastWidget = mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope});
@@ -369,10 +364,9 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (!entry.isIntersecting) continue;
       panelObserver.unobserve(entry.target);
       if (disposed || emailRetired) continue;
-      if (entry.target.matches('.home-grid,#homeContactReasons')) loadSecondaryPanels();
+      if (entry.target.matches('.home-grid')) loadSecondaryPanels();
     }
   });
-  if ($('homeContactReasons')) panelObserver.observe($('homeContactReasons'));
   const emailActivity = $('homeEmailActivity');
   const openEmailActivity = () => {
     if (!emailActivity.open || disposed || emailRetired) return;
@@ -382,7 +376,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       replyOutcomes = mountReplyOutcomes({ container: $('homeReplyOutcomes'), client });
       void replyOutcomes.refresh();
     });
-    if (client.listEmailThreadFilings) import('./email-filings.js').then(({ mountEmailFilings }) => {
+    if ($('homeEmailFilings') && client.listEmailThreadFilings) import('./email-filings.js').then(({ mountEmailFilings }) => {
       if (disposed || emailRetired) return;
       emailFilings = mountEmailFilings({ container: $('homeEmailFilings'), client });
       void emailFilings.refresh();
@@ -397,12 +391,16 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     return emailReview.refresh();
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
-if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
-  const client = await homeClient;
-  mountHomeDashboard({ document, window, client });
+// Mounts the classic Home into `host` from the #classicHome template. The React
+// Home calls this below the inbox; the page itself no longer runs it on load.
+export function mountClassicHome({ document, window, client, host }) {
+  host.replaceChildren(document.getElementById('classicHome').content.cloneNode(true));
+  const dashboard = mountHomeDashboard({ document, window, client });
+  // The inbox Home's brief reads its calendar only once this dashboard is here.
+  document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar'));
   mountNotificationBadge(client);
   const outcomes = document.getElementById('homeCallOutcomes');
   // The answer to an Undo or "Looks right" is shown briefly, then cleared,
@@ -429,4 +427,5 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }) : null;
   window.addEventListener('doctorcre-session-invalidated', () => { lifetime.abort(); callOutcomes?.dispose(); }, { once: true });
   callOutcomes?.refresh();
+  return { dispose() { lifetime.abort(); callOutcomes?.dispose(); dashboard.dispose(); } };
 }

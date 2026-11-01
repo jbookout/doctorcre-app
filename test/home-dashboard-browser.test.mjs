@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null, callOutcomes = [] } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -42,6 +42,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
+    'read-home-inbox': () => ({ ok: true, schema_version: 'home-inbox.v1', working_collapsed: true, auto_settle_enabled: false, items: [] }),
     'list-fact-review': args => client.listFactReview(args),
     'list-deal-documents': args => client.listDealDocuments(args),
     'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (boardMalformed) return { ...board, deals: [{ name: 'Demo missing record identity' }] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
@@ -71,7 +72,8 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }),
     'list-email-proposals': async args => ({ schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'list-email-thread-filings': async () => ({ filings: [] }),
-    'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
+    'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: callOutcomes, send: false }),
+    'undo-call-change': async ({ candidate_id }) => { callOutcomes = callOutcomes.map(call => ({ ...call, applied: call.applied.map(change => change.candidate_id === candidate_id ? { ...change, undone_at: NOW.toISOString() } : change) })); return { ok: true, candidate_id }; },
     'calendar-meeting-prep': () => client.calendarMeetingPrep(),
   };
   await page.route('**/*', async route => {
@@ -93,11 +95,12 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
-    if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`${origin}/?mode=live`);
+  // The classic dashboard mounts inside the React Home once the inbox settles.
+  await page.locator('#dealAttention').waitFor({ state: 'attached' });
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
   return { page, errors, calls, resources, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
@@ -240,7 +243,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'list-practice-origination':1, 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'read-home-inbox':1, 'list-practice-origination':1, 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -648,7 +651,7 @@ test('Slice A Calendar retry clears unrelated private data when the board actor 
  const state = await open(t, { initialDetailFailure: '503' });
  const { page, responses } = state;
  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
- const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
+ const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient()).getBoard());
  await page.locator('.home-lead').first().click();
  await page.keyboard.press('Escape');
  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', actor: 'dell', deals: board.deals.map(deal => ({ ...deal, critical_dates: [], next_actions: [] })) });
@@ -661,7 +664,7 @@ test('Slice A Calendar retry clears unrelated private data when the board actor 
 
 for (const width of [1440, 390]) test(`Home calendar filters dates while tasks stay in the brief at ${width}`, async t => {
   const { page, responses, errors } = await open(t, { width });
-  const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
+  const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient()).getBoard());
   const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe',
     critical_dates: [
       { id: 'missed', due_on: '2026-09-30', status: 'open', note: 'Demo missed date' },
@@ -689,7 +692,8 @@ for (const width of [1440, 390]) test(`Home calendar filters dates while tasks s
 });
 
 test('Home shows upcoming meeting time, title, place and attendee count', async t => {
-  const { page, errors } = await open(t, { delayHome: true, calendar: { state: 'ready', notes: [], items: [
+  // The inbox Home's brief reads only once the dashboard mounts, so the brief can no longer finish first.
+  const { page, errors } = await open(t, { calendar: { state: 'ready', notes: [], items: [
     { start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
   ] } });
   const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
@@ -702,7 +706,7 @@ test('Home shows upcoming meeting time, title, place and attendee count', async 
   await screenshot(page, 'home-meetings-desktop');
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   assert.equal(await card.isVisible(), false);
-  assert.equal(await page.locator('#homeMeetings').textContent(), '');
+  assert.equal(await page.locator('#homeMeetings:not(:empty)').count(), 0);
 });
 
 
@@ -921,7 +925,7 @@ for (const retire of ['close', 'session']) test(`Meeting preparation fences late
     await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
     await settles(async () => assert.match(await dialog.innerText(), /No upcoming meetings/));
     assert.doesNotMatch(await dialog.innerText(), /Demo retired private preparation/);
-  } else assert.equal(await page.locator('#homeMeetings').textContent(), '');
+  } else assert.equal(await page.locator('#homeMeetings:not(:empty)').count(), 0);
   assert.deepEqual(errors, []);
 });
 
@@ -1176,41 +1180,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H0
   assert.deepEqual(errors, []);
 });
 
-test('Home downloads meeting confirmation only when the calendar returns reviews', async t => {
-  const { page, errors, resources } = await open(t, { calendar: { state: 'empty', items: [], follow_up_reviews: [] } });
-  await page.locator('#homeMeetings').getByText('No upcoming meetings', { exact: true }).waitFor();
-  assert.equal(resources.includes('/js/home-meeting-reviews.js'), false);
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
-    state: 'partial', items: [], notes: [], follow_up_reviews: [{ key: 'aaaaaaaaaaaaaaaa', state: 'needs_review', title: 'Demo lender meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
-  } })));
-  const panel = page.locator('#homeMeetingReviews');
-  await panel.getByRole('heading', { name: 'Did these meetings happen?' }).waitFor();
-  await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
-  await panel.waitFor({ state: 'hidden' });
-  assert.deepEqual(errors, []);
-});
 
-test('session loss during the meeting-confirmation download prevents late controls', async t => {
-  const { page } = await open(t, { calendar: { state: 'empty', items: [], follow_up_reviews: [] } });
-  await page.locator('#homeMeetings').getByText('No upcoming meetings', { exact: true }).waitFor();
-  let release, requested;
-  const gate = new Promise(resolve => { release = resolve; });
-  const started = new Promise(resolve => { requested = resolve; });
-  t.after(() => release());
-  await page.route('**/js/home-meeting-reviews.js', async route => {
-    requested(); await gate;
-    await route.fulfill({ body: await readFile(new URL('../js/home-meeting-reviews.js', import.meta.url)), contentType: 'text/javascript' });
-  });
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
-    state: 'partial', items: [], follow_up_reviews: [{ key: 'bbbbbbbbbbbbbbbb', state: 'needs_review', title: 'Demo retired meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
-  } })));
-  await started;
-  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
-  release();
-  await page.waitForLoadState('networkidle');
-  assert.equal(await page.locator('#homeMeetingReviews').isVisible(), false);
-  assert.equal(await page.getByText('Demo retired meeting', { exact: true }).count(), 0);
-});
 
 test('Deals panel ends with muted counts and a plain All deals link', async t => {
   for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
@@ -1223,4 +1193,88 @@ test('Deals panel ends with muted counts and a plain All deals link', async t =>
     assert.equal(await page.locator('main > footer #dealCounts').count(), 0);
     assert.equal(await link.evaluate(el => getComputedStyle(el).borderTopStyle), 'none');
   }
+});
+
+// WR616.S3.J4: every workflow main's Home offered still renders and acts on the
+// React Home. The inbox and its React panels sit above; the classic dashboard
+// is hosted below them until each piece is ported.
+for (const width of [1440, 390]) test(`every main Home workflow renders and acts on the React Home at ${width}`, async t => {
+  const callOutcomes = [{ session_id: 'demo-session', call_date: '2026-10-01', recorder: 'joe', open_cards: [], applied: [
+    { candidate_id: 'demo-step', kind: 'next_step', deal_id: 'd01', deal_name: 'Demo applied deal', deal_version: 3,
+      payload: { deal: 'd01', text: 'Send the demo floor plan', next_date: '2026-10-08' }, evidence_quote: 'send the floor plan', applied_at: NOW.toISOString(), undone_at: null }] }];
+  const { page, errors, calls } = await open(t, { width, invoiceAttention: true, callOutcomes, calendar: { state: 'ready', notes: [], items: [
+    { start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false }] } });
+  const classic = page.locator('#homeRoot[data-home-mounted] [data-classic-home]');
+  await classic.locator('#dealAttention').waitFor();
+  await page.waitForFunction(() => document.querySelector('#refreshHome')?.getAttribute('aria-busy') === 'false');
+
+  // Team view / Just me, refresh and the Updated status.
+  await classic.getByRole('button', { name: 'Just me', exact: true }).click();
+  assert.equal(await classic.getByRole('button', { name: 'Just me', exact: true }).getAttribute('aria-pressed'), 'true');
+  await classic.getByRole('button', { name: 'Team view', exact: true }).click();
+  const reads = calls.filter(name => name === 'read-home-agenda').length;
+  await classic.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+  await settles(async () => assert.ok(calls.filter(name => name === 'read-home-agenda').length > reads));
+  assert.match(await classic.locator('#observedAt').textContent(), /^Updated /);
+
+  // Your brief: open deal tasks link to their deal.
+  assert.ok(await classic.locator('#homeBrief a[href^="/deals"]').count() > 0);
+  // Deals attention: counts and overdue flags that open their deal.
+  assert.match(await classic.locator('#dealCounts').textContent(), /Active deals: \d/);
+  assert.match(await classic.locator('#dealFlags a').first().getAttribute('href'), /^\/deals\?deal=/);
+
+  // Upcoming meetings with the time zone picker, and Prepare meetings.
+  const meetings = classic.getByRole('region', { name: 'Upcoming meetings', exact: true });
+  await settles(async () => assert.match(await meetings.innerText(), /Demo practice meeting/));
+  await meetings.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const prep = page.locator('dialog[open]');
+  await prep.waitFor();
+  await page.keyboard.press('Escape');
+  await prep.waitFor({ state: 'detached' }).catch(() => {});
+  await settles(async () => assert.equal(await page.locator('dialog[open]').count(), 0));
+
+  // Calendar agenda: All / Today / Overdue and the working week.
+  const calendar = classic.locator('#homeCalendar');
+  await calendar.getByRole('button', { name: 'Today', exact: true }).click();
+  assert.equal(await calendar.getByRole('button', { name: 'Today', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await calendar.locator('.home-week').count(), 1);
+  assert.ok(await calendar.locator('select[data-meeting-timezone]').count() === 1, 'meeting time zone picker');
+
+  // Applied from the pipeline call, with Undo.
+  const outcomes = classic.getByRole('region', { name: 'Applied from the pipeline call' });
+  await settles(async () => assert.match(await outcomes.innerText(), /Send the demo floor plan/));
+  await outcomes.getByRole('button', { name: 'Undo', exact: true }).click();
+  await settles(async () => assert.match(await classic.locator('#homeNotice').textContent(), /Change undone/));
+
+  // Email follow-ups review (its actions are walked in email-followups-browser).
+  await settles(async () => assert.match(await classic.locator('#homeEmailFollowups').innerText(), /email follow-ups/i));
+  // Sent replies open inside Email activity.
+  await classic.locator('#homeEmailActivity summary').click();
+  await settles(async () => assert.equal(await classic.locator('#homeReplyOutcomes').getAttribute('aria-busy'), 'false'));
+
+  // Invoice attention links to Invoices.
+  const invoices = classic.getByRole('region', { name: 'Invoice attention' });
+  await settles(async () => assert.match(await invoices.innerText(), /Demo overdue invoice/));
+  assert.equal(await invoices.getByRole('link', { name: /Invoices/ }).getAttribute('href'), '/invoices');
+
+  // Past clients (lease radar), suggested introductions and recent arrivals load with the grid.
+  await classic.locator('.home-grid').scrollIntoViewIfNeeded();
+  const past = classic.locator('#homePastClients');
+  await settles(async () => assert.equal(await past.isVisible(), true));
+  await past.getByRole('button', { name: 'Refresh past-client touches', exact: true }).click();
+  const intro = classic.locator('#homeIntroductions [data-intro-node]').first();
+  await intro.click();
+  await settles(async () => assert.equal(await page.locator('dialog[open]').count(), 1));
+  await page.keyboard.press('Escape');
+  await settles(async () => assert.equal(await page.locator('dialog[open]').count(), 0));
+  await classic.locator('#homeLeads .home-lead').first().click();
+  await settles(async () => assert.equal(await page.locator('#homeDetail').evaluate(node => node.open), true));
+  await page.locator('#homeDetail [data-close-detail]').click();
+
+  // The three React panels and reasons to reach out sit above the classic dashboard.
+  assert.equal(await page.getByRole('region', { name: 'Call follow-ups to review' }).count(), 1);
+  assert.equal(await page.locator('#homeRoot .home-workflows > #homeContactReasons').count(), 1, 'reasons to reach out');
+  assert.ok(await page.locator('.home-workflows > [data-classic-home]').evaluate(node => node.previousElementSibling?.id === 'homeContactReasons'));
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.deepEqual(errors, []);
 });

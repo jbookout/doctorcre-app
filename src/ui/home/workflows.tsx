@@ -22,6 +22,7 @@ export type HomeWorkflowClient = {
   resolveCallFollowup(args: { candidate_id: string; accept: boolean; idempotency_key: string }): Promise<unknown>;
   openCallReport?(sessionId: string): Promise<boolean>;
   mountContactReasons?(host: HTMLElement): { dispose(): void };
+  mountClassicHome?(host: HTMLElement): { dispose(): void };
 };
 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -138,7 +139,9 @@ function MeetingReviews({ client }: { client: HomeWorkflowClient }) {
       setDecisions(current => { const next = { ...current }; delete next[review.key]; return next; });
       remember(review.key, 'logged'); setNotice(`Meeting logged on ${deal.name}.`);
     } catch (error) {
-      const refused = Boolean(refusalCode(error));
+      // The boot classifies the failure; anything short of a definite
+      // refusal or conflict may have committed, so it keeps the same key.
+      const refused = record(error) && (error.outcome === 'refused' || error.outcome === 'conflict');
       setDecisions(current => ({ ...current, [review.key]: refused
         ? { state: 'failed', dealId: deal.id, key, error: 'The meeting was not logged. Try again or choose another deal.' }
         : { state: 'uncertain', dealId: deal.id, key, error: 'Not confirmed yet. Check the meeting log before choosing again.' } }));
@@ -244,6 +247,19 @@ function ContactReasons({ client }: { client: HomeWorkflowClient }) {
   return client.mountContactReasons ? <section ref={host} id="homeContactReasons" className="home-panel contact-reasons" aria-label="Reasons to reach out" /> : null;
 }
 
+// Classic Home workflows not yet ported to React, mounted as they ran on the
+// old Home: brief, deals, calendar, meetings, call outcomes, sent replies,
+// email follow-ups, invoices, past clients, introductions and new leads.
+function ClassicHome({ client }: { client: HomeWorkflowClient }) {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!host.current || !client.mountClassicHome) return;
+    const view = client.mountClassicHome(host.current);
+    return () => view.dispose();
+  }, [client]);
+  return client.mountClassicHome ? <div ref={host} className="home-classic" data-classic-home="" /> : null;
+}
+
 export function HomeWorkflows({ load }: { load: () => Promise<HomeWorkflowClient> }) {
   const [client, setClient] = useState<HomeWorkflowClient | null>(null);
   const [failed, setFailed] = useState(false);
@@ -255,5 +271,6 @@ export function HomeWorkflows({ load }: { load: () => Promise<HomeWorkflowClient
     <MeetingReviews client={client} />
     {client.listFilings && client.undoFiling && <EmailFilings client={{ listFilings: client.listFilings, undoFiling: client.undoFiling }} />}
     <ContactReasons client={client} />
+    <ClassicHome client={client} />
   </div>;
 }

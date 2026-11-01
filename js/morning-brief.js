@@ -18,7 +18,10 @@ const dueLabel = value => {
 };
 
 export function mountMorningBrief({ document:root, window:win, getClient, intervalMs, now = () => new Date() }) {
+  // On the inbox Home the brief reads only while it is open or the hosted
+  // classic dashboard (its calendar and meetings) is on the page.
   const inboxPage = Boolean(root.getElementById('homeRoot'));
+  const wanted = () => !inboxPage || dialog.open || Boolean(root.querySelector('[data-classic-home] #homeCalendar'));
   const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
   dialog.innerHTML = '<header><h2 id="morningTitle">Morning brief</h2><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
   root.body.append(dialog);
@@ -157,7 +160,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   };
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
     onOpen:title=>{selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:invalidate,onChange:render});
-  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs,shouldRefresh:() => !inboxPage || dialog.open });
+  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs,shouldRefresh:wanted });
   const refreshCalendar = () => auto.refresh();
   const currentCalendar = () => publishCalendar(calendar);
   root.addEventListener('doctorcre:request-brief-calendar', currentCalendar);
@@ -172,6 +175,6 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   $('morningContent').onclick = event => { if(queues.click(event))return; if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   root.addEventListener('visibilitychange',hidden);
-  if (!inboxPage) auto.refresh();
+  if (wanted()) auto.refresh();
   return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }

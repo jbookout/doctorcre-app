@@ -1,4 +1,5 @@
 // Representative interactions from the deterministic V1 journeys. All data is synthetic.
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 export const profile = Object.freeze({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1,
   cpuSlowdown: 4, latencyMs: 150, downloadBytesPerSecond: 200000, uploadBytesPerSecond: 93750,
   samples: 3, aggregation: 'median', interaction: 'pointerdown timestamp to verified state plus two animation frames' });
@@ -14,7 +15,7 @@ export async function applyPhoneProfile(context, page) {
 }
 
 export const screens = [
-  { id: 'home', route: '/', ready: '[data-inbox-row]', tap: '[data-scope="mine"]', complete: () => document.querySelector('[data-scope="mine"]')?.getAttribute('aria-pressed') === 'true' },
+  { id: 'home', route: '/', ready: '[data-inbox-row]', tap: '.inbox-filters [data-scope="mine"]', complete: () => document.querySelector('.inbox-filters [data-scope="mine"]')?.getAttribute('aria-pressed') === 'true' },
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailUpdateForm')?.getClientRects().length > 0 },
   { id: 'vendors', route: '/vendors', ready: '.record-row', tap: '.record-row', complete: () => document.querySelector('#recordPanel')?.getClientRects().length > 0 },
   { id: 'tours', route: '/tours', ready: '[data-market="Pensacola, FL"]', tap: '[data-market="Pensacola, FL"]', complete: () => document.querySelector('#space-area')?.value === 'Pensacola, FL' },
@@ -198,7 +199,8 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
   const completedReads = reads.slice();
   if (task.fixture === 'inbox') {
     const inboxReads = completedReads.filter(name => name === 'read-home-inbox');
-    if (inboxReads.length !== 1 || completedReads.some(name => ['read-home-agenda', 'get-deal-room', 'read-task'].includes(name))) throw Error('Inbox must use one bounded read without per-item fan-out');
+    // The hosted classic dashboard makes its own single agenda read; nothing may read per item.
+    if (inboxReads.length !== 1 || completedReads.filter(name => name === 'read-home-agenda').length > 1 || completedReads.some(name => ['get-deal-room', 'read-task'].includes(name))) throw Error('Inbox must use one bounded read without per-item fan-out');
     if (usefulMs > 4000) throw Error(`React Home useful row ${usefulMs}ms exceeds 4000ms`);
   }
   const criticalBytes = (await Promise.all(bodies)).reduce((total, bytes) => total + bytes, 0);
@@ -211,6 +213,8 @@ export async function installInboxScenario(page, { delayMs = 75 } = {}) {
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true } })));
 
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-performance-session' } }));
+  // The hosted classic dashboard's introductions read the relationship network.
+  await page.route(url => url.pathname === '/api/v1/business/relationships', route => route.fulfill({ json: relationshipNetworkFixture() }));
   await page.route('**/mcp', async route => {
     const name = route.request().postDataJSON().params.name;
     let value = { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
