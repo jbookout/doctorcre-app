@@ -59,7 +59,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
-  let storage; try { storage = window.localStorage; } catch {}
   let meetingReviews = null, meetingReviewLoad = null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
@@ -89,7 +88,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!meetingReviews && !meetingReviewLoad && $('homeMeetingReviews') && client.logActivity && meetings?.follow_up_reviews?.length) {
       meetingReviewLoad = import('./home-meeting-reviews.js').then(({ mountHomeMeetingReviews }) => {
         if (disposed || snapshot?.unauthorized) return;
-        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now });
+        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews') });
         renderMeetings(snapshot?.unauthorized);
       }).catch(() => {
         meetingReviewLoad = null;
@@ -410,6 +409,7 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const notice = document.getElementById('homeNotice');
   const toast = message => {
     notice.hidden = false; notice.textContent = message;
+    // eslint-disable-next-line no-restricted-syntax -- One local notice-dismiss callback after 6 seconds per toast invocation; no reads.
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
   // The cards still waiting are decided in Call Mode's post-call report.

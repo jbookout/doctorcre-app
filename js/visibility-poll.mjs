@@ -16,6 +16,7 @@ const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "to
 export function listenForHumanInput(document, callback) {
   const options = { capture: true, passive: true };
   const input = event => { if (event.isTrusted === true) callback(event); };
+  // eslint-disable-next-line no-restricted-syntax -- Registers only the finite INPUT_EVENTS list; trusted input renews presence, and this callback performs 0 reads.
   INPUT_EVENTS.forEach(type => document?.addEventListener(type, input, options));
   return () => INPUT_EVENTS.forEach(type => document?.removeEventListener?.(type, input, options));
 }
@@ -41,6 +42,7 @@ export function mountVisibilityPoll({
   poll, intervalMs = MIN_POLL_MS, keepAlive = () => false, idleMs, now = () => Date.now(),
   document = globalThis.document, window = globalThis, periodic = true, lifecycle = false, shouldPoll = () => true,
   onResume = () => {}, onWake = () => {},
+  // eslint-disable-next-line no-restricted-syntax -- 20 automatic reads shared by clocks and lifecycle events; only trusted input can renew attempts. Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes Hidden or 30-minute idle; no lifecycle or scroll renewal. Live recorder keepAlive is still capped at 20
   setTimeout = (fn, ms) => window.setTimeout(fn, ms), clearTimeout = id => window.clearTimeout(id),
 }) {
   let timer = null, disposed = false, running = null, attempts = 0, failures = 0, requested = false;
@@ -51,6 +53,7 @@ export function mountVisibilityPoll({
   const eligible = () => !disposed && attempts < MAX_POLL_ATTEMPTS && (presence.active() || keepAlive());
   const arm = () => {
     stop();
+    // eslint-disable-next-line no-restricted-syntax -- 20 automatic reads shared by clocks and lifecycle events; only trusted input can renew attempts. Rejected/false results double the delay; every five attempts also doubles it; ceiling 15 minutes Hidden or 30-minute idle; no lifecycle or scroll renewal. Live recorder keepAlive is still capped at 20
     if (eligible()) { timer = setTimeout(() => { timer = null; return run(); }, Math.max(0, nextReadAt - now())); timer?.unref?.(); }
   };
   const run = (manual = false, beforeRead, event = false) => {
@@ -76,8 +79,10 @@ export function mountVisibilityPoll({
     onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) restartFromInput(() => {}); } });
   const visibility = () => { if (document.visibilityState === 'hidden' && !keepAlive()) stop(); };
   const eventRead = () => run(false, undefined, true);
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback will stop the poll timer when hidden; 0 HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   const lifecycleRead = () => run(false, onResume, true);
+  // eslint-disable-next-line no-restricted-syntax -- Lifecycle dispatches share a max of 20 poll attempts and failure backoff; hidden or 30-minute idle state stops reads, and events never replenish attempts.
   if (lifecycle) { window.addEventListener('online', lifecycleRead); window.addEventListener('focus', lifecycleRead); }
   if (periodic) arm();
   return {
@@ -90,10 +95,9 @@ export function mountVisibilityPoll({
 // A bounded local repaint clock paired with a bounded network poll. Both
 // clocks stop while hidden or idle; their work keeps separate budgets.
 export function mountLocalClock({
-  tick, read, intervalMs, window = globalThis,
-  setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id), ...pollOptions
+  tick, read, intervalMs, window = globalThis, ...pollOptions
 }) {
-  const timer = mountLocalTicker({ tick, intervalMs, window, setInterval, clearInterval, ...pollOptions });
+  const timer = mountLocalTicker({ tick, intervalMs, window, ...pollOptions });
   const network = mountVisibilityPoll({ poll: read, intervalMs, window, ...pollOptions });
   return { dispose() { timer.dispose(); network.dispose(); } };
 }
@@ -102,6 +106,7 @@ export function mountLocalClock({
 // view repaints immediately without renewing any network poller's presence.
 export function mountLocalTicker({ tick, intervalMs, document = globalThis.document, window = document?.defaultView || globalThis,
   maxTicks = Math.ceil(IDLE_CUTOFF_MS / intervalMs), idleMs = IDLE_CUTOFF_MS, now = () => Date.now(),
+  // eslint-disable-next-line no-restricted-syntax -- ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint. Local repaint only; a failed callback stops the clock without retry Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence.
   setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id) }) {
   let timer = null, ticks = 0, disposed = false, lastActivity = now();
   const active = () => document.visibilityState !== 'hidden' && now() - lastActivity < idleMs;
@@ -117,6 +122,7 @@ export function mountLocalTicker({ tick, intervalMs, document = globalThis.docum
     if (disposed || timer !== null || !active()) return;
     ticks = 0;
     if (immediate && !repaint()) return;
+    // eslint-disable-next-line no-restricted-syntax -- ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint. Local repaint only; a failed callback stops the clock without retry Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence.
     timer = setInterval(() => { if (timer !== null) repaint(); }, intervalMs);
     timer?.unref?.();
   };
@@ -124,6 +130,7 @@ export function mountLocalTicker({ tick, intervalMs, document = globalThis.docum
   const input = listenForHumanInput(document, resume);
   const returned = mountReadOnResume({ document, window, refresh: () => { stop(); resume(); } });
   const visibility = () => { if (document.visibilityState === 'hidden') stop(); };
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback will stop the local ticker when hidden; 0 HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   start();
   return { dispose() { disposed = true; stop(); input(); returned.dispose(); document.removeEventListener('visibilitychange', visibility); } };

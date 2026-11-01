@@ -508,6 +508,7 @@ function wire() {
     search.value = view.state.q;
     search.addEventListener("input", () => {
       clearTimeout(searchTimer);
+      // eslint-disable-next-line no-restricted-syntax -- Idea search keeps one pending debounce, clearing its predecessor on input; the query is capped at 200 characters.
       searchTimer = setTimeout(() => {
         closeIdea();
         view.state = { ...view.state, q: search.value.slice(0, 200) };

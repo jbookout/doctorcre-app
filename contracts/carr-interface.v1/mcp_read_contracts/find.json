@@ -2,7 +2,7 @@
   "write": false,
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "209bee8aa6b6c4ed2d7a55b4cdb41c2ff02378a5"
+    "source_commit": "1866b2fc19e5adb5d0addab9f51173ac2e4d4ab4"
   },
   "deal_keys": [
     "name",
@@ -29,5 +29,6 @@
     "lane",
     "outcome"
   ],
-  "unknown_deal_fields": "refused"
+  "unknown_deal_fields": "refused",
+  "contact_lookup": "Exact email, case-insensitive, through the contact party key. Fuzzy names remain supported. No contact columns are returned."
 }

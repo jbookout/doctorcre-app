@@ -72,6 +72,7 @@ async function duration(audio) {
   try {
     return await new Promise((resolve, reject) => {
       const media = new Audio();
+      // eslint-disable-next-line no-restricted-syntax -- One 10-second audio-metadata deadline per uploaded recording; the timer is cleared on success and both paths release the media source.
       const timer = setTimeout(() => { media.removeAttribute('src'); media.load(); reject(new Error('Could not read the recording length. Try a native audio export.')); }, 10000);
       const finish = value => { clearTimeout(timer); media.removeAttribute('src'); media.load(); resolve(value); };
       media.onloadedmetadata = () => { if (Number.isFinite(media.duration) && media.duration > 0) finish(media.duration); else { media.currentTime = 86400; } };
@@ -113,6 +114,7 @@ async function applyStatus(id, session) {
 }
 function schedulePoll() {
   if (pollTimer || disposed || !store || !pollPresence.active() || pollAttempts >= 10) return;
+  // eslint-disable-next-line no-restricted-syntax -- 10 transfer polling attempts; at most 100 queued status reads per attempt. 30 seconds, doubling each attempt to 120-second ceiling; audio stays local after failure watchPresence checked before scheduling and every row; hidden clears timer; 30-minute idle, pagehide and session invalidation stop; a new transfer explicitly resets the budget
   pollTimer = setTimeout(async () => {
     pollTimer = null;
     if (disposed || !pollPresence.active()) return;
@@ -120,6 +122,7 @@ function schedulePoll() {
     try {
     const rows = await store.list(scope, tour_id);
     const takePage = createPageBudget();
+    // eslint-disable-next-line no-restricted-syntax -- Transfer status consumes takePage before each queued session; a max of 100 status reads per capped poll attempt.
     for (const row of rows.filter(r => r.status === 'queued' && r.session_id)) {
       takePage();
       if (disposed || !pollPresence.active()) return;
@@ -258,6 +261,7 @@ async function start() {
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
 window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+// eslint-disable-next-line no-restricted-syntax -- Visibility handler calls clearTimeout for transfer polling when hidden and manages 1 recorder wake lock; it performs 0 status reads.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
   if (!recorder?.active) return;

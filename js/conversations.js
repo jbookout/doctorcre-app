@@ -351,6 +351,7 @@ function renderOutcomeCards() {
       announceOutcomeCards('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
+  // eslint-disable-next-line no-restricted-syntax -- Registers 1 clipboard callback per rendered session button; clipboard access occurs only on click.
   for (const button of list.querySelectorAll('[data-copy-outcome-session]')) {
     button.addEventListener('click', async () => {
       const card = cards.find(item => item.id === button.dataset.copyOutcomeSession);
@@ -474,6 +475,7 @@ async function takeConversation({ after = null, background = false, signal } = {
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
       const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Conversation catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
         takePage();
         const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
@@ -513,6 +515,7 @@ async function takeList({ cursor = null, background = false, signal } = {}) {
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
       const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Conversation-list catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
         takePage();
         const incoming = await readClient("listDocConversations", listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }), signal);
@@ -553,6 +556,7 @@ async function takeOutcomeCards({ cursor = null, background = false, signal } = 
     if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
     if (background && !refuseDocOutcomeCards(payload)) {
       const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Outcome-card catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
         takePage();
         const incoming = await readClient("docOutcomeCards", outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }), signal);
@@ -658,6 +662,7 @@ async function dispatch(operationKey, args, summary, send) {
   if (result.started) operations.set(operationKey, { args: result.request || args, summary, send });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Conversation command receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);

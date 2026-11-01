@@ -13,6 +13,13 @@ const checks = await readFile(new URL("../.github/workflows/checks.yml", import.
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
+test('signed-in Calendar CI installs the producer PostgreSQL binaries before its real journey', () => {
+  assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
+  assert.match(checks, /run: bash \.\.\/carr-producer\/ops\/ci-postgres\.sh/);
+  const journey = checks.split('name: Verify signed-in Calendar')[1];
+  assert.match(journey, /CARR_LOCAL_PG_BIN_DIR: \/usr\/lib\/postgresql\/17\/bin/);
+});
+
 test("PR jobs build the merge candidate when the branch predates a required npm script", async t => {
   const directory = await temporaryDirectory("doctorcre-old-pr-");
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -190,6 +197,7 @@ async function fixture(t, { slow = false, budgetMs = slow ? 100 : 170_000 } = {}
   await writeFile(join(root, '.githooks/pre-push'), source.replace('170_000', String(budgetMs)));
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: {
     check: slow ? 'node -e "setInterval(()=>{},1000)"' : 'node -e "console.log(\'CHECK-RAN\')"',
+    lint: 'node -e "console.log(\'LINT-RAN\')"',
     test: 'node .githooks/pre-push --test',
   } }));
   await writeFile(join(root, 'test/touched.test.mjs'), "import test from 'node:test'; test('touched',()=>console.log('TOUCHED-RAN'));\n");
@@ -215,6 +223,7 @@ test('pre-push checks outgoing source and runs touched tests without starting an
   const result = f.push();
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /CHECK-RAN/);
+  assert.match(result.stdout, /LINT-RAN/);
   assert.match(result.stdout, /TOUCHED-RAN/);
   assert.doesNotMatch(result.stdout, /UNRELATED-RAN/);
   await assert.rejects(readFile(join(f.root,'engine-started')), { code: 'ENOENT' });

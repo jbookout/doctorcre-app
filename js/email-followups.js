@@ -47,15 +47,18 @@ const validPreview = (row, preview) => filing(row) ? preview?.contract === 'emai
   && preview.source?.activity_id === row.source.activity_id && preview.evidence_quote === row.source.evidence_quote
   && (row.kind === 'next_step' ? typeof preview.text === 'string' && preview.text.trim() && /^\d{4}-\d{2}-\d{2}$/.test(preview.next_date)
     && ['joe', 'dell'].includes(preview.owner) : Boolean(PHASE_BY_SLUG[preview.from_phase] && PHASE_BY_SLUG[preview.to_phase]));
+// Seconds a submitted reply waits, undoable, before submit-email-draft is called.
+const SEND_GRACE_SECONDS = 10;
 const denied = error => [401, 403].includes(error.status) || error.code === 'session_changed';
 
 
-export function mountEmailFollowups({ container, client, deal, onChange = () => {} }) {
+export function mountEmailFollowups({ container, client, deal, onChange = () => {}, clock = container.ownerDocument.defaultView }) {
   const win = container.ownerDocument.defaultView;
   let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
   const refusedCreations = new Map();
+  const graces = new Map();
   function render() {
     if (disposed) return;
     const active = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
@@ -71,7 +74,9 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
-        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${state.conflict ? button('review-updated', 'Review updated draft', loadState !== 'ready') : button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}${button('cancel', 'Cancel')}</div>`;
+        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Save draft keeps your edits without sending. Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${button('undo-edit', 'Undo edit', !state.undo)}${state.conflict ? button('review-updated', state.method === 'editEmailDraft' ? 'Reload draft' : 'Review updated draft', loadState !== 'ready') : `${button('save-draft', 'Save draft', loadState !== 'ready')}${button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}`}${button('cancel', 'Cancel')}</div>`;
+      } else if (state.status === 'grace') {
+        controls = `<p class="email-grace">Sending in ${state.remaining}s · ${button('undo-send', 'Undo')}</p>`;
       } else if (state.status === 'filing') {
         controls = `<div class="email-review">${createdLinks(state.createdDeals)}${preview.new_people.map(person => `<p>Person: ${E(person.name || person.email || 'Unknown')}</p>`).join('')}${row.kind === 'possible_new_deal' && !state.deal ? !preview.sender.party_id ? '<p>Add the sender as a contact first. Refresh the proposal after adding the contact.</p>' : `<label>Deal name<input data-email-deal-name value="${E(state.name || '')}"></label><label>Existing client (reference or exact name)<input data-email-deal-client value="${E(state.client || '')}"></label>${button('create-filing', 'Create deal and confirm filing', loadState !== 'ready')}` : `${state.deal ? `<p>Created deal: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a></p>` : ''}${button('confirm-filing', 'Confirm filing', loadState !== 'ready')}`}${state.deal ? '' : button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'reviewing') {
@@ -106,7 +111,31 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (selection && replacement?.matches('textarea, input')) replacement.setSelectionRange(...selection);
     }
   }
+  // A grace is one Submit's cancellation token. It outlives the countdown until submit-email-draft actually starts,
+  // so leaving the page while the command loads still cancels it. Ending it cancels; restore puts the edited draft back on its card.
+  function stopGrace(id, restore) {
+    const grace = graces.get(id);
+    if (!grace) return;
+    clock.clearInterval(grace.timer); grace.cancelled = true; graces.delete(id);
+    if (restore) decisions.set(id, grace.draft);
+  }
+  function startGrace(row, draft, request) {
+    decisions.set(row.id, { status: 'grace', remaining: SEND_GRACE_SECONDS, draft });
+    const grace = { draft, cancelled: false };
+    // eslint-disable-next-line no-restricted-syntax -- Send grace countdown stops after SEND_GRACE_SECONDS ticks or on stopGrace; each tick only re-renders local state and performs no reads.
+    grace.timer = clock.setInterval(() => {
+      const state = decisions.get(row.id);
+      if (graces.get(row.id) !== grace || state?.status !== 'grace') return;
+      if (--state.remaining > 0) { render(); return; }
+      clock.clearInterval(grace.timer);
+      submit(row, { method: 'submitEmailDraft', request }, grace);
+    }, 1000);
+    graces.set(row.id, grace);
+    render();
+  }
+  const leave = () => { if (!graces.size) return; for (const id of [...graces.keys()]) stopGrace(id, true); render(); };
   function retire() {
+    for (const id of [...graces.keys()]) stopGrace(id, false);
     minute.dispose(); epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
@@ -118,6 +147,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       const takePage = createPageBudget({ document: container.ownerDocument });
+      // eslint-disable-next-line no-restricted-syntax -- Follow-up pagination calls takePage for each of pageCount retained pages; a max of 100 reads per refresh.
       for (let i = 0; i < pageCount; i++) {
         takePage();
         result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : { include_non_deal: true }), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
@@ -132,7 +162,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         if (!currentCursor) break;
       }
       cursor = currentCursor;
-      for (const row of rows) if (!next.some(item => item.id === row.id) && ['submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
+      for (const row of rows) if (!next.some(item => item.id === row.id) && ['grace', 'submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
       rows = next; loaded = true; loadState = 'ready';
     } catch (error) {
       if (disposed || ticket !== epoch) return;
@@ -141,17 +171,23 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     render();
   }
-  async function submit(row, state) {
+  async function submit(row, state, grace) {
     decisions.set(row.id, { ...state, status: 'submitting' }); render();
     try {
       const { submitEmailProposal } = await import('./email-proposal-command.js');
-      if (disposed || loadState === 'denied') return;
+      if (disposed || loadState === 'denied' || grace?.cancelled) return;
+      if (grace) graces.delete(row.id);
       const decision = await submitEmailProposal(client, row, state);
       if (disposed || loadState === 'denied') return;
+      const current = rows.find(item => item.id === row.id);
+      if (decision.saved && current && current.version <= decision.baseVersion) {
+        current.version = decision.baseVersion;
+        current.reply_draft = { ...current.reply_draft, subject: decision.subject, body: decision.body };
+      }
       decisions.set(row.id, decision);
       if (decision.status === 'done') onChange();
     } catch (error) {
-      if (disposed || loadState === 'denied') return;
+      if (disposed || loadState === 'denied' || grace?.cancelled) return;
       if (denied(error)) return retire();
       decisions.set(row.id, { ...state, request: error.pendingRequest || state.request, status: 'unknown', message: 'Outcome unknown. Check outcome to recover the original request.' });
     }
@@ -189,7 +225,12 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const row = rows.find(item => item.id === button.closest('[data-email-id]')?.dataset.emailId);
     if (!row) return;
     const state = decisions.get(row.id) || { status: 'pending' };
-    if (['previewing', 'submitting', 'done'].includes(state.status)) return;
+    if (action === 'undo-send' && state.status === 'grace') {
+      stopGrace(row.id, true); render();
+      [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === row.id)?.querySelector('[data-email-action="submit-draft"]')?.focus();
+      return;
+    }
+    if (['grace', 'previewing', 'submitting', 'done'].includes(state.status)) return;
     if (state.status === 'filing-refused' && !['refresh-filing', 'correct-filing'].includes(action)) return;
     if (['refresh-filing', 'correct-filing'].includes(action) && state.status === 'filing-refused') {
       await refresh();
@@ -215,11 +256,16 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (current && current.confirm_verb === 'submit-email-draft' && current.reply_draft.owner === client.selfActor) decisions.set(row.id, { ...state, baseVersion: current.version, to: [...current.reply_draft.to], cc: [...current.reply_draft.cc], conflict: false, message: '', updatedDraft: current.reply_draft });
       render(); return;
     }
-    if (action === 'submit-draft' && state.status === 'editing' && !state.conflict && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
+    if (['save-draft', 'submit-draft'].includes(action) && state.status === 'editing' && !state.conflict && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
       if (!state.subject.trim() || /[\r\n]/.test(state.subject) || state.subject.length > 998 || !state.body.trim() || state.body.length > 20000) {
-        decisions.set(row.id, { ...state, message: 'Enter a subject without line breaks and a message before submitting.' }); render(); return;
+        decisions.set(row.id, { ...state, message: 'Enter a subject without line breaks and a message before saving or submitting.' }); render(); return;
       }
-      return submit(row, { method: 'submitEmailDraft', request: { proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, to: [...state.to], cc: [...state.cc], idempotency_key: uuidv4() } });
+      if (action === 'save-draft') return submit(row, { ...state, saved: false, method: 'editEmailDraft', request: {
+        proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, idempotency_key: uuidv4() } });
+      return startGrace(row, { ...state, message: '' }, { proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, to: [...state.to], cc: [...state.cc], idempotency_key: uuidv4() });
+    }
+    if (action === 'undo-edit' && state.status === 'editing' && state.undo) {
+      decisions.set(row.id, { ...state, ...state.undo, undo: null, editField: null }); render(); return;
     }
     if (action === 'dismiss-chip' && DISMISS_REASONS.includes(button.dataset.emailChip)) return submit(row, { method: 'dismissEmailProposal', request: { proposal_id: row.id, base_version: row.version, reason: button.dataset.emailChip, idempotency_key: uuidv4() } });
     if (action === 'note') { decisions.set(row.id, { status: 'dismissing', baseVersion: row.version }); render(); [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === row.id)?.querySelector('textarea')?.focus(); }
@@ -259,8 +305,24 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const state = decisions.get(event.target.closest('[data-email-id]').dataset.emailId);
     if (state?.status === 'dismissing') state.reason = event.target.value;
     if (state?.status === 'filing') state[event.target.hasAttribute('data-email-deal-name') ? 'name' : 'client'] = event.target.value;
-    if (state?.status === 'editing') state[event.target.hasAttribute('data-email-subject') ? 'subject' : 'body'] = event.target.value;
+    if (state?.status === 'editing') {
+      const field = event.target.hasAttribute('data-email-subject') ? 'subject' : 'body';
+      // One edit lasts while the partner keeps typing in one field; Undo edit returns to the draft before it.
+      if (state.editField !== field) {
+        state.undo = { subject: state.subject, body: state.body }; state.editField = field;
+        const undo = event.target.closest('[data-email-id]').querySelector('[data-email-action="undo-edit"]');
+        if (undo) undo.disabled = false;
+      }
+      state[field] = event.target.value;
+      if (state.saved) { state.saved = false; state.message = ''; event.target.closest('article').querySelector('[role="status"]')?.remove(); }
+    }
   };
+  const blur = event => {
+    if (!event.target.matches?.('[data-email-subject], [data-email-body]')) return;
+    const state = decisions.get(event.target.closest('[data-email-id]')?.dataset.emailId);
+    if (state?.status === 'editing') state.editField = null;
+  };
+  container.addEventListener('focusout', blur);
   container.addEventListener('input', input);
   container.addEventListener('click', click);
   const minute = mountLocalTicker({ document: container.ownerDocument, window: win, intervalMs: 60_000, tick: () => {
@@ -273,5 +335,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
   } });
   win?.addEventListener('doctorcre-session-invalidated', retire);
-  return { refresh, click, update: render, dispose() { retire(); disposed = true; container.removeEventListener('click', click); container.removeEventListener('input', input); win?.removeEventListener('doctorcre-session-invalidated', retire); } };
+  // A pending send never outlives the page, even one restored from the back-forward cache.
+  win?.addEventListener('pagehide', leave);
+  return { refresh, click, update: render, dispose() { retire(); disposed = true; container.removeEventListener('click', click); container.removeEventListener('input', input); container.removeEventListener('focusout', blur); win?.removeEventListener('doctorcre-session-invalidated', retire); win?.removeEventListener('pagehide', leave); } };
 }
