@@ -17,6 +17,8 @@ export const routeEntries = [
   ["/doc-chats","conversations.html","/conversations"],
   ["/doc-chats/work","tasks.html","/tasks"],
   ["/ideas-events","ideas.html","/control-room"],
+  ["/inbox","inbox.html","/"],
+  ["/inbox/card/:item_id","inbox.html","/"],
   ["/incidents","incidents.html","/incidents"],
   ["/invoices","invoices.html","/control-room"],
   ["/leads","leads.html","/leads"],
@@ -168,6 +170,8 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
+  "/inbox": "/",
+  "/inbox/card/:item_id": "/",
   "/a/:ref": "/leads",
   "/work-inventory": "/all-work",
   "/control-room/progress": "/control-room",
@@ -195,4 +199,9 @@ export const sectionForRoute = {
   "/system-work.html": "/work-requests"
 };
 
+/** The route-table key for a path: an inbox card URL maps to its pattern. */
+export function routeKey(pathname) {
+  const card = '/inbox/card/';
+  return pathname.startsWith(card) && pathname.length > card.length && !pathname.slice(card.length).includes('/') ? '/inbox/card/:item_id' : pathname;
+}
 export const actionLinkRoute = pathname => /^\/a\/[^/]+$/.test(pathname) ? "/a/:ref" : pathname;
