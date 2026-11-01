@@ -111,21 +111,25 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (selection && replacement?.matches('textarea, input')) replacement.setSelectionRange(...selection);
     }
   }
-  // Ends a running send grace without submitting; restore puts the edited draft back on its card.
+  // A grace is one Submit's cancellation token. It outlives the countdown until submit-email-draft actually starts,
+  // so leaving the page while the command loads still cancels it. Ending it cancels; restore puts the edited draft back on its card.
   function stopGrace(id, restore) {
-    clock.clearInterval(graces.get(id)); graces.delete(id);
-    if (restore && decisions.get(id)?.status === 'grace') decisions.set(id, decisions.get(id).draft);
+    const grace = graces.get(id);
+    if (!grace) return;
+    clock.clearInterval(grace.timer); grace.cancelled = true; graces.delete(id);
+    if (restore) decisions.set(id, grace.draft);
   }
   function startGrace(row, draft, request) {
     decisions.set(row.id, { status: 'grace', remaining: SEND_GRACE_SECONDS, draft });
-    const timer = clock.setInterval(() => {
+    const grace = { draft, cancelled: false };
+    grace.timer = clock.setInterval(() => {
       const state = decisions.get(row.id);
-      if (graces.get(row.id) !== timer || state?.status !== 'grace') return;
+      if (graces.get(row.id) !== grace || state?.status !== 'grace') return;
       if (--state.remaining > 0) { render(); return; }
-      stopGrace(row.id, false);
-      submit(row, { method: 'submitEmailDraft', request });
+      clock.clearInterval(grace.timer);
+      submit(row, { method: 'submitEmailDraft', request }, grace);
     }, 1000);
-    graces.set(row.id, timer);
+    graces.set(row.id, grace);
     render();
   }
   const leave = () => { if (!graces.size) return; for (const id of [...graces.keys()]) stopGrace(id, true); render(); };
@@ -165,11 +169,12 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     render();
   }
-  async function submit(row, state) {
+  async function submit(row, state, grace) {
     decisions.set(row.id, { ...state, status: 'submitting' }); render();
     try {
       const { submitEmailProposal } = await import('./email-proposal-command.js');
-      if (disposed || loadState === 'denied') return;
+      if (disposed || loadState === 'denied' || grace?.cancelled) return;
+      if (grace) graces.delete(row.id);
       const decision = await submitEmailProposal(client, row, state);
       if (disposed || loadState === 'denied') return;
       decisions.set(row.id, decision);

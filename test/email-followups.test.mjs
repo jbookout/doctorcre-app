@@ -453,6 +453,25 @@ for (const leave of ['pagehide', 'dispose']) test(`leaving the page during the s
   }
 });
 
+for (const leave of ['pagehide', 'session loss', 'dispose']) test(`leaving (${leave}) as the send grace expires, before the command starts, submits nothing`, async () => {
+  const calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Not yet sent.');
+  await action('Submit');
+  mock.timers.tick(10_000);
+  if (leave === 'pagehide') dom.window.dispatchEvent(new dom.window.Event('pagehide'));
+  else if (leave === 'session loss') dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  else view.dispose();
+  await settle();
+  assert.equal(calls.length, 0);
+  if (leave === 'pagehide') {
+    assert.equal(container.querySelector('[data-email-body]').value, 'Not yet sent.');
+    assert.doesNotMatch(container.textContent, /Sending in|Submitted for sending/);
+  }
+});
+
 test('a refusal after the send grace is shown plainly with the edits kept', async () => {
   const { dom, container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
     submitEmailDraft: async () => { throw Object.assign(Error('submitted'), { payload: { error: 'email_draft_already_submitted' } }); } });
