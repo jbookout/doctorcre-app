@@ -59,7 +59,7 @@ for (const path of ['src/ui/new-client.tsx', 'reports/new-client.html', 'tours/n
 }
 
 test('an inline reason allows one audited callback and does not allow the next', () => {
-  const source = '// eslint-disable-next-line no-restricted-syntax -- 1 callback after explicit input.\nsetTimeout(() => {}, 1);';
+  const source = '// eslint-disable-next-line no-restricted-syntax -- one callback after explicit button input.\nsetTimeout(() => {}, 1);';
   assert.equal(lint(source).status, 0);
   const result = lint(`${source}\nsetTimeout(() => {}, 1);`);
   assert.equal(result.status, 1);
@@ -90,7 +90,7 @@ for (const source of [
 
 test('exemptions require four words naming a bound or owner', () => {
   assert.equal(lint('// eslint-disable-next-line no-restricted-syntax -- A callback.\nsetTimeout(work, 1);').status, 1);
-  for (const reason of ['single callback after explicit input', 'cleared on panel disposal', 'cancel when the panel closes']) {
+  for (const reason of ['single callback after explicit button input', 'cleared on disposal of the panel', 'cancel when the active panel closes']) {
     assert.equal(lint(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`).status, 0);
   }
 });
@@ -158,5 +158,60 @@ test('reviewer probes fail lint', () => {
 test('audited global scheduler calls retain call-site exemptions', () => {
   for (const callee of ['window.setTimeout', 'globalThis["setTimeout"]', 'self[`setTimeout`]', 'w[`setTimeout`]']) {
     assert.equal(lint(`const w = window;\n// eslint-disable-next-line no-restricted-syntax -- cleared on dispose; one pending timer per panel\n${callee}(work, 1);`).status, 0, callee);
+  }
+});
+
+for (const source of [
+  'const key = "setInterval"; window[key](() => {}, 1);',
+  'const w = window; const key = "setTimeout"; w[key](() => {}, 1);',
+  'const key = `setTimeout`; globalThis[key](() => {}, 1);',
+]) {
+  test(`const-bound scheduler key fails lint: ${source}`, async () => {
+    const [report] = await new ESLint().lintText(source, { filePath: 'js/probe.js' });
+    assert.equal(report.errorCount, 1);
+    assert.equal(report.messages[0].ruleId, 'client/no-scheduler-alias');
+  });
+}
+
+for (const reason of [
+  'TODO TODO TODO owner',
+  'temporary temporary temporary cancel',
+  'tbd tbd later owner',
+  'n/a n/a n/a bound',
+]) {
+  test(`placeholder reason fails lint: ${reason}`, async () => {
+    const [report] = await new ESLint().lintText(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`, { filePath: 'js/probe.js' });
+    assert.equal(report.errorCount, 1);
+    assert.equal(report.messages[0].ruleId, 'client/bounded-exemption');
+  });
+}
+
+test('a real reason still passes with the actual client configuration', async () => {
+  const [report] = await new ESLint().lintText('// eslint-disable-next-line no-restricted-syntax -- cleared on dispose; one pending timer per panel\nsetTimeout(work, 1);', { filePath: 'js/probe.js' });
+  assert.equal(report.errorCount, 0);
+  assert.equal(report.warningCount, 0);
+});
+
+test('dynamic and shadowed computed keys stay outside const resolution', async () => {
+  for (const source of [
+    'let key = "setTimeout"; window[key](work, 1);',
+    'function schedule(key) { window[key](work, 1); }',
+    'const key = chooseKey(); window[key](work, 1);',
+    'const key = "setTimeout"; function schedule(key) { window[key](work, 1); }',
+  ]) {
+    const [report] = await new ESLint().lintText(source, { filePath: 'js/probe.js' });
+    assert.equal(report.errorCount, 0, source);
+  }
+});
+
+test('every placeholder is rejected anywhere and keywords do not count as explanation', async () => {
+  for (const reason of [
+    ...['TODO', 'FIXME', 'TBD', 'n/a', 'temporary', 'temp', 'later', 'xxx', 'placeholder'].map(token => `cleared on dispose; one ${token.toUpperCase()} pending timer per panel`),
+    'single callback after explicit input',
+    'cleared on dispose; one TODO/owner pending timer per panel',
+  ]) {
+    const [report] = await new ESLint().lintText(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`, { filePath: 'js/probe.js' });
+    assert.equal(report.errorCount, 1, reason);
+    assert.equal(report.messages[0].ruleId, 'client/bounded-exemption');
   }
 });
