@@ -34,7 +34,9 @@ test('the real fixture server serves and stops', async () => {
 });
 
 const run = (file, args, { timeout, signal, ...options }) => {
-  const child = spawn(file, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const env = { ...(options.env ?? process.env) };
+  delete env.FORCE_COLOR;
+  const child = spawn(file, args, { ...options, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', data => { stderr += data; });
   child.stdout.resume();
@@ -83,7 +85,7 @@ const probe = `
   await server.close();
 `;
 
-for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
+for (const mode of ['default', 'ambient', 'explicit', 'empty', 'conflicting colors']) {
   test(`fixture adapter preserves ${mode} root and awaits repeatable shutdown`, async t => {
     const directory = await temporaryDirectory('doctorcre-fixture-adapter-');
     t.after(() => rm(directory, { recursive: true, force: true }));
@@ -96,9 +98,10 @@ for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
     ]);
     const env = { ...process.env };
     delete env.DOCTORCRE_FIXTURE_ROOT;
-    if (mode !== 'default') env.DOCTORCRE_FIXTURE_ROOT = ambient;
+    if (mode !== 'default' && mode !== 'conflicting colors') env.DOCTORCRE_FIXTURE_ROOT = ambient;
+    if (mode === 'conflicting colors') { env.FORCE_COLOR = '1'; env.NO_COLOR = '1'; }
     const options = mode === 'explicit' ? { root: explicit } : mode === 'empty' ? { root: '' } : {};
-    const expected = mode === 'default' ? null : mode === 'explicit' ? 'explicit synthetic root' : 'ambient synthetic root';
+    const expected = mode === 'default' || mode === 'conflicting colors' ? null : mode === 'explicit' ? 'explicit synthetic root' : 'ambient synthetic root';
     const result = await run(process.execPath, ['--input-type=module', '-e', probe, JSON.stringify({ options, expected })],
       { env, timeout: 20000, signal: t.signal });
     assert.equal(result.stderr, '');

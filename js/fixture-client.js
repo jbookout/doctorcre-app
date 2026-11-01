@@ -2634,7 +2634,13 @@ export async function createFixtureClient(opts = {}) {
         : conventionProposals[index].base_version !== args.base_version ? 'version_conflict'
           : !args.reason?.trim() ? 'missing_required' : null;
       if (error) throw Object.assign(new Error(error), { payload: { error } });
-      const result = { ok: true, rule_id: uuidv4(), retired_section_id: args.section_id };
+      const rule_id = uuidv4();
+      const result = { ok: true, rule_id, card_id: null, load_layer: 'pack',
+        packs: [...conventionProposals[index].packs], retired_rule_ids: [], retired_section_id: args.section_id,
+        attach_id: uuidv4(), generation: conventionReceipts.size + 1,
+        approval: { ok: true, replayed: false, rule_id, policy_status: 'active',
+          enforcement_status: 'authority_enforced', installed_controls: ['human_authority_runtime'],
+          pending_controls: [], approval_receipt_id: uuidv4() } };
       conventionProposals.splice(index, 1);
       conventionReceipts.set(args.idempotency_key, { args: structuredClone(args), result });
       return structuredClone(result);

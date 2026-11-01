@@ -1,3 +1,4 @@
+import { validConventionAdoptionReceipt } from './operations-model.js';
 import { validEmailDraftReceipt } from './email-draft.js';
 import { sessionFetch } from './private-session.js';
 import { PHASE_BY_SLUG } from './client.js';
@@ -118,7 +119,7 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(new Error('Recorded term receipt unavailable'));
     if (verb === 'resolve-fact-review' && (!Object.hasOwn(payload, 'canonical_fact') || payload.review_receipt?.decision !== args.decision))
       throw unknownMcpOutcome(new Error('Term decision receipt unavailable'));
-    if (verb === 'adopt-rule' && (payload?.ok !== true || !payload.rule_id || payload.retired_section_id !== args.section_id))
+    if (verb === 'adopt-rule' && !validConventionAdoptionReceipt(payload, args.section_id))
       throw unknownMcpOutcome(new Error('Adoption receipt unavailable'));
     if (verb === 'start-deal-review') requireReviewReceipt(payload);
     if (['confirm-email-next-step', 'confirm-email-deal-progress'].includes(verb)) {

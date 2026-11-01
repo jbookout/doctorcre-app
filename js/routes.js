@@ -1,5 +1,6 @@
 export const routeEntries = [
   ["/","workspace.html","/"],
+  ["/a/:ref","action-link.html","/leads"],
   ["/all-work","work-inventory.html","/work-inventory"],
   ["/calendar","calendar.html","/business"],
   ["/calls","calls.html","/business"],
@@ -16,6 +17,8 @@ export const routeEntries = [
   ["/doc-chats","conversations.html","/conversations"],
   ["/doc-chats/work","tasks.html","/tasks"],
   ["/ideas-events","ideas.html","/control-room"],
+  ["/inbox","inbox.html","/"],
+  ["/inbox/card/:item_id","inbox.html","/"],
   ["/incidents","incidents.html","/incidents"],
   ["/invoices","invoices.html","/control-room"],
   ["/leads","leads.html","/leads"],
@@ -31,7 +34,7 @@ export const routeEntries = [
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.24.0",
+  version: "1.25.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
   "/control-room/automations": "/control-room?tab=automations",
@@ -167,6 +170,9 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
+  "/inbox": "/",
+  "/inbox/card/:item_id": "/",
+  "/a/:ref": "/leads",
   "/work-inventory": "/all-work",
   "/control-room/progress": "/control-room",
   "/control-room/automations": "/control-room",
@@ -192,3 +198,10 @@ export const sectionForRoute = {
   "/notifications": "/updates",
   "/system-work.html": "/work-requests"
 };
+
+/** The route-table key for a path: an inbox card URL maps to its pattern. */
+export function routeKey(pathname) {
+  const card = '/inbox/card/';
+  return pathname.startsWith(card) && pathname.length > card.length && !pathname.slice(card.length).includes('/') ? '/inbox/card/:item_id' : pathname;
+}
+export const actionLinkRoute = pathname => /^\/a\/[^/]+$/.test(pathname) ? "/a/:ref" : pathname;

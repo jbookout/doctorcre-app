@@ -8,6 +8,7 @@ import { webcrypto, createHash } from "node:crypto";
 import { openDom } from "./jsdom-harness.mjs";
 import { animationsSettled, chromium, settles } from "./browser-harness.mjs";
 import { carrInterface } from "./carr-contract.mjs";
+import { committedTourWebModule } from "./tour-producer.mjs";
 
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
@@ -1307,9 +1308,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
   const end = runtime.indexOf("\nasync function invoke(", start);
   assert.ok(start >= 0 && end > start);
   const { projectTourDetail } = await import(`data:text/javascript;base64,${Buffer.from(runtime.slice(start, end)).toString("base64")}`);
-  const timestampModule = `data:text/javascript;base64,${Buffer.from(committed("mcp-server/src/tour-route-timestamp.js")).toString("base64")}`;
-  const source = committed("mcp-server/src/tour-internal-web.js").replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
-  const { createTourInternalWebHandler } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const { createTourInternalWebHandler } = await committedTourWebModule(committed);
   const store = domain(), normalFetch = store.fetch;
   const actor = { id: "synthetic-partner" }, session = { csrfToken: "synthetic-csrf" };
   const handler = createTourInternalWebHandler({ readTourFn: async ({ input }) => {
