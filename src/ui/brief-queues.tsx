@@ -72,7 +72,7 @@ function QueueMenu({ facts, active }: { facts: BriefFacts | null; active: BriefQ
   if (!facts) return null;
   const queues = (Object.keys(briefQueueLabels) as BriefQueueName[]).filter(queue => queue !== 'needs_joe' || facts.sponsor === 'joe');
   if (active && queues.includes(active)) return <label className="morning-queue-switch">
-    <select data-brief-queue-switch="" aria-label="Work queue" defaultValue={active} key={active}>
+    <select data-brief-queue-switch="" aria-label="Work queue" value={active} onChange={() => {}}>
       {queues.map(queue => <option key={queue} value={queue}>{briefQueueLabels[queue]}</option>)}
     </select>
   </label>;

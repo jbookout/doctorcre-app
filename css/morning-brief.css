@@ -52,10 +52,11 @@
 .morning-queue p { margin: 0 0 var(--space-2); }
 .morning-queue ol { margin: 0; padding-left: var(--space-5); }
 .morning-queue li { padding: var(--space-2) 0; border-bottom: var(--hairline-width) solid var(--hairline); overflow-wrap: anywhere; }
-.morning-brief .morning-queue summary { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; min-height: var(--touch); list-style: none; }
+.morning-brief .morning-queue summary { display: flex; align-items: start; gap: var(--space-2); cursor: pointer; min-height: var(--touch); list-style: none; }
 .morning-brief .morning-queue summary::-webkit-details-marker { display: none; }
 .morning-brief .morning-queue summary::before { content: "▸"; flex: none; }
 .morning-brief .morning-queue details[open] > summary::before { content: "▾"; }
+.morning-brief .morning-queue button[data-brief-queue-back] { border-color: transparent; background: transparent; color: var(--fg-muted); }
 .morning-queue dl { margin: var(--space-2) 0; }
 .morning-queue dt { color: var(--fg-muted); }
 .morning-queue dd { margin: 0 0 var(--space-2); }

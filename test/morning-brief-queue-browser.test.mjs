@@ -17,11 +17,29 @@ test('rendered brief queues show the 51st tied loop and retain readable narrow-s
    const {mountMorningBrief}=await import('/js/morning-brief.js');
    const empty=()=>({state:'empty',items:[]});
    const client={morningBrief:async()=>({sponsor:'joe',sections:{today:empty(),deals:empty(),loops:empty(),needs_joe:empty(),assurance_cadence:empty()}}),getChanges:async()=>({events:[]}),
-     morningBriefQueue:async(_queue,{cursor}={})=>{if(window.queueChanged)return {sponsor:'joe',items:[{number:'52',kind:'open_loop',title:'Synthetic new eligible loop'}],total:1,returned:1,has_more:false,next_cursor:null};const start=cursor?50:0,count=cursor?1:50;return {sponsor:'joe',items:Array.from({length:count},(_,i)=>({number:String(start+i+1),kind:'open_loop',title:`Synthetic loop ${start+i+1}`,due_on:'2026-01-01',owner_partner:'joe'})),total:51,returned:count,has_more:!cursor,next_cursor:cursor?null:'opaque'};}};
+     morningBriefQueue:async(_queue,{cursor}={})=>{if(_queue==='today')return {sponsor:'joe',items:[{item_kind:'next_action',id:'1',what:'Review the synthetic follow-up and prepare the next conversation with the practice'}],total:1,returned:1,has_more:false,next_cursor:null};if(window.queueChanged)return {sponsor:'joe',items:[{number:'52',kind:'open_loop',title:'Synthetic new eligible loop'}],total:1,returned:1,has_more:false,next_cursor:null};const start=cursor?50:0,count=cursor?1:50;return {sponsor:'joe',items:Array.from({length:count},(_,i)=>({number:String(start+i+1),kind:'open_loop',title:`Synthetic loop ${start+i+1}`,due_on:'2026-01-01',owner_partner:'joe'})),total:51,returned:count,has_more:!cursor,next_cursor:cursor?null:'opaque'};}};
    window.brief=mountMorningBrief({document,window,getClient:async()=>client,intervalMs:100000});
    await window.brief.refresh();await window.brief.open();
  });
  await page.getByRole('button',{name:/Open loops/}).click();
+ await page.getByRole('heading',{name:'Open loops · 50 of 51'}).waitFor();
+ const switcher=page.getByRole('combobox',{name:'Work queue'});
+ const originalSelect=await switcher.elementHandle();
+ await switcher.focus();
+ await switcher.selectOption('today');
+ await page.getByRole('heading',{name:'Today queue · 1 of 1'}).waitFor();
+ assert.equal(await originalSelect.evaluate(node=>document.activeElement===node),true);
+ assert.equal(await originalSelect.evaluate(node=>node.value),'today');
+ if (process.env.BRIEF_QUEUE_EVIDENCE_DIR) {
+   await mkdir(process.env.BRIEF_QUEUE_EVIDENCE_DIR,{recursive:true});
+   for (const width of [1440,390]) for (const theme of ['light','dark']) {
+     await page.setViewportSize({width,height:width===390?844:900});
+     await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+     await page.screenshot({path:`${process.env.BRIEF_QUEUE_EVIDENCE_DIR}/queues-${width}-${theme}.png`});
+   }
+   await page.setViewportSize({width:390,height:844});
+ }
+ await switcher.selectOption('loops');
  await page.getByRole('heading',{name:'Open loops · 50 of 51'}).waitFor();
  const placed=await page.evaluate(()=>{
    const row=document.querySelector('[data-queue-item]');
