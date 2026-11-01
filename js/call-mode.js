@@ -414,7 +414,7 @@ export function createCallMode(deps) {
     const [{ mountCallReview }, { undoRefusal }] = await outcomesLoading;
     if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return null;
     outcomes ||= mountCallReview(node, { client: deps.client, filter: reportCandidateIds,
-      describe: callChangeText, undoRefusal,
+      describe: callChangeText, undoRefusal, dateLabel,
       openCandidate(id) {
         const report = $('#postCallReport');
         const control = [...report.querySelectorAll('[data-post-call-confirm], [data-draft-candidate]')]

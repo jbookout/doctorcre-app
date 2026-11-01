@@ -76,7 +76,7 @@ test('the filed call guide keeps pending work through navigation and reopening',
   await companion(guideCall);
   await openHome(page);
   await page.locator('.call-outcome').first().getByRole('button', { name: 'Review call', exact: true }).click();
-  const guide = page.getByRole('region', { name: 'Review this call' });
+  const guide = page.locator('.call-review-dialog').getByRole('region', { name: 'Review this call' });
   await expect(guide.getByRole('heading', { name: BAYSIDE, exact: true })).toBeVisible();
   await expect(guide.getByText('Before', { exact: true })).toBeVisible();
   await expect(guide.getByText('From this call', { exact: true })).toBeVisible();
@@ -88,7 +88,7 @@ test('the filed call guide keeps pending work through navigation and reopening',
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(guide).toHaveCSS('padding', width === 390 ? '16px' : '24px');
     await page.mouse.move(width - 1, 1399);
-    await guide.screenshot({ path: `/tmp/wr617-s2-j1-evidence/${width}-${theme}-guide.png` });
+    await guide.screenshot({ path: `/tmp/wr617-s2-j3-shots/live-${width}-${theme}-guide.png` });
   }
   await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
   await guide.getByRole('button', { name: 'Back', exact: true }).click();
@@ -97,17 +97,41 @@ test('the filed call guide keeps pending work through navigation and reopening',
   await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
   await expect(guide.getByText('Needs your decision', { exact: true })).toBeVisible();
   const pendingText = await guide.locator('dd').last().textContent();
-  await page.locator('#callModeClose').click();
-  await page.getByRole('button', { name: 'Call mode', exact: true }).click();
+  await page.getByRole('button', { name: 'Close call review', exact: true }).click();
+  await page.locator('.call-outcome').first().getByRole('button', { name: 'Review call', exact: true }).click();
   await expect(guide.locator('dd').last()).toHaveText(pendingText || '');
   await guide.getByRole('button', { name: 'Approve or fix this item' }).click();
   const focused = page.locator('#postCallReport button:focus');
   await expect(focused).toBeVisible();
-  await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
+  await expect(page.locator('#postCallOutcomes').getByRole('button', { name: 'Complete call review' })).toBeDisabled();
   await expect(page.locator('#postCallReport')).toContainText('Creates a draft only.');
   await expect(focused).toHaveAttribute('data-post-call-confirm');
-  const pendingId = await guide.getAttribute('data-review-candidate');
+  const pendingId = await focused.getAttribute('data-post-call-confirm');
   await focused.click();
-  await expect(guide).not.toHaveAttribute('data-review-candidate', pendingId || '');
-  await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
+  await expect(page.locator(`#postCallReport [data-post-call-confirm="${pendingId}"]`)).toHaveCount(0);
+  await expect(page.locator('#postCallOutcomes').getByRole('button', { name: 'Complete call review' })).toBeDisabled();
+});
+
+test('Home completes the real filed call after its pending proposals are resolved', async ({ signedIn: page, carr }) => {
+  const outcomes = await carr.mcp('read-call-outcomes');
+  for (const call of outcomes.calls) for (const item of call.open_cards) {
+    await carr.mcp(item.resolver, { candidate_id: item.candidate_id, accept: false });
+  }
+  await openHome(page);
+  await page.locator('.call-outcome').first().getByRole('button', { name: 'Review call', exact: true }).click();
+  const guide = page.locator('.call-review-dialog').getByRole('region', { name: 'Review this call' });
+  const count = Number(await guide.getByRole('progressbar').getAttribute('max'));
+  for (let index = 0; index < count; index++) {
+    const reviewed = guide.getByRole('button', { name: 'Reviewed', exact: true });
+    if (!await reviewed.isEnabled()) break;
+    await reviewed.click();
+  }
+  await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeEnabled();
+  await guide.getByRole('button', { name: 'Complete call review' }).click();
+  await expect(guide).toContainText('No call items to review.');
+  await expect(page.locator('.call-outcome')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close call review', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('#homeCallTasks')).toContainText('No call follow-ups');
+  await expect(page.locator('.call-outcome')).toHaveCount(0);
 });

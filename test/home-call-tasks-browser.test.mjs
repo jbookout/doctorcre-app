@@ -307,6 +307,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ho
     companion: theme === 'light' ? { unavailable: true } : {},
     outcomes: [{ ...call, session_id: 'newer-call', applied: [{ ...call.applied[0], candidate_id: 'newer-step' }] }, call] });
   const entry = page.locator(`[data-call-session="${session}"]`);
+  companionRequests.length = 0;
   await entry.getByRole('button', { name: 'Review call', exact: true }).click();
   const guide = page.getByRole('region', { name: 'Review this call' });
   await guide.getByRole('heading', { name: 'Demo coastal purchase', exact: true }).waitFor({ timeout: 2000 });
@@ -314,7 +315,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ho
   assert.deepEqual(writes, []);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('/tmp/wr617-s2-j3-shots', { recursive: true });
-  await guide.screenshot({ path: `/tmp/wr617-s2-j3-shots/${width}-${theme}-guide.png` });
+  await page.locator('.call-review-dialog').screenshot({ path: `/tmp/wr617-s2-j3-shots/${width}-${theme}-guide.png` });
   await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
   await page.getByRole('button', { name: 'Close call review', exact: true }).click();
   await entry.getByRole('button', { name: 'Review call', exact: true }).click();
@@ -325,8 +326,27 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ho
   await guide.getByRole('button', { name: 'Complete call review' }).click();
   await page.getByText('No call items to review.', { exact: true }).waitFor();
   assert.deepEqual(writes.map(row => ({ name: row.name, session_id: row.session_id })), [{ name: 'review-call-outcome', session_id: session }]);
-  assert.equal(await page.locator(`[data-call-session="${session}"]`).count(), 0);
+  await page.locator(`[data-call-session="${session}"]`).waitFor({ state: 'detached' });
   assert.equal(await page.locator('[data-call-session="newer-call"]').count(), 1);
   assert.deepEqual(companionRequests, [], 'Home review never contacts the recording Mac');
+  assert.deepEqual(errors, []);
+});
+
+test('Home keeps pending call decisions outstanding without the recording Mac and clears the guide on sign-out', async t => {
+  const { page, writes, errors } = await open(t, { candidates: [], companion: { unavailable: true },
+    outcomes: [callOutcome('demo-older-call')] });
+  const entry = page.locator('[data-call-session="demo-older-call"] [data-call-open-review]');
+  await entry.click();
+  const guide = page.locator('.call-review-dialog .call-review');
+  await guide.getByText('Needs your decision', { exact: true }).waitFor();
+  assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  await guide.getByRole('button', { name: 'Approve or fix this item' }).click();
+  await page.getByText('Open Call Mode on the Mac that recorded the call to decide them.', { exact: true }).waitFor();
+  await entry.click();
+  await guide.getByText('Needs your decision', { exact: true }).waitFor();
+  assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  assert.deepEqual(writes, []);
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('.call-review-dialog').count(), 0);
   assert.deepEqual(errors, []);
 });

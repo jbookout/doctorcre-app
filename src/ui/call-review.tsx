@@ -45,12 +45,12 @@ type Client = {
 };
 type Options = {
   client(): Client;
-  filter(): string[];
   describe(change: Candidate): string;
+  dateLabel?(value: string): string;
   undoRefusal(error: unknown): string;
-  openCandidate(id: string): void;
+  openCandidate(id: string, sessionId: string): void;
   onChange?(): void;
-};
+} & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
 type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
   if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Not yet added by this proposal.';
@@ -78,14 +78,16 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     container.hidden = false;
     flushSync(() => root.render(<Guide />));
   }
-  async function refresh() {
+  async function refresh({ preserveSelection = false } = {}) {
     if (disposed || revoked || writing) return;
     const read = ++sequence;
     if (!items.length) { load = { state: 'loading' }; render(); }
     try {
       const answer = callAnswer(await options.client().readCallOutcomes());
-      const ids = new Set(options.filter());
-      const calls = answer.calls.filter(call => [...call.applied, ...call.open_cards].some(item => ids.has(item.candidate_id)));
+      const ids = new Set(options.filter?.());
+      const calls = answer.calls.filter(call => options.sessionId !== undefined
+        ? call.session_id === options.sessionId
+        : [...call.applied, ...call.open_cards].some(item => ids.has(item.candidate_id)));
       const deals = [...new Set(calls.flatMap(call => [...call.applied, ...call.open_cards].flatMap(item => item.deal_id ? [item.deal_id] : [])))];
       const details = new Map(await Promise.all(deals.map(async id => {
         try { return [id, await options.client().getDeal?.(id)] as const; }
@@ -107,7 +109,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         }
         return [...applied, ...pending, ...resolved].sort((a, b) => (dealOrder.get(a.candidate.deal_id ?? '') ?? 0) - (dealOrder.get(b.candidate.deal_id ?? '') ?? 0));
       });
-      selected = outstanding()?.key ?? items[0]?.key;
+      if (!preserveSelection || !items.some(item => item.key === selected)) selected = outstanding()?.key ?? items[0]?.key;
       load = { state: items.length ? 'ready' : 'empty' };
     } catch (error) {
       if (disposed || revoked || read !== sequence) return;
@@ -129,12 +131,31 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     } catch (error) {
       if (disposed) return;
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
-      else notice = refused(error);
+      else {
+        notice = refused(error);
+        writing = false;
+        await refresh({ preserveSelection: true });
+      }
     } finally { writing = false; render(); }
+  }
+  async function completeCall() {
+    const latest = callAnswer(await options.client().readCallOutcomes());
+    const sessions = new Set(items.map(row => row.call.session_id));
+    latest.calls.filter(call => sessions.has(call.session_id)).forEach(call => {
+      if (call.open_cards.length || call.applied.some(candidate => reviewed.get(`${call.session_id}:${candidate.candidate_id}`) !== JSON.stringify(candidate))) throw new Error('Call changed');
+    });
+    if (disposed || revoked) return;
+    await Promise.all([...sessions].map(async session_id => receipt(await options.client().reviewCallOutcome({ session_id }))));
+  }
+  function proposalText(candidate: Candidate) {
+    if (candidate.kind === 'next_step' || candidate.kind === 'phase_move') return options.describe(candidate);
+    return candidate.payload.action || candidate.payload.subject || candidate.payload.summary || candidate.payload.text || 'Open the decision card for the full proposal.';
   }
   function Guide() {
     const item = current(), index = item ? items.indexOf(item) : 0;
     const ready = load.state === 'ready' && !writing;
+    const deals = [...new Set(items.map(row => row.candidate.deal_id))];
+    const done = items.filter(complete).length;
     return <section className="call-review" aria-label="Review this call" data-review-candidate={item?.candidate.candidate_id}>
       <link rel="stylesheet" href="/css/call-review.css" />
       <h2>Review this call</h2>
@@ -144,31 +165,25 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       {load.state === 'unavailable' && <p role="alert">{load.message}</p>}
       {notice && <p role="alert">{notice}</p>}
       {load.state === 'ready' && item && <>
-        <p className="call-review-meta">{item.call.call_date} · Item {index + 1} of {items.length}</p>
-        <progress aria-label="Call review progress" value={items.filter(complete).length} max={items.length} />
-        <h3>{item.candidate.deal_name || 'Deal'}</h3>
+        <p className="call-review-meta">{options.dateLabel?.(item.call.call_date) ?? item.call.call_date} · Item {index + 1} of {items.length}</p>
+        <p className="call-review-progress-label">{done} of {items.length} reviewed</p>
+        <progress aria-label="Call review progress" value={done} max={items.length} />
+        <p className="call-review-deal-position">{item.candidate.deal_id ? `Deal ${deals.indexOf(item.candidate.deal_id) + 1} of ${deals.length}` : 'No deal linked'}</p>
+        <h3>{item.candidate.deal_name || (item.candidate.deal_id ? 'Deal' : 'No deal')}</h3>
         <p className="call-review-meta">{item.state === 'pending' ? 'Needs your decision' : item.state === 'resolved' ? 'No longer pending' : item.state === 'applied' && item.candidate.undone_at ? 'Undone' : 'Already applied'}</p>
-        <dl><div><dt>Before</dt><dd>{item.before}</dd></div><div><dt>{item.state === 'pending' ? 'Proposed' : 'From this call'}</dt><dd>{['next_step', 'phase_move'].includes(item.candidate.kind) ? options.describe(item.candidate) : item.candidate.payload.action || item.candidate.payload.subject || item.candidate.payload.summary || item.candidate.payload.text || 'Open the decision card for the full proposal.'}</dd></div></dl>
+        <dl><div><dt>Before</dt><dd>{item.before}</dd></div><div><dt>{item.state === 'pending' ? 'Proposed' : 'From this call'}</dt><dd>{proposalText(item.candidate)}</dd></div></dl>
         <blockquote aria-label="What was said">{item.candidate.evidence_quote || 'No transcript quote included. Check the full report below.'}</blockquote>
         <div className="call-review-actions">
           {item.state === 'applied' && <button type="button" className="primary" disabled={!ready || complete(item)} onClick={() => { reviewed.set(item.key, item.signature); selected = outstanding()?.key ?? item.key; notice = ''; render(); }}>Reviewed</button>}
           {item.state === 'applied' && !item.candidate.undone_at && <button type="button" className="secondary" data-call-undo={item.candidate.candidate_id} disabled={!ready} onClick={() => void act(() => options.client().undoCallChange({ candidate_id: item.candidate.candidate_id, base_version: item.candidate.deal_version }), options.undoRefusal)}>Undo</button>}
-          {item.state === 'pending' && <button type="button" className="primary" disabled={!ready} onClick={() => options.openCandidate(item.candidate.candidate_id)}>Approve or fix this item</button>}
+          {item.state === 'pending' && <button type="button" className="primary" disabled={!ready} onClick={() => options.openCandidate(item.candidate.candidate_id, item.call.session_id)}>Approve or fix this item</button>}
           {item.candidate.deal_id && <a className="call-outcome-link" href={`/deals?deal=${encodeURIComponent(item.candidate.deal_id)}`}>Open deal to fix</a>}
         </div>
         {item.state === 'pending' && <p className="call-review-meta">This item stays outstanding until its decision is recorded. Email proposals create drafts only.</p>}
         <nav aria-label="Call review navigation">
           <button type="button" className="secondary" disabled={!ready || index === 0} onClick={() => { selected = items[Math.max(index - 1, 0)]?.key; notice = ''; render(); }}>Back</button>
           <button type="button" className="secondary" disabled={!ready || index === items.length - 1} onClick={() => { selected = items[Math.min(index + 1, items.length - 1)]?.key; notice = ''; render(); }}>Next</button>
-          <button type="button" className="primary" disabled={!ready || items.some(row => row.state === 'pending' || !complete(row))} onClick={() => void act(async () => {
-            const latest = callAnswer(await options.client().readCallOutcomes());
-            const sessions = new Set(items.map(row => row.call.session_id));
-            latest.calls.filter(call => sessions.has(call.session_id)).forEach(call => {
-              if (call.open_cards.length || call.applied.some(candidate => reviewed.get(`${call.session_id}:${candidate.candidate_id}`) !== JSON.stringify(candidate))) throw new Error('Call changed');
-            });
-            if (disposed || revoked) return;
-            await Promise.all([...sessions].map(async session_id => receipt(await options.client().reviewCallOutcome({ session_id }))));
-          }, () => 'Could not complete this call review. Refresh and check outstanding items before retrying.')}>Complete call review</button>
+          <button type="button" className="primary" disabled={!ready || items.some(row => row.state === 'pending' || !complete(row))} onClick={() => void act(completeCall, () => 'Could not complete this call review. Refresh and check outstanding items before retrying.')}>Complete call review</button>
         </nav>
         <p className="call-review-meta">Check each item before completing the call review.</p>
       </>}
@@ -183,4 +198,40 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     container.ownerDocument.defaultView?.removeEventListener('doctorcre-session-invalidated', invalidate);
     root.unmount(); container.hidden = true;
   } };
+}
+
+export function mountCallReviewDialog(document: Document, options: Omit<Options, 'sessionId' | 'filter'>) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'call-review-dialog';
+  dialog.setAttribute('aria-label', 'Filed call review');
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'call-review-close';
+  close.textContent = 'Close call review';
+  close.addEventListener('click', () => dialog.close());
+  const node = document.createElement('div');
+  const toolbar = document.createElement('header');
+  toolbar.className = 'call-review-toolbar';
+  const docSlot = document.createElement('div');
+  docSlot.setAttribute('data-doc-presence-slot', '');
+  toolbar.append(docSlot, close);
+  dialog.append(toolbar, node);
+  document.body.append(dialog);
+  let guide: ReturnType<typeof mountCallReview> | undefined, session: string | undefined, disposed = false;
+  return {
+    async open(sessionId: string) {
+      if (disposed) return;
+      if (session !== sessionId) {
+        guide?.dispose();
+        session = sessionId;
+        guide = mountCallReview(node, { ...options, sessionId, openCandidate(id, session) {
+          dialog.close();
+          options.openCandidate(id, session);
+        } });
+      }
+      if (!dialog.open) dialog.showModal();
+      await guide?.refresh();
+    },
+    dispose() { disposed = true; guide?.dispose(); dialog.remove(); },
+  };
 }

@@ -35,4 +35,4 @@ export * as homeTaskDone from './home/task-done';
 
 export { mountDealUpdateReviews } from './home/deal-update-reviews';
 
-export { mountCallReview } from './call-review';
+export { mountCallReview, mountCallReviewDialog } from './call-review';

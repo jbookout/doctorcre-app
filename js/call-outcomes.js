@@ -71,7 +71,7 @@ const UNCHECKED = `<p class="call-outcome-note" role="status">Couldn't check for
  * A failed read says so instead of looking like "nothing to review"; a
  * signed-out read stays quiet because the page already asks for sign-in.
  */
-export function mountCallOutcomes({ container, client, toast = () => {}, filter = () => null, onChange = () => {}, listen = true, openCards = null }) {
+export function mountCallOutcomes({ container, client, toast = () => {}, filter = () => null, onChange = () => {}, listen = true, openCards = null, openReview = openCards }) {
   const busy = new Set();
   let calls = [];
   let unchecked = false, disposed = false;
@@ -79,7 +79,7 @@ export function mountCallOutcomes({ container, client, toast = () => {}, filter 
     if (disposed) return;
     if (unchecked) { container.innerHTML = UNCHECKED; container.hidden = false; return; }
     const shown = callsFor(calls, filter());
-    container.innerHTML = callOutcomesHtml(shown, { busy, openCards: Boolean(openCards) });
+    container.innerHTML = callOutcomesHtml(shown, { busy, openCards: Boolean(openReview) });
     container.hidden = shown.length === 0;
   };
   async function refresh() {
@@ -115,7 +115,7 @@ export function mountCallOutcomes({ container, client, toast = () => {}, filter 
     const open = target.closest?.('[data-call-open-cards], [data-call-open-review]');
     if (inside(open)) {
       const session = open.closest('[data-call-session]')?.dataset.callSession;
-      if (calls.some(call => call.session_id === session)) return openCards?.(session);
+      if (calls.some(call => call.session_id === session)) return (open.matches('[data-call-open-review]') ? openReview : openCards)?.(session);
       return undefined;
     }
     const undo = target.closest?.('[data-call-undo]');

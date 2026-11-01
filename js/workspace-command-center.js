@@ -475,18 +475,40 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   // The cards still waiting are decided in Call Mode's post-call report.
   const lifetime = new AbortController();
   const { signal } = lifetime;
-  const openCards = async session => {
+  const openCards = async (session, candidateId) => {
     try {
       const { mountGlobalCallMode } = await import('./global-call-mode.js');
       if (signal.aborted) return;
       const call = await mountGlobalCallMode(document);
       if (signal.aborted) return;
-      if (!await call.open({ session, signal }) && !signal.aborted) toast('Open Call Mode on the Mac that recorded the call to decide them.');
+      if (!await call.open({ session, signal })) {
+        if (!signal.aborted) toast('Open Call Mode on the Mac that recorded the call to decide them.');
+        return;
+      }
+      if (candidateId && !signal.aborted) {
+        const control = [...document.querySelectorAll('#postCallReport [data-post-call-confirm], #postCallReport [data-draft-candidate]')]
+          .find(button => button.dataset.postCallConfirm === candidateId || button.dataset.draftCandidate === candidateId);
+        if (control) { control.scrollIntoView({ block: 'center' }); control.focus(); }
+        else toast('This decision card is unavailable. Refresh the report on the recording Mac.');
+      }
     } catch {
       if (!signal.aborted) toast('The call report could not open. Try again on the Mac that recorded this call.');
     }
   };
-  const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }) : null;
-  window.addEventListener('doctorcre-session-invalidated', () => { lifetime.abort(); callOutcomes?.dispose(); }, { once: true });
+  let review = null;
+  let reviewLoading = null;
+  const openReview = async session => {
+    try {
+      reviewLoading ||= Promise.all([import('./ui.generated.js'), import('./call-outcomes.js')]);
+      const [{ mountCallReviewDialog }, { callChangeText, undoRefusal, dayLabel }] = await reviewLoading;
+      if (signal.aborted) return;
+      review ||= mountCallReviewDialog(document, { client: () => client, describe: callChangeText, undoRefusal, dateLabel: dayLabel,
+        openCandidate: (id, session) => void openCards(session, id),
+        onChange: () => callOutcomes?.refresh() });
+      await review.open(session);
+    } catch { if (!signal.aborted) toast('The call review could not open. Try again.'); }
+  };
+  const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards, openReview }) : null;
+  window.addEventListener('doctorcre-session-invalidated', () => { lifetime.abort(); review?.dispose(); callOutcomes?.dispose(); }, { once: true });
   callOutcomes?.refresh();
 }
