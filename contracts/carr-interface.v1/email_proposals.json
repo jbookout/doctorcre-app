@@ -117,6 +117,16 @@
         "key_reuse"
       ],
       "recovery": "Keep edits on refusal. Version conflicts require explicit Reload draft and review, never automatic retry. Unknown outcomes retain the exact request and key for Check outcome. Session loss clears private content."
+    },
+    "non_deal": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "08e83c5dc2b44a1f68c60afddd2dfafc7417f76b",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2866"
+      },
+      "read": "A reply_draft may carry deal:null and deal_name:null. Its source.activity_id, source.evidence_quote and reply_draft subject, body and mailbox owner remain required. Actionable drafts retain the exact server-provided to and cc arrays, each with one routable address. The producer binds the to array to the inbound sender and the cc array to the other partner. The source sender labels a draft without a deal; no subject_type, subject_id or subject_name is required for reply drafts.",
+      "review": "Reuse owner-only edit and submit, exact reviewed recipients, version, idempotency and send grace. Explicit missing-recipient errors stay readable and dismissible with reply review disabled. Omit malformed known rows with a partial-list notice while retaining valid rows; invalid response envelopes still fail the read. Deal-filtered reads never show non-deal or cross-deal rows.",
+      "deployment_order": "Deploy and verify this backward-compatible consumer before enabling producer PR #2866. This consumer also accepts existing deal drafts."
     }
   },
   "filing": {

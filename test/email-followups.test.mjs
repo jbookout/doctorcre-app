@@ -322,8 +322,9 @@ test('deal review refuses cross-deal rows instead of showing or acting on anothe
   const { container, view } = setup({ listEmailProposals: async () => response([proposal()]) },
     { deal: '20000000-0000-4000-8000-000000000002' });
   await view.refresh();
-  assert.match(container.textContent, /Could not load/);
+  assert.match(container.textContent, /Some email follow-ups could not be shown/);
   assert.equal(container.querySelectorAll('article').length, 0);
+  assert.doesNotMatch(container.textContent, /No email follow-ups/);
   assert.doesNotMatch(container.textContent, /No pending/);
 });
 
@@ -381,6 +382,17 @@ test('Home renders a contact reply draft beside a deal draft with its sender and
   assert.equal(card.querySelector('a[href^="/deals"]'), null);
   assert.ok(card.querySelector('[data-email-action="edit-draft"]'));
   assert.doesNotMatch(container.textContent, /Could not load/);
+});
+
+test('an invalid reply draft cannot hide a valid draft or expose review controls', async () => {
+  const invalid = { ...replyDraft(), id: 'invalid-draft', deal: null, deal_name: null };
+  invalid.reply_draft.to = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([invalid, replyDraft()]) });
+  await view.refresh();
+  assert.equal(container.querySelectorAll('article').length, 1, container.textContent);
+  assert.equal(container.querySelector('[data-email-id="invalid-draft"]'), null);
+  assert.ok(container.querySelector('[data-email-action="edit-draft"]'));
+  assert.match(container.textContent, /Some email follow-ups could not be shown/);
 });
 const draftReceipt = args => ({ ok: true, proposal_id: args.proposal_id, version: args.base_version + 1,
   status: 'approved_to_send', subject: args.subject, body: args.body, sha256: 'a'.repeat(64),
@@ -655,7 +667,7 @@ for (const recipients of [{ to: [] }, { cc: [] }, { to: ['bad address'] }]) test
   const row = replyDraft(); Object.assign(row.reply_draft, recipients);
   const { container, view } = setup({ listEmailProposals: async () => response([row]) });
   await view.refresh();
-  assert.match(container.textContent, /Could not load/);
+  assert.match(container.textContent, /Some email follow-ups could not be shown/);
   assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
 });
 
@@ -670,7 +682,7 @@ test('reply ownership updates when authenticated identity arrives after the inde
 });
 
 for (const code of ['email_draft_copy_address_missing', 'email_draft_source_missing']) test(`a reply without resolved recipients stays readable and dismissible beside other proposals ${code}`, async () => {
-  const row = replyDraft(); delete row.reply_draft.to; delete row.reply_draft.cc;
+  const row = { ...replyDraft(), deal: null, deal_name: null }; delete row.reply_draft.to; delete row.reply_draft.cc;
   row.confirm_verb = null; row.preview_error = code;
   const { container, view } = setup({ listEmailProposals: async () => response([row, { ...proposal(), id: 'another-proposal' }]) });
   await view.refresh();
@@ -1025,7 +1037,7 @@ test('a non-deal preview for a different contact is rejected before offering con
   Object.assign(row.preview, { deal: null, subject_type: 'vendor', subject_id: 'vendor-two', subject_name: 'Demo vendor' });
   const { container, view } = setup({ listEmailProposals: async () => response([row]) });
   await view.refresh();
-  assert.match(container.textContent, /Could not load email follow-ups/);
+  assert.match(container.textContent, /Some email follow-ups could not be shown/);
   assert.equal(container.querySelector('[data-email-action="preview"]'), null);
 });
 
@@ -1079,4 +1091,73 @@ test('uncertain draft save locks edits and Check outcome replays only the origin
   assert.match(container.textContent, /Saved as a draft. Nothing was sent/);
   editDraft(dom, container, 'body', 'Demo new unsaved text');
   assert.doesNotMatch(container.textContent, /Saved as a draft/);
+});
+
+for (const actor of ['joe', 'dell']) test(`${actor} saves and submits a contact reply with exact source-bound recipients`, async () => {
+  const row = { ...replyDraft(), deal: null, deal_name: null };
+  row.reply_draft.owner = actor;
+  const calls = [];
+  const { dom, container, view, action, send } = setup({ selfActor: actor,
+    listEmailProposals: async () => response([row]),
+    editEmailDraft: async args => { calls.push(['edit', args]); return { ok: true, proposal_id: row.id, version: 4, subject: args.subject, body: args.body }; },
+    submitEmailDraft: async args => { calls.push(['submit', args]); return draftReceipt(args); },
+  });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo saved contact reply');
+  await action('Save draft');
+  assert.match(container.textContent, /Saved as a draft/);
+  assert.equal(calls.length, 1);
+  await send();
+  assert.equal(calls[1][0], 'submit');
+  assert.equal(calls[1][1].proposal_id, row.id);
+  assert.equal(calls[1][1].base_version, 4);
+  assert.equal(calls[1][1].body, 'Demo saved contact reply');
+  assert.deepEqual(calls[1][1].to, row.reply_draft.to);
+  assert.deepEqual(calls[1][1].cc, row.reply_draft.cc);
+  assert.equal(Object.hasOwn(calls[1][1], 'deal'), false);
+  assert.match(container.textContent, /Submitted for sending/);
+});
+
+test('a contact reply stays dismissible and another partner cannot edit it', async () => {
+  const row = { ...replyDraft(), deal: null, deal_name: null };
+  row.source.sender = null;
+  const calls = [];
+  const { container, view, action } = setup({ selfActor: 'dell', listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
+  await view.refresh();
+  assert.match(container.textContent, /Contact · Unfiled email/);
+  assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
+  await action('Not now');
+  assert.equal(calls[0].proposal_id, row.id);
+  assert.equal(calls[0].base_version, row.version);
+  assert.match(container.textContent, /Dismissed/);
+});
+
+for (const invalid of [{ source: null }, { source: { evidence_quote: 'Demo' } }, { reply_draft: null },
+  { reply_draft: { ...replyDraft().reply_draft, owner: 'unknown' } },
+  { reply_draft: { ...replyDraft().reply_draft, to: [] } },
+  { reply_draft: { ...replyDraft().reply_draft, cc: ['bad address'] } },
+  { kind: 'phase_move', confirm_verb: 'confirm-email-deal-progress' },
+]) test(`invalid contact proposal is omitted without hiding a valid reply ${JSON.stringify(invalid)}`, async () => {
+  const row = { ...replyDraft(), deal: null, deal_name: null, ...invalid };
+  const valid = { ...replyDraft(), id: 'valid-draft' };
+  const { container, view } = setup({ listEmailProposals: async () => response([row, valid]) });
+  await view.refresh();
+  assert.equal(container.querySelectorAll('article').length, 1);
+  assert.equal(container.querySelector('article').dataset.emailId, valid.id);
+  assert.match(container.textContent, /Some email follow-ups could not be shown/);
+});
+
+test('a rejected row on a paged read keeps valid pages and clears after a full refresh', async () => {
+  const first = replyDraft(), second = { ...replyDraft(), id: 'second-draft', deal: null, deal_name: null };
+  const invalid = { ...replyDraft(), id: 'invalid-draft', source: null };
+  let broken = true;
+  const { container, view, action } = setup({ listEmailProposals: async args => args.cursor
+    ? response(broken ? [invalid, second] : [second]) : { ...response([first]), more: true, next_cursor: first.id } });
+  await view.refresh(); await action('Load more email follow-ups');
+  assert.equal(container.querySelectorAll('article').length, 2);
+  assert.match(container.textContent, /Some email follow-ups could not be shown/);
+  broken = false; await action('Refresh email follow-ups');
+  assert.equal(container.querySelectorAll('article').length, 2);
+  assert.doesNotMatch(container.textContent, /Some email follow-ups could not be shown/);
 });
