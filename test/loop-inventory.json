@@ -65,19 +65,19 @@
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/call-mode.js:loop:d821da8d7ff8592cdf754123811709cd0bb5f36c2a10a2c7a528fa9a03c887bb": {
+  "js/call-mode.js:loop:bf34898f4251da22c2624c64133a9abed69f6112ae8d3a4f913aff651ad6500e": {
     "cap": 100,
     "boundary": "100 pages per batch",
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
   },
-  "js/call-mode.js:setInterval:ad41fa7b119409c905fc79a88141ff84e7c1139b99e165b08bcb8067ff3b8724": {
+  "js/call-mode.js:setInterval:ef235d0d3641655b04449efe4f2be99f4ff8699c5ea314f20ada2a98d83ffd1e": {
     "cap": 7200,
     "boundary": "Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks",
     "backoff": "Local repaint only; callback error stops the clock without retry",
     "idleStop": "The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal"
   },
-  "js/call-mode.js:setTimeout:df650fe0bc280f86a946f5cebba637391a2535f2f4764ec99e21233e22ed94ad": {
+  "js/call-mode.js:setTimeout:90ded568022f8073e9773f3fb4cf23e889c9cfe8db377a06b84675bc9eb22d96": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
