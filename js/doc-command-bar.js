@@ -13,7 +13,7 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
   navigate = href => win.location.assign(href), intervalMs, tours = async () => [], onOpen = () => {} } = {}) {
   const root=dialog.ownerDocument;
   const host=root.createElement('section');host.className='doc-command';
-  host.innerHTML=`<form id="docCommandForm" role="search"><span aria-hidden="true">✦</span><input id="docCommandInput" type="search" maxlength="${FIND_QUERY_MAX}" placeholder="Search anything or ask Doc…" aria-label="Search anything or ask Doc" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="docCommandResults" aria-expanded="false"><button type="submit" aria-label="Ask Doc" title="Ask Doc">↵</button></form><div class="doc-command-meta"><span id="docCommandScope"></span><span><time id="docCommandUpdated"></time><button id="docCommandRefresh" type="button" aria-label="Refresh search" title="Refresh search">↻</button></span></div><div id="docCommandResults" role="listbox" aria-label="Search results"></div><div id="docCommandStatus" role="status"></div><section id="docCommandDetail" hidden></section>`;
+  host.innerHTML=`<form id="docCommandForm" role="search"><span aria-hidden="true">✦</span><input id="docCommandInput" type="search" maxlength="${FIND_QUERY_MAX}" placeholder="Search anything" aria-label="Search anything" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="docCommandResults" aria-expanded="false"><button type="submit" aria-label="Search" title="Search">↵</button></form><div class="doc-command-meta"><span id="docCommandScope"></span><span><time id="docCommandUpdated"></time><button id="docCommandRefresh" type="button" aria-label="Refresh search" title="Refresh search">↻</button></span></div><div id="docCommandResults" role="listbox" aria-label="Search results"></div><div id="docCommandStatus" role="status"></div><section id="docCommandDetail" hidden></section>`;
   dialog.querySelector('header').after(host);
   const $=id=>root.getElementById(id), input=$('docCommandInput');
   let query='', epoch=0, timer, results=[], selected=0, opened=null, renderedDetailHtml=null, disposed=false, focusBefore=null;
@@ -106,6 +106,7 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
   }
   const inputChanged=()=>{
     ++epoch;query=input.value.trim();dialog.querySelector('.doc-detail-grid').hidden=!!query;const tools=dialog.querySelector('.doc-context-tools');if(tools)tools.hidden=!!query;selected=0;clearDetail();$('docCommandStatus').textContent='';$('docCommandUpdated').textContent='';
+    // eslint-disable-next-line no-restricted-syntax -- Command search keeps one 180ms debounce callback, replacing the previous timer after each input.
     paint(pageResults());win.clearTimeout(timer);timer=win.setTimeout(()=>void refresh(),180);
   };
   input.addEventListener('input',inputChanged);

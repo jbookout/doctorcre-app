@@ -1,0 +1,28 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "1557e82ab39058ffac076c5eb6e849e5639edffd",
+    "source": "mcp-server/src/org-conventions.js"
+  },
+  "read": {
+    "verb": "governance-queue",
+    "lane": "pending_convention_proposals",
+    "fields": [
+      "section_id",
+      "section_key",
+      "base_version",
+      "updated_at",
+      "adoptable"
+    ],
+    "availability": "Adoptable proposals provide the statement, packs, and approve_with command; non-adoptable proposals provide a problem.",
+    "adoptable_fields": [
+      "statement",
+      "card_id",
+      "packs",
+      "approve_with"
+    ],
+    "non_adoptable_fields": [
+      "problem"
+    ]
+  }
+}

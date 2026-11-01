@@ -11,13 +11,14 @@ import {readFile} from "node:fs/promises";
 import {CAUSAL_GRAPH_GAP_SENTENCE, DOC_TOUR_EMPTY, INCIDENT_JOIN_SENTENCE, INCIDENT_TRACE_HEADING, NO_ENFORCEMENT_SENTENCE, NO_INCIDENT_READ_SENTENCE, NO_INCIDENT_TRACE_SENTENCE, RUN_HEADING, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE, buildDocTour, groupHasOpenIncident, incidentServiceIndex, incidentTraceRows, serviceKeyFromIncidentFingerprint, serviceNodeOpenIncidents} from "../js/atlas-model.js";
 import {createFixtureClient} from "../js/fixture-client.js";
 
+import { carrInterface } from "./carr-contract.mjs";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const atlasJs = await read("js/atlas.js");
 const controlRoomJs = await read("js/control-room.js");
 const html = await read("control-room.html");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 
 const fixture = async (options = {}) => {
   const seed = await read("data/board-seed.json");

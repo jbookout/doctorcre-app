@@ -176,6 +176,7 @@ export async function mountNotificationBadge(client, { elementId = "navUnreadBad
     } catch {
       // Fail quiet: no fake number, no error drawn into the top bar.
       if (sequence === readSequence) hide();
+      return false;
     }
   };
   if (typeof document.addEventListener === "function" && typeof globalThis.window?.addEventListener === "function") {

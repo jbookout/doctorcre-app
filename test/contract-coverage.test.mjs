@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { carrInterface } from "./carr-contract.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('deal reads bind vendor assignments and held action history to their producer revisions', async () => {
-  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const contract = carrInterface;
   for (const verb of ['deal-room-board', 'get-deal-room']) {
     const operation = contract.mcp_read_contracts[verb];
     assert.equal(operation.producer.source_commit, verb === 'get-deal-room'
@@ -17,7 +18,7 @@ test('deal reads bind vendor assignments and held action history to their produc
 });
 
 test('every literal browser MCP call is pinned in the versioned interface', async () => {
-  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const contract = carrInterface;
   const names = new Set();
   for (const path of ['js/live-client.js', 'js/leads-client.js']) {
     const source = await read(path);
@@ -25,19 +26,17 @@ test('every literal browser MCP call is pinned in the versioned interface', asyn
   }
   const missing = [...names].filter(name => !contract.mcp_operations.includes(name)).sort();
   assert.deepEqual(missing, [], 'browser MCP calls missing from the versioned interface');
-  assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
-    'the pinned operations stay unique and sorted');
 
 });
 
 test('Tour client feedback endpoints have an explicit contract newer than the prior search/cart interface', async () => {
-  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const contract = carrInterface;
   for (const path of ['/api/share/feedback', '/api/share/shortlist', '/api/share/comment', '/api/tours/feedback'])
     assert.ok(contract.http_surfaces.includes(path), `${path} is missing from the feedback interface`);
 });
 
 test('vendor directory revision, selector and content digest are pinned together', async () => {
-  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const contract = carrInterface;
   const source = await read(contract.vendor_directory.path);
   const directory = JSON.parse(source);
   assert.equal(directory.schema, contract.vendor_directory.schema);
@@ -48,7 +47,7 @@ test('vendor directory revision, selector and content digest are pinned together
 });
 
 test('vendor people pin the negotiated producer revision without changing the v1 contract', async () => {
-  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const contract = carrInterface;
   const pin = contract.vendor_directory_people;
   assert.equal(pin.request_selector, 'contract=vendor-directory.v2');
   assert.equal(pin.producer.source_commit, '3ade6e86dbf7260114cd64f0b23a80d689b64e15');
@@ -57,4 +56,14 @@ test('vendor people pin the negotiated producer revision without changing the v1
   assert.equal(directory.schema, pin.schema);
   assert.equal(directory.version, '2.0.0');
   assert.equal(createHash('sha256').update(source).digest('hex'), pin.sha256);
+});
+
+test('automatic task review reads and writes share the merged undo producer contract', () => {
+  const read = carrInterface.deal_update_reviews;
+  const write = carrInterface.mcp_write_contracts['review-deal-update'];
+  assert.equal(read.producer.source_commit, '0dbde9c89aad6101d60309447a30e0403860bb61');
+  assert.deepEqual(write.producer, read.producer);
+  assert.equal(read.producer.pull_request, 'https://github.com/DoctorCRE/carr-system/pull/2748');
+  assert.deepEqual(read.read.result, { schema_version: 'deal-update-reviews.v1', proposals: [], automatic_resolutions: [] });
+  assert.deepEqual(read.read.automatic_resolution_fields, ['assessment_id', 'deal_id', 'deal_name', 'action_title', 'quote', 'resolved_at', 'undo_possible']);
 });

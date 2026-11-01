@@ -9,8 +9,16 @@ import test from "node:test";
 import { checkActionPins } from "../scripts/check-action-pins.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+const checks = await readFile(new URL("../.github/workflows/checks.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
+
+test('signed-in Calendar CI installs the producer PostgreSQL binaries before its real journey', () => {
+  assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
+  assert.match(checks, /run: bash \.\.\/carr-producer\/ops\/ci-postgres\.sh/);
+  const journey = checks.split('name: Verify signed-in Calendar')[1];
+  assert.match(journey, /CARR_LOCAL_PG_BIN_DIR: \/usr\/lib\/postgresql\/17\/bin/);
+});
 
 test("PR jobs build the merge candidate when the branch predates a required npm script", async t => {
   const directory = await temporaryDirectory("doctorcre-old-pr-");
@@ -27,7 +35,7 @@ test("PR jobs build the merge candidate when the branch predates a required npm 
   await writeFile(join(directory, "package.json"), JSON.stringify({ private: true, scripts: { build: 'node -e "console.log(\'MERGE-BUILD-PASSED\')"' } }));
   const merge = commit();
   const contexts = { "github.sha": merge, "github.event.pull_request.head.sha": head };
-  const workflows = [ci, await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8")];
+  const workflows = [ci, checks, await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8")];
   for (const workflow of workflows) {
     for (const [, name, job] of workflow.matchAll(/^  (\w+):\n([\s\S]*?)(?=^  \w+:|$(?![\s\S]))/gm)) {
       const checkout = job.split(/^      - /m).find(step => /^uses: actions\/checkout@/m.test(step));
@@ -48,9 +56,9 @@ test("PR jobs build the merge candidate when the branch predates a required npm 
 test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {
   const workspace = await temporaryDirectory("doctorcre-checkout-layout-");
   t.after(() => rm(workspace, { recursive: true, force: true }));
-  const steps = ci.split(/^      - /m).slice(1);
+  const steps = checks.split(/^      - /m).slice(1);
   const appCheckout = steps.find(step => /^uses: actions\/checkout@/m.test(step));
-  const producerCheckout = steps.find(step => /repository: jbookout\/carr-system/.test(step));
+  const producerCheckout = steps.find(step => /repository: DoctorCRE\/carr-system/.test(step));
   const app = resolve(workspace, appCheckout.match(/path: (\S+)/)?.[1] ?? ".");
   const producer = resolve(workspace, producerCheckout.match(/path: (\S+)/)[1]);
   await mkdir(app, { recursive: true });
@@ -65,26 +73,33 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
   await writeFile(join(producer, ".github/workflows/producer.yml"), externalSource);
   const result = execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, encoding: "utf8" });
   assert.match(result, /repository check passed/);
-  assert.equal(ci.match(/working-directory: (\S+)/)?.[1], appCheckout.match(/path: (\S+)/)?.[1]);
-  assert.match(ci, new RegExp(`cache-dependency-path: ${appCheckout.match(/path: (\S+)/)?.[1]}/package-lock\\.json`));
+  assert.equal(checks.match(/working-directory: (\S+)/)?.[1], appCheckout.match(/path: (\S+)/)?.[1]);
+  assert.match(checks, new RegExp(`cache-dependency-path: ${appCheckout.match(/path: (\S+)/)?.[1]}/package-lock\\.json`));
   await writeFile(join(app, "app-owned.yml"), externalSource);
   assert.throws(() => execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, stdio: "pipe" }),
     /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
 });
 
 test('source CI keeps the full required suite and checks privacy before browser downloads', () => {
-  const steps = ci.split(/^      - /m).slice(1);
+  const steps = checks.split(/^      - /m).slice(1);
   assert.match(ci, /^  test:/m);
+  assert.match(ci, /^  checks:\n.*\n    uses: \.\/\.github\/workflows\/checks\.yml\n    secrets: inherit$/m);
+  // The live job runs producer code, so CI never runs on a schedule or dispatch;
+  // the nightly backstop runs the checks workflow on its own.
+  assert.doesNotMatch(ci.split(/^jobs:/m)[0], /schedule|workflow_dispatch/);
+  assert.match(checks, /^  workflow_call:\n  schedule:\n    - cron: "17 3 \* \* \*"\n  workflow_dispatch:$/m);
   assert.doesNotMatch(ci, /edited|continue-on-error:/);
   assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4/);
-  assert.match(ci, /needs: \[checks, shards, performance\]/);
+  // A hung test fails by name and file instead of stalling the shard to its job timeout.
+  assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4 --test-timeout=\d+ test\/\*\.test\.mjs/);
+  assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
 });
 
 test('browser dependencies use official Ubuntu mirrors after privacy checks', async t => {
-  const steps = ci.split(/^      - /m).slice(1);
+  const steps = checks.split(/^      - /m).slice(1);
   const mirror = steps.findIndex(step => /^name: Prefer Ubuntu archives for browser dependencies$/m.test(step));
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install --with-deps chromium webkit$/m.test(step));
@@ -182,6 +197,7 @@ async function fixture(t, { slow = false, budgetMs = slow ? 100 : 170_000 } = {}
   await writeFile(join(root, '.githooks/pre-push'), source.replace('170_000', String(budgetMs)));
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: {
     check: slow ? 'node -e "setInterval(()=>{},1000)"' : 'node -e "console.log(\'CHECK-RAN\')"',
+    lint: 'node -e "console.log(\'LINT-RAN\')"',
     test: 'node .githooks/pre-push --test',
   } }));
   await writeFile(join(root, 'test/touched.test.mjs'), "import test from 'node:test'; test('touched',()=>console.log('TOUCHED-RAN'));\n");
@@ -207,6 +223,7 @@ test('pre-push checks outgoing source and runs touched tests without starting an
   const result = f.push();
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /CHECK-RAN/);
+  assert.match(result.stdout, /LINT-RAN/);
   assert.match(result.stdout, /TOUCHED-RAN/);
   assert.doesNotMatch(result.stdout, /UNRELATED-RAN/);
   await assert.rejects(readFile(join(f.root,'engine-started')), { code: 'ENOENT' });
@@ -320,11 +337,11 @@ test('deletion does no checks, invalid or unchecked source refuses, and deadline
 test('required CI runs the strict no-emit UI typecheck', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const config = JSON.parse(await readFile(new URL('../tsconfig.json', import.meta.url), 'utf8'));
-  const checks = ci.split(/^  checks:\n/m)[1].split(/^  \w+:/m)[0];
+  const checksJob = checks.split(/^  checks:\n/m)[1].split(/^  \w+:/m)[0];
   assert.equal(config.compilerOptions.strict, true);
   assert.equal(config.compilerOptions.noEmit, true);
   assert.ok(config.include.includes('src/ui'));
   assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
   assert.match(pkg.scripts.check, /npm run typecheck/);
-  assert.match(checks, /run: npm run check/);
+  assert.match(checksJob, /run: npm run check/);
 });

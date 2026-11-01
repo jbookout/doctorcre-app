@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C10 — Complete Work Inventory, DOM wiring.
@@ -568,6 +569,7 @@ async function submitDisposition() {
   field("#commandStatus").textContent = `${summary} · ${outcomeLabel(result.status)}`;
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Work-inventory command receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === "ok") {
@@ -641,7 +643,10 @@ async function read({ cursor = null, append = false, background = false, signal 
       return settle({ status: "error", message: "The census returned an unexpected shape, so no part of it is shown as an inventory." }, sequence, append);
     }
     if (background) {
+      const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Work inventory calls takePage before each retained page; a max of 100 additional reads per refresh.
       for (let page = 1; page < view.loadedPages && payload.next_cursor; page++) {
+        takePage();
         const next = await fetchRead(inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT, cursor: payload.next_cursor }), { headers: { accept: "application/json" }, cache: "no-store", signal });
         if (!accepts(sequence)) return;
         if (!next.ok) throw new Error("Work page unavailable");

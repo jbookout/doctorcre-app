@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 // V5-UX-B12a — the notifications page: DOM wiring only.
 //
 // Every decision about a payload, a state or a sentence lives in
@@ -264,7 +265,10 @@ async function takeActivity() {
     let events = view.activity?.payload?.events || [];
     const seen = new Set();
     let payload;
+    const takePage = createPageBudget();
+    // eslint-disable-next-line no-restricted-syntax -- Feed pagination consumes takePage before each read; a max of 100 pages per refresh.
     do {
+      takePage();
       payload = await client.getChanges(cursor);
       if (view.sequence !== sequence) return;
       if (!Array.isArray(payload?.events) || typeof payload.cursor !== "string" || payload.ok === false) throw new Error("Activity page unavailable.");
@@ -292,6 +296,7 @@ async function load() {
   // Feed and activity reads can change the target's position before anchoring.
   if (!form.hidden && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
     preferenceAnchorRevealed = true;
+    // eslint-disable-next-line no-restricted-syntax -- A single frame scrolls to the newly revealed preference form; preferenceAnchorRevealed prevents repetition.
     requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
   }
   const state = feedState(view.feed, { after: view.after, limit: LIMIT });
@@ -323,6 +328,7 @@ async function dispatch(operationKey, args, summary, preference = false) {
   operations.set(operationKey, { args, summary, preference });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Only an explicit dock-button click retries a notification; the receipt flag schedules no attempts.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
@@ -426,6 +432,7 @@ async function savePreference(form) {
     }
   }
   dock.record(PREFERENCE_OPERATION_KEY, {
+    // eslint-disable-next-line no-restricted-syntax -- Only an explicit save or retry dispatches preferences; the receipt flag schedules no attempts.
     summary, status: result.status, reason: sentence, retry: result.retry, undo: false,
     request: result.request,
   });

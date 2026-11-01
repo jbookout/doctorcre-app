@@ -1,0 +1,40 @@
+{
+  "write": true,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "0dbde9c89aad6101d60309447a30e0403860bb61",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2748",
+    "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "idempotency_key": {
+        "type": "string"
+      },
+      "assessment_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "decision": {
+        "type": "string",
+        "enum": [
+          "resolve",
+          "dismiss",
+          "undo"
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "idempotency_key",
+      "assessment_id",
+      "decision",
+      "reason"
+    ]
+  }
+}

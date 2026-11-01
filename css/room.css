@@ -507,7 +507,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .composer-seat::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--seat-human); }
 .composer-input {
-  flex: 1 1 auto; resize: none; min-height: 40px; max-height: 132px;
+  flex: 1 1 auto; min-width: 0; resize: none; min-height: 40px; max-height: 132px;
   background: var(--surface-2); border: var(--hairline-width) solid var(--hairline);
   border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.45;
   transition: border-color var(--duration-hover) var(--ease-out);
@@ -515,6 +515,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .composer-input:focus { border-color: var(--hairline-strong); }
 .composer-input::placeholder { color: var(--fg-muted); }
 .composer-side { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; padding-bottom: 2px; }
+.composer-unavailable { max-width: 120px; font-size: 11px; line-height: 1.3; color: var(--fg-muted); }
 .composer-count { font-size: 10px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
 .composer-count.is-over { color: var(--danger); }
 .composer-send {

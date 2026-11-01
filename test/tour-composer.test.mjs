@@ -7,6 +7,8 @@ import { execFileSync } from "node:child_process";
 import { webcrypto, createHash } from "node:crypto";
 import { openDom } from "./jsdom-harness.mjs";
 import { animationsSettled, chromium, settles } from "./browser-harness.mjs";
+import { carrInterface } from "./carr-contract.mjs";
+import { committedTourWebModule } from "./tour-producer.mjs";
 
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
@@ -1292,7 +1294,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned detail producer",
 }, async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
-  const advertised = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8")).producer;
+  const advertised = carrInterface.producer;
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${advertised.source_commit}:${path}`], { encoding: "utf8" });
   const migration = committed(contract.reviewed_route.producer.migration);
   assert.match(migration, /create or replace function ops\.read_tour_internal_detail\b/);
@@ -1306,9 +1308,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
   const end = runtime.indexOf("\nasync function invoke(", start);
   assert.ok(start >= 0 && end > start);
   const { projectTourDetail } = await import(`data:text/javascript;base64,${Buffer.from(runtime.slice(start, end)).toString("base64")}`);
-  const timestampModule = `data:text/javascript;base64,${Buffer.from(committed("mcp-server/src/tour-route-timestamp.js")).toString("base64")}`;
-  const source = committed("mcp-server/src/tour-internal-web.js").replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
-  const { createTourInternalWebHandler } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const { createTourInternalWebHandler } = await committedTourWebModule(committed);
   const store = domain(), normalFetch = store.fetch;
   const actor = { id: "synthetic-partner" }, session = { csrfToken: "synthetic-csrf" };
   const handler = createTourInternalWebHandler({ readTourFn: async ({ input }) => {

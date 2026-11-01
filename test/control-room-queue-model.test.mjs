@@ -33,7 +33,7 @@ const census = (items, extra = {}) => ({
 });
 
 test("the section router maps every old ?tab= key onto a new section", () => {
-  assert.deepEqual(SECTION_KEYS, ["inbox", "waiting", "triage", "queue", "views", "boards", "automations", "connections", "agents", "system-map", "sessions"]);
+  assert.deepEqual(SECTION_KEYS, ["inbox", "waiting", "triage", "queue", "views", "boards", "approvals", "automations", "connections", "agents", "system-map", "sessions"]);
   const legacy = { overview: "boards", dashboard: "boards", connections: "connections", automations: "automations", attention: "views", agents: "agents", "model-room": "agents", "system-map": "system-map", atlas: "system-map", sessions: "sessions" };
   for (const [old, section] of Object.entries(legacy)) assert.equal(sectionForTab(old), section, old);
   for (const key of SECTION_KEYS) assert.equal(sectionForTab(key), key);
@@ -226,4 +226,13 @@ test("a refresh in flight while Load more lands cannot overwrite the page just l
   assert.equal(settleRefresh(queue, next).pages, 2, "later refreshes keep the larger page count");
   const fresher = addPage(addPage(createQueue(), pages[""]), pages.c1);
   assert.equal(settleRefresh(queue, fresher), fresher, "an equal or larger refresh replaces the queue");
+});
+
+test('queue refresh cannot drain an unbounded sequence of distinct pages', async () => {
+  let reads = 0;
+  await assert.rejects(refreshQueue({ ...createQueue(), pages: 1000 }, async () => {
+    reads++;
+    return census([], { next_cursor: `next-${reads}` });
+  }), /page_limit/);
+  assert.equal(reads, 100);
 });

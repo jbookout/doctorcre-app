@@ -14,5 +14,23 @@ export function hostNode(node: Element): Root {
   flushSync(() => root.render(<NodeHost node={node} />));
   return root;
 }
+import { bootInbox } from './home/boot';
+// inbox.html loads this bundle directly; every other page imports it on demand.
+const inboxRoot = typeof document === 'undefined' ? null : document.querySelector<HTMLElement>('#homeRoot[data-inbox]');
+if (inboxRoot) void bootInbox(inboxRoot);
 
-export { mountDealUpdateReviews } from "./deal-update-reviews";
+export { mountFactReview } from "./fact-review";
+
+export { mountMarketTerms } from "./market-terms";
+
+export { homeListLimit } from './home-list-limit';
+export { createContactReasonsView } from './contact-reasons';
+export { briefQueueIdentity, briefQueueLabels, briefQueueTitle, createBriefQueueView } from './brief-queues';
+
+export { mountActionLink } from './action-link';
+
+export { mountMissingNextStep } from "./home/missing-next-step";
+
+export * as homeTaskDone from './home/task-done';
+
+export { mountDealUpdateReviews } from './home/deal-update-reviews';

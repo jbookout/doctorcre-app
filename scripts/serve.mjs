@@ -2,13 +2,14 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readCarrInterface } from "./carr-interface.mjs";
 import { censusResponse } from "./work-inventory-fixture.mjs";
 import { atlasFixtureResponse } from "./atlas-fixture.mjs";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const root = process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL("../", import.meta.url));
-const routeContract = (await import("../js/routes.js")).routeContract;
-const carrContract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
+const { routeContract, routeKey, actionLinkRoute } = await import("../js/routes.js");
+const carrContract = await readCarrInterface();
 const routes = routeContract.routes;
 const redirects = routeContract.redirects || {};
 const types = {".css":"text/css; charset=utf-8",".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".json":"application/json; charset=utf-8",".mjs":"text/javascript; charset=utf-8",".png":"image/png",".svg":"image/svg+xml",".webmanifest":"application/manifest+json; charset=utf-8"};
@@ -71,7 +72,7 @@ createServer(async (request, response) => {
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
     const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : url.pathname] || url.pathname.replace(/^\//, "");
+      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : routeKey(actionLinkRoute(url.pathname))] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");
     const repositoryPath = relative(root, path);
     if (repositoryPath.startsWith("..") || isAbsolute(repositoryPath) || !(await stat(path)).isFile()) throw new Error("not found");

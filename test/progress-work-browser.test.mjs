@@ -76,10 +76,11 @@ function fixtureScope(t) {
   return scope;
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,onRequest}={}) {
   const scope = fixtureScope(t);
   const browser = scope.browser = await chromium.launch();
   const page = scope.page = await browser.newPage({viewport:{width,height:900}});
+  if (onRequest) page.on('request', onRequest);
   await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
@@ -623,13 +624,13 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   await assertEventually(()=>state.turnReads>=1);
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
-    const before=state.turnReads;await page.clock.runFor(60_100);await assertEventually(()=>state.turnReads>before);
+    const before=state.turnReads;await page.clock.runFor(120_100);await assertEventually(()=>state.turnReads>before);
     await fixtureScope(t).delay(100);
   }
   assert.equal(await page.locator('.passport-card').count(),0);
-  release();await page.clock.runFor(60_100);
+  release();await page.clock.runFor(120_100);
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');
+  await page.clock.runFor(120_100);await page.waitForSelector('.passport-card');
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
@@ -699,10 +700,7 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   assert.equal(posts[0].body.control.action,'login');assert.equal(posts[0].body.control.desk,'Synthetic desk');
   await page.locator('#viewEverything').click();await page.locator('#kindReceipts').click();assert.equal(await page.locator('#kindReceipts').getAttribute('aria-pressed'),'false');await page.locator('#kindReceipts').click();
   await page.locator('#wireSearch').fill('Unrelated');assert.match(await page.locator('#wireFeed').textContent(),/Unrelated synthetic task/);await page.locator('#wireSearch').fill('');
-  await page.locator('#composerInput').fill('Synthetic room draft');await page.locator('#composerInput').press('Shift+Enter');await page.locator('#composerInput').press('Enter');
-  await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
-  await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
-  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
+  assert.equal(posts.length,1);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));
   await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
@@ -750,16 +748,6 @@ test('wire history, pause, missed-count and Resume live work through the new pag
   await page.locator('.wire-earlier').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic history turn 157'));
   await page.locator('#wireResume').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic latest turn'));
   assert.deepEqual(errors,[]);
-});
-
-test('composer failure retains its draft until reconciliation and preserves the 20k cap',async t=>{
-  const {page,state,errors}=await open(t);state.postFailure=true;
-  await page.locator('#composerInput').fill('Synthetic failed draft');await page.locator('#composerInput').press('Enter');
-  await page.locator('#roomToast button').click();assert.equal(await page.locator('#composerInput').inputValue(),'Synthetic failed draft');
-  assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
-  state.postFailure=false;await page.locator('#composerSend').click();
-  await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
-  await page.locator('#composerInput').fill('x'.repeat(20001));assert.equal(await page.locator('#composerSend').isDisabled(),true);assert.deepEqual(errors,[]);
 });
 
 for(const width of [320,390,1440])test(`work detail has no horizontal scroll at ${width}px and respects reduced motion`,async t=>{
@@ -1043,24 +1031,51 @@ for (const [name,aliases] of [
   assert.deepEqual(errors, []);
 });
 
-test('S2 room and queue composers lock unknown drafts and replay their original request keys',async t=>{
- const {page,state,posts,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks',width:390});
- state.postFailure=true;
- await page.locator('#composerInput').fill('Synthetic uncertain room turn');
- await page.locator('#composerInput').press('Enter');
- await page.waitForFunction(()=>document.querySelector('#composerSend').textContent==='Check outcome');
- assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
- await page.clock.runFor(120_000);state.postFailure=false;
- await page.locator('#composerSend').click();
- await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
- assert.deepEqual(posts[1].body,posts[0].body);assert.match(posts[0].body.idempotency_key,/^[0-9a-f-]{36}$/);
- state.postFailure=true;
- await page.locator('#enqueueTitle').fill('Synthetic uncertain enqueue');
- await page.locator('#queueComposer button').click();
- await page.waitForFunction(()=>document.querySelector('#queueComposer button').textContent==='Check outcome');
- assert.equal(await page.locator('#enqueueTitle').isDisabled(),true);
- state.postFailure=false;await page.locator('#queueComposer button').click();
- await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
- assert.deepEqual(posts[3].body,posts[2].body);assert.notEqual(posts[2].body.idempotency_key,posts[0].body.idempotency_key);
- assert.equal(await page.locator('#enqueueTitle').isDisabled(),false);assert.deepEqual(errors,[]);
+for (const [name, input, button, form] of [['wire', '#composerInput', '#composerSend', '#roomComposer'], ['queue', '#enqueueTitle', '#queueComposer button', '#queueComposer']]) test(`${name} request stays unsent and keeps the draft`, async t => {
+ const {page,posts}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks',width:390});
+ await page.locator(input).fill('Synthetic draft');
+ assert.equal(await page.locator(button).isDisabled(),true);
+ assert.match(await page.locator(form).textContent(),/Not submitted\. This control cannot send a request to Dr\. CRE\./);
+ assert.equal(await page.locator(form).getByText('Not submitted. This control cannot send a request to Dr. CRE.').isVisible(),true);
+ await page.locator(form).dispatchEvent('submit');
+ await page.locator(input).press('Enter');
+ assert.equal(await page.locator(input).inputValue(),'Synthetic draft');
+ assert.equal(posts.length,0);
+});
+
+for (const path of [taskPath, '/control-room/progress/board/demo-project']) test(`24-hour stuck tab has at most 1000 app requests and zero API-host requests at ${path}`, async t => {
+  const requests=[];
+  const {page}=await open(t,{path,onRequest:request=>requests.push({url:request.url(),type:request.resourceType()})});
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(async()=>{
+    window.__quietHumanInputs=0;
+    for(const type of ['pointerdown','pointermove','keydown','touchstart','touchmove','wheel'])document.addEventListener(type,event=>{if(event.isTrusted)window.__quietHumanInputs++;});
+    const {privateSession}=await import('/js/private-session.js');
+    // Model an arbitrary number of automatic callers, beyond the pollers.
+    for(let i=0;i<1000;i++)await privateSession().fetch('/api/room/queue').catch(()=>{});
+  });
+  for(let hour=0;hour<24;hour++){
+    await page.evaluate(()=>{
+      const host=document.querySelector('#wireList')||document.body;
+      host.append(document.createElement('div'));host.lastElementChild.style.height='100px';
+      host.scrollTop=host.scrollHeight;host.lastElementChild.scrollIntoView();
+      for(let i=0;i<100;i++){
+        window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('focus'));
+        Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));
+        Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+      }
+    });
+    // The transport budget is already exhausted; coalesce local repaint ticks.
+    await page.clock.fastForward(60*60_000);
+  }
+  const app=requests.filter(request=>new URL(request.url).origin==='http://localhost');
+  const fetches=app.filter(request=>['fetch','xhr'].includes(request.type));
+  const assets=app.length-fetches.length;
+  const api=requests.filter(request=>new URL(request.url).hostname==='api.doctorcre.com');
+  assert.equal(await page.evaluate(()=>window.__quietHumanInputs),0);
+  assert.equal(fetches.length,600,'all raw HTTP attempts, including pre/post auth, share the document ceiling');
+  assert.ok(assets<=400,`finite first-party asset graph exceeds the 400-request allowance: ${assets}`);
+  assert.ok(app.length<=1000);assert.equal(api.length,0);
+  t.diagnostic(JSON.stringify({path,hours:24,app:app.length,fetches:fetches.length,assets,api:api.length,ceiling:1000}));
 });

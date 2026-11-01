@@ -215,6 +215,7 @@ function reconcileTaskDialog() {
 
 function settleTaskReadFocus(dialogAction) {
   const concealed = retryFocusPending || dialogAction === "conceal";
+  // eslint-disable-next-line no-restricted-syntax -- Pure focus predicate runs once per render; it schedules 0 retry requests.
   if (shouldFocusTaskRetry(concealed, view.status)) $("retryRead")?.focus();
   if (view.status !== "loading") retryFocusPending = false;
 }
@@ -347,6 +348,7 @@ async function dispatch(operationKey, args, send, summary) {
     summary,
     status: result.status,
     reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Task command receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     retry: result.retry,
     undo: false,
     request: result.request,

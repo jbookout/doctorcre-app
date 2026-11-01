@@ -2,9 +2,8 @@ import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
-import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
-import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
@@ -56,6 +55,8 @@ export function createFixtureDealStore(seed) {
 const VERSION_CONFLICT = 'version_conflict';
 
 export async function createFixtureClient(opts = {}) {
+  let factReview;
+  const factReviews = () => factReview ||= import('../data/fixtures/fact-review.mjs').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
@@ -64,6 +65,13 @@ export async function createFixtureClient(opts = {}) {
   });
 
   const selfActor = opts.selfActor || seed.actors?.self || 'joe';
+  const conventionProposals = [1, 2].map((number) => {
+    const section_id = `d0000000-0000-4000-8000-00000000c15${number}`;
+    return { section_id, section_key: `conventions/proposed/demo-${number}`, base_version: number,
+      updated_at: '2026-10-28T12:00:00Z', adoptable: true, statement: `Demo convention ${number}.`,
+      card_id: null, packs: ['demo'], approve_with: { verb: 'adopt-rule', section_id, base_version: number } };
+  });
+
   const partnerActor = seed.actors?.partner || 'dell';
 
   const dealStore = opts.dealStore || createFixtureDealStore(seed);
@@ -423,12 +431,6 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
-
-  const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
-
-  const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
-
-  const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
   const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
 
@@ -1026,6 +1028,7 @@ export async function createFixtureClient(opts = {}) {
   function trigrams(value) {
     const padded = `  ${String(value).toLowerCase().trim()} `;
     const out = new Set();
+    // eslint-disable-next-line no-restricted-syntax -- Trigram construction advances 1 character and will stop at padded.length minus 2; 0 reads.
     for (let i = 0; i + 3 <= padded.length; i += 1) out.add(padded.slice(i, i + 3));
     return out;
   }
@@ -1252,9 +1255,15 @@ export async function createFixtureClient(opts = {}) {
 
     async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
 
+    async listPracticeOrigination(args = {}) { const {practiceOriginationFixture} = await import('../data/fixtures/practice-origination.mjs'); return practiceOriginationFixture(args); },
+
     async getHomeAgenda() {
       const board = await this.getBoard();
-      return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
+      const missing = new Map();
+      for (const deal of board.deals.filter(deal => deal.phase !== 'On Deck' && !actionsFor(deal).some(action => action.status === 'open'))) {
+        missing.set(deal.owner, [...(missing.get(deal.owner) || []), deal.id]);
+      }
+      return { ...board, schema_version: 'home-agenda.v1', missing_next_action: [...missing].map(([owner, deal_ids]) => ({ owner, deal_ids })).sort((a, b) => a.owner === null ? 1 : b.owner === null ? -1 : a.owner.localeCompare(b.owner)), deals: board.deals.map(deal => ({
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: deal.next_step || 'Follow-up due', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
@@ -1262,6 +1271,13 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
+    async listDealDocuments(args) { return (await factReviews()).listDealDocuments(args); },
+    async prepareTermsComparison(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.prepareTermsComparison(args); },
+    async listFactReview(args) { return (await factReviews()).listFactReview(args); },
+    async recordHumanFact(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.recordHumanFact(args); },
+    async resolveFactReview(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.resolveFactReview(args); },
+
+    async readMarketTerms(args = {}) { return readMarketTerms(args); },
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
@@ -1283,7 +1299,7 @@ export async function createFixtureClient(opts = {}) {
         activities: activitiesFor(dealId).slice(0, 4),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
+        premises: [], negotiation_rounds: [], attachments: (await factReviews()).attachments(dealId), documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {
@@ -1496,6 +1512,12 @@ export async function createFixtureClient(opts = {}) {
         item.status = 'done';
         return { ok: true, item: structuredClone(item) };
       });
+    },
+
+    async answerBoardQuestion({ board_id, question_id, base_version, answer_text, idempotency_key }) {
+      if (board_id !== 'calendar-agenda' || !/^[0-9a-f]{16}$/.test(question_id) || base_version !== 1 || answer_text !== 'Dismiss')
+        throw new Error('Invalid calendar answer');
+      return withIdem(idempotency_key, () => ({ ok: true, answer: { question_id, answer_text } }));
     },
 
     async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
@@ -2030,9 +2052,11 @@ export async function createFixtureClient(opts = {}) {
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
       // No fixture session is closed.
       void include_closed;
+      const {EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS} = await import('./example-sessions.js');
+      const rows = [...EXAMPLE_SESSION_ROWS, ...BRANCH_SESSION_ROWS];
       const matched = text.length === 0
-        ? SESSION_ROWS
-        : SESSION_ROWS.filter((row) => String(row.display_name).toLowerCase().includes(text)
+        ? rows
+        : rows.filter((row) => String(row.display_name).toLowerCase().includes(text)
           || String(row.canonical_session_id).toLowerCase().includes(text));
       if (text === 'reverent') {
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
@@ -2619,14 +2643,16 @@ export async function createFixtureClient(opts = {}) {
       ];
       return {
         ok: true,
+        pending_convention_proposals: structuredClone(conventionProposals),
         pending_rule_approvals: rules,
         pending_guidance_import_batches: batches,
         pending_retrieval_proposals: proposals,
         counts: {
+          pending_convention_proposals: conventionProposals.length,
           pending_rule_approvals: rules.length,
           pending_guidance_import_batches: batches.length,
           pending_retrieval_proposals: proposals.length,
-          total: rules.length + batches.length + proposals.length,
+          total: conventionProposals.length + rules.length + batches.length + proposals.length,
         },
       };
     },
@@ -3048,7 +3074,12 @@ export async function createFixtureClient(opts = {}) {
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([
     'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
-    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
+    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'editEmailDraft', 'submitEmailDraft',
   ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
+}
+
+function readMarketTerms(args = {}) {
+  const rows = [{canonical_fact_id:'fixture-rent', entity_ref:'d14', fact_key:'rent', version:1, value:'35', unit:'USD/sf/year', expense_basis:'NNN', confidence:'human_review', submarket:'North', use_type:'Office', term_kind:'executed', term_date:'2026-01-01', effective_from:'2026-01-01', effective_to:null, context_source:{document_ref:'fixture-lease'}, sources:[{document_ref:'fixture-lease',page_start:1,page_end:2,quarantined:true}]}].filter(row => (!args.submarket || row.submarket === args.submarket) && (!args.use_type || row.use_type === args.use_type));
+  return {ok:true,schema_version:'market-terms.v1',empty:!rows.length,rows,coverage:{recorded_documents:40,canonical_receipts:20,classified_receipts:12,eligible_receipts:1,unsupported_receipts:7,superseded_without_context:4,unclassified_receipts:8,comparable_deals:rows.length}};
 }

@@ -1,0 +1,18 @@
+{
+  "schema_version": "action-link-resolve.v1",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "150c7386f6640d092d14d715c1badf1d8f78c6c9",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2802"
+  },
+  "resolve": { "verb": "resolve-action-link", "input": ["ref"], "card_kind": "lead_draft", "state": "pending_approval" },
+  "approve": {
+    "verb": "approve-lead-draft",
+    "input": ["idempotency_key", "draft_id", "revision"],
+    "receipt": ["ok", "draft_id", "revision", "approved", "sent"],
+    "effect": "Records approval only; sent must be false. Never invokes an email sender."
+  },
+  "refusals": ["action_link_not_found", "action_link_no_longer_actionable", "draft_not_pending", "stale_draft_revision"],
+  "authority": "Same-origin partner session. The reference is an address, not a credential. The producer checks ownership and eligibility.",
+  "deployment_order": "Producer deployed first. Live resolve-action-link discovery and synthetic not-found refusal verified before this app PR."
+}

@@ -604,7 +604,7 @@ export function workRequestCardRequest(humanRef) {
 //
 // V5-UX-C13b's included scope is the composer, the interactive Kanban, and
 // answering a Waiting for Joe item. Before drawing any of the three, this file
-// checked contracts/carr-interface.v1.json against list-verbs AND the actual
+// checked contracts/carr-interface.v1 against list-verbs AND the actual
 // server-side handler each candidate verb runs (carr-system's
 // mcp-server/src/partner-room.js, dispatch-spine.js), because a verb's own
 // description can say more than its input schema does:

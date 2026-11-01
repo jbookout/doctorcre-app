@@ -1,9 +1,9 @@
 import {readFile} from 'node:fs/promises';
 import {extname} from 'node:path';
 import {handleDoctorcreRequest} from '../src/worker.js';
-import {workspace,detail} from './leads-workspace-fixture.mjs';
+import {workspace,detail,emptyQuietFollowUps} from './leads-workspace-fixture.mjs';
 
-export async function routeLeads(page,{getBoard=workspace,getDetail=(row)=>detail(row),onRead=()=>{},onWrite=()=>{}}={}) {
+export async function routeLeads(page,{getBoard=workspace,getReasons=()=>({ok:true,contract:"practice-origination.v1",cards:[],coverage:[],next_cursor:null,outreach_started:false}),getDetail=(row)=>detail(row),onRead=()=>{},onWrite=()=>{}}={}) {
  const types={'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.geojson':'application/geo+json'};
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());if(url.origin!=='http://localhost')return route.abort();
@@ -11,7 +11,10 @@ export async function routeLeads(page,{getBoard=workspace,getDetail=(row)=>detai
    const path=new URL(request.url).pathname;
    if(path==='/mcp'){
     const p=(await request.json()).params;let value={ok:true};
-    if(p.name==='deal-room-board')value={actor:'example-partner',deals:[]};
+    if(p.name==='list-practice-origination')value=await getReasons(p.arguments);
+    else if(p.name==='quiet-follow-ups')value=emptyQuietFollowUps();
+    else if(p.name==='read-home-agenda')value={schema_version:'home-agenda.v1',actor:'example-partner',deals:[]};
+    else if(p.name==='deal-room-board')value={actor:'example-partner',deals:[]};
     else if(p.name==='lead-board'){onRead();const board=await getBoard();value={...board,...(p.arguments.lead_id?{detail:getDetail(board.leads.find(l=>l.id===p.arguments.lead_id),p.arguments)}:{})}}else onWrite(p);
     return Response.json({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(value)}]}});
    }

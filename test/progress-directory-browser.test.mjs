@@ -92,7 +92,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
   assert.deepEqual(await page.locator("#board-stages .column").evaluateAll(columns => columns.map(column => column.dataset.stage)),
-    ["queued", "build", "review", "merged", "closed"], "the system board renders every queue stage");
+    ["queued", "running", "build", "review", "merged", "live", "closed"], "the system board renders every queue stage");
   await project.evaluate(node => node.removeAttribute("target"));
   await page.locator('.directory-summary').click();
   await project.click();
@@ -262,7 +262,7 @@ test("an unchanged polled question retains its draft while focused questions def
   await page.clock.runFor(60_000);
   assert.equal(calls.filter(call => call.name === "read-progress-board").length, 1);
   await page.locator("#board-title").click();
-  await page.clock.runFor(60_000);
+  await page.clock.runFor(120_000);
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   await reads.reply(page, "list-progress-boards", 1, listing("New directory"));
   assert.equal(await page.locator(".answer-form textarea").inputValue(), "Unsent draft");

@@ -120,8 +120,19 @@ deployment directory. Tagged `app-v*` releases run
 the same checks and publish those three files. Consumers pin the exact source
 commit and archive digest; they never import this repository's source tree.
 
-The pinned consumer contract is `contracts/carr-interface.v1.json`. The live and
-fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
+The pinned consumer contract is `contracts/carr-interface.v1/`, one file per
+entry so that two branches adding verbs never edit the same lines.
+`scripts/carr-interface.mjs` composes it into one object. A feature adds
+`mcp_operations/<encoded-verb>.json` (a JSON string), `http_surfaces/<encoded-path>.json`
+(`{"value":"/api/v1/example","order":28}`), and its own `<section>.json`.
+List filenames use `entryFileName`, a reversible lowercase UTF-8 hex encoding of
+the full verb or surface key. The composer rejects duplicate entry files. The
+contract digest recursively sorts object keys while retaining array order.
+Surface order preserves the original contract
+array; append with the next order number. Equal orders from parallel additions
+sort by value. CI rejects the retired single file. Tests read the
+contract through `test/carr-contract.mjs` and assert only the entries they own.
+The live and fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
 
 The repository is publicly visible. No open-source license has been selected;
 public visibility alone does not grant reuse rights.
@@ -153,3 +164,18 @@ CI keeps JSON, the performance summary, and Playwright failure traces as artifac
 The CI job publishes the performance summary in its job summary.
 
 `npm run docs:check` warns about broken local Markdown links and unknown documented npm commands.
+
+Client scheduling is checked with `npm run lint`. Use `createPageBudget` /
+`createRequestBudget` for bounded reads and TanStack Query `refetchInterval`
+for React polling. Audited local callbacks carry an inline
+`eslint-disable-next-line no-restricted-syntax -- <reason>` comment naming the
+specific bound or cancellation owner in at least four words; placeholder reasons are rejected.
+Raw scheduler aliases, global-object aliases, and static computed scheduler keys
+are checked. Schedulers reached through function parameters, returned values,
+non-global object properties, or dynamic computed keys are outside this analysis.
+
+`node scripts/prove-loop-lint-coverage.mjs` compares the pinned pre-migration main
+revision with ESLint, lists both coverage sets, and asserts containment. It
+reports historical direct-form inventory diagnostics separately from wrappers and
+name collisions; it gives no scheduler-origin credit to those entries.
+The pinned commit must be present in local Git history.

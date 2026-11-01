@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { sessionFetch } from './private-session.js';
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -716,7 +717,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     counted: new Map(),
   };
   const roomWrites = createRoomTurnClient({ session: async () => state.csrf });
-  let composerSending = false;
+  $("composerSend").disabled = true;
+  $("composerSend").insertAdjacentHTML("afterend", '<span class="composer-unavailable">Not submitted. This control cannot send a request to Dr. CRE.</span>');
 
   /* --------------------------------------------------------- small helpers */
 
@@ -767,6 +769,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     wanted.forEach((node, index) => {
       if (host.children[index] !== node) host.insertBefore(node, host.children[index] || null);
     });
+    // eslint-disable-next-line no-restricted-syntax -- Removes 1 excess child per iteration until host.children.length equals wanted.length; 0 reads.
     while (host.children.length > wanted.length) host.lastElementChild.remove();
   }
 
@@ -789,12 +792,16 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     state.counted.set(node.id ?? node, target);
     if (REDUCED() || from === target) { node.textContent = format(target); return; }
     const started = performance.now();
+    let frames = 0;
     const step = (stamp) => {
+      if (document.visibilityState === 'hidden' || ++frames >= 180) { node.textContent = format(target); return; }
       const t = Math.min(1, (stamp - started) / 300);
       const eased = 1 - (1 - t) * (1 - t);
       node.textContent = format(Math.round(from + (target - from) * eased));
+      // eslint-disable-next-line no-restricted-syntax -- Count animation has a max of 180 frames or 300ms; hidden state terminates local repainting.
       if (t < 1) requestAnimationFrame(step);
     };
+    // eslint-disable-next-line no-restricted-syntax -- Starts a single count animation capped at 180 frames or 300ms; hidden state terminates repainting.
     requestAnimationFrame(step);
   }
 
@@ -1051,6 +1058,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       chip.textContent = "RECONNECT";
       chip.style.setProperty("fill", "var(--status-warn-ink)");
       chip.style.setProperty("cursor", "pointer");
+      // eslint-disable-next-line no-restricted-syntax -- Only a sign-in chip click requests reconnect with the original retained idempotency key.
       chip.addEventListener("click", (event) => { event.stopPropagation(); requestReconnect(node.label); });
       group.appendChild(chip);
     }
@@ -1060,6 +1068,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     group.appendChild(title);
 
     group.addEventListener("pointerenter", () => showTooltip(node, point));
+    // eslint-disable-next-line no-restricted-syntax -- Focus only displays the cached worker tooltip; it performs no HTTP reads.
     group.addEventListener("focus", () => showTooltip(node, point));
     group.addEventListener("pointerleave", hideTooltip);
     group.addEventListener("blur", hideTooltip);
@@ -1124,7 +1133,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
     const duration = arc ? 2200 : 1800;
     const started = performance.now();
+    let frames = 0;
     const step = (stamp) => {
+      if (document.visibilityState === 'hidden' || ++frames >= 600) { comet.remove(); cometCounts.set(nodeId, Math.max(0, (cometCounts.get(nodeId) || 1) - 1)); return; }
       const t = Math.min(1, (stamp - started) / duration);
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       const at = direction === "out" ? eased : 1 - eased;
@@ -1136,11 +1147,13 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       place(head, 0);
       place(trail[0], direction === "out" ? -0.035 : 0.035);
       place(trail[1], direction === "out" ? -0.07 : 0.07);
+      // eslint-disable-next-line no-restricted-syntax -- Comet animation has a max of 600 frames or 2200ms; hidden state removes the comet.
       if (t < 1) { requestAnimationFrame(step); return; }
       comet.remove();
       cometCounts.set(nodeId, Math.max(0, (cometCounts.get(nodeId) || 1) - 1));
       litBadge(nodeId);
     };
+    // eslint-disable-next-line no-restricted-syntax -- Starts a single comet animation capped at 600 frames or 2200ms; hidden state removes it.
     requestAnimationFrame(step);
   }
 
@@ -1151,6 +1164,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const badge = entry && $("stageNodes").querySelector(`[data-node="${CSS.escape(nodeId)}"] .stage-node-badge`);
     if (!badge) return;
     badge.classList.add("is-lit");
+    // eslint-disable-next-line no-restricted-syntax -- One 900ms badge-flash expiry per activity event; only removes a CSS class.
     setTimeout(() => badge.classList.remove("is-lit"), 900);
   }
 
@@ -1256,6 +1270,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     card.addEventListener("click", (event) => {
       if (card.dataset.auth === "false" && event.target.closest(".assignment-badge")) {
         event.preventDefault();
+        // eslint-disable-next-line no-restricted-syntax -- Only an explicit desk-card click requests reconnect using the retained request.
         requestReconnect(card.dataset.desk);
         return;
       }
@@ -1854,48 +1869,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       ? `${value.length} / ${BODY_MAX} — too long to post`
       : `${value.length} / ${BODY_MAX}`;
     counter.classList.toggle("is-over", over);
-    const retained = roomWrites.pending('composer');
-    $("composerInput").readOnly = Boolean(retained);
-    $("composerSend").disabled = composerSending || over || !value.trim();
-    if (!composerSending) $("composerSend").textContent = retained ? 'Check outcome' : 'Send';
+    $("composerSend").disabled = true;
     sizeComposer(value);
-  }
-
-  async function sendComposer() {
-    if (composerSending) return;
-    const input = $("composerInput");
-    const body = roomWrites.pending('composer')?.body ?? input.value;
-    if (!body.trim() || body.length > BODY_MAX) return;
-    const localId = 'pending:composer';
-    state.pending.set(localId, { seq: Number.MAX_SAFE_INTEGER, at: new Date().toISOString(),
-      seat: "human", sponsor: state.viewer, kind: "turn", body, msg_id: localId });
-    composerSending = true;
-    updateCounter();
-    render();
-    scrollToBottom(false);
-
-    const send = $("composerSend");
-    send.disabled = true;
-    const spinner = el("span", "composer-spinner");
-    send.prepend(spinner);
-    try {
-      await postTurn({ body });
-      state.pending.delete(localId);
-      input.value = '';
-      await wirePoll.refresh();
-    } catch (error) {
-      state.pending.delete(localId);
-      render();
-      input.value = body;
-      toast(error?.payload?.error === "body_too_long"
-        ? "That turn is over the room's 20,000-character cap."
-        : roomWrites.pending('composer') ? 'Turn outcome unknown. Check outcome before editing or posting another turn.' : 'The room refused this turn. Review it before sending again.',
-      () => { input.value = body; updateCounter(); input.focus(); });
-    } finally {
-      composerSending = false;
-      spinner.remove();
-      updateCounter();
-    }
   }
 
   async function requestReconnect(deskName) {
@@ -1904,6 +1879,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       banner(`Sign-in requested for ${deskName} — approve it in the browser window the desk opens.`, false);
       await wirePoll.refresh();
     } catch {
+      // eslint-disable-next-line no-restricted-syntax -- Toast retry runs only on an explicit click and checks the retained sign-in request 1 time.
       toast(`Sign-in request for ${deskName} is unconfirmed. Retry checks the original request.`, () => void requestReconnect(deskName));
     }
   }
@@ -1915,10 +1891,12 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     if (retry) {
       const button = el("button", null, "Retry");
       button.type = "button";
+      // eslint-disable-next-line no-restricted-syntax -- Only a toast-button click invokes retry; hiding the toast prevents background retries.
       button.addEventListener("click", () => { host.hidden = true; retry(); });
       host.appendChild(button);
     }
     host.hidden = false;
+    // eslint-disable-next-line no-restricted-syntax -- Each toast invocation schedules a single dismissal after nine seconds without reading data.
     setTimeout(() => { host.hidden = true; }, 9000);
   }
 
@@ -1926,6 +1904,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const host = $("roomBanner");
     host.textContent = message;
     host.hidden = false;
+    // eslint-disable-next-line no-restricted-syntax -- A single callback dismisses a success banner after six seconds; failure banners remain visible.
     if (!bad) setTimeout(() => { host.hidden = true; }, 6000);
   }
 
@@ -2002,10 +1981,14 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     try {
       // latest_seq is the last returned row, not the room's overall tail.
       // Drain the server's oldest-first pages before showing a current window.
-      let from = state.rescanRequested ? 0 : state.cursor;
+      if (state.rescanRequested) state.catchUp = { from: 0, turns: [] };
       state.rescanRequested = false;
-      let payload, turns = [];
+      let from = state.catchUp?.from ?? state.cursor;
+      let payload, turns = state.catchUp?.turns || [];
+      const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Initial turn pagination calls takePage before each 200-turn page; a max of 100 pages.
       do {
+        const remaining = takePage();
         payload = await fetchTurns(from, 200);
         if (!authReadable(epoch)) return;
         validateTurnPage(payload, from);
@@ -2016,7 +1999,15 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
         const next = Number(payload.latest_seq);
         if (payload.more && !(next > from)) throw new Error("Room cursor did not advance.");
         if (Number.isFinite(next)) from = next;
+        state.catchUp = { from, turns };
+        if (payload.more && remaining === 0) {
+          pageDocContext?.fail(docTicket, new Error('catching_up'));
+          state.offline = true;
+          banner('Catching up with room history. The next bounded read continues from this page.');
+          return false;
+        }
       } while (payload.more);
+      state.catchUp = null;
       payload = { ...payload, turns };
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
@@ -2048,6 +2039,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       setState($("healthCycleDot"), "urgent");
       banner("Wire offline — last-known activity; retrying.");
       $('roomHealth').dataset.stale = 'true';
+      return false;
     }
   }
 
@@ -2062,10 +2054,14 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     try {
       // IDs belong to all rooms. Walk the supported oldest-first cursor rather
       // than guessing a predecessor by subtracting a row count from an ID.
-      let from = 0, earlier = state.turns.filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters)).slice(-PAGE_SIZE);
-      if (earlier.length < PAGE_SIZE) {
-        earlier = [];
+      const continuation = state.historyCatchUp?.oldest === oldest ? state.historyCatchUp : null;
+      let from = continuation?.from || 0, earlier = continuation?.earlier || state.turns.filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters)).slice(-PAGE_SIZE);
+      if (earlier.length < PAGE_SIZE || continuation) {
+        if (!continuation) earlier = [];
+        const takePage = createPageBudget();
+        // eslint-disable-next-line no-restricted-syntax -- Retained turn catch-up calls takePage before each 200-turn page; a max of 100 pages.
         while (true) {
+          const remaining = takePage();
           const page = await fetchTurns(from, 200);
           if (!current()) return;
           validateTurnPage(page, from);
@@ -2073,8 +2069,11 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
           if (!page.more || (page.turns || []).some(turn => seqOf(turn) >= oldest)) break;
           if (!(Number(page.latest_seq) > from)) throw new Error("Room cursor did not advance.");
           from = Number(page.latest_seq);
+          state.historyCatchUp = { oldest, from, earlier };
+          if (remaining === 0) { banner('Earlier history is still loading. Load earlier continues from this page.'); return; }
         }
       }
+      state.historyCatchUp = null;
       if (!earlier.length) { state.historyExhausted = oldest; render(); return; }
       const payload = { turns: earlier };
       const rows = new Map([...window, ...payload.turns].map(turn => [String(turn.msg_id || turn.seq), turn]));
@@ -2118,7 +2117,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
   document.addEventListener('progress-auth-lost', () => {
     pageDocContext?.clear();
-    state.turns = []; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
+    state.turns = []; state.catchUp = null; state.historyCatchUp = null; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
     state.historyGeneration = (state.historyGeneration || 0) + 1;
     state.cursor = 0; state.csrf = null; state.model = null;
     state.counted.clear();
@@ -2146,12 +2145,12 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     render();
   });
   $("wireFeed").addEventListener("scroll", onFeedScroll, { passive: true });
-  $("wireResume").addEventListener("click", () => { state.historyGeneration = (state.historyGeneration || 0) + 1; state.historyTurns = null; state.following = true; render(); scrollToBottom(true); });
+  $("wireResume").addEventListener("click", () => { state.historyGeneration = (state.historyGeneration || 0) + 1; state.historyTurns = null; state.historyCatchUp = null; state.following = true; render(); scrollToBottom(true); });
   $("composerInput").addEventListener("input", updateCounter);
   $("composerInput").addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendComposer(); }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); }
   });
-  $("roomComposer").addEventListener("submit", (event) => { event.preventDefault(); sendComposer(); });
+  $("roomComposer").addEventListener("submit", (event) => { event.preventDefault(); });
 
   // Cursor parallax: the stage leans toward the pointer, and each ring is
   // displaced by its depth. Pointer-driven only, so a touch device simply never
@@ -2173,6 +2172,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     clearTimeout(resizeTimer);
     // Crossing the phone/desktop boundary swaps the stage geometry, so the core
     // and the rings are both redrawn rather than left at the old scale.
+    // eslint-disable-next-line no-restricted-syntax -- Resize keeps one 180ms debounce, replacing the prior timer; callback redraws local stage geometry only.
     resizeTimer = setTimeout(() => { stageLayout = ""; drawCore(); render(); }, 180);
   }, { passive: true });
   reduced.addEventListener("change", () => render());

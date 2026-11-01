@@ -1,42 +1,45 @@
 export const routeEntries = [
   ["/","workspace.html","/"],
+  ["/a/:ref","action-link.html","/leads"],
+  ["/all-work","work-inventory.html","/work-inventory"],
+  ["/calendar","calendar.html","/business"],
+  ["/calls","calls.html","/business"],
+  ["/client-portal","client-portal.html","/business"],
+  ["/clients","business.html","/clients"],
   ["/control-room","control-room.html","/control-room"],
+  ["/control-room/observatory","observatory.html","/control-room"],
   ["/control-room/progress","progress-board.html","/control-room"],
   ["/control-room/progress/board/:boardId","progress-board.html","/control-room"],
   ["/control-room/progress/work","progress-work.html","/control-room"],
   ["/deals","pipeline.html","/deals"],
-  ["/leads","leads.html","/leads"],
-  ["/clients","business.html","/clients"],
-  ["/client-portal","client-portal.html","/business"],
-  ["/vendors","business.html","/vendors"],
-  ["/calendar","calendar.html","/business"],
-  ["/ideas-events","ideas.html","/control-room"],
-  ["/work-requests","system-work.html","/system-work.html"],
-  ["/tours","tours/index.html","/tours"],
-  ["/calls","calls.html","/business"],
-  ["/share","reports/share.html","/share"],
   ["/design-lab","design.html","/control-room"],
-  ["/all-work","work-inventory.html","/work-inventory"],
-  ["/search","search.html","/business"],
-  ["/status","status.html","/control-room"],
-  ["/incidents","incidents.html","/incidents"],
-  ["/updates","notifications.html","/notifications"],
+  ["/doc-activity","activity.html","/control-room"],
   ["/doc-chats","conversations.html","/conversations"],
   ["/doc-chats/work","tasks.html","/tasks"],
-  ["/relationships","relationships.html","/business"],
-  ["/doc-activity","activity.html","/control-room"],
+  ["/ideas-events","ideas.html","/control-room"],
+  ["/inbox","inbox.html","/"],
+  ["/inbox/card/:item_id","inbox.html","/"],
+  ["/incidents","incidents.html","/incidents"],
   ["/invoices","invoices.html","/control-room"],
+  ["/leads","leads.html","/leads"],
   ["/leases","lease-radar.html","/business"],
-  ["/control-room/observatory","observatory.html","/control-room"]
+  ["/relationships","relationships.html","/business"],
+  ["/search","search.html","/business"],
+  ["/share","reports/share.html","/share"],
+  ["/status","status.html","/control-room"],
+  ["/tours","tours/index.html","/tours"],
+  ["/updates","notifications.html","/notifications"],
+  ["/vendors","business.html","/vendors"],
+  ["/work-requests","system-work.html","/system-work.html"],
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.23.0",
+  version: "1.25.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
   "/control-room/automations": "/control-room?tab=automations",
   "/automations.html": "/control-room?tab=automations",
-  "/progress-board": "/control-room/progress",
+  "/progress-board": "/control-room/progress/board/carr-v5",
   "/workspace": "/",
   "/queue.html": "/control-room/progress/work?view=tasks",
   "/control-room/agents/queue": "/control-room/progress/work?view=tasks",
@@ -167,6 +170,9 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
+  "/inbox": "/",
+  "/inbox/card/:item_id": "/",
+  "/a/:ref": "/leads",
   "/work-inventory": "/all-work",
   "/control-room/progress": "/control-room",
   "/control-room/automations": "/control-room",
@@ -186,9 +192,16 @@ export const sectionForRoute = {
   "/control-room/agents/queue": "/control-room/progress/work",
   "/agent-room": "/control-room/progress/work",
   "/room.html": "/control-room/progress/work",
-  "/progress-board": "/control-room/progress",
+  "/progress-board": "/control-room/progress/board/carr-v5",
   "/tours/day.html": "/tours",
   "/share": "/tours",
   "/notifications": "/updates",
   "/system-work.html": "/work-requests"
 };
+
+/** The route-table key for a path: an inbox card URL maps to its pattern. */
+export function routeKey(pathname) {
+  const card = '/inbox/card/';
+  return pathname.startsWith(card) && pathname.length > card.length && !pathname.slice(card.length).includes('/') ? '/inbox/card/:item_id' : pathname;
+}
+export const actionLinkRoute = pathname => /^\/a\/[^/]+$/.test(pathname) ? "/a/:ref" : pathname;

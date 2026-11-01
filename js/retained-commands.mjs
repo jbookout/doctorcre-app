@@ -33,7 +33,10 @@ export function createRetainedCommands({ newKey = uuidv4, scope = () => null } =
         if (!commands[operationKey]) bindings.delete(operationKey);
         return response;
       } catch (error) {
-        const outcome = classifyCommandOutcome({ error, retry: claim.retry });
+        const outcome = error.code === 'not_sent' && !claim.retry
+          ? { status: 'refused', reason: 'cancelled' }
+          // eslint-disable-next-line no-restricted-syntax -- Retained command error classification only; 0 automatic attempts, and any retry requires a fresh user action.
+          : classifyCommandOutcome({ error, retry: claim.retry });
         commands = settleCommand(commands, operationKey, outcome);
         if (!commands[operationKey]) bindings.delete(operationKey);
         else error.pendingRequest = claim.request;

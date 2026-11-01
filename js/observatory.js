@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { sessionFetch } from './private-session.js';
 import { groupConversations, labelFor, modelFor, summarizeNow } from './observatory-model.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -191,6 +192,7 @@ function render() {
 function toast(text) {
   $('roomToast').textContent = text;
   $('roomToast').hidden = false;
+  // eslint-disable-next-line no-restricted-syntax -- Each toast call schedules a single local dismissal after six seconds; it performs no reads.
   setTimeout(() => { $('roomToast').hidden = true; }, 6000);
 }
 
@@ -221,8 +223,11 @@ async function refresh() {
     if (state.before === null) updateHistoryCursor(conversation);
     if (state.selected && !state.searched) {
       let pages = 0;
+      const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Deep-link lookup will stop at DEEP_LINK_PAGE_LIMIT and calls takePage before each retained conversation page (5 pages maximum).
       while (state.more && state.before && pages < DEEP_LINK_PAGE_LIMIT
         && !groupConversations(state.conversation).some(thread => thread.key === state.selected)) {
+        takePage();
         const page = await readLatest('conversation', state.before);
         state.conversation = merge(state.conversation, page.turns || []);
         updateHistoryCursor(page);

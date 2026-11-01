@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium, pausedClock } from './browser-harness.mjs';
 import axe from 'axe-core';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
@@ -15,7 +15,7 @@ const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: '
 // Synthetic work-queue jobs, shaped like the carr-mcp work-queue verb.
 const queueJob = (card_id, stage, extra = {}) => ({ card_id, work_request: `WR-${card_id.match(/^WR(\d+)/)[1].padStart(6, '0')}`,
   work_request_title: 'Synthetic board rebuild', slice_ordinal: 1, j_number: 1, priority: 1, executor: 'codex', model: 'synthetic-model',
-  effort: 'medium', card_title: 'Synthetic queue work', description: 'Build the synthetic queue card.', created_at: '2026-10-27T12:00:00Z',
+  pr_evidence_complete: true, effort: 'medium', card_title: 'Synthetic queue work', description: 'Build the synthetic queue card.', created_at: '2026-10-27T12:00:00Z',
   stage, stale: false, prs: [], ...extra });
 const queueRead = (jobs, github = [{ repo: 'jbookout/doctorcre-app', state: 'ok', observed_at: '2026-10-27T12:00:00Z', truncated: false }]) =>
   ({ ok: true, stale_after_hours: 24, jobs, github });
@@ -116,10 +116,10 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   assert.deepEqual(errors, []);
 });
 
-for (const id of ['carr-v5', 'demo-project']) test(`legacy query redirects to the ${id} board page`, async t => {
+for (const id of ['carr-v5', 'demo-project']) test(`legacy ${id} query redirects to the work queue`, async t => {
   const { page, errors } = await open(t, { path: `/control-room/progress?board=${id}&view=flow` });
-  await page.locator(`#board-stages [data-card-id="${id === 'carr-v5' ? 'WR14.S1.J1' : 'build'}"]`).waitFor();
-  assert.equal(new URL(page.url()).pathname, `/control-room/progress/board/${id}`);
+  await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
+  assert.equal(new URL(page.url()).pathname, '/control-room/progress/board/carr-v5');
   assert.equal(new URL(page.url()).search, '?view=flow&mode=live');
   assert.deepEqual(errors, []);
 });
@@ -510,7 +510,7 @@ for (const width of [390, 1440]) {
         && url.searchParams.get('board') === 'demo-project' && url.searchParams.get('task') === 'blocked'
         && url.searchParams.get('work_request') === (change === 'updated' ? 'WR-102' : 'WR-101'));
     } else {
-      assert.equal(await card.count(), 0);
+      await card.waitFor({ state: 'detached' });
       const count = change === 'empty' ? 0 : 1;
       assert.equal(await page.locator('#board-blocked .blocked-card').count(), count);
       assert.equal(await page.locator('#blocked-count').textContent(), `${count} BLOCKED`);
@@ -553,8 +553,10 @@ const stagedQueue = queueRead([
   queueJob('WR557.S4.J1', 'review', { work_request_title: 'One Work Request queue', prs: [prFact('WR557.S4.J1', 12, 'open')] }),
   queueJob('WR557.S4.J2', 'build', { work_request_title: 'One Work Request queue', card_title: 'Delete board path', stale: true, prs: [prFact('WR557.S4.J2', 13, 'open', true)] }),
   queueJob('WR557.S1.J2', 'merged', { work_request_title: 'One Work Request queue', card_title: 'Record lean jobs', prs: [prFact('WR557.S1.J2', 9, 'merged')] }),
+  queueJob('WR557.S4.J3', 'running', { work_request_title: 'One Work Request queue' }),
+  queueJob('WR557.S4.J4', 'merged', { work_request_title: 'One Work Request queue', prs: [{ ...prFact('WR557.S4.J4', 14, 'merged'), production_live: true }] }),
   queueJob('WR562.S1.J1', 'queued', { work_request_title: 'Team memory', card_title: 'Memory design' }),
-], [{ repo: 'DoctorCRE/carr-system', state: 'unavailable', reason: 'github_http_403' }, { repo: 'jbookout/doctorcre-app', state: 'ok', truncated: false }]);
+], ['DoctorCRE/carr-system', 'jbookout/doctorcre-app', 'jbookout/software-factory'].map(repo => ({ repo, state: 'ok', truncated: false })));
 
 for (const width of [390, 1280]) for (const theme of ['light', 'dark'])
   test(`system board shows every stage with WR.S.J IDs, Work Request titles and PR links at ${width}px ${theme}`, async t => {
@@ -562,7 +564,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark'])
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     await page.locator('#board-stages [data-card-id="WR557.S4.J1"]').waitFor();
     assert.deepEqual(await page.locator('#board-stages .column').evaluateAll(columns => columns.map(column =>
-      `${column.dataset.stage}:${column.querySelectorAll('[data-card-id]').length}`)), ['queued:1', 'build:1', 'review:1', 'merged:1', 'closed:0']);
+      `${column.dataset.stage}:${column.querySelectorAll('[data-card-id]').length}`)), ['queued:1', 'running:1', 'build:1', 'review:1', 'merged:1', 'live:1', 'closed:0']);
     assert.match(await page.locator('.column[data-stage="closed"]').textContent(), /PR closed without merging/);
     const review = page.locator('[data-card-id="WR557.S4.J1"]');
     assert.match(await review.textContent(), /WR557\.S4\.J1.*Synthetic queue work/);
@@ -572,9 +574,12 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark'])
     assert.equal(await page.locator('[data-card-id="WR557.S4.J2"] a').textContent(), 'WR557.S4.J2.app#13 · draft');
     assert.deepEqual(await page.locator('#board-stages .flag-stale').evaluateAll(flags => flags.map(flag => flag.closest('[data-card-id]').dataset.cardId)),
       ['WR557.S4.J2'], 'only the server-flagged job is stale');
-    assert.match(await page.locator('.queue-board-status').textContent(), /4 jobs · 1 stale \(no progress for 24 hours while queued or building\)/);
-    assert.match(await page.locator('.queue-board-notices').textContent(), /GitHub could not be read for DoctorCRE\/carr-system/);
-    assert.equal(await page.locator('#task-count').textContent(), '4 jobs');
+    assert.match(await page.locator('.queue-board-status').textContent(), /6 jobs · 1 stale \(no progress for 24 hours while queued or building\)/);
+    if (width === 1280) {
+      const positions = await page.locator('#board-stages .column').evaluateAll(columns => columns.map(column => ({ x: column.getBoundingClientRect().x, y: column.getBoundingClientRect().y })));
+      assert.ok(positions[1].x > positions[0].x && positions[1].y === positions[0].y, 'desktop stages appear side by side');
+    }
+    assert.equal(await page.locator('#task-count').textContent(), '6 jobs');
     for (const id of ['board-questions', 'board-blocked', 'board-ledger', 'board-deliverables', 'board-decisions', 'board-notes', 'board-completed'])
       assert.equal(await page.locator(`#${id}`).evaluate(el => el.closest('.panel').hidden), true, `${id} stays hidden on the queue board`);
     assert.equal(await page.locator('.headline').isVisible(), false, 'the retired snapshot headline is gone');
@@ -599,14 +604,14 @@ test('every queued job is reachable: 250 review jobs render with no cap and the 
 });
 
 test('the system board reads the queue once per 60 seconds, never while hidden, and stops after 5 idle minutes', async t => {
-  const { page, calls, errors, setQueue } = await open(t, { width: 1280, path: systemPath });
+  const { page, calls, errors, setQueue } = await open(t, { width: 1280, path: systemPath,
+    setupPage: page => pausedClock(page, new Date('2026-10-27T12:00:00Z')) });
   await page.locator('[data-card-id="WR14.S1.J1"]').waitFor();
   await page.waitForLoadState('networkidle');
   const count = name => calls.filter(call => call.name === name).length;
   const reads = () => count('work-queue');
   assert.equal(reads(), 1, 'one read on open');
   const snapshot = count('read-progress-board'), census = count('unfinished-work');
-  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'First refresh completed' })]));
   await page.mouse.move(10, 10);
   await page.clock.runFor(59_000);
@@ -630,9 +635,11 @@ test('the system board reads the queue once per 60 seconds, never while hidden, 
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
+  assert.equal(reads(), 3, 'a lifecycle return after idle cannot renew presence');
+  await page.mouse.move(30, 30);
   await page.getByText('Visible refresh completed', { exact: true }).waitFor();
   await page.clock.runFor(500);
-  assert.equal(reads(), 4, 'returning to the tab reads once at once');
+  assert.equal(reads(), 4, 'real input after the idle return reads once');
   await page.clock.runFor(10 * 60_000);
   const idle = reads();
   assert.ok(idle <= 4 + Math.ceil(5 * 60_000 / 60_000), `reads stop at the 5-minute idle cutoff (${idle})`);
@@ -771,21 +778,21 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     });
     for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
       setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
-      await page.clock.runFor(60_100);
+      await page.clock.runFor(index <= 5 ? 60_100 : 120_100);
       await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
       assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
       assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
       assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
     }
     setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
-    await page.clock.runFor(60_100);
+    await page.clock.runFor(120_100);
     await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
     assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
     const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
     paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
     paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
-    setSnapshot(paged);await page.clock.runFor(60_100);
+    setSnapshot(paged);await page.clock.runFor(120_100);
     await page.locator('[data-orchestrator-more]').click();
     await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
@@ -797,12 +804,12 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await older.locator('summary').focus();
     const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
     const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
-    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(60_100);
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(120_100);
     assert.equal(await older.locator('details').getAttribute('open'),'');
     assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
     assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
-    setSnapshot({tasks:{}});await page.clock.runFor(60_100);
-    setSnapshot(changed);await page.clock.runFor(180_300);
+    setSnapshot({tasks:{}});await page.clock.runFor(120_100);
+    setSnapshot(changed);await page.clock.runFor(240_300);
     assert.equal(await older.count(),1);
 
 

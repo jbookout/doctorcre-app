@@ -1,6 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readCarrInterface } from '../scripts/carr-interface.mjs';
 
-const { schema, version } = JSON.parse(await readFile(
-  new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
-
-export const carrContractIdentity = { schema, version };
+export const carrInterface = await readCarrInterface();
+export const carrContractIdentity = { schema: carrInterface.schema, version: carrInterface.version };

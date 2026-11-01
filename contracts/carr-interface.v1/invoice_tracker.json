@@ -1,0 +1,18 @@
+{
+  "schema_version": "invoice-tracker.v1",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "3a41bd685abedd218b504174b6a240499f77ddaf"
+  },
+  "read": "read-invoice-tracker",
+  "write": "record-commission-receipt",
+  "amount": "commission.gross_amount",
+  "payment": "Full receipt of one commission; dated and version guarded",
+  "due_date": "Explicit due_on; null means unknown",
+  "lifecycle_fields": [
+    "invoiced_on",
+    "closed_on",
+    "lane",
+    "outcome"
+  ]
+}

@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 
-for (const width of [390, 1280]) test(`a checklist item opens its own sheet and saves an instruction at ${width}px`, async t => {
+for (const width of [390, 1280]) test(`a checklist item opens its own sheet and preserves an unsent instruction at ${width}px`, async t => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
@@ -47,9 +47,9 @@ for (const width of [390, 1280]) test(`a checklist item opens its own sheet and 
   assert.equal(await sheet.evaluate(n => n.scrollWidth <= n.clientWidth), true);
   await page.screenshot({ path: new URL(`out/test-artifacts/deal-items/${width}-detail.png`, root).pathname });
   await sheet.getByLabel('Tell Dr. CRE').fill('Arrange the introduction tomorrow.');
-  await sheet.getByRole('button', { name: 'Save instruction' }).click();
-  await page.waitForFunction(() => document.querySelector('[data-item-status]')?.textContent === 'Instruction saved');
-  assert.match(await sheet.textContent(), /Arrange the introduction tomorrow\./);
+  assert.equal(await sheet.getByRole('button', { name: 'Save instruction' }).isDisabled(), true);
+  assert.match(await sheet.textContent(), /Not submitted\. This control cannot send a request to Dr\. CRE\./);
+  assert.equal(await sheet.getByLabel('Tell Dr. CRE').inputValue(), 'Arrange the introduction tomorrow.');
   await sheet.getByRole('button', { name: 'Mark done', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('[data-item-status]')?.textContent === 'Item marked done');
   await page.waitForFunction(() => document.querySelectorAll('.kanban-column [data-id="d14"] ol li').length === 2);

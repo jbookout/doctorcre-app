@@ -251,8 +251,12 @@
   .workspace-facts dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .workspace-facts dd { display: inline; }
   .workspace-date-label { display: none; }
-  #workspaceTabs { gap: 0; overflow: visible; }
-  .workspace-tab { flex: 1 1 auto; min-width: 0; padding: var(--space-2); white-space: normal; overflow-wrap: normal; line-height: 1.2; }
+  #workspaceTabs { gap: 0; overflow-x: auto; padding-right: 32px; scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
+  .workspace-tabs-wrap { position: relative; }
+  .workspace-tabs-wrap::after { content: "›"; position: absolute; right: 0; top: 0; bottom: 0; display: grid; place-items: center; width: 24px; background: var(--surface-2); color: var(--fg-muted); pointer-events: none; }
+  #workspaceTabs::-webkit-scrollbar { height: 8px; background: transparent; }
+  #workspaceTabs::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--hairline-strong); }
+  .workspace-tab { padding: var(--space-2); }
   .workspace-events li { padding-block: var(--space-2); }
 }
 
@@ -267,3 +271,65 @@
 }
 .kanban-card .attention-flag { align-self: flex-start; align-items: flex-start; margin-block: 0 -20px; }
 .work-card--row .deal-row-next .attention-flag { padding-inline: 0; }
+
+#panelTerms { margin-block: var(--space-4); }
+.fact-term { border-top: var(--hairline-width) solid var(--hairline); padding-block: var(--space-3); }
+.fact-term > header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.fact-term h3 { margin: 0; }
+.fact-empty, .fact-state, .fact-read, .fact-source, .fact-excerpt-unavailable, .fact-canonical > small { color: var(--fg-muted); font-size: var(--font-size-1); }
+.fact-term:has(form[data-fact-review]:not([hidden])) > header .fact-state { color: var(--fg); font-weight: 700; }
+.fact-canonical { margin-block: var(--space-3); }
+.fact-canonical:has(> small + p:not(.fact-empty)) > p:first-of-type { font-size: var(--font-size-3); font-weight: var(--font-weight-strong); margin-top: var(--space-1); }
+.fact-observations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--space-3); margin-block: var(--space-3); }
+.fact-observation { min-width: 0; padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
+.fact-observation blockquote, .fact-canonical blockquote { margin: var(--space-2) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fact-source { overflow-wrap: anywhere; }
+.fact-term form, [data-fact-record] { display: grid; gap: var(--space-3); margin-block: var(--space-3); }
+#panelTerms label { display: grid; gap: var(--space-1); min-width: 0; }
+#panelTerms :is(input, select, textarea) { width: 100%; min-width: 0; min-height: var(--touch); }
+.fact-entry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: var(--space-3); }
+.fact-wide { grid-column: 1 / -1; }
+#panelTerms fieldset { min-width: 0; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); padding: var(--space-3); }
+#panelTerms [hidden] { display: none; }
+.fact-history { margin-block: var(--space-3); }
+.fact-term form { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.fact-term form > :is(fieldset, label:has(textarea), [role="status"]) { grid-column: 1 / -1; }
+.fact-term form > button { grid-column: 1 / -1; justify-self: start; }
+
+@media (min-width: 1100px) { [data-fact-record] .fact-entry { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+.fact-schedule { width: 100%; border-collapse: collapse; font-size: var(--font-size-1); }
+.fact-schedule th, .fact-schedule td { text-align: left; padding: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); vertical-align: top; }
+.fact-schedule .fact-read { display: block; }
+@media (max-width: 600px) {
+  .fact-schedule, .fact-schedule tbody, .fact-schedule tr, .fact-schedule td { display: block; }
+  .fact-schedule thead { display: none; }
+  .fact-schedule tr { padding-block: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); }
+  .fact-schedule td { display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr; border: 0; padding: var(--space-1) 0; overflow-wrap: anywhere; }
+  .fact-schedule td::before { content: attr(data-label); color: var(--fg-muted); }
+}
+.terms-draft { margin-block: var(--space-3); padding: var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); overflow-wrap: anywhere; }
+.terms-draft > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.terms-draft h3, .terms-draft h4 { margin: 0 0 var(--space-2); }
+.terms-draft > header .fact-state { border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); padding: var(--space-1) var(--space-2); color: var(--fg); }
+.terms-draft-note, .terms-versions { color: var(--fg-muted); font-size: var(--font-size-1); }
+.terms-draft-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-block: var(--space-4); }
+.terms-draft dl { margin: 0; }
+.terms-draft dl > div { padding-block: var(--space-2); border-top: var(--hairline-width) solid var(--hairline); }
+.terms-draft dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.terms-draft dd { margin: var(--space-1) 0 0; }
+.terms-draft dd small { display: block; margin-top: var(--space-1); color: var(--fg-muted); }
+.fact-term[id] { scroll-margin-top: 280px; }
+@media (max-width: 600px) { .terms-draft-groups { grid-template-columns: 1fr; } .fact-term[id] { scroll-margin-top: 80px; } }
+.market-filters { display:flex; flex-wrap:wrap; gap:1rem; align-items:end; margin:1rem 0; }
+.market-filters label { display:grid; gap:.3rem; }
+.market-terms-table { width:100%; border-collapse:collapse; font-size:.875rem; }
+.market-terms-table th, .market-terms-table td { padding:.6rem; text-align:left; vertical-align:top; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.market-terms-table .superseded { opacity:.65; }
+@media (max-width: 700px) {
+  .market-filters label, .market-filters input { width:100%; }
+  .market-terms-table, .market-terms-table tbody, .market-terms-table tr, .market-terms-table td { display:block; width:100%; }
+  .market-terms-table thead { display:none; }
+  .market-terms-table tr { border:1px solid var(--border); margin:1rem 0; }
+  .market-terms-table td::before { content:attr(data-label); display:block; font-weight:600; }
+}
