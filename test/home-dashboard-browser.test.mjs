@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null, blockUi = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -92,6 +92,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     }
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
+    if (blockUi && url.pathname === '/js/ui.generated.js') return route.abort();
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
@@ -1273,4 +1274,10 @@ test('Home groups deals with no next step and links each deal room', async t => 
     assert.ok(box.y >= 0 && box.y + box.height <= 844);
     assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
   }
+});
+
+test('Home agenda remains usable while the React bundle is unavailable', async t => {
+  const { page } = await open(t, { blockUi: true });
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
+  assert.equal(await page.locator('#homeBrief a').first().isVisible(), true);
 });
