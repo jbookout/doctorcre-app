@@ -1060,5 +1060,15 @@
     "boundary": "0 automatic HTTP reads; local state or input handling only",
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
+  },
+  "src/ui/action-link.tsx:retry-option:71c3d1748587065155f05633c0ad82adbad679e1e3830bfa530057c823d76828": {
+    "cap": 0,
+    "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
+    "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
+  },
+  "src/ui/action-link.tsx:retry-option:db454a1d39b3fb1211a1bab2477b815ddc80a356354e5e60342dc8f8eef1eee8": {
+    "cap": 0,
+    "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
+    "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
   }
 }
