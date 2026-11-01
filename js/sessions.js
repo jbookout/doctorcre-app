@@ -155,6 +155,7 @@ function renderList() {
       announce('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
+  // eslint-disable-next-line no-restricted-syntax -- Registers a single clipboard callback per rendered session button; each click copies one session ID.
   for (const button of list.querySelectorAll('[data-copy-session]')) {
     button.addEventListener('click', async () => {
       const id = button.dataset.copySession;
@@ -303,6 +304,7 @@ export function mountSessions({ outage = null } = {}) {
       // `query` is a SERVER filter. The browser re-reads rather than narrowing
       // what it already holds, so the page always shows what CARR returned.
       if (debounce) clearTimeout(debounce);
+      // eslint-disable-next-line no-restricted-syntax -- Session search retains one 250ms debounce callback, cancelling the preceding callback on input.
       debounce = setTimeout(() => { view.query = lookup.value; read(); }, 250);
     });
   }

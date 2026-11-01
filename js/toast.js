@@ -4,6 +4,7 @@ const FADE_MS = 800;
 let active = null;
 
 function timer(callback, delay, state) {
+  // eslint-disable-next-line no-restricted-syntax -- Each toast schedules a max of two callbacks: 2000ms hold then 800ms fade, or one 2800ms undo expiry; replacement calls clearTimeout for all handles.
   const handle = setTimeout(callback, delay);
   handle?.unref?.();
   state.timers.push(handle);

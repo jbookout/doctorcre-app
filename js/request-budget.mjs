@@ -6,6 +6,7 @@ export const QUIET_TAB_REQUEST_LIMIT = TAB_REQUEST_LIMIT + INITIAL_ASSET_REQUEST
 
 // This counter belongs to the document, not a controller or a visibility
 // period. Count auth checks and failed transports as actual HTTP attempts.
+// eslint-disable-next-line no-restricted-syntax -- Defines the document guard: TAB_REQUEST_LIMIT is 600 HTTP attempts; only trusted human input resets used.
 export function createRequestBudget({ fetchImpl, document }) {
   let used = 0;
   const stopInput = listenForHumanInput(document, () => { used = 0; });

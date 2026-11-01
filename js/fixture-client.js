@@ -1028,6 +1028,7 @@ export async function createFixtureClient(opts = {}) {
   function trigrams(value) {
     const padded = `  ${String(value).toLowerCase().trim()} `;
     const out = new Set();
+    // eslint-disable-next-line no-restricted-syntax -- Trigram construction advances 1 character and will stop at padded.length minus 2; 0 reads.
     for (let i = 0; i + 3 <= padded.length; i += 1) out.add(padded.slice(i, i + 3));
     return out;
   }
@@ -3070,7 +3071,7 @@ export async function createFixtureClient(opts = {}) {
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([
     'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
-    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
+    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'editEmailDraft', 'submitEmailDraft',
   ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
 }

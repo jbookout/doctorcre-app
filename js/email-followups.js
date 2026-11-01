@@ -74,7 +74,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
-        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${button('undo-edit', 'Undo edit', !state.undo)}${state.conflict ? button('review-updated', 'Review updated draft', loadState !== 'ready') : button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}${button('cancel', 'Cancel')}</div>`;
+        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Save draft keeps your edits without sending. Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${button('undo-edit', 'Undo edit', !state.undo)}${state.conflict ? button('review-updated', state.method === 'editEmailDraft' ? 'Reload draft' : 'Review updated draft', loadState !== 'ready') : `${button('save-draft', 'Save draft', loadState !== 'ready')}${button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}`}${button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'grace') {
         controls = `<p class="email-grace">Sending in ${state.remaining}s · ${button('undo-send', 'Undo')}</p>`;
       } else if (state.status === 'filing') {
@@ -122,6 +122,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   function startGrace(row, draft, request) {
     decisions.set(row.id, { status: 'grace', remaining: SEND_GRACE_SECONDS, draft });
     const grace = { draft, cancelled: false };
+    // eslint-disable-next-line no-restricted-syntax -- Send grace countdown stops after SEND_GRACE_SECONDS ticks or on stopGrace; each tick only re-renders local state and performs no reads.
     grace.timer = clock.setInterval(() => {
       const state = decisions.get(row.id);
       if (graces.get(row.id) !== grace || state?.status !== 'grace') return;
@@ -146,6 +147,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       const takePage = createPageBudget({ document: container.ownerDocument });
+      // eslint-disable-next-line no-restricted-syntax -- Follow-up pagination calls takePage for each of pageCount retained pages; a max of 100 reads per refresh.
       for (let i = 0; i < pageCount; i++) {
         takePage();
         result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : { include_non_deal: true }), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
@@ -177,6 +179,11 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (grace) graces.delete(row.id);
       const decision = await submitEmailProposal(client, row, state);
       if (disposed || loadState === 'denied') return;
+      const current = rows.find(item => item.id === row.id);
+      if (decision.saved && current && current.version <= decision.baseVersion) {
+        current.version = decision.baseVersion;
+        current.reply_draft = { ...current.reply_draft, subject: decision.subject, body: decision.body };
+      }
       decisions.set(row.id, decision);
       if (decision.status === 'done') onChange();
     } catch (error) {
@@ -249,10 +256,12 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (current && current.confirm_verb === 'submit-email-draft' && current.reply_draft.owner === client.selfActor) decisions.set(row.id, { ...state, baseVersion: current.version, to: [...current.reply_draft.to], cc: [...current.reply_draft.cc], conflict: false, message: '', updatedDraft: current.reply_draft });
       render(); return;
     }
-    if (action === 'submit-draft' && state.status === 'editing' && !state.conflict && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
+    if (['save-draft', 'submit-draft'].includes(action) && state.status === 'editing' && !state.conflict && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
       if (!state.subject.trim() || /[\r\n]/.test(state.subject) || state.subject.length > 998 || !state.body.trim() || state.body.length > 20000) {
-        decisions.set(row.id, { ...state, message: 'Enter a subject without line breaks and a message before submitting.' }); render(); return;
+        decisions.set(row.id, { ...state, message: 'Enter a subject without line breaks and a message before saving or submitting.' }); render(); return;
       }
+      if (action === 'save-draft') return submit(row, { ...state, saved: false, method: 'editEmailDraft', request: {
+        proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, idempotency_key: uuidv4() } });
       return startGrace(row, { ...state, message: '' }, { proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, to: [...state.to], cc: [...state.cc], idempotency_key: uuidv4() });
     }
     if (action === 'undo-edit' && state.status === 'editing' && state.undo) {
@@ -305,6 +314,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         if (undo) undo.disabled = false;
       }
       state[field] = event.target.value;
+      if (state.saved) { state.saved = false; state.message = ''; event.target.closest('article').querySelector('[role="status"]')?.remove(); }
     }
   };
   const blur = event => {

@@ -316,6 +316,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   const storageRevoked = event => { if (event.key === SESSION_EPOCH_KEY) revoked(); };
   window.addEventListener("storage", storageRevoked);
   window.addEventListener("doctorcre-offline-session-revoked", revoked);
+  // eslint-disable-next-line no-restricted-syntax -- Hidden/pagehide handlers only close private content and release recording resources; they perform no HTTP reads.
   document.addEventListener("visibilitychange", hide); window.addEventListener("pagehide", leave);
   const ready = updates.refresh();
   return { ready, refresh, get notes() { return notes; }, get recorder() { return recorder; }, dispose() { disposed = true; ++epoch; updates.dispose(); recorder.dispose(); map?.destroy(); document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", leave); window.removeEventListener("doctorcre-offline-session-revoked", revoked); window.removeEventListener("storage", storageRevoked); close(); } };

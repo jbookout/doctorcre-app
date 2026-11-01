@@ -423,6 +423,7 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const notice = document.getElementById('homeNotice');
   const toast = message => {
     notice.hidden = false; notice.textContent = message;
+    // eslint-disable-next-line no-restricted-syntax -- One local notice-dismiss callback after 6 seconds per toast invocation; no reads.
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
   // The cards still waiting are decided in Call Mode's post-call report.

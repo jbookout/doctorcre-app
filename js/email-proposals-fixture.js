@@ -93,6 +93,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
       const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!deal || item.deal === deal)
         && (include_non_deal || item.kind !== 'next_step' || item.deal !== null));
+      // eslint-disable-next-line no-restricted-syntax -- Synthetic proposal preview visits each row in the finite pending snapshot at most 1 time, shortened by limit when provided; no retry scheduler.
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
         if (row.kind === 'reply_draft') { proposals.push(structuredClone({ ...item, status })); continue; }
@@ -121,6 +122,20 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     },
     confirmEmailNextStep: args => confirm(args, 'next_step'),
     confirmEmailDealProgress: args => confirm(args, 'phase_move'),
+    async editEmailDraft(args) {
+      if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
+      const row = rows.find(item => item.id === args.proposal_id && item.kind === 'reply_draft');
+      if (!row) fail('email_draft_not_found');
+      if (row.reply_draft.owner !== actor) fail('email_draft_not_owner');
+      if (row.status !== 'pending') fail('email_draft_not_pending');
+      if (row.version !== args.base_version) fail('version_conflict');
+      if ([...args.subject].length > 998 || [...args.body].length > 20000) fail('invalid_field_value');
+      if (!args.body.trim()) fail('email_draft_empty_body');
+      if (!args.subject.trim() || /[\r\n]/.test(args.subject)) fail('email_draft_subject_invalid');
+      row.reply_draft.subject = args.subject; row.reply_draft.body = args.body; row.version++;
+      const receipt = { ok: true, proposal_id: row.id, version: row.version, subject: args.subject, body: args.body };
+      receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
+    },
     async submitEmailDraft(args) {
       if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
       const row = rows.find(item => item.id === args.proposal_id && item.kind === 'reply_draft');

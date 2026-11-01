@@ -333,6 +333,7 @@ export async function performFieldWrite({ deal, field, value, base = null, extra
   // The retained entry carries this board's own sentence, not the general one.
   if (result.status === 'unknown') setState(settleFieldWrite(getState(), cell, outcome));
   return {
+    // eslint-disable-next-line no-restricted-syntax -- Field-write receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     status: result.status, sent: result.sent, retry: result.retry,
     replayed: result.replayed, superseded: result.superseded,
     reason: result.reason, code: result.code, hint: result.hint,
