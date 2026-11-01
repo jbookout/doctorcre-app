@@ -903,3 +903,55 @@ test('a non-deal preview for a different contact is rejected before offering con
   assert.match(container.textContent, /Could not load email follow-ups/);
   assert.equal(container.querySelector('[data-email-action="preview"]'), null);
 });
+
+test('draft save updates the current card when a refresh replaced its row during the write', async () => {
+  const row = replyDraft(); let release, entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  const pending = new Promise(resolve => { release = resolve; });
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([structuredClone(row)]),
+    editEmailDraft: async args => { entered(); await pending; return { ok: true, proposal_id: args.proposal_id, version: 4, subject: args.subject, body: args.body }; } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo saved during refresh');
+  const saving = action('Save draft'); await started;
+  await view.refresh(); release(); await saving;
+  await action('Cancel'); await action('Review reply');
+  assert.equal(container.querySelector('[data-email-body]').value, 'Demo saved during refresh');
+});
+
+for (const [code, message] of Object.entries({
+  email_draft_not_found: /no longer available/,
+  email_draft_not_owner: /Only the partner/,
+  email_draft_not_pending: /no longer a pending draft/,
+  email_draft_empty_body: /Enter a message/,
+  email_draft_subject_invalid: /Enter a subject without line breaks/,
+  invalid_field_value: /at most 998 characters.*20,000 characters/,
+  key_reuse: /already used for different text/,
+  offline: /offline.*Reconnect/,
+  unexpected_refusal: /could not be saved.*Reload/,
+})) test(`draft save explains ${code} without claiming success or sending`, async () => {
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    editEmailDraft: async () => { throw Object.assign(Error('synthetic refusal'), { payload: { error: code } }); },
+    submitEmailDraft: async () => { assert.fail('save must never submit'); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo unsent edit');
+  await action('Save draft');
+  assert.match(container.textContent, message);
+  assert.doesNotMatch(container.textContent, /Saved as a draft/);
+  assert.equal(container.querySelector('[data-email-body]').value, 'Demo unsent edit');
+});
+
+test('uncertain draft save locks edits and Check outcome replays only the original save', async () => {
+  const calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    editEmailDraft: async args => { calls.push(args); if (calls.length === 1) throw Error('lost response'); return { ok: true, proposal_id: args.proposal_id, version: 4, subject: args.subject, body: args.body }; },
+    submitEmailDraft: async () => { assert.fail('save must never submit'); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Demo original save'); await action('Save draft');
+  assert.match(container.textContent, /Outcome unknown/);
+  assert.equal(container.querySelector('[data-email-body]'), null);
+  await action('Check outcome');
+  assert.deepEqual(calls[1], calls[0]);
+  assert.match(container.textContent, /Saved as a draft. Nothing was sent/);
+  editDraft(dom, container, 'body', 'Demo new unsaved text');
+  assert.doesNotMatch(container.textContent, /Saved as a draft/);
+});

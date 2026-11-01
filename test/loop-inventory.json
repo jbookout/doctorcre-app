@@ -269,13 +269,13 @@
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/email-followups.js:loop:577ef85f9427b0a52033d47d602705274ccef961dae81e435d8582b8a2346d8b": {
+  "js/email-followups.js:loop:ec508db37a85da9a95d0f3208d459941f4f251abc89dabfd98380f38e4ecdb70": {
     "cap": 100,
     "boundary": "100 pages per batch",
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
   },
-  "js/email-proposals-fixture.js:read-loop:d124b5f5fbb77eda6549f5a5a8b23fc6e6b139fea1e7507168cdd01eaa62eab1": {
+  "js/email-proposals-fixture.js:read-loop:65680691d1464b9f5bba14519e66451100804aebc66505894c397a4cacdecd95": {
     "cap": 9007199254740991,
     "boundary": "One item per pending synthetic proposal, truncated to requested limit",
     "backoff": "No automatic retry; one finite traversal per invocation",
@@ -287,7 +287,7 @@
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "js/fixture-client.js:loop:ce5b3d1ecd658426071d452ddcf7e8d8314329db2696d296ef5bbcb3f68558ea": {
+  "js/fixture-client.js:loop:f0c4de3138d6d7709d820d16a81f79451b3790cffcdc7cd055dd509c9d216e2c": {
     "cap": 9007199254740991,
     "boundary": "At most padded string length, incrementing i each pass; no reads",
     "backoff": "No automatic retry; one finite traversal per invocation",

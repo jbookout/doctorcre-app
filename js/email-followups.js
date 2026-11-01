@@ -71,7 +71,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
-        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${state.conflict ? button('review-updated', 'Review updated draft', loadState !== 'ready') : button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}${button('cancel', 'Cancel')}</div>`;
+        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Save draft keeps your edits without sending. Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${state.conflict ? button('review-updated', state.method === 'editEmailDraft' ? 'Reload draft' : 'Review updated draft', loadState !== 'ready') : `${button('save-draft', 'Save draft', loadState !== 'ready')}${button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}`}${button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'filing') {
         controls = `<div class="email-review">${createdLinks(state.createdDeals)}${preview.new_people.map(person => `<p>Person: ${E(person.name || person.email || 'Unknown')}</p>`).join('')}${row.kind === 'possible_new_deal' && !state.deal ? !preview.sender.party_id ? '<p>Add the sender as a contact first. Refresh the proposal after adding the contact.</p>' : `<label>Deal name<input data-email-deal-name value="${E(state.name || '')}"></label><label>Existing client (reference or exact name)<input data-email-deal-client value="${E(state.client || '')}"></label>${button('create-filing', 'Create deal and confirm filing', loadState !== 'ready')}` : `${state.deal ? `<p>Created deal: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a></p>` : ''}${button('confirm-filing', 'Confirm filing', loadState !== 'ready')}`}${state.deal ? '' : button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'reviewing') {
@@ -148,6 +148,11 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (disposed || loadState === 'denied') return;
       const decision = await submitEmailProposal(client, row, state);
       if (disposed || loadState === 'denied') return;
+      const current = rows.find(item => item.id === row.id);
+      if (decision.saved && current && current.version <= decision.baseVersion) {
+        current.version = decision.baseVersion;
+        current.reply_draft = { ...current.reply_draft, subject: decision.subject, body: decision.body };
+      }
       decisions.set(row.id, decision);
       if (decision.status === 'done') onChange();
     } catch (error) {
@@ -215,10 +220,12 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (current && current.confirm_verb === 'submit-email-draft' && current.reply_draft.owner === client.selfActor) decisions.set(row.id, { ...state, baseVersion: current.version, to: [...current.reply_draft.to], cc: [...current.reply_draft.cc], conflict: false, message: '', updatedDraft: current.reply_draft });
       render(); return;
     }
-    if (action === 'submit-draft' && state.status === 'editing' && !state.conflict && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
+    if (['save-draft', 'submit-draft'].includes(action) && state.status === 'editing' && !state.conflict && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
       if (!state.subject.trim() || /[\r\n]/.test(state.subject) || state.subject.length > 998 || !state.body.trim() || state.body.length > 20000) {
-        decisions.set(row.id, { ...state, message: 'Enter a subject without line breaks and a message before submitting.' }); render(); return;
+        decisions.set(row.id, { ...state, message: 'Enter a subject without line breaks and a message before saving or submitting.' }); render(); return;
       }
+      if (action === 'save-draft') return submit(row, { ...state, saved: false, method: 'editEmailDraft', request: {
+        proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, idempotency_key: uuidv4() } });
       return submit(row, { method: 'submitEmailDraft', request: { proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, to: [...state.to], cc: [...state.cc], idempotency_key: uuidv4() } });
     }
     if (action === 'dismiss-chip' && DISMISS_REASONS.includes(button.dataset.emailChip)) return submit(row, { method: 'dismissEmailProposal', request: { proposal_id: row.id, base_version: row.version, reason: button.dataset.emailChip, idempotency_key: uuidv4() } });
@@ -259,7 +266,10 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     const state = decisions.get(event.target.closest('[data-email-id]').dataset.emailId);
     if (state?.status === 'dismissing') state.reason = event.target.value;
     if (state?.status === 'filing') state[event.target.hasAttribute('data-email-deal-name') ? 'name' : 'client'] = event.target.value;
-    if (state?.status === 'editing') state[event.target.hasAttribute('data-email-subject') ? 'subject' : 'body'] = event.target.value;
+    if (state?.status === 'editing') {
+      state[event.target.hasAttribute('data-email-subject') ? 'subject' : 'body'] = event.target.value;
+      if (state.saved) { state.saved = false; state.message = ''; event.target.closest('article').querySelector('[role="status"]')?.remove(); }
+    }
   };
   container.addEventListener('input', input);
   container.addEventListener('click', click);
