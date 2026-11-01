@@ -18,10 +18,10 @@ function memoryStorage() {
   return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, String(value)) };
 }
 
-function mount(logActivity = async () => ({ ok: true, activity_id: 'demo-activity' }), storage = memoryStorage()) {
+function mount(logActivity = async () => ({ ok: true, activity_id: 'demo-activity' }), storage = memoryStorage(), answerBoardQuestion = async args => ({ ok: true, answer: { question_id: args.question_id, answer_text: args.answer_text } })) {
   const dom = new JSDOM('<a id="homePrimaryAction" href="/deals">Deals</a><section id="reviews" hidden></section>');
   const host = dom.window.document.getElementById('reviews');
-  const controller = mountHomeMeetingReviews({ document: dom.window.document, client: { logActivity }, host, storage,
+  const controller = mountHomeMeetingReviews({ document: dom.window.document, client: { logActivity, answerBoardQuestion }, host, storage,
     now: () => Date.parse('2026-10-28T12:00:00Z') });
   controller.update(ready);
   const choose = id => { const select = host.querySelector('select'); select.value = id; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); };
@@ -50,7 +50,7 @@ test('confirming a meeting logs one meeting activity on the chosen deal and hide
   assert.equal(writes.length, 1);
   const { idempotency_key, ...args } = writes[0];
   assert.match(idempotency_key, /^[0-9a-f-]{36}$/);
-  assert.deepEqual(args, { ref: 'demo-deal', kind: 'meeting', summary: 'Meeting: Demo site tour', occurred_at: '2026-10-27T19:00:00.000Z' });
+  assert.deepEqual(args, { ref: 'demo-deal', kind: 'meeting', summary: 'Meeting: Demo site tour', occurred_at: '2026-10-27T19:00:00.000Z', calendar_event_key: review.key });
   assert.equal(h.host.querySelector('[data-review]'), null);
   assert.match(h.host.textContent, /Meeting logged on Demo deal/);
   h.controller.update(ready);
@@ -58,14 +58,22 @@ test('confirming a meeting logs one meeting activity on the chosen deal and hide
   h.close();
 });
 
-test('dismissing hides the meeting without a write, and it stays hidden in this browser', async () => {
-  const writes = [], storage = memoryStorage(), h = mount(async args => { writes.push(args); }, storage);
+test('dismissing saves a server answer and never touches browser storage', async () => {
+  const writes = [];
+  const storage = { getItem() { assert.fail('meeting content must not be read from browser storage'); },
+    setItem() { assert.fail('meeting content must not be saved in browser storage'); } };
+  const h = mount(undefined, storage, async args => { writes.push(args); return { ok: true, answer: { question_id: args.question_id, answer_text: 'Dismiss' } }; });
   h.host.querySelector('[data-review-dismiss]').click();
+  await settle();
+  assert.equal(writes.length, 1);
+  const { idempotency_key, ...args } = writes[0];
+  assert.match(idempotency_key, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(args, { board_id: 'calendar-agenda', question_id: review.key, base_version: 1, answer_text: 'Dismiss' });
   assert.equal(h.host.hidden, true);
-  assert.deepEqual(writes, []);
   h.close();
-  const again = mount(async () => {}, storage);
-  assert.equal(again.host.hidden, true);
+  const again = mount(undefined, storage);
+  again.controller.update({ ...ready, calendar: { ...calendar, follow_up_reviews: [{ ...review, dismissed: true }] } });
+  assert.equal(again.host.hidden, true, 'a fresh browser honors the server answer');
   again.close();
 });
 
