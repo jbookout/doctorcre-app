@@ -25,5 +25,6 @@ export { mountMarketTerms } from "./market-terms";
 
 export { homeListLimit } from './home-list-limit';
 export { createContactReasonsView } from './contact-reasons';
+export { briefQueueIdentity, briefQueueLabels, briefQueueTitle, createBriefQueueView } from './brief-queues';
 
 export { mountActionLink } from './action-link';
