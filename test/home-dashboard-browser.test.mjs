@@ -101,7 +101,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, resources, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, resources, releaseInitialFeed, responses, blockUi(value) { blockUi = value; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -1280,4 +1280,20 @@ test('Home agenda remains usable while the React bundle is unavailable', async t
   const { page } = await open(t, { blockUi: true });
   assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
   assert.equal(await page.locator('#homeBrief a').first().isVisible(), true);
+});
+
+
+test('Home retries the missing next step panel after its bundle fails', async t => {
+  const { page, responses, blockUi } = await open(t, { blockUi: true });
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  const deal = { ...board.deals[0], name: 'Demo missing step' };
+  responses.set('read-home-agenda', { ...board, deals: [deal], missing_next_action: [{ owner: 'joe', deal_ids: [deal.id] }] });
+  await page.locator('#refreshHome').click();
+  const host = page.locator('#homeMissingNextStep');
+  await host.getByText('Deals with no next step unavailable. Refresh Home to try again.').waitFor({ timeout: 5000 });
+  blockUi(false);
+  await page.locator('#refreshHome').click();
+  await page.getByRole('region', { name: 'Deals with no next step' }).getByText('Demo missing step').waitFor({ timeout: 5000 });
+  assert.doesNotMatch(await host.textContent(), /unavailable/i);
 });
