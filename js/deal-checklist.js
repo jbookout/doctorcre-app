@@ -1,7 +1,7 @@
 import { escapeText as esc } from './change-receipts.mjs';
 import { dateCaption } from './deal-timeline.js';
 
-const STATUS = { complete: 'Recorded complete', not_recorded: 'Not recorded', due: 'Due today', overdue: 'Overdue', upcoming: 'Upcoming' };
+const STATUS = { complete: 'Recorded complete', received: 'Received', not_recorded: 'Not recorded', due: 'Due today', overdue: 'Overdue', upcoming: 'Upcoming' };
 
 export function renderDealChecklist(checklist) {
   if (!checklist) return '';
