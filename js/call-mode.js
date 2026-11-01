@@ -399,20 +399,29 @@ export function createCallMode(deps) {
     const node = $('#postCallOutcomes');
     if (node) { node.innerHTML = ''; node.hidden = true; }
   }
-  function reportCandidateIds() {
-    const updates = state.postCall.report?.deal_updates;
-    return (Array.isArray(updates) ? updates : []).flatMap(update => ['next_step', 'phase_move']
-      .map(field => update?.[field]?.candidate_id).filter(Boolean));
+  function reportCandidateIds(report = state.postCall.report || {}) {
+    return ['deal_updates', 'joe_tasks', 'dell_tasks', 'draft_proposals', 'drafts'].flatMap(field =>
+      (Array.isArray(report[field]) ? report[field] : []).flatMap(item =>
+        [item.candidate_id, item.next_step?.candidate_id, item.phase_move?.candidate_id].filter(Boolean)));
   }
   async function callOutcomes() {
     const node = $('#postCallOutcomes');
     if (!node || !deps.client()?.readCallOutcomes) return null;
     if (outcomes) return outcomes;
     const generation = state.callGeneration || 0, session = state.postCall.session;
-    outcomesLoading ||= import('./call-outcomes.js');
-    const { mountCallOutcomes } = await outcomesLoading;
+    outcomesLoading ||= Promise.all([import('./ui.generated.js'), import('./call-outcomes.js')]);
+    const [{ mountCallReview }, { undoRefusal }] = await outcomesLoading;
     if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return null;
-    outcomes ||= mountCallOutcomes({ container: node, client: deps.client, toast, filter: reportCandidateIds, listen: false,
+    outcomes ||= mountCallReview(node, { client: deps.client, filter: reportCandidateIds,
+      describe: callChangeText, undoRefusal,
+      openCandidate(id) {
+        const report = $('#postCallReport');
+        const control = [...report.querySelectorAll('[data-post-call-confirm], [data-draft-candidate]')]
+          .find(button => button.dataset.postCallConfirm === id || button.dataset.draftCandidate === id);
+        if (!control) { toast('This decision card is unavailable. Refresh the report before continuing.'); return; }
+        control.closest('article').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        control.focus();
+      },
       onChange: () => refreshPostCall({ quiet: true }) });
     return outcomes;
   }
@@ -557,7 +566,7 @@ export function createCallMode(deps) {
         error: reason ? `Local processing stopped: ${reason}` : null };
       if (['filed', 'failed'].includes(status) || (status === 'review_ready' && (!applying || applyTimedOut))) stopPolling();
       else if (!state.pollTimer) startPolling(session, {immediate:false});
-      if (['review_ready', 'filed'].includes(status) && !applying && reportCandidateIds().length) callOutcomes().then(view => view?.refresh());
+      if (['review_ready', 'filed'].includes(status) && !applying && reportCandidateIds().length) callOutcomes().then(view => view?.refresh()).catch(() => { if (state.postCall.session !== session || state.statusSequence !== sequence) return; const node = $('#postCallOutcomes'); if (node) { node.hidden = false; node.textContent = 'Call review unavailable. Refresh the report to try again.'; } outcomesLoading = null; });
       renderPostCall();
       // The stall this closes: a weekly recording whose companion never got
       // the context index. Supply it now, once per session unless a partner
@@ -717,6 +726,19 @@ export function createCallMode(deps) {
     if (!await checkEligibility()) return false;
     if (signal?.aborted) { close(); return false; }
     startTicker();
+    const openingGeneration = state.callGeneration || 0;
+    if (session && /^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(session) && state.callMode.session && session !== state.callMode.session) {
+      try {
+        const local = state.callMode.session;
+        const payload = await deps.postCallClient.getStatus(local);
+        const ids = new Set(reportCandidateIds(payload.report || {}));
+        const answer = await deps.client().readCallOutcomes();
+        const matching = answer.calls?.find(call => call.session_id === session);
+        if (matching && [...(matching.applied || []), ...(matching.open_cards || [])].some(item => ids.has(item.candidate_id))) session = local;
+      } catch { toast('Could not match this call to a local report. Refresh before continuing.'); }
+      if (signal?.aborted || (state.callGeneration || 0) !== openingGeneration) return false;
+    }
+    if (session && session === state.postCall.session) { await refreshPostCall(); return true; }
     if (session) {
       stopPolling();
       retireOutcomes();
@@ -822,7 +844,6 @@ export function createCallMode(deps) {
         $('#callModeButton')?.focus();
       return true;
     }
-    if (outcomes && ['[data-call-undo]', '[data-call-reviewed]', '[data-call-recheck]', '[data-call-open-cards]'].some(hit)) { await outcomes.click({ target }); return true; }
     const confirm = hit('[data-post-call-confirm]');
     if (confirm) { await resolveCandidate(confirm.dataset.postCallConfirm, true, confirm); return true; }
     const skip = hit('[data-post-call-skip]');
@@ -850,6 +871,6 @@ export function createCallMode(deps) {
   return {
     state, open, close, start, stop, refresh, refreshPostCall, render, handleClick, checkEligibility,
     startPolling, stopPolling, publishWeeklyCallContext,
-    dispose() { root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) state.tickTimer.dispose(); state.tickTimer = null; },
+    dispose() { state.callGeneration = (state.callGeneration || 0) + 1; retireOutcomes(); root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) state.tickTimer.dispose(); state.tickTimer = null; },
   };
 }

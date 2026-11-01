@@ -34,3 +34,5 @@ export { mountMissingNextStep } from "./home/missing-next-step";
 export * as homeTaskDone from './home/task-done';
 
 export { mountDealUpdateReviews } from './home/deal-update-reviews';
+
+export { mountCallReview } from './call-review';

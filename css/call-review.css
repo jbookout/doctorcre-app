@@ -1,0 +1,30 @@
+.call-review {
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 24px;
+  margin-block: 16px;
+  background: var(--surface-1);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.call-review h2 { font-size: 18px; margin: 0 0 8px; }
+.call-review h3 { font-size: 24px; line-height: 1.3; margin: 20px 0 8px; }
+.call-review nav, .call-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
+.call-review button, .call-review a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border-radius: 8px; font: inherit; box-sizing: border-box; }
+.call-review button { border: 1px solid var(--hairline-strong); background: var(--surface-2); color: var(--fg); cursor: pointer; }
+.call-review button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.call-review button:disabled { opacity: .45; cursor: default; }
+.call-review button:focus-visible, .call-review a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.call-review .call-review-meta { font-size: 13px; color: var(--fg-muted); }
+.call-review dl { display: grid; gap: 16px; margin: 24px 0; }
+.call-review dt { font-size: 12px; font-weight: 600; color: var(--fg-muted); margin-bottom: 4px; }
+.call-review dd { margin: 0; white-space: pre-wrap; }
+.call-review blockquote { margin: 20px 0; padding: 16px; border-left: 3px solid var(--accent); background: var(--surface-2); white-space: pre-wrap; }
+.call-review [role=alert] { border-left: 3px solid var(--status-danger-ink); padding: 12px; }
+.call-review progress { width: 100%; height: 6px; accent-color: var(--accent); }
+@media (max-width: 480px) {
+  .call-review { padding: 16px; }
+  .call-review h3 { font-size: 21px; }
+  .call-review nav button { flex: 1; }
+}
