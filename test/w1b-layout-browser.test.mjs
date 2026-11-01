@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { animationsSettled, chromium, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
-import { workspace, detail, id } from './leads-workspace-fixture.mjs';
+import { workspace, detail, id, emptyQuietFollowUps } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = (await import("../js/routes.js")).routeContract;
@@ -28,7 +28,8 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
     if(url.pathname==='/mcp'){
       const {name,arguments:args}=request.postDataJSON().params;
       let body;
-      if(name==='lead-board') body={...liveBoard,...(args.lead_id?{detail:detail(liveBoard.leads.find(l=>l.id===args.lead_id))}:{})};
+      if(name==='quiet-follow-ups') body=emptyQuietFollowUps();
+      else if(name==='lead-board') body={...liveBoard,...(args.lead_id?{detail:detail(liveBoard.leads.find(l=>l.id===args.lead_id))}:{})};
       else if(name==='update-lead') {writes.push(name);const lead=liveBoard.leads.find(l=>l.registry_ref===args.lead);Object.assign(lead,args.fields,{base_version:lead.base_version+1});body={ok:true};}
       else if(name==='deal-room-board') body=await fixture.getBoard();
       else if(name==='read-home-agenda') body=await fixture.getHomeAgenda();

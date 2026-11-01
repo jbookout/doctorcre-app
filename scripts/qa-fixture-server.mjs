@@ -6,7 +6,7 @@ import { createFixtureClient, createFixtureDealStore } from '../js/fixture-clien
 import { createInvoiceFixture, invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
-import { workspace as leadWorkspace, detail as leadDetail, id as leadId } from '../test/leads-workspace-fixture.mjs';
+import { workspace as leadWorkspace, detail as leadDetail, id as leadId, emptyQuietFollowUps } from '../test/leads-workspace-fixture.mjs';
 import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mjs';
 import { parseViewState, PAGE_SIZE } from '../js/workspace-business-model.js';
 import { PHASES } from '../js/client.js';
@@ -122,6 +122,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     if(name==='read-invoice-tracker') return {...await state.invoices.getInvoiceTracker(),actor:viewer};
     if(name==='record-commission-receipt') return state.invoices.markInvoicePaid(args);
     if(name==='lead-board') return {schema_version:'lead-workspace.v1',generated_at:now(),last_search_at:null,leads:structuredClone(state.leads),detail:args.lead_id?leadDetail(state.leads.find(row=>row.id===args.lead_id)):null};
+    if(name==='quiet-follow-ups') return emptyQuietFollowUps();
     if(name==='capture-queue') return {candidates:[]};
     if(['claim-lead','update-lead'].includes(name))refusal('fixture_operation_unavailable');
     const overrides={'read-session-identity':'sessionIdentity','read-dispatch-history':'dispatchHistory','read-room':'roomTurns','read-room-queue':'roomQueue','read-notification-preferences':'notificationPreferences','read-doc-outcome-cards':'docOutcomeCards','list-my-codex-sessions':'codexSessions','start-deal-review':'startReview','end-deal-review':'endReview','review-deal':'reviewDeal'};

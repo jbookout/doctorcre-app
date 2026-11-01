@@ -36,7 +36,8 @@
     "ci:fast": "node scripts/check-action-pins.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "copy:check": "node scripts/check-ui-copy.mjs *.html js src/ui css data public-shell reports tours test/fixtures tests/fixtures",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "node scripts/client-loop-guard.mjs && npm run copy:check"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",

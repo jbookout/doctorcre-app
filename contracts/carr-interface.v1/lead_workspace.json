@@ -1,7 +1,7 @@
 {
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "da28912eea3370c4e2e5953290288475daf7e647"
+    "source_commit": "911eb36b5c4a859ccd3a090b1468620a0cf724b6"
   },
   "schema_version": "lead-workspace.v1",
   "board": {
@@ -34,7 +34,9 @@
   "coverage": {
     "correspondence": "captured_entries_only; zero captures do not imply zero communication; Details exposes stored original entry",
     "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
-    "scores": "existing record score; null shown as missing"
+    "scores": "existing record score; null shown as missing",
+    "research": "detail.research from the lead-board read. The screen shows that summary and does not call prospect-research again.",
+    "quiet_follow_ups": "quiet-follow-ups with no interval arguments. The server classifies leads, vendors and contacts."
   },
   "prospect_keys": [
     "prospect_client_id",
