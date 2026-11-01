@@ -143,8 +143,12 @@ async function handleRequest(request, env) {
   const pathname = url.pathname;
   const staging = env?.APP_ENV === 'staging' && url.origin === STAGING_ORIGIN;
   const boardDestination = legacyBoardDestination(url);
-  if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
-    ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
+  if (boardDestination) {
+    if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
+    const gate = await carrResponse(gateRequestFor(request, BOARD_ROUTE), env, true);
+    if (gate.status !== 200) return restoreOriginalReturnTo(gate, request);
+    return copySessionCookies(gate, Response.redirect(boardDestination, 308));
+  }
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
   if (pathname === '/share' && staging) {
     if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
