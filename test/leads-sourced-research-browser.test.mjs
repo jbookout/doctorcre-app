@@ -64,10 +64,10 @@ test('sourced research shows each fact source and only server-classified leads a
   await detailBody.getByRole('heading', { name: 'Sourced research', exact: true }).waitFor();
   const text = await detailBody.innerText();
   assert.match(text, /Verified/);
-  assert.match(text, new RegExp(source.replace(/[.]/g, '\\.')));
+  assert.ok(text.includes(source), "source locator is preserved verbatim");
   assert.match(text, /identity/);
   assert.match(text, /practice/);
-  assert.match(text, new RegExp(expiredSource.replace(/[.]/g, '\\.')));
+  assert.ok(text.includes(expiredSource), "expired source locator is preserved verbatim");
   assert.match(text, /Expired/);
   assert.match(text, /Nothing found/);
   assert.match(text, /Discrepancy · Proposed correction/);
