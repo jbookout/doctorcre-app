@@ -157,14 +157,15 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
     await route.fulfill({ response, json: seed });
   });
   if (task.fixture === 'leads' || task.fixture === 'tours') {
-    const [{ workspace, lead, detail: leadDetail }, { detail: tourDetail }] = await Promise.all([
+    const [{ workspace, lead, detail: leadDetail, emptyQuietFollowUps }, { detail: tourDetail }] = await Promise.all([
       import('../test/leads-workspace-fixture.mjs'), import('../test/fixtures/tour-day.synthetic.mjs'),
     ]);
     const board = { ...workspace(), leads: Array.from({ length: 375 }, (_, index) => lead(index + 1)) };
     await page.route('**/mcp', async route => {
       const params = route.request().postDataJSON().params;
       let value = { ok: true, suggestions: [] };
-      if (params.name === 'lead-board') {
+      if (params.name === 'quiet-follow-ups') value = emptyQuietFollowUps();
+      else if (params.name === 'lead-board') {
         await new Promise(resolve => setTimeout(resolve, 75));
         value = { ...board, ...(params.arguments.lead_id ? { detail: leadDetail(board.leads.find(row => row.id === params.arguments.lead_id)) } : {}) };
       }

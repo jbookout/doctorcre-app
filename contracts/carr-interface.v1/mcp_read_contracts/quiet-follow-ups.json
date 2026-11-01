@@ -1,0 +1,15 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "911eb36b5c4a859ccd3a090b1468620a0cf724b6",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2851"
+  },
+  "schema_version": "quiet-follow-ups.v1",
+  "arguments": {},
+  "sent": false,
+  "tasks_created": false,
+  "membership": "Server-classified quiet leads and active vendors. The read applies the cadence. A property owner being reached stays a contact and is not returned as a lead.",
+  "limit": 1000,
+  "overflow": "quiet_follow_up_limit_exceeded; no partial snapshot is returned."
+}

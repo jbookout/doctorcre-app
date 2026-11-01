@@ -64,6 +64,8 @@ export function createLeadBoardClient(options = {}) {
       if (payload.detail !== null) validateLeadDetail(payload.detail, lead.id);
       return payload;
     },
+    // The server owns the 45/90-day cadence and who counts as a lead. Send no interval.
+    getQuietFollowUps: async () => validateQuietFollowUps(await rpc("quiet-follow-ups", {})),
     setProspectEngagementStatus: createEngagementWriter(args => rpc("set-prospect-engagement-status", args, true)),
     claimLead(lead, key, actor) {
       return rpc("claim-lead", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
@@ -114,5 +116,16 @@ export function validateLeadDetail(detail, id) {
     else if (kind === "correspondence") projection(object(page.next_cursor) && text(page.next_cursor.id) && Number.isFinite(Date.parse(page.next_cursor.occurred_at)));
     else projection(typeof page.next_cursor === "string" && /^[0-9]+$/.test(page.next_cursor));
   }
+  if (detail.research !== undefined) validateResearch(detail.research);
   return detail;
+}
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+function validateResearch(research) {
+  projection(object(research) && ["needs_research", "needs_review", "verified"].includes(research.state) && research.coverage === "recorded_findings_only" && research.external_search_performed === false && typeof research.next_step === "string" && Array.isArray(research.evidence) && research.evidence.length <= 500);
+  for (const item of research.evidence) projection(object(item) && text(item.flag_id) && typeof item.kind === "string" && typeof item.found === "boolean" && typeof item.expired === "boolean" && typeof item.proposes_correction === "boolean" && typeof item.source === "string" && Number.isFinite(Date.parse(item.observed_at)) && (item.expires_on == null || DAY.test(item.expires_on)));
+}
+export function validateQuietFollowUps(payload) {
+  projection(object(payload) && payload.schema_version === "quiet-follow-ups.v1" && object(payload.cadence) && Number.isSafeInteger(payload.cadence.lead_days) && payload.cadence.lead_days >= 1 && Number.isSafeInteger(payload.cadence.vendor_days) && payload.cadence.vendor_days >= 1 && Array.isArray(payload.proposals) && payload.proposals.length <= 1000 && payload.sent === false && payload.tasks_created === false);
+  for (const row of payload.proposals) projection(object(row) && text(row.subject_type) && text(row.subject_id) && text(row.ref) && typeof row.name === "string" && (row.basis === "created_at" || row.basis === "last_contact") && DAY.test(row.anchor_on) && DAY.test(row.due_on) && Number.isSafeInteger(row.days_overdue));
+  return payload;
 }
