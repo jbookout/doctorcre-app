@@ -24,17 +24,6 @@ jobs:
     defaults:
       run:
         working-directory: doctorcre-app
-    services:
-      postgres:
-        image: pgvector/pgvector:0.8.7-pg17-trixie@sha256:7a7e9f22015b67edb4bef5c59daeebcd7e74bfa570df6ce60ae01237c8648a84
-        env:
-          POSTGRES_USER: carr_ci
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: carr_ci
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U carr_ci -d carr_ci"
-          --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,11 +71,11 @@ jobs:
         with:
           python-version-file: carr-producer/.python-version
       - run: python3 -m pip install -r ../carr-producer/requirements.lock
+      - run: sudo apt-get install -y postgresql
       - name: Verify signed-in Calendar through the app and CARR Workers
         run: node --test test/calendar-access-browser.test.mjs
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
-          CARR_CI_DATABASE_URL: postgres://carr_ci:postgres@127.0.0.1:5432/carr_ci
       - name: Verify Control Room attention and title behavior
         if: ${{ github.event_name == 'pull_request' }}
         run: npx playwright test --project=fixtures tests/fixtures/control-room-c3.spec.mjs tests/fixtures/control-room-queue.spec.mjs
