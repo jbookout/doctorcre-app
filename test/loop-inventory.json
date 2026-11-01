@@ -947,24 +947,6 @@
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/workspace-command-center.js:setTimeout:1b9d49c2be132d41283354198df16b2a528a111e93b802f54470d75dd3777fb0": {
-    "cap": 1,
-    "boundary": "1 callback per explicit dispatch; no self-rearm",
-    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
-    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
-  },
-  "js/workspace-command-center.js:setTimeout:29ddbad7ab380fc49e787a449a62c5aae816dca1d0a01d748d2db01a203ff0fd": {
-    "cap": 1,
-    "boundary": "1 callback per explicit dispatch; no self-rearm",
-    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
-    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
-  },
-  "js/workspace-command-center.js:setTimeout:44488d23bac1f0a63d65eb1f62f8fd387422ea25923f8ce9c71dd65d57ff72c8": {
-    "cap": 1,
-    "boundary": "1 callback per explicit dispatch; no self-rearm",
-    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
-    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
-  },
   "reports/share.js:setTimeout:1a935be8a6a02ac63cfd6e6975c4e4ba8980043cb2fd1e3e489ac0ddcf29e8d8": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
@@ -1094,5 +1076,23 @@
     "boundary": "At most three upcoming tour reads, or two distinct selected client IDs",
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "js/workspace-command-center.js:setTimeout:2343d25dec62001e7c0dd8f092063e3be4181689e605f130777576e2918cb599": {
+    "cap": 1,
+    "boundary": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-command-center.js:setTimeout:39e5082e40e7ccfe30a3abf6d218ddcebdc9aba55eabe45d62fa4766cc8add19": {
+    "cap": 1,
+    "boundary": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
+  },
+  "js/workspace-command-center.js:setTimeout:dbe73cb3cc3405e57f977eaea0655094648b2f05f81206bc243c638e94213d22": {
+    "cap": 1,
+    "boundary": "1 callback per explicit dispatch; no self-rearm",
+    "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
+    "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   }
 }

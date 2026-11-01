@@ -949,7 +949,7 @@ test('background detail refresh does not probe unopened context',async t=>{
  });
  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
- await page.locator('[data-refresh-detail]').click();
+ await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
  assert.equal(await page.evaluate(()=>window.contextReads),0);
  await page.locator('#panelContextOpen').click();
  await page.getByText('Demo Current Client',{exact:true}).waitFor();
@@ -1145,7 +1145,7 @@ for (const status of [401,403]) test(`correspondence ${status} on detail refresh
   await page.locator('#dealUpdate').fill('Synthetic unsaved update');
   await page.getByRole('tab',{name:'Correspondence & notes',exact:true}).click();
   await page.evaluate(status => { window.evidenceFailure = status; },status);
-  await page.locator('[data-refresh-detail]').click();
+  await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
   await page.locator('#panelBody a[href="/auth/login"]').first().waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail),null);
   assert.equal(await page.locator('#detailUpdateForm').count(),0);
@@ -1156,7 +1156,7 @@ for (const status of [401,403]) test(`correspondence ${status} on detail refresh
 test('Retry evidence remains active after a background detail refresh replaces evidence', async t => {
   const {page,errors} = await openWithCorrespondence(t);
   await page.evaluate(() => { window.evidenceFailure = 503; });
-  await page.locator('[data-refresh-detail]').click();
+  await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
   await page.locator('#panelEvidence [data-evidence-retry]').waitFor();
   const before = await page.evaluate(() => window.evidenceReads);
   await page.evaluate(() => { window.evidenceFailure = null; });
