@@ -1,3 +1,4 @@
+import { validConventionAdoptionReceipt } from './operations-model.js';
 import { mountHierarchy } from './progress-hierarchy.js';
 import { mountOrchestrator } from './progress-orchestrator.js';
 import { mountQueueBoard } from './work-queue-board.js';
@@ -1373,7 +1374,7 @@ export function mountBoard(deps = {}) {
         byId("conventionStatus").textContent = "";
         try {
           const result = await client.adoptRule(card.request);
-          if (result?.ok !== true || !result.rule_id || result.retired_section_id !== row.section_id)
+          if (!validConventionAdoptionReceipt(result, row.section_id))
             throw new Error("Adoption receipt unavailable");
           if (disposed) return;
           adoptedConventions.add(row.section_id);

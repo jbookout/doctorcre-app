@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chromium, webkitSkipReason } from './browser-harness.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
+import { chromium, pausedClock, webkitSkipReason } from './browser-harness.mjs';
 
 test('WebKit skips macOS 27 and newer without disabling Linux CI or older Macs', () => {
   for (const version of ['27.0.1', '28.0']) {
@@ -48,4 +49,18 @@ test('the after-hook closes successful browsers even when a cached launch reject
     });
   `;
   await promisify(execFile)(process.execPath, ['--input-type=module', '--eval', script], { timeout: 30_000 });
+});
+
+test('a page loaded after pausedClock runs no timer until the test moves the clock', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.route('http://127.0.0.1:9/paused', route => route.fulfill({ contentType: 'text/html', body: '<script>setTimeout(() => { window.fired = true; }, 0)</script>' }));
+    await pausedClock(page, Date.parse('2026-10-01T15:00:00Z'));
+    await page.goto('http://127.0.0.1:9/paused');
+    await delay(300);
+    assert.equal(await page.evaluate(() => window.fired), undefined, 'a due timer waits for the paused clock');
+    await page.clock.runFor(1);
+    assert.equal(await page.evaluate(() => window.fired), true);
+  } finally { await browser.close(); }
 });
