@@ -257,7 +257,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   $('homeBrief').addEventListener('click', async event => {
     const button = event.target.closest('[data-task-done]');
     if (!button || disposed || emailRetired) return;
-    try { taskDone = await import('./home-task-done.js'); }
+    try { taskDone = (await import('./ui.generated.js')).homeTaskDone; }
     catch { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Could not load Done. Try again.'; return; }
     if (disposed || emailRetired) return;
     taskDone.complete($('homeBrief'), button, client, row => {

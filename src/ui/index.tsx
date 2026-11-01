@@ -30,3 +30,5 @@ export { briefQueueIdentity, briefQueueLabels, briefQueueTitle, createBriefQueue
 export { mountActionLink } from './action-link';
 
 export { mountMissingNextStep } from "./home/missing-next-step";
+
+export * as homeTaskDone from './home/task-done';
