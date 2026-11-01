@@ -25,7 +25,7 @@ after(async () => {
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
-for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`signed-in checklist preserves item disclosures and hides empty refreshes at ${width}px in ${theme}`, async t => {
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`signed-in checklist preserves item disclosures and hides empty refreshes at ${width}px in ${theme}`, async t => {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
@@ -42,11 +42,14 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
     state.client.getDeal = async (...args) => {
       const detail = await get(...args);
       const complete = window.checklistMode === 'complete';
-      const review = { id: 'review', label: 'Demo attorney review', status: complete ? 'complete' : 'due', due_on: '2026-10-20', evidence_ref: 'Demo contract clause 3', source: { document: 'deal-room-kit', version: 1 } };
+      const received = window.checklistMode === 'received';
+      const review = { id: 'review', label: 'Demo attorney review', status: complete ? 'complete' : received ? 'received' : 'due', due_on: '2026-10-20',
+        evidence_ref: received ? 'attachment:synthetic-document' : 'Demo contract clause 3',
+        request: { status: received ? 'fulfilled' : 'open', satisfied: false }, source: { document: 'deal-room-kit', version: 1 } };
       const lease = { id: 'lease', label: 'Executed lease', status: 'not_recorded', evidence_ref: null, source: { document: 'deal-room-kit', version: 1 } };
       return { ...detail, checklist: window.checklistMode === 'absent' ? null : {
         schema_version: 'deal-checklist.v1', template_state: window.checklistMode === 'unavailable' ? 'unavailable' : 'current',
-        due_items: complete || window.checklistMode === 'unavailable' ? [] : [review],
+        due_items: complete || received || window.checklistMode === 'unavailable' ? [] : [review],
         phases: ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
       } };
     };
@@ -66,6 +69,18 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   const review = checklist.locator('[data-checklist-item="review"] details');
   await review.locator('summary').click();
   await page.getByLabel('Update', { exact: true }).fill('Demo unsaved update');
+  await page.evaluate(() => { window.checklistMode = 'received'; });
+  await page.locator('[data-refresh-detail]').click();
+  await checklist.getByText('Received', { exact: true }).waitFor();
+  assert.equal(await checklist.locator('[data-checklist-item="review"]').getAttribute('data-state'), 'received');
+  assert.doesNotMatch(await summary.textContent(), /due|Demo attorney review/);
+  assert.equal(await checklist.getByText('Recorded complete', { exact: true }).count(), 0);
+  assert.match(await review.textContent(), /attachment:synthetic-document/);
+  assert.equal(await review.evaluate(element => element.open), true);
+  assert.equal(await page.getByLabel('Update', { exact: true }).inputValue(), 'Demo unsaved update');
+  assert.equal(await page.locator('#recordPanel').evaluate(element => element.scrollWidth <= element.clientWidth), true);
+  await checklist.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(evidence, `${width}-${theme}-received.png`), animations: 'disabled' });
   await page.evaluate(() => { window.checklistMode = 'complete'; });
   await page.locator('[data-refresh-detail]').click();
   await page.getByText('Recorded complete', { exact: true }).waitFor();

@@ -33,6 +33,20 @@ test('the closed checklist summary names the first due item and its deadline', (
   assert.equal(root.querySelector('.deal-checklist').open, false);
 });
 
+test('a received document uses the producer status without claiming satisfaction or requesting delivery', () => {
+  const received = { id: 'title_commitment', label: 'Title commitment', status: 'received',
+    due_on: '2020-01-01', evidence_ref: 'attachment:synthetic-document',
+    request: { status: 'fulfilled', satisfied: false }, source: { document: 'deal-room-kit', version: 1 } };
+  const root = new JSDOM(renderDealChecklist({ ...checklist, due_items: [],
+    phases: [{ id: 'legal', label: 'Legal', items: [received] }] })).window.document;
+  const row = root.querySelector('[data-checklist-item="title_commitment"]');
+  assert.equal(row.querySelector('strong').textContent, 'Received');
+  assert.match(row.textContent, /attachment:synthetic-document/);
+  assert.doesNotMatch(row.textContent, /Recorded complete|Overdue|Due today/);
+  assert.doesNotMatch(root.querySelector('.deal-checklist > summary').textContent, /due|Title commitment/);
+  assert.equal(received.request.satisfied, false);
+});
+
 test('live getDeal preserves the runtime checklist without deriving it in the browser', async () => {
   const client = createLiveClient({ fetchImpl: async () => new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ deal_id: 'demo', phase: 'legal', checklist }) }] } })) });
   assert.deepEqual((await client.getDeal('demo')).checklist, checklist);
@@ -56,4 +70,6 @@ test('the checklist contract pins the runtime revision that owns derivation', as
   assert.equal(contract.schema_version, 'deal-checklist.v1');
   assert.equal(contract.producer.repository, 'jbookout/carr-system');
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
+  assert.ok(contract.statuses.includes('received'));
+  assert.match(contract.receipt_basis, /satisfied=false/);
 });
