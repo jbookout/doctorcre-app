@@ -11,6 +11,23 @@ const methods = {
 };
 const seedUrl = `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`;
 
+test('filing confirmation retains its request and binds retries to the reviewed session', async () => {
+  const calls = []; let lost = true;
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    calls.push({ params: JSON.parse(init.body).params, csrf: init.headers['x-carr-csrf'] });
+    if (lost) { lost = false; throw Error('lost response'); }
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+  } });
+  const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
+    proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'filing-once' };
+  await assert.rejects(live.confirmEmailFiling(args));
+  assert.equal((await live.confirmEmailFiling(args)).status, 'confirmed');
+  assert.deepEqual(calls[0], calls[1]);
+  assert.equal(calls[0].csrf, 'synthetic-session');
+  assert.deepEqual(calls[0].params.arguments, args);
+});
+
 test('both adapters expose the deployed email review verbs and live forwards exact arguments', async () => {
   const calls = [];
   const live = createLiveClient({ fetchImpl: async (path, init) => {
