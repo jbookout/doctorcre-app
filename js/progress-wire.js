@@ -769,7 +769,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     wanted.forEach((node, index) => {
       if (host.children[index] !== node) host.insertBefore(node, host.children[index] || null);
     });
-    // eslint-disable-next-line no-restricted-syntax -- Removes one excess child per iteration until host.children.length equals wanted.length; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- Removes 1 excess child per iteration until host.children.length equals wanted.length; 0 reads.
     while (host.children.length > wanted.length) host.lastElementChild.remove();
   }
 
@@ -1058,7 +1058,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       chip.textContent = "RECONNECT";
       chip.style.setProperty("fill", "var(--status-warn-ink)");
       chip.style.setProperty("cursor", "pointer");
-      // eslint-disable-next-line no-restricted-syntax -- One reconnect request per clicked sign-in chip; requestReconnect retains the original idempotency key.
+      // eslint-disable-next-line no-restricted-syntax -- 1 reconnect request per clicked sign-in chip; requestReconnect retains the original idempotency key.
       chip.addEventListener("click", (event) => { event.stopPropagation(); requestReconnect(node.label); });
       group.appendChild(chip);
     }
@@ -1068,7 +1068,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     group.appendChild(title);
 
     group.addEventListener("pointerenter", () => showTooltip(node, point));
-    // eslint-disable-next-line no-restricted-syntax -- Focus shows the cached worker tooltip; zero HTTP reads.
+    // eslint-disable-next-line no-restricted-syntax -- Focus shows the cached worker tooltip; 0 HTTP reads.
     group.addEventListener("focus", () => showTooltip(node, point));
     group.addEventListener("pointerleave", hideTooltip);
     group.addEventListener("blur", hideTooltip);
@@ -1270,7 +1270,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     card.addEventListener("click", (event) => {
       if (card.dataset.auth === "false" && event.target.closest(".assignment-badge")) {
         event.preventDefault();
-        // eslint-disable-next-line no-restricted-syntax -- One reconnect request per explicit desk-card click, using the retained reconnect request.
+        // eslint-disable-next-line no-restricted-syntax -- 1 reconnect request per explicit desk-card click, using the retained reconnect request.
         requestReconnect(card.dataset.desk);
         return;
       }
@@ -1879,7 +1879,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       banner(`Sign-in requested for ${deskName} — approve it in the browser window the desk opens.`, false);
       await wirePoll.refresh();
     } catch {
-      // eslint-disable-next-line no-restricted-syntax -- Toast retry runs only on an explicit click and checks the retained sign-in request once.
+      // eslint-disable-next-line no-restricted-syntax -- Toast retry runs only on an explicit click and checks the retained sign-in request 1 time.
       toast(`Sign-in request for ${deskName} is unconfirmed. Retry checks the original request.`, () => void requestReconnect(deskName));
     }
   }
@@ -1891,7 +1891,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     if (retry) {
       const button = el("button", null, "Retry");
       button.type = "button";
-      // eslint-disable-next-line no-restricted-syntax -- Retry callback fires once per toast-button click; hiding the toast prevents background retries.
+      // eslint-disable-next-line no-restricted-syntax -- Retry callback fires 1 time per toast-button click; hiding the toast prevents background retries.
       button.addEventListener("click", () => { host.hidden = true; retry(); });
       host.appendChild(button);
     }

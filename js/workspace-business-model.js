@@ -307,7 +307,7 @@ export function cachedPayload(state, key) {
 export function rememberPayload(state, key, payload, limit = 8) {
   if (!state || state.signedOut || !(state.cache instanceof Map)) return;
   state.cache.set(key, payload);
-  // eslint-disable-next-line no-restricted-syntax -- Cache eviction deletes one oldest key per iteration until state.cache.size is at most limit; zero reads.
+  // eslint-disable-next-line no-restricted-syntax -- Cache eviction deletes 1 oldest key per iteration until state.cache.size is at most limit; 0 reads.
   while (state.cache.size > limit) state.cache.delete(state.cache.keys().next().value);
 }
 

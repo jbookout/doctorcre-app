@@ -16,7 +16,7 @@ const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "to
 export function listenForHumanInput(document, callback) {
   const options = { capture: true, passive: true };
   const input = event => { if (event.isTrusted === true) callback(event); };
-  // eslint-disable-next-line no-restricted-syntax -- Registers only the finite INPUT_EVENTS list; trusted input renews presence, and this callback performs zero reads.
+  // eslint-disable-next-line no-restricted-syntax -- Registers only the finite INPUT_EVENTS list; trusted input renews presence, and this callback performs 0 reads.
   INPUT_EVENTS.forEach(type => document?.addEventListener(type, input, options));
   return () => INPUT_EVENTS.forEach(type => document?.removeEventListener?.(type, input, options));
 }
@@ -79,7 +79,7 @@ export function mountVisibilityPoll({
     onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) restartFromInput(() => {}); } });
   const visibility = () => { if (document.visibilityState === 'hidden' && !keepAlive()) stop(); };
   const eventRead = () => run(false, undefined, true);
-  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the poll timer when hidden; zero HTTP reads in this listener.
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the poll timer when hidden; 0 HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   const lifecycleRead = () => run(false, onResume, true);
   // eslint-disable-next-line no-restricted-syntax -- 20 automatic dispatches; document transport also caps at 600 HTTP attempts. Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts
@@ -95,11 +95,9 @@ export function mountVisibilityPoll({
 // A bounded local repaint clock paired with a bounded network poll. Both
 // clocks stop while hidden or idle; their work keeps separate budgets.
 export function mountLocalClock({
-  tick, read, intervalMs, window = globalThis,
-  // eslint-disable-next-line no-restricted-syntax -- ceil(30 minutes / intervalMs) local ticks per visible period, including the immediate return repaint. Local repaint only; a failed callback stops the clock without retry Hidden stops immediately; thirty minutes without local return/input or the tick cap stops repainting. Local resume never renews network presence.
-  setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id), ...pollOptions
+  tick, read, intervalMs, window = globalThis, ...pollOptions
 }) {
-  const timer = mountLocalTicker({ tick, intervalMs, window, setInterval, clearInterval, ...pollOptions });
+  const timer = mountLocalTicker({ tick, intervalMs, window, ...pollOptions });
   const network = mountVisibilityPoll({ poll: read, intervalMs, window, ...pollOptions });
   return { dispose() { timer.dispose(); network.dispose(); } };
 }
@@ -132,7 +130,7 @@ export function mountLocalTicker({ tick, intervalMs, document = globalThis.docum
   const input = listenForHumanInput(document, resume);
   const returned = mountReadOnResume({ document, window, refresh: () => { stop(); resume(); } });
   const visibility = () => { if (document.visibilityState === 'hidden') stop(); };
-  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the local ticker when hidden; zero HTTP reads in this listener.
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the local ticker when hidden; 0 HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   start();
   return { dispose() { disposed = true; stop(); input(); returned.dispose(); document.removeEventListener('visibilitychange', visibility); } };

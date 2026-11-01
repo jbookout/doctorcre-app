@@ -132,7 +132,7 @@ export function mountCostView(root) {
         const label = `${day.day}: ${usd(day.usd)}${Number.isFinite(day.usd) ? ' known' : ''}${day.complete ? '' : ' · incomplete coverage'}${day.drivers.length ? ` · ${day.drivers.join(', ')}` : ''}`;
         day.label = label;
         bar.setAttribute('aria-label', label); bar.append(svg('title', {}, label));
-        // eslint-disable-next-line no-restricted-syntax -- Focus displays the already-rendered cost-bar label; zero HTTP reads.
+        // eslint-disable-next-line no-restricted-syntax -- Focus displays the already-rendered cost-bar label; 0 HTTP reads.
         bar.addEventListener('focus', () => { detail.textContent = label; });
         bar.addEventListener('pointerenter', () => { detail.textContent = label; });
         bar.addEventListener('click', () => openDay(day, 'bar'));

@@ -155,7 +155,7 @@ function renderList() {
       announce('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
-  // eslint-disable-next-line no-restricted-syntax -- Registers one clipboard callback per rendered session button; each click copies one session ID.
+  // eslint-disable-next-line no-restricted-syntax -- Registers 1 clipboard callback per rendered session button; each click copies 1 session ID.
   for (const button of list.querySelectorAll('[data-copy-session]')) {
     button.addEventListener('click', async () => {
       const id = button.dataset.copySession;

@@ -400,7 +400,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     let current = libraryResult.status === "fulfilled";
     // Fresh source data remains separate from the user's edited draft.
-    // eslint-disable-next-line no-restricted-syntax -- Client refresh visits at most two distinct IDs, planClient and searchClient, once each.
+    // eslint-disable-next-line no-restricted-syntax -- Client refresh visits at most 2 distinct IDs, planClient and searchClient, once each.
     for (const id of new Set([planClient, searchClient].filter(Boolean))) {
       const planRevision = planClient === id ? ++planEpoch : planEpoch, searchRevision = searchClient === id ? ++searchEpoch : searchEpoch;
       try {

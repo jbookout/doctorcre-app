@@ -264,6 +264,7 @@ function lineageRecord(task, taskId) {
   const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId});
   let hash;
   try { hash = decodeURIComponent(location.hash.slice(1)); } catch { return host.firstElementChild; }
+  // eslint-disable-next-line no-restricted-syntax -- 1 queued initialization callback per mount.
   queueMicrotask(() => {
     const target = document.getElementById(hash);
     if (!focusedLineage && hash.startsWith('work-lineage-') && target) { focusedLineage = true; target.focus(); }
@@ -293,7 +294,7 @@ async function refresh() {
     const aliases = read.snapshot?.snapshot_json?.hierarchy?.aliases;
     const seen = new Set();
     let taskId = requestedTask;
-    // eslint-disable-next-line no-restricted-syntax -- Alias traversal records each visited task ID in seen; stops on repetition or when the finite alias chain ends.
+    // eslint-disable-next-line no-restricted-syntax -- Alias traversal records each visited task ID in seen; stops on repetition or when the finite alias chain ends (1 visit per task ID).
     while (!tasks.has(taskId) && typeof taskId === 'string' && typeof aliases?.[taskId] === 'string' && Object.hasOwn(aliases, taskId) && !seen.has(taskId)) {
       seen.add(taskId); taskId = aliases[taskId];
     }

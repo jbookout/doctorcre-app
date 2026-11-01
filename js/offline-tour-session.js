@@ -7,7 +7,7 @@ export async function clearPrivateStorage(window) {
   for (const name of ['localStorage','sessionStorage']) {
     try {
       const storage = window[name];
-      // eslint-disable-next-line no-restricted-syntax -- Revocation visits each storage key once in descending order; deletion cannot extend the finite scan.
+      // eslint-disable-next-line no-restricted-syntax -- Revocation visits each storage key 1 time in descending order; deletion cannot extend the finite scan.
       for (let i = storage.length - 1; i >= 0; i--) {
         const k = storage.key(i);
         if (/^doctorcre[.:-]/.test(k) && k !== SESSION_EPOCH_KEY && k !== 'doctorcre.visual-preferences') storage.removeItem(k);

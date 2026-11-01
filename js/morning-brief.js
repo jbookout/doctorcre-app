@@ -137,7 +137,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       let caughtUp = false;
       try {
         const takePage = createPageBudget();
-        // eslint-disable-next-line no-restricted-syntax -- Brief change catch-up stops after four pages and calls takePage before each read.
+        // eslint-disable-next-line no-restricted-syntax -- Brief change catch-up stops after 4 pages and calls takePage before each read.
         for (let page=0; page<4; page++) {
           takePage();
           const changes = await readWithDeadline(() => client.getChanges(cursor,{signal,since}),{signal});
@@ -182,7 +182,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   $('morningRefresh').onclick = () => queues.active ? queues.refresh() : auto.refresh();
   $('morningContent').onclick = event => { if(queues.click(event))return; if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
-  // eslint-disable-next-line no-restricted-syntax -- Hidden-state listener suspends private brief content once per event; zero HTTP reads.
+  // eslint-disable-next-line no-restricted-syntax -- Hidden-state listener suspends private brief content once per event; 0 HTTP reads.
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
   return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.dispose(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };

@@ -595,7 +595,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         if (field === "route_label") control.maxLength = 3;
         const locked = composer.base?.stops.find(old => old.property_id === row.property_id)?.locked_appointment;
         control.disabled = !editable || (locked && field !== "route_label") || (row.stop_state !== "active" && field === "route_label");
-        // eslint-disable-next-line no-restricted-syntax -- Chooses change or input for one composer control; the handler edits local draft state without automatic reads.
+        // eslint-disable-next-line no-restricted-syntax -- Chooses change or input for 1 composer control; the handler edits local draft state without automatic reads.
         control.addEventListener(type === "checkbox" || type === "select" ? "change" : "input", () => {
           if (!editableComposer()) return; rememberEdit();
           row[field] = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
@@ -684,7 +684,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       if (base) plan.steps.push({ path: "/api/tours/route-draft", body: { idempotency_key: uuid(), tour_id: current.tourId,
         route_version: Number(latest?.route_version || state.tour.route_version || 1) + 1, base_route_version_id: base.id,
         expected_route_version: base.route_version, start_point: endpoint("start", "edit-"), end_point: endpoint("end", "edit-") }, resultField: "route_version_id" });
-      // eslint-disable-next-line no-restricted-syntax -- Route preparation visits the finite rows array once and hashes each visible stop at most once.
+      // eslint-disable-next-line no-restricted-syntax -- Route preparation visits the finite rows array 1 time and hashes each visible stop at most 1 time.
       for (const row of rows) {
         // Bind the candidate facts visible to the operator; unknown access remains unknown.
         const assertion = row.assertion_set_digest || await sha256(JSON.stringify({ property_id: row.property_id, candidate: knownProperty(row.property_id) || { name: row.name, address: row.address } }));
@@ -708,7 +708,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   async function runComposerPlan(current) {
     const plan = current.plan;
     try {
-      // eslint-disable-next-line no-restricted-syntax -- Save advances plan.index once per successful step and stops at plan.steps.length; failures return to explicit retry.
+      // eslint-disable-next-line no-restricted-syntax -- Save advances plan.index 1 time per successful step and stops at plan.steps.length; failures return to explicit retry.
       for (; plan.index < plan.steps.length; plan.index++) {
         const step = plan.steps[plan.index];
         if (step.path === "/api/tours/route-stop") step.body.route_version_id = plan.routeId;

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { ESLint } from 'eslint';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
@@ -43,7 +44,7 @@ for (const source of [
   test(`client lint rejects ${source}`, () => {
     const result = lint(source);
     assert.equal(result.status, 1, result.stderr);
-    assert.equal(JSON.parse(result.stdout)[0].messages[0].ruleId, 'no-restricted-syntax');
+    assert.ok(JSON.parse(result.stdout)[0].messages.some(m => ['no-restricted-syntax', 'client/no-scheduler-alias'].includes(m.ruleId)));
   });
 }
 
@@ -53,12 +54,12 @@ for (const path of ['src/ui/new-client.tsx', 'reports/new-client.html', 'tours/n
       : 'const delay: number = 1; setTimeout(() => {}, delay);';
     const result = lint(path.endsWith('.js') || path.endsWith('.mjs') ? 'setTimeout(() => {}, 1);' : source, path);
     assert.equal(result.status, 1, result.stderr);
-    assert.equal(JSON.parse(result.stdout)[0].messages[0].ruleId, 'no-restricted-syntax');
+    assert.ok(JSON.parse(result.stdout)[0].messages.some(m => ['no-restricted-syntax', 'client/no-scheduler-alias'].includes(m.ruleId)));
   });
 }
 
 test('an inline reason allows one audited callback and does not allow the next', () => {
-  const source = '// eslint-disable-next-line no-restricted-syntax -- One callback after explicit input.\nsetTimeout(() => {}, 1);';
+  const source = '// eslint-disable-next-line no-restricted-syntax -- 1 callback after explicit input.\nsetTimeout(() => {}, 1);';
   assert.equal(lint(source).status, 0);
   const result = lint(`${source}\nsetTimeout(() => {}, 1);`);
   assert.equal(result.status, 1);
@@ -70,3 +71,42 @@ for (const path of ['js/read-budget.mjs', 'js/request-budget.mjs']) {
     assert.equal(lint('setTimeout(() => {}, 1);', path).status, 1);
   });
 }
+
+for (const source of [
+  '// eslint-disable-next-line no-restricted-syntax -- 1 audited origin\nconst later = setTimeout;\nfunction repeat() { later(repeat, 1000); }',
+  'const { setTimeout: later } = window;',
+  'const later = window.setTimeout;',
+  'later = self.queueMicrotask;',
+  'function schedule(setTimeout) { const later = setTimeout; }',
+  "export { setTimeout as later } from './scheduler.js';",
+  'consume(globalThis.requestIdleCallback);',
+]) {
+  test(`scheduler aliases cannot use a call-site exemption: ${source}`, () => {
+    const result = lint(source);
+    assert.equal(result.status, 1);
+    assert.ok(JSON.parse(result.stdout)[0].messages.some(m => m.ruleId === 'client/no-scheduler-alias'));
+  });
+}
+
+test('exemptions require a numeric bound or cleanup/cancel', () => {
+  assert.equal(lint('// eslint-disable-next-line no-restricted-syntax -- A callback.\nsetTimeout(work, 1);').status, 1);
+  for (const reason of ['1 callback', 'cleanup on disposal', 'cancel on disposal']) {
+    assert.equal(lint(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`).status, 0);
+  }
+});
+
+test('all scheduler names reject value transfers through bare and global forms', async () => {
+  const eslint = new ESLint();
+  for (const scheduler of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'requestIdleCallback', 'queueMicrotask']) {
+    for (const value of [scheduler, `window.${scheduler}`, `globalThis['${scheduler}']`, `self.${scheduler}`]) {
+      for (const source of [`const later = ${value};`, `later = ${value};`, `consume(${value});`, `export default ${value};`]) {
+        const [report] = await eslint.lintText(source, { filePath: 'js/new-client.js' });
+        assert.ok(report.messages.some(m => m.ruleId === 'client/no-scheduler-alias'), source);
+      }
+    }
+    for (const source of [`const { ${scheduler}: later } = window;`, `({ ${scheduler}: later } = self);`, `const { window: { ${scheduler}: later } } = globalThis;`, `function consume({ ${scheduler}: later }) {}`]) {
+      const [report] = await eslint.lintText(source, { filePath: 'js/new-client.js' });
+      assert.ok(report.messages.some(m => m.ruleId === 'client/no-scheduler-alias'), source);
+    }
+  }
+});

@@ -105,7 +105,7 @@ function paintGrid() {
   const layout = state.view === "week" ? weekStrip(state.anchor) : monthGrid(state.anchor);
   const header = `<div class="cal-week" role="row">${WEEKDAYS.map((name) => `<div class="cal-weekday" role="columnheader">${name}</div>`).join("")}</div>`;
   const weeks = [];
-  // eslint-disable-next-line no-restricted-syntax -- Calendar rendering advances seven days per iteration and stops at layout.days.length; zero reads.
+  // eslint-disable-next-line no-restricted-syntax -- Calendar rendering advances seven days per iteration and stops at layout.days.length; 0 reads.
   for (let start = 0; start < layout.days.length; start += 7) {
     const cells = layout.days.slice(start, start + 7).map((cell, offset) => dayHtml(cell, start + offset)).join("");
     weeks.push(`<div class="cal-week" role="row">${cells}</div>`);

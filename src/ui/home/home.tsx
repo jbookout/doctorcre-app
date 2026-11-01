@@ -27,12 +27,12 @@ function Inbox({ client }: { client: InboxClient }) {
   const inFlight = useRef(false);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
-    // eslint-disable-next-line no-restricted-syntax -- Online callback updates React connectivity state once per event; zero refetches.
+    // eslint-disable-next-line no-restricted-syntax -- Online callback updates React connectivity state once per event; 0 refetches.
     addEventListener('online', update); addEventListener('offline', update);
     return () => { removeEventListener('online', update); removeEventListener('offline', update); };
   }, []);
   function focusRow() {
-    // eslint-disable-next-line no-restricted-syntax -- One frame focuses the first visible inbox row per keyboard navigation action; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- 1 frame focuses the first visible inbox row per keyboard navigation action; 0 reads.
     requestAnimationFrame(() => {
       const target = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row] h3 a, summary') || []).find(node => node.getClientRects().length);
       target?.focus();
@@ -114,7 +114,7 @@ function Inbox({ client }: { client: InboxClient }) {
   </div>;
 }
 export function mountInbox(host: HTMLElement, client: InboxClient) {
-  // eslint-disable-next-line no-restricted-syntax -- Inbox queries and mutations set retry=false, with focus/reconnect refetch disabled; zero automatic retries.
+  // eslint-disable-next-line no-restricted-syntax -- Inbox queries and mutations set retry=false, with focus/reconnect refetch disabled; 0 automatic retries.
   const query = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: 'always' }, mutations: { retry: false, networkMode: 'always' } } });
   const root = createRoot(host);
   const inbox: ReactNode = <Inbox client={client} />;

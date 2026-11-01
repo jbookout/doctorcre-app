@@ -1028,7 +1028,7 @@ export async function createFixtureClient(opts = {}) {
   function trigrams(value) {
     const padded = `  ${String(value).toLowerCase().trim()} `;
     const out = new Set();
-    // eslint-disable-next-line no-restricted-syntax -- Trigram construction advances one character and stops at padded.length minus two; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- Trigram construction advances 1 character and stops at padded.length minus 2; 0 reads.
     for (let i = 0; i + 3 <= padded.length; i += 1) out.add(padded.slice(i, i + 3));
     return out;
   }

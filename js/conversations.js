@@ -351,7 +351,7 @@ function renderOutcomeCards() {
       announceOutcomeCards('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
-  // eslint-disable-next-line no-restricted-syntax -- Registers one clipboard callback per rendered session button; clipboard access occurs only on click.
+  // eslint-disable-next-line no-restricted-syntax -- Registers 1 clipboard callback per rendered session button; clipboard access occurs only on click.
   for (const button of list.querySelectorAll('[data-copy-outcome-session]')) {
     button.addEventListener('click', async () => {
       const card = cards.find(item => item.id === button.dataset.copyOutcomeSession);
@@ -662,7 +662,7 @@ async function dispatch(operationKey, args, summary, send) {
   if (result.started) operations.set(operationKey, { args: result.request || args, summary, send });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
-    // eslint-disable-next-line no-restricted-syntax -- Conversation command receipt only; zero automatic attempts, and any retry requires a fresh user action.
+    // eslint-disable-next-line no-restricted-syntax -- Conversation command receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);

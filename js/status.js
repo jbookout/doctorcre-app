@@ -265,7 +265,7 @@ async function boot() {
   }
   // Evidence ages and expiry are reevaluated while the page stays open and on return.
   mountLocalTicker({ tick: renderAssurance, intervalMs: 1000 });
-  // eslint-disable-next-line no-restricted-syntax -- Visibility callback rerenders already-loaded assurance ages; zero HTTP reads.
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback rerenders already-loaded assurance ages; 0 HTTP reads.
   document.addEventListener("visibilitychange", renderAssurance);
   await load();
   mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ quiet: true }) });

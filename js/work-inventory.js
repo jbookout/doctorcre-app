@@ -569,7 +569,7 @@ async function submitDisposition() {
   field("#commandStatus").textContent = `${summary} · ${outcomeLabel(result.status)}`;
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
-    // eslint-disable-next-line no-restricted-syntax -- Work-inventory command receipt only; zero automatic attempts, and any retry requires a fresh user action.
+    // eslint-disable-next-line no-restricted-syntax -- Work-inventory command receipt only; 0 automatic attempts, and any retry requires a fresh user action.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === "ok") {

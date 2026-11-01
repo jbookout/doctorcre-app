@@ -137,7 +137,7 @@ export function mountAppLayout(root, host, pathname) {
     if (edge.right > viewport.right) tabs.scrollLeft += edge.right - viewport.right;
     else if (edge.left < viewport.left) tabs.scrollLeft -= viewport.left - edge.left;
   };
-  // eslint-disable-next-line no-restricted-syntax -- One initial frame reveals the selected tab by adjusting local scroll position; zero reads.
+  // eslint-disable-next-line no-restricted-syntax -- 1 initial frame reveals the selected tab by adjusting local scroll position; 0 reads.
   win.requestAnimationFrame(showSelectedTab);
   phone.addEventListener('change', showSelectedTab);
   tabs.addEventListener('keydown', event => {
@@ -265,7 +265,7 @@ export function mountAppLayout(root, host, pathname) {
           // The existing feed starts with history. Never present its oldest
           // page as recent; advance bounded pages until it reaches the present.
           const takePage = createPageBudget({ document: root });
-          // eslint-disable-next-line no-restricted-syntax -- Recent-change catch-up is bounded by four pages and takePage before each read.
+          // eslint-disable-next-line no-restricted-syntax -- Recent-change catch-up is bounded by 4 pages and takePage before each read.
           for (let page = 0; page < 4; page++) {
             takePage();
             const changes = await readWithDeadline(() => client.getChanges(cursor), { signal });

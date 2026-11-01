@@ -261,7 +261,7 @@ async function start() {
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
 window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
-// eslint-disable-next-line no-restricted-syntax -- Visibility handler clears transfer polling when hidden and manages one recorder wake lock; it performs zero status reads.
+// eslint-disable-next-line no-restricted-syntax -- Visibility handler clears transfer polling when hidden and manages 1 recorder wake lock; it performs 0 status reads.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
   if (!recorder?.active) return;

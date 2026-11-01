@@ -224,7 +224,7 @@ async function refresh() {
     if (state.selected && !state.searched) {
       let pages = 0;
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Deep-link lookup stops at DEEP_LINK_PAGE_LIMIT and calls takePage before each retained conversation page.
+      // eslint-disable-next-line no-restricted-syntax -- Deep-link lookup stops at DEEP_LINK_PAGE_LIMIT and calls takePage before each retained conversation page (5 pages maximum).
       while (state.more && state.before && pages < DEEP_LINK_PAGE_LIMIT
         && !groupConversations(state.conversation).some(thread => thread.key === state.selected)) {
         takePage();

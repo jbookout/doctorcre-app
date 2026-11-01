@@ -296,7 +296,7 @@ async function load() {
   // Feed and activity reads can change the target's position before anchoring.
   if (!form.hidden && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
     preferenceAnchorRevealed = true;
-    // eslint-disable-next-line no-restricted-syntax -- One frame scrolls to the preference form when its anchor is first revealed; preferenceAnchorRevealed prevents repetition.
+    // eslint-disable-next-line no-restricted-syntax -- 1 frame scrolls to the preference form when its anchor is first revealed; preferenceAnchorRevealed prevents repetition.
     requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
   }
   const state = feedState(view.feed, { after: view.after, limit: LIMIT });
@@ -328,7 +328,7 @@ async function dispatch(operationKey, args, summary, preference = false) {
   operations.set(operationKey, { args, summary, preference });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
-    // eslint-disable-next-line no-restricted-syntax -- Notification receipt retry metadata schedules zero attempts; another dock-button click is required.
+    // eslint-disable-next-line no-restricted-syntax -- Notification receipt retry metadata schedules 0 attempts; another dock-button click is required.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
@@ -432,7 +432,7 @@ async function savePreference(form) {
     }
   }
   dock.record(PREFERENCE_OPERATION_KEY, {
-    // eslint-disable-next-line no-restricted-syntax -- Preference receipt retry metadata schedules zero attempts; another explicit save or retry is required.
+    // eslint-disable-next-line no-restricted-syntax -- Preference receipt retry metadata schedules 0 attempts; another explicit save or retry is required.
     summary, status: result.status, reason: sentence, retry: result.retry, undo: false,
     request: result.request,
   });

@@ -16,7 +16,7 @@ export function createDayRecorder({ window, store, onChange = () => {}, onError 
   }
   async function recover(rows) {
     if (!window.navigator.locks) return rows;
-    // eslint-disable-next-line no-restricted-syntax -- Recovery visits each saved note once and attempts one nonblocking local lock per recording note; zero network reads.
+    // eslint-disable-next-line no-restricted-syntax -- Recovery visits each saved note once and attempts 1 nonblocking local lock per recording note; 0 network reads.
     for (const note of rows) {
       if (note.status !== "recording" || active?.note.id === note.id) continue;
       await window.navigator.locks.request(lockName(note), { ifAvailable: true }, async lock => {

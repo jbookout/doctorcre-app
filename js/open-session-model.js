@@ -73,29 +73,29 @@ export function outcomeOpenTarget(card, { hostAvailable = false, checkpoints = [
 
 /** A lost browser handoff stays unknown; this never navigates or retries. */
 export function reconcileOpenAttempt(previous, identityPayload, options = {}) {
-  // eslint-disable-next-line no-restricted-syntax -- Unopenable session reconciliation returns autoRetry=false; zero automatic launches.
+  // eslint-disable-next-line no-restricted-syntax -- Unopenable session reconciliation returns autoRetry=false; 0 automatic launches.
   if (!previous?.open) return { state: 'not_openable', href: null, autoRetry: false };
   const row = identityPayload?.ok === true && Array.isArray(identityPayload.sessions)
     ? identityPayload.sessions.find(item => item.canonical_session_id === previous.canonicalSessionId)
     : null;
   const fresh = sessionOpenTarget(row, options);
   if (!fresh.open || fresh.href !== previous.href) {
-    // eslint-disable-next-line no-restricted-syntax -- Changed session target returns autoRetry=false and removes href; zero automatic launches.
+    // eslint-disable-next-line no-restricted-syntax -- Changed session target returns autoRetry=false and removes href; 0 automatic launches.
     return { state: 'target_changed', href: null, autoRetry: false };
   }
-  // eslint-disable-next-line no-restricted-syntax -- Unconfirmed same session target returns autoRetry=false; another explicit open is required.
+  // eslint-disable-next-line no-restricted-syntax -- Unconfirmed same session target returns autoRetry=false; another explicit open is required (0 automatic retries).
   return { state: 'same_target_unconfirmed', href: fresh.href, autoRetry: false };
 }
 
 export function reconcileOutcomeOpenAttempt(previous, card, options = {}) {
-  // eslint-disable-next-line no-restricted-syntax -- Unopenable outcome session returns autoRetry=false; zero automatic launches.
+  // eslint-disable-next-line no-restricted-syntax -- Unopenable outcome session returns autoRetry=false; 0 automatic launches.
   if (!previous?.open) return { state: 'not_openable', href: null, autoRetry: false };
   const fresh = outcomeOpenTarget(card, options);
   if (!fresh.open || fresh.href !== previous.href
       || fresh.canonicalSessionId !== previous.canonicalSessionId) {
-    // eslint-disable-next-line no-restricted-syntax -- Changed outcome session target returns autoRetry=false and removes href; zero automatic launches.
+    // eslint-disable-next-line no-restricted-syntax -- Changed outcome session target returns autoRetry=false and removes href; 0 automatic launches.
     return { state: 'target_changed', href: null, autoRetry: false };
   }
-  // eslint-disable-next-line no-restricted-syntax -- Unconfirmed outcome session returns autoRetry=false; another explicit open is required.
+  // eslint-disable-next-line no-restricted-syntax -- Unconfirmed outcome session returns autoRetry=false; another explicit open is required (0 automatic retries).
   return { state: 'same_target_unconfirmed', href: fresh.href, autoRetry: false };
 }

@@ -43,7 +43,7 @@ export function openWalkthrough(root) {
       }
     }
   };
-  // eslint-disable-next-line no-restricted-syntax -- One placement frame per walkthrough resize event; place only updates local target geometry.
+  // eslint-disable-next-line no-restricted-syntax -- 1 placement frame per walkthrough resize event; place only updates local target geometry.
   const resize = () => win.requestAnimationFrame(place);
   const paint = () => {
     target?.classList.remove('app-walkthrough-target');

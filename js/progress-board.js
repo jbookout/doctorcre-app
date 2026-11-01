@@ -34,12 +34,8 @@ export function mountBoard(deps = {}) {
   const storage = "storage" in deps ? deps.storage : safeStorage(win);
   const now = deps.now || (() => new Date());
   // eslint-disable-next-line no-restricted-syntax -- Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks. Local repaint only; callback error stops the clock without retry The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal
-  const schedule = deps.setInterval || ((fn, ms) => win.setInterval(fn, ms));
-  // eslint-disable-next-line no-restricted-syntax -- Badge ages stop at 1800 callbacks or inactive agePresence; the board poller caps at 20 attempts. Disposal clears both timers.
-  const setTimer = deps.setTimeout || ((fn, ms) => win.setTimeout(fn, ms));
+  const schedule = (fn, ms) => deps.setInterval ? deps.setInterval(fn, ms) : win.setInterval(fn, ms);
   const clearTimer = deps.clearTimeout || (id => win.clearTimeout(id));
-  // eslint-disable-next-line no-restricted-syntax -- One local settlement frame per board render, with a single zero-delay fallback when animation frames are unavailable.
-  const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
   const orchestratorView = boardId === 'orchestrator';
@@ -163,7 +159,8 @@ export function mountBoard(deps = {}) {
       const next = nextFreshnessChange(updatedAt, at);
       if (next !== null) delay = Math.min(delay, next);
     }
-    if (Number.isFinite(delay) && agePresence.active() && ageAttempts++ < 1800) ageTimer = setTimer(refreshAges, Math.min(delay, 60000));
+    // eslint-disable-next-line no-restricted-syntax -- Badge ages stop at 1800 callbacks or inactive presence; disposal clears the timer.
+    if (Number.isFinite(delay) && agePresence.active() && ageAttempts++ < 1800) ageTimer = deps.setTimeout ? deps.setTimeout(refreshAges, Math.min(delay, 60000)) : win.setTimeout(refreshAges, Math.min(delay, 60000));
   }
 
   function freshnessBadge(updatedAt) {
@@ -543,7 +540,7 @@ export function mountBoard(deps = {}) {
       loading.setAttribute("aria-hidden", "true");
       loading.append(el("div", "hierarchy-toolbar"));
       const rows = el("div", "hierarchy-grid");
-      // eslint-disable-next-line no-restricted-syntax -- Loading placeholders render exactly three skeleton cards; zero reads.
+      // eslint-disable-next-line no-restricted-syntax -- Loading placeholders render exactly 3 skeleton cards; 0 reads.
       for (let index = 0; index < 3; index++) rows.append(el("div", "hierarchy-card hierarchy-skeleton"));
       loading.append(rows);
       container.replaceChildren(loading);
@@ -659,8 +656,10 @@ export function mountBoard(deps = {}) {
     }
     // Cards animate in on the first draw only; later renders (refresh, tick)
     // flash just the cards whose state changed.
-    // eslint-disable-next-line no-restricted-syntax -- One local settlement frame marks this board render complete; it performs zero reads.
-    requestAnimationFrame(() => { container.dataset.settled = "true"; });
+    // eslint-disable-next-line no-restricted-syntax -- 1 local settlement frame marks this board render complete; it performs 0 reads.
+    if (win.requestAnimationFrame) win.requestAnimationFrame(() => { container.dataset.settled = "true"; });
+    // eslint-disable-next-line no-restricted-syntax -- 1 zero-delay settlement callback per render.
+    else win.setTimeout(() => { container.dataset.settled = "true"; }, 0);
   }
 
   // ── panels ────────────────────────────────────────────────────────────────
@@ -1344,7 +1343,8 @@ export function mountBoard(deps = {}) {
     // The queue board refreshes itself; its snapshot only carries costs, so it is read once.
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed || queueBoardView) return;
-      poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
+      // eslint-disable-next-line no-restricted-syntax -- Poll helper caps injected timeout callbacks at 20 attempts, with hidden/idle stops.
+      poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: deps.setTimeout ? (fn, ms) => deps.setTimeout(fn, ms) : undefined, clearTimeout: clearTimer,
         poll: () => refresh().catch(() => { setError("Progress temporarily unavailable."); return false; }) });
     });
     timers.push(mountLocalTicker({ document: doc, window: win, tick, intervalMs: TICK_MS, setInterval: schedule, clearInterval: id => win.clearInterval(id) }));
