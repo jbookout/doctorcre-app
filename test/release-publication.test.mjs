@@ -25,7 +25,7 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
   // Reuse installed build and browser dependencies in the temporary clone.
-  for (const name of ['esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
+  for (const name of ['react-router', '@tanstack/react-query', 'esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
     mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
   }
