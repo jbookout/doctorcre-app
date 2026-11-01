@@ -911,13 +911,13 @@
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
   },
-  "js/email-followups.js:loop:2ebc7654e90eb70261b741f7929752392267bf446ebfcd11f925fe81abbf872a": {
+  "js/email-followups.js:loop:a17c0e71668b776a81e45a8ee267ce2024b5da28b2a2e18197edbb68f07fabb3": {
     "cap": 100,
     "boundary": "100 pages per batch",
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
   },
-  "js/email-followups.js:setInterval:fceaa245498897f982d46143aa72ff86f39320bde41327ae516832a5e3075986": {
+  "js/email-followups.js:setInterval:18616a5fdecc204f2543b1f2567a530c58620ad574a645739ac44973a585e37a": {
     "cap": 10,
     "boundary": "One 1-second tick per remaining second of a 10-second reply send grace; it clears itself at expiry.",
     "backoff": "No retry: expiry submits once through the existing submit path; refusals and unknown outcomes never resubmit automatically.",

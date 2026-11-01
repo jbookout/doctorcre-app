@@ -313,6 +313,48 @@ test('session loss during the email command download prevents a late confirmatio
   assert.equal(await card.locator('article').count(), 0);
 });
 
+test('a failed command download after leaving keeps the cancelled reply draft editable', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'reply-import-failure', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  const row = { id: '10000000-0000-4000-8000-000000000004', version: 3, kind: 'reply_draft', status: 'pending',
+    deal: 'qa-deal-1', deal_name: 'Demo Harbor expansion', confidence: 0.9, suspected_instruction: null,
+    source: { activity_id: '30000000-0000-4000-8000-000000000004', sender: null, subject: 'Demo floor plan',
+      evidence_quote: 'Please review the floor plan.', occurred_at: '2026-10-27T12:00:00Z' },
+    confirm_verb: 'submit-email-draft', preview: null, preview_error: null,
+    reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: 'joe', to: ['demo-correspondent@example.test'], cc: ['demo-dell@example.test'] } };
+  const submitted = [];
+  await page.route('**/mcp', async route => {
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    if (name === 'submit-email-draft') submitted.push(args);
+    if (name !== 'list-email-proposals') return route.continue();
+    const result = { schema_version: 'email-proposals.v1', proposals: [row], send: false, more: false, next_cursor: null };
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
+  });
+  let held, requested;
+  const download = new Promise(resolve => { requested = resolve; });
+  await page.route('**/js/email-proposal-command.js', route => { held = route; requested(); });
+  await page.clock.install();
+  await page.goto(`${origin}/?mode=live`);
+  const card = page.locator('#homeEmailFollowups');
+  await card.scrollIntoViewIfNeeded();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  const message = card.getByRole('textbox', { name: 'Message', exact: true });
+  await message.fill('Not yet sent.');
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await page.clock.runFor(10_000);
+  await download;
+  await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+  assert.equal(await message.inputValue(), 'Not yet sent.');
+  await held.abort('failed');
+  await page.clock.runFor(1_000);
+  assert.equal(await message.count(), 1, 'the cancelled draft stays editable');
+  assert.equal(await message.inputValue(), 'Not yet sent.');
+  assert.equal(await card.getByText(/Outcome unknown/).count(), 0);
+  assert.deepEqual(submitted, []);
+});
+
 for (const [subject_type,width] of [['client',1440],['lead',390],['vendor',390]]) {
   test(`Home confirms a non-deal ${subject_type} at ${width}px through the live adapter`, async t => {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });

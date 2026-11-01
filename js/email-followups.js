@@ -180,7 +180,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       decisions.set(row.id, decision);
       if (decision.status === 'done') onChange();
     } catch (error) {
-      if (disposed || loadState === 'denied') return;
+      if (disposed || loadState === 'denied' || grace?.cancelled) return;
       if (denied(error)) return retire();
       decisions.set(row.id, { ...state, request: error.pendingRequest || state.request, status: 'unknown', message: 'Outcome unknown. Check outcome to recover the original request.' });
     }
