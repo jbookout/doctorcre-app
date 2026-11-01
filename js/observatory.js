@@ -192,7 +192,7 @@ function render() {
 function toast(text) {
   $('roomToast').textContent = text;
   $('roomToast').hidden = false;
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- One 6-second local room-toast dismissal per showToast call; zero reads.
   setTimeout(() => { $('roomToast').hidden = true; }, 6000);
 }
 
@@ -224,6 +224,7 @@ async function refresh() {
     if (state.selected && !state.searched) {
       let pages = 0;
       const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Deep-link lookup stops at DEEP_LINK_PAGE_LIMIT and calls takePage before each retained conversation page.
       while (state.more && state.before && pages < DEEP_LINK_PAGE_LIMIT
         && !groupConversations(state.conversation).some(thread => thread.key === state.selected)) {
         takePage();

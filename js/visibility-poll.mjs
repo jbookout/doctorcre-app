@@ -16,6 +16,7 @@ const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "to
 export function listenForHumanInput(document, callback) {
   const options = { capture: true, passive: true };
   const input = event => { if (event.isTrusted === true) callback(event); };
+  // eslint-disable-next-line no-restricted-syntax -- Registers only the finite INPUT_EVENTS list; trusted input renews presence, and this callback performs zero reads.
   INPUT_EVENTS.forEach(type => document?.addEventListener(type, input, options));
   return () => INPUT_EVENTS.forEach(type => document?.removeEventListener?.(type, input, options));
 }
@@ -78,7 +79,7 @@ export function mountVisibilityPoll({
     onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) restartFromInput(() => {}); } });
   const visibility = () => { if (document.visibilityState === 'hidden' && !keepAlive()) stop(); };
   const eventRead = () => run(false, undefined, true);
-  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the poll timer when hidden; zero HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   const lifecycleRead = () => run(false, onResume, true);
   // eslint-disable-next-line no-restricted-syntax -- 20 automatic dispatches; document transport also caps at 600 HTTP attempts. Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts
@@ -131,7 +132,7 @@ export function mountLocalTicker({ tick, intervalMs, document = globalThis.docum
   const input = listenForHumanInput(document, resume);
   const returned = mountReadOnResume({ document, window, refresh: () => { stop(); resume(); } });
   const visibility = () => { if (document.visibilityState === 'hidden') stop(); };
-  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the local ticker when hidden; zero HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   start();
   return { dispose() { disposed = true; stop(); input(); returned.dispose(); document.removeEventListener('visibilitychange', visibility); } };

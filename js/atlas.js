@@ -149,6 +149,7 @@ async function read(cursor = null, { background = false, signal } = {}) {
     }
     if (background) {
       const takePage = createPageBudget();
+      // eslint-disable-next-line no-restricted-syntax -- Retained atlas pages are bounded by createPageBudget at 100 additional reads; takePage runs before each read.
       for (let page = 1; page < view.loadedPages && incoming.next_cursor; page++) {
         takePage();
         const next = await fetchRead(atlasRequestPath(requestOptions(incoming.next_cursor)), { headers: { accept: "application/json" }, cache: "no-store", signal });
@@ -709,7 +710,7 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
       // `q` is a SERVER filter: the browser re-reads rather than narrowing what
       // it already holds, so what is on screen is always what CARR returned.
       if (debounce) clearTimeout(debounce);
-      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+      // eslint-disable-next-line no-restricted-syntax -- Atlas search keeps one 250ms debounce callback, cancelling the previous callback on input.
       debounce = setTimeout(() => { view.q = search.value; read(); }, 250);
     });
   }

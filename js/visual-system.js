@@ -50,6 +50,7 @@ const TRANSITIONS = Object.freeze({
 
 export function createFeedback(operationId, summary) {
   if (typeof operationId !== "string" || !operationId) throw new TypeError("a feedback record needs a logical operation id");
+  // eslint-disable-next-line no-restricted-syntax -- Feedback state transition for return Object.freeze({ operationId, summary only; zero automatic attempts, and any retry requires a fresh user action.
   return Object.freeze({ operationId, summary: String(summary || ""), state: "idle", reason: null, retryable: false, refusedEvent: null });
 }
 
@@ -59,6 +60,7 @@ export function transitionFeedback(record, event, detail = {}) {
   const reason = event === "refuse"
     ? String(detail.reason || "refused without a reason")
     : event === "timeout" ? "outcome unproven; checking before any retry" : null;
+  // eslint-disable-next-line no-restricted-syntax -- Feedback state transition for return Object.freeze({ ...record, state only; zero automatic attempts, and any retry requires a fresh user action.
   return Object.freeze({ ...record, state: next, reason, retryable: next === "refused" || next === "undone", refusedEvent: null });
 }
 

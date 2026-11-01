@@ -48,9 +48,10 @@ export function mountReadOnResume({ document, window, refresh }) {
     resumed = true;
     read();
   };
-  // eslint-disable-next-line no-restricted-syntax -- 20 automatic dispatches; document transport also caps at 600 HTTP attempts. Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts
+  // eslint-disable-next-line no-restricted-syntax -- One refresh per hidden-to-visible transition; resumed deduplicates events and reading queues at most one additional refresh.
   document.addEventListener("visibilitychange", visibility);
   window.addEventListener("pagehide", pagehide);
+  // eslint-disable-next-line no-restricted-syntax -- One refresh per hidden-to-visible transition; resumed deduplicates events and reading queues at most one additional refresh.
   window.addEventListener("pageshow", pageshow);
   return { dispose() { document.removeEventListener?.("visibilitychange", visibility); window.removeEventListener?.("pagehide", pagehide); window.removeEventListener?.("pageshow", pageshow); } };
 }

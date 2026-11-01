@@ -27,6 +27,7 @@ export function createEngagementWriter(send, { storage = engagementStorage(), uu
   if (storage) stores.set(storage, entries);
   const key = args => JSON.stringify([args.expected_actor || null, args.client_id]);
   try {
+    // eslint-disable-next-line no-restricted-syntax -- Loads saved requests once, visiting at most storage.length keys; zero network reads.
     for (let i = 0; i < (loaded ? 0 : storage?.length); i++) {
       const name = storage.key(i);
       if (!name?.startsWith(prefix)) continue;

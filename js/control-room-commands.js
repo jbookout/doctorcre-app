@@ -113,7 +113,7 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
       if (command) { event.preventDefault(); command.run(); return; }
     }
     if (event.key === 'g' && !event.repeat) {
-      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+      // eslint-disable-next-line no-restricted-syntax -- One 1-second shortcut-prefix expiry per g keystroke; clears local prefix state only.
       prefixTimer = win.setTimeout(() => { prefixTimer = null; }, 1000); return;
     }
     if (event.key === '?') { event.preventDefault(); open('shortcuts'); }

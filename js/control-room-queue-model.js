@@ -111,6 +111,7 @@ export async function refreshQueue(queue, readPage, context = {}) {
   const wanted = Math.max(1, queue.pages);
   let fresh = createQueue(), cursor = null;
   const takePage = createPageBudget();
+  // eslint-disable-next-line no-restricted-syntax -- Queue catch-up calls takePage before each retained page; at most 100 pages per refresh.
   do { takePage(); fresh = addPage(fresh, await readPage(cursor), context); cursor = fresh.nextCursor; }
   while (cursor && fresh.pages < wanted);
   return fresh;

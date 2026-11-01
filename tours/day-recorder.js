@@ -16,6 +16,7 @@ export function createDayRecorder({ window, store, onChange = () => {}, onError 
   }
   async function recover(rows) {
     if (!window.navigator.locks) return rows;
+    // eslint-disable-next-line no-restricted-syntax -- Recovery visits each saved note once and attempts one nonblocking local lock per recording note; zero network reads.
     for (const note of rows) {
       if (note.status !== "recording" || active?.note.id === note.id) continue;
       await window.navigator.locks.request(lockName(note), { ifAvailable: true }, async lock => {
@@ -77,7 +78,7 @@ export function createDayRecorder({ window, store, onChange = () => {}, onError 
       state.startedAt = Date.now();
       state.recorder.start(1000);
       state.note.phase = "recording";
-      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+      // eslint-disable-next-line no-restricted-syntax -- One recording-stop deadline at maxDurationMs, default 10 minutes; stopping releases media and clears the timer.
       state.timer = window.setTimeout(() => stopState(state, "duration"), maxDurationMs);
       notify(state, onChange, state.note);
     } catch (error) {

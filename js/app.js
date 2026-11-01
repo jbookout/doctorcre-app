@@ -1058,7 +1058,7 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, o
   // above it. The body and the submit handler are already replaced above; this
   // only has to make the dialog visible when it is not.
   if (!dialog.open) dialog.showModal();
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- One zero-delay focus callback per opened dialog; focuses its first input without any read.
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
@@ -1501,6 +1501,7 @@ function wireEvents() {
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
     const retryWrite = event.target.closest('[data-retry-write]');
+    // eslint-disable-next-line no-restricted-syntax -- One cell-write reconciliation per retry-button click, reusing the retained idempotency key.
     if (retryWrite) { await retryCellWrite(retryWrite.dataset.retryWrite, retryWrite); return; }
     const operating = event.target.closest('[data-operating-state]');
     if (operating) {
@@ -1567,7 +1568,7 @@ function wireEvents() {
   // connection went away rather than queueing behind it. Without the forced
   // poll, a feed read that never answers would leave every later tick skipping
   // as "already polling" for the rest of the session.
-  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
+  // eslint-disable-next-line no-restricted-syntax -- Online listener updates the offline banner and board-sync state; subsequent refreshes use the shared capped poller.
   window.addEventListener('online', () => {
     $('#offlineBanner').hidden = true;
     state.boardSync.setOnline(true);

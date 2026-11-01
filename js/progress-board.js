@@ -35,10 +35,10 @@ export function mountBoard(deps = {}) {
   const now = deps.now || (() => new Date());
   // eslint-disable-next-line no-restricted-syntax -- Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks. Local repaint only; callback error stops the clock without retry The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal
   const schedule = deps.setInterval || ((fn, ms) => win.setInterval(fn, ms));
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- Badge ages stop at 1800 callbacks or inactive agePresence; the board poller caps at 20 attempts. Disposal clears both timers.
   const setTimer = deps.setTimeout || ((fn, ms) => win.setTimeout(fn, ms));
   const clearTimer = deps.clearTimeout || (id => win.clearTimeout(id));
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- One local settlement frame per board render, with a single zero-delay fallback when animation frames are unavailable.
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
@@ -543,6 +543,7 @@ export function mountBoard(deps = {}) {
       loading.setAttribute("aria-hidden", "true");
       loading.append(el("div", "hierarchy-toolbar"));
       const rows = el("div", "hierarchy-grid");
+      // eslint-disable-next-line no-restricted-syntax -- Loading placeholders render exactly three skeleton cards; zero reads.
       for (let index = 0; index < 3; index++) rows.append(el("div", "hierarchy-card hierarchy-skeleton"));
       loading.append(rows);
       container.replaceChildren(loading);
@@ -658,7 +659,7 @@ export function mountBoard(deps = {}) {
     }
     // Cards animate in on the first draw only; later renders (refresh, tick)
     // flash just the cards whose state changed.
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- One local settlement frame marks this board render complete; it performs zero reads.
     requestAnimationFrame(() => { container.dataset.settled = "true"; });
   }
 
@@ -1303,6 +1304,7 @@ export function mountBoard(deps = {}) {
     let observed = run;
     let result = await observed;
     let supersededReads = 0;
+    // eslint-disable-next-line no-restricted-syntax -- Superseded read reconciliation stops after 20 waits or when no distinct newer read exists.
     while (result === "superseded" && supersededReads++ < 20) {
       // A directory denial invalidates this epoch without starting a newer
       // board read. Only a distinct read can settle a superseded caller.
@@ -1350,7 +1352,7 @@ export function mountBoard(deps = {}) {
 
   byId("directory-search").addEventListener("input", filterDirectory);
   byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
-  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback refreshes cached badge ages; ageAttempts < 1800 and agePresence bound any scheduled follow-up.
   doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
   wireLegend();

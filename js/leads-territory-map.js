@@ -76,6 +76,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
     (function search(index, choice, cost) {
       if (cost >= best.cost) return;
       if (index === rects.length) { best = { cost, choice: [...choice] }; return; }
+      // eslint-disable-next-line no-restricted-syntax -- Label placement visits SIDES.length choices per finite label; search stops when index reaches rects.length.
       for (let side = 0; side < SIDES.length; side++) {
         const rect = rects[index][side];
         const clash = choice.filter((other, previous) => hits(rect, rects[previous][other])).length * 10;
@@ -182,7 +183,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
         const button=root.ownerDocument.createElement("button");button.type="button";button.className="market-marker";button.dataset.mapMarker=key;
         item={button,features:cluster.features,marker:new gl.Marker({element:button}).setLngLat(cluster.features[0].geometry.coordinates).addTo(map)};
         button.addEventListener("mouseenter", () => openPreview(item));
-        // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
+        // eslint-disable-next-line no-restricted-syntax -- Marker focus opens the already-loaded cluster preview; zero HTTP reads.
         button.addEventListener("focus", () => openPreview(item));
         button.addEventListener("blur", () => { if (preview?.item === item && !preview.element.matches(":hover")) closePreview(); });
         button.addEventListener("click",()=>{

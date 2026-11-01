@@ -10,6 +10,7 @@ export function connectionView(payload) {
   const status=['connected','needs_reconnect'].includes(row.status)&&time(row.checked_at)?row.status:'unknown';
   const meter=row.spend;
   const spend=meter && Number.isFinite(meter.amount) && meter.amount>=0 && /^[A-Z]{3}$/.test(meter.currency) && ['charge','estimate'].includes(meter.kind) && typeof meter.period==='string' && meter.period.trim() && time(meter.as_of) ? {...meter}:null;
+  // eslint-disable-next-line no-restricted-syntax -- Connection status label only; zero automatic attempts, and any retry requires a fresh user action.
   return {id,name,status,label:{connected:'Connected',needs_reconnect:'Needs reconnect',unknown:'Status unavailable'}[status],checked_at:time(row.checked_at)?row.checked_at:null,manage_url:safeUrl(row.manage_url),spend};
  });
  const devices=valid&&payload.devices?.state==='read'&&time(payload.devices.observed_at)&&Array.isArray(payload.devices.items)&&payload.devices.items.every(row=>rowObject(row)&&typeof row.id==='string'&&row.id.trim())&&new Set(payload.devices.items.map(row=>row.id)).size===payload.devices.items.length?payload.devices.items:null;

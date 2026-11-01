@@ -4,7 +4,7 @@ const FADE_MS = 800;
 let active = null;
 
 function timer(callback, delay, state) {
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- Each toast schedules at most two callbacks: 2000ms hold then 800ms fade, or one 2800ms undo expiry; replacement clears all handles.
   const handle = setTimeout(callback, delay);
   handle?.unref?.();
   state.timers.push(handle);

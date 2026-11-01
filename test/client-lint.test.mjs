@@ -16,6 +16,21 @@ test('a new raw client timeout fails lint', () => {
 
 for (const source of [
   'setInterval(() => {}, 1);',
+  'while (ready) { read(); }',
+  'do { read(); } while (ready);',
+  'for (let i = 0; i < 10; i++) read();',
+  'async function read() { for (const row of rows) await load(row); }',
+  'async function read() { for (const key in rows) await load(key); }',
+  'async function read() { for await (const row of rows) load(row); }',
+  'retryRead();',
+  'new RetryClient();',
+  'client?.reconnect();',
+  'const options = { retry: 3, refetchInterval: 1000 };',
+  'requestIdleCallback(() => {});',
+  "addEventListener('pageshow', () => {});",
+  'addEventListener(eventName, () => {});',
+  'const later = setTimeout; later(() => {}, 1);',
+  'const { setTimeout: later } = window; later(() => {}, 1);',
   'window.setTimeout(() => {}, 1);',
   "window['requestAnimationFrame'](() => {});",
   'new EventSource("/events");',
@@ -51,7 +66,7 @@ test('an inline reason allows one audited callback and does not allow the next',
 });
 
 for (const path of ['js/read-budget.mjs', 'js/request-budget.mjs']) {
-  test(`budget implementation is allowed in ${path}`, () => {
-    assert.equal(lint('setTimeout(() => {}, 1);', path).status, 0);
+  test(`unrelated timers remain forbidden in ${path}`, () => {
+    assert.equal(lint('setTimeout(() => {}, 1);', path).status, 1);
   });
 }

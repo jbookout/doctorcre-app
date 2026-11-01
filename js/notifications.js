@@ -266,6 +266,7 @@ async function takeActivity() {
     const seen = new Set();
     let payload;
     const takePage = createPageBudget();
+    // eslint-disable-next-line no-restricted-syntax -- Feed pagination consumes takePage before each read; at most 100 pages per refresh.
     do {
       takePage();
       payload = await client.getChanges(cursor);
@@ -295,7 +296,7 @@ async function load() {
   // Feed and activity reads can change the target's position before anchoring.
   if (!form.hidden && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
     preferenceAnchorRevealed = true;
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- One frame scrolls to the preference form when its anchor is first revealed; preferenceAnchorRevealed prevents repetition.
     requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
   }
   const state = feedState(view.feed, { after: view.after, limit: LIMIT });
@@ -327,6 +328,7 @@ async function dispatch(operationKey, args, summary, preference = false) {
   operations.set(operationKey, { args, summary, preference });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Notification receipt retry metadata schedules zero attempts; another dock-button click is required.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
@@ -430,6 +432,7 @@ async function savePreference(form) {
     }
   }
   dock.record(PREFERENCE_OPERATION_KEY, {
+    // eslint-disable-next-line no-restricted-syntax -- Preference receipt retry metadata schedules zero attempts; another explicit save or retry is required.
     summary, status: result.status, reason: sentence, retry: result.retry, undo: false,
     request: result.request,
   });

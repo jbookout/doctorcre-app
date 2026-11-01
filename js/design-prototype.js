@@ -114,7 +114,7 @@ function mountCommandDock() {
  * replay, which is what a re-send under a spent key really returns.
  */
 function simulatedCall(outcome, { replay = false } = {}) {
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- One simulated outcome callback per prototype action; resolves or rejects once and never sends a network request.
   return () => new Promise((resolve, reject) => setTimeout(() => {
     if (replay) { resolve({ ok: true, replayed: true, event_id: `sim-${++simulatedEvents}` }); return; }
     if (outcome === "refuse") {
@@ -140,6 +140,7 @@ async function runCommand(operationKey, { outcome = "confirm", replay = false } 
       // The claim is published before the request is awaited, so the badge is
       // on screen for the round trip and a second click sees it.
       if (next[operationKey]?.status === "pending") {
+        // eslint-disable-next-line no-restricted-syntax -- Synthetic command receipt only; zero automatic attempts, and any retry requires a fresh user action.
         dock.record(operationKey, { summary: entry.summary, status: "sending", retry: reconciling, undo: entry.undo });
       }
     },
@@ -149,6 +150,7 @@ async function runCommand(operationKey, { outcome = "confirm", replay = false } 
   if (!result.started) return result;
   dock.record(operationKey, {
     summary: entry.summary, status: result.status,
+    // eslint-disable-next-line no-restricted-syntax -- Synthetic command receipt only; zero automatic attempts, and any retry requires a fresh user action.
     reason: result.hint || result.message, retry: result.retry, undo: entry.undo,
     request: result.request,
   });

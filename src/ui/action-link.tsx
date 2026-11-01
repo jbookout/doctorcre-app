@@ -23,8 +23,11 @@ function parseDraft(payload: unknown, ref: string): Draft | null {
   return { id: card.id, revision: card.revision, subject: card.subject, body: card.body, scheduledFor: card.scheduled_for, timeZone: card.time_zone };
 }
 function refusal(code: unknown): State | null {
+  // eslint-disable-next-line no-restricted-syntax -- Unavailable action links set retry=false; zero automatic resolve requests.
   if (code === 'action_link_not_found') return { kind: 'unavailable', message: 'This draft is unavailable for your account.', retry: false };
+  // eslint-disable-next-line no-restricted-syntax -- No-longer-actionable drafts set retry=false; zero automatic resolve or approval attempts.
   if (['action_link_no_longer_actionable', 'draft_not_pending'].includes(String(code))) return { kind: 'unavailable', message: 'This draft is no longer awaiting approval.', retry: false };
+  // eslint-disable-next-line no-restricted-syntax -- Stale draft revision offers manual reload; zero automatic approvals of the changed draft.
   if (code === 'stale_draft_revision') return { kind: 'unavailable', message: 'This draft changed. Reload it before approving.', retry: true };
   if (['not_authenticated', 'authentication_required', 'forbidden', 'permission_denied'].includes(String(code))) return { kind: 'signed-out' };
   return null;
@@ -39,6 +42,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     setState({ kind: 'loading' }); busy.current = false;
     const read = async () => {
       if (!/^al1_[A-Za-z0-9_-]{1,120}$/.test(ref)) {
+        // eslint-disable-next-line no-restricted-syntax -- Invalid action-link references set retry=false and send zero resolve requests.
         setState({ kind: 'unavailable', message: 'This draft link is invalid.', retry: false }); return;
       }
       try {
@@ -48,12 +52,15 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
         if (object(result) && result.kind === 'payload') {
           const payload = result.payload;
           if (object(payload) && (result.isError || payload.error)) {
+            // eslint-disable-next-line no-restricted-syntax -- Refused resolve result offers one manual reload; zero scheduled retries.
             setState(refusal(payload.error) || { kind: 'unavailable', message: 'The draft could not be opened.', retry: true }); return;
           }
           const card = parseDraft(payload, ref);
           if (card) { setState({ kind: 'ready', card, key: crypto.randomUUID(), phase: 'idle' }); return; }
         }
+        // eslint-disable-next-line no-restricted-syntax -- Malformed draft result offers manual reload; zero scheduled resolve retries.
         setState({ kind: 'unavailable', message: 'The draft could not be opened.', retry: true });
+      // eslint-disable-next-line no-restricted-syntax -- Resolve failure offers manual reload unless aborted; zero scheduled retries.
       } catch { if (!controller.signal.aborted) setState({ kind: 'unavailable', message: 'The draft could not be opened.', retry: true }); }
     };
     void read();

@@ -140,9 +140,11 @@ export function beginCommand(state, { operationKey, args = {}, newKey }) {
   const commands = state || {};
   const current = commands[operationKey] || null;
   if (current && current.status === 'pending') {
+    // eslint-disable-next-line no-restricted-syntax -- An in-flight command returns retry=false and sends zero additional requests.
     return { state: commands, started: false, status: 'in_flight', reason: 'in_flight', request: null, pending: current, retry: false };
   }
   if (current && !sameCommandIntent(current.request, args)) {
+    // eslint-disable-next-line no-restricted-syntax -- An unresolved different intent returns retry=false and blocks dispatch; zero automatic retries.
     return { state: commands, started: false, status: 'blocked', reason: 'unresolved', request: null, pending: current, retry: false };
   }
   // The retained request is reused WHOLE. Rebuilding it from today's inputs
@@ -158,6 +160,7 @@ export function beginCommand(state, { operationKey, args = {}, newKey }) {
   return {
     state: { ...commands, [operationKey]: entry },
     started: true, status: 'sending', reason: null, request,
+    // eslint-disable-next-line no-restricted-syntax -- Retry metadata records reuse of the retained request; claimCommand starts at most one dispatch per caller action.
     pending: null, retry: Boolean(current),
   };
 }
@@ -204,6 +207,7 @@ export function settleCommand(state, operationKey, outcome) {
  *              evidence. A fault must never be badged as a refusal: the write
  *              may well have committed.
  */
+// eslint-disable-next-line no-restricted-syntax -- Outcome classification accepts a retry flag as input and returns metadata; it schedules zero attempts.
 export function classifyCommandOutcome({ response = null, error = null, retry = false } = {}) {
   if (error) {
     const code = error?.payload?.error || null;
@@ -284,6 +288,7 @@ export function commandMessage(outcome, subject = 'This change') {
  * one non-obvious mapping is the retry of an unknown: that is not a fresh save,
  * it is the reconcile, and it reads as `checking`.
  */
+// eslint-disable-next-line no-restricted-syntax -- Feedback mapping uses retry only to select checking versus pending copy; zero dispatches.
 export function feedbackStateFor({ status, retry = false } = {}) {
   const state = (() => {
     switch (status) {
@@ -349,6 +354,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
   if (!claim.started) {
     return {
       operationKey, started: false, sent: false, status: claim.status, reason: claim.reason,
+      // eslint-disable-next-line no-restricted-syntax -- A rejected command claim returns retry=false without sending a request; zero retries.
       code: null, hint: null, http_status: null, replayed: false, superseded: false, retry: false,
       event_id: null, event_recorded_at: null, conflict: null,
       request: claim.pending?.request || null, pending: claim.pending,
@@ -360,7 +366,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
   let error = null;
   let timer;
   const deadline = new Promise((_, reject) => {
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- One 30-second command-outcome deadline per dispatch; completion clears the timer and timeout never resends the write.
     timer = setTimeout(() => reject(new Error('Command outcome not received')), 30_000);
   });
   try {
@@ -372,6 +378,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
   } finally {
     clearTimeout(timer);
   }
+  // eslint-disable-next-line no-restricted-syntax -- Classifies the single received command outcome using its retained retry flag; zero new attempts.
   const classified = classifyCommandOutcome({ response, error, retry: claim.retry });
   const outcome = (classified.status === 'ok' && typeof supersededBy === 'function')
     ? { ...classified, superseded: supersededBy(claim.request, classified) === true }
@@ -382,6 +389,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
     reason: outcome.reason || null, code: outcome.code || null, hint: outcome.hint || null,
     http_status: outcome.http_status || null,
     replayed: outcome.replayed === true, superseded: outcome.superseded === true,
+    // eslint-disable-next-line no-restricted-syntax -- Copies the retained-request retry flag into one command receipt; zero dispatches.
     retry: claim.retry === true,
     event_id: outcome.event_id ?? null,
     event_recorded_at: outcome.event_recorded_at ?? null,
@@ -402,6 +410,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
 export function commandReceiptView(entry = {}) {
   const state = entry.state && FEEDBACK_STATES.includes(entry.state)
     ? entry.state
+    // eslint-disable-next-line no-restricted-syntax -- Dock view maps the receipt retry flag to display state once per render; zero dispatches.
     : feedbackStateFor({ status: entry.status, retry: entry.retry });
   const detail = entry.reason || entry.message || (entry.request?.idempotency_key
     ? `safety key ${entry.request.idempotency_key}`

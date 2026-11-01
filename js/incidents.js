@@ -198,6 +198,7 @@ async function dispatch(operationKey, args, summary) {
   operations.set(operationKey, { args, summary });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Incident command receipt only; zero automatic attempts, and any retry requires a fresh user action.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);

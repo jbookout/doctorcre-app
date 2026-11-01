@@ -434,7 +434,7 @@ async function saveTrust(event) {
     }
     let deadline;
     attempted = true;
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- One 15-second trust-write deadline per save; finally clears the timer.
     try { const receipt = await Promise.race([client.updateVendorTrust(operation), new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Unconfirmed')), 15000); })]); if (receipt?.ok !== true || !Array.isArray(receipt.updated) || !receipt.updated.includes('trust_override')) throw new Error('Unconfirmed'); }
     finally { clearTimeout(deadline); }
     if (!active()) return;
@@ -596,6 +596,7 @@ function renderList() {
   if (dom.observedAt) dom.observedAt.textContent = updatedLabel(payload.source.observed_at);
   if (dom.source) dom.source.textContent = updatedLabel(payload.source?.observed_at);
   if (dom.summary) dom.summary.textContent = `${payload.total} ${(payload.total === 1 ? DATASET_SINGULAR[dataset] : DATASET_LABEL[dataset]).toLowerCase()}`;
+  // eslint-disable-next-line no-restricted-syntax -- Business notice metadata only; zero automatic attempts, and any retry requires a fresh user action.
   renderNotices(view.failedPage ? [{ kind: 'unavailable', title: 'Could not load more', copy: 'Retrying automatically.', retry: true }]
     : view.loadingMore ? [{ kind: 'loading', title: 'Loading more…', copy: '' }] : []);
 
@@ -824,6 +825,7 @@ async function loadList(reason = "initial") {
     }
     const refreshedRows = [...payload.rows];
     const takePage = createPageBudget();
+    // eslint-disable-next-line no-restricted-syntax -- Retained business pages call takePage before each read; at most 100 additional pages per refresh.
     for (let page = 2; page <= Math.min(targetPages, payload.page_count); page++) {
       takePage();
       const nextQuery = { ...query, page };
@@ -1032,7 +1034,7 @@ function wireControls() {
   });
   dom.search?.addEventListener("input", () => {
     if (searchTimer) clearTimeout(searchTimer);
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- Search debounce keeps at most one pending callback, replacing it on each input; query length is capped by MAX_QUERY_LENGTH.
     searchTimer = setTimeout(() => {
       const value = (dom.search?.value || "").trim().slice(0, MAX_QUERY_LENGTH);
       if (value === view.query.q) return;
@@ -1157,7 +1159,7 @@ function start() {
   applyLocation({ reason: "initial" });
   // The unread badge is chrome, not content: it loads the dealroom client, so
   // it waits until the browser is idle after the first rows have painted.
-  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+  // eslint-disable-next-line no-restricted-syntax -- Schedules the unread badge once after initial paint, using requestIdleCallback with a 4-second timeout or a 1500ms fallback.
   const idle = window.requestIdleCallback || ((callback) => setTimeout(callback, 1500));
   idle(() => mountBadge(), { timeout: 4000 });
 }

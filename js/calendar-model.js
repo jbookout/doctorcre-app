@@ -272,6 +272,7 @@ export async function readCalendar(client, { concurrency = READ_CONCURRENCY, onP
 
   const takePage = createPageBudget();
   async function worker() {
+    // eslint-disable-next-line no-restricted-syntax -- Each worker consumes the shared 100-page takePage budget before reading another deal.
     while (!signedOut && next < deals.length) {
       try { takePage(); }
       catch {

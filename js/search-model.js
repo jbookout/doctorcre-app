@@ -421,15 +421,25 @@ export function truncationNotes(payload, catchUp = null) {
 
 /** The nine states of §4.6. One state, one heading, one body. */
 export const SEARCH_STATE_COPY = Object.freeze({
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for loading only; zero automatic attempts, and any retry requires a fresh user action.
   loading: Object.freeze({ title: "Searching…", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for empty only; zero automatic attempts, and any retry requires a fresh user action.
   empty: Object.freeze({ title: "Search by name", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for no_match only; zero automatic attempts, and any retry requires a fresh user action.
   no_match: Object.freeze({ title: "No matches", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for stale only; zero automatic attempts, and any retry requires a fresh user action.
   stale: Object.freeze({ title: "Updating…", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for unavailable only; zero automatic attempts, and any retry requires a fresh user action.
   unavailable: Object.freeze({ title: "Search temporarily unavailable", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for refused only; zero automatic attempts, and any retry requires a fresh user action.
   refused: Object.freeze({ title: "Sign-in required", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for unknown only; zero automatic attempts, and any retry requires a fresh user action.
   unknown: Object.freeze({ title: "Search temporarily unavailable", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for partial only; zero automatic attempts, and any retry requires a fresh user action.
   partial: Object.freeze({ title: "Some results unavailable", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for disambiguation only; zero automatic attempts, and any retry requires a fresh user action.
   disambiguation: Object.freeze({ title: "Multiple matches", copy: "", retry: false }),
+  // eslint-disable-next-line no-restricted-syntax -- Search state copy for ready only; zero automatic attempts, and any retry requires a fresh user action.
   ready: Object.freeze({ title: "Results", copy: "", retry: false }),
 });
 

@@ -168,4 +168,10 @@ The CI job publishes the performance summary in its job summary.
 Client scheduling is checked with `npm run lint`. Use `createPageBudget` /
 `createRequestBudget` for bounded reads and TanStack Query `refetchInterval`
 for React polling. Audited local callbacks carry an inline
-`eslint-disable-next-line no-restricted-syntax -- <reason>` comment.
+`eslint-disable-next-line no-restricted-syntax -- <reason>` comment naming the
+specific bound. Raw scheduler aliases are rejected at their declaration.
+
+`node scripts/prove-loop-lint-coverage.mjs` compares the pinned pre-migration main
+revision with ESLint, lists both coverage sets, and asserts containment. It
+reports scheduler wrappers covered at their raw scheduler origin separately.
+The pinned commit must be present in local Git history.

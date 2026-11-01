@@ -48,7 +48,7 @@ export async function readWithDeadline(read, { timeoutMs = 10_000, signal, clock
   let timer, cancel;
   const deadline = new Promise((_, reject) => {
     cancel = () => { const error = new Error('Read timed out or cancelled'); error.code = 'read_timeout'; reject(error); controller.abort(); };
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- One timeoutMs deadline per read aborts its controller; completion or cancellation clears the timer.
     timer = clock.setTimeout(cancel, timeoutMs);
     signal?.addEventListener('abort', cancel, { once: true });
     if (signal?.aborted) cancel();

@@ -9,6 +9,7 @@ globalThis.addEventListener?.('doctorcre-session-invalidated', () => pageDocCont
 export function observeDocClient(client, context = pageDocContext) {
   if (!context) return client;
   const reads = new Set(Object.values(DOC_PAGES).flatMap(page => page.reads));
+  // eslint-disable-next-line no-restricted-syntax -- Wraps the finite set of methods declared in DOC_PAGES once; the async function bodies do not run during this loop.
   for (const method of reads) {
     if (typeof client[method] !== 'function') continue;
     const original = client[method];

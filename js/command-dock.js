@@ -69,12 +69,14 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
    * What the dock shows for one operation. `status` is a kernel status and
    * `state` a feedback state; a caller may pass either, and the kernel decides.
    */
+  // eslint-disable-next-line no-restricted-syntax -- Dock record accepts retry=false by default; a retry requires one explicit dock-button action.
   function record(operationKey, { summary = '', status = null, state = null, reason = null, retry = false, undo = false, request = null } = {}) {
     const previous = entries.get(operationKey) || {};
     const previousState = previous.operationKey ? commandReceiptView(previous).state : null;
     const next = {
       ...previous, operationKey,
       summary: summary || previous.summary || '',
+      // eslint-disable-next-line no-restricted-syntax -- Copies the retry flag into one retained dock entry; rendering that flag sends zero requests.
       status, state, reason, retry, undo,
       request: request || previous.request || null,
       dismissed: false,
@@ -95,6 +97,7 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
    * stays over the cap rather than dropping work still owed an answer.
    */
   function evict() {
+    // eslint-disable-next-line no-restricted-syntax -- Eviction removes one confirmed entry per iteration until DOCK_ENTRY_CAP (50), or returns when none remain; zero reads.
     while (entries.size > DOCK_ENTRY_CAP) {
       let oldestConfirmed = null;
       for (const [key, entry] of entries) {

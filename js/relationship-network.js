@@ -339,6 +339,7 @@ export function mountRelationshipNetwork({
     };
   });
   for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
+    // eslint-disable-next-line no-restricted-syntax -- Registers input/change callbacks for exactly three network filters; zero lifecycle reads.
     $(id).addEventListener(id === "networkSearch" ? "input" : "change", () => {
       currentFilters.q = $("networkSearch").value;
       currentFilters.territory = $("networkTerritory").value;

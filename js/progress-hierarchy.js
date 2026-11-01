@@ -10,6 +10,7 @@ export function hierarchyView(data, address = '') {
   const tree = data.hierarchy;
   const cards = data.tasks || {};
   const seen = new Set();
+  // eslint-disable-next-line no-restricted-syntax -- Task aliases stop on a seen address or at the end of the finite alias chain; zero reads.
   while (!Object.hasOwn(cards, address) && tree.aliases?.[address] && !seen.has(address)) {
     seen.add(address);
     address = tree.aliases[address];
@@ -61,6 +62,7 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
   function focusDestination(origin = '') {
     const trigger = [...container.querySelectorAll('[data-hierarchy-id]')]
       .find(card => card.dataset.hierarchyId === origin)?.querySelector('button');
+    // eslint-disable-next-line no-restricted-syntax -- Opens one details ancestor per iteration until the finite DOM ancestor chain ends; zero reads.
     for (let details = trigger?.closest('details'); details; details = details.parentElement?.closest('details')) details.open = true;
     (trigger || doc.getElementById('pipeline-title'))?.focus();
   }

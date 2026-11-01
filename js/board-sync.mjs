@@ -53,6 +53,7 @@ export const SYNC_STATES = Object.freeze({
   /** The board has been read and neither path is failing. */
   READY: 'ready',
   /** A read failed. Values on screen are the last successful read's. */
+  // eslint-disable-next-line no-restricted-syntax -- RECONNECTING is a display-state constant; it schedules zero connection attempts.
   RECONNECTING: 'reconnecting',
   /** A snapshot arrived and could not be shown. Not a connection problem. */
   ERROR: 'error',

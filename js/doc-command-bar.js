@@ -106,7 +106,7 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
   }
   const inputChanged=()=>{
     ++epoch;query=input.value.trim();dialog.querySelector('.doc-detail-grid').hidden=!!query;const tools=dialog.querySelector('.doc-context-tools');if(tools)tools.hidden=!!query;selected=0;clearDetail();$('docCommandStatus').textContent='';$('docCommandUpdated').textContent='';
-    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
+    // eslint-disable-next-line no-restricted-syntax -- Command search keeps one 180ms debounce callback, replacing the previous timer after each input.
     paint(pageResults());win.clearTimeout(timer);timer=win.setTimeout(()=>void refresh(),180);
   };
   input.addEventListener('input',inputChanged);

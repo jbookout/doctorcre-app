@@ -293,6 +293,7 @@ async function refresh() {
     const aliases = read.snapshot?.snapshot_json?.hierarchy?.aliases;
     const seen = new Set();
     let taskId = requestedTask;
+    // eslint-disable-next-line no-restricted-syntax -- Alias traversal records each visited task ID in seen; stops on repetition or when the finite alias chain ends.
     while (!tasks.has(taskId) && typeof taskId === 'string' && typeof aliases?.[taskId] === 'string' && Object.hasOwn(aliases, taskId) && !seen.has(taskId)) {
       seen.add(taskId); taskId = aliases[taskId];
     }
