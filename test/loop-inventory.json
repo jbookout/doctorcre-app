@@ -971,16 +971,6 @@
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "src/ui/action-link.tsx:retry-option:71c3d1748587065155f05633c0ad82adbad679e1e3830bfa530057c823d76828": {
-    "cap": 0,
-    "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
-    "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
-  },
-  "src/ui/action-link.tsx:retry-option:db454a1d39b3fb1211a1bab2477b815ddc80a356354e5e60342dc8f8eef1eee8": {
-    "cap": 0,
-    "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
-    "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
-  },
   "src/ui/fact-review.tsx:loop:2aca7db59685abef41b5e0b8491bc66cd53f8c84dd9a983ef5e0427ccf2c8cd9": {
     "cap": 100,
     "boundary": "100 pages per batch",
@@ -1094,5 +1084,15 @@
     "boundary": "At most three upcoming tour reads, or two distinct selected client IDs",
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
+  },
+  "src/ui/action-link.tsx:retry-option:6282024790e715c9f60e4e6423e2d99ab1ac793ef0b41474a841f8a78e346891": {
+    "cap": 0,
+    "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
+    "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
+  },
+  "src/ui/action-link.tsx:retry-option:01da3783cb0334725159e4535a0fc712fa90f40bbb9d9f520ab9edcbf08be9c5": {
+    "cap": 0,
+    "backoff": "No automatic retry. A partner must click Reload draft; each click makes one deadline-bounded read.",
+    "idleStop": "The boolean only controls whether Reload draft is shown. No timer, reconnect or automatic loop is scheduled; disposal aborts the current request."
   }
 }

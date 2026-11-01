@@ -7,7 +7,7 @@
 .action-link-card{background:var(--surface-1);border:1px solid var(--hairline);border-radius:var(--radius-lg,12px);padding:clamp(1rem,4vw,2rem);overflow-wrap:anywhere}
 .action-link-card h2{font-size:var(--text-lg,20px);line-height:1.4;margin:.5rem 0 1rem}
 .action-link-message{white-space:pre-wrap;line-height:1.7;margin:1.5rem 0;padding:1.5rem 0;border-block:1px solid var(--hairline)}
-.action-link-card .btn{min-height:44px;margin-top:1rem;background:var(--accent);color:var(--on-accent);border:0;padding:.75rem 1.25rem;border-radius:var(--radius-md,8px);font:inherit;cursor:pointer}
+.action-link-card .btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;text-decoration:none;min-height:44px;margin-top:1rem;background:var(--accent);color:var(--on-accent);border:0;padding:.75rem 1.25rem;border-radius:var(--radius-md,8px);font:inherit;cursor:pointer}
 .action-link-card .btn:disabled{opacity:.65;cursor:wait}
 .action-link-page a:focus-visible,.action-link-page button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:4px}
 @media(max-width:600px){.action-link-page{padding:1rem}.action-link-card .btn{width:100%}}
