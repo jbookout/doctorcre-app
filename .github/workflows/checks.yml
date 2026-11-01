@@ -54,6 +54,10 @@ jobs:
         name: Verify the exact CARR runtime interface
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
+      - name: Verify pinned Tour producer contracts
+        run: node --test --test-name-pattern="committed digest producer detail|advertised runtime composer POST" test/tour-composer.test.mjs test/tour-itinerary-map.test.mjs
+        env:
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - run: npm run privacy:check
         env:
           DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
