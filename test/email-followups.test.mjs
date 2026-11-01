@@ -368,6 +368,20 @@ for (const decision of ['dismiss', 'confirm']) test(`reopening a deal recovers t
 
 const replyDraft = () => ({ ...proposal(), kind: 'reply_draft', confirm_verb: 'submit-email-draft', preview: null,
   reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: 'joe', to: ['demo-correspondent@example.test'], cc: ['demo-partner@example.test'] } });
+
+test('Home renders a contact reply draft beside a deal draft with its sender and owner', async () => {
+  const contact = { ...replyDraft(), id: 'contact-draft', deal: null, deal_name: null };
+  contact.source.sender = 'Dana Demo';
+  const { container, view } = setup({ listEmailProposals: async () => response([replyDraft(), contact]) });
+  await view.refresh();
+  assert.equal(container.querySelectorAll('article').length, 2, container.textContent);
+  const card = container.querySelector('[data-email-id="contact-draft"]');
+  assert.match(card.textContent, /Dana Demo/);
+  assert.match(card.textContent, /Reply draft · Re: Demo floor plan · Joe/);
+  assert.equal(card.querySelector('a[href^="/deals"]'), null);
+  assert.ok(card.querySelector('[data-email-action="edit-draft"]'));
+  assert.doesNotMatch(container.textContent, /Could not load/);
+});
 const draftReceipt = args => ({ ok: true, proposal_id: args.proposal_id, version: args.base_version + 1,
   status: 'approved_to_send', subject: args.subject, body: args.body, sha256: 'a'.repeat(64),
   to: ['demo-correspondent@example.test'], cc: ['demo-partner@example.test'] });
