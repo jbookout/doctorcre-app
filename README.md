@@ -128,8 +128,19 @@ deployment directory. Tagged `app-v*` releases run
 the same checks and publish those three files. Consumers pin the exact source
 commit and archive digest; they never import this repository's source tree.
 
-The pinned consumer contract is `contracts/carr-interface.v1.json`. The live and
-fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
+The pinned consumer contract is `contracts/carr-interface.v1/`, one file per
+entry so that two branches adding verbs never edit the same lines.
+`scripts/carr-interface.mjs` composes it into one object. A feature adds
+`mcp_operations/<encoded-verb>.json` (a JSON string), `http_surfaces/<encoded-path>.json`
+(`{"value":"/api/v1/example","order":28}`), and its own `<section>.json`.
+List filenames use `entryFileName`, a reversible lowercase UTF-8 hex encoding of
+the full verb or surface key. The composer rejects duplicate entry files. The
+contract digest recursively sorts object keys while retaining array order.
+Surface order preserves the original contract
+array; append with the next order number. Equal orders from parallel additions
+sort by value. CI rejects the retired single file. Tests read the
+contract through `test/carr-contract.mjs` and assert only the entries they own.
+The live and fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
 
 The repository is publicly visible. No open-source license has been selected;
 public visibility alone does not grant reuse rights.

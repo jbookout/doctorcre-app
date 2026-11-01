@@ -7,7 +7,7 @@ authentication, control, and assurance.
 ## Current transition state
 
 - The app communicates with CARR through the pinned contract in
-  `contracts/carr-interface.v1.json`; it never connects to CARR's database.
+  `contracts/carr-interface.v1/`; it never connects to CARR's database.
 - `data/board-seed.json` contains 11 explicitly synthetic records for local
   development and automated tests. It is not a production data source.
 

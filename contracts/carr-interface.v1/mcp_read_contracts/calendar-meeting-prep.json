@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "e36b9de61f998414b68239dcc3f97140f738bc17",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2478"
+  },
+  "arguments": {},
+  "audience": "Authenticated partner only; no caller-selected sponsor or tenant.",
+  "response": "Calendar section with state ready, empty, partial or unavailable; items, notes, observed_at and sources. Each item has start, end, title, location, all_day, schedule_conflict, time_changed and possible_deals. Each possible deal has id, name, client_ref and prep.",
+  "preparation": "prep.state is ready or unavailable. Ready preparation supplies nullable phase, next_step, next_date, last_touch and market. Missing preparation never hides the meeting or its possible deal link.",
+  "match_basis": "Exact attendee email is a possible match, never a confirmed meeting-to-deal relationship. Display suggestions as unconfirmed. Failed deal_suggestions is unavailable, never proof of no related deal.",
+  "presentation": "On-demand Home dialog. Render calendar notes including zero-row partial responses, source freshness, unavailable states and retry. No startup read or writes. Clear content and reject late results on close, disposal or session invalidation.",
+  "content_storage": "Memory only."
+}

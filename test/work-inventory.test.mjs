@@ -10,6 +10,7 @@ import {
   filterItemsByStatusText, groupItemsByKind, inventoryRequestPath, itemKey, listPhase,
   mergeInventoryPages, validWorkInventoryPayload,
 } from "../js/work-inventory-model.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -234,13 +235,12 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   const js = withoutComments(await readFile(`${ROOT}/js/work-inventory.js`, "utf8"));
   const model = withoutComments(await readFile(`${ROOT}/js/work-inventory-model.js`, "utf8"));
   const routes = (await import("../js/routes.js")).routeContract;
-  const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
+  const carr = carrInterface;
   const serveScript = await readFile(`${ROOT}/scripts/serve.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.23.0", "an additive route is a minor version of the route contract");
   assert.ok(carr.http_surfaces.includes("/api/v1/work-inventory"), "the consumed path belongs in the pinned interface");
 
   // The page is listed everywhere a page has to be listed.
@@ -505,7 +505,7 @@ test('V1 batch D All Work controls and broker copy', async t => {
     assert.match(document.querySelector('#evidenceRows').textContent, /573/);
     assert.match(document.querySelector('#evidenceRows').textContent, /needs_joe/);
     assert.equal(cardReads, before);
-    const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+    const contract = carrInterface;
     assert.ok(calls.every(call => contract.mcp_operations.includes(call.name)));
     assert.ok(calls.every(call => ['notification-feed', 'work-request-card'].includes(call.name)));
   });

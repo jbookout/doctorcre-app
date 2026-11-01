@@ -20,7 +20,7 @@ const newHomes = {
   "/control-room/automations": "/control-room?tab=automations",
   "/automations.html": "/control-room?tab=automations",
   "/tasks": "/", "/work": "/", "/tasks.html": "/",
-  "/progress-board": "/control-room/progress",
+  "/progress-board": "/control-room/progress/board/carr-v5",
   "/workspace": "/",
   "/queue.html": "/control-room/progress/work?view=tasks",
   "/control-room/agents/queue": "/control-room/progress/work?view=tasks",

@@ -4,7 +4,7 @@
   "mode": "app-only-drafts",
   "existing_reads": {
     "producer": "jbookout/carr-system",
-    "producer_contract": "contracts/carr-interface.v1.json",
+    "producer_contract": "contracts/carr-interface.v1",
     "client_list": "/api/v1/business/clients?scope=team&sort=name&page=<page>",
     "client_record": "/api/v1/business/clients/<client-id>",
     "tour_library": "/api/tours/library",

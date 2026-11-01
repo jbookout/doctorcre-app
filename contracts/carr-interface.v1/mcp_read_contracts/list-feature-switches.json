@@ -1,0 +1,65 @@
+{
+  "version": "1.0.0",
+  "write": false,
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "7bed3266d88755566ec5862555cd084f74448ae2",
+    "module": "mcp-server/src/feature-switches.js"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,62}$"
+      }
+    }
+  },
+  "response": {
+    "schema": "feature-switches.v1",
+    "required_keys": [
+      "ok",
+      "schema",
+      "switches",
+      "history"
+    ],
+    "switch_keys": [
+      "id",
+      "name",
+      "description",
+      "default_enabled",
+      "enabled",
+      "audience",
+      "owner",
+      "created_at",
+      "expected_removal_on",
+      "retired_at",
+      "version",
+      "available"
+    ],
+    "history_keys": [
+      "actor",
+      "recorded_at",
+      "before",
+      "after",
+      "verb"
+    ]
+  },
+  "availability": "CARR evaluates the authenticated actor; the app consumes available === true and never evaluates audiences.",
+  "refresh": {
+    "poll_ms": 30000,
+    "deadline_ms": 10000,
+    "on_failure": "hidden",
+    "on_resume": "hidden until fresh read"
+  },
+  "first_consumer": {
+    "name": "doc-suggestion-actions",
+    "slice": "V5-UX-B08",
+    "worker_gated_verbs": [
+      "decide-doc-suggestion",
+      "propose-doc-correction"
+    ],
+    "seed_default": false
+  }
+}

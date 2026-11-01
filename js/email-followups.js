@@ -1,3 +1,4 @@
+import { homeListLimit } from './ui.generated.js';
 import { workCard } from './work-card.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';
@@ -49,7 +50,7 @@ const denied = error => [401, 403].includes(error.status) || error.code === 'ses
 
 export function mountEmailFollowups({ container, client, deal, onChange = () => {} }) {
   const win = container.ownerDocument.defaultView;
-  let visibleCount = deal ? Infinity : win?.matchMedia?.('(max-width: 700px)').matches ? 1 : 2;
+  let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
   const refusedCreations = new Map();

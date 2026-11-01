@@ -13,6 +13,11 @@
  * contain only opening dates, cutoff and owner filter; brief contents are never cached on disk.
  * @typedef {{state:string,sponsor:string,sections:Object}} MorningBriefResponse
  *
+ * @typedef {{fact_key:string,value:string,unit:string,expense_basis?:string,source:{document_ref:string,page_start:number,page_end:number,cited_text:string}}} HumanFact
+ * @typedef {{id:string,entity_ref:string,fact_key:string,value:string,unit:string,expense_basis:string|null,normalized_value:string,source:{document_ref:string,page_start:number,page_end:number,cited_text:string|null,cited_text_expires_at:string,cited_text_sha256:string}}} FactObservation
+ * @typedef {{entity_ref:string,fact_key:string,canonical_version:number,review_version:string,pending:boolean,reasons:string[],observations:FactObservation[],canonical_fact:Object|null,canonical_history:Object[],review_history:Object[]}} FactReviewItem
+ * @typedef {{ok:true,schema_version:'fact-review.v1',items:FactReviewItem[],has_more:boolean,next_cursor:string|null}} FactReviewList
+ *
  * @typedef {Object} PipelineEvent
  * @property {string} id
  * @property {string} recorded_at ISO-8601
@@ -87,6 +92,10 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args:{deal_id:string,limit?:number,cursor?:string}, options?:{signal?:AbortSignal}) => Promise<{ok:true,schema_version:'deal-documents.v1',documents:{id:string,display_name:string,stored_at:string}[],has_more:boolean,next_cursor:string|null}>} listDealDocuments
+ * @property {(args:{entity_ref?:string,limit?:number,cursor?:string,include_resolved?:boolean}, options?:{signal?:AbortSignal}) => Promise<FactReviewList>} listFactReview
+ * @property {(args:{idempotency_key:string,entity_ref:string,observation:HumanFact}) => Promise<Object>} recordHumanFact
+ * @property {(args:{idempotency_key:string,entity_ref:string,fact_key:string,base_version:number,review_version:string,decision:'approve'|'correct'|'reject',reason:string,observation_id?:string,correction?:HumanFact}) => Promise<Object>} resolveFactReview
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getRelationshipNetwork authenticated relationship-network.v1 snapshot, with observed_at and valid_until
  * @property {(args:Object) => Promise<Object>} readAssuranceHealth read-only assurance-health.v1 for an exact workflow scope
  * @property {(args?:Object) => Promise<Object>} correspondenceReadiness governed installation read, no arguments
@@ -98,10 +107,12 @@
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
+ * @property {(args?:{limit?:number,before_id?:string,signal?:AbortSignal}) => Promise<Object>} listPracticeOrigination read-only practice-origination.v1, current relationship routes and source coverage
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getHomeAgenda bounded home-agenda.v1 snapshot with dates and open actions
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getPostCallFollowups pending post-call-followups.v1 metadata; email bodies remain local
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
+ * @property {(args:{submarket?:string,use_type?:string,as_of?:string}) => Promise<Object>} readMarketTerms confirmed firm history projection, pinned to carr-system a07acbe0b9be7bd7f3365a0c74a8460c99234a27
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges
  * @property {(args:{deal:string, field:string, idempotency_key:string}) => Promise<{ok:true}>} presenceLease
@@ -407,3 +418,10 @@ export async function createClient(mode = 'fixture', opts = {}) {
   const { createFixtureClient } = await import('./fixture-client.js');
   return createFixtureClient(opts);
 }
+
+export const FACT_TERMS = {
+  base_rent_per_sf: { label: 'Base rent', units: { 'USD/SF/year': 1, 'USD/SF/month': 12 } },
+  landlord_ti_per_sf: { label: 'Landlord improvement allowance', units: { 'USD/SF': 1 } },
+  term_months: { label: 'Lease term', units: { months: 1, years: 12 } },
+  free_rent_months: { label: 'Free rent', units: { months: 1 } },
+};

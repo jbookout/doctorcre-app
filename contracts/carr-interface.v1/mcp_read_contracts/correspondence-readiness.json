@@ -1,0 +1,42 @@
+{
+  "write": false,
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "response": {
+    "schema_version": "doctorcre-v5-j103-correspondence-store.v1",
+    "required_keys": [
+      "ok",
+      "schema_version",
+      "readiness",
+      "mailbox_reads_possible",
+      "activation",
+      "owed",
+      "kernel_gaps",
+      "policy",
+      "consentable_operations",
+      "never_consentable_operations",
+      "dispatchable",
+      "provider_operation",
+      "send_authority_holder",
+      "send_authority_seam",
+      "automatic_internal_update",
+      "effects"
+    ],
+    "readiness_keys": [
+      "server_instant",
+      "partners",
+      "read_receipt_writer_granted_to_runtime"
+    ],
+    "partner_keys": [
+      "partner_slug",
+      "consents_in_force",
+      "consents_revoked",
+      "read_receipts",
+      "drafts"
+    ],
+    "evidence_coverage": "Installation counts only; no deal or meeting index."
+  }
+}

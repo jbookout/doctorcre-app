@@ -17,3 +17,10 @@ export function hostNode(node: Element): Root {
 export { mountHome } from './home/home';
 export { createInboxClient } from './home/inbox';
 export { fixtureInboxRpc } from './home/fixture';
+
+export { mountFactReview } from "./fact-review";
+
+export { mountMarketTerms } from "./market-terms";
+
+export { homeListLimit } from './home-list-limit';
+export { createContactReasonsView } from './contact-reasons';

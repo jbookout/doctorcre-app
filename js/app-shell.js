@@ -249,7 +249,8 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       boundary.revoke('signed-out');
     } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
   };
-  if (!root.getElementById("callModeDialog")) {
+  if (pathname === "/calls") root.querySelector(".app-shell-call-availability").hidden = true;
+  if (pathname !== "/calls" && !root.getElementById("callModeDialog")) {
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
       if (boundary?.revoked) return;
       const call = await mountGlobalCallMode(root);

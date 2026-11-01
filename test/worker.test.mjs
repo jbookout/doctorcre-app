@@ -12,6 +12,7 @@ test('blocking 1: shared map modules, CSS and derived worker URLs pass through d
 });
 
 import { handleDoctorcreRequest } from "../src/worker.js";
+import { routeContract } from "../js/routes.js";
 
 const HOST = "doctorcre-app-staging.joe-bookout-carr-us.workers.dev";
 const request = (path, init) => new Request(`https://${HOST}${path}`, init);
@@ -238,7 +239,7 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: carrContractIdentity,
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.23.0" },
+    route_contract: { schema: routeContract.schema, version: routeContract.version },
   });
 });
 
@@ -327,7 +328,7 @@ test('stable record routes gate signed-in partners and preserve signed-out deep 
   }
 });
 
- test("UI encoding negotiation serves verified gzip bytes and honors explicit refusal", async () => {
+test("UI encoding negotiation serves verified gzip bytes and honors explicit refusal", async () => {
   for (const [accept, expected] of [["gzip, deflate, br", true], ["gzip;q=0, br", false], ["identity", false]]) {
     let path;
     const response = await handleDoctorcreRequest(request("/js/ui.generated.js", {headers:{"accept-encoding":accept}}), environment({assets:{fetch: async value => {
@@ -340,4 +341,15 @@ test('stable record routes gate signed-in partners and preserve signed-out deep 
     assert.match(response.headers.get("content-type"), /javascript/);
     assert.equal(await response.text(), expected ? "compressed" : "identity");
   }
+});
+
+test('phone capture ships behind the existing partner gate with narrowly scoped microphone permission', async () => {
+  const env = environment({ carr: { fetch: async value => new Response(null, { status: new URL(value.url).pathname === '/business' ? 200 : 404 }) } });
+  const response = await handleDoctorcreRequest(request('/calls?session=synthetic'), env);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), 'asset:/calls.html');
+  assert.match(response.headers.get('permissions-policy'), /microphone=\(self\)/);
+  assert.match(response.headers.get('content-security-policy'), /media-src 'self' blob:/);
+  const home = await handleDoctorcreRequest(request('/css/app-shell.css'), env);
+  assert.match(home.headers.get('permissions-policy'), /microphone=\(\)/);
 });

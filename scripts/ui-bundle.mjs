@@ -2,6 +2,11 @@ import { build } from 'vite';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// React islands: strict TypeScript under src/ui/, shipped as one generated
+// browser module that a page imports on demand or while its flag is on. The island
+// sources are read through readSource, so an artifact verified from committed
+// bytes compiles committed bytes; React itself resolves from the lockfile's
+// install in this checkout.
 export const UI_SOURCE = 'src/ui';
 export const UI_ENTRY = `${UI_SOURCE}/index.tsx`;
 export const UI_OUTPUT = 'js/ui.generated.js';
