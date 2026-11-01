@@ -16,6 +16,7 @@ import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
 import { mountHomeWeek } from './home-week-view.js';
 import { meetingDate, meetingTime } from './home-week.js';
+import { mountMissingNextStep } from './ui.generated.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -31,6 +32,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const flagKeydown = event => { if (event.key === ' ' && event.target.matches('#dealFlags .deal-alert h3 a')) { event.preventDefault(); event.target.click(); } };
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
+  const missingNextStep = mountMissingNextStep($('homeMissingNextStep'), window);
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
   const retirePendingEmail = () => {
@@ -137,6 +139,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     replyOutcomes?.syncActor();
     emailReview?.update();
     const signedOut = snapshot?.unauthorized;
+    missingNextStep.update(signedOut ? null : snapshot?.board || null, scope);
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
       scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
@@ -397,7 +400,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     return emailReview.refresh();
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { missingNextStep.dispose(); reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

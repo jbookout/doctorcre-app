@@ -1224,3 +1224,30 @@ test('Deals panel ends with muted counts and a plain All deals link', async t =>
     assert.equal(await link.evaluate(el => getComputedStyle(el).borderTopStyle), 'none');
   }
 });
+
+test('Home groups deals with no next step and links each deal room', async t => {
+  const { page, responses, calls } = await open(t);
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  const deals = ['d01', 'd02', 'd03'].map(id => board.deals.find(deal => deal.id === id)).map((deal, i) => ({ ...deal, name: `Demo missing ${i + 1}` }));
+  responses.set('read-home-agenda', { ...board, deals, missing_next_action: [
+    { owner: 'joe', deal_ids: [deals[0].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] },
+  ] });
+  await page.locator('#refreshHome').click();
+  const panel = page.getByRole('region', { name: 'Deals with no next step' });
+  await panel.waitFor();
+  await panel.getByRole('button', { name: 'Show all 3' }).click();
+  for (const [i, owner] of ['Joe', 'Dell', 'Unassigned'].entries()) {
+    const group = panel.getByRole('group', { name: owner });
+    assert.equal(await group.getByRole('link', { name: `Demo missing ${i + 1}` }).getAttribute('href'), `/deals?deal=${encodeURIComponent(deals[i].id)}`);
+  }
+  assert.equal(calls.includes('set-next-action'), false);
+  responses.set('read-home-agenda', { ...board, deals, missing_next_action: [] });
+  await page.locator('#refreshHome').click();
+  await panel.waitFor({ state: 'hidden' });
+  responses.set('read-home-agenda', { ...board, deals, missing_next_action: [{ owner: 'joe', deal_ids: [deals[0].id] }] });
+  await page.locator('#refreshHome').click();
+  await panel.getByRole('link', { name: 'Demo missing 1' }).click();
+  await page.getByLabel('Next step', { exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
+});
