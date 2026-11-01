@@ -44,23 +44,40 @@ test('queue menu names the four queues for Joe and hides Needs Joe from Dell', t
   assert.equal(document.querySelectorAll('[data-brief-queue]').length, 0);
 });
 
+test('an open queue collapses the chooser to one switch', t => {
+  const { document, view } = host(t);
+  view.renderMenu({ sponsor: 'joe', sections: sections() }, 'loops');
+  assert.equal(document.querySelectorAll('[data-brief-queue]').length, 0);
+  const select = document.querySelector('[data-brief-queue-switch]');
+  assert.equal(select.value, 'loops');
+  assert.equal(select.getAttribute('aria-label'), 'Work queue');
+  assert.deepEqual([...select.options].map(option => option.value), ['today', 'loops', 'needs_joe', 'assurance_cadence']);
+  assert.doesNotMatch(document.getElementById('menu').textContent, /Selected priorities/);
+  view.renderMenu({ sponsor: 'dell', sections: sections() }, 'loops');
+  assert.deepEqual([...document.querySelector('[data-brief-queue-switch]').options].map(option => option.value), ['today', 'loops', 'assurance_cadence']);
+  view.renderMenu({ sponsor: 'joe', sections: sections() });
+  assert.equal(document.querySelector('[data-brief-queue-switch]'), null);
+  assert.ok(document.querySelector('[data-brief-queue="today"]'));
+});
+
 test('queue list replaces the classic brief and keeps the row contract', t => {
   const { document, view } = host(t);
   const row = { number: '7', kind: 'open_loop', title: 'Synthetic loop 7', due_on: '2026-01-01', owner_partner: 'joe' };
   view.renderList({ active: 'loops', items: [row], page: { total: 2, has_more: true, state: 'partial', total_scope: 'available_sources' }, busy: false, error: false });
   const content = document.getElementById('content');
   assert.equal(content.querySelector('#classic'), null);
-  assert.match(content.textContent, /Open loops/);
-  assert.match(content.querySelector('[role=status]').textContent, /1 of 2 from available sources/);
+  assert.equal(content.querySelector('h3'), null);
+  assert.equal(content.querySelector('[role=status]'), null);
+  assert.doesNotMatch(content.textContent, /1 of 2/);
   assert.match(content.textContent, /Some sources are unavailable\. This list may be incomplete\./);
-  assert.match(content.textContent, /Live urgency order\. Changed rows can move; reopen for a fresh list\./);
+  assert.match(content.textContent, /Urgency order\. Refresh for a new list\./);
   assert.equal(content.querySelector('[data-queue-item]').getAttribute('data-queue-item'), 'open_loop:7');
   assert.match(content.querySelector('summary').textContent, /^Synthetic loop 7$/);
   assert.match(content.textContent, /Due/);
   assert.equal(content.querySelector('[data-brief-queue-more]').textContent, 'Load more');
   assert.equal(content.querySelector('[data-brief-queue-back]').textContent, 'Back to priorities');
   view.renderList({ active: 'loops', items: [row], page: { total: 2, has_more: true }, busy: true, error: true });
-  assert.match(content.querySelector('[role=status]').textContent, /1 of 2 · Updating… · Queue update unavailable; retry to continue\./);
+  assert.match(content.querySelector('[role=status]').textContent, /^Updating… · Queue update unavailable; retry to continue\.$/);
   assert.equal(content.querySelector('[data-brief-queue-more]').textContent, 'Retry queue');
   assert.equal(content.querySelector('[data-brief-queue-more]').disabled, true);
   view.renderList({ active: 'loops', items: [row, { number: '8', kind: 'open_loop', title: 'Synthetic <loop> & "8"', due_on: '2026-01-02' }], page: { total: 2, has_more: false }, busy: false, error: false });

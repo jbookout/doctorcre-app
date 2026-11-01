@@ -12,11 +12,51 @@ function validPage(value, sponsor, previousCursor) {
 
 export function mountBriefQueues({ menu, content, getClient, getSponsor, onOpen, onBack, onInvalidate, onChange }) {
   let active = null, items = [], page = null, busy = false, error = false, epoch = 0, viewer = null, observedAt = null;
-  let labels = null, identity = null, title = null, view = null, ready = null;
-  const prepare = () => ready ??= import(QUEUE_VIEW).then(module => {
+  let labels = null, identity = null, title = null, view = null, ready = null, menuFacts = null, chunkFailed = false, loadAttempt = 0;
+  // A failed module stays in the document module map. The next attempt uses a
+  // new query so the import actually runs again; the first attempt stays the
+  // plain specifier Home may already have loaded.
+  const queueModule = () => loadAttempt ? `${QUEUE_VIEW}?attempt=${loadAttempt}` : QUEUE_VIEW;
+  const paintMenu = () => {
+    if (!view) return;
+    if (viewer && viewer !== getSponsor()) reset();
+    view.renderMenu(menuFacts, active);
+  };
+  const showChunkFailure = () => {
+    const doc = menu.ownerDocument;
+    menu.replaceChildren();
+    const note = doc.createElement('p');
+    note.textContent = 'Work queues did not load.';
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.dataset.briefQueueRetry = '';
+    button.textContent = 'Retry';
+    menu.append(note, button);
+  };
+  const adopt = module => {
     ({ briefQueueLabels: labels, briefQueueIdentity: identity, briefQueueTitle: title } = module);
-    view = module.createBriefQueueView(menu, content);
-  });
+    if (!view) {
+      menu.replaceChildren();
+      view = module.createBriefQueueView(menu, content);
+    }
+    chunkFailed = false;
+    paintMenu();
+  };
+  const prepare = () => {
+    if (ready) return ready;
+    if (chunkFailed) return Promise.resolve();
+    let attempt;
+    attempt = import(queueModule()).then(adopt).catch(failure => {
+      if (ready !== attempt) throw failure;
+      ready = null;
+      chunkFailed = true;
+      if (view) { view.dispose(); view = null; labels = null; identity = null; title = null; }
+      showChunkFailure();
+      throw failure;
+    });
+    ready = attempt;
+    return attempt;
+  };
   const reset = () => { ++epoch; active = null; items = []; page = null; busy = false; error = false; viewer = null; observedAt = null; view?.clearList(); };
   const render = () => {
     onChange();
@@ -26,8 +66,11 @@ export function mountBriefQueues({ menu, content, getClient, getSponsor, onOpen,
     if (!active || busy) return;
     const request = ++epoch, queue = active, sponsor = viewer, cursor = page?.next_cursor;
     busy = true; error = false; observedAt = null;
-    await prepare();
-    if (request !== epoch || sponsor !== getSponsor() || active !== queue) return;
+    try { await prepare(); } catch { if (request === epoch && active === queue) { busy = false; render(); } return; }
+    if (!view || request !== epoch || sponsor !== getSponsor() || active !== queue) {
+      if (request === epoch && active === queue) { busy = false; render(); }
+      return;
+    }
     render();
     try {
       const client = await getClient();
@@ -48,29 +91,45 @@ export function mountBriefQueues({ menu, content, getClient, getSponsor, onOpen,
       if (request === epoch && active === queue) { busy = false; render(); }
     }
   };
-  menu.onclick = event => {
-    const queue = event.target.closest('[data-brief-queue]')?.dataset.briefQueue;
+  const openQueue = queue => {
     if (!labels || !Object.hasOwn(labels, queue) || !getSponsor()) return;
     reset(); active = queue; viewer = getSponsor(); onOpen(labels[queue]); load();
   };
+  menu.onclick = event => {
+    if (event.target.closest('[data-brief-queue-retry]')) {
+      if (ready) return;
+      loadAttempt += 1;
+      chunkFailed = false;
+      const note = menu.querySelector('p');
+      if (note) note.textContent = 'Loading work queues…';
+      prepare().catch(() => {});
+      return;
+    }
+    const queue = event.target.closest('[data-brief-queue]')?.dataset.briefQueue;
+    if (queue) openQueue(queue);
+  };
+  menu.onchange = event => {
+    const queue = event.target.closest('[data-brief-queue-switch]')?.value;
+    if (!queue || queue === active) return;
+    openQueue(queue);
+  };
   return {
     prepare,
-    get active() { return active !== null; }, reset,
+    get active() { return active !== null; },
+    get label() { return active && labels ? labels[active] || '' : ''; },
+    get countLine() { return page ? `${items.length} of ${page.total}${page.total_scope === 'available_sources' ? ' from available sources' : ''}` : ''; },
+    reset,
     get updated() { return { observedAt, error }; },
     refresh() {
       ++epoch; items = []; page = null; busy = false; error = false; observedAt = null;
       return load();
     },
-    menu(facts) {
-      if (!view) return;
-      if (viewer && viewer !== getSponsor()) reset();
-      view.renderMenu(facts);
-    },
+    menu(facts) { menuFacts = facts; paintMenu(); },
     click(event) {
       if (event.target.closest('[data-brief-queue-back]')) { reset(); onBack(); return true; }
       if (event.target.closest('[data-brief-queue-more]')) { load(); return true; }
       return active !== null;
     },
-    dispose() { reset(); view?.dispose(); view = null; },
+    dispose() { reset(); view?.dispose(); view = null; ready = null; },
   };
 }

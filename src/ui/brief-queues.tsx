@@ -68,9 +68,14 @@ function factEntries(queue: string, row: Row): [string, unknown][] {
   return [['Severity', row.severity], ['Subject', row.subject_ref], ['Created', row.created_at]];
 }
 
-function QueueMenu({ facts }: { facts: BriefFacts | null }) {
+function QueueMenu({ facts, active }: { facts: BriefFacts | null; active: BriefQueueName | null }) {
   if (!facts) return null;
   const queues = (Object.keys(briefQueueLabels) as BriefQueueName[]).filter(queue => queue !== 'needs_joe' || facts.sponsor === 'joe');
+  if (active && queues.includes(active)) return <label className="morning-queue-switch">
+    <select data-brief-queue-switch="" aria-label="Work queue" defaultValue={active} key={active}>
+      {queues.map(queue => <option key={queue} value={queue}>{briefQueueLabels[queue]}</option>)}
+    </select>
+  </label>;
   return <>
     <p>Selected priorities. Open a queue for all eligible work.</p>
     {queues.map(queue => {
@@ -80,12 +85,11 @@ function QueueMenu({ facts }: { facts: BriefFacts | null }) {
   </>;
 }
 function QueueList({ active, items, page, busy, error }: ListState) {
-  const count = page ? `${items.length} of ${page.total}${page.total_scope === 'available_sources' ? ' from available sources' : ''}` : 'Coverage unknown';
+  const status = [busy ? 'Updating…' : '', error ? 'Queue update unavailable; retry to continue.' : ''].filter(Boolean).join(' · ');
   return <section className="morning-queue">
-    <h3>{briefQueueLabels[active]}</h3>
-    <p role="status">{`${count}${busy ? ' · Updating…' : ''}${error ? ' · Queue update unavailable; retry to continue.' : ''}`}</p>
+    {status ? <p role="status">{status}</p> : null}
     {page?.state === 'partial' ? <p>Some sources are unavailable. This list may be incomplete.</p> : null}
-    <p>Live urgency order. Changed rows can move; reopen for a fresh list.</p>
+    <p>Urgency order. Refresh for a new list.</p>
     <ol>{items.map(row => {
       const id = briefQueueIdentity(active, row);
       const title = briefQueueTitle(active, row);
@@ -107,7 +111,7 @@ export function createBriefQueueView(menu: HTMLElement, content: HTMLElement) {
     return root;
   };
   return {
-    renderMenu(facts: BriefFacts | null) { menuRoot = paint(menu, menuRoot, () => <QueueMenu facts={facts} />); },
+    renderMenu(facts: BriefFacts | null, active: BriefQueueName | null = null) { menuRoot = paint(menu, menuRoot, () => <QueueMenu facts={facts} active={active} />); },
     renderList(state: ListState) { listRoot = paint(content, listRoot, () => <QueueList {...state} />); },
     clearList() {
       if (!listRoot) return;
