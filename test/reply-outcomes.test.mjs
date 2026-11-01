@@ -32,6 +32,25 @@ test('sent replies explain that sent is not a read receipt', async t => {
   assert.match(container.textContent, /Sent means your email app sent the reply\. It does not confirm recipient delivery or a read receipt\./);
 });
 
+for (const actor of ['joe', 'dell']) for (const stream of ['recent', 'pending']) {
+  test(`${actor} sees contact and deal replies together in ${stream}`, async t => {
+    const contact = { ...row(), id: 'contact-reply', deal: null, subject: 'Re: Floor plan' };
+    const proposals = [contact, row()].map(item => stream === 'recent' ? item : {
+      id: item.id, deal: item.deal, kind: 'reply_draft', status: 'approved_to_send',
+      reply_draft: { owner: actor }, submitted_email: { subject: item.subject }, send_result: null,
+    });
+    const { view, container } = setup(t, () => page(stream === 'recent' ? proposals : []), actor,
+      () => ({ ...waiting(), proposals: stream === 'pending' ? proposals : [] }));
+    await view.refresh();
+    const section = container.querySelector(`[aria-label="${stream === 'recent' ? 'Recent reply outcomes' : 'Pending replies'}"]`);
+    assert.equal(section.querySelectorAll('article').length, 2, section.textContent);
+    assert.match(section.querySelector('[data-reply-outcome="contact-reply"]').textContent, /Re: Floor plan/);
+    assert.equal(section.querySelector('[data-reply-outcome="contact-reply"] a'), null);
+    assert.equal(section.querySelector('[data-reply-outcome="outcome-1"] a').getAttribute('href'), '/deals?deal=deal-1');
+    assert.doesNotMatch(section.textContent, /Could not load|could not be shown/);
+  });
+}
+
 test('sent replies labels all public failure reasons without rendering remote text as HTML', async t => {
   const reasons = {
     invalid_submission: 'The submitted reply was invalid.',
