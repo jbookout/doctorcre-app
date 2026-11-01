@@ -29,6 +29,7 @@ test('mounted UI hides on load and on a failed read, and follows flips without r
 });
 
 test('an open page observes an off flip at the next one-minute poll',async t=>{
+ t.mock.timers.enable({apis:['Date']});
  const dom=new JSDOM('<button>Act</button>');
  const timers=new Map();let serial=0,available=true,visible=false;
  dom.window.setTimeout=(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;};
@@ -39,7 +40,7 @@ test('an open page observes an off flip at the next one-minute poll',async t=>{
  await gate.refresh();assert.equal(visible,true);
  available=false;
  const poll=[...timers.values()].find(timer=>timer.ms===60_000);
- assert.ok(poll);await poll.fn();assert.equal(visible,false);
+ assert.ok(poll);t.mock.timers.tick(60_000);await poll.fn();assert.equal(visible,false);
 });
 
 import { createLiveClient } from '../js/live-client.js';

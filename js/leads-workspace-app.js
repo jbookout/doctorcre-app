@@ -1,3 +1,5 @@
+import { createPageBudget } from './read-budget.mjs';
+import { mountContactReasons } from './contact-reasons.mjs';
 import { workCard } from './work-card.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { toDay } from './calendar-model.js';
@@ -21,6 +23,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
+  const reasons = $("contactReasons") && client.listPracticeOrigination ? mountContactReasons({host:$("contactReasons"),window:win,client}) : null;
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
   const expandedStages = new Set();
@@ -326,7 +329,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       selectDocRecord("lead", id);
       for (const kind of ["correspondence", "stage_history"]) {
         const retainedCount = intent?.historyCounts?.[kind] ?? (open ? 0 : state.detail?.[kind]?.length || 0);
+        const takePage = createPageBudget({ document: doc });
         while (response.detail[kind].length < retainedCount && response.detail[`${kind}_page`]?.has_more) {
+          takePage();
           const older = await client.getLeadDetail(lead, { [`${kind}_cursor`]: response.detail[`${kind}_page`].next_cursor });
           if (epoch !== state.detailEpoch || actor !== state.actor) return;
           if (!older.detail || !eligibleLead(older.detail)) { $("leadDetail").close(); state.detail = null; return; }
@@ -574,6 +579,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   function scrollTouch() {
     if (!touch) return;
+    if (doc.visibilityState === 'hidden' || ++touch.frames >= 1800) { stopTouch(); return; }
     if (Math.hypot(touch.x-touch.startX, touch.y-touch.startY)>8) {
       const edge = 72, height = win.innerHeight;
       const delta = touch.y < edge ? -18 * (1-touch.y/edge) : touch.y > height-edge ? 18 * (1-(height-touch.y)/edge) : 0;
@@ -586,7 +592,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const handle = event.target.closest("[data-drag-handle]"); if (!handle || state.pending || !state.identityReady) return;
     stopTouch(); const card = handle.closest("[data-lead-id]");
     board.dataset.touchDragging = "true";
-    touch = { id: card.dataset.leadId, handle, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
+    touch = { frames: 0, id: card.dataset.leadId, handle, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
     handle.setPointerCapture?.(event.pointerId); scrollFrame = win.requestAnimationFrame(scrollTouch);
   });
   board.addEventListener("pointermove", event => { if (!touch || touch.pointer !== event.pointerId) return; touch.x = event.clientX; touch.y = event.clientY; highlightDrop(touch.x, touch.y); });
@@ -635,6 +641,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
-  return { state, refresh, openReview, readDetail, dispose() { disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
+  return { state, refresh, openReview, readDetail, dispose() { reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("leadBoard")) mountLeadsWorkspace();

@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 const STATES = [
   ['waiting','Waiting'],['working','Working'],['review','Review'],['fixing','Sent back for fixes'],
   ['merging','Merging'],['merged','Merged / awaiting release'],['live','Live'],['blocked','Blocked'],
@@ -150,7 +151,9 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
       more.disabled=true;
       try {
         const pages=[];
+        const takePage = createPageBudget({ document: doc });
         for(const page of next.pages || []) {
+          takePage();
           const read=await readPage({board_id:page.board_id});
           const saved=read?.snapshot, cards=saved?.snapshot_json?.cards;
           if(saved?.version!==page.version || !Array.isArray(cards) || cards.length!==page.count

@@ -1,7 +1,7 @@
 {
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "728fc86bcc54eb15a7b129a8a0500b25ada6dcc0",
+    "source_commit": "1557e82ab39058ffac076c5eb6e849e5639edffd",
     "source": "mcp-server/src/org-conventions.js"
   },
   "read": {

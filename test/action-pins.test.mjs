@@ -80,10 +80,11 @@ test('quoted action refs work and commented uses lines do not count', async t =>
 });
 test('CI checks pins before dependency and browser setup while retaining the full suite', async () => {
   const ci = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  assert.ok(ci.includes('run: npm run ci:fast'));
-  assert.ok(ci.indexOf('run: npm run ci:fast') < ci.indexOf('- uses: actions/setup-node'));
-  assert.ok(ci.indexOf('run: npm run ci:fast') < ci.indexOf('run: npm ci'));
-  assert.ok(ci.indexOf('run: npm run ci:fast') < ci.indexOf('run: npx playwright install'));
+  const checks = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
+  assert.ok(checks.includes('run: npm run ci:fast'));
+  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('- uses: actions/setup-node'));
+  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npm ci'));
+  assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npx playwright install'));
   assert.match(ci, /run: node --test --test-concurrency=2 --test-shard=.* test\/\*\.test\.mjs/);
 });
 

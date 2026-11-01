@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { mountBriefQueues } from './brief-queues.js';
 import { overnightCutoff } from './business-date.js';
 import { toDay } from './calendar-model.js';
@@ -30,8 +31,14 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     if (updated.observedAt) $('morningUpdated').dateTime = updated.observedAt; else $('morningUpdated').removeAttribute('datetime');
     $('morningCoverage').textContent = view ? view.unavailable.join(' · ') : 'Brief unavailable';
     queues.menu(facts);
-    $('morningOwners').hidden=queues.active;
-    if (selected || queues.active) return;
+    if (queues.active) dialog.dataset.queueOpen = ''; else delete dialog.dataset.queueOpen;
+    $('morningOwners').hidden = queues.active;
+    if (queues.active) {
+      const label = queues.label, count = queues.countLine;
+      if (label) $('morningTitle').textContent = count ? `${label} · ${count}` : label;
+      return;
+    }
+    if (selected) return;
     const title = view ? `Morning brief · ${view.sponsor === 'joe' ? 'Joe' : 'Dell'}` : 'Morning brief';
     $('morningTitle').textContent = title;
     $('morningBack').hidden = true;
@@ -69,7 +76,10 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     const doc = $('docDetail'); if (doc?.open) doc.close();
     const pending = auto.revalidate();
     if (!dialog.open) dialog.showModal();
+    const queuesReady = queues.prepare().catch(() => {});
     await pending;
+    await queuesReady;
+    if (!disposed) queues.menu(facts);
     if (dialog.open && sponsor && view) remember();
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
@@ -108,7 +118,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const refresh = async ({signal} = {}) => {
     const epoch = readEpoch;
     const current = () => !disposed && !signal?.aborted && epoch === readEpoch;
+    if (dialog.open) queues.prepare().catch(() => {});
     try {
+      if (!current()) return;
       client ||= await getClient();
       if (!current()) return;
       const freshRead = fresh; fresh = false;
@@ -124,7 +136,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       }
       let caughtUp = false;
       try {
+        const takePage = createPageBudget();
         for (let page=0; page<4; page++) {
+          takePage();
           const changes = await readWithDeadline(() => client.getChanges(cursor,{signal,since}),{signal});
           if (!Array.isArray(changes?.events)) throw new Error('Invalid changes');
           if (!current()) return;
@@ -169,5 +183,5 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.dispose(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }

@@ -49,6 +49,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: ['d14', 'd20', 'd23'].includes(args.deal) ? '2026-09-30' : '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
+    'list-practice-origination': () => ({ok:true,contract:'practice-origination.v1',cards:[],coverage:[],next_cursor:null,outreach_started:false}),
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
@@ -145,7 +146,8 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
   const refresh = async () => {
     const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'lead-board');
-    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.keyboard.press('Shift');
+    await page.locator('#refreshHome').evaluate(node=>node.click());
     await read; await settled();
   };
   await settled();
@@ -238,7 +240,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'list-practice-origination':1, 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -311,6 +313,8 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
 
 test('a Home flag opens from its row at phone width', async t => {
   const { page } = await open(t, { width: 390, height: 844 });
+  // Deal counts paint before the refresh ends; its last render replaces the flag rows.
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   const flag = page.locator('#dealFlags .home-flag').first();
   const href = await flag.locator('h3 a').getAttribute('href');
   await flag.scrollIntoViewIfNeeded();
@@ -322,6 +326,7 @@ test('a Home flag opens from its row at phone width', async t => {
 test('Home flag link opens with Enter and Space, and item links keep their destination', async t => {
   for (const key of ['Enter', 'Space']) {
     const { page } = await open(t, { width: 390, height: 844 });
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     const flag = page.locator('#dealFlags .home-flag').first();
     const link = flag.locator('h3 a');
     const href = await link.getAttribute('href');

@@ -1,3 +1,4 @@
+import { createPageBudget } from '../../js/read-budget.mjs';
 import { useState, useRef, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
@@ -105,7 +106,9 @@ function Comparison({ client, entityRef, terms, signal }: Options & { signal: Ab
     try {
       if (!pending.current) {
         const items: Item[] = []; let cursor: string | undefined;
+        const takePage = createPageBudget();
         do {
+          takePage();
           const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
           if (signal.aborted) return;
           if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef) || (page.has_more && (!page.next_cursor || page.next_cursor === cursor))) throw new Error('Terms unavailable');
@@ -174,7 +177,9 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   async function documentLoad() {
     try {
       const loaded: Document[] = []; let cursor: string | undefined;
+      const takePage = createPageBudget();
       for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+        takePage();
         const page = await client.listDealDocuments({ deal_id: entityRef, limit: 100, ...(cursor ? { cursor } : {}) });
         if (page.ok !== true || page.schema_version !== 'deal-documents.v1' || !Array.isArray(page.documents)
           || page.documents.some(doc => !doc.id || !doc.display_name || typeof doc.stored_at !== 'string')
@@ -198,7 +203,9 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       const listedDocuments = await documentLoad();
       if (disposed || current !== generation || writing || pending.size || dirty) return;
       setDocuments(listedDocuments);
+      const takePage = createPageBudget();
       do {
+        takePage();
         const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
         if (disposed || current !== generation || writing || pending.size || dirty) return;
         if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef)) throw new Error('Terms unavailable');

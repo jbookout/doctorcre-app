@@ -26,10 +26,10 @@ test('brief exposes all four queues and reaches the 51st loop in server order wi
  await state.ui.refresh();await state.ui.open();
  assert.deepEqual([...state.root.querySelectorAll('[data-brief-queue]')].map(node=>node.dataset.briefQueue),['today','loops','needs_joe','assurance_cadence']);
  state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
- assert.match(state.root.getElementById('morningContent').textContent,/50 of 51/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Open loops · 50 of 51/);
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,50);
  state.root.querySelector('[data-brief-queue-more]').click();await tick();
- assert.match(state.root.getElementById('morningContent').textContent,/51 of 51/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Open loops · 51 of 51/);
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,51);
  assert.equal(state.root.querySelector('[data-brief-queue-more]'),null);
  assert.deepEqual(calls,[['loops',undefined],['loops','next']]);
@@ -40,10 +40,10 @@ test('failed and malformed follow-up retain rows and retry without claiming comp
  await state.ui.refresh();await state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
  state.root.querySelector('[data-brief-queue-more]').click();await tick();
  assert.match(state.root.getElementById('morningContent').textContent,/Queue update unavailable/);
- assert.match(state.root.getElementById('morningContent').textContent,/1 of 2/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Open loops · 1 of 2/);
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,1);
  fail=false;state.root.querySelector('[data-brief-queue-more]').click();await tick();
- assert.match(state.root.getElementById('morningContent').textContent,/2 of 2/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Open loops · 2 of 2/);
 });
 test('queue page cannot restore facts after dismissal or a viewer change',async t=>{
  let release;
@@ -85,7 +85,7 @@ test('Needs Joe keeps different decisions sharing an older display key and label
  await state.ui.refresh();await state.ui.open();state.root.querySelector('[data-brief-queue="needs_joe"]').click();await tick();
  state.root.querySelector('[data-brief-queue-more]').click();await tick();
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,2);
- assert.match(state.root.getElementById('morningContent').textContent,/2 of 2 from available sources/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Needs Joe · 2 of 2 from available sources/);
  assert.match(state.root.getElementById('morningContent').textContent,/Some sources are unavailable/);
 });
 
@@ -149,7 +149,7 @@ test('explicit Refresh restarts a terminal queue and dates only the completed qu
  await state.ui.refresh();
  assert.equal(updated.hasAttribute('datetime'),false,'composite brief must not date a pending queue');
  release(page([row(2),row(3)],{total:2,next:null}));await tick();
- assert.match(state.root.getElementById('morningContent').textContent,/2 of 2/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Open loops · 2 of 2/);
  assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Synthetic loop 1/);
  assert.ok(updated.dateTime);
 });
@@ -204,5 +204,5 @@ for (const nextSponsor of ['joe','dell']) test(`suspension clears paged queue fa
  await state.ui.refresh();await state.ui.open();state.root.querySelector('[data-brief-queue="needs_joe"]').click();await tick();
  state.root.querySelector('[data-brief-queue-more]').click();await tick();
  assert.equal(state.root.querySelectorAll('[data-queue-item]').length,2);
- assert.match(state.root.getElementById('morningContent').textContent,/2 of 2/);
+ assert.match(state.root.getElementById('morningTitle').textContent,/Needs Joe · 2 of 2/);
  });

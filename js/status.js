@@ -1,3 +1,4 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C15 — the independent status page: DOM wiring only.
 //
@@ -263,7 +264,7 @@ async function boot() {
     catch { view.assuranceError = "The supplied workflow scope is invalid."; }
   }
   // Evidence ages and expiry are reevaluated while the page stays open and on return.
-  setInterval(renderAssurance, 1000);
+  mountLocalTicker({ tick: renderAssurance, intervalMs: 1000 });
   document.addEventListener("visibilitychange", renderAssurance);
   await load();
   mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ quiet: true }) });

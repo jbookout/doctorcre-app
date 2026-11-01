@@ -5,7 +5,7 @@ import { resolveDealroomBoot } from './boot-mode.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
-import { mountVisibilityPoll } from "./visibility-poll.mjs";
+import { mountVisibilityPoll, mountLocalTicker, watchPresence } from "./visibility-poll.mjs";
 import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
@@ -81,7 +81,11 @@ export function mountBoard(deps = {}) {
   let viewSignature = "";
   let directorySignature = "";
   const badgeTimes = new Map();
-  let ageTimer = null;
+  let ageTimer = null, ageAttempts = 0;
+  const agePresence = watchPresence({ document: doc, window: win,
+    now: () => currentNow().getTime(),
+    onResume: () => { ageAttempts = 0; refreshAges(); },
+    onWake: () => { ageAttempts = 0; refreshAges(); } });
   // On the system board the pipeline shows the system-work census (unfinished
   // work plus recent Live) instead of snapshot tasks; every other panel still
   // reads the snapshot.
@@ -156,7 +160,7 @@ export function mountBoard(deps = {}) {
       const next = nextFreshnessChange(updatedAt, at);
       if (next !== null) delay = Math.min(delay, next);
     }
-    if (Number.isFinite(delay)) ageTimer = setTimer(refreshAges, Math.min(delay, 60000));
+    if (Number.isFinite(delay) && agePresence.active() && ageAttempts++ < 1800) ageTimer = setTimer(refreshAges, Math.min(delay, 60000));
   }
 
   function freshnessBadge(updatedAt) {
@@ -1294,14 +1298,15 @@ export function mountBoard(deps = {}) {
     latestRead = run;
     let observed = run;
     let result = await observed;
-    while (result === "superseded") {
+    let supersededReads = 0;
+    while (result === "superseded" && supersededReads++ < 20) {
       // A directory denial invalidates this epoch without starting a newer
       // board read. Only a distinct read can settle a superseded caller.
       if (latestRead === observed) return false;
       observed = latestRead;
       result = await observed;
     }
-    return result;
+    return result === "superseded" ? false : result;
   }
 
   // Agents adopt rules themselves and tell Joe (WR-000631); this list only shows what is pending.
@@ -1334,9 +1339,9 @@ export function mountBoard(deps = {}) {
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed || queueBoardView) return;
       poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
-        poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
+        poll: () => refresh().catch(() => { setError("Progress temporarily unavailable."); return false; }) });
     });
-    timers.push(schedule(tick, TICK_MS));
+    timers.push(mountLocalTicker({ document: doc, window: win, tick, intervalMs: TICK_MS, setInterval: schedule, clearInterval: id => win.clearInterval(id) }));
   }
 
   byId("directory-search").addEventListener("input", filterDirectory);
@@ -1353,7 +1358,7 @@ export function mountBoard(deps = {}) {
     disposed = true; readSeq++; boardReadController?.abort();
     orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose();
     workViewResize?.disconnect();
-    timers.forEach(id => win.clearInterval(id)); clearTimer(ageTimer);
+    timers.forEach(timer => timer.dispose()); agePresence.dispose(); clearTimer(ageTimer);
     byId("directory-search").removeEventListener("input", filterDirectory);
     doc.removeEventListener("visibilitychange", refreshAges);
     win.removeEventListener?.('doctorcre-session-invalidated', dispose);

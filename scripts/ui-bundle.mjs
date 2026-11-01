@@ -25,11 +25,15 @@ export async function uiBundle(readSource) {
     tsconfigRaw: "{}", define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "ui-source", setup(builder) {
       // Island imports are relative and extensionless; each must name an
-      // admitted .tsx or .ts file under src/ui/.
+      // admitted .tsx or .ts file under src/ui/, or the shared read budget.
       builder.onResolve({ filter: /^\.|^src\/ui\// }, async (args) => {
         if (args.kind !== "entry-point" && args.namespace !== "ui-source") return undefined;
         const base = args.kind === "entry-point" ? posix.normalize(args.path)
           : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
+        if (base === 'js/read-budget.mjs') {
+          const contents = await read(base);
+          if (contents !== null) return { path: base, namespace: 'ui-source', pluginData: contents };
+        }
         for (const path of [base, `${base}.tsx`, `${base}.ts`]) {
           if (!path.startsWith(`${UI_SOURCE}/`) || !/\.tsx?$/.test(path)) continue;
           const contents = await read(path);

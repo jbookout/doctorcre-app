@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 // V5-UX-B12a — the notifications page: DOM wiring only.
 //
 // Every decision about a payload, a state or a sentence lives in
@@ -264,7 +265,9 @@ async function takeActivity() {
     let events = view.activity?.payload?.events || [];
     const seen = new Set();
     let payload;
+    const takePage = createPageBudget();
     do {
+      takePage();
       payload = await client.getChanges(cursor);
       if (view.sequence !== sequence) return;
       if (!Array.isArray(payload?.events) || typeof payload.cursor !== "string" || payload.ok === false) throw new Error("Activity page unavailable.");

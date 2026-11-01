@@ -1,3 +1,4 @@
+import { createPageBudget } from '../js/read-budget.mjs';
 import { createCurrentRead } from "../js/current-read.mjs";
 import { authGeneration, authReadable } from '../js/progress-auth.js';
 import test from "node:test";
@@ -28,7 +29,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({sessionFetch:(...args)=>globals.fetch(...args),observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable,createRetainedCommands,answerBaseVersion,ANSWER_VERSION_CONFLICT_SENTENCE,classifyCommandOutcome,appWrite:(_key,args,send)=>send({...args,idempotency_key:"key"}), console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({createPageBudget,sessionFetch:(...args)=>globals.fetch(...args),observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable,createRetainedCommands,answerBaseVersion,ANSWER_VERSION_CONFLICT_SENTENCE,classifyCommandOutcome,appWrite:(_key,args,send)=>send({...args,idempotency_key:"key"}), console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -596,4 +597,33 @@ test('deal creation honors Dell ownership and retries a lost note without recrea
  const lead=calls.filter(c=>c.name==='set-lead');assert.equal(lead.length,1);assert.equal(lead[0].arguments.new_lead,'dell');
  const notes=calls.filter(c=>c.name==='add-deal-note');assert.equal(notes.length,2);assert.deepEqual(notes[0],notes[1]);
  assert.equal(notes[0].arguments.text,'Demo opening note');
+});
+
+test('150-page room history resumes after 100 pages without publishing a partial cursor', async () => {
+  const { h, state, reads } = roomHarness(29_999);
+  assert.equal(await h.poll(), false);
+  assert.equal(reads.length, 100);
+  assert.equal(reads[0][0], 0);
+  assert.equal(state.cursor, 0, 'partial catch-up is not advertised as current');
+  assert.equal(state.catchUp.from, 20_000);
+  await h.poll();
+  assert.equal(reads.length, 150);
+  assert.equal(reads[100][0], 20_000, 'second batch continues instead of replaying page zero');
+  assert.equal(state.cursor, 29_999);
+  assert.equal(state.catchUp, null);
+});
+
+
+test('Load earlier continues a 150-page history from the last capped cursor', async () => {
+  const { h, state, reads } = roomHarness(29_999);
+  state.turns = [{ seq:29_999, msg_id:'tail' }];
+  await h.loadEarlier();
+  assert.equal(reads.length,100);
+  assert.equal(state.historyCatchUp.from,20_000);
+  assert.equal(state.historyTurns,undefined,'a partial traversal is withheld');
+  await h.loadEarlier();
+  assert.equal(reads.length,150);
+  assert.equal(reads[100][0],20_000);
+  assert.equal(state.historyCatchUp,null);
+  assert.equal(state.historyTurns[0].seq,29_939);
 });
