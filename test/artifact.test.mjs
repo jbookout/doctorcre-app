@@ -1,7 +1,6 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
-import { gunzipSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -48,10 +47,6 @@ test("the static artifact rebuild is byte-for-byte reproducible", async (t) => {
   const b = await buildArtifact({ root: ROOT, outDir: second, commit: COMMIT });
   assert.equal(a.archiveSha256, b.archiveSha256);
   assert.deepEqual(a.archive, b.archive);
-  const compressed = await readFile(join(first, "site/js/ui.generated.js.gz"));
-  const identity = await readFile(join(first, "site/js/ui.generated.js"));
-  assert.deepEqual(gunzipSync(compressed), identity);
-  assert.ok(compressed.length < identity.length / 2);
   assert.equal(a.manifest.files.some((file) => file.path === "js/board-focus.mjs"), true);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
@@ -256,7 +251,7 @@ test('Home and Tasks retain their routes while retired Home implementation leave
   for (const path of ['business-workspace.html', 'js/business-workspace.js', 'js/business-workspace-model.js']) {
     assert.equal(paths.includes(path), false, `${path} is retired`);
   }
-  for (const path of ['workspace.html', 'js/home-boot.js', 'tasks.html', 'js/task-records.js', 'js/task-records-model.js', 'js/local-drafts.mjs', 'js/visual-system.js', 'js/command-feedback.mjs', 'css/business-workspace.css']) {
+  for (const path of ['workspace.html', 'js/workspace-command-center.js', 'tasks.html', 'js/task-records.js', 'js/task-records-model.js', 'js/local-drafts.mjs', 'js/visual-system.js', 'js/command-feedback.mjs', 'css/business-workspace.css']) {
     assert.equal(paths.includes(path), true, `${path} still serves live callers`);
   }
 });

@@ -73,8 +73,33 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
 const settled = page => page.waitForFunction(() => document.querySelector('#refreshLeases').getAttribute('aria-busy') === 'false');
 const online = page => page.evaluate(() => window.dispatchEvent(new Event('online')));
 
-
-
+test('finding 4: malformed Home touch read clears cards and open details', async t => {
+  const state = await open(t, {home:true}); const {page} = state;
+  await page.locator('#homePastClients .lease-card').first().click();
+  state.payload.leases[0].touch_id = 42;
+  await online(page);
+  await page.getByText('Follow-ups unavailable',{exact:true}).waitFor();
+  assert.equal(await page.locator('#homePastClients .lease-card').count(),0);
+  assert.equal(await page.locator('#pastLeaseDetail').evaluate(n=>n.open),false);
+  assert.deepEqual(state.errors,[]);
+});
+test('finding 4: Home projection exceptions enter unavailable and recover', async t => {
+  const {page,errors} = await open(t,{home:true});
+  await page.locator('#homePastClients .lease-card').first().click();
+  await page.evaluate(() => {
+    const original = String.prototype.localeCompare;
+    String.prototype.localeCompare = function (...args) {
+      if (String(this).startsWith('demo-touch-')) throw Error('Synthetic projection failure');
+      return original.apply(this,args);
+    };
+    window.restoreCompare = () => {String.prototype.localeCompare = original;};
+  });
+  await online(page); await page.getByText('Follow-ups unavailable',{exact:true}).waitFor();
+  assert.equal(await page.locator('#pastLeaseDetail').evaluate(n=>n.open),false);
+  await page.evaluate(()=>window.restoreCompare()); await online(page);
+  await page.locator('#homePastClients .lease-card').first().waitFor();
+  assert.deepEqual(errors,[]);
+});
 
 test('radar uses shared slots, quarter timeline, wide details and gaps at desktop and phone widths', async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
@@ -159,7 +184,25 @@ test('urgency lights stay still and cards never lift, with or without reduced mo
   assert.equal(await page.locator('.lease-card').first().evaluate(n => getComputedStyle(n).transform), 'none');
   assert.equal(await page.locator('.lease-card').count(), 9); await shot(page, 'reduced-motion');
 });
-
+test('Home shows next eligible past-client touches, opens lease details and refreshes eligibility', async t => {
+  const state = await open(t, { home: true }); const { page } = state;
+  assert.equal(await page.locator('#homePastClients .lease-card').count(), 4);
+  assert.match(await page.locator('#homePastClients .lease-updated').textContent(), /Updated /);
+  const before = state.reads;
+  await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/v1/business/leases')), page.getByRole('button', { name: 'Refresh past-client touches' }).click()]);
+  assert.ok(state.reads > before);
+  assert.doesNotMatch(await page.locator('#homePastClients').textContent(), /Demo Practice 11/);
+  await page.locator('#homePastClients').scrollIntoViewIfNeeded(); await shot(page, 'home-desktop'); await page.locator('#homePastClients .lease-card').first().click();
+  assert.match(await page.locator('#pastLeaseDetailTitle').textContent(), /Demo Practice 1/);
+  await page.keyboard.press('Escape'); state.payload.leases[0].touch_eligible = false; await online(page);
+  await page.waitForFunction(() => !document.querySelector('#homePastClients').textContent.includes('Demo Practice 1'));
+  await page.getByRole('button', { name: 'Just me', exact: true }).click();
+  assert.equal(await page.locator('#homePastClients .lease-card').count(), 4);
+  state.fail(503); await page.clock.runFor(61_000);
+  await page.getByText('Follow-ups unavailable', { exact: true }).waitFor();
+  state.fail(null); await page.clock.runFor(61_000); await page.locator('#homePastClients .lease-card').first().waitFor();
+  assert.deepEqual(state.errors, []);
+});
 test('long client names wrap within phone cards and lease detail', async t => {
   const { page } = await open(t, { width: 320, long: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -167,8 +210,23 @@ test('long client names wrap within phone cards and lease detail', async t => {
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.scrollWidth <= n.clientWidth), true);
   await shot(page, 'phone-long-detail');
 });
-
-
+test('past-client touches and their detail fit phone width', async t => {
+  const { page, errors } = await open(t, { width: 390, home: true });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.locator('#homePastClients').scrollIntoViewIfNeeded(); await shot(page, 'home-phone');
+  await page.locator('#homePastClients .lease-card').first().click();
+  assert.equal(await page.locator('#pastLeaseDetail').evaluate(n => n.scrollWidth <= n.clientWidth), true);
+  await shot(page, 'home-phone-detail');
+  assert.deepEqual(errors, []);
+});
+test('Home rejects a previous-day lease horizon and closes its outdated detail', async t => {
+  const state = await open(t, { home: true }); const { page } = state;
+  await page.locator('#homePastClients .lease-card').first().click();
+  state.payload.window = { starts_on: '2026-09-30', ends_on: '2028-09-30' }; state.payload.leases = [];
+  await online(page); await page.getByText('Follow-ups unavailable', { exact: true }).waitFor();
+  assert.equal(await page.locator('#pastLeaseDetail').evaluate(n => n.open), false);
+  assert.equal(await page.locator('#homePastClients .lease-card').count(), 0);
+});
 
 
 test('PR182 queued native lease close wins over a successful refresh in the same task', async t => {

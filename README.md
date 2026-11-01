@@ -8,17 +8,9 @@ versioned CARR HTTP and MCP interfaces. It never connects to the CARR database.
 `data/board-seed.json` is a visibly fictional fixture for local development and
 tests; it cannot become production state.
 
-Home is a React and TypeScript partner inbox built with Vite, React Router and
-TanStack Query. Other pages retain their existing static modules. The edge Worker
+The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
-
-The stable record route contract is `src/ui/home/routes.tsx`: `/home`,
-`/home/card/:item_id`, `/deals/:id`, `/contacts/:id` and `/tasks/:id`.
-The Worker gates each through CARR. Links contain encoded IDs and no credentials.
-Home and card routes render the inbox. Deals open the existing workspace by ID.
-Contact detail and canonical task detail remain follow-ups; their routes retain
-existing pages and state the missing detail capability.
 
 Local development and the e2e runner require Node.js 22.22.3 or newer on Node 22, or 24.8.0 or newer.
 

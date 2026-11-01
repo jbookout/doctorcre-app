@@ -5,21 +5,19 @@ export const routeEntries = [
   ["/calls","calls.html","/business"],
   ["/client-portal","client-portal.html","/business"],
   ["/clients","business.html","/clients"],
-  ["/contacts/:id","business.html","/clients"],
   ["/control-room","control-room.html","/control-room"],
   ["/control-room/observatory","observatory.html","/control-room"],
   ["/control-room/progress","progress-board.html","/control-room"],
   ["/control-room/progress/board/:boardId","progress-board.html","/control-room"],
   ["/control-room/progress/work","progress-work.html","/control-room"],
   ["/deals","pipeline.html","/deals"],
-  ["/deals/:id","pipeline.html","/deals"],
   ["/design-lab","design.html","/control-room"],
   ["/doc-activity","activity.html","/control-room"],
   ["/doc-chats","conversations.html","/conversations"],
   ["/doc-chats/work","tasks.html","/tasks"],
-  ["/home","workspace.html","/"],
-  ["/home/card/:item_id","workspace.html","/"],
   ["/ideas-events","ideas.html","/control-room"],
+  ["/inbox","inbox.html","/"],
+  ["/inbox/card/:item_id","inbox.html","/"],
   ["/incidents","incidents.html","/incidents"],
   ["/invoices","invoices.html","/control-room"],
   ["/leads","leads.html","/leads"],
@@ -28,7 +26,6 @@ export const routeEntries = [
   ["/search","search.html","/business"],
   ["/share","reports/share.html","/share"],
   ["/status","status.html","/control-room"],
-  ["/tasks/:id","tasks.html","/tasks"],
   ["/tours","tours/index.html","/tours"],
   ["/updates","notifications.html","/notifications"],
   ["/vendors","business.html","/vendors"],
@@ -172,11 +169,8 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
-  "/home": "/",
-  "/home/card/:item_id": "/",
-  "/deals/:id": "/deals",
-  "/contacts/:id": "/clients",
-  "/tasks/:id": "/",
+  "/inbox": "/",
+  "/inbox/card/:item_id": "/",
   "/work-inventory": "/all-work",
   "/control-room/progress": "/control-room",
   "/control-room/automations": "/control-room",
@@ -203,17 +197,8 @@ export const sectionForRoute = {
   "/system-work.html": "/work-requests"
 };
 
-export function recordRouteKey(pathname) {
-  return ['/home/card/:item_id', '/deals/:id', '/contacts/:id', '/tasks/:id'].find(pattern => {
-    const prefix = pattern.slice(0, pattern.lastIndexOf('/') + 1);
-    return pathname.startsWith(prefix) && pathname.slice(prefix.length).length > 0 && !pathname.slice(prefix.length).includes('/');
-  }) || pathname;
-}
-
-export function compressedAssetPath(path, acceptEncoding = '') {
-  if (path !== '/js/ui.generated.js') return null;
-  const gzip = acceptEncoding.split(',').map(value => value.trim()).find(value => /^gzip(?:;|$)/i.test(value));
-  if (!gzip) return null;
-  const quality = /;\s*q=([\d.]+)/i.exec(gzip);
-  return quality && Number(quality[1]) <= 0 ? null : `${path}.gz`;
+/** The route-table key for a path: an inbox card URL maps to its pattern. */
+export function routeKey(pathname) {
+  const card = '/inbox/card/';
+  return pathname.startsWith(card) && pathname.length > card.length && !pathname.slice(card.length).includes('/') ? '/inbox/card/:item_id' : pathname;
 }

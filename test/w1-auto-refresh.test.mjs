@@ -89,8 +89,8 @@ for(const method of ['readDocConversation','listDocConversations','listDocSugges
  assert.equal(transportSignal.aborted,true,'caller abort reaches the underlying MCP request');
  await rejected;
 });
-test('classic data surfaces mount background refresh or the existing board coordinator', async () => {
-  for (const name of ['workspace-business','leads-workspace-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','charts','search','status']) {
+test('every data surface mounts background refresh or the existing board coordinator', async () => {
+  for (const name of ['workspace-command-center','workspace-business','leads-workspace-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','charts','search','status']) {
     assert.match(await readFile(new URL(`../js/${name}.js`, import.meta.url), 'utf8'), /mountAutoRefresh\(/, name);
   }
   assert.match(await readFile(new URL('../tours/app.js', import.meta.url), 'utf8'), /mountAutoRefresh\(/);

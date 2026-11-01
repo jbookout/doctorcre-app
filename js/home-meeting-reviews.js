@@ -1,16 +1,20 @@
 import { workCard } from './work-card.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
+import { uuidv4 } from './uuid.js';
 
 // Meetings that ended in the last day, from the partner's own Outlook calendar
 // (the morning brief's calendar section). A meeting is only scheduled, never
 // confirmed, so the partner says whether it happened: yes logs a meeting on the
 // deal they pick; dismiss hides it. Hidden meetings are remembered in this
-// browser only, for as long as the calendar can still list them.
+// browser only, for as long as the calendar can still list them. A log whose
+// outcome is unknown is kept here too, with its idempotency key, so a later
+// visit replays the same request instead of minting a duplicate.
 const E = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const instant = value => text(value) && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
 const REMEMBER_MS = 2 * 86_400_000;
 const storageKey = actor => `doctorcre.meeting-reviews.v1.${actor}`;
+const pendingKey = actor => `doctorcre.meeting-reviews.pending.v1.${actor}`;
 
 /** The well-formed meeting reviews in a brief calendar section, newest first. */
 export function meetingReviews(calendar) {
@@ -33,6 +37,18 @@ function saveHandled(storage, actor, handled) {
   try { storage?.setItem(storageKey(actor), JSON.stringify(Object.fromEntries(handled))); } catch {}
 }
 
+function readPending(storage, actor, now) {
+  try {
+    const stored = JSON.parse(storage?.getItem(pendingKey(actor)) || '{}');
+    return new Map(Object.entries(stored && typeof stored === 'object' ? stored : {})
+      .filter(([, entry]) => Number.isFinite(entry?.at) && now - entry.at < REMEMBER_MS && text(entry.dealId) && text(entry.request?.idempotency_key)));
+  } catch { return new Map(); }
+}
+
+function savePending(storage, actor, pending) {
+  try { storage?.setItem(pendingKey(actor), JSON.stringify(Object.fromEntries(pending))); } catch {}
+}
+
 const when = review => {
   const options = { timeZone: BUSINESS_TIME_ZONE, hour: 'numeric', minute: '2-digit' };
   const day = new Date(review.start).toLocaleDateString(undefined, { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric' });
@@ -40,7 +56,7 @@ const when = review => {
 };
 
 export function mountHomeMeetingReviews({ document, client, host, storage, now = () => Date.now() }) {
-  let view = {}, actor = null, handled = new Map(), generation = 0, disposed = false, notice = '', commands;
+  let view = {}, actor = null, handled = new Map(), pending = new Map(), generation = 0, disposed = false, notice = '', commands;
   const decisions = new Map(), choices = new Map();
   const deals = () => {
     const rows = (view.deals || []).filter(deal => text(deal?.id) && text(deal?.name));
@@ -70,32 +86,36 @@ export function mountHomeMeetingReviews({ document, client, host, storage, now =
     if (focused) ([...host.querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === focused) || document.getElementById('homePrimaryAction'))?.focus();
   };
   const remember = (key, state) => { handled.set(key, { state, at: now() }); saveHandled(storage, actor, handled); };
+  const unknown = 'Not confirmed yet. Check the meeting log before choosing again.';
+  const settled = key => { if (pending.delete(key)) savePending(storage, actor, pending); };
   const log = async review => {
     const prior = decisions.get(review.key);
     const dealId = prior?.dealId || choices.get(review.key);
     const deal = deals().find(row => row.id === dealId);
     if (!deal || prior?.state === 'submitting') return;
     const ticket = generation, binding = actor;
+    const request = pending.get(review.key)?.request || { ref: deal.id, kind: 'meeting', summary: `Meeting: ${review.title}`,
+      occurred_at: new Date(review.start).toISOString(), idempotency_key: uuidv4() };
+    pending.set(review.key, { dealId, request, at: pending.get(review.key)?.at ?? now() }); savePending(storage, actor, pending);
     decisions.set(review.key, { state: 'submitting', dealId }); notice = ''; render();
     try {
       if (!commands) {
         const { createRetainedCommands } = await import('./retained-commands.mjs');
         commands ||= createRetainedCommands({ scope: () => actor });
       }
-      await commands.send(`meeting-review:${review.key}`, { ref: deal.id, kind: 'meeting', summary: `Meeting: ${review.title}`,
-        occurred_at: new Date(review.start).toISOString() }, async request => {
+      await commands.send(`meeting-review:${review.key}`, request, async request => {
         const receipt = await client.logActivity(request);
         if (receipt?.ok !== true || !text(receipt.activity_id))
           throw Object.assign(new Error('Meeting log could not be verified'), { code: 'unknown_outcome' });
         return receipt;
       });
       if (disposed || ticket !== generation || actor !== binding) return;
-      decisions.delete(review.key); remember(review.key, 'logged');
+      decisions.delete(review.key); settled(review.key); remember(review.key, 'logged');
       notice = `Meeting logged on ${deal.name}.`;
     } catch (error) {
       if (disposed || ticket !== generation || actor !== binding) return;
-      if (error.pendingRequest) decisions.set(review.key, { state: 'uncertain', dealId, error: 'Not confirmed yet. Check the meeting log before choosing again.' });
-      else decisions.set(review.key, { state: 'failed', error: 'The meeting was not logged. Try again or choose another deal.' });
+      if (error.pendingRequest) decisions.set(review.key, { state: 'uncertain', dealId, error: unknown });
+      else { settled(review.key); decisions.set(review.key, { state: 'failed', error: 'The meeting was not logged. Try again or choose another deal.' }); }
     }
     render();
   };
@@ -114,14 +134,17 @@ export function mountHomeMeetingReviews({ document, client, host, storage, now =
     if (decisions.get(select.dataset.reviewDeal)?.state === 'failed') decisions.delete(select.dataset.reviewDeal);
     render();
   };
-  const retire = () => { generation++; decisions.clear(); choices.clear(); notice = ''; actor = null; handled = new Map(); commands = null; host.replaceChildren(); host.hidden = true; };
+  const retire = () => { generation++; decisions.clear(); choices.clear(); notice = ''; actor = null; handled = new Map(); pending = new Map(); commands = null; host.replaceChildren(); host.hidden = true; };
   host.addEventListener('click', onClick);
   host.addEventListener('change', onChange);
   return {
     update(next) {
       if (disposed) return;
       if (next.signedOut || actor && text(next.actor) && actor !== next.actor) retire();
-      if (!actor && text(next.actor) && !next.signedOut) { actor = next.actor; handled = readHandled(storage, actor, now()); }
+      if (!actor && text(next.actor) && !next.signedOut) {
+        actor = next.actor; handled = readHandled(storage, actor, now()); pending = readPending(storage, actor, now());
+        for (const [key, entry] of pending) decisions.set(key, { state: 'uncertain', dealId: entry.dealId, error: unknown });
+      }
       view = next;
       render();
     },

@@ -1,16 +1,12 @@
 import type { InboxItem } from './inbox';
-// Stable record-level URL contract. IDs are encoded path segments, never credentials.
-export const recordRoutePatterns = { home: '/home', card: '/home/card/:item_id', deal: '/deals/:id', contact: '/contacts/:id', task: '/tasks/:id' } as const;
+// Stable inbox URL contract. IDs are encoded path segments, never credentials.
 export const recordRoutes = {
-  home: () => '/home',
-  card: (id: string) => `/home/card/${encodeURIComponent(id)}`,
-  deal: (id: string) => `/deals/${encodeURIComponent(id)}`,
-  contact: (id: string) => `/contacts/${encodeURIComponent(id)}`,
-  task: (id: string) => `/tasks/${encodeURIComponent(id)}`,
+  inbox: () => '/inbox',
+  card: (id: string) => `/inbox/card/${encodeURIComponent(id)}`,
   /** The page that owns an inbox card's source record, or null when no page
-   * does. Source types are the ones read-home-inbox emits; a card never links
-   * back to itself. A next_action has no page that opens it by id (the task
-   * board keys loops, and the card carries no deal), so it has no link. */
+   * opens it. Source types are the ones read-home-inbox emits; a card never
+   * links back to itself. A next_action has no page that opens it by id (the
+   * task board keys loops, and the card carries no deal), so it has no link. */
   source(item: InboxItem): string | null {
     switch (item.source_type) {
       case 'capture_session': case 'capture_post_call_action': return '/calls';

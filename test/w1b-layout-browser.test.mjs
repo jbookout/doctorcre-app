@@ -42,7 +42,7 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
     const file=url.pathname==='/deals'&&url.searchParams.get('view')==='board'?'pipeline.html':url.pathname==='/'&&url.searchParams.get('view')==='charts'?'charts.html':contract.routes[url.pathname]||url.pathname.slice(1);
     try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
-  const goto=async path=>{await page.goto('http://localhost'+path);if(path === '/') await page.locator('[data-inbox-row]').first().waitFor(); else await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});if(path.startsWith('/leads'))await page.locator('.lead-card').first().waitFor();};
+  const goto=async path=>{await page.goto('http://localhost'+path);await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});if(path.startsWith('/leads'))await page.locator('.lead-card').first().waitFor();};
   return{page,goto,errors,writes};
 }
 const fits=async(page,label)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,label);
@@ -55,8 +55,8 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
  await page.locator('#appSidebarToggle').click();await page.locator('#leadSearch').fill('Example 3');assert.equal(await page.locator('.lead-card').count(),1);
  await goto('/deals?view=board');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
- await goto('/');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
- await page.locator('#appSidebarToggle').click();await page.reload();assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
+ await goto('/');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
+ await page.locator('#appSidebarToggle').click();await page.reload();assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
  assert.deepEqual(errors,[]);
 });
@@ -302,11 +302,11 @@ test('R8 page environment capture and freshness feedback stays visible in the st
   await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture active';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
   const badge=await page.locator('#deploymentBadge').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(badge.y>=bar.y && badge.y+badge.height<=bar.y+bar.height,JSON.stringify({width,badge,bar}));
   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/w1b/environment-${width}.png`,root).pathname});
-  await goto('/');assert.equal(await page.locator('.inbox-health').isVisible(),true);
+  await goto('/');assert.equal(await page.locator('#observedAt').isVisible(),true);
  }
- await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='read-home-inbox'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
- await page.goto('http://localhost/?mode=live');await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('.inbox-health').textContent));
- assert.equal(await page.locator('.inbox-health').isVisible(),true);
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
+ await page.goto('http://localhost/?mode=live');await page.waitForFunction(()=>/Partial|Unavailable/.test(document.querySelector('#observedAt').textContent));
+ assert.equal(await page.locator('#observedAt').isVisible(),true);
 });
 test('R9 Recent changes transfers phone focus into Today and keeps its keyboard trap',async t=>{
  const {page,goto}=await open(t,{width:390});await goto('/deals?view=board');await page.locator('#appSidebarToggle').click();await page.locator('#receiptsOpen').click();

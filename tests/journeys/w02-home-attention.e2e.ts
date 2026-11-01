@@ -1,14 +1,26 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('Home inbox filters unseen cards and opens the exact card route', async ({ app, browser, screen }) => {
-  await app.open('/home');
-  const cards = browser.locator('section[aria-label="Inbox"] [data-inbox-row]');
-  await expect(cards).toHaveCount(3);
-  await screen.getByRole('button', 'Unseen', { exact: true }).tap();
-  await expect(cards).toHaveCount(1);
-  await browser.locator('[data-inbox-row="demo-complete"] h3 a').tap();
-  await browser.waitForURL(/\/home\/card\/demo-complete$/);
-  await expect(screen.getByRole('heading', 'Current card', { exact: true })).toBeVisible();
-  await expect(browser.locator('[data-inbox-row="demo-complete"]')).toBeVisible();
+// W2: Home lists overdue local deals, most overdue first; a row opens that exact deal.
+test('W2 Home lists overdue local deals, scopes to the viewer and opens the exact deal', async ({ app, browser, screen }) => {
+  await app.open('/');
+
+  const flags = browser.locator('#dealFlags .home-flag');
+  await expect(flags).toContainText(['Demo Specialty Clinic', 'Demo Osteopathic Office', 'Demo Surgical Practice']);
+  await expect(flags).toHaveCount(3);
+
+  await screen.getByRole('button', 'Just me', { exact: true }).tap();
+  await expect(screen.getByRole('button', 'Just me', { exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(flags).toHaveCount(2);
+  await screen.getByRole('button', 'Team view', { exact: true }).tap();
+  await expect(flags).toHaveCount(3);
+
+  const dealLink = browser.locator('#dealFlags .home-flag h3 a').first();
+  await expect(dealLink).toHaveAttribute('href', '/deals?deal=d23');
+  await dealLink.tap();
+  await browser.waitForURL(/\/deals\?deal=d23$/);
+  await expect(browser.locator('#panelTitle')).toContainText('Demo Specialty Clinic');
+  await expect(browser.locator('#detailUpdateForm')).toBeVisible();
+  await browser.locator('#panelClose').tap();
+  await expect(browser.locator('#recordPanel')).toBeHidden();
 });

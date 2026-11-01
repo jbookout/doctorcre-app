@@ -2,56 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="DoctorCRE partner inbox">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="DoctorCRE Home">
   <title>Home · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <script src="/js/theme-boot.js"></script>
+  <link rel="modulepreload" href="/js/home-dashboard-model.js">
+  <link rel="modulepreload" href="/js/boot-mode.js">
   <link rel="stylesheet" href="/css/tokens.css">
   <link rel="stylesheet" href="/css/deal-items.css">
+  <link rel="preload" as="style" data-font-stylesheet="early" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
+
   <link rel="stylesheet" href="/css/workspace.css">
-  <link rel="stylesheet" href="/css/home-classic.css">
+  <link rel="stylesheet" href="/css/home-dashboard.css">
   <link rel="stylesheet" href="/css/call-outcomes.css">
   <link rel="stylesheet" href="/css/lease-radar.css">
   <link rel="stylesheet" href="/css/app-shell.css">
   <link rel="stylesheet" href="/css/relationship-network.css">
-  <link rel="stylesheet" href="/css/home-dashboard.css">
-  <link rel="modulepreload" href="/js/ui.generated.js">
-  <link rel="modulepreload" href="/js/home-boot.js">
-  <link rel="modulepreload" href="/js/boot-mode.js">
-  <link rel="modulepreload" href="/js/private-session.js">
-  <link rel="modulepreload" href="/js/offline-tour-session.js">
-  <link rel="modulepreload" href="/js/mcp-requests.mjs">
-  <link rel="modulepreload" href="/js/current-read.mjs">
-
 </head>
 <body>
+  <script type="module" async src="/js/home-boot.js"></script>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to Home</a>
-  <main id="main"><div id="homeRoot" class="inbox-shell"><p role="status">Loading your inbox…</p></div></main>
-  <!-- The classic Home workflows not yet ported to React. The React Home
-       mounts this below the inbox and hands it to workspace-command-center.js.
-       Call follow-ups, meeting confirmation, filed emails and reasons to reach
-       out are React panels, so their sections are not here. -->
-  <template id="classicHome">
-    <div class="shell home-shell">
-    <section class="hero home-hero">
-      <div><h2 id="pageTitle">Dashboard</h2></div>
+
+
+  <main id="main" class="shell home-shell">
+    <section data-layout-slot="sidebar" class="hero home-hero">
+      <div><h1 id="pageTitle">Home</h1><a class="home-plain-link" href="/inbox">Try the new inbox</a></div>
       <div class="home-tools">
-        <div class="scope-switch" id="scopeSwitch" role="group" aria-label="Home scope">
+        <div data-layout-slot="tabs" class="scope-switch" id="scopeSwitch" role="group" aria-label="Home scope">
           <button type="button" class="scope-option on" data-scope="team" aria-pressed="true">Team view</button>
           <button type="button" class="scope-option" data-scope="mine" aria-pressed="false">Just me</button>
         </div>
-        <div class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button data-layout-refresh id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
+        <div data-layout-slot="status" class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button data-layout-refresh id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
       </div>
     </section>
+    <section id="homeCallTasks" class="home-panel home-call-tasks" aria-label="Call tasks to review" aria-busy="true"><header class="home-panel-head"><h2>Call follow-ups to review</h2></header><div class="home-followup-skeleton" role="status">Loading call follow-ups…</div></section>
     <section id="homeEmailFollowups" class="home-panel" aria-label="Email follow-ups" aria-busy="true"><header class="home-panel-head"><h2>Email follow-ups</h2></header><div class="home-followup-skeleton" role="status">Loading email follow-ups…</div></section>
     <aside id="homeBrief" class="home-panel home-brief" aria-label="Your brief" aria-live="polite"><header class="home-panel-head"><h2>Your brief</h2></header><p class="home-empty">Updating tasks…</p></aside>
     <div class="home-main">
     <p id="homeNotice" class="home-notice" role="status" hidden></p>
     <section id="homeMeetings" class="home-panel" aria-label="Upcoming meetings" hidden></section>
+    <section id="homeMeetingReviews" class="home-panel" aria-label="Meetings to confirm" hidden></section>
     <section id="homeCallOutcomes" class="home-panel call-outcomes" aria-label="Applied from the pipeline call" hidden></section>
     <section id="dealAttention" class="home-panel home-deals" aria-labelledby="dealAttentionTitle" aria-live="polite" aria-busy="true">
       <header class="home-panel-head"><h2 id="dealAttentionTitle">Deals</h2><a id="homePrimaryAction" class="home-plain-link" href="/deals">All deals</a></header>
@@ -61,18 +57,20 @@
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar</h2></header><p class="home-empty" role="status">Updating calendar…</p></section>
     <details id="homeEmailActivity" class="home-panel home-email-activity">
-      <summary><span>Email activity</span><span class="home-email-hint">Sent replies</span></summary>
+      <summary><span>Email activity</span><span class="home-email-hint">Sent replies and filed emails</span></summary>
       <section id="homeReplyOutcomes" aria-label="Sent replies" aria-busy="true"></section>
+      <section id="homeEmailFilings" aria-label="Filed automatically" aria-busy="true"></section>
     </details>
       <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
       <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>
+      <section id="homeContactReasons" class="home-panel contact-reasons" aria-label="Reasons to reach out"></section>
       <section id="homeLeads" class="home-panel" aria-label="New leads" hidden></section>
     </div>
+
     </div>
-    <dialog id="homeDetail" class="home-detail" aria-labelledby="homeDetailTitle"><article id="homeDetailBody"></article></dialog>
-    </div>
-  </template>
-  <script type="module" async src="/js/home-boot.js"></script>
+  </main>
+  <dialog id="homeDetail" class="home-detail" aria-labelledby="homeDetailTitle"><article id="homeDetailBody"></article></dialog>
+  <script type="module" src="/js/workspace-command-center.js"></script>
 </body>
 </html>

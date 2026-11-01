@@ -184,18 +184,3 @@ test('Home load gate uses five cold LCP samples and reports JS without a byte li
   measured.screens.home.samples.pop();
   assert.throws(() => compareBudget(policy, measured), /samples/);
 });
-
-test('React Home evidence uses the same five-load policy and refuses missing or fanned-out snapshots', () => {
-  const measured = report();
-  measured.taskMeasurement = { scenarios: { 'task-react-home': 'signed-in bounded snapshot' } };
-  assert.throws(() => compareBudget(budget, measured), /React Home/);
-  measured.reactHome = { lcpMs: 1100, usefulMs: 1150, samples: Array.from({ length: 5 }, () => ({ lcpMs: 1100, usefulMs: 1150, reads: ['read-home-inbox'] })) };
-  assert.equal(compareBudget(budget, measured).passed, true);
-  const slow = structuredClone(measured);
-  slow.reactHome.usefulMs = 1201;
-  slow.reactHome.samples.forEach(sample => { sample.usefulMs = 1201; });
-  assert.equal(compareBudget(budget, slow).passed, false);
-  assert.match(renderReport(compareBudget(budget, slow)), /react-home.*usefulMs.*FAIL/);
-  measured.reactHome.samples[0].reads.push('get-deal-room');
-  assert.throws(() => compareBudget(budget, measured), /React Home/);
-});

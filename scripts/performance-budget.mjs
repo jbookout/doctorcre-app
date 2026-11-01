@@ -36,17 +36,7 @@ export function compareBudget(budget, report) {
       rows.push({ screen, metric, before, after, limit, passed: after <= limit });
     }
   }
-  const react = report.reactHome;
-  if (react || report.taskMeasurement?.scenarios?.['task-react-home']) {
-    const samples = react?.samples;
-    if (samples?.length !== policy.samples || samples.some(sample => !Number.isFinite(sample.lcpMs) || sample.lcpMs <= 0 || !Number.isFinite(sample.usefulMs) || sample.usefulMs <= 0 || !Array.isArray(sample.reads) || sample.reads.filter(name => name === 'read-home-inbox').length !== 1 || sample.reads.some(name => ['get-deal-room', 'read-task', 'read-home-agenda', 'getDeal'].includes(name)))) throw Error('invalid React Home bounded-read evidence');
-    for (const metric of ['lcpMs', 'usefulMs']) {
-      const median = samples.map(sample => sample[metric]).sort((a, b) => a - b)[samples.length >> 1];
-      if (react[metric] !== median) throw Error('invalid React Home median evidence');
-      rows.push({ screen: 'react-home', metric, before: budget.screens.home.lcpMs.baseline, after: median, limit: policy.limitMs, passed: median <= policy.limitMs });
-    }
-  }
-  return { ...(react ? { reactHomeSamples: react.samples.map(sample => sample.lcpMs) } : {}), passed: rows.every(row => row.passed), rows, homeSamples: samples, homeJsBytes: home.jsBytes };
+  return { passed: rows.every(row => row.passed), rows, homeSamples: samples, homeJsBytes: home.jsBytes };
 }
 
 // The one headroom rule. contracts/performance-budget.v1.json describes it in
@@ -81,7 +71,6 @@ export function renderReport(result) {
     ...result.rows.map(row => `| ${row.screen} | ${row.metric} | ${row.before} | ${row.after} | ${row.limit} | ${row.passed ? 'PASS' : 'FAIL'} |`),
     '', `Home LCP samples (ms): ${result.homeSamples.join(', ')}. Median: ${[...result.homeSamples].sort((a, b) => a - b)[result.homeSamples.length >> 1]} ms.`,
     `Home transferred JS: ${result.homeJsBytes} bytes (informational).`,
-    ...(result.reactHomeSamples ? [`React Home LCP samples (ms): ${result.reactHomeSamples.join(', ')}. One bounded snapshot per sample.`] : []),
     '', 'On breach: PR author reduces the named screen/metric and reruns `npm run performance:check`; the check clears when every measurement is within budget.', ''].join('\n');
 }
 

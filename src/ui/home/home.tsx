@@ -4,13 +4,12 @@ import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { command, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot } from './inbox';
 import { recordRoutes } from './routes';
-import { HomeWorkflows, type HomeWorkflowClient } from './workflows';
 
 type Pending = { request: Command; before: readonly InboxItem[] };
 type Undo = { action: Action; items: readonly InboxItem[]; until?: string };
 const queryKey = ['home-inbox'];
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
-function Inbox({ client, workflows }: { client: InboxClient; workflows?: () => Promise<HomeWorkflowClient> }) {
+function Inbox({ client }: { client: InboxClient }) {
   const { item_id } = useParams();
   const cache = useQueryClient();
   const query = useQuery({ queryKey, queryFn: ({ signal }) => client.read(signal) });
@@ -94,29 +93,28 @@ function Inbox({ client, workflows }: { client: InboxClient; workflows?: () => P
     const index = links.indexOf(event.target); const next = links[index + (event.key === 'ArrowDown' ? 1 : -1)];
     if (next) { event.preventDefault(); next.focus(); }
   }}>
-    <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p><h1>Home</h1><p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
+    <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p><h1>Inbox</h1><p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {result.error === 'version_conflict' ? 'This card changed on the server. Dismiss and refresh before another action.' : result.error}</p>)}
       {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
       {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo([]); act(previous.action, previous.items, previous.until); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
     </div>}
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
-      {item_id && <section className="inbox-section"><div className="inbox-section-title"><h2>Current card</h2><Link to="/home">Back to inbox</Link></div>{placed.current ? row(placed.current) : <p role="status">This card is not in your current inbox snapshot.</p>}</section>}
+      {item_id && <section className="inbox-section"><div className="inbox-section-title"><h2>Current card</h2><Link to={recordRoutes.inbox()}>Back to inbox</Link></div>{placed.current ? row(placed.current) : <p role="status">This card is not in your current inbox snapshot.</p>}</section>}
       <div className="inbox-filters" role="group" aria-label="Inbox scope"><button data-scope="all" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>All cards</button><button data-scope="mine" aria-pressed={scope === 'unseen'} onClick={() => setScope('unseen')}>Unseen</button></div>
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Done means finished work. Settle when you’re ready.</p></div>
         {placed.inbox.length ? placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
       {(['working', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
     </>}
-    {workflows && !item_id && !query.isPending && <HomeWorkflows load={workflows} />}
     {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Settle selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Un-settle selected</button><button disabled={busy || picked.length > 100} onClick={() => setSnooze(picked)}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
     {snooze && <dialog className="inbox-snooze" ref={node => { if (node && !node.open) node.showModal(); }} onCancel={() => { setSnooze(null); focusRow(); }} aria-label="Snooze cards"><h2>Snooze {snooze.length === 1 ? 'card' : `${snooze.length} cards`}</h2><p>Return this to your inbox later.</p>{[1, 24].map(hours => <button autoFocus={hours === 1} key={hours} onClick={() => { const rows = snooze; setSnooze(null); act('snooze', rows, new Date(Date.now() + hours * 3_600_000).toISOString()); }}>{hours === 1 ? '1 hour' : '24 hours'}</button>)}<button onClick={() => { setSnooze(null); focusRow(); }}>Cancel</button></dialog>}
     <footer className="inbox-footer">Use ↑ ↓ to move between cards. On your phone, swipe right to settle or wake, left to snooze.</footer>
   </div>;
 }
-export function mountHome(host: HTMLElement, client: InboxClient, workflows?: () => Promise<HomeWorkflowClient>) {
+export function mountInbox(host: HTMLElement, client: InboxClient) {
   const query = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: 'always' }, mutations: { retry: false, networkMode: 'always' } } });
   const root = createRoot(host);
-  const home: ReactNode = <Inbox client={client} {...(workflows ? { workflows } : {})} />;
-  root.render(<QueryClientProvider client={query}><BrowserRouter><Routes><Route path="/" element={home} /><Route path="/workspace.html" element={home} /><Route path="/home" element={home} /><Route path="/home/card/:item_id" element={home} /></Routes></BrowserRouter></QueryClientProvider>);
+  const inbox: ReactNode = <Inbox client={client} />;
+  root.render(<QueryClientProvider client={query}><BrowserRouter><Routes><Route path="/inbox" element={inbox} /><Route path="/inbox.html" element={inbox} /><Route path="/inbox/card/:item_id" element={inbox} /></Routes></BrowserRouter></QueryClientProvider>);
   addEventListener('doctorcre-session-invalidated', () => { query.clear(); root.unmount(); }, { once: true });
 }

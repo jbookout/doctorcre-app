@@ -86,6 +86,54 @@ test('an unanswered log keeps the same request and blocks dismissal until it is 
   h.close();
 });
 
+test('an unanswered log survives leaving Home: the next visit keeps the deal locked and replays the same request', async () => {
+  const writes = [], storage = memoryStorage();
+  const log = async args => { writes.push(args); if (writes.length === 1) throw new TypeError('Synthetic response loss'); return { ok: true, activity_id: 'demo-activity' }; };
+  const h = mount(log, storage);
+  h.choose('demo-deal');
+  h.host.querySelector('[data-review-log]').click();
+  await settle();
+  assert.match(h.host.textContent, /Not confirmed yet/);
+  h.close();
+  const again = mount(log, storage);
+  assert.match(again.host.textContent, /Not confirmed yet/);
+  assert.equal(again.host.querySelector('select').value, 'demo-deal');
+  assert.equal(again.host.querySelector('select').disabled, true);
+  assert.equal(again.host.querySelector('[data-review-dismiss]').disabled, true);
+  again.host.querySelector('[data-review-log]').click();
+  await settle();
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1], writes[0], 'the next visit replays the original request and key');
+  assert.equal(again.host.querySelector('[data-review]'), null);
+  again.close();
+  const third = mount(log, storage);
+  assert.equal(third.host.hidden, true, 'a confirmed log stays handled');
+  third.close();
+});
+
+test('a refused log after leaving Home frees the meeting for a new choice', async () => {
+  const writes = [], storage = memoryStorage();
+  const log = async args => { writes.push(args); if (writes.length === 1) throw new TypeError('Synthetic response loss'); if (writes.length === 2) throw Object.assign(Error('refused'), { payload: { error: 'not_a_deal' } }); return { ok: true, activity_id: 'demo-activity' }; };
+  const h = mount(log, storage);
+  h.choose('demo-deal');
+  h.host.querySelector('[data-review-log]').click();
+  await settle();
+  h.close();
+  const again = mount(log, storage);
+  again.host.querySelector('[data-review-log]').click();
+  await settle();
+  assert.match(again.host.textContent, /The meeting was not logged/);
+  again.close();
+  const third = mount(log, storage);
+  assert.equal(third.host.querySelector('select').disabled, false);
+  third.choose('demo-other');
+  third.host.querySelector('[data-review-log]').click();
+  await settle();
+  assert.equal(writes[2].ref, 'demo-other');
+  assert.notEqual(writes[2].idempotency_key, writes[0].idempotency_key);
+  third.close();
+});
+
 test('a refused log can be retried on another deal', async () => {
   const writes = [];
   const h = mount(async args => { writes.push(args); if (writes.length === 1) throw Object.assign(Error('refused'), { payload: { error: 'not_a_deal' } }); return { ok: true, activity_id: 'demo-activity' }; });

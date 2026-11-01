@@ -37,13 +37,6 @@ import { mountNotificationBadge } from "./shell.js";
 import { activityCopy, activityRequest, activityState } from "./record-activity-model.js";
 import { loadEvidence, renderEvidence } from "./correspondence.js";
 
-if (location.pathname.startsWith('/contacts/')) {
-  const main = document.querySelector('main');
-  const notice = document.createElement('p'); notice.setAttribute('role', 'status');
-  notice.textContent = 'Contact detail is not available here yet. Return to Home for the inbox card, or browse Clients.';
-  const link = document.createElement('a'); link.href = '/clients'; link.textContent = 'Browse Clients';
-  main?.prepend(notice, link);
-}
 const EXPIRY_TICK_MS = 5_000;
 const SEARCH_DEBOUNCE_MS = 350;
 

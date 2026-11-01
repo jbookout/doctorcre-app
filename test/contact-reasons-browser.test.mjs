@@ -30,6 +30,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`cont
   assert.deepEqual(writes,[]);
   await page.goto('http://localhost/');
   const home = page.locator('#homeContactReasons');
+  await page.locator('.home-grid').scrollIntoViewIfNeeded();
   await home.locator('.work-card').first().waitFor();
   assert.equal(await home.locator('.work-card').count(),width === 390 ? 1 : 2);
   await home.scrollIntoViewIfNeeded();

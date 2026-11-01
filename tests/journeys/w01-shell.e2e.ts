@@ -7,7 +7,7 @@ test('W1 shell shows freshness and keeps its controls across a reload', async ({
   await app.open('/?actor=dell');
 
   await expect(browser.locator('#selfAvatar')).toHaveText('D');
-  await expect(browser.locator('.inbox-health')).toContainText('Up to date');
+  await expect(browser.locator('#appSyncTime')).toHaveText(/^\d{1,2}:\d{2} (AM|PM)$/);
   if (!await browser.locator('[data-pref=theme]').isVisible()) await browser.locator('#selfAvatar').tap();
   await expect(screen.getByLabel('Dark mode', { exact: true })).toHaveAttribute('aria-pressed', 'true');
 
@@ -15,7 +15,7 @@ test('W1 shell shows freshness and keeps its controls across a reload', async ({
   await expect(browser.locator('html')).toHaveAttribute('data-theme', 'light');
   await browser.reload();
   await expect(browser.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(browser.locator('.inbox-health')).toContainText('Up to date');
+  await expect(browser.locator('#appSyncTime')).toHaveText(/^\d{1,2}:\d{2} (AM|PM)$/);
 });
 
 // Local live mode reads the cookie session; this one is synthetic.

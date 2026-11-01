@@ -204,6 +204,25 @@ async function producerRoute(route,{url,fixture}) {
  }
  return false;
 }
+for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired context survives scope correctly (${failure})`,async t=>{
+ const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
+  if(env.url.pathname==='/mcp' && route.request().postDataJSON().params.name==='read-home-agenda' && failure){await route.fulfill({status:failure,body:'{}'});return true;}
+  return producerRoute(route,env);
+ }});
+ if(failure===401){
+  await page.goto('http://localhost/?mode=live');await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.locator('#docPresence').count(),0);return;
+ }
+ await goto('/?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
+ const before=await readContext(page);
+ assert.equal(before.ready,failure===null,JSON.stringify(before));
+ if(!failure) assert.ok(before.records.some(r=>r.kind==='deal'));
+ assert.equal(before.records.some(r=>r.kind==='work'||r.kind==='incident'),false);
+ await page.locator('[data-scope="mine"]').click();const after=await readContext(page);
+ assert.equal(after.ready,failure===null);if(failure===401)assert.equal(after.records.length,0);
+ if(!failure)assert.ok(after.records.some(r=>r.kind==='deal'));
+ assert.equal(after.records.some(r=>r.kind==='work'||r.kind==='incident'),false);
+});
 test('initial Queue read uses the mounted Wire filter scope and publishes its first response',async t=>{
  let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
  const {page,goto}=await setup(t,{onRoute:async(route,env)=>{

@@ -27,35 +27,44 @@ for (const path of ['/', '/leads', '/deals']) for (const fonts of ['held', 'avai
     let fontRequests = 0, fontCompleted = false;
     await page.route('https://fonts.googleapis.com/**', route => {
       fontRequests++;
-      if (fonts === 'available' && path !== '/') {
+      if (fonts === 'available') {
         fontCompleted = true;
         return route.fulfill({ contentType: 'text/css', body: ':root { --synthetic-font-loaded: yes; }' });
       }
     });
     await page.goto(origin + path, { waitUntil: 'commit' });
     await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null);
-    assert.equal(path === '/' ? fontRequests === 0 : fontRequests > 0, true, 'Home uses system fonts; other pages keep optional font CSS');
-    assert.equal(fontCompleted, path !== '/' && fonts === 'available', 'held CSS has not completed at first contentful paint');
+    assert.ok(fontRequests > 0, 'the font request really started');
+    assert.equal(fontCompleted, fonts === 'available', 'held CSS has not completed at first contentful paint');
     await page.getByRole('button', { name: 'Joe: account and settings', exact: true }).waitFor();
-    const primary = page.locator(path === '/' ? '.inbox-header button' : path === '/leads' ? '#leadSearch' : '#boardView');
+    const primary = page.locator(path === '/' ? '#refreshHome' : path === '/leads' ? '#leadSearch' : '#boardView');
     await primary.waitFor();
     assert.ok(await primary.isEnabled());
-    if (fonts === 'available' && path !== '/') {
+    if (fonts === 'available') {
       await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--synthetic-font-loaded').trim() === 'yes');
     }
     assert.match(await page.locator('body').evaluate(node => getComputedStyle(node).fontFamily), /Arial|system-ui|sans-serif/);
   });
 }
 
-test('Home paints loading with system fonts while application modules download', async t => {
+test('Home applies available font CSS before the application modules finish downloading', async t => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const server = await fixtureServer(); t.after(() => server.close());
   let release;
   const modules = new Promise(resolve => { release = resolve; });
-  await page.route(/\/js\/(?:home-boot|app-shell)\.js$/, async route => { await modules; await route.continue(); });
+  await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => {
+    await modules;
+    await route.continue();
+  });
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({
+    contentType: 'text/css', body: ':root { --synthetic-font-loaded: yes; }',
+  }));
   await page.goto(server.origin, { waitUntil: 'commit' });
-  try { await page.getByText('Loading your inbox…', { exact: true }).waitFor(); }
-  finally { release(); }
-  await page.locator('[data-inbox-row]').first().waitFor();
+  try {
+    await page.waitForFunction(() => getComputedStyle(document.documentElement)
+      .getPropertyValue('--synthetic-font-loaded').trim() === 'yes', null, { timeout: 3000 });
+    assert.ok(await page.getByRole('heading', { name: 'Call follow-ups to review', exact: true }).isVisible());
+  } finally { release(); }
+  await page.locator('#dealFlags .home-flag').first().waitFor();
 });

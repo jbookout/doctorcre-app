@@ -33,7 +33,6 @@ export function createAppLayout(root, title = '') {
 export function mountAppLayout(root, host, pathname) {
   if (root.getElementById('appLayout')) return;
   const win = root.defaultView || globalThis.window;
-  const inboxPage = Boolean(root.getElementById('homeRoot'));
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
   const vendorDirectory = pathname === '/vendors';
@@ -66,7 +65,7 @@ export function mountAppLayout(root, host, pathname) {
   const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
-  let sidebar = !inboxPage && !boardPage && !itineraryPage && !vendorDirectory, today = !inboxPage && !dealBoard && !itineraryPage, drawer = null;
+  let sidebar = !boardPage && !itineraryPage && !vendorDirectory, today = !dealBoard && !itineraryPage, drawer = null;
   let drawerOpener = null;
   const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}
@@ -160,7 +159,7 @@ export function mountAppLayout(root, host, pathname) {
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
   const renderToday = () => {
-    if (inboxPage) {
+    if (pathname === '/') {
       const day = businessDay();
       render('#appTodayNext', `<a class="app-layout-item" href="/calendar?day=${day}&d=${day}"><time datetime="${day}">${escape(new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</time><span>Open Calendar</span></a>`);
       layout.querySelector('#appTodayNext').previousElementSibling.textContent = 'Calendar day';
@@ -225,7 +224,6 @@ export function mountAppLayout(root, host, pathname) {
     failedRead();
   };
   const refresh = async ({ signal } = {}) => {
-    if (inboxPage && !today && drawer !== 'today' && !sidebar && drawer !== 'sidebar') return;
     if (win.navigator.onLine === false) { failedRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
     catch { failedRead(); return; }
@@ -317,11 +315,7 @@ export function mountAppLayout(root, host, pathname) {
     try { root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); } finally { fanOut = false; }
   };
   pageRefresh?.addEventListener('click', () => { if (!fanOut) auto.refresh(); });
-  if (!inboxPage) auto.refresh();
-  else {
-    for (const button of [sidebarToggle, todayToggle]) button.addEventListener('click', () => auto.refresh());
-    root.addEventListener('doctorcre:open-today', () => auto.refresh());
-  }
+  auto.refresh();
   // Ages are relative to now, so the list repaints each minute; render() skips the DOM when the text is unchanged.
   const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
   win.addEventListener('pagehide', event => {

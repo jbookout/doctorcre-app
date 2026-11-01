@@ -14,7 +14,7 @@ export function hostNode(node: Element): Root {
   flushSync(() => root.render(<NodeHost node={node} />));
   return root;
 }
-export { mountHome } from './home/home';
+export { mountInbox } from './home/home';
 export { createInboxClient } from './home/inbox';
 export { fixtureInboxRpc } from './home/fixture';
 

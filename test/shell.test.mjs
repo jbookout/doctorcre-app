@@ -193,6 +193,7 @@ const PAGES_WITH_BADGE_JS = [
   ["work-inventory.html", "js/work-inventory.js"],
   ["conversations.html", "js/conversations.js"],
   ["business.html", "js/workspace-business.js"],
+  ["workspace.html", "js/workspace-command-center.js"],
   ["calendar.html", "js/calendar.js"],
   ["ideas.html", "js/ideas.js"],
 ];

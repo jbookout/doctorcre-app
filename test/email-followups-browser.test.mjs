@@ -173,8 +173,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
     let result;
-    // Both reads that tell the shared Home client its actor wait for the gate.
-    if (name === 'read-home-agenda' || name === 'deal-room-board') { await agendaGate; return route.continue(); }
+    if (name === 'read-home-agenda') { await agendaGate; return route.continue(); }
     if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: submitted.length ? [] : [row], send: false, more: false, next_cursor: null };
     else if (name === 'submit-email-draft') {
       submitted.push(args);
@@ -284,8 +283,7 @@ test('session loss during the email command download prevents a late confirmatio
   const card = page.locator('#homeEmailFollowups');
   await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.getByRole('button', { name: 'Confirm change', exact: true }).click();
-  // Session loss unmounts the whole Home, panel included.
-  await card.waitFor({ state: 'detached' });
+  await card.getByText('Sign in to review email follow-ups.', { exact: true }).waitFor();
   await page.waitForLoadState('networkidle');
   assert.deepEqual(writes, []);
   assert.equal(await card.locator('article').count(), 0);

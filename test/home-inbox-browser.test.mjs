@@ -39,17 +39,17 @@ async function open(t, { refusal = false, width = 1440, theme = 'light', card = 
     }
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
-  await page.goto(`${server.origin}/home${card ? `/card/${card}` : ''}?mode=live`);
+  await page.goto(`${server.origin}/inbox${card ? `/card/${card}` : ''}?mode=live`);
   return { page, calls };
 }
-test('React Home renders one inbox, collapsed Working and Done badge; current card stays reachable', async t => {
+test('The inbox renders one inbox, collapsed Working and Done badge; current card stays reachable', async t => {
   const { page, calls } = await open(t, { card: 'working' });
   await page.getByRole('heading', { name: 'Synthetic working', exact: true }).waitFor();
   assert.equal(await page.locator('details[open]').count(), 0);
   assert.equal(await page.locator('[data-inbox-row]').count(), 3);
   assert.equal(await page.getByText('Done · Unseen', { exact: true }).count(), 1);
   assert.equal(calls.filter(call => call.name === 'read-home-inbox').length, 1);
-  assert.deepEqual(calls.filter(call => ['deal-room-board', 'morning-brief', 'read-home-agenda', 'get-deal-room'].includes(call.name)), [], 'Home waits to read secondary shell data until its surface is opened');
+  assert.deepEqual(calls.filter(call => ['read-home-agenda', 'get-deal-room'].includes(call.name)), [], 'The inbox reads no agenda and no per-card records');
 });
 test('settle and snooze have reversible Undo, and focus returns to a reachable row', async t => {
   const { page } = await open(t);
@@ -130,25 +130,9 @@ test('sign-in starts while the React module is still downloading', async t => {
   const modules = new Promise(resolve => { release = resolve; }); t.after(() => release());
   await page.route(/\/js\/(ui\.generated|app-shell)\.js$/, async route => { await modules; await route.continue(); });
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
-  await page.goto(`${server.origin}/home?mode=live`, { waitUntil: 'commit' });
+  await page.goto(`${server.origin}/inbox?mode=live`, { waitUntil: 'commit' });
   try { await page.waitForRequest('**/auth/session', { timeout: 2000 }); }
   finally { release(); }
-});
-
-test('secondary Doc modules wait for the Home runtime and remain available afterward', async t => {
-  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
-  const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage();
-  let release, docRequested = false;
-  const modules = new Promise(resolve => { release = resolve; }); t.after(() => release());
-  page.on('request', request => { if (new URL(request.url()).pathname === '/js/doc-presence.js') docRequested = true; });
-  await page.route('**/js/ui.generated.js', async route => { await modules; await route.continue(); });
-  await page.goto(`${server.origin}/home`, { waitUntil: 'commit' });
-  await page.locator('#appLayout').waitFor();
-  try { assert.equal(docRequested, false); }
-  finally { release(); }
-  await page.locator('[data-inbox-row]').first().waitFor();
-  await page.locator('#docOpen').waitFor({ state: 'attached' });
 });
 
 test('date-only task holds keep the recorded day in the partner timezone', async t => {

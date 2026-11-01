@@ -1,16 +1,21 @@
 import { test, expect } from '@playwright/test';
+import { withHomeFixture } from './journey-fixture.mjs';
 
 test.beforeEach(async ({ page }) => {
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
 });
 
-test('Home reads a complete partner inbox and can refresh', async ({ page }) => {
-  await page.goto('/home');
-  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Refresh inbox', exact: true })).toBeEnabled({ timeout: 27000 });
-  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
-  await expect(page.locator('.inbox-health')).toContainText('Up to date', { timeout: 27000 });
-  await expect(page.getByRole('alert')).toHaveCount(0);
+test('Home scope switches and refreshes loaded deal attention', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await expect(page.locator('#dealAttention')).toHaveAttribute('aria-busy', 'false', { timeout: 27_000 });
+  await page.getByRole('button', { name: 'Just me', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Just me', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Team view', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Team view', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+  await expect(page.locator('#dealAttention')).toHaveAttribute('aria-busy', 'false', { timeout: 27_000 });
+  await expect(page.locator('#observedAt')).not.toContainText(/Unavailable|Sign in/);
 });
 
 test('V2-F03: Charts navigation opens, selects and returns to Overview', async ({ page }) => {
@@ -23,12 +28,13 @@ test('V2-F03: Charts navigation opens, selects and returns to Overview', async (
   await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
 });
 
-test('Home card deep link keeps a current inbox item reachable', async ({ page }) => {
-  await page.goto('/home');
-  const card = page.locator('[data-inbox-row] h3 a').first();
-  test.skip(await card.count() === 0, 'The signed-in synthetic actor has no inbox cards.');
-  const href = await card.getAttribute('href');
-  await card.click();
-  await expect(page).toHaveURL(href);
-  await expect(page.getByRole('heading', { name: 'Current card', exact: true })).toBeVisible();
+test('Home deal attention opens the selected deal details', async ({ page }) => {
+  test.setTimeout(420000);
+  await withHomeFixture(async fixture => {
+    await page.goto('/');
+    await page.locator(`#dealFlags a[data-home-key="deal:${fixture.deal.id}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/deals\\?deal=${fixture.deal.id}`));
+    await expect(page.locator('#recordPanel')).toBeVisible();
+    await expect(page.locator('#panelTitle')).toHaveText(fixture.deal.name);
+  });
 });

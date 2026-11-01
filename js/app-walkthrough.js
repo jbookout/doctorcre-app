@@ -1,5 +1,5 @@
 const allSteps = [
-  { target: '[data-app-nav-item][href="/"]', text: 'Start with your inbox. Review updates, settle cards you have handled, or snooze them for later.' },
+  { target: '[data-app-nav-item][href="/"]', text: 'Start with your agenda. Home brings together upcoming work and deals that need attention.' },
   { target: '[data-app-nav-item][href="/deals"]', text: 'Follow each deal through its phase, next step, and next date. Open a deal to review its details.' },
   { target: '[data-app-nav-item][href="/leads"]', text: 'Search and review potential clients in Leads. Open a lead to see its details before deciding what comes next.' },
   { target: '[data-app-nav-item][href="/tours"]', text: 'Use Tours to plan property visits and open a saved tour. Tour Day keeps the accepted itinerary at hand.' },

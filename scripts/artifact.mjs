@@ -1,5 +1,4 @@
 import { offlineTourShell } from "./offline-tour-shell.mjs";
-import { gzipSync } from "node:zlib";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
 import { UI_OUTPUT, UI_SOURCE, uiBundle } from "./ui-bundle.mjs";
@@ -12,8 +11,7 @@ import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
-const UI_GZIP = `${UI_OUTPUT}.gz`;
-const GENERATED_PATHS = [GENERATED_PATH, UI_OUTPUT, UI_GZIP];
+const GENERATED_PATHS = [GENERATED_PATH, UI_OUTPUT];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
   carr_interface: CARR_INTERFACE,
@@ -96,7 +94,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
   const payload = [];
   const files = new Map();
   for (const path of paths) {
-    let content = path === UI_GZIP ? gzipSync(files.get(UI_OUTPUT), { level: 9 }) : await readSource(path);
+    let content = await readSource(path);
     if (path.startsWith("js/") && /\.m?js$/.test(path)) {
       const result = await transform(content.toString("utf8"), {
         target: "es2022", legalComments: "none", minify: true, charset: "utf8",

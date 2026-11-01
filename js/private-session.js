@@ -142,9 +142,8 @@ export function privateSession() {
       fenced.clear(); paused.remove();
     }
   };
-  // A restore never adopts an overlapping older check; it verifies afresh.
   const restore = mountVisibilityPoll({ document: win.document, window: win, periodic: false, poll: async () => {
-    const session = await browserBoundary.verify({ fresh: true });
+    const session = await browserBoundary.verify();
     renderRestore(false);
     return session;
   } });
