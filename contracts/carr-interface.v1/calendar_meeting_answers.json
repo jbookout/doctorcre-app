@@ -2,7 +2,7 @@
   "schema": "calendar-meeting-answers.v1",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "1866b2fc19e5adb5d0addab9f51173ac2e4d4ab4"
+    "source_commit": "0dbc827712975e6e33856db0d6e1ebbf2f0684f2"
   },
   "event_key_pattern": "^[0-9a-f]{16}$",
   "happened": {

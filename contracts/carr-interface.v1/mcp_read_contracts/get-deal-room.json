@@ -1,7 +1,7 @@
 {
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "1866b2fc19e5adb5d0addab9f51173ac2e4d4ab4",
+    "source_commit": "0dbc827712975e6e33856db0d6e1ebbf2f0684f2",
     "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
   },
   "response": {
@@ -97,7 +97,7 @@
     "schema_version": "deal-checklist.v1",
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "1866b2fc19e5adb5d0addab9f51173ac2e4d4ab4"
+      "source_commit": "0dbc827712975e6e33856db0d6e1ebbf2f0684f2"
     },
     "template_states": [
       "current",
@@ -108,6 +108,7 @@
     "statuses": [
       "not_recorded",
       "complete",
+      "received",
       "due",
       "overdue",
       "upcoming"
@@ -121,7 +122,8 @@
       "invoice"
     ],
     "source_of_truth": "CARR doctrine sections, with runtime content-hash validation; the app renders producer items and statuses.",
-    "due_basis": "Only open, sourced critical_date records. No legal or payment deadline is inferred.",
+    "due_basis": "Open, sourced critical_date records and unfulfilled checklist document requests. Confirmed fulfillment leaves document-delivery reminders. No legal or payment deadline is inferred.",
+    "receipt_basis": "A fulfilled request projects received with its stored attachment evidence. The request retains fulfilled_at, fulfilled_by and evidence_attachment_id, with satisfied=false. Quarantined uploads alone do not prove receipt or completion. Authoritative lease, invoice and commission completion takes precedence.",
     "first_slice": "Current lease, expiration, invoice and full commission receipt derive completion. Unlinked documents and lifecycle LOI records remain not_recorded.",
     "unavailable": "Missing checklist storage returns no phases or due items; retain deal detail and its update form. Retry storage on each read."
   }
