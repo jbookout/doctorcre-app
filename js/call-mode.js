@@ -10,6 +10,7 @@ export { CALL_MODE_URL, CALL_MODE_HEADER };
 /** get-call-context refuses more than this many deal ids in one request. */
 export const CALL_CONTEXT_BATCH = 50;
 export const CALL_MODES = Object.freeze(['weekly_deal_call', 'other_call']);
+const CALL_REVIEW_MODULE = './ui.generated.js';
 
 /**
  * The index the companion's validate_context accepts, from get-call-context's
@@ -409,7 +410,7 @@ export function createCallMode(deps) {
     if (!node || !deps.client()?.readCallOutcomes) return null;
     if (outcomes) return outcomes;
     const generation = state.callGeneration || 0, session = state.postCall.session;
-    outcomesLoading ||= Promise.all([import('./ui.generated.js'), import('./call-outcomes.js')]);
+    outcomesLoading ||= Promise.all([import(CALL_REVIEW_MODULE), import('./call-outcomes.js')]);
     const [{ mountCallReview }, { undoRefusal }] = await outcomesLoading;
     if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return null;
     outcomes ||= mountCallReview(node, { client: deps.client, filter: reportCandidateIds,
