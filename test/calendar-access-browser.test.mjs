@@ -19,7 +19,7 @@ test('signed-in Calendar journey crosses the real CARR gate and renders a record
   const outDir = await temporaryDirectory('calendar-access-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
-  const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
+  const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
   const { startLocalCarr } = await import(pathToFileURL(join(producer, 'mcp-server/test/helpers/local-carr.mjs')));
   const assets = async request => {
     const path = new URL(request.url).pathname;
@@ -34,18 +34,19 @@ test('signed-in Calendar journey crosses the real CARR gate and renders a record
   t.after(() => browser.close());
   const page = await browser.newPage();
   t.after(() => page.close());
+  const appOrigin = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev';
   const appEnv = { ASSETS: { fetch: assets }, APP_ENV: 'staging', GIT_SHA: '0'.repeat(40), CARR: {
     fetch: request => fetch(`${carr.url}${new URL(request.url).pathname}${new URL(request.url).search}`, {
       method: request.method, headers: request.headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
       ...(request.body ? { duplex: 'half' } : {}), redirect: 'manual',
     }),
   } };
-  const blocked = await handleDoctorcreRequest(new Request(`${carr.url}/calendar`), appEnv);
+  const blocked = await handleDoctorcreRequest(new Request(`${appOrigin}/calendar`), appEnv);
   assert.equal(blocked.status, 302);
   assert.match(blocked.headers.get('location'), /auth\/login/);
   await page.route('**/*', async route => {
     const request = route.request();
-    if (new URL(request.url()).origin !== carr.url) return route.abort();
+    if (new URL(request.url()).origin !== appOrigin) return route.abort();
     const response = await handleDoctorcreRequest(new Request(request.url(), {
       method: request.method(), headers: await request.allHeaders(), body: request.postDataBuffer(),
     }), appEnv);
@@ -58,11 +59,14 @@ test('signed-in Calendar journey crosses the real CARR gate and renders a record
   const session = await page.request.get(`${carr.url}/auth/session`);
   assert.equal(session.status(), 200);
   assert.equal((await session.json()).actor.slug, 'joe');
-  await page.goto(`${carr.url}/calendar?mode=live`);
+  const state = await page.request.storageState();
+  await page.context().addCookies(state.cookies.map(cookie => ({ ...cookie, domain: new URL(appOrigin).hostname })));
+  await page.goto(`${appOrigin}/calendar`);
   await expect(page.locator('#calGrid .cal-day-open').first()).toBeVisible();
-  await expect(page.locator('.cal-agenda-item')).toHaveCount(1);
-  await page.locator('.cal-agenda-item').click();
+  const meetingEntry = page.locator('.cal-agenda-item').filter({ hasText: 'Synthetic calendar tour meeting' });
+  await expect(meetingEntry).toBeVisible();
+  await meetingEntry.click();
   await expect(page.locator('#dayPanelBody')).toContainText('Synthetic calendar tour meeting');
   await page.reload();
-  await expect(page.locator('.cal-agenda-item')).toHaveCount(1);
+  await expect(meetingEntry).toBeVisible();
 });

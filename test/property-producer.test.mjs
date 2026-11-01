@@ -1,3 +1,6 @@
+import { init, parse } from 'es-module-lexer';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
@@ -20,10 +23,17 @@ async function producerModuleUrl(path) {
   let source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
     "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
   // Erase type-only imports before resolving runtime dependencies from the pin.
-  source = (await transform(source, { loader: path.endsWith(".ts") ? "ts" : "js", format: "esm", target: "es2022" })).code;
+  source = (await transform(source, { loader: path.endsWith(".json") ? "json" : path.endsWith(".ts") ? "ts" : "js", format: "esm", target: "es2022" })).code;
   for (const match of [...source.matchAll(/from\s+(["'])(\.\.?\/[^"'\n]+)\1/g)]) {
     const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]));
     source = source.replace(match[1] + match[2] + match[1], JSON.stringify(dependency));
+  }
+  const resolvePackage = createRequire(`${process.env.CARR_PRODUCER_CHECKOUT}/mcp-server/package.json`);
+  await init;
+  const [imports] = parse(source);
+  for (const entry of imports.toReversed()) {
+    if (!entry.n || entry.n.startsWith('.') || /^[a-z][a-z0-9+.-]*:/i.test(entry.n)) continue;
+    source = source.slice(0, entry.s) + pathToFileURL(resolvePackage.resolve(entry.n)).href + source.slice(entry.e);
   }
   const url = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
   producerModules.set(path, url);

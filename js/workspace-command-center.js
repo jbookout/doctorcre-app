@@ -89,7 +89,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!meetingReviews && !meetingReviewLoad && $('homeMeetingReviews') && client.logActivity && meetings?.follow_up_reviews?.length) {
       meetingReviewLoad = import('./home-meeting-reviews.js').then(({ mountHomeMeetingReviews }) => {
         if (disposed || snapshot?.unauthorized) return;
-        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now });
+        meetingReviews = mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews') });
         renderMeetings(snapshot?.unauthorized);
       }).catch(() => {
         meetingReviewLoad = null;

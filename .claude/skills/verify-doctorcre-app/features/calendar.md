@@ -12,7 +12,7 @@ Open `/calendar` or choose Calendar in navigation (under More when collapsed). U
 
 ## Driving it with Playwright
 
-Existing coverage: `test/calendar.test.mjs` checks date, URL and view rules; `test/calendar-loading-browser.test.mjs` opens populated date details while another read is pending and checks session expiry. Both run in the Node suite. The staging period/agenda specs require separate authenticated staging verification.
+Existing coverage: `test/calendar.test.mjs` checks date, URL and view rules; `test/calendar-loading-browser.test.mjs` opens populated date details while another read is pending and checks session expiry. Both run in the Node suite. `test/calendar-access-browser.test.mjs` signs in through the real CARR Worker, verifies the signed-out gate, then opens `/calendar`, reads a synthetic tour meeting and reloads it. Run it with `CARR_PRODUCER_CHECKOUT` pointing to the exact pinned CARR checkout with locked Node and Python dependencies installed. CI supplies its disposable PostgreSQL service; local runs use the existing disposable cluster helper. Chromium runs headless with the shared mock-keychain and basic-password-store arguments. The staging period/agenda specs require separate authenticated staging verification.
 
 - Require `.cal-day-open`, save `#calPeriod`, click `#calNext`, require a different period, then `#calPrev` and require the original.
 - Choose Week then Month; require `#calGrid[data-view="week"]` then `data-view="month"`.

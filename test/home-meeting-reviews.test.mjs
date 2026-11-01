@@ -131,3 +131,32 @@ test('the fixture client logs a meeting on a known deal, and the verb is pinned'
   const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('log-activity'));
 });
+
+test('an uncertain dismissal retries the retained server answer and blocks logging', async () => {
+  const writes = [];
+  const h = mount(undefined, memoryStorage(), async args => {
+    writes.push(args);
+    if (writes.length === 1) throw new TypeError('Synthetic response loss');
+    return { ok: true, answer: { question_id: args.question_id, answer_text: 'Dismiss' } };
+  });
+  h.choose('demo-deal');
+  h.host.querySelector('[data-review-dismiss]').click();
+  await settle();
+  assert.equal(h.host.querySelector('[data-review-log]').disabled, true);
+  assert.match(h.host.textContent, /Check dismissal/);
+  h.host.querySelector('[data-review-dismiss]').click();
+  await settle();
+  assert.deepEqual(writes[1], writes[0]);
+  assert.equal(h.host.hidden, true);
+  h.close();
+});
+
+test('a refused dismissal leaves the meeting available to log', async () => {
+  const h = mount(undefined, memoryStorage(), async () => { throw Object.assign(Error('refused'), { payload: { error: 'board_version_conflict' } }); });
+  h.choose('demo-deal');
+  h.host.querySelector('[data-review-dismiss]').click();
+  await settle();
+  assert.match(h.host.textContent, /not dismissed/);
+  assert.equal(h.host.querySelector('[data-review-log]').disabled, false);
+  h.close();
+});
