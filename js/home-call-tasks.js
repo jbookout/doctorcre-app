@@ -1,3 +1,4 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { workCard } from './work-card.js';
 import { toDay } from './calendar-model.js';
 import { relativeAge, sourceTime } from './email-source-line.js';
@@ -132,14 +133,13 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
       await onChanged();
     }
   };
-  const minute = globalThis.setInterval(() => {
+  const minute = mountLocalTicker({ document, intervalMs: 60_000, tick: () => {
     for (const node of host.querySelectorAll('.home-call-source time')) {
       node.textContent = relativeAge(node.dateTime);
       node.title = sourceTime(node.dateTime);
     }
-  }, 60_000);
-  minute?.unref?.();
-  const retire = () => { globalThis.clearInterval(minute); lifetime.abort(); disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
+  } });
+  const retire = () => { minute.dispose(); lifetime.abort(); disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
   host.addEventListener('click', decide);
   document.defaultView?.addEventListener('doctorcre-session-invalidated', retire);
   return {

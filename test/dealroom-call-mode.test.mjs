@@ -292,27 +292,29 @@ test("Stop sends one stop and starts following the weekly review", async () => {
   assert.equal(requests.filter((r) => r.url.endsWith("/api/stop")).length, 1);
   // The next read is armed once the first post-call read settles.
   await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(timers.some((t) => t.ms === 1600 && !t.cleared), "the review is followed after Stop");
+  assert.ok(timers.some((t) => t.ms === 60000 && !t.cleared), "the review is followed after Stop");
 });
 
-test("an active call keeps following its report while the tab is hidden, and stops when it settles", async () => {
+test("post-call polling stops while hidden and resumes visibly with a hard budget", async () => {
   const { controller, doc, timers, calls } = harness({ agenda: agendaOf(1) });
   doc.getElementById("callModeConsent").checked = true;
   await controller.start("weekly_deal_call");
   await controller.stop();
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
   doc.visibilityState = "hidden";
   doc.dispatchEvent(new Event("visibilitychange"));
-  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
-  assert.equal(live().length, 1, "hiding the tab does not stop the post-call poll");
+  const live = () => timers.filter(t => t.ms === 60000 && !t.cleared);
+  assert.equal(live().length, 0, "recording ended, so there is no hidden-tab exception");
   const before = calls.getStatus.length;
-  live()[0].fired = true; live()[0].cleared = true;
-  timers.filter((t) => t.fired)[0].fn();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(calls.getStatus.length, before + 1, "the hidden tick still reads the report");
-  assert.equal(live().length, 1, "and re-arms exactly one timer");
+  for (const timer of timers.filter(t => t.ms === 60000)) timer.fn();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.getStatus.length, before);
+  doc.visibilityState = "visible";
+  doc.dispatchEvent(new Event("visibilitychange"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.getStatus.length, before + 1);
   controller.stopPolling();
-  assert.equal(live().length, 0, "once the call's report is done, nothing polls");
+  assert.equal(live().length, 0);
 });
 
 test("Close Call Mode only closes the dialog, as on main; the follow-through stops with stopPolling and never reads after", async () => {
@@ -322,11 +324,11 @@ test("Close Call Mode only closes the dialog, as on main; the follow-through sto
   await controller.stop();
   await new Promise((resolve) => setImmediate(resolve));
   const dialog = doc.getElementById("callModeDialog"); dialog.open = true;
-  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
+  const live = () => timers.filter((t) => t.ms === 60000 && !t.cleared);
   assert.equal(await controller.handleClick(doc.getElementById("callModeClose")), true);
   assert.equal(dialog.open, false, "the declared observation: the dialog closes");
-  assert.equal(live().length, 1, "closing leaves the post-call follow-through running, exactly as main's setInterval did");
-  const armed = timers.filter((t) => t.ms === 1600);
+  assert.equal(live().length, 1, "closing the dialog keeps the bounded visible post-call read running");
+  const armed = timers.filter((t) => t.ms === 60000);
   controller.stopPolling();
   assert.equal(live().length, 0, "stopping the follow-through clears its timer");
   const before = calls.getStatus.length;

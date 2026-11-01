@@ -291,11 +291,13 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
  hold=true;
  await page.locator('#morningRefresh').evaluate(node=>node.click());
  await reading;
- const pending=await page.evaluate(trigger=>{
-  if(trigger==='reopen')document.getElementById('docMorning').click();
-  else {const original=Date.now;Date.now=()=>original()+31*60_000;document.dispatchEvent(new Event('pointerdown'));Date.now=original;}
-  return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent};
- },trigger);
+ if(trigger==='reopen')await page.evaluate(()=>document.getElementById('docMorning').click());
+ else {
+  await page.evaluate(()=>{window.__originalNow=Date.now;Date.now=()=>window.__originalNow()+31*60_000;});
+  await page.keyboard.press('Shift');
+  // Keep the observed clock monotonic through the replacement read.
+ }
+ const pending=await page.evaluate(()=>({content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent}));
  assert.deepEqual(pending,{content:'',title:'Morning brief'});
  releaseOld();
  assert.equal(await page.locator('[data-brief-record]').count(),0);

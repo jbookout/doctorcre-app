@@ -1,3 +1,6 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
+import { createPageBudget } from './read-budget.mjs';
+import { homeListLimit } from './ui.generated.js';
 import { workCard } from './work-card.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';
@@ -49,7 +52,7 @@ const denied = error => [401, 403].includes(error.status) || error.code === 'ses
 
 export function mountEmailFollowups({ container, client, deal, onChange = () => {} }) {
   const win = container.ownerDocument.defaultView;
-  let visibleCount = deal ? Infinity : win?.matchMedia?.('(max-width: 700px)').matches ? 1 : 2;
+  let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
   const refusedCreations = new Map();
@@ -104,7 +107,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
   }
   function retire() {
-    globalThis.clearInterval(minute); epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
+    minute.dispose(); epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
@@ -114,7 +117,9 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     try {
       let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
+      const takePage = createPageBudget({ document: container.ownerDocument });
       for (let i = 0; i < pageCount; i++) {
+        takePage();
         result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : { include_non_deal: true }), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
         if (disposed || ticket !== epoch) return;
         if (result?.schema_version !== 'email-proposals.v1' || result.send !== false || !Array.isArray(result.proposals)
@@ -258,7 +263,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   };
   container.addEventListener('input', input);
   container.addEventListener('click', click);
-  const minute = globalThis.setInterval(() => {
+  const minute = mountLocalTicker({ document: container.ownerDocument, window: win, intervalMs: 60_000, tick: () => {
     for (const article of container.querySelectorAll('[data-email-id]')) {
       const row = rows.find(row => row.id === article.dataset.emailId);
       if (row) {
@@ -266,8 +271,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         article.querySelector('.email-source').title = sourceTime(row.source.occurred_at);
       }
     }
-  }, 60_000);
-  minute?.unref?.();
+  } });
   win?.addEventListener('doctorcre-session-invalidated', retire);
   return { refresh, click, update: render, dispose() { retire(); disposed = true; container.removeEventListener('click', click); container.removeEventListener('input', input); win?.removeEventListener('doctorcre-session-invalidated', retire); } };
 }

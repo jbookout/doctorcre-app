@@ -262,7 +262,7 @@ test("an unchanged polled question retains its draft while focused questions def
   await page.clock.runFor(60_000);
   assert.equal(calls.filter(call => call.name === "read-progress-board").length, 1);
   await page.locator("#board-title").click();
-  await page.clock.runFor(60_000);
+  await page.clock.runFor(120_000);
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   await reads.reply(page, "list-progress-boards", 1, listing("New directory"));
   assert.equal(await page.locator(".answer-form textarea").inputValue(), "Unsent draft");

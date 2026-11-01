@@ -608,7 +608,7 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
   if(refuse){await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'feature_disabled',switch:'doc-suggestion-actions',hint:'doc-suggestion-actions is switched off for you.'})}]}})});return true;}
   await rpc(route,await fixture.decideDocSuggestion(args));return true;
  }});
- // A paused clock stops every poll and backoff: each switch read below is one the test or the page prompts.
+ // Advance the capped backoff between reconnects; lifecycle events cannot bypass it.
  await pausedClock(page,Date.parse('2026-10-12T15:00:00Z'));
  await goto('/deals?mode=live');
  await page.locator('#docOpen').click();
@@ -628,7 +628,11 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  assert.equal(writes.length,0,'nothing is sent once the switch is off');
 
  // 2. The page still reads on, but CARR switched it off after the last poll.
+ await page.waitForLoadState('networkidle');
  available=true;
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+ await page.locator('#docRefresh').click();
+ await page.waitForLoadState('networkidle');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await action.waitFor({state:'visible'});
  available=false;refuse=true;
@@ -642,7 +646,11 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  available=true;
 
  // 3. Switched back on: the same suggestion version can be approved again.
+ await page.waitForLoadState('networkidle');
  refuse=false;
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+ await page.locator('#docRefresh').click();
+ await page.waitForLoadState('networkidle');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await action.waitFor({state:'visible'});
  await action.click();

@@ -151,7 +151,21 @@ export async function animationsSettled(page) {
 // `time` and then pausing races the wall clock: any real millisecond between
 // the two calls makes pauseAt(time) a step into the past. Install at the epoch
 // before the page has timers, then jump forward.
+//
+// Playwright 1.64 starts each new document's clock running and schedules one
+// real-time tick (up to 100 ms) before it replays the pause, and the replay
+// never cancels that tick. On a starved runner the tick lands after the page
+// has armed a zero-delay timer and runs it with the clock "paused". The init
+// script below, registered after Playwright's own, cancels the tick so the
+// replayed log alone decides whether time moves. test-harness.test.mjs fails
+// if a Playwright upgrade renames these internals.
 export async function pausedClock(page, time) {
   await page.clock.install({ time: 0 });
   await page.clock.pauseAt(time);
+  await page.context().addInitScript(() => {
+    const clock = globalThis.__pwClock?.controller;
+    if (!clock?._currentRealTimeTimer) return;
+    clock._currentRealTimeTimer.cancel();
+    clock._currentRealTimeTimer = undefined;
+  });
 }

@@ -76,10 +76,11 @@ function fixtureScope(t) {
   return scope;
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,onRequest}={}) {
   const scope = fixtureScope(t);
   const browser = scope.browser = await chromium.launch();
   const page = scope.page = await browser.newPage({viewport:{width,height:900}});
+  if (onRequest) page.on('request', onRequest);
   await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
@@ -623,13 +624,13 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   await assertEventually(()=>state.turnReads>=1);
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
-    const before=state.turnReads;await page.clock.runFor(60_100);await assertEventually(()=>state.turnReads>before);
+    const before=state.turnReads;await page.clock.runFor(120_100);await assertEventually(()=>state.turnReads>before);
     await fixtureScope(t).delay(100);
   }
   assert.equal(await page.locator('.passport-card').count(),0);
-  release();await page.clock.runFor(60_100);
+  release();await page.clock.runFor(120_100);
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');
+  await page.clock.runFor(120_100);await page.waitForSelector('.passport-card');
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
@@ -1040,4 +1041,41 @@ for (const [name, input, button, form] of [['wire', '#composerInput', '#composer
  await page.locator(input).press('Enter');
  assert.equal(await page.locator(input).inputValue(),'Synthetic draft');
  assert.equal(posts.length,0);
+});
+
+for (const path of [taskPath, '/control-room/progress/board/demo-project']) test(`24-hour stuck tab has at most 1000 app requests and zero API-host requests at ${path}`, async t => {
+  const requests=[];
+  const {page}=await open(t,{path,onRequest:request=>requests.push({url:request.url(),type:request.resourceType()})});
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(async()=>{
+    window.__quietHumanInputs=0;
+    for(const type of ['pointerdown','pointermove','keydown','touchstart','touchmove','wheel'])document.addEventListener(type,event=>{if(event.isTrusted)window.__quietHumanInputs++;});
+    const {privateSession}=await import('/js/private-session.js');
+    // Model an arbitrary number of automatic callers, beyond the pollers.
+    for(let i=0;i<1000;i++)await privateSession().fetch('/api/room/queue').catch(()=>{});
+  });
+  for(let hour=0;hour<24;hour++){
+    await page.evaluate(()=>{
+      const host=document.querySelector('#wireList')||document.body;
+      host.append(document.createElement('div'));host.lastElementChild.style.height='100px';
+      host.scrollTop=host.scrollHeight;host.lastElementChild.scrollIntoView();
+      for(let i=0;i<100;i++){
+        window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('focus'));
+        Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));
+        Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+      }
+    });
+    // The transport budget is already exhausted; coalesce local repaint ticks.
+    await page.clock.fastForward(60*60_000);
+  }
+  const app=requests.filter(request=>new URL(request.url).origin==='http://localhost');
+  const fetches=app.filter(request=>['fetch','xhr'].includes(request.type));
+  const assets=app.length-fetches.length;
+  const api=requests.filter(request=>new URL(request.url).hostname==='api.doctorcre.com');
+  assert.equal(await page.evaluate(()=>window.__quietHumanInputs),0);
+  assert.equal(fetches.length,600,'all raw HTTP attempts, including pre/post auth, share the document ceiling');
+  assert.ok(assets<=400,`finite first-party asset graph exceeds the 400-request allowance: ${assets}`);
+  assert.ok(app.length<=1000);assert.equal(api.length,0);
+  t.diagnostic(JSON.stringify({path,hours:24,app:app.length,fetches:fetches.length,assets,api:api.length,ceiling:1000}));
 });

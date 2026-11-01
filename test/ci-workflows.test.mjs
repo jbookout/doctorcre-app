@@ -83,6 +83,8 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(checks, /^  workflow_call:\n  schedule:\n    - cron: "17 3 \* \* \*"\n  workflow_dispatch:$/m);
   assert.doesNotMatch(ci, /edited|continue-on-error:/);
   assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4/);
+  // A hung test fails by name and file instead of stalling the shard to its job timeout.
+  assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4 --test-timeout=\d+ test\/\*\.test\.mjs/);
   assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));

@@ -1,3 +1,5 @@
+import { createPageBudget } from './read-budget.mjs';
+import { mountLocalTicker } from './visibility-poll.mjs';
 import { createRetainedCommands } from './retained-commands.mjs';
 import { callChangeText, dayLabel } from './call-change-words.js';
 import { requestCompanion, CALL_MODE_URL, CALL_MODE_HEADER, CALL_MODE_STATES } from './post-call-client.js';
@@ -48,7 +50,9 @@ export async function readCallContextIndex(client, agenda) {
   const allowed = new Set(agenda.map((deal) => deal.id));
   const ids = [...allowed];
   const exact = [];
+  const takePage = createPageBudget();
   for (let start = 0; start < ids.length; start += CALL_CONTEXT_BATCH) {
+    takePage();
     const answer = await client.getCallContext({ deal_ids: ids.slice(start, start + CALL_CONTEXT_BATCH) });
     if (!Array.isArray(answer?.deals)) throw new Error('The call-context index returned an invalid response.');
     exact.push(...answer.deals);
@@ -126,7 +130,7 @@ export function createCallMode(deps) {
       } catch {
         state.eligibility = 'unavailable';
         stopPolling();
-        if (state.tickTimer) timers.clearInterval(state.tickTimer);
+        if (state.tickTimer) state.tickTimer.dispose();
         state.tickTimer = null;
         return false;
       } finally {
@@ -578,12 +582,10 @@ export function createCallMode(deps) {
     }
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly,
       ...(newCall ? { readyAt: null, applyTimedOut: false } : {}) };
-    // The one poll allowed to run while the tab is hidden or idle: it exists
-    // only from Stop until the call's report settles (stopPolling), and a
-    // partner on that call is talking, not typing. It reads the local
-    // companion; it does not keep CARR awake.
-    state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => true,
-      setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+    // Hidden-tab polling is allowed only while the recorder is live.
+    // Post-call processing uses the normal visibility and idle boundary.
+    state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => callModeActive(),
+      now, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
       intervalMs: 1600, poll: () => refreshPostCall({ quiet: true }) });
     if (immediate) state.pollTimer.refresh();
   }
@@ -702,7 +704,7 @@ export function createCallMode(deps) {
 
   function startTicker() {
     if (state.tickTimer) return;
-    state.tickTimer = timers.setInterval(() => { if (callModeActive()) render(); }, 250);
+    state.tickTimer = mountLocalTicker({ document: root, window: root.defaultView, setInterval: timers.setInterval, clearInterval: timers.clearInterval, intervalMs: 250, tick: () => { if (callModeActive()) render(); } });
   }
 
   async function open({ session = null, signal } = {}) {
@@ -845,6 +847,6 @@ export function createCallMode(deps) {
   return {
     state, open, close, start, stop, refresh, refreshPostCall, render, handleClick, checkEligibility,
     startPolling, stopPolling, publishWeeklyCallContext,
-    dispose() { root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) timers.clearInterval(state.tickTimer); state.tickTimer = null; },
+    dispose() { root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) state.tickTimer.dispose(); state.tickTimer = null; },
   };
 }

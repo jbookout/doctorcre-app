@@ -21,7 +21,7 @@
     "rollback:staging": "node scripts/rollback-staging.mjs",
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
-    "test": "node --test --test-concurrency=2 test/*.test.mjs",
+    "test": "node --test --test-concurrency=2 --test-timeout=180000 test/*.test.mjs",
     "serve": "node scripts/serve.mjs",
     "privacy:check": "node scripts/privacy/client-data-check.mjs",
     "privacy:fixtures": "node scripts/privacy/generate-synthetic-fixtures.mjs",
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
     "@ai-sdk/typesafe-ai": "^3.0.20",
+    "@babel/parser": "7.29.12",
     "@e2e-dev/decision": "^0.2.3",
     "@e2e-dev/web": "^0.15.1",
     "@playwright/test": "1.64.1",
