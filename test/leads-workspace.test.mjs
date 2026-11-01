@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {JSDOM} from 'jsdom';
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
 import {createLeadBoardClient} from '../js/leads-client.js';
+import {settles} from './browser-harness.mjs';
 const tick=()=>new Promise(r=>setTimeout(r,10));
 async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}}),configure=()=>{}){
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
@@ -637,11 +638,14 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
   s.d.dispatchEvent(new s.w.Event('visibilitychange'));
   Object.defineProperty(s.d, 'visibilityState', { value: 'visible', configurable: true });
   s.d.dispatchEvent(new s.w.Event('visibilitychange'));
-  await tick();
   // The client ignores abort: a held transport must not delay replacement.
-  assert.equal(actorReads, 2);
-  assert.equal(workspaceReads, phase === 'identity' ? 1 : 2);
-  assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
+  // The first read stays held throughout, so waiting for the replacement
+  // (instead of a fixed 10 ms a starved runner can miss) still proves it.
+  await settles(() => {
+   assert.equal(actorReads, 2);
+   assert.equal(workspaceReads, phase === 'identity' ? 1 : 2);
+   assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
+  });
   assert.equal(s.d.getElementById('leadBoard').getAttribute('aria-busy'), 'false');
   assert.equal(s.d.getElementById('leadBoardError').hidden, true);
   release(phase === 'identity' ? 'stale-example-partner' : { leads: [] });

@@ -1,9 +1,9 @@
-import { NAVIGATION_GROUPS, navigationItems, sectionForRoute, routeKey } from "./routes.js";
+import { NAVIGATION_GROUPS, navigationItems, sectionForRoute, routeKey, actionLinkRoute } from "./routes.js";
 export { navigationItems };
 
 export function activeDestination(pathname) {
   if (pathname.startsWith('/control-room/progress/board/')) return '/control-room/progress';
-  return sectionForRoute[routeKey(pathname)] || pathname;
+  return sectionForRoute[routeKey(actionLinkRoute(pathname))] || pathname;
 }
 
 export function appOriginForReport(origin) {

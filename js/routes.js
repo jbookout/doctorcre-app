@@ -1,5 +1,6 @@
 export const routeEntries = [
   ["/","workspace.html","/"],
+  ["/a/:ref","action-link.html","/leads"],
   ["/all-work","work-inventory.html","/work-inventory"],
   ["/calendar","calendar.html","/business"],
   ["/calls","calls.html","/business"],
@@ -171,6 +172,7 @@ export const navigationItems = [
 export const sectionForRoute = {
   "/inbox": "/",
   "/inbox/card/:item_id": "/",
+  "/a/:ref": "/leads",
   "/work-inventory": "/all-work",
   "/control-room/progress": "/control-room",
   "/control-room/automations": "/control-room",
@@ -202,3 +204,4 @@ export function routeKey(pathname) {
   const card = '/inbox/card/';
   return pathname.startsWith(card) && pathname.length > card.length && !pathname.slice(card.length).includes('/') ? '/inbox/card/:item_id' : pathname;
 }
+export const actionLinkRoute = pathname => /^\/a\/[^/]+$/.test(pathname) ? "/a/:ref" : pathname;

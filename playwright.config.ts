@@ -16,6 +16,13 @@ export default defineConfig({
       outputDir: '.e2e/fixture-playwright',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'live',
+      testDir: './tests/live',
+      outputDir: '.e2e/live-playwright',
+      timeout: 120_000,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:8787', timezoneId: 'America/Chicago', actionTimeout: 15_000, trace: 'retain-on-failure' },
+    },
     { name: 'setup', testMatch: /.*\.setup\.ts/ },
     {
       name: 'chromium',
