@@ -205,3 +205,6 @@
 #dealFlags .deal-alert .deal-items a { position: relative; z-index: 1; }
 .home-call-task .work-card-title a.home-call-contact { max-width: 100%; }
 .home-call-task .home-call-contact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.home-missing-next-step .home-flags { margin-inline: 0; }
+.home-missing-next-step .home-flag:not(.work-card) { padding-inline: 0; border-radius: 0; border-top-color: var(--hairline); }

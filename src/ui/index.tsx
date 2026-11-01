@@ -28,3 +28,5 @@ export { createContactReasonsView } from './contact-reasons';
 export { briefQueueIdentity, briefQueueLabels, briefQueueTitle, createBriefQueueView } from './brief-queues';
 
 export { mountActionLink } from './action-link';
+
+export { mountMissingNextStep } from "./home/missing-next-step";

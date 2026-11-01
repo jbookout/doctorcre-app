@@ -1,3 +1,4 @@
+import { ACTOR_LABEL } from './client.js';
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { workCard } from './work-card.js';
 import { renderDealAlert } from './deal-items.js';
@@ -31,6 +32,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const flagKeydown = event => { if (event.key === ' ' && event.target.matches('#dealFlags .deal-alert h3 a')) { event.preventDefault(); event.target.click(); } };
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
+  let missingNextStep = null, missingNextStepLoad = null, missingNextStepAttempts = 0;
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
   const retirePendingEmail = () => {
@@ -136,6 +138,18 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     replyOutcomes?.syncActor();
     emailReview?.update();
     const signedOut = snapshot?.unauthorized;
+    if (!missingNextStep && !missingNextStepLoad && !signedOut && snapshot?.board?.missing_next_action?.length) {
+      missingNextStepLoad = import(missingNextStepAttempts ? `./ui.generated.js?retry=${missingNextStepAttempts}` : './ui.generated.js').then(({ mountMissingNextStep }) => {
+        if (disposed) return;
+        missingNextStep = mountMissingNextStep($('homeMissingNextStep'), ACTOR_LABEL);
+        missingNextStep.update(snapshot?.unauthorized ? null : snapshot?.board || null, scope);
+      }).catch(() => {
+        missingNextStepLoad = null;
+        missingNextStepAttempts++;
+        if (!disposed && !snapshot?.unauthorized) widget('homeMissingNextStep', '<p class="home-empty" role="status">Deals with no next step unavailable. Refresh Home to try again.</p>');
+      });
+    }
+    missingNextStep?.update(signedOut ? null : snapshot?.board || null, scope);
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
       scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
@@ -396,7 +410,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     return emailReview.refresh();
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { missingNextStep?.dispose(); reasons?.dispose(); document.removeEventListener('keydown', flagKeydown); disposed = true; workingWeek.dispose(); sequence++; prepEpoch++; meetingPrep?.dispose(); panelObserver?.disconnect(); emailActivity?.removeEventListener('toggle', openEmailActivity); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); expiry.dispose(); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

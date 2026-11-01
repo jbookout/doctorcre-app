@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null, blockUi = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -93,6 +93,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     }
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
+    if (blockUi && url.pathname === '/js/ui.generated.js') return route.abort();
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
@@ -101,7 +102,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, resources, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, resources, releaseInitialFeed, responses, blockUi(value) { blockUi = value; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -1227,4 +1228,97 @@ test('Deals panel ends with muted counts and a plain All deals link', async t =>
     assert.equal(await page.locator('main > footer #dealCounts').count(), 0);
     assert.equal(await link.evaluate(el => getComputedStyle(el).borderTopStyle), 'none');
   }
+});
+
+test('Home groups deals with no next step and links each deal room', async t => {
+  for (const width of [390, 1440]) {
+    const { page, responses, calls } = await open(t, { width, height: 844 });
+    const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+    const board = await client.getHomeAgenda();
+    const deals = ['d01', 'd02', 'd03', 'd04'].map(id => board.deals.find(deal => deal.id === id)).map((deal, i) => ({ ...deal, name: `Demo missing ${i + 1}` }));
+    responses.set('read-home-agenda', { ...board, deals, missing_next_action: [
+      { owner: 'joe', deal_ids: [deals[0].id, deals[3].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] },
+    ] });
+    await page.locator('#refreshHome').click();
+    const panel = page.getByRole('region', { name: 'Deals with no next step' });
+    await panel.waitFor();
+    for (const owner of ['Joe', 'Dell', 'Unassigned']) assert.equal(await panel.getByRole('group', { name: owner }).isVisible(), true);
+    assert.equal(await panel.getByText('Joe · 2').isVisible(), true);
+    assert.equal(await panel.getByText('Demo missing 4').count(), 0);
+    if (process.env.W2_SCREENSHOT_DIR) await panel.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `missing-next-step-collapsed-${width}.png`) });
+    await panel.getByRole('button', { name: 'Show all 4' }).click();
+    assert.equal(await panel.getByText('Demo missing 4').isVisible(), true);
+    if (process.env.W2_SCREENSHOT_DIR) await panel.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `missing-next-step-expanded-${width}.png`) });
+    await panel.getByRole('button', { name: 'Show less' }).click();
+    assert.equal(await panel.getByText('Demo missing 4').count(), 0);
+    await page.getByRole('button', { name: 'Just me', exact: true }).click();
+    assert.equal(await panel.getByRole('group', { name: 'Unassigned' }).isVisible(), true);
+    assert.equal(await panel.getByRole('group', { name: 'Dell' }).count(), 0);
+    const groups = [{ owner: 'joe', deal_ids: [deals[0].id, deals[3].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] }];
+    responses.set('read-home-agenda', { ...board, actor: 'dell', deals, missing_next_action: groups });
+    await page.locator('#refreshHome').click();
+    assert.equal(await panel.getByRole('group', { name: 'Unassigned' }).isVisible(), true);
+    await panel.getByRole('group', { name: 'Dell' }).waitFor();
+    assert.equal(await panel.getByRole('group', { name: 'Joe' }).count(), 0);
+    responses.set('read-home-agenda', { ...board, actor: 'joe', deals, missing_next_action: [] });
+    await page.locator('#refreshHome').click();
+    await panel.waitFor({ state: 'hidden' });
+    responses.set('read-home-agenda', { ...board, actor: 'joe', deals, missing_next_action: groups });
+    await page.locator('#refreshHome').click();
+    assert.equal(calls.includes('set-next-action'), false);
+    await panel.getByRole('link', { name: /Demo missing 1/ }).click();
+    const editor = page.getByLabel('Next step', { exact: true });
+    await editor.waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'dealUpdateStep');
+    await page.clock.runFor(100);
+    const box = await editor.boundingBox();
+    assert.ok(box.y >= 0 && box.y + box.height <= 844);
+    assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
+  }
+});
+
+test('Home agenda remains usable while the React bundle is unavailable', async t => {
+  const { page } = await open(t, { blockUi: true });
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
+  assert.equal(await page.locator('#homeBrief a').first().isVisible(), true);
+});
+
+
+test('Home retries the missing next step panel after its bundle fails', async t => {
+  const { page, responses, blockUi } = await open(t, { blockUi: true });
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  const deal = { ...board.deals[0], name: 'Demo missing step' };
+  responses.set('read-home-agenda', { ...board, deals: [deal], missing_next_action: [{ owner: 'joe', deal_ids: [deal.id] }] });
+  await page.locator('#refreshHome').click();
+  const host = page.locator('#homeMissingNextStep');
+  await host.getByText('Deals with no next step unavailable. Refresh Home to try again.').waitFor({ timeout: 5000 });
+  blockUi(false);
+  await page.locator('#refreshHome').click();
+  await page.getByRole('region', { name: 'Deals with no next step' }).getByText('Demo missing step').waitFor({ timeout: 5000 });
+  assert.doesNotMatch(await host.textContent(), /unavailable/i);
+});
+
+test('loading the missing next step panel preserves existing Home card nodes', async t => {
+  const { page, responses, blockUi } = await open(t, { blockUi: true });
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  responses.set('read-home-agenda', { ...board, missing_next_action: [{ owner: 'joe', deal_ids: [board.deals[0].id] }] });
+  await page.locator('#refreshHome').click();
+  await page.getByText('Deals with no next step unavailable. Refresh Home to try again.').waitFor();
+  let releaseBundle;
+  const bundle = new Promise(resolve => { releaseBundle = resolve; });
+  t.after(() => releaseBundle());
+  await page.route('**/js/ui.generated.js*', async route => { await bundle; await route.fallback(); });
+  blockUi(false);
+  await page.locator('#refreshHome').click();
+  await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+  const cards = await page.locator('#homeBrief article, #dealFlags article').elementHandles();
+  assert.ok(cards.length > 0, 'loaded Home has cards before the bundle finishes');
+  const link = await page.locator('#homeBrief article a').first().elementHandle();
+  await link.focus();
+  releaseBundle();
+  await page.getByRole('region', { name: 'Deals with no next step' }).waitFor();
+  for (const card of cards) assert.equal(await card.evaluate(node => node.isConnected), true, 'existing card stays attached');
+  assert.equal(await link.evaluate(node => document.activeElement === node), true, 'focused link stays the same node');
 });
