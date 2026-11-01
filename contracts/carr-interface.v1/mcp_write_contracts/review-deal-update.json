@@ -2,8 +2,8 @@
   "write": true,
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "02e1a71c01ade8654d71bd0ec2b4b8d7fc524cee",
-    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2729",
+    "source_commit": "0dbde9c89aad6101d60309447a30e0403860bb61",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2748",
     "contract": "mcp-server/contracts/deal-update-reviews.v1.json"
   },
   "inputSchema": {

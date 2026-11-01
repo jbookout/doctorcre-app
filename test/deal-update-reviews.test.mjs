@@ -15,10 +15,10 @@ const proposal = () => ({ assessment_id: 'demo-assessment', deal_id: 'demo-deal'
   confirm_verb: 'review-deal-update', assessment: { action: { id: 'demo-action', description: 'Request revised terms', due_on: '2026-10-01' },
     update: 'The landlord sent the revised terms today.', quote: 'The landlord sent the revised terms today.', review_required: true } });
 const response = proposals => ({ schema_version: 'deal-update-reviews.v1', proposals });
-function setup(t, client) {
+function setup(t, client, options = {}) {
   const dom = new JSDOM('<section></section>');
   const container = dom.window.document.querySelector('section');
-  const view = mountDealUpdateReviews({ container, client });
+  const view = mountDealUpdateReviews({ container, client, ...options });
   t.after(() => { view.dispose(); dom.window.close(); });
   return { container, view, action: name => view.click({ target: [...container.querySelectorAll('button')].find(b => b.textContent === name) }) };
 }
@@ -144,4 +144,40 @@ test('session loss clears automatically closed tasks', async t => {
   const { view, container } = setup(t, { readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }) });
   await view.refresh(); container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
   assert.doesNotMatch(container.textContent, /Demo Harbor|Terms arrived/);
+});
+
+for (const [label, receipt] of [
+  ['verified', { ok: true, decision: 'undo', action_id: 'demo-action' }],
+  ['wrong decision', { ok: true, decision: 'resolve', action_id: 'demo-action' }],
+  ['ok false', { ok: false, decision: 'undo', action_id: 'demo-action' }],
+  ['missing action_id', { ok: true, decision: 'undo' }],
+  ['lost response', null],
+]) test(`undo ${label} refreshes the agenda only after a verified receipt`, async t => {
+  let changes = 0;
+  let complete;
+  const writes = [];
+  const { view, action, container } = setup(t, {
+    readDealUpdateReviews: async () => ({ ...response([]), automatic_resolutions: [automatic()] }),
+    reviewDealUpdate: request => {
+      writes.push(structuredClone(request));
+      return new Promise((resolve, reject) => { complete = () => receipt ? resolve(receipt) : reject(Error('lost response')); });
+    },
+  }, { onChange: () => { changes += 1; } });
+  await view.refresh();
+  const pending = action('Undo');
+  assert.equal(changes, 0);
+  complete(); await pending;
+  if (label === 'verified') {
+    assert.equal(changes, 1);
+    assert.match(container.textContent, /Task reopened/);
+  } else {
+    assert.equal(changes, 0);
+    assert.match(container.textContent, /Review outcome unconfirmed/);
+    assert.doesNotMatch(container.textContent, /Task reopened/);
+    const replay = action('Check outcome');
+    assert.deepEqual(writes[1], writes[0]);
+    complete(); await replay;
+    assert.equal(changes, 0);
+    assert.match(container.textContent, /Review outcome unconfirmed/);
+  }
 });
