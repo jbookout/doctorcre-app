@@ -9,6 +9,7 @@
   "scripts": {
     "build": "node scripts/build-artifact.mjs build",
     "artifact:verify": "node scripts/build-artifact.mjs verify",
+    "lint": "node scripts/check-repository.mjs && npm run copy:check && node scripts/client-loop-guard.mjs",
     "check": "npm run typecheck && node scripts/check-repository.mjs && npm run copy:check",
     "deployment:check": "npm run deployment:check:staging && npm run deployment:check:production",
     "deployment:check:staging": "wrangler versions upload --env staging --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",

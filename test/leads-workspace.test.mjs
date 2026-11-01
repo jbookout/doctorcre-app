@@ -7,7 +7,7 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){if(this.open){this.open=false;this.dispatchEvent(new w.Event('close'))}};
  let board=workspace(),actor='example-partner',writes=[];
- const client={getActor:async()=>actor,getWorkspace:async()=>structuredClone(board),getLeadDetail:async l=>({detail:detail(board.leads.find(x=>x.id===l.id))}),
+ const client={getActor:async()=>actor,getWorkspace:async()=>structuredClone(board),getLeadDetail:async l=>({detail:detail(board.leads.find(x=>x.id===l.id))}),getQuietFollowUps:async()=>({schema_version:'quiet-follow-ups.v1',cadence:{lead_days:45,vendor_days:90},proposals:[],sent:false,tasks_created:false}),
  recordStage:async(l,stage,review,key)=>{writes.push({l,stage,review,key});let r=board.leads.find(x=>x.id===l.id);r.stage=stage;r.base_version++;r.last_stage_move={idempotency_key:key};return{ok:true}},
  linkClient:async(l,clientId,key)=>{writes.push({l,clientId,key});board.leads.find(x=>x.id===l.id).client_id=clientId;return{ok:true}},
  claimLead:async(l,key)=>{writes.push({l,key});board.leads.find(x=>x.id===l.id).owner=actor;return{ok:true}},...overrides};

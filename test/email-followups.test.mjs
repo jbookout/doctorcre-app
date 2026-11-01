@@ -703,6 +703,7 @@ for (const code of ['unhandled_verb_failure', 'not_a_client', 'deal_name_exists'
     sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   const creates = [], confirmations = [];
   const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const { name, arguments: args } = JSON.parse(init.body).params;
     let result;
     if (name === 'list-email-proposals') result = response([row]);
@@ -779,6 +780,7 @@ for (const failedVerb of ['get-deal-room', 'set-lead']) test(`failure in ${faile
     sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   let creates = 0, failures = 0;
   const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const { name, arguments: args } = JSON.parse(init.body).params;
     if (name === failedVerb && failures++ === 0) return Response.json({ result: { isError: true, content: [{ text: JSON.stringify({ error: 'unhandled_verb_failure' }) }] } });
     const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
@@ -806,6 +808,7 @@ test('offline new-deal creation keeps the original request available after recon
     sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   let online = false, creates = 0;
   const client = createLiveClient({ selfActor: 'joe', online: () => online, fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const { name, arguments: args } = JSON.parse(init.body).params;
     const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
       : name === 'get-deal-room' ? { base_version: 1 } : name === 'set-lead' ? { ok: true }

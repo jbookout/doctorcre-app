@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium, pausedClock } from './browser-harness.mjs';
 import axe from 'axe-core';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
@@ -604,14 +604,14 @@ test('every queued job is reachable: 250 review jobs render with no cap and the 
 });
 
 test('the system board reads the queue once per 60 seconds, never while hidden, and stops after 5 idle minutes', async t => {
-  const { page, calls, errors, setQueue } = await open(t, { width: 1280, path: systemPath });
+  const { page, calls, errors, setQueue } = await open(t, { width: 1280, path: systemPath,
+    setupPage: page => pausedClock(page, new Date('2026-10-27T12:00:00Z')) });
   await page.locator('[data-card-id="WR14.S1.J1"]').waitFor();
   await page.waitForLoadState('networkidle');
   const count = name => calls.filter(call => call.name === name).length;
   const reads = () => count('work-queue');
   assert.equal(reads(), 1, 'one read on open');
   const snapshot = count('read-progress-board'), census = count('unfinished-work');
-  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'First refresh completed' })]));
   await page.mouse.move(10, 10);
   await page.clock.runFor(59_000);
