@@ -1,6 +1,6 @@
 import carrSchema from "../contracts/carr-interface.v1/schema.json" with { type: "json" };
 import carrVersion from "../contracts/carr-interface.v1/version.json" with { type: "json" };
-import { routeContract } from "../js/routes.js";
+import { routeContract, actionLinkRoute } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
@@ -27,7 +27,7 @@ const UNGATED_PAGES = new Set(["/status"]);
 const GATE_PATHS = new Map(Object.entries(routeContract.gatePaths));
 
 function gateRequestFor(request, pathname) {
-  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : actionLinkRoute(pathname));
   if (!gatePath || gatePath === pathname) return request;
   const url = new URL(request.url);
   url.pathname = gatePath;
@@ -174,7 +174,7 @@ async function handleRequest(request, env) {
 
   const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
     : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : actionLinkRoute(pathname));
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     const gateRequest = gateRequestFor(request, pathname);
