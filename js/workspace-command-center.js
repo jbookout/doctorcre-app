@@ -142,7 +142,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       missingNextStepLoad = import(missingNextStepAttempts ? `./ui.generated.js?retry=${missingNextStepAttempts}` : './ui.generated.js').then(({ mountMissingNextStep }) => {
         if (disposed) return;
         missingNextStep = mountMissingNextStep($('homeMissingNextStep'), ACTOR_LABEL);
-        render();
+        missingNextStep.update(snapshot?.unauthorized ? null : snapshot?.board || null, scope);
       }).catch(() => {
         missingNextStepLoad = null;
         missingNextStepAttempts++;

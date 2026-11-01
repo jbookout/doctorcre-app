@@ -1298,3 +1298,27 @@ test('Home retries the missing next step panel after its bundle fails', async t 
   await page.getByRole('region', { name: 'Deals with no next step' }).getByText('Demo missing step').waitFor({ timeout: 5000 });
   assert.doesNotMatch(await host.textContent(), /unavailable/i);
 });
+
+test('loading the missing next step panel preserves existing Home card nodes', async t => {
+  const { page, responses, blockUi } = await open(t, { blockUi: true });
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+  const board = await client.getHomeAgenda();
+  responses.set('read-home-agenda', { ...board, missing_next_action: [{ owner: 'joe', deal_ids: [board.deals[0].id] }] });
+  await page.locator('#refreshHome').click();
+  await page.getByText('Deals with no next step unavailable. Refresh Home to try again.').waitFor();
+  let releaseBundle;
+  const bundle = new Promise(resolve => { releaseBundle = resolve; });
+  t.after(() => releaseBundle());
+  await page.route('**/js/ui.generated.js*', async route => { await bundle; await route.fallback(); });
+  blockUi(false);
+  await page.locator('#refreshHome').click();
+  await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+  const cards = await page.locator('#homeBrief article, #dealFlags article').elementHandles();
+  assert.ok(cards.length > 0, 'loaded Home has cards before the bundle finishes');
+  const link = await page.locator('#homeBrief article a').first().elementHandle();
+  await link.focus();
+  releaseBundle();
+  await page.getByRole('region', { name: 'Deals with no next step' }).waitFor();
+  for (const card of cards) assert.equal(await card.evaluate(node => node.isConnected), true, 'existing card stays attached');
+  assert.equal(await link.evaluate(node => document.activeElement === node), true, 'focused link stays the same node');
+});
