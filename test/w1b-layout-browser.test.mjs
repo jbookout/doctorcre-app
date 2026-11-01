@@ -167,7 +167,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
  const retry=page.getByRole('button',{name:'Retry Today',exact:true});
  for(const source of ['deal-room-board','today-triage','morning-brief','feed']){
   const before=await page.locator('#appSyncTime').getAttribute('datetime');
-  failed=source;await page.clock.fastForward(61_000);
+  failed=source;await page.clock.fastForward(15*60_000);
   await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
   assert.deepEqual(await rows(),good,source+' must retain successful rows');
   await retry.waitFor();

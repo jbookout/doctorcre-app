@@ -26,6 +26,8 @@ export async function uiBundle(readSource) {
         if (source !== UI_ENTRY && !importer?.startsWith(prefix)) return;
         if (source !== UI_ENTRY && !source.startsWith('.')) return;
         const base = source === UI_ENTRY ? source : posix.normalize(posix.join(posix.dirname(importer.slice(prefix.length)), source));
+        // Island imports name an admitted .tsx or .ts file under src/ui/, or the shared read budget.
+        if (base === 'js/read-budget.mjs') { try { if (await readSource(base) != null) return prefix + base; } catch {} }
         for (const path of [base, `${base}.tsx`, `${base}.ts`]) {
           if (!path.startsWith(`${UI_SOURCE}/`) || !/\.tsx?$/.test(path)) continue;
           try { if (await readSource(path) != null) return prefix + path; } catch {}

@@ -586,7 +586,6 @@ function wire() {
   $("eventCancel")?.addEventListener("click", () => closeEvent({ discard: true }));
   window.addEventListener("pagehide", () => { pageDocContext?.clear(); closeIdea(); closeEvent(); });
   window.addEventListener("resize", () => drawTimeline(["ready", "partial"].includes(view.events.status) ? view.events.rows : []));
-  window.addEventListener("online", () => { load(); loadEvents(); });
   window.addEventListener("popstate", () => {
     const next = parseIdeasState(location.search);
     const previousIdea = view.state.idea;

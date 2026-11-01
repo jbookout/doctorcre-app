@@ -1,3 +1,4 @@
+import { createPageBudget } from './read-budget.mjs';
 import { sessionFetch } from './private-session.js';
 import { groupConversations, labelFor, modelFor, summarizeNow } from './observatory-model.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -221,8 +222,10 @@ async function refresh() {
     if (state.before === null) updateHistoryCursor(conversation);
     if (state.selected && !state.searched) {
       let pages = 0;
+      const takePage = createPageBudget();
       while (state.more && state.before && pages < DEEP_LINK_PAGE_LIMIT
         && !groupConversations(state.conversation).some(thread => thread.key === state.selected)) {
+        takePage();
         const page = await readLatest('conversation', state.before);
         state.conversation = merge(state.conversation, page.turns || []);
         updateHistoryCursor(page);

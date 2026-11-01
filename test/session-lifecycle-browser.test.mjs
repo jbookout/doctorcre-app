@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
-import { chromium } from './browser-harness.mjs';
+import { chromium, pausedClock } from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 async function open(t) {
  const outDir=await temporaryDirectory('session-lifecycle-');
@@ -165,4 +165,50 @@ test('S1/S2 browser: the shared Room writer succeeds in-session and retires an o
  await app.page.waitForURL('**/public-shell/session-ended.html');
  assert.equal(payloads.length,1,'the retired editor cannot dispatch under the switched cookie');
  assert.deepEqual(app.errors,[]);
+});
+
+
+for (const reason of ['idle', 'attempt cap']) test(`S1 browser: refused BFCache restore renders paused last data after ${reason}`, async t => {
+ const {page,origin,errors}=await open(t);
+ await pausedClock(page,Date.parse('2026-10-01T15:00:00Z'));
+ await page.route(origin+'/restore-fixture*',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><main id="cached"><h1>Last loaded synthetic summary</h1><button id="oldAction">Cached action</button></main>'}));
+ await page.goto(origin+'/restore-fixture?mode=live');
+ await page.evaluate(async()=>{
+  const fetch=window.fetch;window.restoreRequests=0;
+  window.fetch=(path,init)=>{if(path==='/auth/session')window.restoreRequests++;return fetch(path,init);};
+  const {privateSession}=await import('/js/private-session.js');
+  await privateSession().verify();
+ });
+ const restore=()=>page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ if(reason==='attempt cap'){
+  for(let attempt=0;attempt<20;attempt++){
+   await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+15*60_000));
+   await page.keyboard.press('Shift');
+   await restore();
+   await page.waitForFunction(()=>document.documentElement.style.visibility==='');
+  }
+  assert.equal(await page.evaluate(()=>window.restoreRequests),21,'initial verification plus exactly 20 allowed restore attempts');
+ }else await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+31*60_000));
+ const before=await page.evaluate(()=>window.restoreRequests);
+ await restore();
+ await page.evaluate(()=>new Promise(resolve=>queueMicrotask(resolve)));
+ assert.equal(await page.locator('html').evaluate(node=>getComputedStyle(node).visibility),'visible','a refused restore must not strand the page hidden');
+ assert.equal(await page.locator('#cached').isVisible(),true);
+ assert.equal(await page.locator('#cached').evaluate(node=>node.inert),true,'unverified cached controls stay fenced');
+ const paused=page.locator('[data-session-restore-paused]');
+ assert.match(await paused.textContent(),/paused.*last loaded data/i);
+ assert.equal(await paused.getByRole('button',{name:'Refresh page',exact:true}).isVisible(),true);
+ await restore();await restore();
+ assert.equal(await page.evaluate(()=>window.restoreRequests),before,'render recovery cannot consume or replenish a refused poll budget');
+ if(reason==='attempt cap'){
+  const navigation=page.waitForEvent('framenavigated',frame=>frame===page.mainFrame());
+  await paused.getByRole('button',{name:'Refresh page',exact:true}).evaluate(button=>button.click());
+  await navigation;
+  assert.equal(await page.locator('#cached').isVisible(),true);
+ }else{
+  await page.keyboard.press('Shift');
+  await page.waitForFunction(()=>!document.querySelector('[data-session-restore-paused]'));
+  assert.equal(await page.locator('#cached').evaluate(node=>node.inert),false,'only successful verification releases the cached controls');
+ }
+ assert.deepEqual(errors,[]);
 });

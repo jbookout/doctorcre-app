@@ -1708,7 +1708,7 @@ function wire() {
     if (e.target.id === 'detailClientPortalForm') await registerClientPortal(id, form);
   });
 
-  globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); refreshPanel(); });
+  globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); });
   globalThis.addEventListener?.('offline', () => state.boardSync.setOnline(false));
 }
 
@@ -1770,9 +1770,9 @@ async function boot() {
     if (incomingScope.get('item') && state.panelDeal === linkedDeal) void itemSheet.open(linkedDeal,incomingScope.get('item'));
   });
   void loadBoard();
-  mountVisibilityPoll({ poll: refreshPanel });
-  mountVisibilityPoll({ poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
-  mountVisibilityPoll({ poll: () => { state.boardSync.requestRefresh('periodic'); } });
+  mountVisibilityPoll({ lifecycle: true, poll: refreshPanel });
+  mountVisibilityPoll({ poll: () => { return pollOnce().catch(() => false); } });
+  mountVisibilityPoll({ poll: () => state.boardSync.requestRefresh('periodic') });
 
 
 }

@@ -1,3 +1,5 @@
+import { mountLocalTicker } from './visibility-poll.mjs';
+import { createPageBudget } from './read-budget.mjs';
 import { compareInstants } from './change-receipts.mjs';
 import { pageDocContext, selectDocRecord, setDocFilters } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
@@ -827,7 +829,9 @@ async function loadList(reason = "initial") {
       return settleList({ status: "error", code: "FRESHNESS_UNKNOWN" }, sequence);
     }
     const refreshedRows = [...payload.rows];
+    const takePage = createPageBudget();
     for (let page = 2; page <= Math.min(targetPages, payload.page_count); page++) {
+      takePage();
       const nextQuery = { ...query, page };
       const nextResponse = await fetchRead(listRequestUrl(nextQuery), { cache: 'no-store' });
       if (nextResponse.status === 401) return expireNow();
@@ -1127,13 +1131,13 @@ function wireControls() {
  * refetches on its own, so nothing reshuffles under a reader mid-sentence.
  */
 function watchExpiry() {
-  return setInterval(() => {
+  return mountLocalTicker({ intervalMs: EXPIRY_TICK_MS, tick: () => {
     if (!view.list.payload || view.list.status === "loading") return;
     const signature = freshnessSignature(view.list.payload, view.dataset);
     if (signature === view.freshnessKey) return;
     view.freshnessKey = signature;
     renderList();
-  }, EXPIRY_TICK_MS);
+  } });
 }
 
 function start() {
@@ -1150,7 +1154,7 @@ function start() {
   const autoRefresh = mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
   window.addEventListener('doctorcre-session-invalidated', () => {
     autoRefresh.dispose();
-    clearInterval(expiryTimer);
+    expiryTimer.dispose();
     clearTimeout(searchTimer);
     expireNow();
   }, { once: true });

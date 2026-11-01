@@ -1569,8 +1569,6 @@ function wireEvents() {
   window.addEventListener('online', () => {
     $('#offlineBanner').hidden = true;
     state.boardSync.setOnline(true);
-    state.boardSync.refreshBoard({ reason:'reconnect', force:true });
-    pollOnce(false, { force:true });
   });
   window.addEventListener('offline', () => {
     $('#offlineBanner').hidden = false;
@@ -1616,8 +1614,8 @@ async function boot() {
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one. Both clocks run once a minute (MIN_POLL_MS) and sleep
   // while the tab is hidden or idle.
-  mountVisibilityPoll({ poll: () => {
-    pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
+  mountVisibilityPoll({ lifecycle: true, poll: () => {
+    return pollOnce().catch((error) => { console.error('Deal Room poll failed to render', error); return false; });
   } });
   // The backstop for what the feed cannot promise. A change whose commit landed
   // out of order with its recorded time can slip past the cursor, and a board
@@ -1626,8 +1624,8 @@ async function boot() {
   // and post-write refreshes through the same single-read queue, so it adds one
   // read per interval at most and none while another is already running. It
   // bounds how long the board goes without asking, never how old a value is.
-  mountVisibilityPoll({ poll: () => {
-    state.boardSync.requestRefresh('periodic');
+  mountVisibilityPoll({ lifecycle: true, poll: () => {
+    return state.boardSync.requestRefresh('periodic');
   } });
   if (linkedDeal && state.deals.has(linkedDeal)) {
     try { await openDeal(linkedDeal); }

@@ -1,3 +1,4 @@
+import { createPageBudget } from '../js/read-budget.mjs';
 import { sessionFetch } from '../js/private-session.js';
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
@@ -433,7 +434,9 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     const missing = new Set(state.selectedIds.filter(propertyId => !knownProperty(propertyId)));
     if (!missing.size) return;
     let cursor = null;
+    const takePage = createPageBudget();
     for (let page = 0; page < 20 && missing.size; page += 1) {
+      takePage();
       const filters = { ...searchFilters(cursor), query: null, counties: [], property_types: [],
         min_square_feet: null, max_square_feet: null, availability: [], entrance_verified: null,
         public_projection_ready: null, photos_available: null, sort: "updated_desc", cursor, limit: 100 };

@@ -1,3 +1,4 @@
+import { mountVisibilityPoll } from '../js/visibility-poll.mjs';
 import { mountMarketMap } from "../js/market-map-shell.js";
 import { buildRouteVersionState, projectRoute, reduceMapEvent, buildNativeNavLink, buildReturnState, resolveReturn } from "./vendor/tour-map-route-state.js";
 
@@ -287,11 +288,11 @@ export function mountAcceptedItinerary(root, initial) {
     mapFailure = ""; renderStatus();
     if (!map) void initialize(); else { map.resize(); renderMarkers(); focus(); }
   };
-  win.addEventListener("online", online);
+  const reconnect = mountVisibilityPoll({ document: root.ownerDocument, window: win, periodic: false, lifecycle: true, poll: online });
   const ready = initialize();
   return {
     ready, update, dispatch, get projection() { return projection; },
     navigationLinks() { return [...card.querySelectorAll(".itinerary-navigation a")]; },
-    destroy() { destroyed = true; win.removeEventListener("offline", offline); win.removeEventListener("online", online); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); shell?.destroy(); root.replaceChildren(); },
+    destroy() { destroyed = true; win.removeEventListener("offline", offline); reconnect.dispose(); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); shell?.destroy(); root.replaceChildren(); },
   };
 }

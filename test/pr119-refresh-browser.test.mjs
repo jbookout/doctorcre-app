@@ -52,7 +52,7 @@ test('PR119 finding 8: loaded Doc Chats traversal expires as a whole and can rec
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
  assert.equal(await page.evaluate(()=>window.chatView.list.state),'unavailable');
  assert.equal(await page.locator('#conversationList [data-conversation]').count(),0);
- await online(page);await page.waitForFunction(()=>window.chatView.list.state==='read' && window.chatView.list.rows.length===4);
+ await page.clock.runFor(120_000);await online(page);await page.waitForFunction(()=>window.chatView.list.state==='read' && window.chatView.list.rows.length===4);
  assert.equal(await page.locator('#conversationList [data-conversation]').count(),4);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 8: loaded All Work traversal expires as a whole and can recover',async t=>{
@@ -84,7 +84,7 @@ test('PR119 finding 8: loaded All Work traversal expires as a whole and can reco
  await page.clock.fastForward(9000);await release();
  await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent!=='Reading…');
  assert.equal(await page.locator('#itemsCount').textContent(),'Unavailable');
- hold=false;await online(page);await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent.startsWith('14'));
+ hold=false;await page.clock.runFor(120_000);await online(page);await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent.startsWith('14'));
  assert.deepEqual(errors,[]);
 });
 for(const trigger of ['online','timer','resume'])test('PR119 dismissed-draft regression: '+trigger+' still refreshes after dismissing an edited suggestion',async t=>{
@@ -151,10 +151,23 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
   const url=new URL(route.request().url());url.searchParams.set('limit','2');const response=atlasFixtureResponse(url,'GET');
   return route.fulfill({status:response.status,json:response.body});
  });
- await online(page);
+ await page.clock.runFor(120_000);await online(page);
  await page.waitForFunction(()=>window.atlasView.status==='ready' && window.atlasView.payload?.nodes.length===8);
  const recovered=await page.evaluate(async()=>{const v=(await import('/js/atlas.js')).view;return {count:v.payload.nodes.length,selected:v.selected,present:v.payload.nodes.some(n=>n.id===v.selected)};});
  assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
+});
+test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
+ const hooks=`const read=c.getHomeAgenda;window.homeReads??=0;c.getHomeAgenda=async args=>{const p=await read.call(c,args);if(!args?.signal)return p;if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
+ const {page,errors}=await open(t,{clientHooks:hooks});
+ await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ const expected=await page.locator('#dealCounts').textContent();
+ await online(page);await page.waitForFunction(()=>window.homeWaiting);
+ await page.clock.runFor(150_000);await online(page);
+ await page.waitForFunction(expected=>window.homeReads>=3 && document.querySelector('#dealCounts')?.textContent===expected,expected);
+ await page.evaluate(()=>window.releaseHome());
+ await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+ assert.equal(await page.locator('#dealCounts').textContent(),expected);
+ assert.equal(await page.locator('#retryHome').count(),0);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 10: retained Act caller reaches a supported work lookup and create flow',async t=>{
  const {page,errors}=await open(t);await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});

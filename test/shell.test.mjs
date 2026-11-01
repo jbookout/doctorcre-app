@@ -94,7 +94,8 @@ test("B12b-shell-7: one call, one read — nothing here polls", () => withBadgeD
   assert.equal(calls, 1);
 }));
 
-test("returning to an open page refreshes its unread badge once, and a failed read clears the old number", async () => {
+test("returning to an open page refreshes its unread badge once, and a failed read clears the old number", async t => {
+  t.mock.timers.enable({apis:['setTimeout','Date']});
   const badge = new StubBadge();
   const savedDocument = globalThis.document;
   const savedWindow = globalThis.window;
@@ -102,10 +103,10 @@ test("returning to an open page refreshes its unread badge once, and a failed re
   const document = {
     visibilityState: "visible",
     getElementById: () => badge,
-    addEventListener: (name, listener) => listeners.set(`doc:${name}`, listener),
+    addEventListener: (name, listener) => {const previous=listeners.get(`doc:${name}`);listeners.set(`doc:${name}`,event=>{previous?.(event);listener(event);});},
   };
   globalThis.document = document;
-  globalThis.window = { addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
+  globalThis.window = { setTimeout, clearTimeout, addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
   let calls = 0;
   const client = { notificationFeed: async () => {
     calls += 1;
@@ -128,6 +129,8 @@ test("returning to an open page refreshes its unread badge once, and a failed re
     document.visibilityState = "visible";
     listeners.get("doc:visibilitychange")();
     await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls, 2, "reconnect respects the failed read backoff");
+    t.mock.timers.tick(120_000);await new Promise(resolve=>setImmediate(resolve));
     assert.equal(calls, 3);
     assert.equal(badge.textContent, "1");
   } finally {
@@ -136,7 +139,8 @@ test("returning to an open page refreshes its unread badge once, and a failed re
   }
 });
 
-test("an older initial unread response cannot overwrite the returned page's newer count", async () => {
+test("an older initial unread response cannot overwrite the returned page's newer count", async t => {
+  t.mock.timers.enable({apis:['setTimeout','Date']});
   const badge = new StubBadge();
   const savedDocument = globalThis.document;
   const savedWindow = globalThis.window;
@@ -144,10 +148,10 @@ test("an older initial unread response cannot overwrite the returned page's newe
   const document = {
     visibilityState: "visible",
     getElementById: () => badge,
-    addEventListener: (name, listener) => listeners.set(`doc:${name}`, listener),
+    addEventListener: (name, listener) => {const previous=listeners.get(`doc:${name}`);listeners.set(`doc:${name}`,event=>{previous?.(event);listener(event);});},
   };
   globalThis.document = document;
-  globalThis.window = { addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
+  globalThis.window = { setTimeout, clearTimeout, addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
   let finishFirst;
   let calls = 0;
   const client = { notificationFeed: () => {

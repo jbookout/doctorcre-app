@@ -311,7 +311,7 @@ export function mountSessions({ outage = null } = {}) {
     read();
   });
   $("sessionsRetry")?.addEventListener("click", () => read());
-  document.addEventListener('visibilitychange', async () => {
+  mountAutoRefresh({ document, window: globalThis.window, periodic: false, shouldRefresh: () => Boolean(pendingOpen && client), refresh: async () => {
     if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
     const attempt = pendingOpen;
     pendingOpen = null;
@@ -330,7 +330,7 @@ export function mountSessions({ outage = null } = {}) {
     } catch {
       announce('The open result is unknown. Refresh the session list before trying again.');
     }
-  });
+  } });
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"

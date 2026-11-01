@@ -7,20 +7,20 @@ import { mountAutoRefresh } from '../js/auto-refresh.mjs';
 function page() {
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget(); const pending = new Map(); let next = 0, time = 0;
-  window.setTimeout = (fn, ms) => { pending.set(++next, { fn, ms }); return next; };
+  window.setTimeout = (fn, ms) => { pending.set(++next, { fn, ms, at: time + ms }); return next; };
   window.clearTimeout = id => pending.delete(id);
   return {
     document, window, now: () => time,
     advance(ms) { time += ms; },
-    tick() { const jobs = [...pending.values()]; pending.clear(); jobs.forEach(job => job.fn()); },
+    tick() { const at = Math.min(...[...pending.values()].map(job => job.at)); if (!Number.isFinite(at)) return; time = Math.max(time, at); for (const [id,job] of [...pending]) if (job.at <= time) { pending.delete(id); job.fn(); } },
     get count() { return pending.size; },
     get delays() { return [...pending.values()].map(job => job.ms); },
     hide() { document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); },
     show() { document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); },
-    input(type = 'pointerdown') { document.dispatchEvent(new Event(type)); },
+    input(type = 'pointerdown') { const event = new Event(type); Object.defineProperty(event, 'isTrusted', { value: true }); document.dispatchEvent(event); },
   };
 }
-const settle = async () => { for (let i = 0; i < 10; ++i) await Promise.resolve(); };
+const settle = async () => { for (let i = 0; i < 30; ++i) await Promise.resolve(); };
 const poller = (p, options = {}) => {
   const calls = { polls: 0 };
   const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now, intervalMs: 1400, poll: () => { calls.polls++; }, ...options });
@@ -54,13 +54,15 @@ test('a poll in flight when the tab hides does not re-arm the clock', async () =
   handle.dispose();
 });
 
-test('returning to view refreshes once at once, then resumes the cadence', async () => {
+test('an idle visibility return waits for real input before reading', async () => {
   const p = page(); const fixed = poller(p);
   let reads = 0;
   const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, intervalMs: 15_000, refresh: () => { reads++; } });
   p.hide(); p.advance(8 * 3600_000);
   p.show(); await settle();
-  assert.equal(fixed.polls, 1, 'one immediate poll on return'); assert.equal(reads, 1, 'one immediate read on return');
+  assert.equal(fixed.polls, 0); assert.equal(reads, 0);
+  p.input(); await settle();
+  assert.equal(fixed.polls, 1); assert.equal(reads, 1);
   assert.deepEqual(p.delays, [60_000, 60_000], 'then each poller is back on the one-minute cadence');
   p.tick(); await settle();
   assert.equal(fixed.polls, 2); assert.equal(reads, 2);
@@ -92,7 +94,7 @@ test('a manual refresh after the idle cutoff reads once, as before the pause; th
   p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
   assert.equal(reads, 0, 'the timer issues no read once idle'); assert.equal(p.count, 0);
   await auto.poll(); assert.equal(reads, 0, 'nor does a page clock calling poll()');
-  await auto.refresh(); await settle();
+  p.input(); await auto.refresh(); await settle();
   assert.equal(reads, 1, 'the refresh button reads exactly once');
   assert.equal(p.count, 1, 'and the person counts as present, so the cadence re-arms');
   auto.dispose();
@@ -107,11 +109,28 @@ test('the first input after idle in a visible tab only reads: the hidden-return 
   assert.equal(reads, 1, 'the wake reads exactly once');
   assert.equal(suspends, 0, 'and never closes the private view (leads suspendPrivateView)');
   p.hide(); p.show(); await settle();
-  assert.equal(suspends, 1, 'a real return from hidden still runs the hook');
+  assert.equal(suspends, 1, 'a visible return without active backoff still invalidates private details');
   auto.dispose();
 });
 
-
+test('a local clock and its network read both stop while idle', async () => {
+  const p = page(); let ticks = 0, reads = 0; const intervals = [];
+  const clock = mountLocalClock({ document: p.document, window: p.window, now: p.now, intervalMs: 5000,
+    setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; }, clearInterval: () => {},
+    tick: () => { ticks++; }, read: () => { reads++; } });
+  assert.deepEqual(intervals.map(job => job.ms), [5000], 'the repaint keeps the 5s cadence');
+  p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
+  assert.equal(reads, 0, 'idle: the read does not run');
+  assert.equal(p.count, 0, 'and its timer is not re-armed');
+  intervals[0].fn(); intervals[0].fn();
+  assert.equal(ticks, 0, 'idle: the local repaint also stops');
+  p.input(); await settle();
+  assert.equal(reads, 1, 'the first input reads once');
+  clock.dispose();
+  const home = await readFile(new URL('../js/workspace-command-center.js', import.meta.url), 'utf8');
+  assert.match(home, /const expiry = mountLocalTicker\(\{[^]*?render\(\);\s*auto\.poll\(\);/,
+    'Home repaints an expired snapshot locally; its re-read is the gated poll, never an ungated refresh');
+});
 
 test('input keeps a visible tab active past the cutoff', async () => {
   const p = page(); const fixed = poller(p);
@@ -137,11 +156,12 @@ test('repeated hide and show leaves exactly one timer per poller', async () => {
   const p = page(); let release = null; let polls = 0;
   const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now, intervalMs: 1400,
     poll: () => { polls++; return new Promise(resolve => { release = resolve; }); } });
+  handle.refresh(); await settle();
   for (let i = 0; i < 5; ++i) { p.hide(); p.show(); await settle(); }
   assert.equal(polls, 1, 'returns during an open read do not stack reads');
   assert.equal(p.count, 0);
   release(); await settle();
-  assert.equal(polls, 2, 'the queued return reads once when the open read settles');
+  assert.equal(polls, 2, 'one coalesced return spends another attempt after the successful read');
   release(); await settle();
   assert.equal(p.count, 1, 'reads that settle late never arm a second timer');
   for (let i = 0; i < 3; ++i) { p.input(); p.input('wheel'); }
@@ -166,7 +186,7 @@ test('every network poller in the app goes through the shared helper', async () 
   assert.doesNotMatch(pipeline, /setInterval\([^;]*(pollOnce|requestRefresh|refreshPanel)/, 'pipeline.js has no raw network interval');
   assert.equal(pipeline.match(/mountVisibilityPoll\(\{/g).length, 3, 'pipeline.js: panel, feed and board clocks');
   assert.doesNotMatch(await read('observatory.js'), /setInterval\(/);
-  assert.match(await read('auto-refresh.mjs'), /watchPresence\(/, 'auto-refresh shares the same hidden and idle gate');
+  assert.match(await read('auto-refresh.mjs'), /mountVisibilityPoll\(/, 'auto-refresh shares the same hidden and idle gate');
 });
 
 test('background refresh never runs faster than once a minute', () => {
@@ -181,4 +201,105 @@ test('background refresh never runs faster than once a minute', () => {
   const call = poller(p, { intervalMs: 1600, keepAlive: () => true });
   assert.deepEqual(p.delays, [1600], 'a keepAlive poll keeps its own interval');
   call.handle.dispose();
+});
+
+test('automatic polling backs off and stops after a bounded number of attempts', async () => {
+  const p = page(); let calls = 0;
+  const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now,
+    poll: () => { calls++; throw new Error('unavailable'); } });
+  const delays = [];
+  for (let i = 0; i < 30 && p.count; i++) { delays.push(p.delays[0]); p.tick(); await settle(); }
+  assert.ok(calls > 0 && calls < 30, 'polling stops at a hard cap');
+  assert.ok(delays[1] > delays[0], 'failed reads back off');
+  assert.equal(p.count, 0);
+  handle.dispose();
+});
+
+test('auto refresh backs off failures and stops after bounded attempts', async () => {
+  const p = page(); let calls = 0;
+  const handle = mountAutoRefresh({ document: p.document, window: p.window, now: p.now,
+    refresh: () => { calls++; throw new Error('unavailable'); } });
+  const delays = [];
+  for (let i = 0; i < 30 && p.count; i++) { delays.push(p.delays[0]); p.tick(); await settle(); }
+  assert.ok(calls > 0 && calls < 30, 'refresh stops at a hard cap');
+  assert.ok(delays[1] > delays[0], 'failed reads back off');
+  assert.equal(p.count, 0);
+  handle.dispose();
+});
+
+test('automatic entry points cannot bypass the attempt budget', async () => {
+  const p = page(); let reads = 0;
+  const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, refresh: () => { reads++; } });
+  for (let i = 0; i < 20; i++) { await auto.refresh(); await settle(); }
+  await auto.poll(); await auto.poll();
+  assert.equal(reads, 20);
+  await auto.refresh(); assert.equal(reads, 20, 'method calls cannot replenish the budget');
+  p.input(); await settle();
+  assert.equal(reads, 21, 'real input grants another budget');
+  auto.dispose();
+});
+
+test('a suspended editor consumes its scheduling budget without making reads', async () => {
+  const p = page();
+  const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, shouldRefresh: () => false, refresh: () => assert.fail('editor is active') });
+  for (let i = 0; i < 25; i++) { p.tick(); await settle(); }
+  assert.equal(p.count, 0);
+  auto.dispose();
+});
+
+test('a resolved false read backs off and an active-call exception still has a hard cap', async () => {
+  const p = page(); let live = true, reads = 0;
+  const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now,
+    keepAlive: () => live, intervalMs: 1600, poll: () => { reads++; return false; } });
+  p.hide(); p.tick(); await settle();
+  assert.deepEqual(p.delays, [3200]);
+  for (let i = 0; i < 25; i++) { p.tick(); await settle(); }
+  assert.equal(reads, 20); assert.equal(p.count, 0);
+  live = false;
+  handle.dispose();
+});
+
+test('local clocks cap each visible period, stop hidden, and repaint on return', async () => {
+  const { mountLocalTicker } = await import('../js/visibility-poll.mjs');
+  const p = page(); let ticks = 0, fire, scheduled = false;
+  p.window.setInterval = fn => { fire = fn; scheduled = true; return 1; };
+  p.window.clearInterval = () => { scheduled = false; };
+  const clock = mountLocalTicker({ document: p.document, window: p.window, now: p.now, intervalMs: 1000, maxTicks: 2, tick: () => { ticks++; } });
+  fire(); fire(); fire();
+  assert.equal(ticks, 2); assert.equal(scheduled, false);
+  p.hide(); p.show(); await settle();
+  assert.equal(ticks, 3, 'returning repaints immediately');
+  fire();assert.equal(ticks, 4);
+  p.hide(); assert.equal(scheduled, false);
+  clock.dispose(); p.show(); assert.equal(scheduled, false);
+});
+
+test('callbacks that render and absorb their own failures still back off', async () => {
+  const p = page();
+  const handle = mountVisibilityPoll({ document: p.document, window: p.window, now: p.now, poll: () => undefined });
+  for (let attempt = 0; attempt < 5; attempt++) { p.tick(); await settle(); }
+  assert.deepEqual(p.delays, [120_000]);
+  handle.dispose();
+});
+
+test('local repaint resumes immediately after an idle hidden return without waking network reads', async () => {
+  const { mountLocalTicker } = await import('../js/visibility-poll.mjs');
+  const p = page(); let ticks = 0, reads = 0, fire; const active = new Set();
+  p.window.setInterval = (fn, ms) => { assert.equal(ms,60_000);fire=fn;const id={};active.add(id);return id; };
+  p.window.clearInterval = id => active.delete(id);
+  const network = mountAutoRefresh({ document:p.document,window:p.window,now:p.now,refresh:()=>{reads++;} });
+  const local = mountLocalTicker({ document:p.document,window:p.window,now:p.now,intervalMs:60_000,tick:()=>{ticks++;network.poll();} });
+  p.hide();p.advance(60*60_000);fire();await settle();
+  assert.equal(ticks,0);assert.equal(active.size,0);
+  p.show();await settle();
+  assert.equal(ticks,1,'visibility return repaints local labels immediately, even after idle');
+  assert.equal(active.size,1,'one local interval resumes');
+  fire();assert.equal(ticks,2,'the next minute repaints again');
+  p.window.dispatchEvent(new Event('pagehide'));p.advance(60*60_000);
+  p.window.dispatchEvent(Object.assign(new Event('pageshow'),{persisted:true}));await settle();
+  assert.equal(ticks,3,'BFCache return also repaints when no visibility event cleared the old interval');
+  assert.equal(active.size,1,'a restored interval replaces the frozen interval');
+  p.hide();fire();assert.equal(ticks,3);assert.equal(active.size,0);
+  assert.equal(reads,0,'local repaint cannot renew network presence or bypass its idle stop');
+  local.dispose();network.dispose();p.show();await settle();assert.equal(ticks,3);
 });

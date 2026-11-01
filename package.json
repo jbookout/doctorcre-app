@@ -41,6 +41,7 @@
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
     "@ai-sdk/typesafe-ai": "^3.0.20",
+    "@babel/parser": "7.29.12",
     "@e2e-dev/decision": "^0.2.3",
     "@e2e-dev/web": "^0.15.1",
     "@playwright/test": "1.64.1",

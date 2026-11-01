@@ -339,11 +339,49 @@ test('queued upload is checked automatically and clears audio after Studio trans
   });
   await page.getByRole('button', { name: 'Transfer recording' }).click();
   await page.getByRole('button', { name: 'Check status' }).waitFor();
+  const beforeHidden = reads;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(120000);
+  assert.equal(reads, beforeHidden, 'queued transfers do not poll while hidden');
   transferred = true;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
   await page.clock.runFor(30000);
   await page.getByText('Transferred', { exact: true }).waitFor();
   assert.ok(reads >= 1);
   assert.equal(await page.locator('audio').count(), 0);
+});
+
+test('call review refreshes on return only while the partner is present', async t => {
+  const { page } = await open(t, { review: true });
+  let reports = 0;
+  await page.route('**/api/v1/call-sessions/**', r => {
+    const req = r.request();
+    if (req.url().endsWith('/report')) reports++;
+    const session = { schema_version: 1, session_id: id, state: 'held_review', reason: 'open_review_questions', open_questions: 0, review_questions: [], transferred: true, filed: false };
+    return r.fulfill({ json: req.url().endsWith('/report') ? { ...session, report: null, actions: [], deal_updates: [] } : session });
+  });
+  await page.clock.install();
+  await page.reload();
+  await page.locator('#phoneReview .phone-badge').waitFor();
+  const show = visible => page.evaluate(v => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: v ? 'visible' : 'hidden' });
+    Object.defineProperty(document, 'hidden', { configurable: true, value: !v });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, visible);
+  const before = reports;
+  await show(false);
+  await page.clock.runFor(31 * 60 * 1000);
+  await show(true);
+  await page.waitForTimeout(300);
+  assert.equal(reports, before, 'an idle return does not re-read the review');
+  await page.mouse.click(5, 5);
+  await assert.doesNotReject(async () => { for (let i = 0; i < 50 && reports === before; i++) await page.waitForTimeout(50); assert.ok(reports > before); });
 });
 
 test('review link shows open review questions and submits an answer', async t => {
