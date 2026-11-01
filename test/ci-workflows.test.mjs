@@ -190,6 +190,7 @@ async function fixture(t, { slow = false, budgetMs = slow ? 100 : 170_000 } = {}
   await writeFile(join(root, '.githooks/pre-push'), source.replace('170_000', String(budgetMs)));
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: {
     check: slow ? 'node -e "setInterval(()=>{},1000)"' : 'node -e "console.log(\'CHECK-RAN\')"',
+    lint: 'node -e "console.log(\'LINT-RAN\')"',
     test: 'node .githooks/pre-push --test',
   } }));
   await writeFile(join(root, 'test/touched.test.mjs'), "import test from 'node:test'; test('touched',()=>console.log('TOUCHED-RAN'));\n");
@@ -215,6 +216,7 @@ test('pre-push checks outgoing source and runs touched tests without starting an
   const result = f.push();
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /CHECK-RAN/);
+  assert.match(result.stdout, /LINT-RAN/);
   assert.match(result.stdout, /TOUCHED-RAN/);
   assert.doesNotMatch(result.stdout, /UNRELATED-RAN/);
   await assert.rejects(readFile(join(f.root,'engine-started')), { code: 'ENOENT' });
