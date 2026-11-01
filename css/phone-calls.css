@@ -8,7 +8,7 @@
 #phoneCalls label { display: block; margin: 18px 0 10px; line-height: 1.5; }
 #phoneCalls .phone-consent { display: flex; gap: 10px; align-items: start; }
 .phone-consent input { margin-top: 5px; flex-shrink: 0; }
-#phoneCalls input:not([type=checkbox]) { width: 100%; min-width: 0; background: var(--ground); color: var(--fg); border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 12px; box-sizing: border-box; font: inherit; }
+#phoneCalls input:not([type=checkbox]), #phoneQuestions textarea { width: 100%; min-width: 0; background: var(--ground); color: var(--fg); border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 12px; box-sizing: border-box; font: inherit; }
 #phoneCalls button, #phoneCalls a { min-height: 44px; }
 #phoneCalls button { border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 11px 16px; background: var(--surface-1); color: var(--fg); font: inherit; cursor: pointer; margin: 6px 4px 6px 0; }
 #phoneSave, #phoneCalls .phone-primary { background: var(--accent); color: var(--ground); }
@@ -31,7 +31,7 @@ body { margin: 0; background: var(--ground); font-family: var(--font-text); }
 
 #phoneCalls .eyebrow { font-size: var(--font-size-1); color: var(--fg-muted); letter-spacing: .08em; text-transform: uppercase; }
 #phoneCalls a { color: var(--accent-ink); }
-#phoneCalls button:focus-visible, #phoneCalls input:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; }
+#phoneCalls button:focus-visible, #phoneCalls input:focus-visible, #phoneQuestions textarea:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; }
 #phoneCalls input[type=checkbox] { width: 20px; height: 20px; }
 #phoneCalls #phoneSave { background: var(--accent); color: var(--on-accent); }
 #phoneOutcomes { margin-top: 24px; border-top: 1px solid var(--hairline); padding-top: 20px; }
@@ -46,3 +46,7 @@ body { margin: 0; background: var(--ground); font-family: var(--font-text); }
 
 .phone-times { display: grid; grid-template-columns: 1fr; }
 .phone-times label { min-width: 0; }
+
+#phoneQuestions textarea { display: block; min-height: 80px; resize: vertical; }
+
+#phoneQuestions [role="status"]:empty { display: none; }

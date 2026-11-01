@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { meetingReviews, mountHomeMeetingReviews } from '../js/home-meeting-reviews.js';
 import { createFixtureClient } from '../js/fixture-client.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 const review = { key: 'a1b2c3d4e5f60718', title: 'Demo site tour', start: '2026-10-27T19:00:00+00:00', end: '2026-10-27T20:00:00+00:00',
   state: 'needs_review', prompt: 'Confirm whether this meeting happened.' };
@@ -119,6 +120,6 @@ test('the fixture client logs a meeting on a known deal, and the verb is pinned'
   const receipt = await client.logActivity(args);
   assert.equal(receipt.ok, true);
   assert.deepEqual(await client.logActivity(args), receipt);
-  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('log-activity'));
 });

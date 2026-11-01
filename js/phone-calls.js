@@ -12,7 +12,9 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;
 const notice = message => { if (!disposed) $('phoneNotice').textContent = message; };
 const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
+const answers = new Map(), answering = new Set();
 const tour_id = 'calls';
+let reviewGeneration = 0;
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
 const pollPresence = watchPresence({ document, window, onResume: schedulePoll, onWake: schedulePoll });
 async function acquireWakeLock() {
@@ -48,7 +50,19 @@ function stopMessage(row) {
   return '';
 }
 const mimeTypes = new Set(['audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mpeg', 'audio/webm']);
-const labels = { pending: 'Pending transfer', queued: 'Uploaded — waiting for the Studio', expired: 'Transfer again', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed' };
+const labels = { pending: 'Pending transfer', queued: 'Uploaded — waiting for the Studio', expired: 'Transfer again', transferred: 'Processing', ready_review: 'Ready for review', filed: 'Filed', held_review: 'Held for review', needs_attention: 'Needs attention' };
+function statusReason(session) {
+  if (!['held_review', 'needs_attention'].includes(session.state)) return '';
+  if (session.reason === 'budget') return "Held until tomorrow: today's processing budget is used.";
+  const reasons = {
+    summary_repeats_transcript: 'The summary repeated the transcript.',
+    transcript_unavailable: session.state === 'held_review' ? 'The transcript is unavailable for review.' : 'The transcript is unavailable.',
+    extraction_failed: 'The call could not be extracted.',
+    transient_ceiling: 'Processing was retried too long.',
+    open_review_questions: session.open_questions === 1 ? '1 question needs your answer.' : `${Number.isSafeInteger(session.open_questions) && session.open_questions > 0 ? session.open_questions : 'Some'} questions need your answer.`,
+  };
+  return Object.hasOwn(reasons, session.reason) ? reasons[session.reason] : 'This call needs attention before processing can continue.';
+}
 async function duration(audio) {
   const url = URL.createObjectURL(audio);
   try {
@@ -74,7 +88,7 @@ async function metadata(audio, started_at, consent_announced_at, seconds) {
 async function pending() {
   const rows = await recorder.recover(await store.list(scope, tour_id));
   if (disposed) return;
-  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred').map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'queued' ? 'Uploaded — waiting for the Studio' : r.status === 'expired' ? 'Transfer again' : r.status === 'transferred' ? 'Transferred' : 'Pending transfer'}</span>${r.status === 'transferred' ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p><button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.status === 'queued' ? 'Check status' : r.status === 'expired' ? 'Transfer again' : 'Transfer recording'}</button>` : ''}</article>`).join('');
+  $('phonePending').innerHTML = rows.filter(r => r.audio?.size || r.status === 'recording' || r.status === 'transferred' || ['held_review', 'needs_attention'].includes(r.status)).map(r => `<article class="phone-row"><strong>${esc(r.name || 'Microphone recording')}</strong><span class="phone-badge">${r.id === transferringId ? 'Transferring…' : r.status === 'recording' ? 'Recording' : r.status === 'failed' ? 'Failed' : r.status === 'queued' ? 'Uploaded — waiting for the Studio' : r.status === 'expired' ? 'Transfer again' : r.status === 'transferred' ? 'Transferred' : labels[r.status] || 'Pending transfer'}</span>${['transferred', 'held_review', 'needs_attention'].includes(r.status) ? `<a href="/calls?session=${esc(r.session_id)}">Review call</a>` : ''}${statusReason({ state: r.status, reason: r.reason, open_questions: r.open_questions }) ? `<p>${esc(statusReason({ state: r.status, reason: r.reason, open_questions: r.open_questions }))}</p>` : ''}${stopMessage(r) ? `<p>${esc(stopMessage(r))}</p>` : ''}${r.interrupted && !stopMessage(r) ? '<p>Recording interrupted. Review the saved audio before transferring. Start a new recording to continue.</p>' : ''}${['held_review', 'needs_attention'].includes(r.status) ? `<button data-status="${esc(r.id)}" ${busy ? 'disabled' : ''}>Check status</button>` : ''}${r.audio?.size ? `<audio controls src="" data-audio="${esc(r.id)}"></audio><p class="phone-meta">Saved on this device</p>${['held_review', 'needs_attention'].includes(r.status) ? '' : `<button data-transfer="${esc(r.id)}" ${r.status === 'recording' || busy ? 'disabled' : ''}>${r.status === 'queued' ? 'Check status' : r.status === 'expired' ? 'Transfer again' : 'Transfer recording'}</button>`}` : ''}</article>`).join('');
   for (const player of $('phonePending').querySelectorAll('audio')) {
     const url = URL.createObjectURL(rows.find(r => r.id === player.dataset.audio).audio);
     player.src = url; player.onloadeddata = () => URL.revokeObjectURL(url);
@@ -82,13 +96,15 @@ async function pending() {
 }
 async function applyStatus(id, session) {
   if (session.upload_state_unavailable) throw new Error('Upload status is unavailable. Your saved audio stays on this device.');
-  if (session.transferred) {
+  if (['held_review', 'needs_attention'].includes(session.state)) {
+    await store.patch(scope, id, { ...(session.transferred ? { audio: null } : {}), status: session.state, reason: session.reason, open_questions: session.open_questions });
+  } else if (session.transferred) {
     await store.patch(scope, id, { audio: null, status: 'transferred' });
     await pending();
     try { await review(session.session_id); notice('Transfer confirmed. Audio removed from this device.'); }
     catch { notice('Transfer confirmed. Review is unavailable. Open the saved review link to retry.'); }
-  } else if (session.state === 'queued' || session.state === 'expired') {
-    await store.patch(scope, id, { status: session.state });
+  } else if (['pending', 'queued', 'expired'].includes(session.state)) {
+    await store.patch(scope, id, { status: session.state, reason: session.reason, open_questions: session.open_questions });
   }
 }
 function schedulePoll() {
@@ -120,7 +136,7 @@ async function transfer(id) {
   await store.patch(scope, id, { session_id: admitted.session_id });
   if (row.session_id) {
     const status = await api.status(admitted.session_id);
-    if (status.upload_state_unavailable || status.transferred || status.state === 'queued' || (status.state === 'expired' && row.status !== 'expired')) { await applyStatus(id, status); if (status.state === 'queued') schedulePoll(); return; }
+    if (status.upload_state_unavailable || status.transferred || ['queued', 'held_review', 'needs_attention'].includes(status.state) || (status.state === 'expired' && row.status !== 'expired')) { await applyStatus(id, status); if (status.state === 'queued') schedulePoll(); return; }
   }
   notice('Transferring…');
   pollAttempts = 0; pollDelay = 30000;
@@ -134,20 +150,23 @@ async function transfer(id) {
 function reviewId(value) { try { return new URL(value).searchParams.get('session'); } catch { return value; } }
 async function review(id) {
   if (!sessionId(id)) throw new Error('Enter a valid call session ID.');
-  const result = await api.report(id);
-  if (disposed) return;
+  const generation = ++reviewGeneration;
+  const [result, session] = await Promise.all([api.report(id), api.status(id)]);
+  if (disposed || generation !== reviewGeneration) return;
   currentId = id;
   $('phoneCalls').classList.add('has-review');
   const url = new URL(location.href); url.searchParams.set('session', id); history.replaceState(null, '', url);
   $('phoneSession').value = id;
   $('phoneOpen').hidden = true;
   const held = [...(result.actions || []), ...(result.deal_updates || [])].some(r => r.status === 'pending');
-  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(labels[result.state])}</span><p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
+  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(Object.hasOwn(labels, result.state) ? labels[result.state] : 'Status unavailable')}</span>${statusReason(result) ? `<p>${esc(statusReason(result))}</p>` : ''}<p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : statusReason(result) ? '' : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
+  const questions = Array.isArray(session.review_questions) ? session.review_questions : [];
+  $('phoneReview').insertAdjacentHTML('afterbegin', questions.length ? `<section id="phoneQuestions"><h3>Questions to answer</h3>${questions.map(q => `<form class="phone-row" data-question="${esc(q.id)}"><p>${esc(q.question)}</p><label>Answer <textarea name="answer" maxlength="1000" required ${answering.has(id + ':' + q.id) ? 'disabled' : ''} ${answers.has(id + ':' + q.id) ? 'readonly' : ''}>${esc(answers.get(id + ':' + q.id)?.answer || '')}</textarea></label><button type="submit" ${answering.has(id + ':' + q.id) ? 'disabled' : ''}>Submit answer</button><p role="status"></p></form>`).join('')}</section>` : '');
   if (result.report) {
     try {
       const answer = await client.readCallOutcomes();
-      if (!disposed && currentId === id) $('phoneOutcomes').innerHTML = callOutcomesHtml((answer.calls || []).filter(c => c.session_id === id)) || '<p class="phone-meta">No unreviewed automatic changes were returned. Confirmed changes remain listed above.</p>';
-    } catch { if (!disposed) notice('Applied changes could not be checked. Refresh review to retry.'); }
+      if (!disposed && generation === reviewGeneration && currentId === id) $('phoneOutcomes').innerHTML = callOutcomesHtml((answer.calls || []).filter(c => c.session_id === id)) || '<p class="phone-meta">No unreviewed automatic changes were returned. Confirmed changes remain listed above.</p>';
+    } catch { if (!disposed && generation === reviewGeneration) notice('Applied changes could not be checked. Refresh review to retry.'); }
   }
 }
 async function run(action) {
@@ -186,8 +205,32 @@ async function start() {
   $('phoneRecord').onclick = () => { if (!$('phoneConsent').checked) { notice('Confirm that everyone was told before recording.'); return; } void run(async () => { await recorder.start({ scope, tour_id, consent_announced_at: new Date().toISOString() }); await acquireWakeLock(); $('phoneConsent').checked = false; }); };
   $('phoneStop').onclick = () => { recorder.stop(); notice('Recording stopped. Review the saved audio before transferring.'); };
   $('phoneOpen').onsubmit = event => { event.preventDefault(); void run(() => review(reviewId($('phoneSession').value.trim()))); };
+  $('phoneCalls').addEventListener('submit', event => {
+    const form = event.target.closest('[data-question]'); if (!form) return;
+    event.preventDefault();
+    const question_id = form.dataset.question, id = currentId, slot = id + ':' + question_id;
+    const answer = form.elements.answer.value.trim(); if (!answer || answering.has(slot)) return;
+    const prior = answers.get(slot);
+    const payload = prior || { idempotency_key: crypto.randomUUID(), session_id: id, question_id, answer };
+    answers.set(slot, payload); answering.add(slot);
+    form.querySelectorAll('button, textarea').forEach(control => control.disabled = true);
+    void (async () => {
+      let message = '';
+      try { await api.answer(id, payload); } catch (error) { message = error.message; if (['invalid_question_answer', 'key_reuse'].includes(error.code)) answers.delete(slot); }
+      try { if (!disposed && currentId === id) await review(id); } catch { message ||= 'Call review could not be refreshed. Please retry.'; }
+      answering.delete(slot);
+      if (disposed || currentId !== id) return;
+      const current = [...$('phoneReview').querySelectorAll('[data-question]')].find(row => row.dataset.question === question_id);
+      if (current) { current.querySelector('[role=status]').textContent = message; current.querySelector('button').disabled = false; current.querySelector('textarea').disabled = false; current.querySelector('textarea').readOnly = answers.has(slot); if (!answers.has(slot)) current.querySelector('textarea').value = answer; }
+      else if (message) notice(message);
+    })();
+  });
   $('phoneCalls').addEventListener('click', event => {
     const button = event.target.closest('button'); if (!button) return;
+    if (button.dataset.status) void run(async () => {
+      const row = (await store.list(scope, tour_id)).find(r => r.id === button.dataset.status);
+      if (row?.session_id) await applyStatus(row.id, await api.status(row.session_id));
+    });
     if (button.dataset.transfer) void run(async () => {
       transferringId = button.dataset.transfer; await pending();
       try { await transfer(button.dataset.transfer); }
@@ -210,9 +253,10 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
+  if (!document.hidden && currentId && !disposed) void review(currentId).catch(() => notice('Call review could not be refreshed. Please retry.'));
   if (!recorder?.active) return;
   if (!document.hidden) void acquireWakeLock();
   else if (!wakeLock || wakeLock.released) recorder.stop('hidden');

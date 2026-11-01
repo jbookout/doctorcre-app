@@ -26,6 +26,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
     'morning-brief': async () => ({ state:'unavailable' }),
+    'list-practice-origination': args => client.listPracticeOrigination(args),
     'read-home-agenda': () => client.getHomeAgenda(),
     'read-post-call-followups': async () => ({ schema_version: 'post-call-followups.v1', candidates: [], send: false }),
     'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),

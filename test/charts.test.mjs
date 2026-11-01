@@ -25,6 +25,7 @@ import {
   phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage, validBoardPayload,
   waitingSummary, writeChartsView,
 } from "../js/charts-model.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
@@ -32,7 +33,7 @@ const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 const pageJs = await read("js/charts.js");
 const modelJs = await read("js/charts-model.js");
 const css = await read("css/business-workspace.css");
-const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+const contract = carrInterface;
 const routes = (await import("../js/routes.js")).routeContract;
 
 /** The synthetic fixture, generated from contract-shaped examples. */

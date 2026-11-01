@@ -43,11 +43,11 @@ test('an open page observes an off flip at the next one-minute poll',async t=>{
  assert.ok(poll);t.mock.timers.tick(60_000);await poll.fn();assert.equal(visible,false);
 });
 
-import { readFileSync } from 'node:fs';
 import { createLiveClient } from '../js/live-client.js';
+import { carrInterface } from "./carr-contract.mjs";
 
 test('the pinned switch read carries no caller-selected identity or audience',async()=>{
- const contract=JSON.parse(readFileSync(new URL('../contracts/carr-interface.v1.json',import.meta.url)));
+ const contract=carrInterface;
  const seam=contract.mcp_read_contracts['list-feature-switches'];
  assert.match(seam.producer.source_commit,/^[0-9a-f]{40}$/);
  assert.equal(seam.response.schema,'feature-switches.v1');

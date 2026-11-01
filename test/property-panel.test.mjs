@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { openDom } from "./jsdom-harness.mjs";
 import { propertyPanelView, propertyFactDetail, renderPropertyPanel } from "../tours/property-panel.js";
+import { carrInterface } from "./carr-contract.mjs";
 
 const source = { locator: "https://county.example.invalid/parcel/17", evidence_class: "direct_source", retrieved_at: "2026-09-20T12:00:00Z" };
 const reviewed = (value, overrides = {}) => ({ status: "reviewed", value, as_of: "2026-09-21T12:00:00Z",
@@ -19,7 +20,7 @@ const evidence = { schema: "tour-property-evidence.v1", property_id: "10000000-0
 
 const panelSource = await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8");
 test("property evidence has an explicit CARR HTTP read contract", async () => {
-  const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
+  const contract = carrInterface;
   assert.ok(contract.http_surfaces.includes("/api/tours/property-evidence/v1"));
 });
 const otherProperty = "10000000-0000-4000-8000-000000000002";

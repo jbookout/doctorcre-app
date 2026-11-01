@@ -12,6 +12,7 @@ test('blocking 1: shared map modules, CSS and derived worker URLs pass through d
 });
 
 import { handleDoctorcreRequest } from "../src/worker.js";
+import { routeContract } from "../js/routes.js";
 
 const HOST = "doctorcre-app-staging.joe-bookout-carr-us.workers.dev";
 const request = (path, init) => new Request(`https://${HOST}${path}`, init);
@@ -238,7 +239,7 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: carrContractIdentity,
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.24.0" },
+    route_contract: { schema: routeContract.schema, version: routeContract.version },
   });
 });
 

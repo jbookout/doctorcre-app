@@ -8,7 +8,7 @@ import { businessDay } from './business-date.js';
 // next fourteen days, which is a to-do list and not a calendar. So the calendar
 // reads the board once (`deal-room-board`) and then each deal's own record,
 // with a small bound on how many are in flight. Both verbs were already pinned
-// in contracts/carr-interface.v1.json; this surface adds no verb.
+// in contracts/carr-interface.v1; this surface adds no verb.
 //
 // HONESTY RULES, the reason most of this file exists:
 //   - A deal whose record could not be read is NAMED and the page is partial.
