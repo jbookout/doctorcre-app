@@ -269,11 +269,17 @@
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/email-followups.js:loop:577ef85f9427b0a52033d47d602705274ccef961dae81e435d8582b8a2346d8b": {
+  "js/email-followups.js:loop:a17c0e71668b776a81e45a8ee267ce2024b5da28b2a2e18197edbb68f07fabb3": {
     "cap": 100,
     "boundary": "100 pages per batch",
     "backoff": "No retry within pagination; a failed or capped batch exits to the caller error state. Automatic caller retries use the shared capped poller.",
     "idleStop": "createPageBudget checks hidden state and a 30-minute batch deadline before every page; caller also checks its generation/signal."
+  },
+  "js/email-followups.js:setInterval:18616a5fdecc204f2543b1f2567a530c58620ad574a645739ac44973a585e37a": {
+    "cap": 10,
+    "boundary": "One 1-second tick per remaining second of a 10-second reply send grace; it clears itself at expiry.",
+    "backoff": "No retry: expiry submits once through the existing submit path; refusals and unknown outcomes never resubmit automatically.",
+    "idleStop": "Undo, pagehide, session retirement and dispose cancel the Submit token and clear the interval, including after expiry until submit-email-draft starts; it never starts without a partner Submit."
   },
   "js/email-proposals-fixture.js:read-loop:d124b5f5fbb77eda6549f5a5a8b23fc6e6b139fea1e7507168cdd01eaa62eab1": {
     "cap": 9007199254740991,
