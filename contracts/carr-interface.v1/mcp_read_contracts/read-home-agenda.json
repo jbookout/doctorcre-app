@@ -51,7 +51,8 @@
       "description",
       "due_on",
       "status",
-      "hold_until"
+      "hold_until",
+      "version"
     ],
     "membership": "Active deals without a closed phase, outcome, close date or invoice date. Includes both owners and national accounts. Open actions retain hold dates; Home applies Chicago business dates and owner scope.",
     "limits": {

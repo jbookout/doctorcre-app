@@ -206,5 +206,8 @@
 .home-call-task .work-card-title a.home-call-contact { max-width: 100%; }
 .home-call-task .home-call-contact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.home-brief-card .work-card-actions { grid-column: 2; grid-row: 2; }
+.home-brief-card .home-outline { background: transparent; font-family: inherit; cursor: pointer; }
+.home-brief-card:has([data-task-done]) :is(.work-card-title a, .work-card-meta) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .home-missing-next-step .home-flags { margin-inline: 0; }
 .home-missing-next-step .home-flag:not(.work-card) { padding-inline: 0; border-radius: 0; border-top-color: var(--hairline); }

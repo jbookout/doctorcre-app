@@ -142,6 +142,8 @@ test('the Home contract carries the stored checklist shape used by deal alerts',
   assert.deepEqual(home.response.bullet_keys, items.bullet_keys);
   assert.deepEqual(home.response.bullet_kinds, items.bullet_kinds);
   assert.equal(home.producer.source_commit, '73495795ef239461b770a0f3e8596b2a776e4bb7');
+  assert.ok(home.response.action_keys.includes('version'));
+  assert.equal(contract.mcp_write_contracts['complete-one-action'].producer.source_commit, '5cd06ac7d6d27f55eabc50a6db5b96eb42b6bae3');
 });
 
 test('brief includes undated and held open tasks but excludes completed tasks', () => {

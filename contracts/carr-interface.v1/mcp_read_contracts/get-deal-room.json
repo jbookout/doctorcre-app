@@ -54,7 +54,13 @@
       "order": "Role, company name, contact name, vendor party id."
     },
     "next_actions": {
-      "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
+      "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null.",
+      "version": "Positive integer from the action row, including accepted post-call actions. Closed actions remain in this read for completion readback.",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "5cd06ac7d6d27f55eabc50a6db5b96eb42b6bae3",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2765"
+      }
     },
     "item_schema_version": "deal-items.v1",
     "item_keys": [
