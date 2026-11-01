@@ -137,6 +137,7 @@ export function mountAppLayout(root, host, pathname) {
     if (edge.right > viewport.right) tabs.scrollLeft += edge.right - viewport.right;
     else if (edge.left < viewport.left) tabs.scrollLeft -= viewport.left - edge.left;
   };
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   win.requestAnimationFrame(showSelectedTab);
   phone.addEventListener('change', showSelectedTab);
   tabs.addEventListener('keydown', event => {

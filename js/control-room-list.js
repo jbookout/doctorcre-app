@@ -124,6 +124,7 @@ export function mountQueueList({ node, onOpen, onToggle, onEscape }) {
     else if (key === 'toggle') { event.preventDefault(); if (!highlightId) move(1); onToggle(highlighted()); }
     else if (key === 'escape') { if (onEscape()) event.preventDefault(); else if (highlightId) { event.preventDefault(); highlightId = null; sync(); } }
   });
+  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
   node.addEventListener('focus', () => {
     if (mode !== 'rows' || highlightId) return;
     if (openId) { highlightId = openId; sync(); } else move('first');

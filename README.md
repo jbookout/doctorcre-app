@@ -164,3 +164,8 @@ CI keeps JSON, the performance summary, and Playwright failure traces as artifac
 The CI job publishes the performance summary in its job summary.
 
 `npm run docs:check` warns about broken local Markdown links and unknown documented npm commands.
+
+Client scheduling is checked with `npm run lint`. Use `createPageBudget` /
+`createRequestBudget` for bounded reads and TanStack Query `refetchInterval`
+for React polling. Audited local callbacks carry an inline
+`eslint-disable-next-line no-restricted-syntax -- <reason>` comment.

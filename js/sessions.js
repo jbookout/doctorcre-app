@@ -303,6 +303,7 @@ export function mountSessions({ outage = null } = {}) {
       // `query` is a SERVER filter. The browser re-reads rather than narrowing
       // what it already holds, so the page always shows what CARR returned.
       if (debounce) clearTimeout(debounce);
+      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
       debounce = setTimeout(() => { view.query = lookup.value; read(); }, 250);
     });
   }

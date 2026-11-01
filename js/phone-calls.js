@@ -72,6 +72,7 @@ async function duration(audio) {
   try {
     return await new Promise((resolve, reject) => {
       const media = new Audio();
+      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
       const timer = setTimeout(() => { media.removeAttribute('src'); media.load(); reject(new Error('Could not read the recording length. Try a native audio export.')); }, 10000);
       const finish = value => { clearTimeout(timer); media.removeAttribute('src'); media.load(); resolve(value); };
       media.onloadedmetadata = () => { if (Number.isFinite(media.duration) && media.duration > 0) finish(media.duration); else { media.currentTime = 86400; } };
@@ -113,6 +114,7 @@ async function applyStatus(id, session) {
 }
 function schedulePoll() {
   if (pollTimer || disposed || !store || !pollPresence.active() || pollAttempts >= 10) return;
+  // eslint-disable-next-line no-restricted-syntax -- 10 transfer polling attempts; at most 100 queued status reads per attempt. 30 seconds, doubling each attempt to 120-second ceiling; audio stays local after failure watchPresence checked before scheduling and every row; hidden clears timer; 30-minute idle, pagehide and session invalidation stop; a new transfer explicitly resets the budget
   pollTimer = setTimeout(async () => {
     pollTimer = null;
     if (disposed || !pollPresence.active()) return;
@@ -258,6 +260,7 @@ async function start() {
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
 window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+// eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }
   if (!recorder?.active) return;

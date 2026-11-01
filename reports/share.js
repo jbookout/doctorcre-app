@@ -84,6 +84,7 @@ mountNavigation(document, location.pathname, { report: true });
           if (invalidated) throw new Error('share_context_changed');
           return data;
         })(),
+        // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
         new Promise((_, reject) => { timer = setTimeout(() => {
           reject(new Error("request_timeout")); controller.abort();
         }, 15000); }),

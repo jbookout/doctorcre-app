@@ -114,6 +114,7 @@ function mountCommandDock() {
  * replay, which is what a re-send under a spent key really returns.
  */
 function simulatedCall(outcome, { replay = false } = {}) {
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   return () => new Promise((resolve, reject) => setTimeout(() => {
     if (replay) { resolve({ ok: true, replayed: true, event_id: `sim-${++simulatedEvents}` }); return; }
     if (outcome === "refuse") {

@@ -410,6 +410,7 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const notice = document.getElementById('homeNotice');
   const toast = message => {
     notice.hidden = false; notice.textContent = message;
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
   // The cards still waiting are decided in Call Mode's post-call report.

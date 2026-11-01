@@ -434,6 +434,7 @@ async function saveTrust(event) {
     }
     let deadline;
     attempted = true;
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     try { const receipt = await Promise.race([client.updateVendorTrust(operation), new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Unconfirmed')), 15000); })]); if (receipt?.ok !== true || !Array.isArray(receipt.updated) || !receipt.updated.includes('trust_override')) throw new Error('Unconfirmed'); }
     finally { clearTimeout(deadline); }
     if (!active()) return;
@@ -1031,6 +1032,7 @@ function wireControls() {
   });
   dom.search?.addEventListener("input", () => {
     if (searchTimer) clearTimeout(searchTimer);
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     searchTimer = setTimeout(() => {
       const value = (dom.search?.value || "").trim().slice(0, MAX_QUERY_LENGTH);
       if (value === view.query.q) return;
@@ -1155,6 +1157,7 @@ function start() {
   applyLocation({ reason: "initial" });
   // The unread badge is chrome, not content: it loads the dealroom client, so
   // it waits until the browser is idle after the first rows have painted.
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   const idle = window.requestIdleCallback || ((callback) => setTimeout(callback, 1500));
   idle(() => mountBadge(), { timeout: 4000 });
 }

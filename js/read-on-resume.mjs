@@ -48,6 +48,7 @@ export function mountReadOnResume({ document, window, refresh }) {
     resumed = true;
     read();
   };
+  // eslint-disable-next-line no-restricted-syntax -- 20 automatic dispatches; document transport also caps at 600 HTTP attempts. Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts
   document.addEventListener("visibilitychange", visibility);
   window.addEventListener("pagehide", pagehide);
   window.addEventListener("pageshow", pageshow);

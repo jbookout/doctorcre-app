@@ -181,6 +181,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   $('morningRefresh').onclick = () => queues.active ? queues.refresh() : auto.refresh();
   $('morningContent').onclick = event => { if(queues.click(event))return; if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
+  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
   return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.dispose(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };

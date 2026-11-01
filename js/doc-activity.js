@@ -131,6 +131,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
   const resetPage = () => { view.pages = 1; void refresh(); };
   form.addEventListener('change', resetPage);
   form.addEventListener('submit', event => { event.preventDefault(); resetPage(); });
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   form.addEventListener('reset', () => { window.setTimeout(resetPage, 0); });
   $('activityMore').addEventListener('click', () => { view.pages++; void refresh(); });
   const polling = mountAutoRefresh({ document: root, window, refresh, intervalMs });

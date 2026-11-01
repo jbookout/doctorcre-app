@@ -77,6 +77,7 @@ export function createDayRecorder({ window, store, onChange = () => {}, onError 
       state.startedAt = Date.now();
       state.recorder.start(1000);
       state.note.phase = "recording";
+      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
       state.timer = window.setTimeout(() => stopState(state, "duration"), maxDurationMs);
       notify(state, onChange, state.note);
     } catch (error) {

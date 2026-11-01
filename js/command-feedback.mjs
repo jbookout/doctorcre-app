@@ -360,6 +360,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
   let error = null;
   let timer;
   const deadline = new Promise((_, reject) => {
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     timer = setTimeout(() => reject(new Error('Command outcome not received')), 30_000);
   });
   try {

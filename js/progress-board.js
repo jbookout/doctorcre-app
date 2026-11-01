@@ -35,9 +35,12 @@ export function mountBoard(deps = {}) {
   const client = deps.client || createLiveClient();
   const storage = "storage" in deps ? deps.storage : safeStorage(win);
   const now = deps.now || (() => new Date());
+  // eslint-disable-next-line no-restricted-syntax -- Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks. Local repaint only; callback error stops the clock without retry The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal
   const schedule = deps.setInterval || ((fn, ms) => win.setInterval(fn, ms));
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   const setTimer = deps.setTimeout || ((fn, ms) => win.setTimeout(fn, ms));
   const clearTimer = deps.clearTimeout || (id => win.clearTimeout(id));
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
@@ -659,6 +662,7 @@ export function mountBoard(deps = {}) {
     }
     // Cards animate in on the first draw only; later renders (refresh, tick)
     // flash just the cards whose state changed.
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     requestAnimationFrame(() => { container.dataset.settled = "true"; });
   }
 
@@ -1424,6 +1428,7 @@ export function mountBoard(deps = {}) {
 
   byId("directory-search").addEventListener("input", filterDirectory);
   byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
+  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
   doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
   wireLegend();

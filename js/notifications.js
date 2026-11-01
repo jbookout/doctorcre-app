@@ -295,6 +295,7 @@ async function load() {
   // Feed and activity reads can change the target's position before anchoring.
   if (!form.hidden && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
     preferenceAnchorRevealed = true;
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
   }
   const state = feedState(view.feed, { after: view.after, limit: LIMIT });

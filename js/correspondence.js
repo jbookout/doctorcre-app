@@ -17,6 +17,7 @@ export function renderEvidence(view = {}) {
 async function boundedRead(read, timeoutMs) {
   let timer;
   try {
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     return await Promise.race([Promise.resolve().then(read), new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); })]);
   } catch (error) { if ([401,403].includes(error?.status)) throw error; return null; } finally { clearTimeout(timer); }
 }

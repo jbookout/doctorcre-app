@@ -27,10 +27,12 @@ function Inbox({ client }: { client: InboxClient }) {
   const inFlight = useRef(false);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
+    // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
     addEventListener('online', update); addEventListener('offline', update);
     return () => { removeEventListener('online', update); removeEventListener('offline', update); };
   }, []);
   function focusRow() {
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     requestAnimationFrame(() => {
       const target = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row] h3 a, summary') || []).find(node => node.getClientRects().length);
       target?.focus();

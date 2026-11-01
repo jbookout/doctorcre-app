@@ -132,6 +132,7 @@ export function mountCostView(root) {
         const label = `${day.day}: ${usd(day.usd)}${Number.isFinite(day.usd) ? ' known' : ''}${day.complete ? '' : ' · incomplete coverage'}${day.drivers.length ? ` · ${day.drivers.join(', ')}` : ''}`;
         day.label = label;
         bar.setAttribute('aria-label', label); bar.append(svg('title', {}, label));
+        // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
         bar.addEventListener('focus', () => { detail.textContent = label; });
         bar.addEventListener('pointerenter', () => { detail.textContent = label; });
         bar.addEventListener('click', () => openDay(day, 'bar'));

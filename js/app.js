@@ -1058,6 +1058,7 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, o
   // above it. The body and the submit handler are already replaced above; this
   // only has to make the dialog visible when it is not.
   if (!dialog.open) dialog.showModal();
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
@@ -1566,6 +1567,7 @@ function wireEvents() {
   // connection went away rather than queueing behind it. Without the forced
   // poll, a feed read that never answers would leave every later tick skipping
   // as "already polling" for the rest of the session.
+  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
   window.addEventListener('online', () => {
     $('#offlineBanner').hidden = true;
     state.boardSync.setOnline(true);

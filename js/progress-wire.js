@@ -797,8 +797,10 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       const t = Math.min(1, (stamp - started) / 300);
       const eased = 1 - (1 - t) * (1 - t);
       node.textContent = format(Math.round(from + (target - from) * eased));
+      // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
       if (t < 1) requestAnimationFrame(step);
     };
+    // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
     requestAnimationFrame(step);
   }
 
@@ -1064,6 +1066,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     group.appendChild(title);
 
     group.addEventListener("pointerenter", () => showTooltip(node, point));
+    // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
     group.addEventListener("focus", () => showTooltip(node, point));
     group.addEventListener("pointerleave", hideTooltip);
     group.addEventListener("blur", hideTooltip);
@@ -1142,11 +1145,13 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       place(head, 0);
       place(trail[0], direction === "out" ? -0.035 : 0.035);
       place(trail[1], direction === "out" ? -0.07 : 0.07);
+      // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
       if (t < 1) { requestAnimationFrame(step); return; }
       comet.remove();
       cometCounts.set(nodeId, Math.max(0, (cometCounts.get(nodeId) || 1) - 1));
       litBadge(nodeId);
     };
+    // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
     requestAnimationFrame(step);
   }
 
@@ -1157,6 +1162,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const badge = entry && $("stageNodes").querySelector(`[data-node="${CSS.escape(nodeId)}"] .stage-node-badge`);
     if (!badge) return;
     badge.classList.add("is-lit");
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     setTimeout(() => badge.classList.remove("is-lit"), 900);
   }
 
@@ -1885,6 +1891,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       host.appendChild(button);
     }
     host.hidden = false;
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     setTimeout(() => { host.hidden = true; }, 9000);
   }
 
@@ -1892,6 +1899,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const host = $("roomBanner");
     host.textContent = message;
     host.hidden = false;
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     if (!bad) setTimeout(() => { host.hidden = true; }, 6000);
   }
 
@@ -2157,6 +2165,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     clearTimeout(resizeTimer);
     // Crossing the phone/desktop boundary swaps the stage geometry, so the core
     // and the rings are both redrawn rather than left at the old scale.
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     resizeTimer = setTimeout(() => { stageLayout = ""; drawCore(); render(); }, 180);
   }, { passive: true });
   reduced.addEventListener("change", () => render());

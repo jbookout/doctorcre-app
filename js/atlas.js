@@ -709,6 +709,7 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
       // `q` is a SERVER filter: the browser re-reads rather than narrowing what
       // it already holds, so what is on screen is always what CARR returned.
       if (debounce) clearTimeout(debounce);
+      // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
       debounce = setTimeout(() => { view.q = search.value; read(); }, 250);
     });
   }

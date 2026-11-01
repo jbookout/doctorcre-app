@@ -30,6 +30,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
           let payload = null; try { payload = await response.json(); } catch { if (response.ok) throw new Error("read_invalid"); }
           return { response, payload };
         })(),
+        // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
         new Promise((_, reject) => { timer = setTimeout(() => { reject(new Error("request_timeout")); controller.abort(); }, 15000); }),
       ]);
     } finally { clearTimeout(timer); }
@@ -1193,6 +1194,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         if (focused === editor && selection) { editor.setSelectionRange(selection.start, selection.end, selection.direction); editor.scrollTop = selection.scroll; }
       }
     };
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     sheetAutosaveTimer = setTimeout(autosave, 1000);
   });
   function prepareSheetPrint() {

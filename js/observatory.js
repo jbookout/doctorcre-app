@@ -192,6 +192,7 @@ function render() {
 function toast(text) {
   $('roomToast').textContent = text;
   $('roomToast').hidden = false;
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   setTimeout(() => { $('roomToast').hidden = true; }, 6000);
 }
 

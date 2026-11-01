@@ -586,6 +586,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (delta) win.scrollBy(0, delta);
       highlightDrop(touch.x, touch.y);
     }
+    // eslint-disable-next-line no-restricted-syntax -- 1800 drag frames, then stopTouch. No reads or retries; browser frame cadence Stops when hidden, on pointer release/cancel, when touch is absent, or at the frame cap
     scrollFrame = win.requestAnimationFrame(scrollTouch);
   }
   board.addEventListener("pointerdown", event => {
@@ -593,6 +594,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     stopTouch(); const card = handle.closest("[data-lead-id]");
     board.dataset.touchDragging = "true";
     touch = { frames: 0, id: card.dataset.leadId, handle, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
+    // eslint-disable-next-line no-restricted-syntax -- 1800 drag frames, then stopTouch. No reads or retries; browser frame cadence Stops when hidden, on pointer release/cancel, when touch is absent, or at the frame cap
     handle.setPointerCapture?.(event.pointerId); scrollFrame = win.requestAnimationFrame(scrollTouch);
   });
   board.addEventListener("pointermove", event => { if (!touch || touch.pointer !== event.pointerId) return; touch.x = event.clientX; touch.y = event.clientY; highlightDrop(touch.x, touch.y); });
@@ -639,6 +641,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
   const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
+  // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
   return { state, refresh, openReview, readDetail, dispose() { reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };

@@ -182,6 +182,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
         const button=root.ownerDocument.createElement("button");button.type="button";button.className="market-marker";button.dataset.mapMarker=key;
         item={button,features:cluster.features,marker:new gl.Marker({element:button}).setLngLat(cluster.features[0].geometry.coordinates).addTo(map)};
         button.addEventListener("mouseenter", () => openPreview(item));
+        // eslint-disable-next-line no-restricted-syntax -- 0 automatic HTTP reads; local state or input handling only. No network retry in this listener Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll
         button.addEventListener("focus", () => openPreview(item));
         button.addEventListener("blur", () => { if (preview?.item === item && !preview.element.matches(":hover")) closePreview(); });
         button.addEventListener("click",()=>{

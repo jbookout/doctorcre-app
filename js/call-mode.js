@@ -108,8 +108,10 @@ export function createCallMode(deps) {
   const toast = deps.toast || (() => {});
   const dealName = deps.dealName || (() => undefined);
   const dateLabel = deps.dateLabel || dayLabel;
+  // eslint-disable-next-line no-restricted-syntax -- Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks. Local repaint only; callback error stops the clock without retry The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal
   const timers = { setInterval: deps.setInterval || ((...a) => setInterval(...a)),
     clearInterval: deps.clearInterval || ((h) => clearInterval(h)),
+    // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
     setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
     clearTimeout: deps.clearTimeout || ((h) => clearTimeout(h)) };
   const state = { callMode: { state: 'idle' }, postCall: idlePostCall(), pollTimer: null,

@@ -59,6 +59,7 @@ function setTargets(cards) {
 }
 async function readQueue() {
   const controller = new AbortController(); let timer;
+  // eslint-disable-next-line no-restricted-syntax -- 1 callback per explicit dispatch; no self-rearm. No automatic retry; deadline, debounce, paint, or completion callback only Completes once or is cancelled/replaced by its owner; never schedules repeating idle work
   const deadline = new Promise((_,reject) => { timer = setTimeout(() => { reject(new Error('Queue read timed out')); controller.abort(); },10000); });
   const read = async () => {
     const response = await sessionFetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});
