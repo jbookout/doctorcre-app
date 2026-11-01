@@ -88,6 +88,35 @@
       "pending": "Use the existing list-email-proposals {status:approved_to_send,limit:20,cursor?} read, which returns email-proposals.v1 in creation order oldest first. Home filters reply_draft.owner against the verified signed-in partner and displays submitted_email.subject with pending delivery wording. The recent mode does not include pending replies. Each stream pages only on request; a filtered pending page may have no matching rows and more:true.",
       "privacy": "Recent outcomes contain no body, recipients, addresses or free-text failure reason. Home projects only subject, deal, status, recorded time and allowlisted reason labels; it never renders pending body or addresses. Team scope does not broaden reply delivery. Session loss or identity change clears retained rows and fences in-flight reads.",
       "deployment_order": "Do not enable auto-merge. Production must serve server PR #2608 at the pinned merged revision before the orchestrator merges this consumer."
+    },
+    "edit": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "c68a101b999bdd8319f8d8c2a0ea63c03a2e17d5",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2847"
+      },
+      "contract": "carr-email-reply-draft.v1 1.1.0",
+      "verb": "edit-email-draft",
+      "arguments": [
+        "proposal_id",
+        "base_version",
+        "subject",
+        "body",
+        "idempotency_key"
+      ],
+      "authority": "Verified owning human partner only. Pending reply drafts only.",
+      "receipt": "ok:true, proposal_id, incremented version, exact subject and body. Saves no recipients, status or send state; sends and queues nothing.",
+      "refusals": [
+        "version_conflict",
+        "email_draft_not_found",
+        "email_draft_not_owner",
+        "email_draft_not_pending",
+        "email_draft_empty_body",
+        "email_draft_subject_invalid",
+        "invalid_field_value",
+        "key_reuse"
+      ],
+      "recovery": "Keep edits on refusal. Version conflicts require explicit Reload draft and review, never automatic retry. Unknown outcomes retain the exact request and key for Check outcome. Session loss clears private content."
     }
   },
   "filing": {

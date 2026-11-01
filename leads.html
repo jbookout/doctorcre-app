@@ -22,6 +22,7 @@
 <output id="filterSummary" aria-live="polite"></output>
 </section>
 <p id="leadBoardError" role="alert" hidden></p><label class="stage-nav">Stage<select id="stageFilter" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><span class="sr-only" role="status">Loading leads…</span></div>
+<section id="quietFollowUps" class="quiet-follow-ups" aria-labelledby="quietFollowTitle" aria-busy="true"><div class="section-heading"><h2 id="quietFollowTitle">Quiet leads</h2></div><div id="quietFollowUpsBody"><p role="status">Loading follow-ups…</p></div></section>
 <section id="leadTerritory" class="territory" aria-labelledby="territoryTitle"><div class="section-heading"><h2 id="territoryTitle">Territory</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time><button id="clearMarket" hidden>All markets</button></div><button id="showTerritory" type="button" aria-controls="territoryMap" aria-expanded="false">Show territory</button><div id="territoryMap" aria-label="Lead count by market" role="region" hidden></div><details id="mapLeadMembers"><summary>Map leads</summary><div></div></details><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">Market areas only · U.S. Census · 2025</small></section>
 </main>
 <dialog id="leadDetail" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle"></h2><button id="closeDetail" aria-label="Close lead details">×</button></div><div id="detailBody"></div></dialog>

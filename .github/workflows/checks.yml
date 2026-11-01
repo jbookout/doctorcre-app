@@ -50,6 +50,7 @@ jobs:
           path: carr-producer
           fetch-depth: 0
           persist-credentials: false
+      - run: npm ci --prefix ../carr-producer/mcp-server
       - run: node --test test/property-producer.test.mjs test/room-write-contract.test.mjs
         name: Verify the exact CARR runtime interface
         env:
@@ -68,6 +69,16 @@ jobs:
         run: |
           printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
       - run: npx playwright install --with-deps chromium webkit
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version-file: carr-producer/.python-version
+      - run: python3 -m pip install -r ../carr-producer/requirements.lock
+      - run: bash ../carr-producer/ops/ci-postgres.sh
+      - name: Verify signed-in Calendar through the app and CARR Workers
+        run: node --test test/calendar-access-browser.test.mjs
+        env:
+          CARR_LOCAL_PG_BIN_DIR: /usr/lib/postgresql/17/bin
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - name: Verify Control Room attention and title behavior
         if: ${{ github.event_name == 'pull_request' }}
         run: npx playwright test --project=fixtures tests/fixtures/control-room-c3.spec.mjs tests/fixtures/control-room-queue.spec.mjs

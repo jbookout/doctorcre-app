@@ -1510,6 +1510,12 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async answerBoardQuestion({ board_id, question_id, base_version, answer_text, idempotency_key }) {
+      if (board_id !== 'calendar-agenda' || !/^[0-9a-f]{16}$/.test(question_id) || base_version !== 1 || answer_text !== 'Dismiss')
+        throw new Error('Invalid calendar answer');
+      return withIdem(idempotency_key, () => ({ ok: true, answer: { question_id, answer_text } }));
+    },
+
     async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         getDealOrThrow(ref);
@@ -3061,7 +3067,7 @@ export async function createFixtureClient(opts = {}) {
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true, filingProposals: opts.emailFilingProposals === true, nonDealProposals: opts.emailNonDealProposals === true }));
   Object.assign(client, Object.fromEntries([
     'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
-    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
+    'confirmEmailFiling', 'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'editEmailDraft', 'submitEmailDraft',
   ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
 }

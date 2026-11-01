@@ -1,4 +1,4 @@
-import { validEmailDraftReceipt } from './email-draft.js';
+import { validEmailDraftReceipt, validEmailDraftSaveReceipt } from './email-draft.js';
 import { sessionFetch } from './private-session.js';
 import { PHASE_BY_SLUG } from './client.js';
 import { requireReviewReceipt } from './deal-review-model.js';
@@ -60,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-filing', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'edit-email-draft', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -126,6 +126,8 @@ export function createLiveClient(opts = {}) {
         throw unknownMcpOutcome(new Error('Email confirmation receipt unavailable'));
       return { ...payload, ok: true };
     }
+    if (verb === 'edit-email-draft' && !validEmailDraftSaveReceipt(payload, args))
+      throw unknownMcpOutcome(new Error('Draft save receipt unavailable'));
     if (verb === 'submit-email-draft' && !validEmailDraftReceipt(payload, args))
       throw unknownMcpOutcome(new Error('Reply submission receipt unavailable'));
     return payload;
@@ -363,6 +365,7 @@ export function createLiveClient(opts = {}) {
     async confirmEmailFiling(args) { return write('confirm-email-filing', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
+    async editEmailDraft(args) { return write('edit-email-draft', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },
     async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
     async listEmailThreadFilings() { return rpc('list-email-thread-filings', {}); },
