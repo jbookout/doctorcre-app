@@ -416,7 +416,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       }
       const { mountDealUpdateReviews } = await import('./ui.generated.js');
       if (stale()) return;
-      overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result, workCard, sourceTime, escapeText: E, readWithDeadline, uuidv4,
+      overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result, sourceTime, readWithDeadline, uuidv4,
         onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });
       await overdueReviews.refresh();
     } catch {

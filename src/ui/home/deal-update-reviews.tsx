@@ -1,46 +1,55 @@
+import { Fragment } from 'react';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+
 type Assessment = { review_required: boolean; reason?: string; action: { id: string; description: string }; update: string; quote?: string | null };
 type Proposal = { assessment_id: string; deal_id: string; deal_name: string; confirm_verb: string; assessment: Assessment; automatic?: false };
 type Automatic = { assessment_id: string; deal_id: string; deal_name: string; action_title: string; quote: string; resolved_at: string; undo_possible: boolean; automatic: true };
 type Row = Proposal | Automatic;
 type Response = { schema_version: string; proposals: Proposal[]; automatic_resolutions?: Omit<Automatic, 'automatic'>[] };
 type Request = { assessment_id: string; decision: string; reason: string; idempotency_key: string };
-type Decision = { state: string; request?: Request; message?: string };
+type Decision = { state: 'submitting' | 'unknown' | 'done' | 'refused' | 'not-owner'; request?: Request; message?: string };
 type RpcError = { status?: number; code?: string; payload?: { error?: string } };
 type Options = {
   container: HTMLElement;
   client: { readDealUpdateReviews(): Promise<Response>; reviewDealUpdate(request: Request): Promise<{ ok: boolean; decision: string; action_id: string }> };
   initialResult?: Response;
   onChange?: () => void;
-  workCard(options: { className: string; attributes: string; title: string; meta: string; body: string; actions: string }): string;
   sourceTime(value: string, now: undefined, fallback: string): string;
-  escapeText(value: string): string;
   readWithDeadline<T>(read: () => Promise<T>, options: { timeoutMs: number }): Promise<T>;
   uuidv4(): string;
 };
 
-export function mountDealUpdateReviews({ container, client, initialResult, onChange = () => {}, workCard, sourceTime, escapeText: E, readWithDeadline, uuidv4 }: Options) {
-  let rows: Row[] = [], state: string = 'loading', epoch = 0, disposed = false;
+export function mountDealUpdateReviews({ container, client, initialResult, onChange = () => {}, sourceTime, readWithDeadline, uuidv4 }: Options) {
+  let rows: Row[] = [], state: 'loading' | 'ready' | 'error' | 'denied' = 'loading', epoch = 0, disposed = false;
   const decisions = new Map<string, Decision>();
   const win = container.ownerDocument.defaultView;
   let count = win?.matchMedia?.('(max-width: 700px)').matches ? 1 : 2;
   const refusals: Record<string, string> = { overdue_action_changed: 'The task changed. Refresh overdue reviews before deciding again.', assessment_already_reviewed: 'This was already reviewed by the other partner.', partner_required: 'A partner is required to review this task.', newer_change_exists: "A newer change was made to this task, so this can't be undone here.", assessment_not_found: 'This update is no longer waiting for review.', not_action_owner: 'Only the task owner can review this task.' };
-  const button = (action: string, label: string, disabled = false) => `<button type="button" class="btn home-outline" data-update-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
+  const root = createRoot(container);
+  const button = (action: string, label: string, disabled = false) => <button type="button" className="btn home-outline" data-update-action={action} disabled={disabled}>{label}</button>;
   function render() {
     const active = container.ownerDocument.activeElement;
     const focused = active instanceof (win?.HTMLElement || HTMLElement) && container.contains(active) ? active : null;
     const focusId = focused?.closest<HTMLElement>('[data-update-id]')?.dataset.updateId, focusAction = focused?.dataset.updateAction;
     container.setAttribute('aria-busy', String(state === 'loading'));
-    container.innerHTML = `<header class="home-panel-head"><h2>Overdue tasks to review</h2>${Math.max(0, rows.length - count) > 0 ? `<span class="home-list-count">Showing ${Math.min(count, rows.length)} of ${rows.length}</span>` : ""}</header>${state === 'denied' ? '<p role="status">Sign in to review overdue tasks.</p>' : state === 'error' ? `<p role="status">Could not load overdue reviews.</p>${button('refresh', 'Retry overdue reviews')}` : state === 'loading' ? '<p role="status">Loading overdue reviews…</p>' : !rows.some(row => !row.automatic) ? '<p class="home-empty">No overdue reviews.</p>' : ''}${rows.slice(0, count).map((row, index) => {
-      const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
-      const disabled = state !== 'ready' || pending;
-      const automatic = row.automatic;
-      const assessing = !automatic && ['awaiting_assessment', 'assessment_in_progress', 'interrupted'].includes(row.assessment.reason || '');
-      return `${automatic && (index === 0 || !rows[index - 1]?.automatic) ? '<div class="detail-section"><h3>Closed automatically</h3></div>' : ''}${workCard({ className: 'email-proposal', attributes: `data-update-id="${E(row.assessment_id)}"`,
-        title: `<a href="/deals?deal=${encodeURIComponent(row.deal_id)}">${E(row.deal_name)}</a>`,
-        meta: automatic ? `<p>Task · ${E(row.action_title)}</p><p>Closed · ${E(sourceTime(row.resolved_at, undefined, 'Date unavailable'))}</p>` : `<p>Overdue task · ${E(row.assessment.action.description)}</p>`,
-        body: `<q>${E(automatic ? row.quote : row.assessment.quote || row.assessment.update)}</q>${automatic ? '' : `<p class="email-change">${assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>`}${decision?.message ? `<p role="status">${E(decision.message)}</p>` : ''}`,
-        actions: `<div class="email-controls">${assessing || decision?.state === 'done' || decision?.state === 'not-owner' ? '' : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : automatic ? row.undo_possible ? button('undo', pending ? 'Saving…' : 'Undo', disabled) : '' : `${button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}${button('dismiss', 'Dismiss', disabled)}`}</div>` })}`;
-    }).join('')}${Math.max(0, rows.length - count) > 0 ? button('show', `Show ${Math.max(0, rows.length - count)} more`) : ''}`;
+    flushSync(() => root.render(<>
+      <header className="home-panel-head"><h2>Overdue tasks to review</h2>{rows.length > count && <span className="home-list-count">Showing {Math.min(count, rows.length)} of {rows.length}</span>}</header>
+      {state === 'denied' ? <p role="status">Sign in to review overdue tasks.</p> : state === 'error' ? <><p role="status">Could not load overdue reviews.</p>{button('refresh', 'Retry overdue reviews')}</> : state === 'loading' ? <p role="status">Loading overdue reviews…</p> : !rows.some(row => !row.automatic) ? <p className="home-empty">No overdue reviews.</p> : null}
+      {rows.slice(0, count).map((row, index) => {
+        const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
+        const disabled = state !== 'ready' || pending;
+        const automatic = row.automatic;
+        const assessing = !automatic && ['awaiting_assessment', 'assessment_in_progress', 'interrupted'].includes(row.assessment.reason || '');
+        return <Fragment key={row.assessment_id}>{automatic && (index === 0 || !rows[index - 1]?.automatic) && <div className="detail-section"><h3>Closed automatically</h3></div>}<article className="work-card work-card--stack email-proposal" data-update-id={row.assessment_id}>
+          <h3 className="work-card-title"><a href={`/deals?deal=${encodeURIComponent(row.deal_id)}`}>{row.deal_name}</a></h3>
+          <div className="work-card-meta">{automatic ? <><p>Task · {row.action_title}</p><p>Closed · {sourceTime(row.resolved_at, undefined, 'Date unavailable')}</p></> : <p>Overdue task · {row.assessment.action.description}</p>}</div>
+          <div className="work-card-body"><q>{automatic ? row.quote : row.assessment.quote || row.assessment.update}</q>{!automatic && <p className="email-change">{assessing ? 'Still assessing this update.' : 'Mark this overdue task as done.'}</p>}{decision?.message && <p role="status">{decision.message}</p>}</div>
+          <div className="work-card-actions"><div className="email-controls">{assessing || decision?.state === 'done' || decision?.state === 'not-owner' ? null : decision?.state === 'refused' ? button('refresh', 'Refresh overdue reviews') : unknown ? button('replay', 'Check outcome', disabled) : automatic ? row.undo_possible ? button('undo', pending ? 'Saving…' : 'Undo', disabled) : null : <>{button('resolve', pending ? 'Saving…' : 'Confirm', disabled)}{button('dismiss', 'Dismiss', disabled)}</>}</div></div>
+        </article></Fragment>;
+      })}
+      {rows.length > count && button('show', `Show ${rows.length - count} more`)}
+    </>));
     if (focused) {
       const article = [...container.querySelectorAll<HTMLElement>('[data-update-id]')].find(node => node.dataset.updateId === focusId);
       const target = [...(article || container).querySelectorAll<HTMLButtonElement>('button:not(:disabled)')].find(node => node.dataset.updateAction === focusAction) || article?.querySelector<HTMLElement>('button:not(:disabled), a') || container.querySelector<HTMLElement>('button:not(:disabled)');
@@ -57,7 +66,7 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       const result = initialResult ?? await readWithDeadline(() => client.readDealUpdateReviews(), { timeoutMs: 10_000 });
       initialResult = undefined;
       if (disposed || ticket !== epoch) return;
-      const ids = new Set();
+      const ids = new Set<string>();
       if (result?.schema_version !== 'deal-update-reviews.v1' || !Array.isArray(result.proposals) || result.proposals.length > 200) throw Error('Invalid overdue reviews');
       const next: Row[] = result.proposals.filter(row => {
         const valid = row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name
@@ -121,5 +130,5 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
   container.addEventListener('click', click);
   win?.addEventListener('doctorcre-session-invalidated', retire);
   render();
-  return { refresh, click, dispose() { disposed = true; epoch++; rows = []; decisions.clear(); container.replaceChildren(); container.removeEventListener('click', click); win?.removeEventListener('doctorcre-session-invalidated', retire); } };
+  return { refresh, click, dispose() { disposed = true; epoch++; rows = []; decisions.clear(); flushSync(() => root.unmount()); container.removeEventListener('click', click); win?.removeEventListener('doctorcre-session-invalidated', retire); } };
 }
