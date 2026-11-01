@@ -1,7 +1,7 @@
 {
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "728fc86bcc54eb15a7b129a8a0500b25ada6dcc0",
+    "source_commit": "1557e82ab39058ffac076c5eb6e849e5639edffd",
     "source": "mcp-server/src/org-conventions.js"
   },
   "read": {
@@ -36,9 +36,27 @@
     "receipt": [
       "ok",
       "rule_id",
-      "retired_section_id"
+      "card_id",
+      "load_layer",
+      "packs",
+      "approval",
+      "retired_rule_ids",
+      "retired_section_id",
+      "attach_id",
+      "generation"
     ],
     "authentication": "Partner's own same-origin session with x-carr-csrf; no machine identity.",
-    "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome."
+    "recovery": "version_conflict requires a fresh read and another review. Unknown outcomes retain and replay the exact session-bound request under Check outcome.",
+    "confirmation": "Require every receipt field. All UUIDs use the canonical lowercase 36-character form; generation is a positive safe integer. Retirement-only has null rule_id, card_id, load_layer and approval, empty packs and nonempty retired_rule_ids. Replacements use pack delivery with null card_id and nonempty packs, or control delivery with nonempty card_id and empty packs; approval is complete, matches rule_id, and records active authority_enforced approval with human_authority_runtime installed and no pending controls. Retirement IDs and packs are sorted and unique. The write envelope may add replayed:true. No digest or hash fields are returned by this pinned receipt; approval_receipt_id is a UUID. Missing, mistyped or unrecognized fields leave the outcome unknown.",
+    "approval_receipt": [
+      "ok",
+      "replayed",
+      "rule_id",
+      "policy_status",
+      "enforcement_status",
+      "installed_controls",
+      "pending_controls",
+      "approval_receipt_id"
+    ]
   }
 }

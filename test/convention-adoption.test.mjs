@@ -1,3 +1,4 @@
+import { retirementReceipt, replacementReceipt, sectionId, retiredRuleId } from './fixtures/convention-receipts.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import { JSDOM } from 'jsdom';
 import { mountBoard } from '../js/progress-board.js';
 import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
-import { validGovernanceQueuePayload } from '../js/operations-model.js';
+import { validConventionAdoptionReceipt, validGovernanceQueuePayload } from '../js/operations-model.js';
 
 const html = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
 const seed = await readFile(new URL('../data/board-seed.json', import.meta.url), 'utf8');
@@ -71,7 +72,7 @@ test('version conflict rereads the proposal and requires another review with a f
       queue.pending_convention_proposals[0].statement = 'Demo changed text.';
       throw Object.assign(new Error('conflict'), { payload: { error: 'version_conflict' } });
     }
-    return { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+    return replacementReceipt(args.section_id);
   } });
   let form = page.doc.querySelector('[data-convention] form');
   form.querySelector('textarea').value = 'Demo reviewed.';
@@ -92,7 +93,7 @@ test('unknown outcome retains the full request and visible proposal even if a po
   const page = await mount(t, { adoptRule: async args => {
     writes.push(structuredClone(args));
     if (writes.length === 1) throw new Error('Demo lost response');
-    return { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+    return replacementReceipt(args.section_id);
   } });
   const form = page.doc.querySelector('[data-convention] form');
   const reason = form.querySelector('textarea');
@@ -128,12 +129,12 @@ test('proposal content is literal and non-adoptable proposals explain why', asyn
 test('live adoption sends exact args under the partner session and CSRF, retaining an unknown receipt', async () => {
   const writes = [];
   let actor = 'joe';
-  const args = { idempotency_key: crypto.randomUUID(), section_id: 'demo-section', base_version: 7, reason: 'Demo review.' };
+  const args = { idempotency_key: crypto.randomUUID(), section_id: sectionId, base_version: 7, reason: 'Demo review.' };
   const client = createLiveClient({ fetchImpl: async (path, init) => {
     if (path === '/auth/session') return Response.json({ actor: { slug: actor }, csrf_token: `synthetic-${actor}` });
     const call = JSON.parse(init.body).params;
     writes.push({ call, headers: init.headers });
-    const result = writes.length === 1 ? { ok: true } : { ok: true, rule_id: 'demo-rule', retired_section_id: args.section_id };
+    const result = writes.length === 1 ? { ok: true } : replacementReceipt(args.section_id);
     return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
   } });
   await assert.rejects(client.adoptRule(args), { code: 'unknown_outcome' });
@@ -185,3 +186,68 @@ test('unpublished progress snapshot does not hide independently loaded approvals
   await page.board.refresh(true);
   assert.equal(page.doc.querySelectorAll('[data-convention]').length, 2);
 });
+
+test('retirement-only adoption confirms the consumed proposal without a replacement rule', async t => {
+  const page = await mount(t, { adoptRule: async args => retirementReceipt(args.section_id) });
+  const form = page.doc.querySelector('[data-convention] form');
+  form.querySelector('textarea').value = 'Retire the obsolete demo instruction.';
+  await page.submit(form);
+  assert.equal(page.doc.querySelectorAll('[data-convention]').length, 1);
+  assert.equal(page.doc.querySelector('#conventionStatus').textContent, 'Adopted');
+});
+
+test('live retirement-only receipts confirm a replay with the original request and CSRF', async () => {
+  const writes = [];
+  const args = { idempotency_key: crypto.randomUUID(), section_id: sectionId, base_version: 1, reason: 'Retire the demo rule.' };
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-joe' });
+    writes.push({ call: JSON.parse(init.body).params, csrf: new Headers(init.headers).get('x-carr-csrf') });
+    const receipt = writes.length === 1 ? { ok: true } : retirementReceipt(args.section_id);
+    return Response.json({ result: { content: [{ text: JSON.stringify(receipt) }] } });
+  } });
+  await assert.rejects(client.adoptRule(args), { code: 'unknown_outcome' });
+  const receipt = await client.adoptRule(args);
+  assert.deepEqual(receipt.retired_rule_ids, [retiredRuleId]);
+  assert.equal(receipt.rule_id, null);
+  assert.deepEqual(writes, [1, 2].map(() => ({ call: { name: 'adopt-rule', arguments: args }, csrf: 'synthetic-joe' })));
+});
+
+for (const [name, malformed] of [
+  ['malformed retirement UUID', section => ({ ...retirementReceipt(section), retired_rule_ids: ['not-a-uuid'] })],
+  ['truncated retirement receipt', section => ({ ok: true, rule_id: null, retired_rule_ids: [retiredRuleId], retired_section_id: section })],
+  ['missing rule_id', section => { const receipt = retirementReceipt(section); delete receipt.rule_id; return receipt; }],
+  ['replacement with a non-array retirement list', section => ({ ...replacementReceipt(section), retired_rule_ids: 'bad' })],
+]) {
+  test(`live client keeps ${name} unknown and retains the request for replay`, async () => {
+    const writes = [];
+    const args = { idempotency_key: crypto.randomUUID(), section_id: sectionId, base_version: 1, reason: 'Demo reviewed.' };
+    const client = createLiveClient({ fetchImpl: async (path, init) => {
+      if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-joe' });
+      writes.push(JSON.parse(init.body).params.arguments);
+      const receipt = writes.length === 1 ? malformed(args.section_id) : retirementReceipt(args.section_id);
+      return Response.json({ result: { content: [{ text: JSON.stringify(receipt) }] } });
+    } });
+    await assert.rejects(client.adoptRule(args), { code: 'unknown_outcome' });
+    assert.deepEqual((await client.adoptRule(args)).retired_rule_ids, [retiredRuleId]);
+    assert.deepEqual(writes, [args, args]);
+  });
+
+  test(`board keeps ${name} unknown and preserves the proposal for replay`, async t => {
+    const writes = [];
+    const page = await mount(t, { adoptRule: async args => {
+      writes.push(structuredClone(args));
+      return writes.length === 1 ? malformed(args.section_id) : retirementReceipt(args.section_id);
+    } });
+    const form = page.doc.querySelector('[data-convention] form');
+    form.querySelector('textarea').value = 'Demo reviewed.';
+    await page.submit(form);
+    assert.equal(page.doc.querySelectorAll('[data-convention]').length, 2);
+    assert.equal(form.querySelector('button').textContent, 'Check outcome');
+    assert.equal(form.querySelector('textarea').disabled, true);
+    assert.match(form.textContent, /Outcome unknown/i);
+    await page.submit(form);
+    assert.deepEqual(writes[1], writes[0]);
+    assert.equal(page.doc.querySelectorAll('[data-convention]').length, 1);
+    assert.equal(page.doc.querySelector('#conventionStatus').textContent, 'Adopted');
+  });
+}
