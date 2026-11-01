@@ -1,0 +1,95 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "9dbd98a9e7e92967fb7a3e62deed00438234dc6a",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2742"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "before_id": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,18}$"
+      }
+    }
+  },
+  "response": {
+    "contract": "practice-origination.v1",
+    "required_keys": [
+      "ok",
+      "contract",
+      "cards",
+      "next_cursor",
+      "coverage",
+      "outreach_started"
+    ],
+    "card_keys": [
+      "id",
+      "source",
+      "record_key",
+      "npi",
+      "name",
+      "city",
+      "state",
+      "kind",
+      "evidence_date",
+      "date_basis",
+      "source_url",
+      "facts",
+      "published_on",
+      "recorded_at",
+      "route",
+      "client_refs",
+      "client_ids",
+      "why_now"
+    ],
+    "kinds": [
+      "enumeration",
+      "registry_update",
+      "pecos_observation",
+      "pecos_correction"
+    ],
+    "date_basis": [
+      "enumeration",
+      "registry_update",
+      "publication"
+    ],
+    "routes": [
+      "research",
+      "relationship_follow_up",
+      "identity_review"
+    ],
+    "coverage_keys": [
+      "source",
+      "enabled",
+      "coverage",
+      "status"
+    ],
+    "coverage_optional_keys": [
+      "terms_url",
+      "access_terms",
+      "rate_control",
+      "recovery",
+      "reason",
+      "checkpoint",
+      "published_on",
+      "detail",
+      "updated_at"
+    ],
+    "coverage_statuses": [
+      "available",
+      "blocked",
+      "unavailable",
+      "uncovered"
+    ],
+    "outreach_started": false,
+    "ordering": "Latest card per source record, id descending; next_cursor pages with before_id. Routes reflect current relationships. Registry and publication dates do not prove practice opening. No term estimates are supplied."
+  }
+}

@@ -57,6 +57,7 @@ export function createLeadBoardClient(options = {}) {
       return typeof actor === "string" && actor.trim() ? actor : null;
     }, { timeoutMs: options.timeoutMs || 10_000 }),
     getLeadBoard: (options = {}) => rpc("lead-board", {}, false, options),
+    listPracticeOrigination: ({signal, ...args} = {}) => rpc('list-practice-origination', args, false, {signal}),
     getWorkspace: async () => validateLeadWorkspace(await rpc("lead-board", { workspace: "leads" })),
     getLeadDetail: async (lead, { correspondence_cursor, stage_history_cursor } = {}) => {
       const payload = validateLeadWorkspace(await rpc("lead-board", { workspace: "leads", lead_id: lead.id, ...(correspondence_cursor ? { correspondence_cursor } : {}), ...(stage_history_cursor ? { stage_history_cursor } : {}) }));
