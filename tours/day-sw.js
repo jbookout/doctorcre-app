@@ -4,7 +4,7 @@ importScripts("/tours/day-shell.generated.js");
 const { cache: CACHE, files: FILES } = self.TOUR_DAY_SHELL;
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener("activate", event => event.waitUntil((async () => {
-  // eslint-disable-next-line no-restricted-syntax -- Activation visits the finite cache-name snapshot 1 time and deletes each obsolete tour shell at most 1 time.
+  // eslint-disable-next-line no-restricted-syntax -- Activation visits the finite cache-name snapshot once and deletes each obsolete tour shell only once.
   for (const name of await caches.keys()) {
     if (name.startsWith("doctorcre-tour-day-shell-") && name !== CACHE) await caches.delete(name);
   }

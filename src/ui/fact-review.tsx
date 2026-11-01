@@ -107,7 +107,7 @@ function Comparison({ client, entityRef, terms, signal }: Options & { signal: Ab
       if (!pending.current) {
         const items: Item[] = []; let cursor: string | undefined;
         const takePage = createPageBudget();
-        // eslint-disable-next-line no-restricted-syntax -- Fact-review pagination calls takePage before each read; at most 100 pages before the batch stops.
+        // eslint-disable-next-line no-restricted-syntax -- Fact-review pagination calls takePage before each read; a max of 100 pages before the batch stops.
         do {
           takePage();
           const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
@@ -179,7 +179,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     try {
       const loaded: Document[] = []; let cursor: string | undefined;
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Document pagination has both a 100-iteration bound and takePage before each read.
+      // eslint-disable-next-line no-restricted-syntax -- Document pagination has a max of 100 iterations and consumes takePage before each read.
       for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
         takePage();
         const page = await client.listDealDocuments({ deal_id: entityRef, limit: 100, ...(cursor ? { cursor } : {}) });

@@ -148,7 +148,7 @@ export function privateSession() {
     return session;
   } });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
-  // eslint-disable-next-line no-restricted-syntax -- Restored pages verify 1 time per persisted pageshow before unlocking controls; the verifier uses the document request budget.
+  // eslint-disable-next-line no-restricted-syntax -- Restored pages verify once per persisted pageshow before unlocking controls; the document request budget limits the verifier.
   win.addEventListener('pageshow', event => {
     if (!event.persisted) return;
     if (browserBoundary.revoked) { win.location.replace('/public-shell/session-ended.html'); return; }

@@ -798,10 +798,10 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       const t = Math.min(1, (stamp - started) / 300);
       const eased = 1 - (1 - t) * (1 - t);
       node.textContent = format(Math.round(from + (target - from) * eased));
-      // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
+      // eslint-disable-next-line no-restricted-syntax -- Count animation has a max of 180 frames or 300ms; hidden state terminates local repainting.
       if (t < 1) requestAnimationFrame(step);
     };
-    // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
+    // eslint-disable-next-line no-restricted-syntax -- Starts a single count animation capped at 180 frames or 300ms; hidden state terminates repainting.
     requestAnimationFrame(step);
   }
 
@@ -1058,7 +1058,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       chip.textContent = "RECONNECT";
       chip.style.setProperty("fill", "var(--status-warn-ink)");
       chip.style.setProperty("cursor", "pointer");
-      // eslint-disable-next-line no-restricted-syntax -- 1 reconnect request per clicked sign-in chip; requestReconnect retains the original idempotency key.
+      // eslint-disable-next-line no-restricted-syntax -- Only a sign-in chip click requests reconnect with the original retained idempotency key.
       chip.addEventListener("click", (event) => { event.stopPropagation(); requestReconnect(node.label); });
       group.appendChild(chip);
     }
@@ -1068,7 +1068,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     group.appendChild(title);
 
     group.addEventListener("pointerenter", () => showTooltip(node, point));
-    // eslint-disable-next-line no-restricted-syntax -- Focus shows the cached worker tooltip; 0 HTTP reads.
+    // eslint-disable-next-line no-restricted-syntax -- Focus only displays the cached worker tooltip; it performs no HTTP reads.
     group.addEventListener("focus", () => showTooltip(node, point));
     group.addEventListener("pointerleave", hideTooltip);
     group.addEventListener("blur", hideTooltip);
@@ -1147,13 +1147,13 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       place(head, 0);
       place(trail[0], direction === "out" ? -0.035 : 0.035);
       place(trail[1], direction === "out" ? -0.07 : 0.07);
-      // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
+      // eslint-disable-next-line no-restricted-syntax -- Comet animation has a max of 600 frames or 2200ms; hidden state removes the comet.
       if (t < 1) { requestAnimationFrame(step); return; }
       comet.remove();
       cometCounts.set(nodeId, Math.max(0, (cometCounts.get(nodeId) || 1) - 1));
       litBadge(nodeId);
     };
-    // eslint-disable-next-line no-restricted-syntax -- 180 count frames / 300ms; 600 comet frames / at most 2200ms. No reads or retries; browser frame cadence Hidden stops the animation and removes the comet; duration and frame caps always terminate
+    // eslint-disable-next-line no-restricted-syntax -- Starts a single comet animation capped at 600 frames or 2200ms; hidden state removes it.
     requestAnimationFrame(step);
   }
 
@@ -1270,7 +1270,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     card.addEventListener("click", (event) => {
       if (card.dataset.auth === "false" && event.target.closest(".assignment-badge")) {
         event.preventDefault();
-        // eslint-disable-next-line no-restricted-syntax -- 1 reconnect request per explicit desk-card click, using the retained reconnect request.
+        // eslint-disable-next-line no-restricted-syntax -- Only an explicit desk-card click requests reconnect using the retained request.
         requestReconnect(card.dataset.desk);
         return;
       }
@@ -1891,12 +1891,12 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     if (retry) {
       const button = el("button", null, "Retry");
       button.type = "button";
-      // eslint-disable-next-line no-restricted-syntax -- Retry callback fires 1 time per toast-button click; hiding the toast prevents background retries.
+      // eslint-disable-next-line no-restricted-syntax -- Only a toast-button click invokes retry; hiding the toast prevents background retries.
       button.addEventListener("click", () => { host.hidden = true; retry(); });
       host.appendChild(button);
     }
     host.hidden = false;
-    // eslint-disable-next-line no-restricted-syntax -- One 9-second toast dismissal per toast invocation; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- Each toast invocation schedules a single dismissal after nine seconds without reading data.
     setTimeout(() => { host.hidden = true; }, 9000);
   }
 
@@ -1904,7 +1904,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const host = $("roomBanner");
     host.textContent = message;
     host.hidden = false;
-    // eslint-disable-next-line no-restricted-syntax -- One 6-second success-banner dismissal; failure banners stay visible and no callback retries.
+    // eslint-disable-next-line no-restricted-syntax -- A single callback dismisses a success banner after six seconds; failure banners remain visible.
     if (!bad) setTimeout(() => { host.hidden = true; }, 6000);
   }
 
@@ -1986,7 +1986,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       let from = state.catchUp?.from ?? state.cursor;
       let payload, turns = state.catchUp?.turns || [];
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Initial turn pagination calls takePage before each 200-turn page; at most 100 pages.
+      // eslint-disable-next-line no-restricted-syntax -- Initial turn pagination calls takePage before each 200-turn page; a max of 100 pages.
       do {
         const remaining = takePage();
         payload = await fetchTurns(from, 200);
@@ -2059,7 +2059,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       if (earlier.length < PAGE_SIZE || continuation) {
         if (!continuation) earlier = [];
         const takePage = createPageBudget();
-        // eslint-disable-next-line no-restricted-syntax -- Retained turn catch-up calls takePage before each 200-turn page; at most 100 pages.
+        // eslint-disable-next-line no-restricted-syntax -- Retained turn catch-up calls takePage before each 200-turn page; a max of 100 pages.
         while (true) {
           const remaining = takePage();
           const page = await fetchTurns(from, 200);

@@ -25,7 +25,7 @@ function number(value) { return Number.isInteger(value) && value >= 1; }
 function exactKeys(value, keys) { return object(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)); }
 function compareUtf8(a, b) {
   const aa = new TextEncoder().encode(a); const bb = new TextEncoder().encode(b);
-  // eslint-disable-next-line no-restricted-syntax -- UTF-8 comparison stops at the shorter encoded input length; zero reads.
+  // eslint-disable-next-line no-restricted-syntax -- UTF-8 comparison will stop at the shorter encoded input length; zero reads.
   for (let i = 0; i < Math.min(aa.length, bb.length); i += 1) if (aa[i] !== bb[i]) return aa[i] - bb[i];
   return aa.length - bb.length;
 }
@@ -44,14 +44,14 @@ function sha256(text) {
   const view = new DataView(padded.buffer); view.setUint32(padded.length - 4, bitLength >>> 0, false); view.setUint32(padded.length - 8, Math.floor(bitLength / 0x100000000), false);
   let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
   const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
-  // eslint-disable-next-line no-restricted-syntax -- SHA-256 processes exactly padded.length / 64 blocks; zero reads.
+  // eslint-disable-next-line no-restricted-syntax -- SHA-256 processes only padded.length / 64 blocks; zero reads.
   for (let offset=0; offset<padded.length; offset+=64) {
-    // eslint-disable-next-line no-restricted-syntax -- SHA-256 loads exactly 16 words per block; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- SHA-256 loads only 16 words per block; zero reads.
     const w = new Uint32Array(64); for (let i=0;i<16;i++) w[i]=view.getUint32(offset+i*4,false);
-    // eslint-disable-next-line no-restricted-syntax -- SHA-256 expands words 16 through 63, exactly 48 iterations; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- SHA-256 expands words 16 through 63, only 48 iterations; zero reads.
     for (let i=16;i<64;i++) { const s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3); const s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10); w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0; }
     let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,hh=h7;
-    // eslint-disable-next-line no-restricted-syntax -- SHA-256 compression runs exactly 64 rounds per block; zero reads.
+    // eslint-disable-next-line no-restricted-syntax -- SHA-256 compression runs only 64 rounds per block; zero reads.
     for (let i=0;i<64;i++) { const S1=rotr(e,6)^rotr(e,11)^rotr(e,25); const ch=(e&f)^(~e&g); const t1=(hh+S1+ch+K[i]+w[i])>>>0; const S0=rotr(a,2)^rotr(a,13)^rotr(a,22); const maj=(a&b)^(a&c)^(b&c); const t2=(S0+maj)>>>0; hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0; }
     h0=(h0+a)>>>0;h1=(h1+b)>>>0;h2=(h2+c)>>>0;h3=(h3+d)>>>0;h4=(h4+e)>>>0;h5=(h5+f)>>>0;h6=(h6+g)>>>0;h7=(h7+hh)>>>0;
   }

@@ -51,7 +51,7 @@ export async function readCallContextIndex(client, agenda) {
   const ids = [...allowed];
   const exact = [];
   const takePage = createPageBudget();
-  // eslint-disable-next-line no-restricted-syntax -- Call context batches consume takePage before each batch; at most 100 batches per explicit context load.
+  // eslint-disable-next-line no-restricted-syntax -- Call context batches consume takePage before each batch; a max of 100 batches per explicit context load.
   for (let start = 0; start < ids.length; start += CALL_CONTEXT_BATCH) {
     takePage();
     const answer = await client.getCallContext({ deal_ids: ids.slice(start, start + CALL_CONTEXT_BATCH) });
@@ -112,7 +112,7 @@ export function createCallMode(deps) {
   // eslint-disable-next-line no-restricted-syntax -- Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks. Local repaint only; callback error stops the clock without retry The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal
   const timers = { setInterval: deps.setInterval || ((...a) => setInterval(...a)),
     clearInterval: deps.clearInterval || ((h) => clearInterval(h)),
-    // eslint-disable-next-line no-restricted-syntax -- Post-call poll adapter is bounded by mountVisibilityPoll at 20 attempts, with hidden/idle stops and failure backoff.
+    // eslint-disable-next-line no-restricted-syntax -- Post-call poll adapter is limited by mountVisibilityPoll to a max of 20 attempts, with hidden/idle stops and failure backoff.
     setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
     clearTimeout: deps.clearTimeout || ((h) => clearTimeout(h)) };
   const state = { callMode: { state: 'idle' }, postCall: idlePostCall(), pollTimer: null,

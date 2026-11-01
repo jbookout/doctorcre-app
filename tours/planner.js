@@ -367,7 +367,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   // The first upcoming tours, in library order, that Tour day can open.
   async function showNextTour(revision, signal) {
     const link = $("#next-tour");
-    // eslint-disable-next-line no-restricted-syntax -- Next-tour detail reads are bounded by upcoming.slice(0, 3), at most three tours.
+    // eslint-disable-next-line no-restricted-syntax -- Next-tour detail reads are bounded by upcoming.slice(0, 3), a max of three tours.
     for (const { id } of tourGroups(tours).upcoming.slice(0, 3)) {
       let detail;
       try { detail = validateTourDetail(await api.tour(id, { signal }), id); } catch { continue; }

@@ -30,7 +30,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
           let payload = null; try { payload = await response.json(); } catch { if (response.ok) throw new Error("read_invalid"); }
           return { response, payload };
         })(),
-        // eslint-disable-next-line no-restricted-syntax -- One 15-second tour-request deadline aborts its controller; finally clears the timer.
+        // eslint-disable-next-line no-restricted-syntax -- One 15-second tour-request deadline aborts its controller; the timer is cleared in finally.
         new Promise((_, reject) => { timer = setTimeout(() => { reject(new Error("request_timeout")); controller.abort(); }, 15000); }),
       ]);
     } finally { clearTimeout(timer); }
@@ -436,7 +436,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     if (!missing.size) return;
     let cursor = null;
     const takePage = createPageBudget();
-    // eslint-disable-next-line no-restricted-syntax -- Missing tour candidates consume at most 20 pages, with takePage before every read.
+    // eslint-disable-next-line no-restricted-syntax -- Missing tour candidates consume a max of 20 pages, with takePage before every read.
     for (let page = 0; page < 20 && missing.size; page += 1) {
       takePage();
       const filters = { ...searchFilters(cursor), query: null, counties: [], property_types: [],
@@ -595,7 +595,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
         if (field === "route_label") control.maxLength = 3;
         const locked = composer.base?.stops.find(old => old.property_id === row.property_id)?.locked_appointment;
         control.disabled = !editable || (locked && field !== "route_label") || (row.stop_state !== "active" && field === "route_label");
-        // eslint-disable-next-line no-restricted-syntax -- Chooses change or input for 1 composer control; the handler edits local draft state without automatic reads.
+        // eslint-disable-next-line no-restricted-syntax -- Composer handlers only edit local draft state on input/change; they perform no automatic reads.
         control.addEventListener(type === "checkbox" || type === "select" ? "change" : "input", () => {
           if (!editableComposer()) return; rememberEdit();
           row[field] = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
@@ -708,7 +708,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   async function runComposerPlan(current) {
     const plan = current.plan;
     try {
-      // eslint-disable-next-line no-restricted-syntax -- Save advances plan.index 1 time per successful step and stops at plan.steps.length; failures return to explicit retry.
+      // eslint-disable-next-line no-restricted-syntax -- Save advances plan.index once per successful step and will stop at plan.steps.length; failures return to explicit retry.
       for (; plan.index < plan.steps.length; plan.index++) {
         const step = plan.steps[plan.index];
         if (step.path === "/api/tours/route-stop") step.body.route_version_id = plan.routeId;

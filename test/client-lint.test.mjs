@@ -88,9 +88,9 @@ for (const source of [
   });
 }
 
-test('exemptions require a numeric bound or cleanup/cancel', () => {
+test('exemptions require four words naming a bound or owner', () => {
   assert.equal(lint('// eslint-disable-next-line no-restricted-syntax -- A callback.\nsetTimeout(work, 1);').status, 1);
-  for (const reason of ['1 callback', 'cleanup on disposal', 'cancel on disposal']) {
+  for (const reason of ['single callback after explicit input', 'cleared on panel disposal', 'cancel when the panel closes']) {
     assert.equal(lint(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`).status, 0);
   }
 });
@@ -108,5 +108,55 @@ test('all scheduler names reject value transfers through bare and global forms',
       const [report] = await eslint.lintText(source, { filePath: 'js/new-client.js' });
       assert.ok(report.messages.some(m => m.ruleId === 'client/no-scheduler-alias'), source);
     }
+  }
+});
+
+test('global-object aliases reject scheduler extraction and destructuring', async () => {
+  const eslint = new ESLint();
+  for (const global of ['window', 'globalThis', 'self']) {
+    for (const scheduler of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'requestIdleCallback', 'queueMicrotask']) {
+      for (const source of [
+        `const w = ${global}; const later = w.${scheduler};`,
+        `const { window: w } = ${global}; const later = w.${scheduler};`,
+        `let g; g = ${global}; const later = g.${scheduler};`,
+        `const w = ${global}; const { ${scheduler}: t } = w;`,
+        `const w = ${global}; const { [\`${scheduler}\`]: t } = w;`,
+      ]) {
+        const [report] = await eslint.lintText(source, { filePath: 'js/new-client.js' });
+        assert.ok(report.messages.some(m => m.ruleId === 'client/no-scheduler-alias'), source);
+      }
+    }
+  }
+});
+
+test('static computed keys reject all five schedulers on globals and aliases', async () => {
+  const eslint = new ESLint();
+  for (const global of ['window', 'globalThis', 'self']) {
+    for (const scheduler of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'requestIdleCallback', 'queueMicrotask']) {
+      for (const object of [global, 'w', 'g']) {
+        for (const key of [`'${scheduler}'`, `\`${scheduler}\``]) {
+          const source = `const w = ${global}; let g; g = ${global}; ${object}[${key}](work, 1);`;
+          const [report] = await eslint.lintText(source, { filePath: 'js/new-client.js' });
+          assert.ok(report.messages.some(m => m.ruleId === 'no-restricted-syntax'), source);
+        }
+      }
+    }
+  }
+});
+
+test('exemption reasons identify a specific bound or owner', () => {
+  for (const reason of ['TODO 1', 'cancel', 'ok', 'n/a', 'TODO FIXME XXX cancel 123!', 'see above same cancel', 'one vague unrelated phrase']) {
+    assert.equal(lint(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`).status, 1, reason);
+  }
+  assert.equal(lint('// eslint-disable-next-line no-restricted-syntax -- cleared on dispose; one pending timer per panel\nsetTimeout(work, 1);').status, 0);
+});
+
+test('reviewer probes fail lint', () => {
+  for (const source of ['const w = window; const later = w.setTimeout; function repeat() { later(repeat, 1); }', 'window[`setTimeout`](() => {}, 1);']) assert.equal(lint(source).status, 1, source);
+});
+
+test('audited global scheduler calls retain call-site exemptions', () => {
+  for (const callee of ['window.setTimeout', 'globalThis["setTimeout"]', 'self[`setTimeout`]', 'w[`setTimeout`]']) {
+    assert.equal(lint(`const w = window;\n// eslint-disable-next-line no-restricted-syntax -- cleared on dispose; one pending timer per panel\n${callee}(work, 1);`).status, 0, callee);
   }
 });

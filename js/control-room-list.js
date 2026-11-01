@@ -124,7 +124,7 @@ export function mountQueueList({ node, onOpen, onToggle, onEscape }) {
     else if (key === 'toggle') { event.preventDefault(); if (!highlightId) move(1); onToggle(highlighted()); }
     else if (key === 'escape') { if (onEscape()) event.preventDefault(); else if (highlightId) { event.preventDefault(); highlightId = null; sync(); } }
   });
-  // eslint-disable-next-line no-restricted-syntax -- Row-list focus selects 1 existing highlight; 0 HTTP reads.
+  // eslint-disable-next-line no-restricted-syntax -- Focus only selects an existing row highlight; it performs no HTTP reads.
   node.addEventListener('focus', () => {
     if (mode !== 'rows' || highlightId) return;
     if (openId) { highlightId = openId; sync(); } else move('first');

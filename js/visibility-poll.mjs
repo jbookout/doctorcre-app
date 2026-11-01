@@ -79,10 +79,10 @@ export function mountVisibilityPoll({
     onInput: () => { if (attempts >= MAX_POLL_ATTEMPTS) restartFromInput(() => {}); } });
   const visibility = () => { if (document.visibilityState === 'hidden' && !keepAlive()) stop(); };
   const eventRead = () => run(false, undefined, true);
-  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the poll timer when hidden; 0 HTTP reads in this listener.
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback will stop the poll timer when hidden; 0 HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   const lifecycleRead = () => run(false, onResume, true);
-  // eslint-disable-next-line no-restricted-syntax -- 20 automatic dispatches; document transport also caps at 600 HTTP attempts. Shares the poll helper attempt counter and active failure/progressive backoff, ceiling 15 minutes Hidden or 30-minute idle; no lifecycle event replenishes presence or attempts
+  // eslint-disable-next-line no-restricted-syntax -- Lifecycle dispatches share a max of 20 poll attempts and failure backoff; hidden or 30-minute idle state stops reads, and events never replenish attempts.
   if (lifecycle) { window.addEventListener('online', lifecycleRead); window.addEventListener('focus', lifecycleRead); }
   if (periodic) arm();
   return {
@@ -130,7 +130,7 @@ export function mountLocalTicker({ tick, intervalMs, document = globalThis.docum
   const input = listenForHumanInput(document, resume);
   const returned = mountReadOnResume({ document, window, refresh: () => { stop(); resume(); } });
   const visibility = () => { if (document.visibilityState === 'hidden') stop(); };
-  // eslint-disable-next-line no-restricted-syntax -- Visibility callback stops the local ticker when hidden; 0 HTTP reads in this listener.
+  // eslint-disable-next-line no-restricted-syntax -- Visibility callback will stop the local ticker when hidden; 0 HTTP reads in this listener.
   document.addEventListener('visibilitychange', visibility);
   start();
   return { dispose() { disposed = true; stop(); input(); returned.dispose(); document.removeEventListener('visibilitychange', visibility); } };

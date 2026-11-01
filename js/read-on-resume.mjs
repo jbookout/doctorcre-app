@@ -48,10 +48,10 @@ export function mountReadOnResume({ document, window, refresh }) {
     resumed = true;
     read();
   };
-  // eslint-disable-next-line no-restricted-syntax -- 1 refresh per hidden-to-visible transition; resumed deduplicates events and reading queues at most 1 additional refresh.
+  // eslint-disable-next-line no-restricted-syntax -- 1 refresh per hidden-to-visible transition; resumed deduplicates events and reading queues a max of 1 additional refresh.
   document.addEventListener("visibilitychange", visibility);
   window.addEventListener("pagehide", pagehide);
-  // eslint-disable-next-line no-restricted-syntax -- 1 refresh per hidden-to-visible transition; resumed deduplicates events and reading queues at most 1 additional refresh.
+  // eslint-disable-next-line no-restricted-syntax -- 1 refresh per hidden-to-visible transition; resumed deduplicates events and reading queues a max of 1 additional refresh.
   window.addEventListener("pageshow", pageshow);
   return { dispose() { document.removeEventListener?.("visibilitychange", visibility); window.removeEventListener?.("pagehide", pagehide); window.removeEventListener?.("pageshow", pageshow); } };
 }

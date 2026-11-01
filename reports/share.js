@@ -84,7 +84,7 @@ mountNavigation(document, location.pathname, { report: true });
           if (invalidated) throw new Error('share_context_changed');
           return data;
         })(),
-        // eslint-disable-next-line no-restricted-syntax -- One 15-second share-request deadline aborts its controller; finally clears the timer.
+        // eslint-disable-next-line no-restricted-syntax -- One 15-second share-request deadline aborts its controller; the timer is cleared in finally.
         new Promise((_, reject) => { timer = setTimeout(() => {
           reject(new Error("request_timeout")); controller.abort();
         }, 15000); }),

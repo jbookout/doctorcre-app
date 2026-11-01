@@ -68,7 +68,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
       const filters = JSON.stringify(args), boundary = filters === view.filters ? view.rows.at(-1) : null;
       const entries = [], cursors = new Set(); let answer, cursor = null, pages = 0;
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Activity pagination calls takePage before every read; stops at 100 pages, hidden state, or the batch deadline.
+      // eslint-disable-next-line no-restricted-syntax -- Activity pagination calls takePage before every read; will stop at 100 pages, hidden state, or the batch deadline.
       while (true) {
         takePage();
         answer = await readWithDeadline(current => client.readDocActivity({ ...args, ...(cursor ? { cursor } : {}) }, { signal: current }), { signal });
@@ -132,7 +132,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
   const resetPage = () => { view.pages = 1; void refresh(); };
   form.addEventListener('change', resetPage);
   form.addEventListener('submit', event => { event.preventDefault(); resetPage(); });
-  // eslint-disable-next-line no-restricted-syntax -- 1 next-task callback per form reset waits for native reset values, then performs 1 bounded refresh.
+  // eslint-disable-next-line no-restricted-syntax -- A single callback after each form reset reads native reset values and starts one budgeted refresh.
   form.addEventListener('reset', () => { window.setTimeout(resetPage, 0); });
   $('activityMore').addEventListener('click', () => { view.pages++; void refresh(); });
   const polling = mountAutoRefresh({ document: root, window, refresh, intervalMs });

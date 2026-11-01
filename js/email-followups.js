@@ -118,7 +118,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       const takePage = createPageBudget({ document: container.ownerDocument });
-      // eslint-disable-next-line no-restricted-syntax -- Follow-up pagination calls takePage for each of pageCount retained pages; at most 100 reads per refresh.
+      // eslint-disable-next-line no-restricted-syntax -- Follow-up pagination calls takePage for each of pageCount retained pages; a max of 100 reads per refresh.
       for (let i = 0; i < pageCount; i++) {
         takePage();
         result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : { include_non_deal: true }), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });

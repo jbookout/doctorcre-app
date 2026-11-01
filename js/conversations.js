@@ -475,7 +475,7 @@ async function takeConversation({ after = null, background = false, signal } = {
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Conversation catch-up consumes the 100-page takePage budget before each retained page.
+      // eslint-disable-next-line no-restricted-syntax -- Conversation catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
         takePage();
         const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
@@ -515,7 +515,7 @@ async function takeList({ cursor = null, background = false, signal } = {}) {
     if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Conversation-list catch-up consumes the 100-page takePage budget before each retained page.
+      // eslint-disable-next-line no-restricted-syntax -- Conversation-list catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
         takePage();
         const incoming = await readClient("listDocConversations", listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }), signal);
@@ -556,7 +556,7 @@ async function takeOutcomeCards({ cursor = null, background = false, signal } = 
     if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
     if (background && !refuseDocOutcomeCards(payload)) {
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Outcome-card catch-up consumes the 100-page takePage budget before each retained page.
+      // eslint-disable-next-line no-restricted-syntax -- Outcome-card catch-up has a max of 100 pages; takePage runs before each retained-page read.
       for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
         takePage();
         const incoming = await readClient("docOutcomeCards", outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }), signal);

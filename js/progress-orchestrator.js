@@ -120,7 +120,7 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
     if(signature===nextSignature){ages();return;}
     signature=nextSignature;
     const active=doc.activeElement, left=win.scrollX, top=win.scrollY;
-    // eslint-disable-next-line no-restricted-syntax -- Captures 1 scroll position per DOM ancestor and stops at the document root; 0 reads.
+    // eslint-disable-next-line no-restricted-syntax -- Captures 1 scroll position per DOM ancestor and will stop at the document root; 0 reads.
     const scroll=[];for(let parent=container.parentElement;parent;parent=parent.parentElement) scroll.push([parent,parent.scrollLeft,parent.scrollTop]);
     const seen=new Set();
     const place=(cards,parent)=>cards.forEach((card,index)=>{
@@ -153,7 +153,7 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
       try {
         const pages=[];
         const takePage = createPageBudget({ document: doc });
-        // eslint-disable-next-line no-restricted-syntax -- Orchestrator page reads call takePage before each manifest page; at most 100 reads per refresh.
+        // eslint-disable-next-line no-restricted-syntax -- Orchestrator page reads call takePage before each manifest page; a max of 100 reads per refresh.
         for(const page of next.pages || []) {
           takePage();
           const read=await readPage({board_id:page.board_id});

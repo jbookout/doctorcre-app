@@ -540,7 +540,7 @@ export function mountBoard(deps = {}) {
       loading.setAttribute("aria-hidden", "true");
       loading.append(el("div", "hierarchy-toolbar"));
       const rows = el("div", "hierarchy-grid");
-      // eslint-disable-next-line no-restricted-syntax -- Loading placeholders render exactly 3 skeleton cards; 0 reads.
+      // eslint-disable-next-line no-restricted-syntax -- Loading placeholders render only 3 skeleton cards; 0 reads.
       for (let index = 0; index < 3; index++) rows.append(el("div", "hierarchy-card hierarchy-skeleton"));
       loading.append(rows);
       container.replaceChildren(loading);
@@ -656,9 +656,9 @@ export function mountBoard(deps = {}) {
     }
     // Cards animate in on the first draw only; later renders (refresh, tick)
     // flash just the cards whose state changed.
-    // eslint-disable-next-line no-restricted-syntax -- 1 local settlement frame marks this board render complete; it performs 0 reads.
+    // eslint-disable-next-line no-restricted-syntax -- A single settlement frame marks the board render complete without reading data.
     if (win.requestAnimationFrame) win.requestAnimationFrame(() => { container.dataset.settled = "true"; });
-    // eslint-disable-next-line no-restricted-syntax -- 1 zero-delay settlement callback per render.
+    // eslint-disable-next-line no-restricted-syntax -- A single zero-delay fallback marks this render settled when animation frames are unavailable.
     else win.setTimeout(() => { container.dataset.settled = "true"; }, 0);
   }
 
@@ -1343,7 +1343,7 @@ export function mountBoard(deps = {}) {
     // The queue board refreshes itself; its snapshot only carries costs, so it is read once.
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed || queueBoardView) return;
-      // eslint-disable-next-line no-restricted-syntax -- Poll helper caps injected timeout callbacks at 20 attempts, with hidden/idle stops.
+      // eslint-disable-next-line no-restricted-syntax -- Poll helper enforces a max of 20 injected timeout callbacks; hidden or idle state stops polling.
       poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: deps.setTimeout ? (fn, ms) => deps.setTimeout(fn, ms) : undefined, clearTimeout: clearTimer,
         poll: () => refresh().catch(() => { setError("Progress temporarily unavailable."); return false; }) });
     });
@@ -1352,7 +1352,7 @@ export function mountBoard(deps = {}) {
 
   byId("directory-search").addEventListener("input", filterDirectory);
   byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
-  // eslint-disable-next-line no-restricted-syntax -- Visibility callback refreshes cached badge ages; ageAttempts < 1800 and agePresence bound any scheduled follow-up.
+  // eslint-disable-next-line no-restricted-syntax -- Visibility refreshes only cached badge ages; ageAttempts below 1800 and agePresence limit follow-up ticks.
   doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
   wireLegend();

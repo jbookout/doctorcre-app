@@ -434,7 +434,7 @@ async function saveTrust(event) {
     }
     let deadline;
     attempted = true;
-    // eslint-disable-next-line no-restricted-syntax -- One 15-second trust-write deadline per save; finally clears the timer.
+    // eslint-disable-next-line no-restricted-syntax -- One 15-second trust-write deadline per save; the timer is cleared in finally.
     try { const receipt = await Promise.race([client.updateVendorTrust(operation), new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Unconfirmed')), 15000); })]); if (receipt?.ok !== true || !Array.isArray(receipt.updated) || !receipt.updated.includes('trust_override')) throw new Error('Unconfirmed'); }
     finally { clearTimeout(deadline); }
     if (!active()) return;
@@ -825,7 +825,7 @@ async function loadList(reason = "initial") {
     }
     const refreshedRows = [...payload.rows];
     const takePage = createPageBudget();
-    // eslint-disable-next-line no-restricted-syntax -- Retained business pages call takePage before each read; at most 100 additional pages per refresh.
+    // eslint-disable-next-line no-restricted-syntax -- Retained business pages call takePage before each read; a max of 100 additional pages per refresh.
     for (let page = 2; page <= Math.min(targetPages, payload.page_count); page++) {
       takePage();
       const nextQuery = { ...query, page };

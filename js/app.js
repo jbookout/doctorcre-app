@@ -1058,7 +1058,7 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, o
   // above it. The body and the submit handler are already replaced above; this
   // only has to make the dialog visible when it is not.
   if (!dialog.open) dialog.showModal();
-  // eslint-disable-next-line no-restricted-syntax -- 1 0-delay focus callback per opened dialog; focuses its first input without any read.
+  // eslint-disable-next-line no-restricted-syntax -- A single focus callback runs after each dialog opens and performs no reads.
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
@@ -1501,7 +1501,7 @@ function wireEvents() {
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
     const retryWrite = event.target.closest('[data-retry-write]');
-    // eslint-disable-next-line no-restricted-syntax -- 1 cell-write reconciliation per retry-button click, reusing the retained idempotency key.
+    // eslint-disable-next-line no-restricted-syntax -- Only an explicit retry-button click reconciles the retained cell-write request with its original idempotency key.
     if (retryWrite) { await retryCellWrite(retryWrite.dataset.retryWrite, retryWrite); return; }
     const operating = event.target.closest('[data-operating-state]');
     if (operating) {
@@ -1568,7 +1568,7 @@ function wireEvents() {
   // connection went away rather than queueing behind it. Without the forced
   // poll, a feed read that never answers would leave every later tick skipping
   // as "already polling" for the rest of the session.
-  // eslint-disable-next-line no-restricted-syntax -- Online listener updates the offline banner and board-sync state; subsequent refreshes use the shared capped poller (0 reads in this listener).
+  // eslint-disable-next-line no-restricted-syntax -- Online events only update offline banner and board-sync connectivity; the shared poller owns subsequent reads.
   window.addEventListener('online', () => {
     $('#offlineBanner').hidden = true;
     state.boardSync.setOnline(true);

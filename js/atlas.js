@@ -149,7 +149,7 @@ async function read(cursor = null, { background = false, signal } = {}) {
     }
     if (background) {
       const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Retained atlas pages are bounded by createPageBudget at 100 additional reads; takePage runs before each read.
+      // eslint-disable-next-line no-restricted-syntax -- Retained atlas pages are limited by createPageBudget to a max of 100 additional reads; takePage runs before each read.
       for (let page = 1; page < view.loadedPages && incoming.next_cursor; page++) {
         takePage();
         const next = await fetchRead(atlasRequestPath(requestOptions(incoming.next_cursor)), { headers: { accept: "application/json" }, cache: "no-store", signal });

@@ -69,14 +69,14 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
    * What the dock shows for one operation. `status` is a kernel status and
    * `state` a feedback state; a caller may pass either, and the kernel decides.
    */
-  // eslint-disable-next-line no-restricted-syntax -- Dock record accepts retry=false by default; a retry requires 1 explicit dock-button action.
+  // eslint-disable-next-line no-restricted-syntax -- Only an explicit dock-button action can request retry; recording the entry does not dispatch it.
   function record(operationKey, { summary = '', status = null, state = null, reason = null, retry = false, undo = false, request = null } = {}) {
     const previous = entries.get(operationKey) || {};
     const previousState = previous.operationKey ? commandReceiptView(previous).state : null;
     const next = {
       ...previous, operationKey,
       summary: summary || previous.summary || '',
-      // eslint-disable-next-line no-restricted-syntax -- Copies the retry flag into 1 retained dock entry; rendering that flag sends 0 requests.
+      // eslint-disable-next-line no-restricted-syntax -- This entry only retains retry metadata for rendering; it sends no requests.
       status, state, reason, retry, undo,
       request: request || previous.request || null,
       dismissed: false,

@@ -327,11 +327,11 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (!leadById(id) || !response.detail || response.detail.id !== id || !eligibleLead(response.detail)) { state.resumeDetail = null; $("leadDetail").close(); state.detail = null; return; }
       validateLeadDetail(response.detail, id);
       selectDocRecord("lead", id);
-      // eslint-disable-next-line no-restricted-syntax -- Detail history visits exactly two kinds, correspondence and stage_history; each kind owns a 100-page budget.
+      // eslint-disable-next-line no-restricted-syntax -- History visits only correspondence and stage_history; each kind has its own 100-page takePage budget.
       for (const kind of ["correspondence", "stage_history"]) {
         const retainedCount = intent?.historyCounts?.[kind] ?? (open ? 0 : state.detail?.[kind]?.length || 0);
         const takePage = createPageBudget({ document: doc });
-        // eslint-disable-next-line no-restricted-syntax -- Lead detail calls takePage before each older page; at most 100 pages per history kind.
+        // eslint-disable-next-line no-restricted-syntax -- Lead detail calls takePage before each older page; a max of 100 pages per history kind.
         while (response.detail[kind].length < retainedCount && response.detail[`${kind}_page`]?.has_more) {
           takePage();
           const older = await client.getLeadDetail(lead, { [`${kind}_cursor`]: response.detail[`${kind}_page`].next_cursor });
@@ -506,7 +506,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; $("mapLeadMembers").open = true; render(); }
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["marketFilter", "market"], ["specialtyFilter", "specialty"]]) {
-    // eslint-disable-next-line no-restricted-syntax -- Registers input/change handlers for exactly 4 filter controls; 0 lifecycle reads.
+    // eslint-disable-next-line no-restricted-syntax -- Registers input/change handlers for only 4 filter controls; 0 lifecycle reads.
     $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; render(); });
   }
   $("stageFilter").addEventListener("change", event => {
@@ -644,7 +644,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
   const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
-  // eslint-disable-next-line no-restricted-syntax -- Hidden-state listener clears lead identity, document context, and drag state; 0 HTTP reads.
+  // eslint-disable-next-line no-restricted-syntax -- Hidden-state events only clear lead identity, document context, and drag state; they perform no HTTP reads.
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
   return { state, refresh, openReview, readDetail, dispose() { reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };

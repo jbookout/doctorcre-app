@@ -25,7 +25,7 @@ export function mountHomeWeek({ document, host }) {
     openerKey = null; restoreDay = false;
   };
   const closed = onDialogClosed(dialog, cleanup);
-  // eslint-disable-next-line no-restricted-syntax -- 1 queued week-view notification per update.
+  // eslint-disable-next-line no-restricted-syntax -- A single microtask after dialog close runs local week-view cleanup without reading data.
   const close = (sourceChanged = false) => { restoreDay = sourceChanged; dialog.close(); queueMicrotask(cleanup); };
   const selectDay = day => {
     viewedDay = day;
