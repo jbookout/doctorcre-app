@@ -122,6 +122,23 @@ test('keyboard movement and phone swipes act on the selected card; un-settle has
   await page.locator('details [data-inbox-row="a"]').waitFor();
 });
 
+test('undoing one bulk result keeps the Undo for every other confirmed card', async t => {
+  const { page, calls } = await open(t);
+  await page.getByLabel('Select Synthetic a', { exact: true }).check();
+  await page.getByLabel('Select Synthetic b', { exact: true }).check();
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo Synthetic a', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Undo Synthetic a', exact: true }).click();
+  const undoB = page.getByRole('button', { name: /^Undo( Synthetic b)?$/ });
+  await undoB.waitFor();
+  assert.equal(await page.getByRole('button', { name: /^Undo/ }).count(), 1, 'only the remaining card keeps an Undo');
+  await undoB.click();
+  await page.getByText(/1 confirmed/).waitFor();
+  const unsettles = calls.filter(call => call.name === 'unsettle-home-inbox').map(call => call.args.items.map(item => item.item_id));
+  assert.deepEqual(unsettles, [['a'], ['b']], 'each Undo reverses its own card once');
+  assert.equal(await page.getByRole('button', { name: /^Undo/ }).count(), 0, 'an undo is not itself offered for undo');
+});
+
 test('date-only task holds keep the recorded day in the partner timezone', async t => {
   const { page } = await open(t, { holdUntil: '2026-10-30' });
   const row = page.locator('[data-inbox-row="a"]'); await row.waitFor();

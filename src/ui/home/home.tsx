@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { command, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot } from './inbox';
 import { recordRoutes } from './routes';
 
-type Pending = { request: Command; before: readonly InboxItem[] };
+type Pending = { request: Command; before: readonly InboxItem[]; undoing?: true };
 type Undo = { action: Action; items: readonly InboxItem[]; until?: string };
 const queryKey = ['home-inbox'];
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
@@ -47,21 +47,21 @@ function Inbox({ client }: { client: InboxClient }) {
       cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => successes.find(next => next.item_id === item.item_id) || item) } : snapshot, { updatedAt: query.dataUpdatedAt });
       setFailures(failed);
       select(new Set(failed.map(result => result.item_id)));
-      if (successes.length) {
+      if (successes.length && !operation.undoing) {
         setUndo(successes.flatMap(item => {
           const previous = operation.before.find(before => before.item_id === item.item_id);
           return previous ? [{ action: previous.disposition === 'settled' ? 'settle' : previous.disposition === 'snoozed' ? 'snooze' : 'unsettle', items: [item], ...(previous.snoozed_until ? { until: previous.snoozed_until } : {}) }] : [];
         }));
       }
-      setNotice(`${successes.length} confirmed. ${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : 'You can undo this change.'}`);
+      setNotice(`${successes.length} confirmed. ${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : operation.undoing ? 'Undone.' : 'You can undo this change.'}`);
       if (!failed.length) setPending(null);
       focusRow();
     } catch (error) { setNotice(`Result uncertain. ${message(error)} Retry the same request.`); }
     finally { setBusy(false); inFlight.current = false; }
   }
-  function act(action: Action, items: readonly InboxItem[], until?: string) {
+  function act(action: Action, items: readonly InboxItem[], until?: string, undoing = false) {
     if (pending) { setNotice('Resolve or dismiss the previous request before starting another.'); return; }
-    try { void run({ request: command(action, items, until), before: items }); }
+    try { void run({ request: command(action, items, until), before: items, ...(undoing ? { undoing: true as const } : {}) }); }
     catch (error) { setNotice(message(error)); }
   }
   const items = query.data?.items || [];
@@ -97,7 +97,7 @@ function Inbox({ client }: { client: InboxClient }) {
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {result.error === 'version_conflict' ? 'This card changed on the server. Dismiss and refresh before another action.' : result.error}</p>)}
       {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
-      {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo([]); act(previous.action, previous.items, previous.until); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
+      {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo(entries => entries.filter(entry => entry !== previous)); act(previous.action, previous.items, previous.until, true); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
     </div>}
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
       {item_id && <section className="inbox-section"><div className="inbox-section-title"><h2>Current card</h2><Link to={recordRoutes.inbox()}>Back to inbox</Link></div>{placed.current ? row(placed.current) : <p role="status">This card is not in your current inbox snapshot.</p>}</section>}

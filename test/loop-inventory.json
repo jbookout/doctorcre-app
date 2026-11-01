@@ -1061,25 +1061,25 @@
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "src/ui/home/home.tsx:event-refresh:b1388f1c2513e58a70b9c90a29348a2989d31b77608d22e452b374714cedde5f": {
+  "src/ui/home/home.tsx:event-refresh:dc84824e4f47179d304290dbb598759e7114f283f5503551df4366a15177e626": {
     "cap": 0,
     "boundary": "0 automatic HTTP reads; local state or input handling only",
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "src/ui/home/home.tsx:requestAnimationFrame:20f4ceb9c6784e5ad678b7787ac519b88af42bd2e83c0c2721bccf3c8afec3be": {
+  "src/ui/home/home.tsx:requestAnimationFrame:e73e1d7977403df0f5aa396a779af015901bdc8ee89fc6828864caed33d8cf03": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "src/ui/home/home.tsx:retry-option:9f1d66f37b7792c3c6bd7e1f9eb951b7a26af5baad7a6cdcecb84f23d6daa2eb": {
+  "src/ui/home/home.tsx:retry-option:b194b27a310bbad3457dfa8fc2619b33349a1c90854b53b9b391b2afa37edd95": {
     "cap": 0,
     "boundary": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "src/ui/home/home.tsx:retry-option:d93f04051e79ec1dcdbf2ea1c1318eaeeb70fd18c51ed814fb2c0c26effec423": {
+  "src/ui/home/home.tsx:retry-option:f410ecf2ddd5996094aa7ae4e2ed01d4dc7525af03a499054f45495a8b2d028d": {
     "cap": 0,
     "boundary": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
     "backoff": "No retry scheduler; another operator action is required after failure",
