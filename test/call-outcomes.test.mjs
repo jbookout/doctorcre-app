@@ -229,3 +229,35 @@ test('the guide distinguishes loading, empty, unavailable and sign-out, and fenc
     assert.equal(await page.getByRole('heading', { name: 'Demo Bayside relocation' }).count(), 0);
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
+
+test('Undo refusal refreshes the version, preserves the notice and selection, and allows a safe retry', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch({ headless: true }), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.undoWrites = [];
+      window.guide = mountCallReview(node, { filter: () => ['step-1'], client: () => ({
+        readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
+        undoCallChange: async args => {
+          window.undoWrites.push(args);
+          rows[0].applied[1].deal_version = 8;
+          if (args.base_version !== 8) throw Object.assign(new Error('stale'), { payload: { error: 'version_conflict' } });
+          rows[0].applied[1].undone_at = '2026-10-26T15:00:00Z';
+          return { ok: true };
+        },
+      }), describe: change => change.payload.text || 'Phase moved', undoRefusal: () => 'Deal changed. Check it again.', openCandidate: () => {} });
+      await window.guide.refresh();
+    }, synthetic());
+    const guide = page.getByRole('region', { name: 'Review this call' });
+    await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    await guide.getByRole('button', { name: 'Undo', exact: true }).click();
+    await guide.getByRole('alert').filter({ hasText: 'Deal changed' }).waitFor();
+    assert.equal(await guide.getAttribute('data-review-candidate'), 'step-1');
+    await guide.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.waitForFunction(() => window.undoWrites.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.undoWrites.map(row => row.base_version)), [3, 8]);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
