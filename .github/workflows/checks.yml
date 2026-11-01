@@ -63,6 +63,8 @@ jobs:
         env:
           DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
       - run: npm run check
+      - run: npm run lint
+      - run: node --test test/client-lint.test.mjs
       - name: Prefer Ubuntu archives for browser dependencies
         run: |
           printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null

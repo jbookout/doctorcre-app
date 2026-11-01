@@ -17,6 +17,7 @@ export function renderEvidence(view = {}) {
 async function boundedRead(read, timeoutMs) {
   let timer;
   try {
+    // eslint-disable-next-line no-restricted-syntax -- One timeoutMs evidence-read deadline, default 8000ms; the timer is cleared in finally and failures return null without retry.
     return await Promise.race([Promise.resolve().then(read), new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); })]);
   } catch (error) { if ([401,403].includes(error?.status)) throw error; return null; } finally { clearTimeout(timer); }
 }

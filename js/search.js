@@ -273,6 +273,7 @@ function wire() {
     view.query = $("searchQuery")?.value ?? "";
     searchReads.invalidate();
     if (idleTimer) clearTimeout(idleTimer);
+    // eslint-disable-next-line no-restricted-syntax -- Search input keeps one 300ms debounce and cancels its predecessor; each accepted query makes at most two sequential search reads.
     idleTimer = setTimeout(() => read({ push: false }), IDLE_REREAD_MS);
   });
 

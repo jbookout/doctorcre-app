@@ -122,6 +122,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   function startGrace(row, draft, request) {
     decisions.set(row.id, { status: 'grace', remaining: SEND_GRACE_SECONDS, draft });
     const grace = { draft, cancelled: false };
+    // eslint-disable-next-line no-restricted-syntax -- Send grace countdown stops after SEND_GRACE_SECONDS ticks or on stopGrace; each tick only re-renders local state and performs no reads.
     grace.timer = clock.setInterval(() => {
       const state = decisions.get(row.id);
       if (graces.get(row.id) !== grace || state?.status !== 'grace') return;
@@ -146,6 +147,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       const takePage = createPageBudget({ document: container.ownerDocument });
+      // eslint-disable-next-line no-restricted-syntax -- Follow-up pagination calls takePage for each of pageCount retained pages; a max of 100 reads per refresh.
       for (let i = 0; i < pageCount; i++) {
         takePage();
         result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : { include_non_deal: true }), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });

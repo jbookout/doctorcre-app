@@ -59,6 +59,7 @@ function setTargets(cards) {
 }
 async function readQueue() {
   const controller = new AbortController(); let timer;
+  // eslint-disable-next-line no-restricted-syntax -- One 10-second deadline per queue read aborts the controller; the timer is cleared on read completion.
   const deadline = new Promise((_,reject) => { timer = setTimeout(() => { reject(new Error('Queue read timed out')); controller.abort(); },10000); });
   const read = async () => {
     const response = await sessionFetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});

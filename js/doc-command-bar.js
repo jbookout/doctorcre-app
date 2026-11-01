@@ -106,6 +106,7 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
   }
   const inputChanged=()=>{
     ++epoch;query=input.value.trim();dialog.querySelector('.doc-detail-grid').hidden=!!query;const tools=dialog.querySelector('.doc-context-tools');if(tools)tools.hidden=!!query;selected=0;clearDetail();$('docCommandStatus').textContent='';$('docCommandUpdated').textContent='';
+    // eslint-disable-next-line no-restricted-syntax -- Command search keeps one 180ms debounce callback, replacing the previous timer after each input.
     paint(pageResults());win.clearTimeout(timer);timer=win.setTimeout(()=>void refresh(),180);
   };
   input.addEventListener('input',inputChanged);

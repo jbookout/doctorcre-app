@@ -474,6 +474,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   }
   if (!Number.isInteger(version)) {
     dock.record(operationKey, {
+      // eslint-disable-next-line no-restricted-syntax -- Failed post-move read offers a manual retry button; 0 automatic outcome writes after the failed version read.
       summary: step.summary, status: 'failed', retry: true, undo: false,
       reason: `${intent.name} moved, but the record could not be re-read for its version, so the outcome was not written. Nothing was guessed.`,
     });
@@ -493,6 +494,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   });
   dock.record(operationKey, {
     summary: step.summary, status: result.status, reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Only a manual retry resends the retained outcome command; receipt metadata schedules no attempts.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === 'ok') state.boardSync.requestRefresh('after-write');
@@ -519,12 +521,14 @@ async function runFollowUp(operationKey, step) {
       try { current = (await state.client.getDeal(args.deal))?.deal; }
       catch { /* A missing current version cannot authorize a replacement. */ }
       if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
+        // eslint-disable-next-line no-restricted-syntax -- Missing current record version offers a manual reread; 0 follow-up writes until a valid version is read.
         dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
           reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
         return null;
       }
       const reviewed = step.reviewed || state.deals.get(args.deal);
       if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
+        // eslint-disable-next-line no-restricted-syntax -- Conflict metadata only sets retry=false; it never automatically replaces changed next-step fields.
         dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
           reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
         return {status:'conflict', message:`Current next step: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review before retrying.`};
@@ -557,6 +561,7 @@ async function runFollowUp(operationKey, step) {
     summary: operations.get(operationKey).summary,
     status: result.status === 'blocked' ? 'unknown' : result.status,
     reason: result.message || null,
+    // eslint-disable-next-line no-restricted-syntax -- Only another dock action can resend the retained follow-up; this receipt exposes retry state.
     retry: result.status === 'blocked' || result.retry, undo: false, request: dockRequest,
   });
   if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
@@ -590,6 +595,7 @@ async function runMove(intent, form) {
   dock.record(cell, {
     summary: moveSummary(intent), status: result.status,
     reason: fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`) || null,
+    // eslint-disable-next-line no-restricted-syntax -- Phase-write receipt only exposes the retained retry flag; it schedules no resends.
     retry: result.retry, undo: false, request: result.request,
   });
 
@@ -624,6 +630,7 @@ async function resumeMoveFollowUps(cell) {
   const move = operations.get(cell);
   if (!move?.followUps || move.followUpsStarted) return;
   move.followUpsStarted = true;
+  // eslint-disable-next-line no-restricted-syntax -- Move follow-ups run once per finite move.followUps entry; followUpsStarted prevents a second automatic pass.
   for (const step of move.followUps) {
     const operationKey = `${step.verb}:${move.intent.deal}:${move.followUpToken}`;
     if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, move.intent);
@@ -641,6 +648,7 @@ async function retryFieldWrite(cell) {
   dock.record(cell, {
     summary: `${row?.name || 'Deal'} · ${fieldLabel(field)}`,
     status: result.status, reason: fieldWriteMessage(result, subject) || null,
+    // eslint-disable-next-line no-restricted-syntax -- Field-write receipt only exposes the retained retry flag; it schedules no resends.
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === 'ok' && !result.superseded) {
@@ -1427,6 +1435,7 @@ function wireBoard() {
   const release = () => {
     if (board.dataset.pressed !== 'true') return;
     delete board.dataset.pressed;
+    // eslint-disable-next-line no-restricted-syntax -- 1 deferred board paint after pointer release, only when paintDeferred is set; 0 HTTP reads.
     if (state.paintDeferred) setTimeout(renderBoard);
   };
   addEventListener('pointerup', release, true);
@@ -1532,6 +1541,7 @@ function wire() {
     const open = event.target.closest('button[data-open]');
     if (open) { openWorkspace(open.dataset.open, open); return; }
     const retry = event.target.closest('button[data-retry-write]');
+    // eslint-disable-next-line no-restricted-syntax -- Only an explicit retry-button click reconciles the retained field write; no automatic resend occurs.
     if (retry) { retryFieldWrite(retry.dataset.retryWrite); return; }
     const undo = event.target.closest('button[data-undo]');
     if (undo) { runUndo(undo.dataset.undo); return; }
@@ -1705,6 +1715,7 @@ function wire() {
     if (e.target.id === 'detailClientPortalForm') await registerClientPortal(id, form);
   });
 
+  // eslint-disable-next-line no-restricted-syntax -- Online events only update board-sync connectivity; the shared capped poller owns reads.
   globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); });
   globalThis.addEventListener?.('offline', () => state.boardSync.setOnline(false));
 }
@@ -1716,6 +1727,7 @@ function mountDock() {
     root,
     onDispatch: (operationKey) => {
       const entry = operations.get(operationKey);
+      // eslint-disable-next-line no-restricted-syntax -- Only a dock retry click reconciles the retained field write; one reconciliation per click.
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
@@ -1723,6 +1735,7 @@ function mountDock() {
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
+      // eslint-disable-next-line no-restricted-syntax -- Only a dock undo/retry action reconciles the retained field write; one reconciliation per action.
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);

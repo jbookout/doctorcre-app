@@ -93,6 +93,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
       const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!deal || item.deal === deal)
         && (include_non_deal || item.kind !== 'next_step' || item.deal !== null));
+      // eslint-disable-next-line no-restricted-syntax -- Synthetic proposal preview visits each row in the finite pending snapshot at most 1 time, shortened by limit when provided; no retry scheduler.
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
         if (row.kind === 'reply_draft') { proposals.push(structuredClone({ ...item, status })); continue; }

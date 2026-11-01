@@ -164,3 +164,18 @@ CI keeps JSON, the performance summary, and Playwright failure traces as artifac
 The CI job publishes the performance summary in its job summary.
 
 `npm run docs:check` warns about broken local Markdown links and unknown documented npm commands.
+
+Client scheduling is checked with `npm run lint`. Use `createPageBudget` /
+`createRequestBudget` for bounded reads and TanStack Query `refetchInterval`
+for React polling. Audited local callbacks carry an inline
+`eslint-disable-next-line no-restricted-syntax -- <reason>` comment naming the
+specific bound or cancellation owner in at least four words; placeholder reasons are rejected.
+Raw scheduler aliases, global-object aliases, and static computed scheduler keys
+are checked. Schedulers reached through function parameters, returned values,
+non-global object properties, or dynamic computed keys are outside this analysis.
+
+`node scripts/prove-loop-lint-coverage.mjs` compares the pinned pre-migration main
+revision with ESLint, lists both coverage sets, and asserts containment. It
+reports historical direct-form inventory diagnostics separately from wrappers and
+name collisions; it gives no scheduler-origin credit to those entries.
+The pinned commit must be present in local Git history.
