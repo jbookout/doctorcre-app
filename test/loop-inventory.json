@@ -287,7 +287,7 @@
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "js/fixture-client.js:loop:ce5b3d1ecd658426071d452ddcf7e8d8314329db2696d296ef5bbcb3f68558ea": {
+  "js/fixture-client.js:loop:dbcaa2af91fa465d83bf74544d172b7d77bbea01b0899d001cf1c07f064454bb": {
     "cap": 9007199254740991,
     "boundary": "At most padded string length, incrementing i each pass; no reads",
     "backoff": "No automatic retry; one finite traversal per invocation",
@@ -533,67 +533,67 @@
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "js/progress-board.js:event-refresh:124e2ff8962a6522323aa700e58852dfaaefd13c95167bfd90c9ce5ecfd4171a": {
+  "js/progress-board.js:event-refresh:bd0716434a7e1657c97dcd81658a9ce60407713e6aa11bb20d5d274750a7a44b": {
     "cap": 0,
     "boundary": "0 automatic HTTP reads; local state or input handling only",
     "backoff": "No network retry in this listener",
     "idleStop": "Returns after local repaint, cancellation, or trusted input observation; does not renew presence from lifecycle/scroll"
   },
-  "js/progress-board.js:loop:2b6ab22ae064dff95be135c630533cf54bab35b6508bc0bc93ae683cc84e3903": {
+  "js/progress-board.js:loop:13eb371680cc3367a3f655447eb517c8aa7a40ade0a194b6ea1448298eac02fc": {
     "cap": 9007199254740991,
     "boundary": "Three skeleton cards or one listener per convention row; asynchronous work is inside user click handlers",
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/progress-board.js:loop:92947decdc9b6e577f0a9dd6b4f9d307966ce1b9f3cda36a81dc2f2873634b09": {
+  "js/progress-board.js:loop:1d07b958eca840b29822ce249d04d335bfa074e19b2b1f7bea380380c22510de": {
     "cap": 20,
     "boundary": "20 superseded read handoffs, then false",
     "backoff": "Awaits an already-running distinct read; never starts a retry or request",
     "idleStop": "Returns at the hard cap or when no newer read exists; the owning poller has the hidden/30-minute idle stop"
   },
-  "js/progress-board.js:read-loop:7fb46ea867bab048c89f29091f7cff2b50a8f3758c4fcc7c8811a5b17acf6f7b": {
+  "js/progress-board.js:read-loop:3660c0242e95dcdee78e8159194313718c0b87624f0b528b056e046ac4b4b296": {
     "cap": 9007199254740991,
     "boundary": "Three skeleton cards or one listener per convention row; asynchronous work is inside user click handlers",
     "backoff": "No automatic retry; one finite traversal per invocation",
     "idleStop": "Returns when the finite input is exhausted; no repeating timer or idle work is created"
   },
-  "js/progress-board.js:requestAnimationFrame:89648ffe38999d32dfb865c30b4e00b646a25fcb548b6df3f100c003756b855b": {
+  "js/progress-board.js:requestAnimationFrame:840487330226587bbbc895b0d4cbe0aaf22ede090e348d101afb23665bb5bb9d": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/progress-board.js:requestAnimationFrame:be025756413856e74ee2b569e47285ed3e1e2ba644a930838f427fc7e7def10e": {
+  "js/progress-board.js:requestAnimationFrame:c02d8958525468b1efa4228c0e11b41dd51d3bbc8d6ac44114bf947acf9ca800": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/progress-board.js:retry-option:c1551297d46da228ca769402e5075caef77cd6ec7328740dd2d5e365911767a5": {
+  "js/progress-board.js:retry-option:47c48d54ed3f06bd28365f6e1d46b6db777eceeb02b1b77e4141e75837a238cf": {
     "cap": 0,
     "boundary": "0 automatic retries; state metadata/predicate or one explicitly requested command per caller action",
     "backoff": "No retry scheduler; another operator action is required after failure",
     "idleStop": "Returns after the predicate, metadata construction, or requested command; no background loop"
   },
-  "js/progress-board.js:setInterval:f8e26a114b45668308c2c2c8c051d1109360e8683ffc1ab0087ec47eef795ad7": {
+  "js/progress-board.js:setInterval:c229f1f03f852244e8286a8c160315adb7c5cf6e97fbcb105e076fd0d7cd19d2": {
     "cap": 7200,
     "boundary": "Timer adapter used only by mountLocalTicker; ceil(30 minutes / intervalMs) ticks",
     "backoff": "Local repaint only; callback error stops the clock without retry",
     "idleStop": "The owning mountLocalTicker stops hidden, after 30-minute idle, or on disposal"
   },
-  "js/progress-board.js:setTimeout:6d4f1c1dc182db379152b6e5a9a314ba5627b864f0f174ef554e810642a1fbe3": {
+  "js/progress-board.js:setTimeout:c250d9091e70c553c6a18022b90579d1b2b5eb84caa7e744c3926b9be1f2e5b8": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
     "idleStop": "Completes once or is cancelled/replaced by its owner; never schedules repeating idle work"
   },
-  "js/progress-board.js:setTimeout:726b754a3cd3f2f1b528c62debf886d4e9734d76054b6a7fe87b41e2d52dc4fc": {
+  "js/progress-board.js:setTimeout:1c73f3ce708e0784041eb67bb08b35cd9e3125213f10b1d0b287392a6790555c": {
     "cap": 1800,
     "boundary": "1800 local freshness timer dispatches per wake/return",
     "backoff": "No reads or retries; next publication boundary, at most 60 seconds",
     "idleStop": "agePresence stops hidden or 30-minute idle; disposal clears timer and presence listeners"
   },
-  "js/progress-board.js:setTimeout:ee19635ac727ff2dc94e72ad19e122fb99d7dd21bff676a0465a195e33c2d7ef": {
+  "js/progress-board.js:setTimeout:0697d4b92811fb80cbbfacdc2ca37af4956f4f98a4e0aa45246af289a656ef1a": {
     "cap": 1,
     "boundary": "1 callback per explicit dispatch; no self-rearm",
     "backoff": "No automatic retry; deadline, debounce, paint, or completion callback only",
