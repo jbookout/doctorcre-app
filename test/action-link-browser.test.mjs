@@ -23,7 +23,12 @@ test('linked draft opens directly, reads safely and approves at phone and deskto
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:`out/test-artifacts/action-links/${width}-${theme}-review.png`,fullPage:true});
   await page.getByRole('button',{name:'Approve draft',exact:true}).click();
-  await page.getByRole('heading',{name:'Draft approved',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'Draft approved',level:1,exact:true}).waitFor();
+  const leads=page.getByRole('link',{name:'Go to Leads',exact:true});
+  assert.equal(await leads.getAttribute('href'),'/leads');
+  assert.ok((await leads.boundingBox()).height >= 44);
+  assert.notEqual(await leads.evaluate(el=>getComputedStyle(el).display),'inline');
+  assert.equal(await page.getByText('Read the message before approving it.').count(),0);
   assert.match(await page.locator('#actionLink').textContent(),/Nothing was sent/);
   assert.equal(calls.filter(call=>call.name==='approve-lead-draft').length,1);
   await page.screenshot({path:`out/test-artifacts/action-links/${width}-${theme}-approved.png`,fullPage:true});

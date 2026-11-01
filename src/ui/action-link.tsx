@@ -82,12 +82,12 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     finally { busy.current = false; }
   };
   const returnTo = `/a/${encodeURIComponent(ref)}`;
-  return <><a className="action-link-back" href="/">← Home</a><header><p className="action-link-eyebrow">First contact</p><h1>Review draft</h1><p>Read the message before approving it.</p></header>
+  return <><a className="action-link-back" href="/">← Home</a><header><p className="action-link-eyebrow">First contact</p><h1>{state.kind === 'approved' ? 'Draft approved' : 'Review draft'}</h1>{state.kind !== 'approved' && <p>Read the message before approving it.</p>}</header>
     <section className="action-link-card" aria-busy={state.kind === 'loading' || state.kind === 'ready' && state.phase === 'saving'}>
       {state.kind === 'loading' && <p role="status">Opening draft…</p>}
       {state.kind === 'signed-out' && <><h2>Sign in to open this draft</h2><a className="btn" href={`/auth/login?return_to=${encodeURIComponent(returnTo)}`}>Sign in</a></>}
       {state.kind === 'unavailable' && <><p role="status">{state.message}</p>{state.retry && <button className="btn" onClick={() => setReload(value => value + 1)}>Reload draft</button>}</>}
-      {state.kind === 'approved' && <><h2>Draft approved</h2><p role="status">Nothing was sent. The message remains a draft.</p><a href="/leads">Go to Leads</a></>}
+      {state.kind === 'approved' && <><p role="status">Nothing was sent. The message remains a draft.</p><a className="btn" href="/leads">Go to Leads</a></>}
       {state.kind === 'ready' && <><p className="action-link-eyebrow">Awaiting your approval</p><h2>{state.card.subject || 'First-contact draft'}</h2>
         {state.card.scheduledFor && <p className="action-link-schedule">Planned for <time dateTime={state.card.scheduledFor}>{new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: state.card.timeZone }).format(new Date(state.card.scheduledFor))}</time> · {state.card.timeZone}</p>}
         <div className="action-link-message">{state.card.body}</div><p>Approval keeps this as a draft. Nothing is sent.</p>
