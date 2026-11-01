@@ -8,7 +8,7 @@ import { atlasFixtureResponse } from "./atlas-fixture.mjs";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const root = process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL("../", import.meta.url));
-const { routeContract, actionLinkRoute } = await import("../js/routes.js");
+const { routeContract, routeKey, actionLinkRoute } = await import("../js/routes.js");
 const carrContract = await readCarrInterface();
 const routes = routeContract.routes;
 const redirects = routeContract.redirects || {};
@@ -72,7 +72,7 @@ createServer(async (request, response) => {
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
     const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : actionLinkRoute(url.pathname)] || url.pathname.replace(/^\//, "");
+      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : routeKey(actionLinkRoute(url.pathname))] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");
     const repositoryPath = relative(root, path);
     if (repositoryPath.startsWith("..") || isAbsolute(repositoryPath) || !(await stat(path)).isFile()) throw new Error("not found");
