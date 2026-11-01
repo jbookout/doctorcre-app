@@ -182,6 +182,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
     } else return route.continue();
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
   });
+  await page.clock.install();
   await page.goto(`${origin}/?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.scrollIntoViewIfNeeded();
@@ -200,7 +201,30 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   await mkdir('out/test-artifacts/email-followups', { recursive: true });
   await card.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-edit.png`, animations: 'disabled' });
   await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await card.getByText('Sending in 10s ·').waitFor();
+  await page.reload();
+  await page.clock.runFor(30_000);
+  assert.equal(submitted.length, 0, 'leaving the page during the grace sends nothing');
+  assert.equal(await card.getByText(/Sending in/).count(), 0, 'send intent never survives a reload');
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  // Edits live only in the page: no verb saves reply edits, and draft text never goes to browser storage.
+  assert.equal(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue(), row.reply_draft.subject);
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), row.reply_draft.body, 'a reload reopens the saved server draft');
+  await card.getByRole('textbox', { name: 'Subject', exact: true }).fill('Re: Demo plan reviewed');
+  await card.getByRole('textbox', { name: 'Message', exact: true }).fill('I reviewed the plan.\nPlease send the dimensions.');
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await card.getByText('Sending in 10s ·').waitFor();
+  await page.clock.runFor(9_000);
+  await card.getByText('Sending in 1s ·').waitFor();
+  await card.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-grace.png`, animations: 'disabled' });
+  await card.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.clock.runFor(30_000);
+  assert.equal(submitted.length, 0, 'Undo during the grace reaches no server');
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'I reviewed the plan.\nPlease send the dimensions.');
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await page.clock.runFor(10_000);
   await card.getByText('Submitted for sending. Delivery is not yet confirmed.', { exact: true }).waitFor();
+  await page.clock.runFor(30_000);
   assert.equal(submitted.length, 1);
   assert.deepEqual(submitted[0].to, ['demo-correspondent@example.test']);
   assert.deepEqual(submitted[0].cc, ['demo-dell@example.test']);
@@ -289,6 +313,48 @@ test('session loss during the email command download prevents a late confirmatio
   assert.equal(await card.locator('article').count(), 0);
 });
 
+test('a failed command download after leaving keeps the cancelled reply draft editable', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'reply-import-failure', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  const row = { id: '10000000-0000-4000-8000-000000000004', version: 3, kind: 'reply_draft', status: 'pending',
+    deal: 'qa-deal-1', deal_name: 'Demo Harbor expansion', confidence: 0.9, suspected_instruction: null,
+    source: { activity_id: '30000000-0000-4000-8000-000000000004', sender: null, subject: 'Demo floor plan',
+      evidence_quote: 'Please review the floor plan.', occurred_at: '2026-10-27T12:00:00Z' },
+    confirm_verb: 'submit-email-draft', preview: null, preview_error: null,
+    reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: 'joe', to: ['demo-correspondent@example.test'], cc: ['demo-dell@example.test'] } };
+  const submitted = [];
+  await page.route('**/mcp', async route => {
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    if (name === 'submit-email-draft') submitted.push(args);
+    if (name !== 'list-email-proposals') return route.continue();
+    const result = { schema_version: 'email-proposals.v1', proposals: [row], send: false, more: false, next_cursor: null };
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
+  });
+  let held, requested;
+  const download = new Promise(resolve => { requested = resolve; });
+  await page.route('**/js/email-proposal-command.js', route => { held = route; requested(); });
+  await page.clock.install();
+  await page.goto(`${origin}/?mode=live`);
+  const card = page.locator('#homeEmailFollowups');
+  await card.scrollIntoViewIfNeeded();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  const message = card.getByRole('textbox', { name: 'Message', exact: true });
+  await message.fill('Not yet sent.');
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await page.clock.runFor(10_000);
+  await download;
+  await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+  assert.equal(await message.inputValue(), 'Not yet sent.');
+  await held.abort('failed');
+  await page.clock.runFor(1_000);
+  assert.equal(await message.count(), 1, 'the cancelled draft stays editable');
+  assert.equal(await message.inputValue(), 'Not yet sent.');
+  assert.equal(await card.getByText(/Outcome unknown/).count(), 0);
+  assert.deepEqual(submitted, []);
+});
+
 for (const [subject_type,width] of [['client',1440],['lead',390],['vendor',390]]) {
   test(`Home confirms a non-deal ${subject_type} at ${width}px through the live adapter`, async t => {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
@@ -332,3 +398,63 @@ for (const [subject_type,width] of [['client',1440],['lead',390],['vendor',390]]
     assert.equal(writes[0].proposal_digest, preview.proposal_digest);
   });
 }
+
+test('Home saved reply survives send Undo and submits once after grace', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'reply-save-grace', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  const row = { id: '10000000-0000-4000-8000-000000000003', version: 3, kind: 'reply_draft', status: 'pending',
+    deal: 'qa-deal-1', deal_name: 'Demo Harbor expansion', confidence: 0.9, suspected_instruction: null,
+    source: { activity_id: '30000000-0000-4000-8000-000000000003', sender: null, subject: 'Demo floor plan',
+      evidence_quote: 'Please review the floor plan.', occurred_at: '2026-10-27T12:00:00Z' },
+    confirm_verb: 'submit-email-draft', preview: null, preview_error: null,
+    reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: 'joe', to: ['demo-correspondent@example.test'], cc: ['demo-dell@example.test'] } };
+  const submitted = [];
+  await page.route('**/mcp', async route => {
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    let result;
+    if (name === 'edit-email-draft') {
+      row.version++; row.reply_draft = { ...row.reply_draft, subject: args.subject, body: args.body };
+      result = { ok: true, proposal_id: row.id, version: row.version, subject: args.subject, body: args.body };
+    } else if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: submitted.length ? [] : [row], send: false, more: false, next_cursor: null };
+    else if (name === 'submit-email-draft') {
+      submitted.push(args);
+      result = { ok: true, proposal_id: row.id, status: 'approved_to_send', version: 5, subject: args.subject,
+        body: args.body, sha256: 'a'.repeat(64), to: ['demo-correspondent@example.test'], cc: ['demo-dell@example.test'] };
+    } else return route.continue();
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
+  });
+  await page.clock.install();
+  await page.goto(`${origin}/?mode=live`);
+  const card = page.locator('#homeEmailFollowups');
+  await card.scrollIntoViewIfNeeded();
+  await card.getByText('Reply draft · Re: Demo floor plan · Joe', { exact: true }).waitFor();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  await card.getByText('To: demo-correspondent@example.test', { exact: true }).waitFor();
+  await card.getByText('CC: demo-dell@example.test', { exact: true }).waitFor();
+  await card.getByRole('textbox', { name: 'Subject', exact: true }).fill('Re: Demo plan reviewed');
+  await card.getByRole('textbox', { name: 'Message', exact: true }).fill('I reviewed the plan.\nPlease send the dimensions.');
+  assert.equal(submitted.length, 0);
+  await card.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await card.getByText('Saved as a draft. Nothing was sent.', { exact: true }).waitFor();
+  assert.equal(submitted.length, 0);
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await card.getByText('Sending in 10s ·').waitFor();
+  await page.clock.runFor(9_000);
+  await card.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.clock.runFor(30_000);
+  assert.equal(submitted.length, 0, 'Undo during the grace reaches no server');
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'I reviewed the plan.\nPlease send the dimensions.');
+  assert.equal(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue(), 'Re: Demo plan reviewed');
+  await card.getByRole('button', { name: 'Submit', exact: true }).click();
+  await page.clock.runFor(10_000);
+  await card.getByText('Submitted for sending. Delivery is not yet confirmed.', { exact: true }).waitFor();
+  await page.clock.runFor(30_000);
+  assert.equal(submitted.length, 1);
+  assert.deepEqual(submitted[0].to, ['demo-correspondent@example.test']);
+  assert.deepEqual(submitted[0].cc, ['demo-dell@example.test']);
+  const { idempotency_key, ...args } = submitted[0];
+  assert.ok(idempotency_key);
+  assert.deepEqual(args, { proposal_id: row.id, base_version: 4, subject: 'Re: Demo plan reviewed', body: 'I reviewed the plan.\nPlease send the dimensions.', to: row.reply_draft.to, cc: row.reply_draft.cc });
+});
