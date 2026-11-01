@@ -70,6 +70,7 @@ test('the checklist contract pins the runtime revision that owns derivation', as
   assert.equal(contract.schema_version, 'deal-checklist.v1');
   assert.equal(contract.producer.repository, 'jbookout/carr-system');
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
+  assert.equal(contract.producer.source_commit, carrInterface.producer.source_commit);
   assert.ok(contract.statuses.includes('received'));
   assert.match(contract.receipt_basis, /satisfied=false/);
 });
