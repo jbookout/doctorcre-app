@@ -15,6 +15,7 @@ export async function checkActionPins(root = fileURLToPath(new URL('../', import
     'actions/upload-artifact': 'node24',
     'actions/download-artifact': 'node24',
     'actions/setup-python': 'node20',
+    'eps1lon/actions-label-merge-conflict': 'node24',
   };
   const check = (action, sha, label = action) => {
     assert.ok(Object.hasOwn(runtimes, action), `unverified action: ${action}`);
