@@ -1289,9 +1289,29 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   $('workspaceTabs').innerHTML = workspaceTabs.map(tab => `<button class="workspace-tab" type="button" role="tab" id="tab-${tab.id}" aria-controls="workspace-${tab.id}" aria-selected="${tab.id === workspaceTab}" tabindex="${tab.id === workspaceTab ? 0 : -1}" data-workspace-tab="${tab.id}">${tab.label}</button>`).join('');
   $('main').hidden = true; panel.hidden = false;
   document.body.classList.add('workspace-open');
-  scrollTo(0, 0);
+  scrollTo({ top: 0, behavior: 'instant' });
   $('panelTitle').focus({preventScroll:true});
   await refreshPanel();
+  if (new URL(location.href).searchParams.get('focus') === 'next-step' && state.panelDeal === dealId) {
+    if (document.readyState !== 'complete') await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+    await document.fonts.ready;
+    if (state.panelDeal !== dealId) return;
+    const editor = $('dealUpdateStep');
+    if (editor) {
+      editor.focus();
+      editor.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const observer = new ResizeObserver(() => {
+        if (document.activeElement !== editor) return observer.disconnect();
+        const rect = editor.getBoundingClientRect();
+        if (rect.bottom > innerHeight || rect.top < 0) editor.scrollIntoView({ block: 'center', behavior: 'instant' });
+      });
+      observer.observe($('recordPanel'));
+      editor.addEventListener('blur', () => observer.disconnect(), { once: true });
+    }
+    const current = new URL(location.href);
+    current.searchParams.delete('focus');
+    history.replaceState(history.state, '', current);
+  }
 }
 function closeWorkspace({ fromHistory = false } = {}) {
   factReviewPanel?.dispose();

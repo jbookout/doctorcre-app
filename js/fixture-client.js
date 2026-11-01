@@ -1259,7 +1259,11 @@ export async function createFixtureClient(opts = {}) {
 
     async getHomeAgenda() {
       const board = await this.getBoard();
-      return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
+      const missing = new Map();
+      for (const deal of board.deals.filter(deal => deal.phase !== 'On Deck' && !actionsFor(deal).some(action => action.status === 'open'))) {
+        missing.set(deal.owner, [...(missing.get(deal.owner) || []), deal.id]);
+      }
+      return { ...board, schema_version: 'home-agenda.v1', missing_next_action: [...missing].map(([owner, deal_ids]) => ({ owner, deal_ids })).sort((a, b) => a.owner === null ? 1 : b.owner === null ? -1 : a.owner.localeCompare(b.owner)), deals: board.deals.map(deal => ({
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: deal.next_step || 'Follow-up due', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],

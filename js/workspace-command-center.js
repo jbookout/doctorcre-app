@@ -1,3 +1,4 @@
+import { ACTOR_LABEL } from './client.js';
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { workCard } from './work-card.js';
 import { renderDealAlert } from './deal-items.js';
@@ -32,7 +33,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const flagKeydown = event => { if (event.key === ' ' && event.target.matches('#dealFlags .deal-alert h3 a')) { event.preventDefault(); event.target.click(); } };
   document.addEventListener('keydown', flagKeydown);
   const $ = id => document.getElementById(id);
-  const missingNextStep = mountMissingNextStep($('homeMissingNextStep'), window);
+  const missingNextStep = mountMissingNextStep($('homeMissingNextStep'), ACTOR_LABEL);
   const workingWeek = mountHomeWeek({ document, host: $('homeCalendar') });
   let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, panelObserver = null, emailInitialRead = Promise.resolve();
   const retirePendingEmail = () => {

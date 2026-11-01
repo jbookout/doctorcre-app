@@ -9,6 +9,9 @@
   "as_of": "2026-01-15",
   "last_call_at": "2026-01-14T16:00:00Z",
   "deals": [
+    {"id":"demo-missing-joe","name":"Demo West Clinic","type":"Relocation","phase":"Research","owner":"joe","attention":false,"last_touch":"2026-01-10","next_step":"","next_date":null},
+    {"id":"demo-missing-dell","name":"Demo River Practice","type":"Renewal","phase":"Negotiation","owner":"dell","attention":false,"last_touch":"2026-01-12","next_step":"","next_date":null},
+    {"id":"demo-missing-unassigned","name":"Demo Hill Office","type":"Purchase","phase":"Research","owner":null,"attention":false,"last_touch":null,"next_step":"","next_date":null},
     {"id":"d01","name":"Demo Dental North","type":"Relocation","phase":"On Deck","owner":"joe","attention":true,"last_touch":"2026-01-14","next_step":"Confirm fictional requirements","next_date":"2026-01-20","segment":"Dental","market":"Demo City"},
     {"id":"d02","name":"Demo Pediatrics East","type":"Renewal","phase":"Research","owner":"dell","attention":false,"last_touch":"2026-01-13","next_step":"Review sample options","next_date":"2026-01-22","segment":"Pediatrics","market":"Example Bay"},
     {"id":"d03","name":"Demo Therapy Group","type":"Expansion","phase":"Negotiation","owner":"joe","attention":false,"last_touch":"2026-01-12","next_step":"Compare fictional proposals","next_date":"2026-01-24","segment":"Therapy","market":"Sample Point"},

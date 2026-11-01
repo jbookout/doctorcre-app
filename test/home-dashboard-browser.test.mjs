@@ -1226,28 +1226,48 @@ test('Deals panel ends with muted counts and a plain All deals link', async t =>
 });
 
 test('Home groups deals with no next step and links each deal room', async t => {
-  const { page, responses, calls } = await open(t);
-  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
-  const board = await client.getHomeAgenda();
-  const deals = ['d01', 'd02', 'd03'].map(id => board.deals.find(deal => deal.id === id)).map((deal, i) => ({ ...deal, name: `Demo missing ${i + 1}` }));
-  responses.set('read-home-agenda', { ...board, deals, missing_next_action: [
-    { owner: 'joe', deal_ids: [deals[0].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] },
-  ] });
-  await page.locator('#refreshHome').click();
-  const panel = page.getByRole('region', { name: 'Deals with no next step' });
-  await panel.waitFor();
-  await panel.getByRole('button', { name: 'Show all 3' }).click();
-  for (const [i, owner] of ['Joe', 'Dell', 'Unassigned'].entries()) {
-    const group = panel.getByRole('group', { name: owner });
-    assert.equal(await group.getByRole('link', { name: `Demo missing ${i + 1}` }).getAttribute('href'), `/deals?deal=${encodeURIComponent(deals[i].id)}`);
+  for (const width of [390, 1440]) {
+    const { page, responses, calls } = await open(t, { width, height: 844 });
+    const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
+    const board = await client.getHomeAgenda();
+    const deals = ['d01', 'd02', 'd03', 'd04'].map(id => board.deals.find(deal => deal.id === id)).map((deal, i) => ({ ...deal, name: `Demo missing ${i + 1}` }));
+    responses.set('read-home-agenda', { ...board, deals, missing_next_action: [
+      { owner: 'joe', deal_ids: [deals[0].id, deals[3].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] },
+    ] });
+    await page.locator('#refreshHome').click();
+    const panel = page.getByRole('region', { name: 'Deals with no next step' });
+    await panel.waitFor();
+    for (const owner of ['Joe', 'Dell', 'Unassigned']) assert.equal(await panel.getByRole('group', { name: owner }).isVisible(), true);
+    assert.equal(await panel.getByText('Joe · 2').isVisible(), true);
+    assert.equal(await panel.getByText('Demo missing 4').count(), 0);
+    if (process.env.W2_SCREENSHOT_DIR) await panel.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `missing-next-step-collapsed-${width}.png`) });
+    await panel.getByRole('button', { name: 'Show all 4' }).click();
+    assert.equal(await panel.getByText('Demo missing 4').isVisible(), true);
+    if (process.env.W2_SCREENSHOT_DIR) await panel.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `missing-next-step-expanded-${width}.png`) });
+    await panel.getByRole('button', { name: 'Show less' }).click();
+    assert.equal(await panel.getByText('Demo missing 4').count(), 0);
+    await page.getByRole('button', { name: 'Just me', exact: true }).click();
+    assert.equal(await panel.getByRole('group', { name: 'Unassigned' }).isVisible(), true);
+    assert.equal(await panel.getByRole('group', { name: 'Dell' }).count(), 0);
+    const groups = [{ owner: 'joe', deal_ids: [deals[0].id, deals[3].id] }, { owner: 'dell', deal_ids: [deals[1].id] }, { owner: null, deal_ids: [deals[2].id] }];
+    responses.set('read-home-agenda', { ...board, actor: 'dell', deals, missing_next_action: groups });
+    await page.locator('#refreshHome').click();
+    assert.equal(await panel.getByRole('group', { name: 'Unassigned' }).isVisible(), true);
+    await panel.getByRole('group', { name: 'Dell' }).waitFor();
+    assert.equal(await panel.getByRole('group', { name: 'Joe' }).count(), 0);
+    responses.set('read-home-agenda', { ...board, actor: 'joe', deals, missing_next_action: [] });
+    await page.locator('#refreshHome').click();
+    await panel.waitFor({ state: 'hidden' });
+    responses.set('read-home-agenda', { ...board, actor: 'joe', deals, missing_next_action: groups });
+    await page.locator('#refreshHome').click();
+    assert.equal(calls.includes('set-next-action'), false);
+    await panel.getByRole('link', { name: /Demo missing 1/ }).click();
+    const editor = page.getByLabel('Next step', { exact: true });
+    await editor.waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'dealUpdateStep');
+    await page.clock.runFor(100);
+    const box = await editor.boundingBox();
+    assert.ok(box.y >= 0 && box.y + box.height <= 844);
+    assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
   }
-  assert.equal(calls.includes('set-next-action'), false);
-  responses.set('read-home-agenda', { ...board, deals, missing_next_action: [] });
-  await page.locator('#refreshHome').click();
-  await panel.waitFor({ state: 'hidden' });
-  responses.set('read-home-agenda', { ...board, deals, missing_next_action: [{ owner: 'joe', deal_ids: [deals[0].id] }] });
-  await page.locator('#refreshHome').click();
-  await panel.getByRole('link', { name: 'Demo missing 1' }).click();
-  await page.getByLabel('Next step', { exact: true }).waitFor();
-  assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
 });
