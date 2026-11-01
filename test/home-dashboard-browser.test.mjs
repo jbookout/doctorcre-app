@@ -313,6 +313,8 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
 
 test('a Home flag opens from its row at phone width', async t => {
   const { page } = await open(t, { width: 390, height: 844 });
+  // Deal counts paint before the refresh ends; its last render replaces the flag rows.
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   const flag = page.locator('#dealFlags .home-flag').first();
   const href = await flag.locator('h3 a').getAttribute('href');
   await flag.scrollIntoViewIfNeeded();
@@ -324,6 +326,7 @@ test('a Home flag opens from its row at phone width', async t => {
 test('Home flag link opens with Enter and Space, and item links keep their destination', async t => {
   for (const key of ['Enter', 'Space']) {
     const { page } = await open(t, { width: 390, height: 844 });
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     const flag = page.locator('#dealFlags .home-flag').first();
     const link = flag.locator('h3 a');
     const href = await link.getAttribute('href');
