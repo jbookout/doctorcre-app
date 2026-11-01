@@ -27,23 +27,77 @@ test('linked draft opens directly, reads safely and approves at phone and deskto
   assert.match(await page.locator('#actionLink').textContent(),/Nothing was sent/);
   assert.equal(calls.filter(call=>call.name==='approve-lead-draft').length,1);
   await page.screenshot({path:`out/test-artifacts/action-links/${width}-${theme}-approved.png`,fullPage:true});
+  await page.unrouteAll({behavior:'ignoreErrors'});
   await page.close();
  }}finally{await browser.close();await server.close();}
 });
 
 test('session refusal removes the private draft before approval can be submitted',async()=>{
  const server=await fixtureServer(),browser=await chromium.launch({headless:true,args:['--use-mock-keychain','--password-store=basic']});
+ let page;
  try {
-  const page=await browser.newPage();let denied=false,writes=0;
-  await page.route('**/auth/session',route=>route.fulfill(denied?{status:401,json:{error:'not_authenticated'}}:{json:{actor:{slug:'joe'},csrf_token:'synthetic-csrf'}}));
+  page=await browser.newPage();let deniedReads=0,writes=0;
+  await page.route('**/auth/session',async route=>{
+   const denied=(await route.request().headerValue('cookie')||'').split('; ').includes('synthetic-approval-clicked=1');
+   if(denied)deniedReads++;
+   await route.fulfill(denied?{status:401,json:{error:'not_authenticated'}}:{json:{actor:{slug:'joe'},csrf_token:'synthetic-csrf'}});
+  });
   await page.route('**/mcp',route=>{
    const rpc=route.request().postDataJSON();if(rpc.params.name==='approve-lead-draft')writes++;
    return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(rpc.params.name==='resolve-action-link'?payload:{})}]}}});
   });
   await page.goto(`${server.origin}/a/${ref}?mode=live`);
-  await page.getByRole('heading',{name:payload.card.subject}).waitFor();denied=true;
+  await page.getByRole('heading',{name:payload.card.subject}).waitFor();
+  // Refuse only after the real click reaches the page. A global denial before
+  // click races unrelated shell checks, which correctly remove the button.
+  await page.getByRole('button',{name:'Approve draft',exact:true}).evaluate(button=>{
+   button.addEventListener('click',()=>{document.cookie='synthetic-approval-clicked=1; path=/; SameSite=Strict';},{capture:true,once:true});
+  });
   await page.getByRole('button',{name:'Approve draft',exact:true}).click();
   await page.getByRole('heading',{name:'Session ended',exact:true}).waitFor();
-  assert.equal(writes,0);assert.equal(await page.getByText(payload.card.subject,{exact:true}).count(),0);
- }finally{await browser.close();await server.close();}
+  assert.ok(deniedReads>0);assert.equal(writes,0);assert.equal(await page.getByText(payload.card.subject,{exact:true}).count(),0);
+ }finally{await page?.unrouteAll({behavior:'ignoreErrors'});await browser.close();await server.close();}
+});
+
+
+test('idle approval keeps its button through session checks; background refusal removes it without a click',async()=>{
+ const server=await fixtureServer(),browser=await chromium.launch({headless:true,args:['--use-mock-keychain','--password-store=basic']});
+ let page;
+ try {
+  page=await browser.newPage();let denied=false,reads=0,writes=0;
+  await page.route('**/auth/session',route=>route.fulfill(denied?{status:401,json:{error:'not_authenticated'}}:{json:{actor:{slug:'joe'},csrf_token:'synthetic-csrf'}}));
+  await page.route('**/mcp',route=>{
+   const rpc=route.request().postDataJSON();
+   if(rpc.params.name==='resolve-action-link')reads++;
+   if(rpc.params.name==='approve-lead-draft')writes++;
+   return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(rpc.params.name==='resolve-action-link'?payload:{})}]}}});
+  });
+  await page.goto(`${server.origin}/a/${ref}?mode=live`);
+  await page.getByRole('heading',{name:payload.card.subject}).waitFor();
+  const stable=await page.evaluate(async()=>{
+   const button=document.querySelector('#actionLink button');
+   const host=document.querySelector('#actionLink');
+   let removed=false;
+   const observer=new MutationObserver(records=>{
+    for(const record of records)for(const node of record.removedNodes)if(node===button||node.contains(button))removed=true;
+   });
+   observer.observe(host,{childList:true,subtree:true});
+   try {
+    const {privateSession}=await import('/js/private-session.js');
+    for(let check=0;check<3;check++){
+     await privateSession().verify({fresh:true});
+     await new Promise(requestAnimationFrame);
+    }
+    return !removed&&button.isConnected&&document.querySelector('#actionLink button')===button&&!button.disabled;
+   }finally{observer.disconnect();}
+  });
+  assert.equal(stable,true,'successful background checks must preserve the approval button node');
+  assert.equal(reads,1);assert.equal(writes,0);
+  denied=true;
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await page.getByRole('heading',{name:'Session ended',exact:true}).waitFor();
+  assert.equal(writes,0);
+  assert.equal(await page.getByRole('button',{name:'Approve draft',exact:true}).count(),0);
+  assert.equal(await page.getByText(payload.card.subject,{exact:true}).count(),0);
+ }finally{await page?.unrouteAll({behavior:'ignoreErrors'});await browser.close();await server.close();}
 });
