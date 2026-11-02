@@ -55,6 +55,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  const card=page.locator('[data-date-id="undated-loi"]');
  await card.waitFor();
  assert.match(await card.textContent(),/Date not recorded/);
+ assert.match(await card.locator('small').textContent(),/Status: open/);
  assert.equal(await card.locator('[data-countdown]').count(),0);
  assert.match(await page.locator('[data-date-id="invalid-loi"]').textContent(),/Date unavailable.*passed/);
  assert.equal(await page.locator('[data-date-id="unknown"] > span').textContent(),'custom notice');
@@ -64,12 +65,25 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  const summary=card.locator('summary');await summary.focus();await page.keyboard.press('Enter');
  assert.equal(await card.locator('details').evaluate(n=>n.open),true);
  assert.match(await card.locator('.note-original').textContent(),/Original clause text/);
+ assert.equal(await card.locator('.date-source').textContent(),'Source: Synthetic clause 4');
+ const geometry=await card.evaluate(n=>{
+  const absent=n.parentElement.querySelector('.critical-date:not([data-date-id])');
+  const style=getComputedStyle(n);const original=n.querySelector('.note-original');
+  return {border:style.borderLeftStyle,color:getComputedStyle(n.querySelector('strong')).color,absentColor:getComputedStyle(absent.querySelector('strong')).color,
+   height:n.getBoundingClientRect().height,absentHeight:absent.getBoundingClientRect().height,originalHeight:original.clientHeight,originalScrollHeight:original.scrollHeight};
+ });
+ assert.equal(geometry.border,'dashed');
+ assert.notEqual(geometry.color,geometry.absentColor);
+ assert.ok(geometry.absentHeight<geometry.height,'closed siblings stay compact');
+ assert.ok(geometry.originalScrollHeight>geometry.originalHeight,'long evidence scrolls inside its card');
  await summary.evaluate(n=>n.scrollIntoView({block:'center'}));
  await page.screenshot({path:join(evidence,`${width}-${theme}-before-refresh.png`),animations:'disabled'});
  await page.getByLabel('Update',{exact:true}).fill('Synthetic unsaved update');
  const reads=probe.reads;
  await summary.focus();
+ const refreshed=page.waitForResponse(r=>r.url().endsWith('/mcp') && r.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.clock.fastForward(61_000);
+ await refreshed;
  await waitForAsync(page,()=>document.activeElement?.dataset.detailFocus==='date-original:undated-loi');
  assert.ok(probe.reads>reads);
  assert.equal(await summary.evaluate(n=>document.activeElement===n),true);
