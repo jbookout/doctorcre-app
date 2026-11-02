@@ -80,11 +80,12 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  await page.screenshot({path:join(evidence,`${width}-${theme}-before-refresh.png`),animations:'disabled'});
  await page.getByLabel('Update',{exact:true}).fill('Synthetic unsaved update');
  const reads=probe.reads;
+ const updated=await page.locator('#recordPanel').getAttribute('data-updated');
  await summary.focus();
  const refreshed=page.waitForResponse(r=>r.url().endsWith('/mcp') && r.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.clock.fastForward(61_000);
  await refreshed;
- await waitForAsync(page,()=>document.activeElement?.dataset.detailFocus==='date-original:undated-loi');
+ await waitForAsync(page,updated=>document.querySelector('#recordPanel')?.dataset.updated!==updated,updated);
  assert.ok(probe.reads>reads);
  assert.equal(await summary.evaluate(n=>document.activeElement===n),true);
  assert.equal(await card.locator('details').evaluate(n=>n.open),true);
