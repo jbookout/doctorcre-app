@@ -3,7 +3,7 @@ import { readWithDeadline } from './current-read.mjs';
 
 const E = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const REFUSALS = {
-  email_thread_filing_changed: 'This filing changed since it was filed, so it was left as is. Open the deal to review it.',
+  email_thread_filing_changed: 'This filing changed since it was filed. Undo was refused.',
   email_thread_filing_not_found: 'This filing is no longer available to undo.',
 };
 const denied = error => [401, 403].includes(error?.status) || error?.code === 'session_changed';
@@ -28,10 +28,13 @@ export function mountEmailFilings({ container, client }) {
     container.innerHTML = `<header class="home-panel-head"><h2>Filed automatically</h2></header>${notice}${rows.map(row => {
       const outcome = outcomes.get(row.event_id);
       const deal = typeof row.deal === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.deal) ? row.deal : null;
-      const destination = deal ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(deal)}">Open filed deal</a>` : '';
+      const current = !outcome || (outcome.status !== 'submitting' && outcome.filingState === 'current');
+      const destination = deal && current ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(deal)}">Open filed deal</a>` : '';
+      const filingNotice = outcome?.filingState === 'absent' ? 'This email is no longer currently filed to this deal.'
+        : !current ? 'Current filing destination unavailable.' : !deal ? 'Filed deal destination unavailable.' : '';
       return `<article class="email-proposal" data-filing-id="${E(row.event_id)}"><h3>${E(row.subject || 'Subject unavailable')}</h3><p>From ${E(row.sender_name || 'Sender unavailable')}${when(row.occurred_at) ? ` · ${E(when(row.occurred_at))}` : ''}</p>${
         outcome?.status === 'undone' ? '<p role="status" tabindex="-1">Undone. The email is no longer filed to this deal and will not be filed automatically again.</p>'
-          : `${!deal ? '<p>Filed deal destination unavailable.</p>' : ''}${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<div class="email-controls">${destination}<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>${outcome?.status === 'uncertain' ? 'Check outcome' : 'Undo'}</button></div>`}</article>`;
+          : `${filingNotice ? `<p>${filingNotice}</p>` : ''}${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<div class="email-controls">${destination}${outcome?.status === 'refused' && outcome.filingState === 'absent' ? '' : `<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>${outcome?.status === 'uncertain' ? 'Check outcome' : 'Undo'}</button>`}</div>`}</article>`;
     }).join('')}`;
     const item = focusId && [...container.querySelectorAll('[data-filing-id]')].find(node => node.dataset.filingId === focusId);
     if (ownedFocus || restoreFocus) ((item?.querySelector('[role="status"]') || item?.querySelector(focusControl) || item?.querySelector('button')) || container.querySelector('[data-filing-retry], button'))?.focus?.({ preventScroll: true });
@@ -48,11 +51,13 @@ export function mountEmailFilings({ container, client }) {
       const result = await readWithDeadline(() => client.listEmailThreadFilings(), { timeoutMs: 10_000 });
       if (disposed || ticket !== epoch) return;
       if (!Array.isArray(result?.filings) || result.filings.some(row => !row?.event_id)) throw Error('Invalid email filings');
-      rows = [...result.filings, ...rows.filter(row => ['submitting', 'uncertain', 'undone'].includes(outcomes.get(row.event_id)?.status) && !result.filings.some(item => item.event_id === row.event_id))];
+      for (const [id, outcome] of outcomes) outcome.filingState = result.filings.some(item => item.event_id === id) ? 'current' : 'absent';
+      rows = [...result.filings, ...rows.filter(row => outcomes.has(row.event_id) && !result.filings.some(item => item.event_id === row.event_id))];
       loadState = 'ready';
     } catch (error) {
       if (disposed || ticket !== epoch) return;
       if (denied(error)) return retire();
+      for (const outcome of outcomes.values()) outcome.filingState = 'unknown';
       loadState = 'error';
     }
     render(loadState === 'error' && hadFocus && container.ownerDocument.activeElement === container.ownerDocument.body);
@@ -72,9 +77,14 @@ export function mountEmailFilings({ container, client }) {
     } catch (error) {
       if (disposed || loadState === 'denied') return;
       if (denied(error)) return retire();
-      const message = REFUSALS[error?.payload?.error];
-      outcomes.set(row.event_id, message ? { status: 'refused', message }
-        : { status: 'uncertain', request, message: 'We could not confirm whether Undo completed. Check outcome to retry the same request.' });
+      const refusal = REFUSALS[error?.payload?.error];
+      const outcome = { status: 'submitting', request, filingState: 'unknown', message: 'Checking current filing…' };
+      outcomes.set(row.event_id, outcome);
+      await refresh();
+      if (disposed || loadState === 'denied') return;
+      outcomes.set(row.event_id, refusal && outcome.filingState !== 'unknown'
+        ? { status: 'refused', filingState: outcome.filingState, message: refusal }
+        : { status: 'uncertain', request, filingState: outcome.filingState, message: `${refusal ? `${refusal} ` : ''}We could not confirm whether Undo completed. Check outcome to retry the same request.` });
     }
     render(hadFocus && container.ownerDocument.activeElement === container.ownerDocument.body, row.event_id);
   }
