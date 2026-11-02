@@ -34,7 +34,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   const initial = width === 390 ? 1 : 2;
   assert.equal(await reasons.locator('.work-card').count(),initial);
   await search.fill('  demo group  ');
-  assert.match(await reasons.innerText(),/1 matching loaded reasons/);
+  assert.match(await reasons.innerText(),/^1 matching loaded reason$/m);
   assert.equal(await reasons.locator('h3').innerText(),'Demo Group Practice');
   await search.fill('Demo City');
   assert.match(await reasons.innerText(),/6 matching loaded reasons/);
@@ -54,7 +54,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
     ['identity_review','Demo Similar Practice',1],
   ]) {
     await category.selectOption(route);
-    assert.match(await reasons.innerText(),new RegExp(`${count} matching loaded reasons`));
+    assert.match(await reasons.innerText(),new RegExp(`^${count} matching loaded reason${count === 1 ? '' : 's'}$`,'m'));
     assert.equal(await reasons.locator('h3').first().innerText(),title);
   }
   await search.fill('not a loaded practice');
