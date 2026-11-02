@@ -1175,7 +1175,11 @@ async function readPanel(id) {
           fresh.querySelectorAll('[data-date-id] details').forEach(n => { n.open = dateOpens.has(n.closest('[data-date-id]').dataset.dateId); });
           if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
-          if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
+          if (focusIdentity) {
+            const target = [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity);
+            if (target) target.focus({preventScroll:true});
+            else $('panelBody').querySelector('.deal-freshness [data-refresh-detail]')?.focus();
+          }
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }

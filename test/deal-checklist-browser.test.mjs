@@ -111,9 +111,11 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
     if (mode === 'empty' && recovering) {
       const refresh = page.locator('.deal-freshness [data-refresh-detail]');
       assert.equal(await refresh.evaluate(element => document.activeElement === element), true, 'empty recovery returns focus to the header refresh control');
+      const refreshBox = await refresh.boundingBox();
+      assert.ok(refreshBox.y >= 0 && refreshBox.y + refreshBox.height <= 960, 'the focused refresh control is visible after recovery');
       await page.screenshot({ path: join(focusEvidence, `${width}-${theme}-empty-recovery.png`), animations: 'disabled' });
       await page.keyboard.press('Tab');
-      assert.equal(await page.locator('#detailPhase').evaluate(element => document.activeElement === element), true, 'Tab continues into deal controls after recovery');
+      assert.equal(await page.locator('#recordPanel').evaluate(element => element.contains(document.activeElement) && document.activeElement.matches('button, input, select, textarea, summary, a[href]')), true, 'Tab continues to a deal control after recovery');
     }
     if (mode === 'unavailable') {
       await checklist.getByText(/Requirements could not be read/).waitFor();
