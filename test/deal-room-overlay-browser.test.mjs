@@ -59,6 +59,40 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     }
   });
 
+  if (width === 1440) test(`pending suggestion leaves the last deal and overdue card reachable in ${theme}`, async t => {
+    const page = await open(t, width, theme);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const targets = [];
+    const row = page.locator('#rows > tr').last();
+    for (const selector of ['[data-owner]', '.park-button', '.row-menu']) {
+      const control = row.locator(selector);
+      await control.scrollIntoViewIfNeeded();
+      targets.push({ control: selector, ...await hit(control) });
+    }
+    const sidebar = page.locator('#appSidebar');
+    await sidebar.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    const card = sidebar.locator('#appWorkingList [data-layout-deal]').last();
+    await card.scrollIntoViewIfNeeded();
+    targets.push({ control: 'last overdue card', ...await hit(card) });
+    await page.screenshot({ path: join(evidence, `last-controls-${width}-${theme}.png`), animations: 'disabled' });
+    assert.ok(targets.every(target => target.reachable), JSON.stringify(targets));
+  });
+
+  test(`toast and pending suggestion remain pressable at ${width}px in ${theme}`, async t => {
+    const page = await open(t, width, theme);
+    await page.evaluate(async () => {
+      const { showToast } = await import('/js/toast.js');
+      showToast('Demo next step updated on the sample practice', { eventId: 'demo-event', error: true });
+    });
+    await animationsSettled(page);
+    for (const target of [page.locator('.confirm-chip'), page.locator('.confirm-chip .yes'), page.locator('.confirm-chip .skip-confirm'), page.locator('#toast [data-undo]')]) {
+      await target.scrollIntoViewIfNeeded();
+      const center = await hit(target);
+      assert.equal(center.reachable, true, JSON.stringify(center));
+    }
+    await page.screenshot({ path: join(evidence, `toast-${width}-${theme}.png`), animations: 'disabled' });
+  });
+
   test(`review agenda is interactive in front of the workspace at ${width}px in ${theme}`, async t => {
     const page = await open(t, width, theme);
     if (width === 390) await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
