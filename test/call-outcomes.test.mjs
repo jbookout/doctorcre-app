@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { chromium, fixtureServer } from './browser-harness.mjs';
-import { callChangeText, callOutcomesHtml, callsFor, mountCallOutcomes, undoRefusal } from '../js/call-outcomes.js';
+import { callChangeText, callOutcomesHtml, mountCallOutcomes, undoRefusal } from '../js/call-outcomes.js';
 
 // Synthetic read-call-outcomes rows (CARR call-outcomes.v1).
 const synthetic = () => [{
@@ -31,8 +31,6 @@ test('each applied change says what changed, quotes the call, and opens the guid
   assert.doesNotMatch(html, /data-call-undo|data-call-reviewed|Looks right/);
   assert.match(html, /Review call/);
   assert.match(html, /1 item from this call still needs Joe or Dell to decide/);
-  assert.deepEqual(callsFor(synthetic(), ['step-1']).length, 1);
-  assert.deepEqual(callsFor(synthetic(), ['someone-else']).length, 0);
 });
 
 test('Undo refusals explain the next action', () => {
@@ -84,7 +82,7 @@ test('retiring an outcome list clears its controls and ignores late reads and de
     readCallOutcomes: async () => ({ calls: synthetic() }),
     undoCallChange: async () => { writes++; },
   };
-  const view = mountCallOutcomes({ container, listen: false, client: () => client });
+  const view = mountCallOutcomes({ container, client: () => client });
   await view.refresh();
   const stale = container.querySelector('[data-call-open-review]');
   assert.ok(stale);

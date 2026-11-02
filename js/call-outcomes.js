@@ -16,14 +16,6 @@ export function undoRefusal(error) {
   return UNDO_REFUSALS[error?.payload?.error] || 'The change could not be undone. Open the deal to check it.';
 }
 
-/** Calls whose outcome touches any of these candidate ids, or all when none are given. */
-export function callsFor(calls, candidateIds = null) {
-  const list = Array.isArray(calls) ? calls : [];
-  if (!candidateIds) return list;
-  const ids = new Set(candidateIds);
-  return list.filter(call => [...(call.applied || []), ...(call.open_cards || [])].some(item => ids.has(item.candidate_id)));
-}
-
 export function callOutcomesHtml(calls) {
   return calls.map(call => {
     const applied = Array.isArray(call.applied) ? call.applied : [];
@@ -49,15 +41,14 @@ export function callOutcomesHtml(calls) {
 const UNCHECKED = `<p class="call-outcome-note" role="status">Couldn't check for changes from the pipeline call.
   <button type="button" class="call-outcome-action" data-call-recheck>Check again</button></p>`;
 
-export function mountCallOutcomes({ container, client, filter = () => null, listen = true, openReview }) {
+export function mountCallOutcomes({ container, client, openReview }) {
   let calls = [];
   let unchecked = false, disposed = false;
   const paint = () => {
     if (disposed) return;
     if (unchecked) { container.innerHTML = UNCHECKED; container.hidden = false; return; }
-    const shown = callsFor(calls, filter());
-    container.innerHTML = callOutcomesHtml(shown);
-    container.hidden = shown.length === 0;
+    container.innerHTML = callOutcomesHtml(calls);
+    container.hidden = calls.length === 0;
   };
   async function refresh() {
     if (disposed) return;
@@ -73,7 +64,7 @@ export function mountCallOutcomes({ container, client, filter = () => null, list
     }
     paint();
   }
-  const inside = node => Boolean(node) && (!listen || container.contains(node));
+  const inside = node => Boolean(node) && container.contains(node);
   async function click(event) {
     if (disposed) return;
     const target = event.target;
@@ -86,9 +77,9 @@ export function mountCallOutcomes({ container, client, filter = () => null, list
     }
     return undefined;
   }
-  if (listen) container.addEventListener('click', click);
+  container.addEventListener('click', click);
   return { refresh, click, dispose() {
     disposed = true; calls = []; container.innerHTML = ''; container.hidden = true;
-    if (listen) container.removeEventListener('click', click);
+    container.removeEventListener('click', click);
   } };
 }
