@@ -101,15 +101,15 @@ test('the filed call guide keeps pending work through navigation and reopening',
   await page.locator('.call-outcome').first().getByRole('button', { name: 'Review call', exact: true }).click();
   await expect(guide.locator('dd').last()).toHaveText(pendingText || '');
   await guide.getByRole('button', { name: 'Approve or fix this item' }).click();
-  const focused = page.locator('#postCallReport button:focus');
-  await expect(focused).toBeVisible();
-  await expect(page.locator('#postCallOutcomes').getByRole('button', { name: 'Complete call review' })).toBeDisabled();
-  await expect(page.locator('#postCallReport')).toContainText('Creates a draft only.');
-  await expect(focused).toHaveAttribute('data-post-call-confirm');
-  const pendingId = await focused.getAttribute('data-post-call-confirm');
-  await focused.click();
-  await expect(page.locator(`#postCallReport [data-post-call-confirm="${pendingId}"]`)).toHaveCount(0);
-  await expect(page.locator('#postCallOutcomes').getByRole('button', { name: 'Complete call review' })).toBeDisabled();
+  const decision = guide.getByRole('region', { name: 'Decide this item' });
+  await expect(decision).toBeVisible();
+  await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
+  await expect(decision).toContainText('Email proposals create drafts only.');
+  const pendingId = await guide.getAttribute('data-review-candidate');
+  await decision.getByRole('button', { name: 'Approve item', exact: true }).click();
+  await expect(guide).toHaveAttribute('data-review-candidate', pendingId || '');
+  await expect(guide.getByText('No longer pending', { exact: true })).toBeVisible();
+  await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeDisabled();
 });
 
 test('Home completes the real filed call after its pending proposals are resolved', async ({ signedIn: page, carr }) => {
