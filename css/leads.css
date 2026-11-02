@@ -251,3 +251,5 @@ dialog::backdrop { background: var(--scrim); }
 .lead-guidance dd { min-width: 0; white-space: pre-wrap; }
 .lead-guidance ul { margin: 0; padding-left: var(--space-5); }
 .lead-guidance .lead-guidance-restriction { margin-bottom: var(--space-3); border: 2px solid var(--status-danger); border-radius: var(--radius-2); padding: var(--space-3); background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-1)); }
+
+.lead-guidance .lead-guidance-unavailable { margin-bottom: var(--space-3); border: 2px solid var(--status-warn); border-radius: var(--radius-2); padding: var(--space-3); background: color-mix(in srgb, var(--status-warn) 8%, var(--surface-1)); }
