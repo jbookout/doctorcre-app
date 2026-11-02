@@ -1,0 +1,102 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { chromium, fixtureServer } from './browser-harness.mjs';
+
+test('board rows keep focus and native command values across snapshot renders', async t => {
+  const server = await fixtureServer();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(`${server.origin}/deals?mode=fixture&view=national`);
+  await page.locator('.account-card').first().waitFor();
+  const result = await page.evaluate(async () => {
+    const { mountDealRoomBoard } = await import('/js/ui.generated.js');
+    const table = document.createElement('table');
+    const rows = document.createElement('tbody');
+    table.append(rows);
+    document.body.append(table);
+    const row = { id: 'synthetic', name: '<Sample>', classes: '', meta: ['Austin'], title: '', parked: false,
+      attention: false, icon: '○', phase: 'Research', due: 'Not set', dueClass: '', retries: [],
+      step: { kind: 'local', text: 'Call broker', empty: false, owner: 'joe' } };
+    const view = mountDealRoomBoard(rows);
+    const phases = [{ value: 'Research', label: 'Research' }, { value: 'Closing', label: 'Closing' }];
+    view.render({ rows: [row], phases });
+    const select = rows.querySelector('[data-phase]');
+    select.focus();
+    const values = [];
+    document.addEventListener('change', event => { if (event.target === select) values.push(select.value); });
+    select.value = 'Closing';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const commandValue = values[0];
+    view.render({ rows: [{ ...row, phase: 'Closing', meta: ['Austin', 'Dell is editing'], title: 'Dell is editing phase' }], phases });
+    const focused = document.activeElement === select;
+    const stable = rows.querySelector('[data-phase]') === select;
+    const value = select.value;
+    const text = rows.textContent;
+    const title = rows.querySelector('tr').title;
+    view.render({ rows: [{ ...row, parked: true, retries: [{ cell: 'synthetic:phase', label: 'Phase' }],
+      step: { ...row.step, owner: 'dell' } }], phases });
+    const parked = rows.querySelector('[data-phase]').disabled;
+    const owner = rows.querySelector('[data-owner]').value;
+    const retry = rows.querySelector('[data-retry-write]').dataset.retryWrite;
+    const expiredPresence = rows.querySelector('tr').title;
+    view.render({ rows: [], phases });
+    const cleared = rows.children.length === 0;
+    view.dispose();
+    table.remove();
+    return { commandValue, focused, stable, value, text, title, parked, owner, retry, expiredPresence, cleared };
+  });
+  assert.equal(result.commandValue, 'Closing');
+  assert.equal(result.focused, true);
+  assert.equal(result.stable, true);
+  assert.equal(result.value, 'Closing');
+  assert.match(result.text, /<Sample>.*Dell is editing/);
+  assert.equal(result.title, 'Dell is editing phase');
+  assert.equal(result.parked, true);
+  assert.equal(result.owner, 'dell');
+  assert.equal(result.retry, 'synthetic:phase');
+  assert.equal(result.expiredPresence, '');
+  assert.equal(result.cleared, true);
+});
+
+for (const width of [390, 1440]) test(`national board commands survive React renders at ${width}px`, async t => {
+  const server = await fixtureServer();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/**', route => route.fulfill({ json: {} }));
+  await page.goto(`${server.origin}/deals?mode=fixture&view=national`);
+  await page.locator('.account-card').first().click();
+  const row = page.locator('#rows tr').first();
+  const id = await row.getAttribute('data-deal-id');
+  const target = page.locator(`#rows tr[data-deal-id="${id}"]`);
+  const phase = target.locator('[data-phase]');
+  const initial = await phase.inputValue();
+  const next = initial === 'Closing' ? 'Research' : 'Closing';
+  await phase.selectOption(next);
+  await page.waitForFunction(({ id, next }) => document.querySelector(`[data-phase="${id}"]`)?.value === next, { id, next });
+  const attention = await target.locator('[data-attention]').getAttribute('aria-pressed') !== 'true';
+  await target.locator('[data-attention]').click();
+  await page.waitForFunction(({ id, next, attention }) => document.querySelector(`[data-phase="${id}"]`)?.value === next
+    && document.querySelector(`[data-attention="${id}"]`)?.getAttribute('aria-pressed') === String(attention), { id, next, attention });
+  await target.locator('[data-operating-state]').click();
+  await page.locator('#dialogSubmit').click();
+  await target.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+  await page.locator('[data-filter="parked"]').click();
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await target.waitFor();
+  assert.equal(await target.locator('[data-phase]').isDisabled(), true);
+  await target.locator('[data-operating-state="active"]').click();
+  await target.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+  await page.locator('[data-filter="active"]').click();
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await target.waitFor();
+  assert.equal(await target.locator('[data-phase]').inputValue(), next);
+  assert.deepEqual(errors, []);
+});

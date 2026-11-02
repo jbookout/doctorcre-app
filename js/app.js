@@ -1,3 +1,4 @@
+import { mountDealRoomBoard } from './ui.generated.js';
 import { renderDealSummary, renderDealItems } from './deal-items.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';
@@ -438,6 +439,8 @@ function renderPendingWrites() {
     }).join('');
 }
 
+let boardRows;
+
 function renderBoardOnly() {
   // Before the board's own visibility is considered: an unconfirmed change
   // belongs to the page, not to whichever workspace or filter is showing.
@@ -449,7 +452,8 @@ function renderBoardOnly() {
   renderStats(deals);
   renderFocus(deals);
   const rows = $('#rows');
-  rows.innerHTML = deals.map(rowHtml).join('');
+  boardRows ||= mountDealRoomBoard(rows);
+  boardRows.render({ rows: deals.map(boardRow), phases: PHASES.map(value => ({ value, label: phaseLabel(value) })) });
   $('#tableFrame').classList.toggle('has-deal-summaries', deals.length > 0 && deals.every(deal => deal.workspace_kind === 'national_account'));
   const emptySearch = Boolean(state.query && !deals.length);
   $('#stats').hidden = emptySearch;
@@ -459,7 +463,6 @@ function renderBoardOnly() {
   $('#emptyState').innerHTML = emptySearch
     ? `<strong>No deals match “${esc(state.query)}”</strong><p>Try another name, market, or next step.</p><button type="button" class="secondary" data-clear-search>Clear search</button>`
     : state.filter === 'parked' ? 'No parked deals.' : 'No active work matches this filter.';
-  applyPresence();
 }
 
 function renderStats(deals) {
@@ -507,42 +510,28 @@ function phaseOptions(current) {
   return PHASES.map((phase) => `<option value="${esc(phase)}"${phase === current ? ' selected' : ''}>${esc(phaseLabel(phase))}</option>`).join('');
 }
 
-function rowHtml(deal) {
+function boardRow(deal) {
   const days = daysFromNow(deal.next_date);
   const parked = deal.operating_state === 'parked';
-  const classes = [parked ? 'parked' : '', deal.attention ? 'attention' : '', days !== null && days < 0 ? 'overdue' : ''].join(' ');
-  const partnerPresence = state.presence.find((lease) => lease.deal_id === deal.id && lease.actor !== state.selfActor && new Date(lease.expires_at) > new Date());
-  const meta = [deal.market, deal.type, state.query && deal.account_name ? deal.account_name : null,
-    parked ? parkingReasonLabel(deal.parking_reason) : null,
-    partnerPresence ? `${actorName(partnerPresence.actor)} is editing` : null].filter(Boolean);
-  // A write this board never got an answer to stays on its row until a person
-  // settles it. The control re-sends THAT request — same key — rather than
-  // guessing a new one, and it is the row's own text, not a toast that fades and
-  // not a title only a mouse can find.
-  const unconfirmed = unresolvedFieldWrites(state.fieldWrites, deal.id).map((entry) => `<button type="button"
-    class="park-button" data-retry-write="${esc(entry.cell)}"
-    aria-label="${esc(fieldLabel(entry.field))} on ${esc(deal.name)} was not confirmed — send the same change again">${esc(fieldLabel(entry.field))} not confirmed · Retry</button>`).join('');
-  return `<tr class="${classes}" data-deal-id="${esc(deal.id)}">
-    <td><div class="deal-cell"><button type="button" class="attention-button" data-attention="${esc(deal.id)}" aria-pressed="${Boolean(deal.attention)}" aria-label="${deal.attention ? 'Clear attention flag' : 'Flag for attention'} on ${esc(deal.name)}"${parked ? ' disabled' : ''}>${deal.attention ? '⚠' : (PHICON[deal.phase] || '○')}</button>
-      <div><button type="button" class="deal-link" data-open-deal="${esc(deal.id)}">${esc(deal.name)}</button>
-      <div class="deal-meta">${meta.map((item) => `<span>${esc(item)}</span>`).join('<span>·</span>')}</div></div></div></td>
-    <td><select class="cell-select" data-phase="${esc(deal.id)}" aria-label="Phase for ${esc(deal.name)}"${parked ? ' disabled' : ''}>${phaseOptions(deal.phase)}</select></td>
-    <td>${deal.workspace_kind === 'national_account' ? `<button type="button" class="step-button" data-next-step="${esc(deal.id)}"${parked ? ' disabled' : ''}>${renderDealSummary(deal, { today: new Date().toLocaleDateString('en-CA'), viewer: state.selfActor, actorName })}</button>${renderDealItems(deal, { today: new Date().toLocaleDateString('en-CA'), empty: false, board: true })}` : `<button type="button" class="step-button ${deal.next_step ? '' : 'empty'}" data-next-step="${esc(deal.id)}"${parked ? ' disabled' : ''}>${esc(deal.next_step || 'Set the next step…')}</button>`}</td>
-    <td><span class="due ${days !== null && days < 0 ? 'over' : days !== null && days <= 3 ? 'soon' : ''}">${esc(dateLabel(deal.next_date))}</span></td>
-    <td>${deal.workspace_kind === 'national_account'
-      ? `<button type="button" class="agent-button" data-market-agent="${esc(deal.id)}"${parked ? ' disabled' : ''}>${esc(deal.market_agent || 'Assign agent…')}</button>`
-      : `<select class="cell-select" data-owner="${esc(deal.id)}" aria-label="Owner for ${esc(deal.name)}"${parked ? ' disabled' : ''}><option value="">Unassigned</option><option value="joe"${deal.owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${deal.owner === 'dell' ? ' selected' : ''}>Dell</option></select>`}</td>
-    <td class="row-actions">${unconfirmed}<button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore' : 'Park'}</button><button type="button" class="row-menu" data-open-deal="${esc(deal.id)}" aria-label="Open ${esc(deal.name)} details">•••</button></td>
-  </tr>`;
+  const presence = state.presence.filter(lease => lease.deal_id === deal.id && lease.actor !== state.selfActor && new Date(lease.expires_at) > new Date());
+  const today = new Date().toLocaleDateString('en-CA');
+  return {
+    id: deal.id, name: deal.name, parked, attention: Boolean(deal.attention), phase: deal.phase,
+    classes: [parked ? 'parked' : '', deal.attention ? 'attention' : '', days !== null && days < 0 ? 'overdue' : ''].join(' '),
+    icon: deal.attention ? '⚠' : (PHICON[deal.phase] || '○'),
+    meta: [deal.market, deal.type, state.query && deal.account_name ? deal.account_name : null,
+      parked ? parkingReasonLabel(deal.parking_reason) : null,
+      presence[0] ? `${actorName(presence[0].actor)} is editing` : null].filter(Boolean),
+    title: presence.length ? `${actorName(presence.at(-1).actor)} is editing ${presence.at(-1).field}` : '',
+    due: dateLabel(deal.next_date), dueClass: days !== null && days < 0 ? 'over' : days !== null && days <= 3 ? 'soon' : '',
+    retries: unresolvedFieldWrites(state.fieldWrites, deal.id).map(entry => ({ cell: entry.cell, label: fieldLabel(entry.field) })),
+    step: deal.workspace_kind === 'national_account'
+      ? { kind: 'national', summaryHtml: renderDealSummary(deal, { today, viewer: state.selfActor, actorName }),
+        itemsHtml: renderDealItems(deal, { today, empty: false, board: true }), agent: deal.market_agent || 'Assign agent…' }
+      : { kind: 'local', text: deal.next_step || 'Set the next step…', empty: !deal.next_step, owner: deal.owner || '' },
+  };
 }
 
-function applyPresence() {
-  for (const lease of state.presence) {
-    if (lease.actor === state.selfActor || new Date(lease.expires_at) <= new Date()) continue;
-    const row = document.querySelector(`[data-deal-id="${CSS.escape(lease.deal_id)}"]`);
-    if (row) row.title = `${actorName(lease.actor)} is editing ${lease.field}`;
-  }
-}
 
 function renderCaptureStatus() {
   const active = state.captureSessions.find((session) => !['done','completed','failed','cancelled'].includes(session.state));
@@ -599,6 +588,7 @@ function refuseScreenAccess() {
   screenCommands = {};
   state.review = null; state.confirms = []; state.deals.clear();
   $('#agendaPanel').hidden = true; $('#confirmDock').hidden = true;
+  boardRows?.dispose(); boardRows = null;
   $('#rows').replaceChildren(); selectDocRecord(null,null);
 }
 async function runScreenAction(key,args,method,label,accepted) {
