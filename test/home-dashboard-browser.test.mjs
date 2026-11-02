@@ -1449,9 +1449,10 @@ test('Home groups deals with no next step and links each deal room', async t => 
     const editor = page.getByLabel('Next step', { exact: true });
     await editor.waitFor();
     await page.waitForFunction(() => document.activeElement?.id === 'dealUpdateStep');
-    await page.clock.runFor(100);
-    const box = await editor.boundingBox();
-    assert.ok(box.y >= 0 && box.y + box.height <= 844);
+    await settles(async () => {
+      const box = await editor.boundingBox();
+      assert.ok(box && box.y >= 0 && box.y + box.height <= 844);
+    });
     assert.equal(new URL(page.url()).searchParams.get('deal'), deals[0].id);
   }
 });
