@@ -12,11 +12,18 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme,walkthroughSeen:{joe:true,dell:true,'example-partner':true}})),theme);
   await pausedClock(page,new Date('2026-10-30T12:00:00Z'));
   const reads = [], writes = [], errors = [];
-  let payload = {...practiceOriginationFixture(),next_cursor:'1'};
+  let payload = {...practiceOriginationFixture(),cards:[],next_cursor:null};
   page.on('pageerror',error => errors.push(error.message));
   await routeLeads(page,{getReasons:args => { reads.push(args); return args.before_id ? {...payload,cards:[{...payload.cards[0],id:'99',name:'Demo Later Practice'}],next_cursor:null} : payload; },onWrite:p => writes.push(p)});
   await page.goto('http://localhost/leads');
   const reasons = page.locator('#contactReasons');
+  await settles(async () => assert.match(await reasons.innerText(),/No new reasons to reach out\./));
+  assert.equal(await reasons.getByRole('searchbox').count(),0);
+  await mkdir('.github/pr-evidence/WR39.S1.J5',{recursive:true});
+  await reasons.screenshot({path:`.github/pr-evidence/WR39.S1.J5/empty-${width}-${theme}.png`});
+  payload = {...practiceOriginationFixture(),next_cursor:'1'};
+  reads.length = 0;
+  await page.reload();
   await reasons.locator('.work-card').first().waitFor();
   assert.equal(await reasons.getByRole('searchbox',{name:'Search loaded reasons'}).count(),1);
   const search = reasons.getByRole('searchbox',{name:'Search loaded reasons'});
@@ -102,7 +109,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   assert.match(await reasons.innerText(),/No matches among loaded reasons/);
   assert.equal(await reasons.getByRole('list',{name:'Source coverage'}).count(),1);
   await reasons.getByRole('button',{name:'Clear',exact:true}).click();
-  assert.match(await reasons.innerText(),/No matches among loaded reasons/);
+  assert.match(await reasons.innerText(),/None on this page\. Load more reasons below\./);
   assert.equal(await search.evaluate(node => node === document.activeElement),true);
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   assert.match(await reasons.innerText(),/Sign in to view contact reasons/);
