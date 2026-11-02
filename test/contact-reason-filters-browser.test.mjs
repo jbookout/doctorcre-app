@@ -33,6 +33,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   assert.equal(reads[0].limit,25);
   const initial = width === 390 ? 1 : 2;
   assert.equal(await reasons.locator('.work-card').count(),initial);
+  assert.equal(await reasons.getByRole('status').innerText(),'6 loaded reasons');
   await search.fill('  demo group  ');
   assert.match(await reasons.innerText(),/^1 matching loaded reason$/m);
   assert.equal(await reasons.locator('h3').innerText(),'Demo Group Practice');
@@ -89,6 +90,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   assert.equal(reads[1].before_id,'1');
   await reasons.getByRole('button',{name:'Clear',exact:true}).click();
   assert.equal(await reasons.locator('.work-card').count(),7);
+  assert.equal(await reasons.getByRole('status').innerText(),'7 loaded reasons');
   await search.fill('later');
   assert.equal(await reasons.locator('h3').innerText(),'Demo Later Practice');
   await reasons.getByRole('button',{name:'Clear',exact:true}).click();
