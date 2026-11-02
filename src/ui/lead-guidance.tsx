@@ -6,26 +6,39 @@ type Strategy = {
   decision_window: string | null; confidence: string | null; next_step: string | null;
   channel: string | null; risk: string | null;
 };
-type Guidance = { advice: string | null; restricted: boolean; strategy: Strategy };
+const holdReasons = {
+  suppressed: 'Suppressed.',
+  contact_ineligible: 'Contact is ineligible.',
+  unsupported_stage: 'Lead stage is not supported.',
+};
+type Hold = { kind: 'none' } | { kind: 'unavailable' } | { kind: 'held'; reason: keyof typeof holdReasons };
+type Guidance = { advice: string | null; hold: Hold; strategy: Strategy };
 const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : {};
 }
-const adviceStages = new Set(['new', 'qualified', 'outreach_active', 'engaged', 'nurture_drip',
-  'opportunity', 'active_deal', 'closed_won', 'closed_lost']);
+function parseHold(value: unknown): Hold {
+  if (value === null) return { kind: 'none' };
+  const { reason } = record(value);
+  if (reason === 'suppressed' || reason === 'contact_ineligible' || reason === 'unsupported_stage') {
+    return { kind: 'held', reason };
+  }
+  return { kind: 'unavailable' };
+}
 function parseGuidance(value: unknown): Guidance {
   const lead = record(value), strategy = record(lead.strategy);
   return { advice: text(lead.handling_advice),
-    restricted: lead.suppressed === true || lead.contact_eligible === false || !adviceStages.has(text(lead.stage) || ''),
+    hold: parseHold(strategy.hold),
     strategy: { basis: text(strategy.basis), objective: text(strategy.objective),
       discovery: Array.isArray(strategy.discovery) ? strategy.discovery.flatMap(value => text(value) ? [String(value)] : []) : [],
       decision_window: text(strategy.decision_window), confidence: text(strategy.confidence),
       next_step: text(strategy.next_step), channel: text(strategy.channel), risk: text(strategy.risk) } };
 }
-function LeadGuidance({ advice, restricted, strategy }: Guidance) {
+function LeadGuidance({ advice, hold, strategy }: Guidance) {
   return <section className="detail-panel lead-guidance" aria-labelledby="handlingAdviceTitle">
     <h3 id="handlingAdviceTitle">Handling advice</h3>
-    {restricted && <p className="lead-guidance-restriction"><strong>Contact restriction. Review the recorded hold before outreach.</strong></p>}
+    {hold.kind === 'held' && <p className="lead-guidance-restriction"><strong>Contact restriction. {holdReasons[hold.reason]} Review the recorded hold before outreach.</strong></p>}
+    {hold.kind === 'unavailable' && <p className="lead-guidance-unavailable"><strong>Contact restriction guidance unavailable. Review the recorded restrictions before outreach.</strong></p>}
     <p>{advice || 'Handling advice unavailable.'}</p>
     <details data-entry-key="lead-strategy"><summary>Strategy</summary>
       <p>{strategy.basis === 'stage_based_guidance'
