@@ -424,8 +424,12 @@ for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers auto
     }
     await page.getByRole('status').filter({ hasText: /Trying again automatically in 60 seconds/ }).waitFor();
     assert.equal(await page.getByText(/Could not check this call/).count(), 0);
-    await page.clock.runFor(59000);
-    assert.equal(await page.getByRole('button', { name: 'Approve or fix this item' }).count(), 0);
+    await page.clock.runFor(1000);
+    assert.match(await page.getByRole('status').innerText(), /automatically in 59 seconds/);
+    await page.clock.runFor(58000);
+    const decision = page.getByRole('button', { name: 'Approve or fix this item' });
+    if (target === 'decision') assert.equal(await decision.isDisabled(), true);
+    else assert.equal(await decision.count(), 0);
     await page.clock.runFor(1000);
     await page.getByRole('button', { name: 'Approve or fix this item' }).waitFor();
     assert.equal(await page.evaluate(() => window.decisionAttempts), target === 'decision' ? 1 : 0);
@@ -506,5 +510,55 @@ for (const end of ['dispose', 'sign out']) test(`${end} cancels an automatic bud
     }, end);
     await page.clock.runFor(120_000);
     assert.equal(await page.evaluate(() => window.budgetReads), 1);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (const accept of [true, false]) test(`refused decision stays visible with a countdown at ${width} ${theme} ${accept}`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async ({ rows, theme }) => {
+      const { mountCallReview } = await import('/js/ui-call.js');
+      rows[0].applied = [];
+      Object.assign(rows[0].open_cards[0], { deal_name: 'Demo Bayside relocation', evidence_quote: 'Send the revised proposal.', payload: { subject: 'Send revised proposal' } });
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      document.documentElement.dataset.theme = theme;
+      window.decisionAttempts = 0;
+      window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
+        readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
+        resolvePostCallCandidate: async () => {
+          if (++window.decisionAttempts === 1) throw Object.assign(new Error('budget'), { status: 429 });
+          rows[0].open_cards = []; return { ok: true };
+        },
+      }), describe: () => 'Proposal', undoRefusal: () => '' });
+      await window.guide.refresh();
+    }, { rows: synthetic(), theme });
+    await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+    const button = page.getByRole('button', { name: accept ? 'Approve item' : 'Skip item', exact: true });
+    await button.click();
+    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved/);
+    assert.equal(await page.getByRole('heading', { name: 'Demo Bayside relocation' }).isVisible(), true);
+    assert.equal(await page.getByText('Needs your decision', { exact: true }).isVisible(), true);
+    assert.equal(await button.isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isDisabled(), true);
+    await page.getByRole('status').filter({ hasText: /automatically in 60 seconds/ }).waitFor();
+    if (accept) {
+      await mkdir('out/test-artifacts/call-guide-refused', { recursive: true });
+      await page.screenshot({ path: `out/test-artifacts/call-guide-refused/waiting-${width}-${theme}.png`, fullPage: true });
+    }
+    await page.clock.runFor(1000);
+    assert.match(await page.getByRole('status').innerText(), /automatically in 59 seconds/);
+    await page.clock.runFor(58000);
+    assert.match(await page.getByRole('status').innerText(), /automatically in 1 second\./);
+    assert.equal(await page.evaluate(() => window.decisionAttempts), 1);
+    await page.clock.runFor(1000);
+    assert.equal(await button.isEnabled(), true);
+    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved/);
+    assert.equal(await page.evaluate(() => window.decisionAttempts), 1, 'only reads retry automatically');
+    await button.click();
+    await page.getByText('No longer pending', { exact: true }).waitFor();
+    assert.equal(await page.getByText(/Your decision was not saved/).count(), 0);
+    assert.equal(await page.evaluate(() => window.decisionAttempts), 2);
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
