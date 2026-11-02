@@ -9,6 +9,7 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath } from '../js/progress-board-route.js';
 const root=new URL('../',import.meta.url);
+const roomTime=new Date('2026-10-02T12:00:00Z');
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
 async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData,unobservedSchedule=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
@@ -28,8 +29,8 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    }:listener,options);
   };
  });
- await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
- const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
+ await page.clock.install({time:roomTime});
+ const fixture=await createFixtureClient({scheduleNow:roomTime.getTime(),seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[],boardFailure:null,scheduleFailure:false,scheduleUnknown:false,partialSchedule:false,duplicateJobs:false,unobservedSchedule,bindingOnly:false,boardUnpublished,emptyAgents:false,emptySessions:false};page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.origin!=='http://localhost')return route.abort();
