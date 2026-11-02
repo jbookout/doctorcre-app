@@ -112,6 +112,7 @@ test('Calendar opens each owning deal and Back restores the selected period and 
           await page.keyboard.press('Enter');
           await page.waitForURL(url => url.pathname === '/deals' && url.searchParams.get('deal') === id);
           await expect(page.locator('#recordPanel')).toBeVisible();
+          await expect(page.locator('#recordPanel .deal-opening-snapshot')).toBeVisible();
           await expect(page.locator('#recordPanel')).toContainText(label);
           await expect.poll(() => roomReads.slice(before)).toContain(id);
           assert.deepEqual([...new Set(roomReads.slice(before))], [id], `only ${id} was opened`);
