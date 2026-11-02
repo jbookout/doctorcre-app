@@ -63,7 +63,9 @@ test('invoice details open the owning deal without recording payment', async t =
         assert.equal(calls.filter(name => name === 'read-invoice-tracker').length, reads);
         if (i === 0) {
           await page.locator('#invoicePaidDate').fill('2026-10-01');
-          await link.focus();
+          await page.locator('#closeInvoiceDetail').focus();
+          await page.keyboard.press('Tab');
+          await expect(link).toBeFocused();
           data.entries[0].gross_amount = '12501';
           await page.evaluate(() => document.querySelector('#refreshInvoices').click());
           await expect(page.locator('#invoiceDetailFacts')).toContainText('$12,501.00');

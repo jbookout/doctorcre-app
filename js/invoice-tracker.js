@@ -67,7 +67,7 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
     if(!row){closeDetail();return;}
     $('invoiceDetailTitle').textContent=row.name;
     const dealLink=typeof row.deal_id==='string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(row.deal_id)
-      ? `<a class="secondary" data-invoice-key="deal:${E(row.key)}" href="/deals?deal=${E(encodeURIComponent(row.deal_id))}">Open deal</a>` : '<span>Deal unavailable</span>';
+      ? `<a data-invoice-key="deal:${E(row.key)}" href="/deals?deal=${E(encodeURIComponent(row.deal_id))}">Open deal</a>` : '<span>Deal unavailable</span>';
     paint($('invoiceDetailFacts'),`<div class="invoice-detail-facts"><div><span>${row.status==='paid'?'Paid to CARR':'Owed to CARR'}</span><strong>${E(invoiceMoney(row.amount))}</strong></div><div><span>Status</span><strong class="invoice-status-value">${statusLabel(row)}</strong></div><div><span>${row.status==='paid'?'Days to payment':'Days outstanding'}</span><strong>${row.age ?? '—'}</strong></div></div><p>${dealLink}</p>`);
     paint($('invoiceTimeline'),[['Closed',row.closed_on],['Invoiced',row.invoiceDay],['Paid',row.received_on]].map(([label,day])=>`<div class="invoice-milestone${day?' done':''}"><strong>${label}</strong><time${day?` datetime="${day}"`:''}>${day?invoiceDate(day):label==='Invoiced'?'Awaiting invoice':'—'}</time></div>`).join(''));
     $('invoiceActivity').textContent=row.status==='paid'?`Payment recorded ${invoiceDate(row.received_on)}.`:row.status==='awaiting'?'Closed · awaiting invoice.':row.overdue?`Payment due ${invoiceDate(row.due_on)}.`:`Invoiced ${invoiceDate(row.invoiceDay)}.`;
