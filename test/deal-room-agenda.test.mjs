@@ -83,6 +83,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     if (!await page.locator('#agendaButton').isVisible()) await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
     await page.locator('#agendaButton').click();
     await page.locator('#agendaPanel').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#agendaPanel').evaluate(node => node.contains(document.activeElement)), true, 'Review deals moves focus into the agenda');
     await page.keyboard.press('Escape');
     assert.match(await page.locator('#agendaCard').textContent(), /Synthetic agenda one/);
     await page.locator('#agendaReviewed').focus();

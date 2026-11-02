@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
-test('national creation reviews duplicate candidates and existing sub-clients through real forms', async t => {
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`national creation reviews duplicate candidates and existing sub-clients at ${width}px in ${theme}`, async t => {
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({viewport:{width:390,height:844}});
+  const page = await browser.newPage({viewport:{width,height:900},colorScheme:theme});
   // Keep board reads synthetic; exercise the real live writer at the form seam.
   const source = await readFile(new URL('../js/client.js',import.meta.url),'utf8');
   await page.route('**/js/client.js', route => route.fulfill({contentType:'text/javascript',body:`${source}
@@ -35,6 +35,7 @@ test('national creation reviews duplicate candidates and existing sub-clients th
   });
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().waitFor();
+  await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
   await page.getByRole('button',{name:'Workspace sidebar',exact:true}).click();
   await page.locator('#stickyAddButton').click();
   await page.locator('#accountName').fill('Demo Separate Brand');

@@ -24,13 +24,12 @@ function chooser(resolveConflict) {
 
 test('conflict requires an explicit choice and renders both attributed values', () => {
   const view = chooser(async () => ({ ok:true }));
-  const { body, title } = view.form();
+  const { form, title } = view.form();
   assert.equal(title, 'Choose the Attention flag value');
-  assert.match(body, /Previously recorded value.*Dell: Flagged/s);
-  assert.match(body, /Your proposed value.*Joe: Not flagged/s);
-  assert.match(body, /name="winner" value="a" required/);
-  assert.match(body, /name="winner" value="b" required/);
-  assert.doesNotMatch(body, /checked/);
+  assert.deepEqual(form, { kind:'conflict', choices:[
+    { side:'a', caption:'Previously recorded value', actor:'Dell', value:'Flagged' },
+    { side:'b', caption:'Your proposed value', actor:'Joe', value:'Not flagged' },
+  ] });
 });
 
 test('an unanswered resolution reuses the exact choice and key', async () => {
