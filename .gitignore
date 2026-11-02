@@ -12,8 +12,25 @@ __pycache__/
 
 test-artifacts/
 /tours/day-shell.generated.js
-/js/*.generated.js
-/js/ui-*.js
+/js/ui-host.js
+/js/ui-zoom.js
+/js/ui-facts.js
+/js/ui-market.js
+/js/ui-limit.js
+/js/ui-reasons.js
+/js/ui-queue.js
+/js/ui-action.js
+/js/ui-call.js
+/js/ui-board.js
+/js/ui-agenda.js
+/js/ui-lead.js
+/js/ui-quiet-vendors.js
+/js/ui-inbox.js
+/js/ui-next-step.js
+/js/ui-task-done.js
+/js/ui-deal-reviews.js
+/js/deal-room-forms.generated.js
+/js/ui-shared-*.generated.js
 /out/
 # Ad-hoc screen captures; the journeys write their evidence under /.e2e/.
 mobile-a11y-evidence/
