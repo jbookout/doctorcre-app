@@ -24,7 +24,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     let reads = 0;
-    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp' && request.postDataJSON()?.params?.name === 'lead-board') reads++; });
+    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp') reads++; });
     await routeLeads(page, { getDetail: row => ({ ...detail(row),
       ...(row.id.endsWith('1') ? guidance : { handling_advice: 'Do not contact. Ask the owning partner to review the hold.',
         contact_eligible: false, strategy: { ...guidance.strategy, hold: { reason: 'contact_ineligible' }, objective: 'Resolve the recorded hold.' } }) }) });
@@ -179,7 +179,7 @@ test('an explicit server hold restricts an otherwise ordinary lead', async t => 
   await page.locator('#leadBoard[aria-busy="false"]').waitFor();
   await page.locator('[data-open]').first().click();
   await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
-  assert.match(await page.locator('#leadGuidance').innerText(), /Contact restriction.*Suppressed/);
+  assert.match(await page.locator('#leadGuidance').innerText(), /Contact restriction.*This contact is suppressed\./);
 });
 
 
@@ -190,8 +190,8 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     let current = guidance;
-    let reads = 0;
-    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp' && request.postDataJSON()?.params?.name === 'lead-board') reads++; });
+    const reads = [];
+    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp') reads.push(request.postDataJSON()?.params?.name); });
     await routeLeads(page, { getDetail: row => ({ ...detail(row), ...current,
       stage: 'future_stage', suppressed: false, contact_eligible: false,
     }) });
@@ -202,21 +202,21 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.locator('#leadGuidance summary').focus();
     await page.keyboard.press('Enter');
     for (const [index, [hold, expected]] of [
-      [{ reason: 'suppressed' }, 'Suppressed.'],
-      [{ reason: 'contact_ineligible' }, 'Contact is ineligible.'],
-      [{ reason: 'unsupported_stage' }, 'Lead stage is not supported.'],
+      [{ reason: 'suppressed' }, 'This contact is suppressed.'],
+      [{ reason: 'contact_ineligible' }, 'This contact is not eligible for outreach.'],
+      [{ reason: 'unsupported_stage' }, "This lead's stage has no outreach guidance."],
       [null, null], [undefined, 'unavailable'], [{}, 'unavailable'],
       [{ reason: 'future_reason' }, 'unavailable'], [{ reason: 1 }, 'unavailable'],
       ['suppressed', 'unavailable'], [[{ reason: 'suppressed' }], 'unavailable'],
     ].entries()) {
       current = { ...guidance, strategy: { ...guidance.strategy, hold, next_step: `Review server snapshot ${index + 1}.` } };
-      const before = reads;
+      const before = reads.length;
       await page.locator('#refreshBoard').evaluate(button => button.click());
       await page.locator('#leadBoard[aria-busy="false"]').waitFor();
       await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
       await page.getByText(current.strategy.next_step, { exact: true }).waitFor();
       await settles(async () => {
-        assert.equal(reads, before + 2, 'refresh uses only the existing board and detail reads');
+        assert.deepEqual(reads.slice(before).sort(), ['lead-board', 'lead-board', 'quiet-follow-ups'], 'refresh makes exactly the existing requests');
         const content = await page.locator('#leadGuidance').innerText();
         assert.match(content, /Confirm the decision makers/);
         assert.match(content, /not verified prospect intent/);
@@ -225,6 +225,19 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
         assert.equal(await page.locator('.lead-guidance-unavailable').count(), expected === 'unavailable' ? 1 : 0);
         if (expected && expected !== 'unavailable') assert.ok(content.includes(expected));
         assert.equal(await page.locator('#leadGuidance').evaluate(el => el.scrollWidth <= el.clientWidth), true);
+        assert.equal(await page.locator('#leadGuidance summary').evaluate(el => el === document.activeElement), true);
+        assert.equal(await page.locator('#leadGuidance details').getAttribute('open'), '');
+        if (expected === 'unavailable') {
+          assert.equal(await page.locator('.lead-guidance-unavailable').evaluate(el => {
+            const style = getComputedStyle(el);
+            const panel = el.parentElement;
+            const panelStyle = getComputedStyle(panel);
+            return parseFloat(style.borderTopWidth) > 0 && parseFloat(style.paddingTop) > 0
+              && parseFloat(style.marginBottom) > 0 && style.backgroundColor !== 'rgba(0, 0, 0, 0)'
+              && Math.abs(el.getBoundingClientRect().width - (panel.clientWidth
+                - parseFloat(panelStyle.paddingLeft) - parseFloat(panelStyle.paddingRight))) <= 1;
+          }), true, 'unavailable guidance is a full-width warning separated from advice');
+        }
       });
       if (hold === null || expected === 'unavailable' && hold === undefined) {
         await page.locator('#leadGuidance').screenshot({ path: `${screenshots}/${width}-${theme}-${hold === null ? 'no-hold' : 'unavailable'}.png` });
