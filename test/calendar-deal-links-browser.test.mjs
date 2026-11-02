@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { expect as baseExpect } from '@playwright/test';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { createQaServer } from '../scripts/qa-fixture-server.mjs';
+import { chromium, WAIT_MS } from './browser-harness.mjs';
+
+const expect = baseExpect.configure({ timeout: WAIT_MS });
+const root = fileURLToPath(new URL('../', import.meta.url));
+const calendarPath = '/calendar?view=month&d=2026-10-01&day=2026-10-20';
+
+test('Calendar opens each owning deal and Back restores the selected period and day', async t => {
+  const outDir = await temporaryDirectory('calendar-deal-links-');
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
+  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+
+  for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+    await t.test(`${width} ${theme}`, async () => {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+      const calls = [];
+      const errors = [];
+      let empty = false;
+      page.on('pageerror', error => errors.push(error.message));
+      await page.addInitScript(theme => {
+        localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme }));
+      }, theme);
+      await page.route('**/*', async route => {
+        const url = new URL(route.request().url());
+        if (url.hostname !== 'doctorcre-app-staging.joe-bookout-carr-us.workers.dev') return route.abort();
+        const response = await page.request.fetch(`${origin}${url.pathname}${url.search}`, {
+          method: route.request().method(), data: route.request().postData() ?? undefined,
+          headers: { 'content-type': 'application/json' },
+        });
+        if (url.pathname !== '/mcp') return route.fulfill({ response });
+        const { name, arguments: args } = route.request().postDataJSON().params;
+        calls.push(name);
+        const payload = await response.json();
+        if (name === 'deal-room-board' || name === 'get-deal-room') {
+          const data = JSON.parse(payload.result.content[0].text);
+          if (name === 'deal-room-board') data.deals = empty ? [] : data.deals.slice(0, 3);
+          else data.critical_dates = [{
+            id: `date-${args.deal}`, kind: 'loi_expiry', status: 'open',
+            due_on: args.deal === 'qa-deal-3' ? null : '2026-10-20',
+            note: `Synthetic requirement for ${args.deal} ${'with long recorded context '.repeat(8)}`,
+          }];
+          payload.result.content[0].text = JSON.stringify(data);
+        }
+        return route.fulfill({ json: payload });
+      });
+      try {
+        await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `deal-links-${width}-${theme}`, reset: true } });
+        await page.goto(`https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev${calendarPath}`);
+        await expect(page.locator('#calStatusLabel')).toHaveText('Current');
+        await expect(page.locator('#dayPanelBody .cal-day-entry')).toHaveCount(2);
+        const links = page.locator('#dayPanelBody a, #calUndatedList a');
+        await expect(links).toHaveCount(3);
+        assert.deepEqual(await links.evaluateAll(nodes => nodes.map(node => node.getAttribute('href'))), [
+          '/deals?deal=qa-deal-1', '/deals?deal=qa-deal-2', '/deals?deal=qa-deal-3',
+        ]);
+        for (const link of await links.all()) await expect(link).toHaveAccessibleName(/Open .*Demo/);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        const evidence = join(root, '.github/pr-evidence/WR636.S1.J11');
+        await mkdir(evidence, { recursive: true });
+        await page.screenshot({ path: join(evidence, `calendar-${width}-${theme}.png`), fullPage: true });
+        const period = await page.locator('#calPeriod').textContent();
+        const calendarUrl = page.url();
+        for (const id of [1, 2, 3]) {
+          const link = page.locator(`a[href="/deals?deal=qa-deal-${id}"]`);
+          const label = await link.textContent();
+          await link.focus();
+          await expect(link).toBeFocused();
+          await page.keyboard.press('Enter');
+          await page.waitForURL(`**/deals?deal=qa-deal-${id}`);
+          await expect(page.locator('#recordPanel')).toBeVisible();
+          await expect(page.locator('#recordPanel')).toContainText(label.replace(/^Open /, ''));
+          await page.goBack();
+          await expect(page).toHaveURL(calendarUrl);
+          await expect(page.locator('#calPeriod')).toHaveText(period);
+          await expect(page.locator('.cal-day[aria-selected="true"]')).toHaveAttribute('data-day', '2026-10-20');
+          await expect(page.locator('#calUndatedList')).toContainText('Date unavailable');
+        }
+        assert.equal(calls.includes('add-critical-date'), false);
+        empty = true;
+        await page.locator('#calRefresh').click();
+        await expect(page.locator('#calState')).toContainText('No deal carries a critical date yet');
+        await expect(links).toHaveCount(0);
+        assert.deepEqual(errors, []);
+      } finally {
+        await page.close();
+      }
+    });
+  }
+});
