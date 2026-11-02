@@ -6,13 +6,13 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
-const UI_BUNDLE = '/js/ui.generated.js';
+const UI_BUNDLE = '/js/host-node.generated.js';
 
 async function hostInDom() {
   const dom = new JSDOM('<main id="slot"><p id="before"></p><section id="panel"><input id="draft"><button id="act">Act</button></section><p id="after"></p></main>');
   // React DOM reads the browser globals when its module evaluates.
   Object.assign(globalThis, { window: dom.window, document: dom.window.document });
-  const { hostNode } = await import(`../js/ui.generated.js?jsdom=${Math.random()}`);
+  const { hostNode } = await import(`../js/host-node.generated.js?jsdom=${Math.random()}`);
   return { document: dom.window.document, hostNode, close: () => dom.window.close() };
 }
 

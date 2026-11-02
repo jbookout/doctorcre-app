@@ -9,7 +9,6 @@ import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { mountNavigation, appOriginForReport } from "./navigation.js";
 
 // Keep this variable import out of the offline Tour dependency walk; its bundle is generated later.
-const REACT_UI_MODULE = "./ui.generated.js";
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const location = globalThis.location;
@@ -96,7 +95,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
     if (loading) return;
     loading = true;
     try {
-      const { mountZoomableWorkspace } = await import(REACT_UI_MODULE);
+      const { mountZoomableWorkspace } = await import("./workspace-zoom.generated.js");
       if (disposed || !identity || phone.matches || !sessionIsValid()) return;
       layout = root.getElementById("appLayout");
       if (!layout) return;
@@ -254,7 +253,7 @@ if (typeof document !== "undefined") {
   mountAppShell();
   const actionHost = document.getElementById('actionLink');
   if (actionHost && location.pathname.startsWith('/a/')) {
-    const { mountActionLink } = await import(REACT_UI_MODULE);
+    const { mountActionLink } = await import("./action-link.generated.js");
     if (!privateSession()?.revoked) {
       const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests() });
       window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });

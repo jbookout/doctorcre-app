@@ -8,11 +8,16 @@ import { fileURLToPath } from "node:url";
 // install in this checkout.
 export const UI_SOURCE = "src/ui";
 export const UI_ENTRY = `${UI_SOURCE}/index.tsx`;
-export const UI_OUTPUT = "js/ui.generated.js";
 const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
-export const UI_OUTPUTS = [UI_OUTPUT, 'js/deal-room-forms.generated.js', 'js/ui-shared.generated.js'];
+const UI_ENTRIES = [
+  'host-node', 'workspace-shell', 'workspace-zoom', 'fact-review', 'market-terms',
+  'home-list-limit', 'contact-reasons', 'brief-queues', 'action-link', 'call-review',
+  'deal-room-board', 'deal-room-agenda', 'lead-guidance', 'deal-room-forms',
+  'inbox-entry', 'home/missing-next-step', 'home/task-done', 'home/deal-update-reviews',
+];
+export const isUiAsset = path => /^js\/[\w-]+\.generated\.js$/.test(path);
 
 export async function uiBundle(readSource, entry = UI_ENTRY) {
   const result = await buildUi(readSource, { entryPoints: [entry] });
@@ -21,8 +26,10 @@ export async function uiBundle(readSource, entry = UI_ENTRY) {
 
 export async function uiAssets(readSource) {
   const result = await buildUi(readSource, {
-    entryPoints: { 'ui.generated': UI_ENTRY, 'deal-room-forms.generated': FORM_ENTRY },
-    splitting: true, outdir: 'js', chunkNames: 'ui-shared.generated',
+    entryPoints: Object.fromEntries(UI_ENTRIES.map(path => [
+      `${posix.basename(path)}.generated`, `${UI_SOURCE}/${path}`,
+    ])),
+    splitting: true, outdir: 'js', chunkNames: 'ui-shared-[hash].generated',
   });
   return new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
 }

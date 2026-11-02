@@ -105,7 +105,7 @@ test('the call guide orders deals, preserves the outstanding item and acknowledg
   try {
     await page.goto(server.origin);
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.guideWrites = [];
       window.guideRows = rows;
@@ -151,7 +151,7 @@ test('the guide distinguishes loading, empty, unavailable and sign-out, and fenc
   try {
     await page.goto(server.origin);
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.rows = rows; window.failGuide = false;
       window.guide = mountCallReview(node, { filter: () => ['phase-1'], client: () => ({
@@ -180,7 +180,7 @@ test('Undo refusal refreshes the version, preserves the notice and selection, an
   try {
     await page.goto(server.origin);
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.undoWrites = [];
       window.guide = mountCallReview(node, { filter: () => ['step-1'], client: () => ({
@@ -215,7 +215,7 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
   try {
     await page.goto(server.origin);
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       rows[0].open_cards[0].deal_id = null;
       window.guideWrites = [];
@@ -258,7 +258,7 @@ test('older call decisions stay in the saved guide', async () => {
   try {
     await page.goto(server.origin);
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.openedCompanion = false;
       const guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => ({ calls: rows }) }), describe: () => 'Draft proposal', undoRefusal: () => '', openCandidate: () => { window.openedCompanion = true; } });
@@ -276,7 +276,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (con
   try {
     await page.goto(server.origin);
     await page.evaluate(async ({ rows, resolver }) => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       rows[0].applied = [];
       rows[0].open_cards[0].resolver = resolver;
       rows[0].open_cards[0].payload = { assignee: 'joe', due_on: '2026-10-05', subject: 'Send revised proposal' };
@@ -316,7 +316,7 @@ test('Undo leaves an earlier reviewed change on the same deal reviewed', async (
   try {
     await page.goto(server.origin);
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       rows[0].applied[1].deal_id = rows[0].applied[0].deal_id;
       const node = document.createElement('section'); document.body.replaceChildren(node);
       const guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
@@ -344,7 +344,7 @@ test('nine filed-call decisions at two seconds each stay within the human reques
     await page.goto(server.origin);
     await page.clock.install();
     await page.evaluate(async () => {
-      const { mountCallReview, mountCallReviewDialog } = await import('/js/ui.generated.js');
+      const { mountCallReview, mountCallReviewDialog } = await import('/js/call-review.generated.js');
       const rows = [{ session_id: 'budget-call', call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
         candidate_id: `applied-${i}`, kind: 'next_step', deal_id: `deal-${i}`, deal_name: `Synthetic deal ${i}`,
         deal_version: 1, undone_at: null, payload: { text: `Initial step ${i}` },
@@ -405,7 +405,7 @@ for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers auto
     await page.goto(server.origin);
     await page.clock.install();
     await page.evaluate(async ({ rows, target }) => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       rows[0].applied = [];
       const node = document.createElement('section'); document.body.replaceChildren(node);
       let refused = false;
@@ -440,7 +440,7 @@ test('guide refreshes share one read at a time and coalesce repeated refresh req
   try {
     await page.goto(server.origin);
     const counts = await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const first = document.createElement('section'), second = document.createElement('section');
       document.body.replaceChildren(first, second);
       let release, calls = 0, reading = 0, peak = 0;
@@ -468,7 +468,7 @@ test('persistent budget refusals pause after three automatic attempts and allow 
     await page.goto(server.origin);
     await page.clock.install();
     await page.evaluate(async rows => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.budgetReads = 0; window.budgetRefused = true;
       window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => {
@@ -494,7 +494,7 @@ for (const end of ['dispose', 'sign out']) test(`${end} cancels an automatic bud
     await page.goto(server.origin);
     await page.clock.install();
     await page.evaluate(async end => {
-      const { mountCallReview } = await import('/js/ui.generated.js');
+      const { mountCallReview } = await import('/js/call-review.generated.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.budgetReads = 0;
       const guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => {

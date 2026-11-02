@@ -19,7 +19,7 @@ async function fixture(t) {
   });
   await page.goto(`${server.origin}/ideas-events`);
   await page.evaluate(async () => {
-    const { mountZoomableWorkspace } = await import('/js/ui.generated.js');
+    const { mountZoomableWorkspace } = await import('/js/workspace-zoom.generated.js');
     document.body.innerHTML = '<main id="original"><section id="deals"><label>Draft<input id="draft"></label><button id="act">Act</button></section><section id="today">Today content<button id="today-action">Today action</button></section></main><div id="workspace"></div>';
     document.getElementById('workspace').style.height = '600px';
     const tabs = (id, panels) => ({ kind: 'tabs', id, panels, active: panels[0] });
