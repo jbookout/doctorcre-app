@@ -27,7 +27,8 @@ async function open(t, options = {}) {
     const rpc = r.request().postDataJSON();
     const { name, arguments: args } = rpc.params;
     let payload = { calls: [] };
-    if (name === 'read-call-outcomes' && state.transferred) payload = { calls: [{ session_id: id, call_date: '2026-10-30', applied: [{ candidate_id: 'applied-1', deal_name: 'Synthetic Clinic', kind: 'next_step', payload: { text: 'Review revised proposal' }, evidence_quote: 'Review it.', deal_version: 3, undone_at: state.undone ? '2026-10-30' : null }], open_cards: [] }] };
+    if (name === 'read-call-outcomes' && state.transferred && !state.reviewed) payload = { calls: [{ session_id: id, call_date: '2026-10-30', applied: [{ candidate_id: 'applied-1', deal_name: 'Synthetic Clinic', deal_id: null, kind: 'next_step', payload: { text: 'Review revised proposal' }, evidence_quote: 'Review it.', deal_version: 3, undone_at: state.undone ? '2026-10-30' : null }], open_cards: [] }] };
+    if (name === 'review-call-outcome') { state.reviewed = true; state.writes.push({ name, args }); payload = { ok: true }; }
     if (name === 'undo-call-change') { state.undone = true; state.writes.push({ name, args }); payload = { ok: true }; }
     return r.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
@@ -143,25 +144,45 @@ test('a failed transfer is labelled Failed and retains audio for retry after rel
   assert.equal(await page.getByRole('button', { name: 'Transfer recording' }).isEnabled(), true);
 });
 
-test('ambiguous pending items apply only after a partner explicitly confirms them', async t => {
-  const { page } = await open(t, { review: true, transferred: true });
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`phone decisions belong only to the guide at ${width} ${theme}`, async t => {
+  const { page } = await open(t, { review: true, transferred: true, width, theme });
   const writes = [];
+  let pending = true, reviewed = false;
   await page.route('**/mcp', r => {
     const rpc = r.request().postDataJSON();
-    const name = rpc.params.name;
-    if (name.startsWith('resolve-')) writes.push(rpc.params);
-    return r.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(name === 'read-call-outcomes' ? { calls: [] } : { ok: true, ref: 'synthetic-ref' }) }] } } });
+    const { name, arguments: args } = rpc.params;
+    if (name === 'resolve-post-call-candidate') { writes.push({ name, args }); pending = false; }
+    if (name === 'review-call-outcome') { writes.push({ name, args }); reviewed = true; }
+    const payload = name === 'read-call-outcomes' ? { calls: reviewed ? [] : [{ session_id: id, call_date: '2026-10-30', applied: [], open_cards: pending ? [{ candidate_id: 'action-1', resolver: 'resolve-post-call-candidate', kind: 'action', deal_id: null, deal_name: 'Synthetic Clinic', payload: { action: 'Send revised proposal', assignee: 'joe', due_on: '2026-10-05' }, evidence_quote: 'Send it next week.' }] : [] }] } : { ok: true };
+    return r.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
-  await page.getByText(/Partner confirmation needed/).waitFor();
+  await page.reload();
+  await page.getByRole('button', { name: 'Approve or fix this item' }).waitFor();
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  assert.equal(await page.locator('#phoneReview button:not(.call-review *)').filter({ hasText: /Confirm|Approve|Skip|Reviewed|Complete/ }).count(), 0);
   assert.deepEqual(writes, []);
-  await page.getByRole('button', { name: 'Confirm assigned action' }).click();
-  await page.locator('#phoneCalls[aria-busy=false]').waitFor();
-  const resolved = page.waitForResponse(r => r.url().endsWith('/mcp') && r.request().postDataJSON()?.params.name === 'resolve-candidate');
-  await page.getByRole('button', { name: 'Confirm deal change' }).click();
-  await resolved;
-  assert.deepEqual(writes.map(w => [w.name, w.arguments.candidate_id, w.arguments.accept]), [
-    ['resolve-post-call-candidate', 'action-1', true], ['resolve-candidate', 'update-1', true],
-  ]);
+  await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+  await page.getByText('Assigned to Joe · Oct 5', { exact: true }).waitFor();
+  assert.equal(await page.getByText(/Email proposals create drafts only/).count(), 1);
+  await page.getByRole('region', { name: 'Decide this item' }).getByText('Email proposals create drafts only.', { exact: true }).waitFor();
+  const approve = page.getByRole('button', { name: 'Approve item', exact: true });
+  const skip = page.getByRole('button', { name: 'Skip item', exact: true });
+  const a = await approve.boundingBox(), b = await skip.boundingBox();
+  assert.ok(b.x >= a.x + a.width + 8 || b.y >= a.y + a.height + 8);
+  const accent = await page.evaluate(() => { const node = document.createElement('div'); node.style.background = 'var(--accent)'; document.body.append(node); const color = getComputedStyle(node).backgroundColor; node.remove(); return color; });
+  assert.equal(await approve.evaluate(button => getComputedStyle(button).backgroundColor), accent);
+  await mkdir('out/test-artifacts/call-guide-followups', { recursive: true });
+  await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-decide-${width}-${theme}.png`, fullPage: true });
+  await approve.click();
+  await page.getByText('No longer pending', { exact: true }).waitFor();
+  const complete = page.getByRole('button', { name: 'Complete call review' });
+  assert.equal(await complete.evaluate(button => getComputedStyle(button).backgroundColor), accent);
+  await complete.click();
+  await page.getByText('Call review complete.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#phoneReview .phone-badge').innerText(), 'Review complete');
+  assert.equal(await page.getByRole('button', { name: 'Refresh call review' }).count(), 0);
+  await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-complete-${width}-${theme}.png`, fullPage: true });
+  assert.deepEqual(writes.map(w => w.name), ['resolve-post-call-candidate', 'review-call-outcome']);
 });
 
 test('phone capture navigation and review require no local companion', async t => {
@@ -522,4 +543,18 @@ test('queued call shows a hold on status refresh and does not resend audio', asy
   assert.equal(await page.locator('audio').count(), 1);
   await page.reload();
   await page.locator('#phonePending').getByText('Held for review', { exact: true }).waitFor();
+});
+
+for (const width of [390, 1440]) test(`phone filed calls finish through the guide at ${width}`, async t => {
+  const { page, state } = await open(t, { review: true, transferred: true, width });
+  await page.getByText('Synthetic Clinic will review the revised proposal.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Looks right', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('region', { name: 'Review this call' }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  assert.equal(state.writes.length, 0);
+  await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
+  await page.getByRole('button', { name: 'Complete call review' }).click();
+  await page.getByText('Call review complete.', { exact: true }).waitFor();
+  assert.deepEqual(state.writes.map(w => ({ name: w.name, session_id: w.args.session_id })), [{ name: 'review-call-outcome', session_id: id }]);
 });

@@ -389,9 +389,6 @@ export function createCallMode(deps) {
     return `<section class="post-call-group"><h4>${esc(title)}</h4>${items.length ? `<div class="post-call-cards">${items.map(renderItem).join('')}</div>` : `<p class="post-call-empty">${esc(empty)}</p>`}</section>`;
   }
 
-  // Applied-from-the-call summary (read-call-outcomes) above the report. Its
-  // module loads only once a call has candidates to list, so the Deals page
-  // does not carry it on every visit.
   let outcomes = null;
   let outcomesLoading = null;
   function retireOutcomes() {
@@ -415,14 +412,6 @@ export function createCallMode(deps) {
     if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return null;
     outcomes ||= mountCallReview(node, { client: deps.client, filter: reportCandidateIds,
       describe: callChangeText, undoRefusal, dateLabel,
-      openCandidate(id) {
-        const report = $('#postCallReport');
-        const control = [...report.querySelectorAll('[data-post-call-confirm], [data-draft-candidate]')]
-          .find(button => button.dataset.postCallConfirm === id || button.dataset.draftCandidate === id);
-        if (!control) { toast('This decision card is unavailable. Refresh the report before continuing.'); return; }
-        control.closest('article').scrollIntoView({ block: 'center', behavior: 'smooth' });
-        control.focus();
-      },
       onChange: () => refreshPostCall({ quiet: true }) });
     return outcomes;
   }

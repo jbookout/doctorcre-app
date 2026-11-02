@@ -10,7 +10,7 @@
 .phone-consent input { margin-top: 5px; flex-shrink: 0; }
 #phoneCalls input:not([type=checkbox]), #phoneQuestions textarea { width: 100%; min-width: 0; background: var(--ground); color: var(--fg); border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 12px; box-sizing: border-box; font: inherit; }
 #phoneCalls button, #phoneCalls a { min-height: 44px; }
-#phoneCalls button { border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 11px 16px; background: var(--surface-1); color: var(--fg); font: inherit; cursor: pointer; margin: 6px 4px 6px 0; }
+#phoneCalls button:not(.call-review *) { border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 11px 16px; background: var(--surface-1); color: var(--fg); font: inherit; cursor: pointer; margin: 6px 4px 6px 0; }
 #phoneSave, #phoneCalls .phone-primary { background: var(--accent); color: var(--ground); }
 #phoneCalls button:disabled { opacity: .5; cursor: default; }
 #phoneCalls a { color: var(--accent); overflow-wrap: anywhere; display: inline-flex; align-items: center; }
