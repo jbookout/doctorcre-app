@@ -25,7 +25,7 @@ after(async () => {
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
-for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`signed-in checklist preserves item disclosures and hides empty refreshes at ${width}px in ${theme}`, async t => {
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`signed-in checklist preserves drafts through unavailable and recovered refreshes at ${width}px in ${theme}`, async t => {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
@@ -39,16 +39,18 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`si
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const get = state.client.getDeal;
     window.checklistMode = 'due';
+    window.checklistReads = 0;
     state.client.getDeal = async (...args) => {
+      window.checklistReads++;
       const detail = await get(...args);
       const complete = window.checklistMode === 'complete';
       const received = window.checklistMode === 'received';
-      const review = { id: 'review', label: 'Demo attorney review', status: complete ? 'complete' : received ? 'received' : 'due', due_on: '2026-10-20',
+      const review = { id: 'review', label: window.checklistMode === 'long' ? 'Synthetic attorney requirement with a long recorded description '.repeat(8) : 'Demo attorney review', status: complete ? 'complete' : received ? 'received' : 'due', due_on: '2026-10-20',
         evidence_ref: received ? 'attachment:synthetic-document' : 'Demo contract clause 3',
         request: { status: received ? 'fulfilled' : 'open', satisfied: false }, source: { document: 'deal-room-kit', version: 1 } };
       const lease = { id: 'lease', label: 'Executed lease', status: 'not_recorded', evidence_ref: null, source: { document: 'deal-room-kit', version: 1 } };
       return { ...detail, checklist: window.checklistMode === 'absent' ? null : {
-        schema_version: 'deal-checklist.v1', template_state: window.checklistMode === 'unavailable' ? 'unavailable' : 'current',
+        schema_version: 'deal-checklist.v1', template_state: ['unavailable', 'source_changed', 'deal_type_unknown'].includes(window.checklistMode) ? window.checklistMode : 'current',
         due_items: complete || received || window.checklistMode === 'unavailable' ? [] : [review],
         phases: ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
       } };
@@ -65,7 +67,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`si
   assert.ok(dueBox.y >= panelBox.y && dueBox.y + dueBox.height <= panelBox.y + panelBox.height, 'the next due item is visible when the deal opens');
   await checklist.scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(evidence, `${width}-${theme}-due.png`), animations: 'disabled' });
-  await summary.click();
+  await summary.focus();
+  await page.keyboard.press('Enter');
   const review = checklist.locator('[data-checklist-item="review"] details');
   await review.locator('summary').click();
   await page.getByLabel('Update', { exact: true }).fill('Demo unsaved update');
@@ -92,10 +95,50 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   await checklist.scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(evidence, `${width}-${theme}-refreshed.png`), animations: 'disabled' });
-  for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'due']) {
+  for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'complete', 'source_changed', 'deal_type_unknown', 'long']) {
+    const reads = await page.evaluate(() => window.checklistReads);
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
-    await page.locator('[data-refresh-detail]').click();
-    await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, mode === 'due');
+    if (mode === 'complete') {
+      const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
+      await retry.click({ timeout: 3000 });
+    }
+    else await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
+    await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, !['empty', 'absent'].includes(mode));
+    if (mode === 'unavailable') {
+      await checklist.getByText(/Requirements could not be read/).waitFor();
+      assert.match(await checklist.textContent(), /Requirements could not be read.*Refresh deal/);
+      assert.equal(await checklist.locator('[data-checklist-item]').count(), 0);
+      assert.doesNotMatch(await checklist.textContent(), /0 due|Recorded complete|attachment:|Demo contract clause 3/);
+      await checklist.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(evidence, `${width}-${theme}-unavailable.png`), animations: 'disabled' });
+    }
+    if (mode === 'complete') {
+      await checklist.locator('[data-checklist-item="review"][data-state="complete"]').waitFor({ state: 'attached' });
+      assert.equal(await summary.evaluate(element => document.activeElement === element), true, 'recovery returns focus to the checklist summary');
+      if (!await checklist.evaluate(element => element.open)) {
+        await summary.focus();
+        await page.keyboard.press('Enter');
+      }
+      await checklist.getByText('Recorded complete', { exact: true }).waitFor();
+      await review.locator('summary').focus();
+      await page.keyboard.press('Enter');
+      assert.match(await review.textContent(), /Demo contract clause 3/);
+      await checklist.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(evidence, `${width}-${theme}-recovered.png`), animations: 'disabled' });
+    }
+    if (mode === 'source_changed') await checklist.getByText('Checklist needs a doctrine review.').waitFor();
+    if (mode === 'deal_type_unknown') {
+      await summary.waitFor();
+      if (!await checklist.evaluate(element => element.open)) await summary.click();
+      await checklist.getByText('Confirm the deal type to see its full checklist.').waitFor();
+    }
+    if (mode === 'long') {
+      await checklist.getByText(/Synthetic attorney requirement/).first().waitFor();
+      if (!await checklist.evaluate(element => element.open)) await summary.click();
+      assert.equal(await checklist.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+    }
+    assert.equal(await page.evaluate(() => window.checklistReads), reads + 1, `${mode} uses only the existing detail refresh`);
+    assert.equal(await page.locator('#recordPanel').evaluate(element => element.scrollWidth <= element.clientWidth), true);
     assert.equal(await page.locator('#detailUpdateForm').count(), 1, `${mode} retains the update form`);
     assert.equal(await page.getByLabel('Update', { exact: true }).inputValue(), 'Demo unsaved update');
     assert.equal(await page.locator('.deal-opening-snapshot').count(), 1, `${mode} retains deal detail`);
