@@ -337,3 +337,174 @@ test('Undo leaves an earlier reviewed change on the same deal reviewed', async (
     assert.equal(await page.getByRole('button', { name: 'Reviewed', exact: true }).isEnabled(), false, 'a version-only change must not unmark the earlier item');
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
+
+test('nine filed-call decisions at two seconds each stay within the human request budget', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async () => {
+      const { mountCallReview, mountCallReviewDialog } = await import('/js/ui.generated.js');
+      const rows = [{ session_id: 'budget-call', call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
+        candidate_id: `applied-${i}`, kind: 'next_step', deal_id: `deal-${i}`, deal_name: `Synthetic deal ${i}`,
+        deal_version: 1, undone_at: null, payload: { text: `Initial step ${i}` },
+      })), open_cards: Array.from({ length: 9 }, (_, i) => ({
+        candidate_id: `candidate-${i}`, resolver: 'resolve-post-call-candidate', kind: 'assigned_action',
+        deal_id: `deal-${i % 5}`, deal_name: `Synthetic deal ${i % 5}`, payload: { action: `Task ${i}` },
+      })) }];
+      window.requests = [];
+      const count = (verb, id) => {
+        window.requests.push({ verb, id });
+        if (window.requests.length > 60) throw Object.assign(new Error('budget exceeded'), { status: 429 });
+      };
+      const client = {
+        readCallOutcomes: async () => { count('outcomes'); return { calls: structuredClone(rows) }; },
+        getDeal: async id => { count('deal', id); return { history: [] }; },
+        resolvePostCallCandidate: async args => { count('decision'); rows[0].open_cards = rows[0].open_cards.filter(row => row.candidate_id !== args.candidate_id); return { ok: true }; },
+        reviewCallOutcome: async () => { count('complete'); rows.length = 0; return { ok: true }; },
+      };
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.companion = mountCallReview(node, { sessionId: 'budget-call', client: () => client, describe: () => 'Task', undoRefusal: () => '' });
+      await window.companion.refresh();
+      const dialog = mountCallReviewDialog(document, { client: () => client, describe: () => 'Task', undoRefusal: () => '',
+        onChange: () => { void client.readCallOutcomes(); void window.companion.refresh(); } });
+      await dialog.open('budget-call');
+    });
+    const guide = page.locator('.call-review-dialog .call-review');
+    const perStep = [];
+    for (let i = 0; i < 9; i++) {
+      while (await guide.getByRole('button', { name: 'Reviewed', exact: true }).count()) {
+        await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
+      }
+      await page.clock.runFor(2000);
+      const before = await page.evaluate(() => window.requests.length);
+      const candidate = await guide.getAttribute('data-review-candidate');
+      await guide.getByRole('button', { name: 'Approve or fix this item' }).click();
+      await guide.getByRole('button', { name: 'Skip item', exact: true }).click();
+      await guide.getByText('No longer pending', { exact: true }).waitFor();
+      const step = await page.evaluate(start => window.requests.slice(start), before);
+      perStep.push(step.length);
+      const dealReads = step.filter(row => row.verb === 'deal');
+      assert.equal(dealReads.length, 1, 'a decision rereads only its touched deal');
+      assert.ok(dealReads.every(row => row.id === `deal-${Number(candidate.split('-')[1]) % 5}`));
+      assert.equal(step.filter(row => row.verb === 'outcomes').length, 2);
+      assert.equal(await guide.getByText(/Could not check this call/).count(), 0);
+      if (i < 8) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    }
+    await guide.getByRole('button', { name: 'Complete call review' }).click();
+    await guide.getByText('Call review complete.', { exact: true }).waitFor();
+    const requests = await page.evaluate(() => window.requests);
+    assert.ok(requests.length <= 60);
+    console.log(JSON.stringify({ budgetWalkthrough: { requests: requests.length, dealReads: requests.filter(row => row.verb === 'deal').length, perStep } }));
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers automatically from a ${target} 429 without replaying a decision`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async ({ rows, target }) => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      rows[0].applied = [];
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      let refused = false;
+      window.decisionAttempts = 0;
+      const check = name => { if (name === target && !refused) { refused = true; throw Object.assign(new Error('budget exceeded'), { status: 429 }); } };
+      window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
+        readCallOutcomes: async () => { check('outcomes'); return { calls: structuredClone(rows) }; },
+        getDeal: async () => { check('deal'); return { history: [] }; },
+        resolvePostCallCandidate: async () => { window.decisionAttempts++; check('decision'); rows[0].open_cards = []; return { ok: true }; },
+      }), describe: () => 'Task', undoRefusal: () => '' });
+      await window.guide.refresh();
+    }, { rows: synthetic(), target });
+    if (target === 'decision') {
+      await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+      await page.getByRole('button', { name: 'Skip item', exact: true }).click();
+    }
+    await page.getByRole('status').filter({ hasText: /Trying again automatically in 60 seconds/ }).waitFor();
+    assert.equal(await page.getByText(/Could not check this call/).count(), 0);
+    await page.clock.runFor(59000);
+    assert.equal(await page.getByRole('button', { name: 'Approve or fix this item' }).count(), 0);
+    await page.clock.runFor(1000);
+    await page.getByRole('button', { name: 'Approve or fix this item' }).waitFor();
+    assert.equal(await page.evaluate(() => window.decisionAttempts), target === 'decision' ? 1 : 0);
+    await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+    await page.getByRole('button', { name: 'Skip item', exact: true }).click();
+    await page.getByText('No longer pending', { exact: true }).waitFor();
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+test('guide refreshes share one read at a time and coalesce repeated refresh requests', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    const counts = await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const first = document.createElement('section'), second = document.createElement('section');
+      document.body.replaceChildren(first, second);
+      let release, calls = 0, reading = 0, peak = 0;
+      const client = { readCallOutcomes: async () => {
+        calls++; reading++; peak = Math.max(peak, reading);
+        if (calls === 1) await new Promise(resolve => { release = resolve; });
+        reading--; return { calls: rows };
+      } };
+      const options = { sessionId: 'session-1', client: () => client, describe: () => 'Task', undoRefusal: () => '' };
+      const a = mountCallReview(first, options), b = mountCallReview(second, options);
+      const pending = [a.refresh(), a.refresh(), b.refresh()];
+      await Promise.resolve(); await Promise.resolve();
+      release();
+      await Promise.all(pending);
+      a.dispose(); b.dispose();
+      return { calls, peak };
+    }, synthetic());
+    assert.deepEqual(counts, { calls: 2, peak: 1 });
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+test('persistent budget refusals pause after three automatic attempts and allow a later manual retry', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.budgetReads = 0; window.budgetRefused = true;
+      window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => {
+        window.budgetReads++;
+        if (window.budgetRefused) throw Object.assign(new Error('budget'), { status: 429 });
+        return { calls: rows };
+      } }), describe: () => 'Change', undoRefusal: () => '' });
+      await window.guide.refresh();
+    }, synthetic());
+    for (let attempt = 0; attempt < 3; attempt++) await page.clock.runFor(60_000);
+    await page.getByRole('status').filter({ hasText: 'The call review is still busy.' }).waitFor();
+    await page.clock.runFor(120_000);
+    assert.equal(await page.evaluate(() => window.budgetReads), 4);
+    await page.evaluate(() => { window.budgetRefused = false; });
+    await page.getByRole('button', { name: 'Refresh call review' }).click();
+    await page.getByRole('heading', { name: 'Demo Bayside relocation' }).waitFor();
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+for (const end of ['dispose', 'sign out']) test(`${end} cancels an automatic budget retry`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async end => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.budgetReads = 0;
+      const guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => {
+        window.budgetReads++; throw Object.assign(new Error('budget'), { status: 429 });
+      } }), describe: () => '', undoRefusal: () => '' });
+      await guide.refresh();
+      if (end === 'dispose') guide.dispose();
+      else window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    }, end);
+    await page.clock.runFor(120_000);
+    assert.equal(await page.evaluate(() => window.budgetReads), 1);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
