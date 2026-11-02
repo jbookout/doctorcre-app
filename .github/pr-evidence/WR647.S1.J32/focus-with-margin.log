@@ -1,0 +1,12 @@
+✔ quiet vendors are opt-in, bounded and preserve directory navigation at 1280 light (1882.975541ms)
+✔ quiet vendors are opt-in, bounded and preserve directory navigation at 1280 dark (1695.376917ms)
+✔ quiet vendors are opt-in, bounded and preserve directory navigation at 390 light (1349.630541ms)
+✔ quiet vendors are opt-in, bounded and preserve directory navigation at 390 dark (1417.839625ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6670.069334

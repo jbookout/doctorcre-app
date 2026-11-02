@@ -9,7 +9,7 @@ const id = '00000000-0000-4000-8000-000000000002';
 const snapshot = () => ({ schema_version: 'quiet-follow-ups.v1', cadence: { lead_days: 45, vendor_days: 90 }, sent: false, tasks_created: false,
   proposals: Array.from({ length: 26 }, (_, n) => ({ subject_type: n === 25 ? 'lead' : 'vendor', subject_id: id,
     ref: `V-DEMO-${n}`, name: n === 25 ? 'Hidden lead' : `Quiet vendor ${n + 1} ${'Synthetic long name '.repeat(3)}`,
-    owner: 'dell', basis: n % 2 ? 'last_contact' : 'created_at', anchor_on: '2028-01-01', due_on: '2028-03-31', days_overdue: n % 3 })) });
+    owner: n % 2 ? 'joe' : 'dell', basis: n % 2 ? 'last_contact' : 'created_at', anchor_on: '2028-01-01', due_on: '2028-03-31', days_overdue: n % 3 })) });
 
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
   test(`quiet vendors are opt-in, bounded and preserve directory navigation at ${width} ${theme}`, async t => {
@@ -82,6 +82,8 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.match(await section.innerText(), /1 day overdue/);
     assert.match(await section.innerText(), /2 days overdue/);
     assert.match(await section.innerText(), /Owner: Dell/);
+    assert.match(await section.innerText(), /Owner: Joe/);
+    assert.equal(await section.getByText('Yours', { exact: true }).count(), 0);
     assert.doesNotMatch(await section.innerText(), /[01] days overdue|Owner dell/);
     assert.equal(await section.locator('ol').evaluate(el => el.scrollHeight > el.clientHeight), false);
     await section.getByRole('button', { name: 'Hide quiet vendors' }).focus();
@@ -103,16 +105,22 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.goBack();
     assert.equal(new URL(page.url()).search, prior);
     assert.equal(await page.evaluate(() => Math.round(window.scrollY)), Math.round(priorScroll));
-    await section.locator('ol').evaluate(el => el.scrollIntoView({ block: 'end' }));
-    await section.getByRole('button', { name: 'Refresh quiet vendors' }).focus();
+    await section.getByRole('button', { name: 'Next vendors' }).click();
+    await section.getByText('Showing 6–10 of 25 quiet vendors.', { exact: true }).waitFor();
+    await refresh.evaluate(el => el.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await page.evaluate(() => window.scrollBy(0, -document.querySelector('.search-dock').getBoundingClientRect().top));
+    await refresh.focus();
     await page.keyboard.press('Enter');
     await section.getByText('Showing 1–5 of 25 quiet vendors.', { exact: true }).waitFor();
-    const clear = await refresh.evaluate(el => {
+    const geometry = await refresh.evaluate(el => {
       const button = el.getBoundingClientRect();
       const dock = document.querySelector('.search-dock').getBoundingClientRect();
-      return button.top >= dock.bottom || button.bottom <= dock.top;
+      return { buttonTop: button.top, buttonBottom: button.bottom, dockBottom: dock.bottom,
+        viewportHeight: window.innerHeight, focused: el === document.activeElement };
     });
-    assert.equal(clear, true);
+    assert.equal(geometry.focused, true);
+    assert.ok(geometry.buttonTop >= geometry.dockBottom && geometry.buttonBottom <= geometry.viewportHeight,
+      `Focused Refresh must be below the sticky search bar and inside the viewport: ${JSON.stringify(geometry)}`);
     assert.equal(reads, 2);
     await checkFocus('Refresh');
     const wrappedDates = await section.locator('li p').evaluateAll(paragraphs => paragraphs.flatMap(p => {

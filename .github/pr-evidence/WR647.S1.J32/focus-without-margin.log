@@ -1,0 +1,72 @@
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 1280 light (904.120625ms)
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 1280 dark (832.875083ms)
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 390 light (582.234708ms)
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 390 dark (622.830542ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3205.089292
+
+✖ failing tests:
+
+test at test/quiet-vendors-browser.test.mjs:15:3
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 1280 light (904.120625ms)
+  AssertionError [ERR_ASSERTION]: Focused Refresh must be below the sticky search bar and inside the viewport: {"buttonTop":71.640625,"buttonBottom":115.640625,"dockBottom":165.5,"viewportHeight":900,"focused":true}
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr647-s1-j33/test/quiet-vendors-browser.test.mjs:122:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/quiet-vendors-browser.test.mjs:15:3
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 1280 dark (832.875083ms)
+  AssertionError [ERR_ASSERTION]: Focused Refresh must be below the sticky search bar and inside the viewport: {"buttonTop":71.640625,"buttonBottom":115.640625,"dockBottom":165.5,"viewportHeight":900,"focused":true}
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr647-s1-j33/test/quiet-vendors-browser.test.mjs:122:12)
+      at runNextTicks (node:internal/process/task_queues:65:5)
+      at process.processImmediate (node:internal/timers:541:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/quiet-vendors-browser.test.mjs:15:3
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 390 light (582.234708ms)
+  AssertionError [ERR_ASSERTION]: Focused Refresh must be below the sticky search bar and inside the viewport: {"buttonTop":63.640625,"buttonBottom":107.640625,"dockBottom":126,"viewportHeight":900,"focused":true}
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr647-s1-j33/test/quiet-vendors-browser.test.mjs:122:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/quiet-vendors-browser.test.mjs:15:3
+✖ quiet vendors are opt-in, bounded and preserve directory navigation at 390 dark (622.830542ms)
+  AssertionError [ERR_ASSERTION]: Focused Refresh must be below the sticky search bar and inside the viewport: {"buttonTop":63.640625,"buttonBottom":107.640625,"dockBottom":126,"viewportHeight":900,"focused":true}
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr647-s1-j33/test/quiet-vendors-browser.test.mjs:122:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
