@@ -50,6 +50,7 @@ export function createFixtureDealStore(seed) {
  * @param {string} [opts.seedUrl]
  * @param {boolean} [opts.emailReplyDrafts] include a synthetic owned reply draft
  * @param {string} [opts.selfActor]
+ * @param {number} [opts.scheduleNow] schedule observation time in epoch milliseconds
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
 const VERSION_CONFLICT = 'version_conflict';
@@ -2659,7 +2660,7 @@ export async function createFixtureClient(opts = {}) {
 
     async scheduleBoard() {
       refuseIfOutage('schedule', 'schedule-board');
-      const now = Date.now();
+      const now = opts.scheduleNow ?? Date.now();
       const at = (hours) => new Date(now - hours * 3_600_000).toISOString();
       const jobs = [
         {
