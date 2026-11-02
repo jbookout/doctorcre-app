@@ -35,13 +35,15 @@ test('the closed checklist summary names the first due item and its deadline', (
 
 test('a received document uses the producer status without claiming satisfaction or requesting delivery', () => {
   const received = { id: 'title_commitment', label: 'Title commitment', status: 'received',
-    due_on: '2020-01-01', evidence_ref: 'attachment:synthetic-document',
+    due_on: '2020-01-01', evidence_ref: 'Title <signed>.pdf',
     request: { status: 'fulfilled', satisfied: false }, source: { document: 'deal-room-kit', version: 1 } };
   const root = new JSDOM(renderDealChecklist({ ...checklist, due_items: [],
     phases: [{ id: 'legal', label: 'Legal', items: [received] }] })).window.document;
   const row = root.querySelector('[data-checklist-item="title_commitment"]');
   assert.equal(row.querySelector('strong').textContent, 'Received');
-  assert.match(row.textContent, /attachment:synthetic-document/);
+  assert.match(row.textContent, /Title <signed>\.pdf/);
+  assert.equal(row.querySelector('signed'), null);
+  assert.doesNotMatch(row.textContent, /attachment:/);
   assert.doesNotMatch(row.textContent, /Recorded complete|Overdue|Due today/);
   assert.doesNotMatch(root.querySelector('.deal-checklist > summary').textContent, /due|Title commitment/);
   assert.equal(received.request.satisfied, false);
