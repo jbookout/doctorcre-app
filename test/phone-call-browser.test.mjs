@@ -164,6 +164,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ph
   await page.getByRole('button', { name: 'Approve or fix this item' }).click();
   await page.getByText('Assigned to Joe · Oct 5', { exact: true }).waitFor();
   assert.equal(await page.getByText(/Email proposals create drafts only/).count(), 1);
+  await page.getByRole('region', { name: 'Decide this item' }).getByText('Email proposals create drafts only.', { exact: true }).waitFor();
   const approve = page.getByRole('button', { name: 'Approve item', exact: true });
   const skip = page.getByRole('button', { name: 'Skip item', exact: true });
   const a = await approve.boundingBox(), b = await skip.boundingBox();

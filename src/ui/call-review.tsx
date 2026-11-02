@@ -207,8 +207,9 @@ export function mountCallReview(container: HTMLElement, options: Options) {
             <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.')}>Approve item</button>
             <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.')}>Skip item</button>
           </div>
+          <p className="call-review-meta">Email proposals create drafts only.</p>
         </section>}
-        {item.state === 'pending' && <p className="call-review-meta">This item stays outstanding until its decision is recorded. Email proposals create drafts only.</p>}
+        {item.state === 'pending' && <p className="call-review-meta">This item stays outstanding until its decision is recorded.</p>}
         <nav aria-label="Call review navigation">
           <button type="button" className="secondary" disabled={!ready || index === 0} onClick={() => { deciding = undefined; selected = items[Math.max(index - 1, 0)]?.key; notice = ''; render(); }}>Back</button>
           <button type="button" className="secondary" disabled={!ready || index === items.length - 1} onClick={() => { deciding = undefined; selected = items[Math.min(index + 1, items.length - 1)]?.key; notice = ''; render(); }}>Next</button>
