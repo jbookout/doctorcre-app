@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { isUiAsset } from './ui-bundle.mjs';
 import { createHash } from 'node:crypto';
 
 // The tour page is the root. Follow only literal local code dependencies;
@@ -25,6 +26,9 @@ export async function offlineTourShell(readSource) {
       // Tour day supplies no basemap style. Its ordered itinerary works
       // without the optional engine, worker and provider styling.
       if (url.pathname.startsWith('/tours/vendor/maplibre-gl-')) continue;
+      // Tour day has no React islands. Its shared shell imports optional UI
+      // for other pages, which does not belong in the saved itinerary cache.
+      if (isUiAsset(url.pathname.slice(1))) continue;
       if (!/\.(?:html|css|m?js)$/.test(url.pathname)) continue;
       assert.ok(['/data/fixtures/fact-review.mjs', '/data/fixtures/practice-origination.mjs'].includes(url.pathname) || /^\/(?:js|css|tours)\/.+\.(?:html|css|m?js)$/.test(url.pathname), `unsupported offline code dependency: ${reference}`);
       await visit(url.pathname);

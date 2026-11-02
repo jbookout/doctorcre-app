@@ -1256,7 +1256,7 @@ function paintPanel(detail) {
       marketLoading = true;
       root.textContent = 'Loading comparable terms…';
       try {
-        const { mountMarketTerms } = await import('./ui.generated.js');
+        const { mountMarketTerms } = await import('./ui-market.js');
         if (marketDisposed) return;
         const element = document.createElement('div');
         const mounted = mountMarketTerms(element, { client: state.client, entityRef: detail.deal.id, submarket: detail.deal.submarket, useType: detail.deal.use_type, dealName: ref => { const match = state.deals.get(ref); return match ? dealTitle(match) : null; } });

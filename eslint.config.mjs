@@ -5,7 +5,7 @@ import client from './scripts/client-lint-rules.mjs';
 const message = 'Use createPageBudget / createRequestBudget for bounded reads; use TanStack Query refetchInterval for React polling. Audited sites need an inline reason naming the bound.';
 
 export default [
-  { ignores: ['**/vendor/**', '**/*.generated.js', '**/*.d.{ts,mts,cts}'] },
+  { ignores: ['**/vendor/**', '**/*.generated.js', 'js/ui-*.js', '**/*.d.{ts,mts,cts}'] },
   {
     files: ['{js,src,reports,tours,public-shell}/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx,html}', '*.html'],
     plugins: { html, client },

@@ -1,4 +1,5 @@
-import { homeListLimit, createContactReasonsView } from './ui.generated.js';
+import { homeListLimit } from './ui-limit.js';
+import { createContactReasonsView } from './ui-reasons.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 
 const kinds = {

@@ -1,4 +1,4 @@
-import { mountLeadGuidance } from './ui.generated.js';
+import { mountLeadGuidance } from './ui-lead.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountContactReasons } from './contact-reasons.mjs';
 import { workCard } from './work-card.js';
