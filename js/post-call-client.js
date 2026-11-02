@@ -3,7 +3,7 @@ export const CALL_MODE_URL = 'http://127.0.0.1:4682';
 export const CALL_MODE_HEADER = Object.freeze({ 'X-CARR-Call-Mode': 'deal-room-v1' });
 // Every state the companion reports (call-mode.py session_status). A post-call
 // state is still a reachable recorder; refusing one hid Call Mode as offline.
-export const CALL_MODE_STATES = Object.freeze(['idle','recording','transcribing','ready_to_extract','awaiting_context','ready_review','blocked','needs_attention','filed','state_unknown']);
+export const CALL_MODE_STATES = Object.freeze(['idle','recording','transcribing','ready_to_extract','awaiting_context','ready_review','held_review','blocked','needs_attention','filed','state_unknown']);
 
 // One deadline includes headers and JSON, even when the transport ignores abort.
 export async function requestCompanion(url, init = {}, {fetchImpl = fetch, timeoutMs = 15000, fallback = 'Call Mode request failed.'} = {}) {

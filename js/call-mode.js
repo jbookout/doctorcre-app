@@ -217,11 +217,12 @@ export function createCallMode(deps) {
     $('#callModeStop').hidden = !recording;
     $('#callModeTimer').textContent = recording ? elapsedTime(snapshot.started_at, now) : ({
       idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', awaiting_context: 'Processing',
-      ready_review: 'Ready for review', blocked: 'Needs attention', needs_attention: 'Needs attention', filed: 'Summary saved', state_unknown: 'Check call recorder status',
+      ready_review: 'Ready for review', held_review: 'Waiting for your review', blocked: 'Needs attention', needs_attention: 'Needs attention', filed: 'Summary saved', state_unknown: 'Check call recorder status',
     }[snapshot.state] || 'Ready');
     $('#callModeState').textContent = recording ? 'Recording live' : ({
       transcribing: 'Processing this call', ready_to_extract: 'Transcript ready for extraction',
       awaiting_context: 'Processing this call', ready_review: 'Call summary ready for review',
+      held_review: 'An earlier recording is waiting for your review. You can start another call.',
       blocked: 'This call needs attention', needs_attention: 'This call needs attention',
       filed: 'Call summary saved', state_unknown: 'Recorder state needs attention',
     }[snapshot.state] || 'Ready to record');
