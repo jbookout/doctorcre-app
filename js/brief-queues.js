@@ -1,8 +1,5 @@
 import { readWithDeadline } from './auto-refresh.mjs';
 
-// Literal import() would put the generated bundle on the shell and tour walks.
-// The bundle is produced after those walks, and Home already loads it for the
-// email follow-up island. Open the brief, then reuse that module.
 const QUEUE_VIEW = './ui-queue.js';
 const present = value => typeof value === 'string' && value.length > 0;
 function validPage(value, sponsor, previousCursor) {
@@ -14,8 +11,7 @@ export function mountBriefQueues({ menu, content, getClient, getSponsor, onOpen,
   let active = null, items = [], page = null, busy = false, error = false, epoch = 0, viewer = null, observedAt = null;
   let labels = null, identity = null, title = null, view = null, ready = null, menuFacts = null, chunkFailed = false, loadAttempt = 0;
   // A failed module stays in the document module map. The next attempt uses a
-  // new query so the import actually runs again; the first attempt stays the
-  // plain specifier Home may already have loaded.
+  // new query so the import actually runs again.
   const queueModule = () => loadAttempt ? `${QUEUE_VIEW}?attempt=${loadAttempt}` : QUEUE_VIEW;
   const paintMenu = () => {
     if (!view) return;

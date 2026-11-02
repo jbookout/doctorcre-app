@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { chromium, fixtureServer } from './browser-harness.mjs';
-import { mkdir } from 'node:fs/promises';
+import { uiBundle } from '../scripts/ui-bundle.mjs';
+import { readFile, mkdir } from 'node:fs/promises';
 import { handleDoctorcreRequest } from '../src/worker.js';
+
+const workspaceBundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url)), 'src/ui/workspace-shell.tsx');
+const workspaceUrl = `data:text/javascript;base64,${workspaceBundle.toString('base64')}`;
 
 const tabs = (id, panels, active = panels[0]) => ({ kind: 'tabs', id, panels, active });
 const initial = () => ({ version: 1, stage: tabs('main', ['deals', 'leads']) });
@@ -11,7 +15,7 @@ const initial = () => ({ version: 1, stage: tabs('main', ['deals', 'leads']) });
 async function fixture(t) {
   const dom = new JSDOM('<main id="original"><section id="deals"><input id="draft"><button id="act">Act</button></section><section id="leads">Leads content</section></main><div id="workspace"></div>');
   Object.assign(globalThis, { window: dom.window, document: dom.window.document });
-  const ui = await import(`../js/ui-workspace.js?workspace=${Math.random()}`);
+  const ui = await import(`${workspaceUrl}#workspace=${Math.random()}`);
   let shell;
   t.after(() => { shell?.unmount(); dom.window.close(); delete globalThis.window; delete globalThis.document; });
   const document = dom.window.document;
@@ -110,9 +114,10 @@ test('selecting a tab preserves the untouched group scroll and fires no input bl
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.route('**/test/workspace-shell.js', route => route.fulfill({ contentType: 'text/javascript', body: workspaceBundle }));
   await page.goto(`${server.origin}/ideas-events`);
   await page.evaluate(async () => {
-    const { mountWorkspace } = await import('/js/ui-workspace.js');
+    const { mountWorkspace } = await import('/test/workspace-shell.js');
     document.body.innerHTML = '<main><section id="deals">Deals</section><section id="leads">Leads</section><section id="today"><input aria-label="Untouched draft"><div id="today-scroll" style="height:60px;overflow:auto"><div style="height:2000px">Today</div></div></section><div id="workspace" style="display:flex;height:400px"></div></main>';
     const panels = ['deals', 'leads', 'today'].map(id => ({ id, title: id, node: document.getElementById(id) }));
     const tabs = (id, panels) => ({ kind: 'tabs', id, panels, active: panels[0] });
@@ -155,10 +160,11 @@ for (const width of [390, 1280]) test(`stage layout keeps live panels through se
     const secured = await handleDoctorcreRequest(new Request(`${server.origin}/css/workspace-shell.css`), { ASSETS: { fetch: async () => new Response('') } });
     await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': secured.headers.get('content-security-policy') }, body: '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><title>Workspace fixture</title><main id="original"><section id="deals"><label>Draft<input id="draft"></label><button id="act">Act</button></section><section id="leads">Leads content</section><section id="today">Today content</section></main><div id="workspace"></div>' });
   });
+  await page.route('**/test/workspace-shell.js', route => route.fulfill({ contentType: 'text/javascript', body: workspaceBundle }));
   const response = await page.goto(`${server.origin}/ideas-events`);
   assert.match(response.headers()['content-security-policy'], /style-src 'self' https:\/\/fonts.googleapis.com/);
   await page.evaluate(async () => {
-    const { mountWorkspace } = await import('/js/ui-workspace.js');
+    const { mountWorkspace } = await import('/test/workspace-shell.js');
     const container = document.getElementById('workspace');
     container.style.display = 'flex'; container.style.height = '600px';
     const panels = ['deals', 'leads', 'today'].map(id => ({ id, title: id === 'deals' ? 'Deals' : id === 'leads' ? 'Leads' : 'Today', node: document.getElementById(id) }));

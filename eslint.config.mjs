@@ -1,3 +1,4 @@
+import { UI_ASSET_PATTERNS } from './scripts/ui-bundle.mjs';
 import babelParser from '@babel/eslint-parser';
 import html from 'eslint-plugin-html';
 import client from './scripts/client-lint-rules.mjs';
@@ -5,7 +6,7 @@ import client from './scripts/client-lint-rules.mjs';
 const message = 'Use createPageBudget / createRequestBudget for bounded reads; use TanStack Query refetchInterval for React polling. Audited sites need an inline reason naming the bound.';
 
 export default [
-  { ignores: ['**/vendor/**', '**/*.generated.js', 'js/ui-*.js', '**/*.d.{ts,mts,cts}'] },
+  { ignores: ['**/vendor/**', 'tours/day-shell.generated.js', ...UI_ASSET_PATTERNS, '**/*.d.{ts,mts,cts}'] },
   {
     files: ['{js,src,reports,tours,public-shell}/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx,html}', '*.html'],
     plugins: { html, client },

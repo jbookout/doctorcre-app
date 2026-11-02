@@ -1234,7 +1234,7 @@ function paintPanel(detail) {
     observer.disconnect();
     terms.textContent = 'Loading terms…';
     try {
-      const { mountFactReview } = await import('./ui.generated.js');
+      const { mountFactReview } = await import('./ui-facts.js');
       if (disposed) return;
       terms.replaceChildren();
       mounted = mountFactReview(terms, { client: state.client, entityRef: detail.deal.id, terms: FACT_TERMS });

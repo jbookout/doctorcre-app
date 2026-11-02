@@ -8,8 +8,6 @@ import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { mountNavigation, appOriginForReport } from "./navigation.js";
 
-// Keep this variable import out of the offline Tour dependency walk; its bundle is generated later.
-
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const location = globalThis.location;
   const host = mountNavigation(root, pathname, { location });

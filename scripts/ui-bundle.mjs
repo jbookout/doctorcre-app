@@ -13,9 +13,8 @@ const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
 const UI_ENTRIES = {
   'ui-host': 'host-node',
-  'ui-workspace': 'workspace-shell',
   'ui-zoom': 'workspace-zoom',
-  'ui.generated': 'fact-review',
+  'ui-facts': 'fact-review',
   'ui-market': 'market-terms',
   'ui-limit': 'home-list-limit',
   'ui-reasons': 'contact-reasons',
@@ -32,7 +31,9 @@ const UI_ENTRIES = {
   'ui-deal-reviews': 'home/deal-update-reviews',
   'deal-room-forms.generated': 'deal-room-forms',
 };
-export const isUiAsset = path => /^js\/(?:ui-[\w-]+\.js|[\w-]+\.generated\.js)$/.test(path);
+export const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-shared-*.generated.js'];
+const UI_OUTPUTS = new Set(UI_ASSET_PATTERNS.slice(0, -1));
+export const isUiAsset = path => UI_OUTPUTS.has(path) || /^js\/ui-shared-[A-Z0-9]+\.generated\.js$/.test(path);
 
 export async function uiBundle(readSource, entry = UI_ENTRY) {
   const result = await buildUi(readSource, { entryPoints: [entry] });
