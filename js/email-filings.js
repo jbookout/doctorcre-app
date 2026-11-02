@@ -29,10 +29,10 @@ export function mountEmailFilings({ container, client }) {
     container.innerHTML = `<header class="home-panel-head"><h2>Filed automatically</h2></header>${notice}${rows.map(row => {
       const outcome = outcomes.get(row.event_id);
       const deal = typeof row.deal === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.deal) ? row.deal : null;
-      const destination = deal ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(deal)}">Open filed deal</a>` : '<p>Filed deal destination unavailable.</p>';
+      const destination = deal ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(deal)}">Open filed deal</a>` : '';
       return `<article class="email-proposal" data-filing-id="${E(row.event_id)}"><h3>${E(row.subject || 'Subject unavailable')}</h3><p>From ${E(row.sender_name || 'Sender unavailable')}${when(row.occurred_at) ? ` · ${E(when(row.occurred_at))}` : ''}</p>${
         outcome?.status === 'undone' ? '<p role="status" tabindex="-1">Undone. The email is no longer filed to this deal and will not be filed automatically again.</p>'
-          : `${destination}${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>Undo</button>`}</article>`;
+          : `${!deal ? '<p>Filed deal destination unavailable.</p>' : ''}${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<div class="email-controls">${destination}<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>Undo</button></div>`}</article>`;
     }).join('')}`;
     const item = focusId && [...container.querySelectorAll('[data-filing-id]')].find(node => node.dataset.filingId === focusId);
     if (ownedFocus || restoreFocus) ((item?.querySelector('[role="status"]') || item?.querySelector(focusControl) || item?.querySelector('button')) || container.querySelector('[data-filing-retry], button'))?.focus?.({ preventScroll: true });
