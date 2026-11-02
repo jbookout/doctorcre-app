@@ -90,7 +90,7 @@ test('Calendar opens each owning deal and Back restores the selected period and 
           '/deals?deal=qa-deal-1', '/deals?deal=qa-deal-2', '/deals?deal=qa-deal-4', '/deals?deal=qa%2Fdeal%3F3%26x%3D%22yes%22',
         ]);
         for (const row of await page.locator('#dayPanelBody .cal-day-entry, #calUndatedList li').all()) {
-          const name = (await row.locator('a').textContent()).replace(/^Open /, '');
+          const name = await row.locator('a').textContent();
           assert.equal((await row.textContent()).split(name).length - 1, 1, 'deal name appears once per row');
         }
         for (const link of await links.all()) await expect(link).toHaveAccessibleName(/^Demo/);
@@ -118,6 +118,7 @@ test('Calendar opens each owning deal and Back restores the selected period and 
           assert.deepEqual([...new Set(roomReads.slice(before))], [id], `only ${id} was opened`);
           await page.goBack();
           await expect(page).toHaveURL(calendarUrl);
+          await expect(page.locator('#calStatusLabel')).toHaveText('Current');
           await expect(page.locator('#calPeriod')).toHaveText(period);
           await expect(page.locator('.cal-day[aria-selected="true"]')).toHaveAttribute('data-day', '2026-10-20');
           await expect(page.locator('#calUndatedList')).toContainText('Date unavailable');

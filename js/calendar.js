@@ -150,7 +150,7 @@ function detailRow(label, value) {
 
 function dealLink(entry) {
   return entry.deal_id
-    ? `<a class="small" href="/deals?deal=${escapeHtml(encodeURIComponent(entry.deal_id))}">${escapeHtml(entry.deal_name)}</a>`
+    ? `<a href="/deals?deal=${escapeHtml(encodeURIComponent(entry.deal_id))}">${escapeHtml(entry.deal_name)}</a>`
     : escapeHtml(entry.deal_name);
 }
 
