@@ -67,3 +67,82 @@ test('empty activity refresh recovers focus to Refresh activity', async t => {
   await settles(async () => assert.equal(await focused(app.page), 'activityRefresh'));
   assert.equal(app.calls.filter(call => call.name === 'read-doc-activity').length, 2);
 });
+
+for (const direction of ['next', 'previous']) test(`removed activity focuses the ${direction} surviving row`, async t => {
+  const app = await open(t), { page, original } = app;
+  const index = direction === 'next' ? 1 : 4;
+  await page.locator('.activity-open').nth(index).focus();
+  app.replace(direction === 'next' ? [original[0], original[3], original[4]] : [original[0], original[2]]);
+  await app.refresh();
+  await settles(async () => assert.equal(await focused(page), original[direction === 'next' ? 3 : 2].id));
+});
+
+test('unchanged snapshots preserve nodes and changed snapshots preserve surviving Undo identity', async t => {
+  const app = await open(t), { page, original } = app;
+  await page.locator('[data-undo]').first().focus();
+  const before = await page.locator('[data-undo]').first().elementHandle();
+  await app.refresh();
+  assert.equal(await before.evaluate(button => button === document.activeElement && button.isConnected), true);
+  app.replace(original.slice(0, 4));
+  await app.refresh();
+  await settles(async () => assert.equal(await page.locator('[data-undo]').first().evaluate(button => button === document.activeElement), true));
+});
+
+test('a filter chosen during a pending read keeps focus when the event disappears', async t => {
+  const app = await open(t), { page } = app;
+  await page.locator('.activity-open').first().focus();
+  app.hold();
+  const read = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON().params.name === 'read-doc-activity');
+  const refreshed = app.refresh();
+  await read;
+  await page.locator('[name=partner]').focus();
+  app.replace([]);
+  app.release();
+  await refreshed;
+  await page.getByText('No activity', { exact: true }).waitFor();
+  assert.equal(await page.locator('[name=partner]').evaluate(select => select === document.activeElement), true);
+});
+
+test('failed reads preserve readable rows and unknown Undo never becomes done', async t => {
+  const app = await open(t), { page } = app;
+  await page.locator('[data-undo]').first().click();
+  await page.getByRole('button', { name: 'Check undo', exact: true }).waitFor();
+  const before = await page.locator('[data-undo]').first().elementHandle();
+  await before.focus();
+  app.fail();
+  await app.refresh();
+  await page.getByText('Activity temporarily unavailable', { exact: true }).waitFor();
+  assert.equal(await page.locator('.activity-row').count(), 5);
+  assert.equal(await before.evaluate(button => button === document.activeElement && button.isConnected), true);
+  assert.equal(await page.getByRole('button', { name: 'Check undo', exact: true }).count(), 1);
+  assert.equal(app.calls.filter(call => call.name === 'revert-deal-field').length, 1);
+});
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+  test(`keyboard detail removal and empty recovery at ${width} in ${theme}`, async t => {
+    const app = await open(t, { width, theme }), { page, original } = app;
+    await page.locator('.activity-open').nth(1).focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#activityDetail[open]').waitFor();
+    assert.equal(await focused(page), 'detailClose');
+    await page.keyboard.press('Escape');
+    assert.equal(await focused(page), original[1].id);
+    await page.keyboard.press('Enter');
+    app.replace([original[0], original[3]]);
+    await app.refresh();
+    await settles(async () => assert.equal(await focused(page), original[3].id));
+    assert.equal(await page.locator('#activityDetail').evaluate(dialog => dialog.open), false);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    const evidence = new URL('../.github/pr-evidence/WR39.S1.J17/', import.meta.url);
+    await mkdir(evidence, { recursive: true });
+    await page.screenshot({ path: new URL(`${width}-${theme}-next.png`, evidence).pathname, fullPage: true });
+    await page.keyboard.press('Enter');
+    app.replace([]);
+    await app.refresh();
+    await settles(async () => assert.equal(await focused(page), 'activityRefresh'));
+    assert.equal(await page.locator('#activityDetail').evaluate(dialog => dialog.open), false);
+    await page.screenshot({ path: new URL(`${width}-${theme}-empty.png`, evidence).pathname, fullPage: true });
+    assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
+    assert.equal(app.calls.filter(call => call.name === 'read-doc-activity').length, 3);
+  });
+}

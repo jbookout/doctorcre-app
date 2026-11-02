@@ -39,6 +39,12 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
     $('detailResult').textContent = view.feedback.get(row.id) || '';
   }
   function paint() {
+    const feed = $('activityFeed'), active = root.activeElement;
+    const removedDetail = dialog.open && !view.rows.some(row => row.id === view.selected);
+    const focusId = removedDetail && dialog.contains(active) ? view.selected
+      : feed.contains(active) ? active.dataset.undo || active.dataset.open : null;
+    const focusKind = active?.dataset.undo ? 'undo' : 'open';
+    const oldIds = [...feed.querySelectorAll('[data-open]')].map(el => el.dataset.open);
     // Unchanged polling preserves keyboard focus, reading position and motion.
     const html = view.rows.map(row => `<li class="activity-row" data-event="${esc(row.id)}">
       <button class="activity-open" data-open="${esc(row.id)}" aria-label="${esc(`${row.what}: ${row.record.name}`)}">
@@ -49,15 +55,20 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
         <time class="activity-time" datetime="${esc(row.at)}">${esc(stamp(row.at))}</time>
       </button><div class="activity-row-action">${canUndo(row) ? `<button data-undo="${esc(row.id)}" ${['pending','done'].includes(view.attempts.get(row.id)?.state) ? 'disabled' : ''}>${esc(attemptLabel(row))}</button>` : esc(attemptLabel(row))}</div></li>`).join('');
     if (html !== view.fingerprint) {
-      const focused = root.activeElement?.dataset, focusId = focused?.undo || focused?.open;
-      const focusKind = focused?.undo ? 'undo' : 'open';
       $('activityFeed').innerHTML = html; view.fingerprint = html;
-      if (focusId) [...$('activityFeed').querySelectorAll(`[data-${focusKind}]`)].find(el => el.dataset[focusKind] === focusId)?.focus();
     }
     $('activityMore').hidden = !view.next;
     if (dialog.open) {
       if (view.rows.some(row => row.id === view.selected)) paintDetail();
       else { dialog.close(); view.selected = null; }
+    }
+    if (focusId && (!active.isConnected || removedDetail)) {
+      const controls = [...feed.querySelectorAll('[data-open], [data-undo]')];
+      const exact = controls.find(el => el.dataset[focusKind] === focusId && !el.disabled);
+      const index = oldIds.indexOf(focusId);
+      const candidates = [focusId, ...oldIds.slice(index + 1), ...oldIds.slice(0, index).reverse()];
+      const fallback = candidates.map(id => controls.find(el => el.dataset.open === id)).find(Boolean);
+      (exact || fallback || $('activityRefresh')).focus();
     }
   }
   async function refresh({ signal } = {}) {
