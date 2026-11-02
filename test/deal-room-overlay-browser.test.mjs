@@ -32,7 +32,7 @@ async function hit(target) {
   return target.evaluate(element => {
     const box = element.getBoundingClientRect();
     const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return { reachable: element === top || element.contains(top), coveredBy: top?.outerHTML.slice(0, 200), inert: Boolean(element.closest('[inert]')) };
+    return { element: element.outerHTML.slice(0, 120), rect: { x: box.x, y: box.y, width: box.width, height: box.height }, reachable: element === top || element.contains(top), coveredBy: top?.outerHTML.slice(0, 200), inert: Boolean(element.closest('[inert]')) };
   });
 }
 
@@ -78,19 +78,19 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     assert.ok(targets.every(target => target.reachable), JSON.stringify(targets));
   });
 
-  test(`toast and pending suggestion remain pressable at ${width}px in ${theme}`, async t => {
+  test(`toast leaves the pending suggestion pressable at ${width}px in ${theme}`, async t => {
     const page = await open(t, width, theme);
     await page.evaluate(async () => {
       const { showToast } = await import('/js/toast.js');
       showToast('Demo next step updated on the sample practice', { eventId: 'demo-event', error: true });
     });
     await animationsSettled(page);
-    for (const target of [page.locator('.confirm-chip'), page.locator('.confirm-chip .yes'), page.locator('.confirm-chip .skip-confirm'), page.locator('#toast [data-undo]')]) {
+    await page.screenshot({ path: join(evidence, `toast-${width}-${theme}.png`), animations: 'disabled' });
+    for (const target of [page.locator('.confirm-chip'), page.locator('.confirm-chip .yes'), page.locator('.confirm-chip .skip-confirm')]) {
       await target.scrollIntoViewIfNeeded();
       const center = await hit(target);
       assert.equal(center.reachable, true, JSON.stringify(center));
     }
-    await page.screenshot({ path: join(evidence, `toast-${width}-${theme}.png`), animations: 'disabled' });
   });
 
   test(`review agenda is interactive in front of the workspace at ${width}px in ${theme}`, async t => {

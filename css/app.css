@@ -197,6 +197,9 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .agenda-panel footer .text-button { width: 100%; }
 
 /* ------------------------------------------------------------ confirmations, toast */
+body:has(#confirmDock:not([hidden])) { --confirm-clearance: calc(var(--touch) + 2 * var(--space-1) + 2 * var(--space-2) + 4 * var(--hairline-width) + 2 * var(--space-3)); }
+body:has(#confirmDock:not([hidden])) :is(.app-layout-center, .app-layout-sidebar, .app-layout-today) { padding-bottom: var(--confirm-clearance); }
+body.has-app-layout:has(#confirmDock:not([hidden])) .toast { bottom: calc(var(--layout-bottom) + var(--confirm-clearance)); }
 .confirm-dock { position: fixed; left: calc(var(--layout-rail, 0px) + var(--space-3)); right: var(--space-3); bottom: calc(var(--layout-bottom, 0px) + var(--space-3)); z-index: 80; display: flex; gap: var(--space-2); overflow: auto; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); box-shadow: var(--shadow-overlay); }
 .confirm-chip { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); font-size: var(--font-size-1); white-space: nowrap; }
 .confirm-chip button { min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); font-weight: var(--font-weight-strong); }
