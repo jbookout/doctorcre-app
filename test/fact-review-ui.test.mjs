@@ -195,12 +195,13 @@ test('canonical history shows three recorded versions without another read or ch
   assert.equal(history.open, false);
   history.querySelector('summary').click();
   const rows = [...history.querySelectorAll('li')];
-  assert.deepEqual(rows.map(row => row.querySelector('strong').textContent), ['Version 1', 'Version 2', 'Version 3']);
+  assert.deepEqual(rows.map(row => row.querySelector('.fact-state').textContent), ['Version 1 · Superseded', 'Version 2 · Superseded', 'Version 3 · Current']);
   for (const [i, value] of ['24', '25', '26'].entries()) assert.ok(rows[i].textContent.includes(`$${value}/SF/yr`));
   assert.match(rows[0].textContent, /Historical citation unavailable/);
   assert.match(rows[0].textContent, /Independent agreement/);
   assert.match(rows[1].textContent, /Demo Counteroffer.pdf · Page 2/);
-  assert.match(rows[1].textContent, /2026-01-02T12:00:00Z/);
+  assert.equal(rows[1].querySelector('time').dateTime, '2026-01-02T12:00:00Z');
+  assert.match(rows[1].textContent, /Jan 2, 2026, 6:00 AM CST/);
   assert.match(rows[1].textContent, /Human review/);
   assert.match(rows[1].textContent, /Excerpt no longer available/);
   assert.match(rows[2].textContent, /Demo Amendment.pdf · Page 3/);

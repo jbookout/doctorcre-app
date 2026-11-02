@@ -275,7 +275,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await history.locator('summary').focus();
     await page.keyboard.press('Enter');
     await expect(history).toHaveAttribute('open');
-    await expect(history.locator('li > strong')).toHaveText(['Version 1', 'Version 2', 'Version 3']);
+    await expect(history.locator('li .fact-state')).toHaveText(['Version 1 · Superseded', 'Version 2 · Superseded', 'Version 3 · Current']);
+    await expect(history.locator('time').nth(0)).toHaveText('Jan 1, 2026, 6:00 AM CST');
+    await expect(history.locator('time').nth(0)).toHaveAttribute('datetime', '2026-01-01T12:00:00Z');
     await expect(history).toContainText('$24/SF/yr');
     await expect(history).toContainText('$25/SF/yr');
     await expect(history).toContainText('$26/SF/yr');
