@@ -43,18 +43,19 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
   test(`removed task controls retain keyboard focus at ${width} in ${theme}`, async t => {
     const { page, errors } = await openTasks(t, hooks);
     await page.setViewportSize({ width, height: 900 });
-    await page.emulateMedia({ colorScheme: theme });
-    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    await page.evaluate(theme => localStorage.setItem("doctorcre.visual-preferences", JSON.stringify({ theme })), theme);
     await waitForTasks(page);
     for (const [removed, expected] of [['1', '2'], ['2', '3'], ['3', '2']]) {
       await page.reload();
       await waitForTasks(page);
+      assert.equal(await page.getAttribute('html', 'data-theme'), theme);
       await page.locator(`[data-task="team_loop:${removed}"]`).focus();
       await refresh(page, ['1', '2', '3'].filter(number => number !== removed));
       assert.equal((await active(page)).task, `team_loop:${expected}`);
     }
     await page.reload();
     await waitForTasks(page);
+    assert.equal(await page.getAttribute('html', 'data-theme'), theme);
     await page.locator('[data-handover="team_loop:2"]').focus();
     await refresh(page, ['1', '3']);
     assert.equal((await active(page)).task, 'team_loop:3');
@@ -65,6 +66,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     }
     await page.reload();
     await waitForTasks(page);
+    assert.equal(await page.getAttribute('html', 'data-theme'), theme);
     await refresh(page, ['1']);
     await page.locator('[data-task="team_loop:1"]').focus();
     await refresh(page, []);
@@ -75,7 +77,6 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const evidence = '.github/pr-evidence/WR39.S1.J19';
     await mkdir(evidence, { recursive: true });
-    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.screenshot({ path: `${evidence}/${width}-${theme}-empty-focus.png`, fullPage: true });
     assert.deepEqual(errors, []);
   });
