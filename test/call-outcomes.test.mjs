@@ -345,7 +345,10 @@ test('nine filed-call decisions at two seconds each stay within the human reques
     await page.clock.install();
     await page.evaluate(async () => {
       const { mountCallReview, mountCallReviewDialog } = await import('/js/ui.generated.js');
-      const rows = [{ session_id: 'budget-call', call_date: '2026-11-02', applied: [], open_cards: Array.from({ length: 9 }, (_, i) => ({
+      const rows = [{ session_id: 'budget-call', call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
+        candidate_id: `applied-${i}`, kind: 'next_step', deal_id: `deal-${i}`, deal_name: `Synthetic deal ${i}`,
+        deal_version: 1, undone_at: null, payload: { text: `Initial step ${i}` },
+      })), open_cards: Array.from({ length: 9 }, (_, i) => ({
         candidate_id: `candidate-${i}`, resolver: 'resolve-post-call-candidate', kind: 'assigned_action',
         deal_id: `deal-${i % 5}`, deal_name: `Synthetic deal ${i % 5}`, payload: { action: `Task ${i}` },
       })) }];
@@ -370,6 +373,9 @@ test('nine filed-call decisions at two seconds each stay within the human reques
     const guide = page.locator('.call-review-dialog .call-review');
     const perStep = [];
     for (let i = 0; i < 9; i++) {
+      while (await guide.getByRole('button', { name: 'Reviewed', exact: true }).count()) {
+        await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
+      }
       await page.clock.runFor(2000);
       const before = await page.evaluate(() => window.requests.length);
       const candidate = await guide.getAttribute('data-review-candidate');
