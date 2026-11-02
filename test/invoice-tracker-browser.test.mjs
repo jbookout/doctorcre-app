@@ -45,6 +45,7 @@ for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${
   assert.equal(await page.locator('.app-layout-sidebar #invoiceSearch').count(), 1);
   assert.equal(await page.locator('#invoiceAging strong').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().height<30)),true,'ordinary aging amounts stay on one line');
   await page.locator('[data-invoice]').first().click(); await page.waitForFunction(() => document.querySelector('#invoiceDetail').open);
+  assert.equal(await page.getByRole('link', { name: 'Open deal', exact: true }).getAttribute('href'), '/deals?deal=demo-invoice-deal-4');
   const box = await page.locator('#invoiceDetail').boundingBox(); assert.ok(box.width <= width); if (width === 1440) assert.ok(box.width > 850);
   await page.locator('#invoiceOriginal summary').click();
   await mkdir(new URL('out/test-artifacts/w15/', root), { recursive: true }); await page.screenshot({ path: new URL(`out/test-artifacts/w15/detail-${width}.png`, root).pathname });
