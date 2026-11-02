@@ -201,19 +201,20 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
     await page.locator('#leadGuidance summary').focus();
     await page.keyboard.press('Enter');
-    for (const [hold, expected] of [
+    for (const [index, [hold, expected]] of [
       [{ reason: 'suppressed' }, 'Suppressed.'],
       [{ reason: 'contact_ineligible' }, 'Contact is ineligible.'],
       [{ reason: 'unsupported_stage' }, 'Lead stage is not supported.'],
       [null, null], [undefined, 'unavailable'], [{}, 'unavailable'],
       [{ reason: 'future_reason' }, 'unavailable'], [{ reason: 1 }, 'unavailable'],
       ['suppressed', 'unavailable'], [[{ reason: 'suppressed' }], 'unavailable'],
-    ]) {
-      current = { ...guidance, strategy: { ...guidance.strategy, hold } };
+    ].entries()) {
+      current = { ...guidance, strategy: { ...guidance.strategy, hold, next_step: `Review server snapshot ${index + 1}.` } };
       const before = reads;
       await page.locator('#refreshBoard').evaluate(button => button.click());
       await page.locator('#leadBoard[aria-busy="false"]').waitFor();
       await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
+      await page.getByText(current.strategy.next_step, { exact: true }).waitFor();
       await settles(async () => {
         assert.equal(reads, before + 2, 'refresh uses only the existing board and detail reads');
         const content = await page.locator('#leadGuidance').innerText();
