@@ -216,3 +216,49 @@ test('recorded instants display in Central time with the zone named', () => {
  const html = renderDealUpdates({thread:[{id:'n',at:'2026-10-01T12:00:00Z',text:'Synthetic note'}]});
  assert.match(new JSDOM(html).window.document.querySelector('.deal-note time').textContent,/7:00 AM CDT$/);
 });
+
+test('recorded LOI evidence survives a missing due date without claiming the kind is absent', () => {
+ const value={deal:detail.deal,critical_dates:[{id:'undated-loi',kind:'loi_expiry',due_on:null,note:'Synthetic LOI requires confirmation',source:'Synthetic clause 4',status:'open'}]};
+ const root=new JSDOM(renderCriticalDates(value,now)).window.document;
+ const row=root.querySelector('[data-date-id="undated-loi"]');
+ assert.ok(row,'recorded undated LOI evidence remains readable');
+ assert.match(row.textContent,/Date not recorded/);
+ assert.equal(row.querySelector('small').textContent,'Status: open');
+ assert.match(row.querySelector('details').textContent,/Source: Synthetic clause 4/);
+ assert.match(row.textContent,/Synthetic LOI requires confirmation/);
+ assert.match(row.textContent,/Synthetic clause 4/);
+ assert.equal(row.querySelector('[data-countdown]'),null);
+ assert.equal(dealTimeline(value,now).missing.some(d=>d.kind==='loi_expiry'),false);
+});
+
+test('undated originals keep their identities, status and evidence alongside conflicting dated entries', () => {
+ const value={deal:detail.deal,lease:{id:'blank',status:'current'},critical_dates:[
+  {id:'missing',kind:'loi_expiry',due_on:null,note:'Synthetic original <draft>',source:'Synthetic source A',status:'cleared'},
+  {id:'invalid',kind:'loi_expiry',due_on:'2026-02-30',note:'Synthetic impossible date',source:'Synthetic source B',status:'passed'},
+  {id:'unknown',kind:'custom_notice',label:'Synthetic custom requirement',date:'bad',due_on:'bad',note:'Synthetic custom requirement'},
+  {id:'second-missing',kind:'loi_expiry',due_on:null,note:'Synthetic second original'},
+  {id:'dated',kind:'loi_expiry',due_on:'2026-10-05',note:'Synthetic dated original'},
+  {id:'conflict',kind:'loi_expiry',due_on:'2026-10-06',note:'Synthetic conflicting original'},
+ ]};
+ const before=structuredClone(value);
+ const model=dealTimeline(value,now);
+ assert.deepEqual(model.dates.map(d=>d.day),['2026-10-05','2026-10-06']);
+ assert.deepEqual(model.undated.map(d=>[d.id,d.dateState,d.status]),[['missing','missing','cleared'],['invalid','invalid','passed'],['unknown','invalid',undefined],['second-missing','missing',undefined]]);
+ assert.equal(model.missing.some(d=>d.kind==='loi_expiry'),false);
+ assert.equal(model.undated.some(d=>d.kind==='lease_commencement'),false);
+ const root=new JSDOM(renderCriticalDates(value,now)).window.document;
+ assert.equal(root.querySelectorAll('[data-countdown]').length,2);
+ for (const row of value.critical_dates) {
+  const card=root.querySelector(`[data-date-id="${row.id}"]`);
+  assert.match(card.textContent,new RegExp(row.note.replace(/[<>]/g,'.')));
+  if(row.source) assert.ok(card.textContent.includes(row.source));
+ }
+ assert.equal(root.querySelector('[data-date-id="unknown"] > span').textContent,'custom notice');
+ assert.match(root.querySelector('[data-date-id="invalid"]').textContent,/Date unavailable/);
+ assert.match(root.querySelector('[data-date-id="missing"]').textContent,/cleared/);
+ const undatedBefore=[...root.querySelectorAll('[data-state="unknown"]')].map(n=>n.outerHTML);
+ updateCountdowns(root,now+86400000);
+ assert.deepEqual([...root.querySelectorAll('[data-state="unknown"]')].map(n=>n.outerHTML),undatedBefore);
+ assert.equal(root.querySelector('[data-date-id="dated"] strong').textContent,'Due today');
+ assert.deepEqual(value,before);
+});
