@@ -167,7 +167,7 @@ async function review(id) {
   $('phoneOpen').hidden = true;
   const held = [...(result.actions || []), ...(result.deal_updates || [])].some(r => r.status === 'pending');
   guide?.dispose(); guide = null;
-  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(Object.hasOwn(labels, result.state) ? labels[result.state] : 'Status unavailable')}</span>${statusReason(result) ? `<p>${esc(statusReason(result))}</p>` : ''}<p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : statusReason(result) ? '' : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
+  $('phoneReview').innerHTML = `<span class="phone-badge">${esc(Object.hasOwn(labels, result.state) ? labels[result.state] : 'Status unavailable')}</span>${statusReason(result) ? `<p>${esc(statusReason(result))}</p>` : ''}<p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p></div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p></div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : statusReason(result) ? '' : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
   const questions = Array.isArray(session.review_questions) ? session.review_questions : [];
   $('phoneReview').insertAdjacentHTML('afterbegin', questions.length ? `<section id="phoneQuestions"><h3>Questions to answer</h3>${questions.map(q => `<form class="phone-row" data-question="${esc(q.id)}"><p>${esc(q.question)}</p><label>Answer <textarea name="answer" maxlength="1000" required ${answering.has(id + ':' + q.id) ? 'disabled' : ''} ${answers.has(id + ':' + q.id) ? 'readonly' : ''}>${esc(answers.get(id + ':' + q.id)?.answer || '')}</textarea></label><button type="submit" ${answering.has(id + ':' + q.id) ? 'disabled' : ''}>Submit answer</button><p role="status"></p></form>`).join('')}</section>` : '');
   if (result.report) {
@@ -175,7 +175,10 @@ async function review(id) {
       const { mountCallReview } = await import('./ui.generated.js');
       if (disposed || generation !== reviewGeneration || currentId !== id) return;
       guide = mountCallReview($('phoneOutcomes'), { sessionId: id, client: () => client,
-        describe: callChangeText, dateLabel: dayLabel, undoRefusal });
+        describe: callChangeText, dateLabel: dayLabel, undoRefusal,
+        onChange: ({ completed }) => {
+          if (completed) $('phoneReview').querySelector('.phone-badge').textContent = 'Review complete';
+        } });
       await guide.refresh();
     } catch { if (!disposed && generation === reviewGeneration) notice('Applied changes could not be checked. Refresh review to retry.'); }
   }
@@ -250,11 +253,6 @@ async function start() {
     });
     if (button.id === 'phoneAnother') { $('phoneOpen').hidden = false; $('phoneSession').focus(); }
     if (button.id === 'phoneRefresh') void run(() => review(currentId));
-    if (button.dataset.confirmAction || button.dataset.confirmChange) void run(async () => {
-      if (button.dataset.confirmAction) await client.resolvePostCallCandidate({ candidate_id: button.dataset.confirmAction, accept: true, idempotency_key: crypto.randomUUID() });
-      else await client.resolveConfirm({ proposal_id: button.dataset.confirmChange, accept: true, idempotency_key: crypto.randomUUID() });
-      await review(currentId);
-    });
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }

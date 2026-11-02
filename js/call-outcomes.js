@@ -4,6 +4,7 @@ export { callChangeText, dayLabel };
 
 const esc = value => String(value ?? '').replace(/[&<>"']/gu, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
+// Refusals are answers for a partner, never developer text, and never retried.
 const UNDO_REFUSALS = {
   overdue_action_changed: "A task this call closed was changed afterward, so this change can't be undone. Edit the deal's next step and tasks directly instead.",
   newer_change_exists: 'That card changed again after the call. Edit it on the deal instead.',

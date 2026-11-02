@@ -52,7 +52,7 @@ type Options = {
   describe(change: Candidate): string;
   dateLabel?(value: string): string;
   undoRefusal(error: unknown): string;
-  onChange?(): void;
+  onChange?(state: { completed: boolean }): void;
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
 type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
@@ -132,7 +132,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (disposed || revoked) return;
       writing = false;
       if (!completed()) await refresh({ preserveSelection: true });
-      if (!disposed && !revoked) options.onChange?.();
+      if (!disposed && !revoked) options.onChange?.({ completed: completed() });
     } catch (error) {
       if (disposed) return;
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
@@ -195,25 +195,28 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         <div className="call-review-actions">
           {item.state === 'applied' && <button type="button" className="primary" disabled={!ready || complete(item)} onClick={() => { reviewed.set(item.key, item.signature); selected = outstanding()?.key ?? item.key; notice = ''; render(); }}>Reviewed</button>}
           {item.state === 'applied' && !item.candidate.undone_at && <button type="button" className="secondary" data-call-undo={item.candidate.candidate_id} disabled={!ready} onClick={() => void act(() => options.client().undoCallChange({ candidate_id: item.candidate.candidate_id, base_version: item.candidate.deal_version }), options.undoRefusal)}>Undo</button>}
-          {item.state === 'pending' && <button type="button" className="primary" disabled={!ready} onClick={() => { deciding = item.key; render(); }}>Approve or fix this item</button>}
+          {item.state === 'pending' && <button type="button" className={deciding === item.key ? "secondary" : "primary"} disabled={!ready} onClick={() => { deciding = item.key; render(); }}>Approve or fix this item</button>}
           {item.candidate.deal_id && <a className="call-outcome-link" href={`/deals?deal=${encodeURIComponent(item.candidate.deal_id)}`}>Open deal to fix</a>}
         </div>
-        {item.state === 'pending' && deciding === item.key && <section aria-label="Decide this item">
+        {item.state === 'pending' && deciding === item.key && <section className="call-review-decision" aria-label="Decide this item">
+          <h4>Decide this item</h4>
           {item.candidate.payload.body && <p style={{ whiteSpace: 'pre-wrap' }}>{item.candidate.payload.body}</p>}
-          {item.candidate.payload.assignee && <p>Assigned to {item.candidate.payload.assignee} · {item.candidate.payload.due_on || 'No due date'}</p>}
-          <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal. Email proposals create drafts only.</p>
-          <button type="button" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.')}>Approve item</button>
-          <button type="button" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.')}>Skip item</button>
+          {item.candidate.payload.assignee && <p>Assigned to {(item.candidate.payload.assignee === 'joe' ? 'Joe' : item.candidate.payload.assignee === 'dell' ? 'Dell' : item.candidate.payload.assignee)} · {item.candidate.payload.due_on ? (options.dateLabel?.(item.candidate.payload.due_on) ?? item.candidate.payload.due_on) : 'No due date'}</p>}
+          <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal.</p>
+          <div className="call-review-actions">
+            <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.')}>Approve item</button>
+            <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.')}>Skip item</button>
+          </div>
         </section>}
         {item.state === 'pending' && <p className="call-review-meta">This item stays outstanding until its decision is recorded. Email proposals create drafts only.</p>}
         <nav aria-label="Call review navigation">
-          <button type="button" className="secondary" disabled={!ready || index === 0} onClick={() => { selected = items[Math.max(index - 1, 0)]?.key; notice = ''; render(); }}>Back</button>
-          <button type="button" className="secondary" disabled={!ready || index === items.length - 1} onClick={() => { selected = items[Math.min(index + 1, items.length - 1)]?.key; notice = ''; render(); }}>Next</button>
+          <button type="button" className="secondary" disabled={!ready || index === 0} onClick={() => { deciding = undefined; selected = items[Math.max(index - 1, 0)]?.key; notice = ''; render(); }}>Back</button>
+          <button type="button" className="secondary" disabled={!ready || index === items.length - 1} onClick={() => { deciding = undefined; selected = items[Math.min(index + 1, items.length - 1)]?.key; notice = ''; render(); }}>Next</button>
           <button type="button" className="primary" disabled={!ready || items.some(row => row.state === 'pending' || !complete(row))} onClick={() => void act(completeCall, () => 'Could not complete this call review. Refresh and check outstanding items before retrying.')}>Complete call review</button>
         </nav>
         <p className="call-review-meta">Check each item before completing the call review.</p>
       </>}
-      <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out' || load.state === 'completed'} onClick={() => void refresh()}>Refresh call review</button>
+      {load.state === 'completed' ? <a href="/">Back to Home</a> : <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out'} onClick={() => void refresh()}>Refresh call review</button>}
     </section>;
   }
   render();

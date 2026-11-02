@@ -227,8 +227,6 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
       }), describe: change => change.payload.text || 'Phase moved', undoRefusal: () => 'Refused', openCandidate: () => { window.companionOpened = true; } });
       await window.guide.refresh();
     }, synthetic());
-    await mkdir('/tmp/wr617-s2-j8-shots', { recursive: true });
-    await page.screenshot({ path: `/tmp/wr617-s2-j8-shots/guide-${width}-${process.env.GUIDE_SHOT_PHASE || 'after'}.png`, fullPage: true });
     assert.equal(await page.getByText('Deal 1 of 2', { exact: true }).count(), 1, 'unlinked items are excluded from the deal count');
     await page.getByRole('button', { name: 'Next', exact: true }).click();
     await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
@@ -272,24 +270,32 @@ test('older call decisions stay in the saved guide', async () => {
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
 
-for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) for (const accept of [true, false]) test(`saved guide ${accept ? 'approves' : 'skips'} ${resolver}`, async () => {
-  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) for (const accept of [true, false]) test(`saved guide ${accept ? 'approves' : 'skips'} ${resolver} at ${width} ${theme}`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
   try {
     await page.goto(server.origin);
     await page.evaluate(async ({ rows, resolver }) => {
       const { mountCallReview } = await import('/js/ui.generated.js');
       rows[0].applied = [];
       rows[0].open_cards[0].resolver = resolver;
+      rows[0].open_cards[0].payload = { assignee: 'joe', due_on: '2026-10-05', subject: 'Send revised proposal' };
+      const { dayLabel } = await import('/js/call-change-words.js');
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.decisions = [];
       let refused = true;
       const decide = async args => { window.decisions.push(args); if (refused) { refused = false; throw new Error('offline'); } rows[0].open_cards = []; return { ok: true }; };
       window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
         readCallOutcomes: async () => ({ calls: structuredClone(rows) }), resolvePostCallCandidate: decide, resolveConfirm: decide,
-      }), describe: () => 'Proposal', undoRefusal: () => '' });
+      }), describe: () => 'Proposal', dateLabel: dayLabel, undoRefusal: () => '' });
       await window.guide.refresh();
     }, { rows: synthetic(), resolver });
     await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    await page.getByText('Assigned to Joe · Oct 5', { exact: true }).waitFor();
+    if (accept && resolver === 'resolve-post-call-candidate') {
+      await mkdir('out/test-artifacts/call-guide-followups', { recursive: true });
+      await page.screenshot({ path: `out/test-artifacts/call-guide-followups/guide-decide-${width}-${theme}.png`, fullPage: true });
+    }
     const button = page.getByRole('button', { name: accept ? 'Approve item' : 'Skip item', exact: true });
     await button.click();
     await page.getByRole('alert').waitFor();
