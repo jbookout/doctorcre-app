@@ -119,6 +119,15 @@ class ReviewGate(unittest.TestCase):
                 self.assertEqual(status['state'], 'failure')
                 self.assertIn('CARR_REVIEW_APP_LOGIN' if body else 'Card:', status['description'])
 
+    def test_unrelated_base_repository_push_still_publishes_success(self):
+        pr = {**self.pr, 'base': {'ref': 'main', 'repo': {'pushed_at': 'before'}}}
+        latest = {**pr, 'base': {**pr['base'], 'repo': {'pushed_at': 'after'}}}
+        with patch.dict(gate.os.environ, {'CARR_REVIEW_APP_LOGIN': self.login}), \
+                patch.object(gate, 'api', side_effect=[pr, {}, self.files, [self.approval], latest, {}]) as api:
+            self.assertEqual(gate.run({'number': 4}, 'owner/repo'), 0)
+            statuses = [c.args[1]['state'] for c in api.call_args_list if len(c.args) == 2]
+            self.assertEqual(statuses, ['pending', 'success'])
+
     def test_midflight_head_or_metadata_change_never_publishes_success(self):
         variants = ({'head': {'sha': 'new'}}, {'title': '[skip ci]'}, {'body': ''},
                     {'base': {'ref': 'other'}}, {'auto_merge': {'commit_message': '[skip ci]'}})
