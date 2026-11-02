@@ -1,4 +1,5 @@
 import test from "node:test";
+import { isUiAsset } from "../scripts/ui-bundle.mjs";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
@@ -92,6 +93,7 @@ test("offline tour shell caches required local modules without the optional base
   runInNewContext(source + '\nthis.files = FILES;', sandbox);
   const files = new Set(sandbox.files), checked = new Set();
   assert.equal([...files].some(path => path.includes('/maplibre-gl-')), false, 'Tour day has no basemap style and must not install its engine');
+  assert.equal([...files].some(path => isUiAsset(path.slice(1))), false, 'Tour day mounts no React islands');
   async function check(path) {
     if (checked.has(path) || !/\.m?js$/.test(path)) return;
     checked.add(path);
@@ -100,7 +102,7 @@ test("offline tour shell caches required local modules without the optional base
       const relative = match[1];
       if (!relative.startsWith('.') && !relative.startsWith('/')) continue;
       const dependency = new URL(relative, 'https://synthetic.test' + path).pathname;
-      if (dependency.startsWith('/tours/vendor/maplibre-gl-')) continue;
+      if (dependency.startsWith('/tours/vendor/maplibre-gl-') || isUiAsset(dependency.slice(1))) continue;
       assert.ok(files.has(dependency), `${path} needs ${dependency} on offline reload`);
       await check(dependency);
     }

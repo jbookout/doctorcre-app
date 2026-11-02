@@ -1,7 +1,7 @@
 import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
-import { UI_OUTPUTS, UI_SOURCE, uiAssets } from "./ui-bundle.mjs";
+import { isUiAsset, UI_SOURCE, uiAssets } from "./ui-bundle.mjs";
 import { CARR_INTERFACE, carrInterfaceText, composeCarrInterface } from "./carr-interface.mjs";
 import { build, transform } from "esbuild";
 import { createHash } from "node:crypto";
@@ -11,7 +11,7 @@ import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
-const GENERATED_PATHS = [GENERATED_PATH, ...UI_OUTPUTS];
+const isGenerated = path => path === GENERATED_PATH || isUiAsset(path);
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
   carr_interface: CARR_INTERFACE,
@@ -74,12 +74,12 @@ async function contractPaths(root) {
 }
 const isContractPath = (path) => Object.values(CONTRACT_INPUTS).some(input => path === input || path.startsWith(`${input}/`));
 
-async function inputPaths(root) {
+async function inputPaths(root, uiPaths) {
   const pages = (await readdir(root)).filter(path => path.endsWith(".html"));
-  const paths = [...ROOT_FILES, ...pages, ...GENERATED_PATHS];
+  const paths = [...ROOT_FILES, ...pages, GENERATED_PATH, ...uiPaths];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
-    paths.push(...await walk(root, directory));
+    paths.push(...(await walk(root, directory)).filter(path => !isGenerated(path)));
   }
   return [...new Set(paths)].sort();
 }
@@ -178,7 +178,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
 export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
   const ui = await uiAssets(path => readFile(join(root, path)));
   const shell = await generatedShell(path => ui.get(path) ?? readFile(join(root, path)));
-  const paths = await inputPaths(root);
+  const paths = await inputPaths(root, ui.keys());
   const readSource = async (path) => {
     if (path === GENERATED_PATH) return shell;
     if (ui.has(path)) return ui.get(path);
@@ -226,12 +226,12 @@ export async function verifyCommittedSource(root, archive, result = null) {
   result ||= await verifyArtifact(archive);
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
-  const paths = await inputPaths(root);
+  const paths = await inputPaths(root, []);
   const sourceContracts = await contractPaths(root);
   const uiPaths = await walk(root, UI_SOURCE);
-  const sourcePaths = [...new Set([...paths, ...sourceContracts, ...uiPaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
+  const sourcePaths = [...new Set([...paths, ...sourceContracts, ...uiPaths])].filter(path => !isGenerated(path)).sort();
   const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit],
-    { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path) && (
+    { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !isGenerated(path) && (
       ROOT_FILES.includes(path) || isContractPath(path) || path.startsWith(UI_SOURCE + "/") || ROOT_DIRECTORIES.some(directory => path.startsWith(directory + "/"))
       || (!path.includes("/") && path.endsWith(".html"))
     )).sort();
@@ -248,7 +248,11 @@ export async function verifyCommittedSource(root, archive, result = null) {
     }
     source.set(path, committed);
   }
-  for (const [path, bytes] of await uiAssets(async path => source.get(path))) source.set(path, bytes);
+  for (const [path, bytes] of await uiAssets(async path => source.get(path))) {
+    source.set(path, bytes);
+    paths.push(path);
+  }
+  paths.sort();
   source.set(GENERATED_PATH, await generatedShell(async path => source.get(path)));
   const expected = await assembleArtifact(commit, paths, sourceContracts, async (path) => source.get(path));
   if (!archive.equals(expected.archive)) throw new Error("artifact does not match committed source");

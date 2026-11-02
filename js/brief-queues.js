@@ -3,7 +3,7 @@ import { readWithDeadline } from './auto-refresh.mjs';
 // Literal import() would put the generated bundle on the shell and tour walks.
 // The bundle is produced after those walks, and Home already loads it for the
 // email follow-up island. Open the brief, then reuse that module.
-const QUEUE_VIEW = './ui.generated.js';
+const QUEUE_VIEW = './ui-queue.js';
 const present = value => typeof value === 'string' && value.length > 0;
 function validPage(value, sponsor, previousCursor) {
   return value?.sponsor === sponsor && value.state !== 'unavailable' && Array.isArray(value.items) && value.returned === value.items.length && Number.isInteger(value.total) && value.total >= value.items.length

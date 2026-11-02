@@ -1,5 +1,6 @@
 import { mountDealRoomForm } from './deal-room-forms.generated.js';
-import { mountDealRoomBoard, mountDealRoomAgenda } from './ui.generated.js';
+import { mountDealRoomBoard } from './ui-board.js';
+import { mountDealRoomAgenda } from './ui-agenda.js';
 import { renderDealSummary, renderDealItems } from './deal-items.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';

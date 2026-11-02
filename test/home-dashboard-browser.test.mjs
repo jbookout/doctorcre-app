@@ -97,7 +97,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
     }
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
-    if (blockUi && url.pathname === '/js/ui.generated.js') return route.abort();
+    if (blockUi && url.pathname === '/js/ui-next-step.js') return route.abort();
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
@@ -1488,7 +1488,7 @@ test('loading the missing next step panel preserves existing Home card nodes', a
   let releaseBundle;
   const bundle = new Promise(resolve => { releaseBundle = resolve; });
   t.after(() => releaseBundle());
-  await page.route('**/js/ui.generated.js*', async route => { await bundle; await route.fallback(); });
+  await page.route('**/js/ui-next-step.js*', async route => { await bundle; await route.fallback(); });
   blockUi(false);
   await page.locator('#refreshHome').click();
   await page.locator('#refreshHome[aria-busy="false"]').waitFor();
