@@ -122,7 +122,8 @@ async function syncQuietVendors() {
   const host = document.createElement('div');
   quietVendorsHost = host;
   host.setAttribute('data-panel-background', '');
-  document.querySelector('.search-dock').before(host);
+  host.style.position = 'relative';
+  document.querySelector('.business-controls').before(host);
   try {
     const { mountQuietVendors } = await import('./ui-quiet-vendors.js');
     if (generation !== quietVendorsGeneration) return;
@@ -998,7 +999,8 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   view.dataset = parsed.dataset;
   view.query = parsed.query;
   view.recordId = parsed.recordId;
-  void syncQuietVendors();
+  if (datasetChanged) clearQuietVendors();
+  quietVendors?.update();
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.footer) dom.footer.textContent = `DoctorCRE · ${DATASET_LABEL[parsed.dataset]}`;
@@ -1017,8 +1019,8 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
 
   // Opening or closing a record never re-reads the list, so the reader's place,
   // scroll and rows survive the panel.
-  if (queryChanged) loadList(reason === "navigate" ? "navigate" : "history");
-  else renderList();
+  if (queryChanged) void loadList(reason === "navigate" ? "navigate" : "history").then(syncQuietVendors);
+  else { renderList(); void syncQuietVendors(); }
 
   if (recordChanged) {
     if (parsed.recordId) {

@@ -32,11 +32,16 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
       }
     }
     const vendors = state.kind === 'ready' ? state.snapshot.proposals.filter(row => row.subject_type === 'vendor') : [];
+    if (state.kind === 'idle') return <>
+      <style>{`@media(max-width:767px){.quiet-vendors-idle{position:absolute;inset:0 0 auto auto;z-index:1}}`}</style>
+      <section className="quiet-vendors-idle" aria-label="Quiet vendor follow-ups">
+        <button type="button" className="action" style={{ marginTop: 0, marginBottom: 'var(--space-2)' }} onClick={() => void read()}>Show quiet vendors</button>
+      </section></>;
     return <section className="module-card glass" aria-labelledby="quietVendorsTitle" style={{ overflowWrap: 'anywhere', marginBottom: 'var(--space-4)' }}>
       <h2 id="quietVendorsTitle">Quiet vendor follow-ups</h2>
       <p>Review vendor relationships that CARR has marked due for attention.</p>
       <button type="button" className="action" onClick={() => void read()} disabled={state.kind === 'loading'}>
-        {state.kind === 'idle' ? 'Show quiet vendors' : state.kind === 'loading' ? 'Loading quiet vendors…' : 'Refresh quiet vendors'}
+        {state.kind === 'loading' ? 'Loading quiet vendors…' : 'Refresh quiet vendors'}
       </button>
       {state.kind === 'loading' && <p role="status">Loading the server snapshot…</p>}
       {state.kind === 'refused' && <p role="alert">The quiet vendor list is unavailable or was refused. Try refreshing.</p>}
@@ -44,7 +49,7 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
         <p>Server cadence · {state.snapshot.cadence.vendor_days} days</p>
         {vendors.length === 0 ? <p>No quiet vendors in this server snapshot.</p> : <>
           <p role="status">Showing {state.offset + 1}–{Math.min(state.offset + 20, vendors.length)} of {vendors.length} quiet vendors.</p>
-          <ol style={{ maxHeight: '22rem', overflowY: 'auto', paddingInlineStart: 'var(--space-5)' }}>{vendors.slice(state.offset, state.offset + 20).map((row, index) => <li key={`${row.subject_id}-${row.ref}-${state.offset + index}`}>
+          <ol style={{ maxHeight: 'min(22rem, 30dvh)', overflowY: 'auto', paddingInlineStart: 'var(--space-5)' }}>{vendors.slice(state.offset, state.offset + 20).map((row, index) => <li key={`${row.subject_id}-${row.ref}-${state.offset + index}`}>
             <a id={`quiet-vendor-${index}`} href={options.href(row.subject_id)} onClick={event => {
               if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();

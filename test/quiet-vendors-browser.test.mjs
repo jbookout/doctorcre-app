@@ -69,7 +69,8 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(reads, 2);
     assert.equal(await section.evaluate(el => el.scrollWidth <= el.clientWidth), true);
     await mkdir('.github/pr-evidence/WR647.S1.J24', { recursive: true });
-    await section.screenshot({ path: `.github/pr-evidence/WR647.S1.J24/${width}-${theme}.png` });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: `.github/pr-evidence/WR647.S1.J24/${width}-${theme}.png` });
     refuse = true;
     await section.getByRole('button', { name: 'Refresh quiet vendors' }).click();
     await section.getByRole('alert').waitFor();
