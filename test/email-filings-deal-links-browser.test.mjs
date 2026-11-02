@@ -63,6 +63,15 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.doesNotMatch(await panel.innerText(), /PRIVATE|example\.test|20000000/);
     await panel.getByText('Filed deal destination unavailable.', { exact: true }).waitFor();
     await panel.scrollIntoViewIfNeeded();
+    const controls = await first.evaluate(article => {
+      const link = article.querySelector('a'), undo = article.querySelector('button');
+      return {
+        gap: undo.getBoundingClientRect().left - link.getBoundingClientRect().right,
+        backgrounds: [link, undo].map(control => getComputedStyle(control).backgroundColor),
+      };
+    });
+    assert.ok(controls.gap >= 4 && controls.backgrounds[0] === controls.backgrounds[1],
+      `Filed receipt controls need a gap and matching backgrounds: ${JSON.stringify(controls)}`);
     await panel.screenshot({ path: `.github/pr-evidence/WR634.S1.J6/${width}-${theme}-filed.png`, animations: 'disabled' });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.equal(calls.filter(call => call.name === 'list-email-thread-filings').length, 1);
