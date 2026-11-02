@@ -1,6 +1,6 @@
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { createPageBudget } from './read-budget.mjs';
-import { homeListLimit } from './home-list-limit.generated.js';
+import { homeListLimit } from './ui-limit.js';
 import { workCard } from './work-card.js';
 import { validEmailDraftAddresses } from './email-draft.js';
 import { PHASE_BY_SLUG } from './client.js';

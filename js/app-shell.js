@@ -95,7 +95,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
     if (loading) return;
     loading = true;
     try {
-      const { mountZoomableWorkspace } = await import("./workspace-zoom.generated.js");
+      const { mountZoomableWorkspace } = await import("./ui-zoom.js");
       if (disposed || !identity || phone.matches || !sessionIsValid()) return;
       layout = root.getElementById("appLayout");
       if (!layout) return;
@@ -253,7 +253,7 @@ if (typeof document !== "undefined") {
   mountAppShell();
   const actionHost = document.getElementById('actionLink');
   if (actionHost && location.pathname.startsWith('/a/')) {
-    const { mountActionLink } = await import("./action-link.generated.js");
+    const { mountActionLink } = await import("./ui-action.js");
     if (!privateSession()?.revoked) {
       const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests() });
       window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });

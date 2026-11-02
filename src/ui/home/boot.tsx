@@ -7,7 +7,7 @@ import { fixtureInboxRpc } from './fixture';
 // session and transport helpers are the app's own modules beside this bundle.
 type Rpc = (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>;
 type McpResult = { kind: string; isError?: boolean; payload?: unknown };
-const sibling = (path: string) => import(/* runtime module beside inbox-entry.generated.js */ new URL(path, import.meta.url).href);
+const sibling = (path: string) => import(/* runtime module beside ui-inbox.js */ new URL(path, import.meta.url).href);
 
 export async function bootInbox(host: HTMLElement) {
   try {

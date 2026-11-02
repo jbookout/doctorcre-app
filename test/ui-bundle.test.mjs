@@ -19,7 +19,7 @@ test('lead guidance loads without unrelated page UI and shares the React runtime
     }
     return found;
   }
-  const leads = dependencies('js/lead-guidance.generated.js');
+  const leads = dependencies('js/ui-lead.js');
   const forms = dependencies('js/deal-room-forms.generated.js');
   const source = [...leads].map(path => assets.get(path).toString()).join('\n');
   assert.ok(!source.includes('Research for the new organization or sub-client'));

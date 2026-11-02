@@ -11,13 +11,27 @@ export const UI_ENTRY = `${UI_SOURCE}/index.tsx`;
 const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
-const UI_ENTRIES = [
-  'host-node', 'workspace-shell', 'workspace-zoom', 'fact-review', 'market-terms',
-  'home-list-limit', 'contact-reasons', 'brief-queues', 'action-link', 'call-review',
-  'deal-room-board', 'deal-room-agenda', 'lead-guidance', 'deal-room-forms',
-  'inbox-entry', 'home/missing-next-step', 'home/task-done', 'home/deal-update-reviews',
-];
-export const isUiAsset = path => /^js\/[\w-]+\.generated\.js$/.test(path);
+const UI_ENTRIES = {
+  'ui-host': 'host-node',
+  'ui-workspace': 'workspace-shell',
+  'ui-zoom': 'workspace-zoom',
+  'ui.generated': 'fact-review',
+  'ui-market': 'market-terms',
+  'ui-limit': 'home-list-limit',
+  'ui-reasons': 'contact-reasons',
+  'ui-queue': 'brief-queues',
+  'ui-action': 'action-link',
+  'ui-call': 'call-review',
+  'ui-board': 'deal-room-board',
+  'ui-agenda': 'deal-room-agenda',
+  'ui-lead': 'lead-guidance',
+  'ui-inbox': 'inbox-entry',
+  'ui-next-step': 'home/missing-next-step',
+  'ui-task-done': 'home/task-done',
+  'ui-deal-reviews': 'home/deal-update-reviews',
+  'deal-room-forms.generated': 'deal-room-forms',
+};
+export const isUiAsset = path => /^js\/(?:ui-[\w-]+\.js|[\w-]+\.generated\.js)$/.test(path);
 
 export async function uiBundle(readSource, entry = UI_ENTRY) {
   const result = await buildUi(readSource, { entryPoints: [entry] });
@@ -26,8 +40,8 @@ export async function uiBundle(readSource, entry = UI_ENTRY) {
 
 export async function uiAssets(readSource) {
   const result = await buildUi(readSource, {
-    entryPoints: Object.fromEntries(UI_ENTRIES.map(path => [
-      `${posix.basename(path)}.generated`, `${UI_SOURCE}/${path}`,
+    entryPoints: Object.fromEntries(Object.entries(UI_ENTRIES).map(([name, path]) => [
+      name, `${UI_SOURCE}/${path}`,
     ])),
     splitting: true, outdir: 'js', chunkNames: 'ui-shared-[hash].generated',
   });
