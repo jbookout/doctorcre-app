@@ -246,9 +246,8 @@ dialog::backdrop { background: var(--scrim); }
 
 .lead-guidance { overflow-wrap: anywhere; }
 .lead-guidance details { margin-top: var(--space-4); }
-.lead-guidance summary { display: list-item; list-style-position: inside; align-content: center; min-height: var(--touch); cursor: pointer; font-weight: 600; }
+.has-app-layout dialog .lead-guidance summary { display: list-item; list-style-position: inside; align-content: center; min-height: var(--touch); cursor: pointer; font-weight: 600; }
 .lead-guidance dl { margin-top: var(--space-4); grid-template-columns: max-content minmax(0, 1fr); }
-.lead-guidance dt { overflow-wrap: normal; }
 .lead-guidance dd { min-width: 0; white-space: pre-wrap; }
 .lead-guidance ul { margin: 0; padding-left: var(--space-5); }
 .lead-guidance .lead-guidance-restriction { margin-bottom: var(--space-3); border: 2px solid var(--status-danger); border-radius: var(--radius-2); padding: var(--space-3); background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-1)); }
