@@ -296,7 +296,12 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await expect(schedule).toContainText('3%');
     await expect(schedule).toContainText('NNN');
     for (const [name, target] of [['scalar', history], ['schedule', schedule]]) {
-      await target.scrollIntoViewIfNeeded();
+      await target.evaluate(node => {
+        const header = document.querySelector('.workspace-header');
+        const offset = getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().height : 0;
+        const topbar = document.querySelector('.app-layout-tabbar').getBoundingClientRect().height;
+        scrollTo({ top: scrollY + node.getBoundingClientRect().top - offset - topbar - 16, behavior: 'instant' });
+      });
       await page.screenshot({ path: testInfo.outputPath(`canonical-${name}-${width}-${theme}.png`), animations: 'disabled' });
       expect(await target.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     }

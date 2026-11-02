@@ -72,20 +72,20 @@ function Schedule({ periods }: { periods: Period[] }) {
 function sourcedPeriods(periods: SourcedPeriod[]): Period[] {
   return periods.map(p => ({ start_month: p.start_month.value, end_month: p.end_month.value, rate: p.rate.value, unit: p.unit.value, expense_basis: p.expense_basis.value, escalation_percent: p.escalation_percent.value }));
 }
+const promotionTime = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago', timeZoneName: 'short' });
 function CanonicalHistory({ item, documents }: { item: Item; documents: Document[] }) {
   return <details className="fact-history" data-canonical-history><summary>Canonical history</summary>
-    {item.canonical_history?.length ? <ol>{item.canonical_history.map(fact => <li key={fact.version}>
-      <strong>Version {fact.version}</strong>
-      {fact.canonical_unit === 'schedule' && fact.normalized_schedule ? <Schedule periods={fact.normalized_schedule} /> : <p>{valueText(fact)}</p>}
-      <p>Promoted {fact.promoted_at ? <time dateTime={fact.promoted_at}>{fact.promoted_at}</time> : 'time unavailable'}</p>
-      <p>Promotion basis · {fact.basis === 'human_review' ? 'Human review' : fact.basis === 'independent_agreement' ? 'Independent agreement' : fact.basis || 'Unavailable'}</p>
+    {item.canonical_history?.length ? <ol className="receipt-list" role="list">{item.canonical_history.map(fact => <li key={fact.version}>
+      <p><strong>{valueText(fact)}</strong> <span className="fact-state">Version {fact.version} · {fact.version === item.canonical_version ? 'Current' : 'Superseded'}</span></p>
+      {fact.canonical_unit === 'schedule' && fact.normalized_schedule && <Schedule periods={fact.normalized_schedule} />}
+      <p className="fact-read">{fact.promoted_at && Number.isFinite(Date.parse(fact.promoted_at)) ? <time dateTime={fact.promoted_at}>{promotionTime.format(new Date(fact.promoted_at))}</time> : 'Promotion time unavailable'} · {fact.basis === 'human_review' ? 'Human review' : fact.basis === 'independent_agreement' ? 'Independent agreement' : fact.basis || 'Unavailable'}</p>
       {fact.observation_ids?.length ? fact.observation_ids.map(id => {
         const observation = item.observations.find(row => row.id === id);
         return <div key={id}>{observation ? <>
           <p className="fact-source">{documentName(observation, documents)} · {observation.source.page_start === observation.source.page_end ? 'Page' : 'Pages'} {observation.source.page_start}{observation.source.page_start === observation.source.page_end ? '' : `–${observation.source.page_end}`}</p>
           {(!observation.source.cited_text || !(Date.parse(observation.source.cited_text_expires_at) > Date.now())) && <p className="fact-excerpt-unavailable">Excerpt no longer available</p>}
-        </> : <p>Historical citation unavailable</p>}</div>;
-      }) : <p>Historical citation unavailable</p>}
+        </> : <p className="fact-excerpt-unavailable">Historical citation unavailable</p>}</div>;
+      }) : <p className="fact-excerpt-unavailable">Historical citation unavailable</p>}
     </li>)}</ol> : <p>No canonical history recorded.</p>}
   </details>;
 }
@@ -146,7 +146,7 @@ function Comparison({ client, entityRef, terms, signal }: Options & { signal: Ab
       const plan = await client.prepareTermsComparison(request, { signal });
       const edits = new Map(plan.edits.map(edit => [edit.where, edit.text]));
       const cell = (address: string) => edits.get(`cell:LOI Grid!${address}`);
-      const version = (key: string, n: number) => { const fact = snapshot.current.find(item => item.fact_key === key)?.canonical_history.find(f => f.version === n); return `v${n}${fact?.promoted_at && Number.isFinite(Date.parse(fact.promoted_at)) ? ` · ${new Date(fact.promoted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}` : ''}`; };
+      const version = (key: string, n: number) => { const fact = snapshot.current.find(item => item.fact_key === key)?.canonical_history.find(f => f.version === n); return `v${n}${fact?.promoted_at && Number.isFinite(Date.parse(fact.promoted_at)) ? ` · ${promotionTime.format(new Date(fact.promoted_at))}` : ''}`; };
       setResult(<article className="terms-draft" data-comparison-draft aria-label="Terms comparison draft"><header><h3>{plan.template.name}</h3><span className="fact-state">Draft</span></header><p className="terms-draft-note">{plan.human_gate}</p>
         {request.fields.map(ref => <p key={ref.fact_key} className="terms-versions"><strong>{terms[ref.fact_key]?.label}</strong> · Prior: {version(ref.fact_key, ref.prior_version)} · Current: {version(ref.fact_key, ref.current_version)}</p>)}
         <div className="terms-draft-groups">{[['B', 'Prior'], ['C', 'Current']].map(([column, title]) => <section key={column}><h4>{title}</h4><dl>{request.fields.map(ref => <div key={ref.fact_key}><dt>{cell(`A${comparisonRows[ref.fact_key]}`)}</dt><dd><strong>{cell(`${column}${comparisonRows[ref.fact_key]}`)}</strong><small>{cell(`${column}4`)?.replace(`${title} - `, '')}</small></dd></div>)}</dl></section>)}</div>
