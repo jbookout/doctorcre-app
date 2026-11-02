@@ -7,7 +7,12 @@ type Payload = {
   started_on?: string | null; action?: string | null; subject?: string | null;
   base_event_id?: string | null; plan_base?: Record<string, string | null>;
 };
-type Candidate = { resolver: string | null; candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
+type ActionSnapshot = { description: string; owner: string; due_on: string | null };
+type ActionComparison =
+  | { status: 'unavailable' | 'assignee_unavailable' | 'no_match' }
+  | { status: 'exact_match'; action: ActionSnapshot; date: { current: string | null; resulting: string | null; changes: boolean } }
+  | { status: 'related_open_tasks'; actions: ActionSnapshot[]; total: number };
+type Candidate = { comparison: ActionComparison; resolver: string | null; candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
 type Change = Candidate & { deal_version: number; undone_at: string | null };
 type Call = { session_id: string; call_date: string; applied: Change[]; open_cards: Candidate[] };
 function isObject(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -15,13 +20,40 @@ function object(value: unknown) { if (!isObject(value)) throw new Error('Call da
 function text(value: unknown) { if (typeof value !== 'string') throw new Error('Call text unavailable'); return value; }
 function optionalText(value: unknown) { return value == null ? null : text(value); }
 function list(value: unknown): unknown[] { if (!Array.isArray(value)) throw new Error('Call items unavailable'); return value; }
+function actionSnapshot(value: unknown): ActionSnapshot {
+  const row = object(value);
+  return { description: text(row.description), owner: text(row.owner), due_on: optionalText(row.due_on) };
+}
+function actionComparison(value: unknown): ActionComparison {
+  try {
+    const row = object(value);
+    if (row.schema_version !== 'post-call-action-comparison.v2') return { status: 'unavailable' };
+    switch (row.status) {
+      case 'exact_match': {
+        const date = object(row.date_effect);
+        if (typeof date.changes_due_on !== 'boolean') return { status: 'unavailable' };
+        return { status: 'exact_match', action: actionSnapshot(row.exact_match), date: {
+          current: optionalText(date.current_due_on), resulting: optionalText(date.resulting_due_on), changes: date.changes_due_on,
+        } };
+      }
+      case 'related_open_tasks': {
+        const total = row.related_open_task_total, actions = list(row.related_open_tasks).map(actionSnapshot);
+        if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < actions.length || !actions.length || actions.length > 5) return { status: 'unavailable' };
+        return { status: 'related_open_tasks', actions, total };
+      }
+      case 'no_match': return { status: row.related_open_task_total === 0 ? 'no_match' : 'unavailable' };
+      case 'assignee_unavailable': return { status: 'assignee_unavailable' };
+      default: return { status: 'unavailable' };
+    }
+  } catch { return { status: 'unavailable' }; }
+}
 function candidate(value: unknown): Candidate {
   const row = object(value), raw = row.payload === undefined ? {} : object(row.payload), payload: Payload = {};
   for (const key of ['summary', 'text', 'next_date', 'value', 'started_on', 'action', 'subject', 'base_event_id', 'body', 'assignee', 'due_on'] as const) {
     if (Object.hasOwn(raw, key)) payload[key] = optionalText(raw[key]);
   }
   if (raw.plan_base !== undefined) payload.plan_base = Object.fromEntries(Object.entries(object(raw.plan_base)).map(([field, value]) => [field, optionalText(value)]));
-  return { resolver: optionalText(row.resolver), candidate_id: text(row.candidate_id), kind: text(row.kind), deal_id: optionalText(row.deal_id),
+  return { comparison: actionComparison(row.existing_action_comparison), resolver: optionalText(row.resolver), candidate_id: text(row.candidate_id), kind: text(row.kind), deal_id: optionalText(row.deal_id),
     deal_name: optionalText(row.deal_name), evidence_quote: optionalText(row.evidence_quote), payload };
 }
 function callAnswer(value: unknown): { calls: Call[] } {
@@ -58,7 +90,25 @@ type Options = {
 const reviewReads = new WeakMap<Document, Promise<void>>();
 type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'retrying'; resumesAt: number } | { state: 'paused' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
-  if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Not yet added by this proposal.';
+  if (candidate.kind === 'assigned_action') {
+    const comparison = candidate.comparison;
+    const actionText = (action: ActionSnapshot) => `${action.description} · ${partnerNames[action.owner] ?? action.owner} · ${action.due_on ?? 'No due date'}`;
+    switch (comparison.status) {
+      case 'exact_match': {
+        const { current, resulting, changes } = comparison.date;
+        const date = changes ? `Due date changes from ${current ?? 'No due date'} to ${resulting ?? 'No due date'}`
+          : current ? `Due date stays ${current}` : 'No due date';
+        return `Already on this deal\n${actionText(comparison.action)}\nAccepting adds this call's notes to that task.\n${date}`;
+      }
+      case 'related_open_tasks': return ['Other open tasks on this deal', ...comparison.actions.map(actionText),
+        ...(comparison.total > comparison.actions.length ? [`and ${comparison.total - comparison.actions.length} more`] : [])].join('\n');
+      case 'no_match': return 'No other open tasks on this deal';
+      case 'assignee_unavailable': return 'Comparison unavailable: task owner not recognised';
+      case 'unavailable': return 'Comparison unavailable';
+    }
+  }
+  if (candidate.kind === 'activity') return 'New note proposed';
+  if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Comparison unavailable';
   const field = candidate.kind === 'phase_move' ? 'phase' : 'next_step';
   const base: Record<string, string | null | undefined> | undefined = candidate.kind === 'phase_move' && Object.hasOwn(candidate.payload, 'base_event_id') ? { phase: candidate.payload.base_event_id } : candidate.payload.plan_base;
   if (!base || !Object.hasOwn(base, field)) return 'Earlier value unavailable.';
@@ -171,7 +221,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
       // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
       else if (isObject(error) && error.status === 429) retry(touchedDeal);
-      else load = { state: 'unavailable', message: 'Could not check this call. Refresh before continuing the review.' };
+      else load = { state: 'unavailable', message: 'Could not check this call. Comparison unavailable. Refresh before continuing the review.' };
     }
     render();
   }
