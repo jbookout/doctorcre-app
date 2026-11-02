@@ -98,11 +98,16 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'complete', 'source_changed', 'deal_type_unknown', 'long']) {
     const reads = await page.evaluate(() => window.checklistReads);
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
-    await page.locator('[data-refresh-detail]').click();
+    if (mode === 'complete') {
+      const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
+      await retry.focus({ timeout: 3000 });
+      await page.keyboard.press('Enter');
+    }
+    else await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
     await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, !['empty', 'absent'].includes(mode));
     if (mode === 'unavailable') {
-      await checklist.getByText(/Checklist unavailable/).waitFor();
-      assert.match(await checklist.textContent(), /Checklist unavailable.*Requirements could not be read.*Refresh/);
+      await checklist.getByText(/Requirements could not be read/).waitFor();
+      assert.match(await checklist.textContent(), /Requirements could not be read.*Refresh deal/);
       assert.equal(await checklist.locator('[data-checklist-item]').count(), 0);
       assert.doesNotMatch(await checklist.textContent(), /0 due|Recorded complete|attachment:|Demo contract clause 3/);
       await checklist.scrollIntoViewIfNeeded();
@@ -110,6 +115,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
     }
     if (mode === 'complete') {
       await checklist.locator('[data-checklist-item="review"][data-state="complete"]').waitFor({ state: 'attached' });
+      assert.equal(await summary.evaluate(element => document.activeElement === element), true, 'recovery returns focus to the checklist summary');
       if (!await checklist.evaluate(element => element.open)) {
         await summary.focus();
         await page.keyboard.press('Enter');
