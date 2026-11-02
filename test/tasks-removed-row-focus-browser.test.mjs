@@ -75,6 +75,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const evidence = '.github/pr-evidence/WR39.S1.J19';
     await mkdir(evidence, { recursive: true });
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.screenshot({ path: `${evidence}/${width}-${theme}-empty-focus.png`, fullPage: true });
     assert.deepEqual(errors, []);
   });
