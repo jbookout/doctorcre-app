@@ -41,7 +41,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
   function paint() {
     const feed = $('activityFeed'), active = root.activeElement;
     const removedDetail = dialog.open && !view.rows.some(row => row.id === view.selected);
-    const focusId = removedDetail && dialog.contains(active) ? view.selected
+    const focusId = removedDetail && (dialog.contains(active) || active === root.body) ? view.selected
       : feed.contains(active) ? active.dataset.undo || active.dataset.open : null;
     const focusKind = active?.dataset.undo ? 'undo' : 'open';
     const oldIds = [...feed.querySelectorAll('[data-open]')].map(el => el.dataset.open);
@@ -67,7 +67,11 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
       const exact = controls.find(el => el.dataset[focusKind] === focusId && !el.disabled);
       const index = oldIds.indexOf(focusId);
       const candidates = [focusId, ...oldIds.slice(index + 1), ...oldIds.slice(0, index).reverse()];
-      const fallback = candidates.map(id => controls.find(el => el.dataset.open === id)).find(Boolean);
+      let fallback;
+      for (const id of candidates) {
+        fallback = controls.find(el => el.dataset.open === id);
+        if (fallback) break;
+      }
       (exact || fallback || $('activityRefresh')).focus();
     }
   }
