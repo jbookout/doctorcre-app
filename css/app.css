@@ -223,10 +223,16 @@ body.has-app-layout:has(#confirmDock:not([hidden])) .toast { bottom: calc(var(--
 .field { display: grid; gap: var(--space-1); }
 .field label { color: var(--fg-muted); font-size: var(--font-size-1); }
 .field small { color: var(--fg-muted); font-size: var(--font-size-1); }
-.field input:not([type="radio"]), .field select, .field textarea { width: 100%; min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); }
-.field input[type="radio"] { min-width: 0; min-height: 0; vertical-align: middle; }
-.field label:has(> input[type="radio"]) { min-height: var(--touch); align-content: center; }
+.field input:not([type="radio"]):not([type="checkbox"]), .field select, .field textarea { width: 100%; min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); }
+.field input[type="radio"], .field input[type="checkbox"] { min-width: 0; min-height: 0; vertical-align: middle; }
+.field label:has(> input[type="radio"]), .field label:has(> input[type="checkbox"]) { min-height: var(--touch); align-content: center; }
 .field textarea { min-height: 90px; resize: vertical; }
+.field input:disabled, .field select:disabled, .field textarea:disabled { color: var(--fg-muted); opacity: 0.55; cursor: not-allowed; }
+#nationalCreationFields { border: 0; padding: 0; margin: 0; min-width: 0; }
+#nationalCreationFields > .field, #nationalCreationFields > .field-row, #nationalCreationFields > fieldset, #marketResearch { margin-bottom: var(--space-4); }
+#nationalCreationFields fieldset, #marketResearch fieldset { min-width: 0; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); padding: var(--space-4); }
+#nationalCreationFields fieldset legend, #marketResearch legend { padding: 0 var(--space-2); }
+#nationalCreationFields fieldset .field + .field, #marketResearch .field + .field { margin-top: var(--space-3); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .dialog form > footer { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-4) var(--space-5); border-top: var(--hairline-width) solid var(--hairline); }
 .form-error { margin: 0 var(--space-5) var(--space-3); padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-danger); border-radius: var(--radius-1); background: var(--surface-2); color: var(--status-danger-ink); font-size: var(--font-size-1); }
