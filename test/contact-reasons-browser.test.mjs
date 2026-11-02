@@ -5,14 +5,14 @@ import {chromium} from './browser-harness.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 import {practiceOriginationFixture} from '../data/fixtures/practice-origination.mjs';
 
-for (const width of [1440,390]) for (const theme of ['light','dark']) test(`contact reasons on Leads and Home at ${width}px ${theme}`,async t=>{
+for (const width of [1280,390]) for (const theme of ['light','dark']) test(`contact reasons on Leads and Home at ${width}px ${theme}`,async t=>{
   const browser = await chromium.launch();
   t.after(()=>browser.close());
   const page = await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'});
   await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme,walkthroughSeen:{joe:true,dell:true,'example-partner':true}})),theme);
-  const writes = [], errors = [];
+  const writes = [], errors = [], reads = [];
   page.on('pageerror',error=>errors.push(error.message));
-  await routeLeads(page,{getReasons:()=>practiceOriginationFixture(),onWrite:p=>writes.push(p)});
+  await routeLeads(page,{getReasons:args=>{ reads.push(args); return practiceOriginationFixture(); },onWrite:p=>writes.push(p)});
   await page.goto('http://localhost/leads');
   const reasons = page.locator('#contactReasons');
   await reasons.locator('.work-card').first().waitFor();
@@ -27,12 +27,15 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`cont
   assert.match(await reasons.innerText(),/Needs review/);
   assert.match(await reasons.innerText(),/Florida formations · Not yet covered/);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.equal(reads.length,1);
   assert.deepEqual(writes,[]);
   await page.goto('http://localhost/');
   const home = page.locator('#homeContactReasons');
   await page.locator('.home-grid').scrollIntoViewIfNeeded();
   await home.locator('.work-card').first().waitFor();
   assert.equal(await home.locator('.work-card').count(),width === 390 ? 1 : 2);
+  assert.equal(await home.getByRole('searchbox').count(),0);
+  assert.equal(await home.getByRole('combobox').count(),0);
   await home.scrollIntoViewIfNeeded();
   await home.screenshot({path:`out/test-artifacts/contact-reasons/home-${width}-${theme}.png`});
   await home.getByRole('button',{name:`Show ${width === 390 ? 3 : 2} more`}).click();
@@ -41,5 +44,6 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`cont
   assert.equal(await home.locator('h3 a[href="/leads#contactReasons"]').count(),4);
   await home.scrollIntoViewIfNeeded();
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.equal(reads.length,1);
   assert.deepEqual(errors,[]);
 });
