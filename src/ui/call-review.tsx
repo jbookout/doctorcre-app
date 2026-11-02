@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import type { ReactNode } from 'react';
 const partnerNames: Record<string, string> = { joe: 'Joe', dell: 'Dell' };
 type Payload = {
   summary?: string | null; text?: string | null; next_date?: string | null; value?: string | null;
@@ -9,7 +10,9 @@ type Payload = {
 };
 type ActionSnapshot = { description: string; owner: string; due_on: string | null };
 type ActionComparison =
-  | { status: 'unavailable' | 'assignee_unavailable' | 'no_match' }
+  | { status: 'unavailable' }
+  | { status: 'assignee_unavailable' }
+  | { status: 'no_match' }
   | { status: 'exact_match'; action: ActionSnapshot; date: { current: string | null; resulting: string | null; changes: boolean } }
   | { status: 'related_open_tasks'; actions: ActionSnapshot[]; total: number };
 type Candidate = { comparison: ActionComparison; resolver: string | null; candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
@@ -69,7 +72,7 @@ function callAnswer(value: unknown): { calls: Call[] } {
 }
 function appliedSignature(change: Change) { return JSON.stringify({ ...change, deal_version: undefined }); }
 function receipt(value: unknown) { if (object(value).ok !== true) throw new Error('Command refused'); }
-type Item = { call: Call; key: string; signature: string; before: string } & (
+type Item = { call: Call; key: string; signature: string; before: ReactNode } & (
   { state: 'applied'; candidate: Change } | { state: 'pending' | 'resolved'; candidate: Candidate }
 );
 type Client = {
@@ -89,26 +92,31 @@ type Options = {
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
 const reviewReads = new WeakMap<Document, Promise<void>>();
 type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'retrying'; resumesAt: number } | { state: 'paused' } | { state: 'unavailable'; message: string };
-function beforeText(candidate: Candidate, detail: unknown) {
+function beforeText(candidate: Candidate, detail: unknown, dateLabel: Options['dateLabel']) {
+  const dateText = (value: string | null) => value ? <time dateTime={value} style={{ whiteSpace: 'nowrap' }}>{dateLabel?.(value) ?? value}</time> : 'No due date';
   if (candidate.kind === 'assigned_action') {
     const comparison = candidate.comparison;
-    const actionText = (action: ActionSnapshot) => `${action.description} · ${partnerNames[action.owner] ?? action.owner} · ${action.due_on ?? 'No due date'}`;
+    const actionText = (action: ActionSnapshot) => <>{action.description} · {partnerNames[action.owner] ?? action.owner} · {dateText(action.due_on)}</>;
     switch (comparison.status) {
       case 'exact_match': {
         const { current, resulting, changes } = comparison.date;
-        const date = changes ? `Due date changes from ${current ?? 'No due date'} to ${resulting ?? 'No due date'}`
-          : current ? `Due date stays ${current}` : 'No due date';
-        return `Already on this deal\n${actionText(comparison.action)}\nAccepting adds this call's notes to that task.\n${date}`;
+        const date = changes
+          ? current ? <>Due date changes from {dateText(current)} to {dateText(resulting)}</> : <>Due date set to {dateText(resulting)}</>
+          : current ? <>Due date stays {dateText(current)}</> : 'No due date';
+        return <><strong>Already on this deal</strong><div>{actionText(comparison.action)}</div><div>Accepting adds this call's notes to that task.</div><div>{date}</div></>;
       }
-      case 'related_open_tasks': return ['Other open tasks on this deal', ...comparison.actions.map(actionText),
-        ...(comparison.total > comparison.actions.length ? [`and ${comparison.total - comparison.actions.length} more`] : [])].join('\n');
+      case 'related_open_tasks': return <><strong>Other open tasks on this deal</strong><ul>{comparison.actions.map((action, index) => <li key={index}>{actionText(action)}</li>)}</ul>
+        {comparison.total > comparison.actions.length && <div>and {comparison.total - comparison.actions.length} more</div>}</>;
       case 'no_match': return 'No other open tasks on this deal';
       case 'assignee_unavailable': return 'Comparison unavailable: task owner not recognised';
       case 'unavailable': return 'Comparison unavailable';
+      default: { const exhaustive: never = comparison; return exhaustive; }
     }
   }
-  if (candidate.kind === 'activity') return 'New note proposed';
-  if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Comparison unavailable';
+  if (candidate.kind === 'activity' || candidate.kind === 'meeting_record') return 'New note proposed';
+  if (candidate.kind === 'email_draft') return 'New email draft proposed';
+  if (candidate.kind === 'new_deal') return 'New deal proposed';
+  if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Earlier value unavailable.';
   const field = candidate.kind === 'phase_move' ? 'phase' : 'next_step';
   const base: Record<string, string | null | undefined> | undefined = candidate.kind === 'phase_move' && Object.hasOwn(candidate.payload, 'base_event_id') ? { phase: candidate.payload.base_event_id } : candidate.payload.plan_base;
   if (!base || !Object.hasOwn(base, field)) return 'Earlier value unavailable.';
@@ -199,9 +207,9 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       const previous = items;
       items = calls.flatMap(call => {
         const applied: Item[] = call.applied.map(candidate => ({ call, candidate, state: 'applied',
-          key: `${call.session_id}:${candidate.candidate_id}`, signature: appliedSignature(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
+          key: `${call.session_id}:${candidate.candidate_id}`, signature: appliedSignature(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? ''), options.dateLabel) }));
         const pending: Item[] = call.open_cards.map(candidate => ({ call, candidate, state: 'pending',
-          key: `${call.session_id}:${candidate.candidate_id}`, signature: JSON.stringify(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
+          key: `${call.session_id}:${candidate.candidate_id}`, signature: JSON.stringify(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? ''), options.dateLabel) }));
         const resolved: Item[] = previous.filter(item => item.call.session_id === call.session_id && item.state !== 'applied'
           && ![...applied, ...pending].some(next => next.key === item.key)).map(item => ({ ...item, state: 'resolved' }));
         const dealOrder = new Map<string, number>();
@@ -221,7 +229,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
       // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
       else if (isObject(error) && error.status === 429) retry(touchedDeal);
-      else load = { state: 'unavailable', message: 'Could not check this call. Comparison unavailable. Refresh before continuing the review.' };
+      else load = { state: 'unavailable', message: 'Could not check this call. Refresh before continuing the review.' };
     }
     render();
   }
