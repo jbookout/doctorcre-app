@@ -364,7 +364,7 @@ test('nine filed-call decisions at two seconds each stay within the human reques
       window.companion = mountCallReview(node, { sessionId: 'budget-call', client: () => client, describe: () => 'Task', undoRefusal: () => '' });
       await window.companion.refresh();
       const dialog = mountCallReviewDialog(document, { client: () => client, describe: () => 'Task', undoRefusal: () => '',
-        onChange: () => { void window.companion.refresh(); } });
+        onChange: () => { void client.readCallOutcomes(); void window.companion.refresh(); } });
       await dialog.open('budget-call');
     });
     const guide = page.locator('.call-review-dialog .call-review');
@@ -379,9 +379,9 @@ test('nine filed-call decisions at two seconds each stay within the human reques
       const step = await page.evaluate(start => window.requests.slice(start), before);
       perStep.push(step.length);
       const dealReads = step.filter(row => row.verb === 'deal');
-      assert.ok(dealReads.length <= 1, `a decision read ${dealReads.length} deals`);
+      assert.equal(dealReads.length, 1, 'a decision rereads only its touched deal');
       assert.ok(dealReads.every(row => row.id === `deal-${Number(candidate.split('-')[1]) % 5}`));
-      assert.equal(step.filter(row => row.verb === 'outcomes').length, 1);
+      assert.equal(step.filter(row => row.verb === 'outcomes').length, 2);
       assert.equal(await guide.getByText(/Could not check this call/).count(), 0);
       if (i < 8) await guide.getByRole('button', { name: 'Next', exact: true }).click();
     }

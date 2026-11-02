@@ -222,8 +222,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       {load.state === 'completed' && <p role="status">Call review complete.</p>}
       {load.state === 'empty' && <p role="status">No call items to review.</p>}
       {load.state === 'signed_out' && <p role="status">Sign in again to review this call.</p>}
-      {load.state === 'retrying' && <p role="status">The call review is taking a short break. Trying again automatically in 60 seconds. Your review progress is saved.</p>}
-      {load.state === 'paused' && <p role="status">The call review is still busy. Try Refresh call review in a minute. Your review progress is saved.</p>}
+      {load.state === 'retrying' && <p role="status">The call review is taking a short break. Trying again automatically in 60 seconds. Your place in this review is kept.</p>}
+      {load.state === 'paused' && <p role="status">The call review is still busy. Try Refresh call review in a minute. Your place in this review is kept.</p>}
       {load.state === 'unavailable' && <p role="alert">{load.message}</p>}
       {notice && <p role="alert">{notice}</p>}
       {load.state === 'ready' && item && <>
