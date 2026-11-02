@@ -37,18 +37,18 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
     }
     const vendors = state.kind === 'ready' ? state.snapshot.proposals.filter(row => row.subject_type === 'vendor') : [];
     return <section className={expanded ? 'quiet-vendors module-card glass' : 'quiet-vendors quiet-vendors-idle'} aria-label="Quiet vendor follow-ups">
-      <h2 id="quietVendorsTitle" hidden={!expanded}>Quiet vendor follow-ups</h2>
+      <h2 hidden={!expanded}>Quiet vendor follow-ups</h2>
       <p hidden={!expanded}>Review vendor relationships that CARR has marked due for attention.</p>
-      <button ref={action} type="button" className="action" aria-expanded={expanded} aria-controls="quietVendorsContent"
+      <button ref={action} type="button" className="action" aria-expanded={!expanded ? false : undefined} aria-controls={!expanded ? "quietVendorsContent" : undefined}
         aria-disabled={expanded && state.kind === 'loading'} onClick={() => {
           if (!expanded) { setExpanded(true); if (state.kind === 'idle') void read(); }
           else void read();
         }}>
         {!expanded ? 'Show quiet vendors' : state.kind === 'loading' ? 'Loading quiet vendors…' : 'Refresh quiet vendors'}
       </button>
-      {expanded && <button type="button" className="action" onClick={() => {
+      {expanded && <> {' '}<button type="button" className="action" aria-expanded="true" aria-controls="quietVendorsContent" onClick={() => {
         action.current?.focus(); setExpanded(false);
-      }}>Hide quiet vendors</button>}
+      }}>Hide quiet vendors</button></>}
       <div id="quietVendorsContent" hidden={!expanded} aria-busy={state.kind === 'loading'}>
       {state.kind === 'loading' && <p role="status">Loading the server snapshot…</p>}
       {state.kind === 'refused' && <p role="alert">The quiet vendor list is unavailable or was refused. Try refreshing.</p>}
@@ -74,9 +74,8 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
             <p><span className="quiet-vendor-detail">{row.basis === 'created_at' ? 'Never contacted · Created' : 'Last contact'} <time dateTime={row.anchor_on}>{row.anchor_on}</time></span>
               {' · '}<span className="quiet-vendor-detail">Due <time dateTime={row.due_on}>{row.due_on}</time></span>
               {' · '}<span className="quiet-vendor-detail">{row.days_overdue === 0 ? 'Due today' : `${row.days_overdue} ${row.days_overdue === 1 ? 'day' : 'days'} overdue`}</span>
-              {' · Owner '}{row.owner === 'dell' ? 'Dell' : row.owner === 'joe' ? 'Joe' : typeof row.owner === 'string' && row.owner.trim() ? row.owner : 'not recorded'}</p>
+              {' · Owner: '}{row.owner === 'dell' ? 'Dell' : row.owner === 'joe' ? 'Joe' : typeof row.owner === 'string' && row.owner.trim() ? row.owner : 'not recorded'}</p>
           </li>)}</ol>
-
         </>}
       </>}
       </div>

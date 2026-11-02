@@ -244,3 +244,16 @@ body.record-open { overflow: hidden; }
   body[data-directory="vendors"] .record-row .row-last-contact,
   body[data-directory="vendors"] .record-row .row-updated { display: none; }
 }
+
+.quiet-vendors { overflow-wrap: anywhere; margin-bottom: var(--space-4); }
+.quiet-vendors.module-card p { max-width: none; }
+.quiet-vendors .action { margin-top: 0; margin-bottom: var(--space-2); }
+.quiet-vendors ol { padding-inline-start: var(--space-5); }
+.quiet-vendor-detail { display: inline-block; }
+.quiet-vendors time { white-space: nowrap; }
+.quiet-vendors [aria-disabled="true"] { opacity: .55; cursor: default; }
+@media (max-width: 767px) {
+  .quiet-vendors-idle { position: absolute; inset: 0 0 auto auto; z-index: 1; }
+}
+
+.quiet-vendors .action { scroll-margin-top: 12rem; }

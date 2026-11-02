@@ -38,6 +38,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     const show = page.getByRole('button', { name: 'Show quiet vendors' });
     await show.waitFor();
     assert.equal(reads, 0);
+    assert.equal(await show.getAttribute('aria-expanded'), 'false');
     let finishOpen;
     release = new Promise(resolve => finishOpen = resolve);
     const opening = new Promise(resolve => onHeld = resolve);
@@ -50,6 +51,12 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     finishOpen(); release = null;
     const section = page.getByRole('region', { name: 'Quiet vendor follow-ups' });
     await section.getByText('Showing 1–5 of 25 quiet vendors.', { exact: true }).waitFor();
+    const refresh = section.getByRole('button', { name: 'Refresh quiet vendors' });
+    const hide = section.getByRole('button', { name: 'Hide quiet vendors' });
+    assert.equal(await refresh.getAttribute('aria-expanded'), null);
+    assert.equal(await refresh.getAttribute('aria-controls'), null);
+    assert.equal(await hide.getAttribute('aria-expanded'), 'true');
+    assert.equal(await hide.getAttribute('aria-controls'), 'quietVendorsContent');
     const focusFailures = [];
     const checkFocus = async action => {
       if (await page.evaluate(() => document.activeElement === document.body)) focusFailures.push(action);
@@ -74,7 +81,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.match(await section.innerText(), /Due today/);
     assert.match(await section.innerText(), /1 day overdue/);
     assert.match(await section.innerText(), /2 days overdue/);
-    assert.match(await section.innerText(), /Owner Dell/);
+    assert.match(await section.innerText(), /Owner: Dell/);
     assert.doesNotMatch(await section.innerText(), /[01] days overdue|Owner dell/);
     assert.equal(await section.locator('ol').evaluate(el => el.scrollHeight > el.clientHeight), false);
     await section.getByRole('button', { name: 'Hide quiet vendors' }).focus();
@@ -96,9 +103,16 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.goBack();
     assert.equal(new URL(page.url()).search, prior);
     assert.equal(await page.evaluate(() => Math.round(window.scrollY)), Math.round(priorScroll));
+    await section.locator('ol').evaluate(el => el.scrollIntoView({ block: 'end' }));
     await section.getByRole('button', { name: 'Refresh quiet vendors' }).focus();
     await page.keyboard.press('Enter');
     await section.getByText('Showing 1–5 of 25 quiet vendors.', { exact: true }).waitFor();
+    const clear = await refresh.evaluate(el => {
+      const button = el.getBoundingClientRect();
+      const dock = document.querySelector('.search-dock').getBoundingClientRect();
+      return button.top >= dock.bottom || button.bottom <= dock.top;
+    });
+    assert.equal(clear, true);
     assert.equal(reads, 2);
     await checkFocus('Refresh');
     const wrappedDates = await section.locator('li p').evaluateAll(paragraphs => paragraphs.flatMap(p => {
@@ -116,9 +130,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     }));
     assert.deepEqual({ focusFailures, wrappedDates }, { focusFailures: [], wrappedDates: [] });
     assert.equal(await section.evaluate(el => el.scrollWidth <= el.clientWidth), true);
-    await mkdir('.github/pr-evidence/WR647.S1.J24', { recursive: true });
+    await mkdir('.github/pr-evidence/WR647.S1.J32', { recursive: true });
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: `.github/pr-evidence/WR647.S1.J24/${width}-${theme}.png` });
+    await page.screenshot({ path: `.github/pr-evidence/WR647.S1.J32/${width}-${theme}.png` });
     refuse = true;
     await section.getByRole('button', { name: 'Refresh quiet vendors' }).click();
     await section.getByRole('alert').waitFor();
