@@ -172,9 +172,17 @@ for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards e
   let releaseAgenda;
   const agendaGate = new Promise(resolve => { releaseAgenda = resolve; });
   const submitted = [];
+  let reloadGate = Promise.resolve(), markHeld;
+  const heldReads = new Set();
+  let readsHeld;
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
     let result;
+    if (markHeld && ['read-home-agenda', 'list-email-proposals'].includes(name)) {
+      heldReads.add(name);
+      if (heldReads.size === 2) markHeld();
+      await reloadGate;
+    }
     if (name === 'read-home-agenda') { await agendaGate; return route.continue(); }
     if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: submitted.length ? [dealDraft] : [dealDraft, row], send: false, more: false, next_cursor: null };
     else if (name === 'submit-email-draft') {
@@ -213,8 +221,18 @@ for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards e
   await panel.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-edit.png`, animations: 'disabled' });
   await card.getByRole('button', { name: 'Submit', exact: true }).click();
   await card.getByText('Sending in 10s ·').waitFor();
+  let releaseReload;
+  reloadGate = new Promise(resolve => { releaseReload = resolve; });
+  readsHeld = new Promise(resolve => { markHeld = resolve; });
   await page.reload();
+  await readsHeld;
+  const readiness = card.getByRole('button', { name: 'Review reply', exact: true });
+  assert.equal(await readiness.count(), 0);
+  markHeld = null;
+  releaseReload();
   if (width === 390) await panel.getByRole('button', { name: 'Show 1 more', exact: true }).click();
+  await readiness.waitFor({ state: 'visible' });
+  await card.locator('button[data-email-action="edit-draft"]:enabled').waitFor();
   await page.clock.runFor(30_000);
   assert.equal(submitted.length, 0, 'leaving the page during the grace sends nothing');
   assert.equal(await card.getByText(/Sending in/).count(), 0, 'send intent never survives a reload');
