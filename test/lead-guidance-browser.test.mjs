@@ -18,12 +18,14 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     let reads = 0;
     await routeLeads(page, { onRead: () => reads++, getDetail: row => ({ ...detail(row),
       ...(row.id.endsWith('1') ? guidance : { handling_advice: 'Do not contact. Ask the owning partner to review the hold.',
         contact_eligible: false, strategy: { ...guidance.strategy, objective: 'Resolve the recorded hold.' } }) }) });
     await page.goto('http://localhost/leads');
     await page.locator('#leadBoard[aria-busy="false"]').waitFor();
+    assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     const before = reads;
     await page.locator('[data-open]').first().click();
     await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
