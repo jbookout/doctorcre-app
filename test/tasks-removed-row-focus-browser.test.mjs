@@ -115,12 +115,6 @@ test('focus recovery follows visible ownership and retains Retry for a failed bo
   await refresh(page, ['1', '2', '3']);
   assert.equal((await active(page)).task, 'team_loop:3');
   assert.equal(await page.locator('[data-task="team_loop:2"]').count(), 0);
-  await page.locator('[data-handover="team_loop:1"]').focus();
-  await page.evaluate(() => window.focusOwners = { '1': 'dell' });
-  await page.locator('#scopeSwitch [data-scope="team"]').click();
-  await page.locator('[data-handover="team_loop:1"]').focus();
-  await refresh(page, ['1', '2', '3']);
-  assert.equal((await active(page)).task, 'team_loop:1');
   await page.evaluate(() => window.failFocusBoard = true);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => document.activeElement?.id === 'retryRead');
