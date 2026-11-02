@@ -85,10 +85,13 @@ function QueueMenu({ facts, active }: { facts: BriefFacts | null; active: BriefQ
   </>;
 }
 function QueueList({ active, items, page, busy, error }: ListState) {
+  const empty = !busy && !error && items.length === 0 && page?.total === 0 && !page.has_more
+    && (page.state == null || page.state === 'ready' || page.state === 'empty') && page.total_scope !== 'available_sources';
   const status = [busy ? 'Updating…' : '', error ? 'Queue update unavailable; retry to continue.' : ''].filter(Boolean).join(' · ');
   return <section className="morning-queue">
     {status ? <p role="status">{status}</p> : null}
     {page?.state === 'partial' ? <p>Some sources are unavailable. This list may be incomplete.</p> : null}
+    {empty ? <p role="status">No eligible work in this queue.</p> : null}
     <p>Urgency order. Refresh for a new list.</p>
     <ol>{items.map(row => {
       const id = briefQueueIdentity(active, row);
