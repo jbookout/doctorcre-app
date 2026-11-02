@@ -583,3 +583,105 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
     assert.equal(await page.evaluate(() => window.decisionAttempts), 2);
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
+
+const actionSnapshot = (description = 'Send revised proposal', owner = 'dell', due_on = '2026-11-03') => ({
+  id: description, source: 'next_action', description, owner, due_on, status: 'open',
+});
+const exactComparison = () => ({
+  schema_version: 'post-call-action-comparison.v2', status: 'exact_match',
+  exact_match: actionSnapshot(), related_open_tasks: [], related_open_task_total: null,
+  date_effect: { current_due_on: '2026-11-03', proposed_due_on: '2026-11-05', resulting_due_on: '2026-11-05', changes_due_on: true, reason: 'stated_date' },
+});
+const relatedComparison = () => ({
+  schema_version: 'post-call-action-comparison.v2', status: 'related_open_tasks', exact_match: null, date_effect: null,
+  related_open_tasks: Array.from({ length: 5 }, (_, i) => actionSnapshot(`Recorded task ${5 - i}`, i % 2 ? 'joe' : 'dell', null)),
+  related_open_task_total: 8,
+});
+async function mountComparison(page, { comparison, kind = 'assigned_action', failRead = false, failDeal = false, theme = 'light' } = {}) {
+  await page.evaluate(async ({ comparison, kind, failRead, failDeal, theme }) => {
+    const { mountCallReview } = await import('/js/ui-call.js');
+    const node = document.createElement('section'); document.body.replaceChildren(node);
+    document.documentElement.dataset.theme = theme;
+    window.comparisonWrites = [];
+    const rows = [{ session_id: 'comparison-call', call_date: '2026-11-02', applied: [], open_cards: [{
+      candidate_id: 'assigned-1', resolver: 'resolve-post-call-candidate', kind, deal_id: 'demo-deal', deal_name: 'Demo Bayside relocation',
+      payload: { action: 'Send revised proposal', assignee: 'dell', due_on: '2026-11-05' },
+      evidence_quote: 'Send the revised proposal by November 5.', existing_action_comparison: comparison,
+    }] }];
+    window.guide = mountCallReview(node, { sessionId: 'comparison-call', client: () => ({
+      readCallOutcomes: async () => { if (failRead) throw new Error('offline'); return { calls: rows }; },
+      getDeal: async () => { if (failDeal) throw new Error('offline'); return { history: [] }; },
+      resolvePostCallCandidate: async args => { window.comparisonWrites.push(args); rows[0].open_cards = []; return { ok: true }; },
+    }), describe: () => 'Send revised proposal', dateLabel: value => new Date(`${value}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), undoRefusal: () => '' });
+    await window.guide.refresh();
+  }, { comparison, kind, failRead, failDeal, theme });
+}
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`Before shows the server exact action, owner and date at ${width} ${theme}`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
+  try {
+    await page.goto(server.origin);
+    await mountComparison(page, { comparison: exactComparison(), theme });
+    const before = page.locator('dl > div').filter({ has: page.getByText('Before', { exact: true }) });
+    const content = await before.innerText();
+    assert.equal(content, "Before\nAlready on this deal\nSend revised proposal · Dell · Nov 3\nAccepting adds this call's notes to that task.\nDue date changes from Nov 3 to Nov 5");
+    const dates = await before.locator('time').evaluateAll(nodes => nodes.map(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      return { text: node.textContent, lines: range.getClientRects().length };
+    }));
+    assert.deepEqual(dates, [{ text: 'Nov 3', lines: 1 }, { text: 'Nov 3', lines: 1 }, { text: 'Nov 5', lines: 1 }]);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    const directory = process.env.UI_SCREENSHOT_DIR || 'out/test-artifacts/call-before';
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: `${directory}/exact-${width}-${theme}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+    await page.getByRole('button', { name: 'Approve item', exact: true }).click();
+    await page.getByText('No longer pending', { exact: true }).waitFor();
+    const writes = await page.evaluate(() => window.comparisonWrites);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].candidate_id, 'assigned-1');
+    assert.equal(writes[0].accept, true);
+    assert.match(writes[0].idempotency_key, /^[a-f\d-]{36}$/);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+const unchangedComparison = due => ({ ...exactComparison(), exact_match: actionSnapshot('Send revised proposal', 'joe', due),
+  date_effect: { current_due_on: due, proposed_due_on: null, resulting_due_on: due, changes_due_on: false, reason: 'unstated_date' } });
+for (const scenario of [
+  { name: 'other open tasks in server order with server remainder', comparison: relatedComparison(), expected: /Other open tasks on this deal[\s\S]*Recorded task 5[\s\S]*Dell[\s\S]*No due date[\s\S]*Recorded task 4[\s\S]*Joe[\s\S]*Recorded task 1[\s\S]*and 3 more/ },
+  { name: 'all related tasks shown', comparison: { ...relatedComparison(), related_open_task_total: 5 }, expected: /Other open tasks on this deal/, listCount: 5 },
+  { name: 'no other open tasks', comparison: { ...relatedComparison(), status: 'no_match', related_open_tasks: [], related_open_task_total: 0 }, expected: /No other open tasks on this deal/ },
+  { name: 'missing comparison', expected: /Comparison unavailable/ },
+  { name: 'unknown comparison version', comparison: { ...exactComparison(), schema_version: 'post-call-action-comparison.v1' }, expected: /Comparison unavailable/ },
+  { name: 'unknown comparison status', comparison: { ...exactComparison(), status: 'possible_match' }, expected: /Comparison unavailable/ },
+  { name: 'missing server count', comparison: { ...relatedComparison(), related_open_task_total: undefined }, expected: /Comparison unavailable/ },
+  { name: 'noninteger server count', comparison: { ...relatedComparison(), related_open_task_total: 5.5 }, expected: /Comparison unavailable/ },
+  { name: 'unknown assignee', comparison: { ...exactComparison(), status: 'assignee_unavailable' }, expected: /Comparison unavailable: task owner not recognised/ },
+  { name: 'unchanged due date', comparison: unchangedComparison('2026-11-03'), expectedText: "Already on this deal\nSend revised proposal · Joe · Nov 3\nAccepting adds this call's notes to that task.\nDue date stays Nov 3" },
+  { name: 'no due date', comparison: unchangedComparison(null), expectedText: "Already on this deal\nSend revised proposal · Joe · No due date\nAccepting adds this call's notes to that task.\nNo due date" },
+  { name: 'date set on undated task', comparison: { ...exactComparison(), exact_match: actionSnapshot('Send revised proposal', 'dell', null), date_effect: { ...exactComparison().date_effect, current_due_on: null } }, expectedText: "Already on this deal\nSend revised proposal · Dell · No due date\nAccepting adds this call's notes to that task.\nDue date set to Nov 5" },
+  { name: 'email draft proposal', kind: 'email_draft', expectedText: 'New email draft proposed' },
+  { name: 'meeting summary proposal', kind: 'meeting_record', expectedText: 'New note proposed' },
+  { name: 'new deal proposal', kind: 'new_deal', expectedText: 'New deal proposed' },
+  { name: 'note proposal', kind: 'activity', expected: /New note proposed/ },
+  { name: 'failed deal read preserves authoritative comparison', comparison: exactComparison(), failDeal: true, expected: /Already on this deal/ },
+  { name: 'failed outcomes read', failRead: true, expectedText: 'Could not check this call. Refresh before continuing the review.' },
+]) test(`Before handles ${scenario.name}`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await mountComparison(page, scenario);
+    const before = scenario.failRead ? page.getByRole('alert') : page.locator('dl > div').first().locator('dd');
+    const content = await before.innerText();
+    if (scenario.expectedText) assert.equal(content, scenario.expectedText);
+    else assert.match(content, scenario.expected);
+    if (scenario.kind) assert.doesNotMatch(content, /Comparison unavailable/);
+    if (scenario.listCount) {
+      assert.equal(await before.getByRole('listitem').count(), scenario.listCount);
+      assert.doesNotMatch(content, /and \d+ more/);
+    }
+    assert.doesNotMatch(content, /Not yet added|possible duplicate|similar|New task/);
+    if (scenario.failRead) assert.equal(await page.getByRole('button', { name: 'Approve or fix this item' }).count(), 0);
+    else assert.equal(await page.getByRole('button', { name: 'Approve or fix this item' }).isEnabled(), true);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});

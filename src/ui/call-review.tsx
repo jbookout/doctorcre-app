@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import type { ReactNode } from 'react';
 const partnerNames: Record<string, string> = { joe: 'Joe', dell: 'Dell' };
 type Payload = {
   summary?: string | null; text?: string | null; next_date?: string | null; value?: string | null;
@@ -7,7 +8,14 @@ type Payload = {
   started_on?: string | null; action?: string | null; subject?: string | null;
   base_event_id?: string | null; plan_base?: Record<string, string | null>;
 };
-type Candidate = { resolver: string | null; candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
+type ActionSnapshot = { description: string; owner: string; due_on: string | null };
+type ActionComparison =
+  | { status: 'unavailable' }
+  | { status: 'assignee_unavailable' }
+  | { status: 'no_match' }
+  | { status: 'exact_match'; action: ActionSnapshot; date: { current: string | null; resulting: string | null; changes: boolean } }
+  | { status: 'related_open_tasks'; actions: ActionSnapshot[]; total: number };
+type Candidate = { comparison: ActionComparison; resolver: string | null; candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
 type Change = Candidate & { deal_version: number; undone_at: string | null };
 type Call = { session_id: string; call_date: string; applied: Change[]; open_cards: Candidate[] };
 function isObject(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -15,13 +23,40 @@ function object(value: unknown) { if (!isObject(value)) throw new Error('Call da
 function text(value: unknown) { if (typeof value !== 'string') throw new Error('Call text unavailable'); return value; }
 function optionalText(value: unknown) { return value == null ? null : text(value); }
 function list(value: unknown): unknown[] { if (!Array.isArray(value)) throw new Error('Call items unavailable'); return value; }
+function actionSnapshot(value: unknown): ActionSnapshot {
+  const row = object(value);
+  return { description: text(row.description), owner: text(row.owner), due_on: optionalText(row.due_on) };
+}
+function actionComparison(value: unknown): ActionComparison {
+  try {
+    const row = object(value);
+    if (row.schema_version !== 'post-call-action-comparison.v2') return { status: 'unavailable' };
+    switch (row.status) {
+      case 'exact_match': {
+        const date = object(row.date_effect);
+        if (typeof date.changes_due_on !== 'boolean') return { status: 'unavailable' };
+        return { status: 'exact_match', action: actionSnapshot(row.exact_match), date: {
+          current: optionalText(date.current_due_on), resulting: optionalText(date.resulting_due_on), changes: date.changes_due_on,
+        } };
+      }
+      case 'related_open_tasks': {
+        const total = row.related_open_task_total, actions = list(row.related_open_tasks).map(actionSnapshot);
+        if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < actions.length || !actions.length || actions.length > 5) return { status: 'unavailable' };
+        return { status: 'related_open_tasks', actions, total };
+      }
+      case 'no_match': return { status: row.related_open_task_total === 0 ? 'no_match' : 'unavailable' };
+      case 'assignee_unavailable': return { status: 'assignee_unavailable' };
+      default: return { status: 'unavailable' };
+    }
+  } catch { return { status: 'unavailable' }; }
+}
 function candidate(value: unknown): Candidate {
   const row = object(value), raw = row.payload === undefined ? {} : object(row.payload), payload: Payload = {};
   for (const key of ['summary', 'text', 'next_date', 'value', 'started_on', 'action', 'subject', 'base_event_id', 'body', 'assignee', 'due_on'] as const) {
     if (Object.hasOwn(raw, key)) payload[key] = optionalText(raw[key]);
   }
   if (raw.plan_base !== undefined) payload.plan_base = Object.fromEntries(Object.entries(object(raw.plan_base)).map(([field, value]) => [field, optionalText(value)]));
-  return { resolver: optionalText(row.resolver), candidate_id: text(row.candidate_id), kind: text(row.kind), deal_id: optionalText(row.deal_id),
+  return { comparison: actionComparison(row.existing_action_comparison), resolver: optionalText(row.resolver), candidate_id: text(row.candidate_id), kind: text(row.kind), deal_id: optionalText(row.deal_id),
     deal_name: optionalText(row.deal_name), evidence_quote: optionalText(row.evidence_quote), payload };
 }
 function callAnswer(value: unknown): { calls: Call[] } {
@@ -37,7 +72,7 @@ function callAnswer(value: unknown): { calls: Call[] } {
 }
 function appliedSignature(change: Change) { return JSON.stringify({ ...change, deal_version: undefined }); }
 function receipt(value: unknown) { if (object(value).ok !== true) throw new Error('Command refused'); }
-type Item = { call: Call; key: string; signature: string; before: string } & (
+type Item = { call: Call; key: string; signature: string; before: ReactNode } & (
   { state: 'applied'; candidate: Change } | { state: 'pending' | 'resolved'; candidate: Candidate }
 );
 type Client = {
@@ -57,8 +92,31 @@ type Options = {
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
 const reviewReads = new WeakMap<Document, Promise<void>>();
 type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'retrying'; resumesAt: number } | { state: 'paused' } | { state: 'unavailable'; message: string };
-function beforeText(candidate: Candidate, detail: unknown) {
-  if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Not yet added by this proposal.';
+function beforeText(candidate: Candidate, detail: unknown, dateLabel: Options['dateLabel']) {
+  const dateText = (value: string | null) => value ? <time dateTime={value} style={{ whiteSpace: 'nowrap' }}>{dateLabel?.(value) ?? value}</time> : 'No due date';
+  if (candidate.kind === 'assigned_action') {
+    const comparison = candidate.comparison;
+    const actionText = (action: ActionSnapshot) => <>{action.description} · {partnerNames[action.owner] ?? action.owner} · {dateText(action.due_on)}</>;
+    switch (comparison.status) {
+      case 'exact_match': {
+        const { current, resulting, changes } = comparison.date;
+        const date = changes
+          ? current ? <>Due date changes from {dateText(current)} to {dateText(resulting)}</> : <>Due date set to {dateText(resulting)}</>
+          : current ? <>Due date stays {dateText(current)}</> : 'No due date';
+        return <><strong>Already on this deal</strong><div>{actionText(comparison.action)}</div><div>Accepting adds this call's notes to that task.</div><div>{date}</div></>;
+      }
+      case 'related_open_tasks': return <><strong>Other open tasks on this deal</strong><ul>{comparison.actions.map((action, index) => <li key={index}>{actionText(action)}</li>)}</ul>
+        {comparison.total > comparison.actions.length && <div>and {comparison.total - comparison.actions.length} more</div>}</>;
+      case 'no_match': return 'No other open tasks on this deal';
+      case 'assignee_unavailable': return 'Comparison unavailable: task owner not recognised';
+      case 'unavailable': return 'Comparison unavailable';
+      default: { const exhaustive: never = comparison; return exhaustive; }
+    }
+  }
+  if (candidate.kind === 'activity' || candidate.kind === 'meeting_record') return 'New note proposed';
+  if (candidate.kind === 'email_draft') return 'New email draft proposed';
+  if (candidate.kind === 'new_deal') return 'New deal proposed';
+  if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Earlier value unavailable.';
   const field = candidate.kind === 'phase_move' ? 'phase' : 'next_step';
   const base: Record<string, string | null | undefined> | undefined = candidate.kind === 'phase_move' && Object.hasOwn(candidate.payload, 'base_event_id') ? { phase: candidate.payload.base_event_id } : candidate.payload.plan_base;
   if (!base || !Object.hasOwn(base, field)) return 'Earlier value unavailable.';
@@ -149,9 +207,9 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       const previous = items;
       items = calls.flatMap(call => {
         const applied: Item[] = call.applied.map(candidate => ({ call, candidate, state: 'applied',
-          key: `${call.session_id}:${candidate.candidate_id}`, signature: appliedSignature(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
+          key: `${call.session_id}:${candidate.candidate_id}`, signature: appliedSignature(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? ''), options.dateLabel) }));
         const pending: Item[] = call.open_cards.map(candidate => ({ call, candidate, state: 'pending',
-          key: `${call.session_id}:${candidate.candidate_id}`, signature: JSON.stringify(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
+          key: `${call.session_id}:${candidate.candidate_id}`, signature: JSON.stringify(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? ''), options.dateLabel) }));
         const resolved: Item[] = previous.filter(item => item.call.session_id === call.session_id && item.state !== 'applied'
           && ![...applied, ...pending].some(next => next.key === item.key)).map(item => ({ ...item, state: 'resolved' }));
         const dealOrder = new Map<string, number>();
