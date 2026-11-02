@@ -12,6 +12,8 @@ import { chromium, WAIT_MS } from './browser-harness.mjs';
 const expect = baseExpect.configure({ timeout: WAIT_MS });
 const root = fileURLToPath(new URL('../', import.meta.url));
 const calendarPath = '/calendar?view=month&d=2026-10-01&day=2026-10-20';
+const sameName = 'Demo Joe Dental Relocation 001';
+const longName = `Demo ${'Extraordinarily Long Multi-Specialty Medical Office Building Relocation '.repeat(3)}`;
 const undatedId = 'qa/deal?3&x="yes"';
 
 test('Calendar opens each owning deal and Back restores the selected period and day', async t => {
@@ -30,6 +32,7 @@ test('Calendar opens each owning deal and Back restores the selected period and 
       const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
       const calls = [];
       const errors = [];
+      const roomReads = [];
       let empty = false;
       let missingDestination = false;
       page.on('pageerror', error => errors.push(error.message));
@@ -49,14 +52,22 @@ test('Calendar opens each owning deal and Back restores the selected period and 
         if (url.pathname !== '/mcp') return route.fulfill({ response });
         const { name, arguments: args } = route.request().postDataJSON().params;
         calls.push(name);
+        if (name === 'get-deal-room') roomReads.push(originalDeal);
         const payload = await response.json();
         if (name === 'deal-room-board' || name === 'get-deal-room') {
           const data = JSON.parse(payload.result.content[0].text);
           if (name === 'deal-room-board') {
-            data.deals = empty ? [] : missingDestination ? [{ ...data.deals[2], id: '' }] : data.deals.slice(0, 3);
-            data.deals.forEach(deal => { if (deal.id === 'qa-deal-3') deal.id = undatedId; });
+            data.deals = empty ? [] : missingDestination ? [{ ...data.deals[2], id: '' }] : data.deals.slice(0, 4);
+            data.deals.forEach(deal => {
+              if (deal.id === 'qa-deal-1' || deal.id === 'qa-deal-2') deal.name = sameName;
+              if (deal.id === 'qa-deal-3') { deal.id = undatedId; deal.name = `${sameName}0`; }
+              if (deal.id === 'qa-deal-4') deal.name = longName;
+            });
           } else {
             data.id = originalDeal;
+            if (originalDeal === 'qa-deal-1' || originalDeal === 'qa-deal-2') data.name = sameName;
+            if (originalDeal === undatedId) data.name = `${sameName}0`;
+            if (originalDeal === 'qa-deal-4') data.name = longName;
             data.deal_id = originalDeal;
             data.critical_dates = [{
               id: `date-${args.deal}`, kind: 'loi_expiry', status: 'open',
@@ -72,14 +83,18 @@ test('Calendar opens each owning deal and Back restores the selected period and 
         await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `deal-links-${width}-${theme}`, reset: true } });
         await page.goto(`https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev${calendarPath}`);
         await expect(page.locator('#calStatusLabel')).toHaveText('Current');
-        await expect(page.locator('#dayPanelBody .cal-day-entry')).toHaveCount(2);
+        await expect(page.locator('#dayPanelBody .cal-day-entry')).toHaveCount(3);
         const links = page.locator('#dayPanelBody a, #calUndatedList a');
-        await expect(links).toHaveCount(3);
+        await expect(links).toHaveCount(4);
         assert.deepEqual(await links.evaluateAll(nodes => nodes.map(node => node.getAttribute('href'))), [
-          '/deals?deal=qa-deal-1', '/deals?deal=qa-deal-2', '/deals?deal=qa%2Fdeal%3F3%26x%3D%22yes%22',
+          '/deals?deal=qa-deal-1', '/deals?deal=qa-deal-2', '/deals?deal=qa-deal-4', '/deals?deal=qa%2Fdeal%3F3%26x%3D%22yes%22',
         ]);
-        for (const link of await links.all()) await expect(link).toHaveAccessibleName(/Open .*Demo/);
-        assert.equal(calls.filter(name => name === 'get-deal-room').length, 3);
+        for (const row of await page.locator('#dayPanelBody .cal-day-entry, #calUndatedList li').all()) {
+          const name = (await row.locator('a').textContent()).replace(/^Open /, '');
+          assert.equal((await row.textContent()).split(name).length - 1, 1, 'deal name appears once per row');
+        }
+        for (const link of await links.all()) await expect(link).toHaveAccessibleName(/^Demo/);
+        assert.equal(calls.filter(name => name === 'get-deal-room').length, 4);
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         const evidence = join(root, '.github/pr-evidence/WR636.S1.J11');
@@ -87,16 +102,19 @@ test('Calendar opens each owning deal and Back restores the selected period and 
         await page.screenshot({ path: join(evidence, `calendar-${width}-${theme}.png`), fullPage: true });
         const period = await page.locator('#calPeriod').textContent();
         const calendarUrl = page.url();
-        for (const id of ['qa-deal-1', 'qa-deal-2', undatedId]) {
+        for (const id of ['qa-deal-1', 'qa-deal-2', 'qa-deal-4', undatedId]) {
           const href = `/deals?deal=${encodeURIComponent(id)}`;
           const link = page.locator(`a[href="${href}"]`);
           const label = await link.textContent();
+          const before = roomReads.length;
           await link.focus();
           await expect(link).toBeFocused();
           await page.keyboard.press('Enter');
           await page.waitForURL(url => url.pathname === '/deals' && url.searchParams.get('deal') === id);
           await expect(page.locator('#recordPanel')).toBeVisible();
-          await expect(page.locator('#recordPanel')).toContainText(label.replace(/^Open /, ''));
+          await expect(page.locator('#recordPanel')).toContainText(label);
+          await expect.poll(() => roomReads.slice(before)).toContain(id);
+          assert.deepEqual([...new Set(roomReads.slice(before))], [id], `only ${id} was opened`);
           await page.goBack();
           await expect(page).toHaveURL(calendarUrl);
           await expect(page.locator('#calPeriod')).toHaveText(period);
