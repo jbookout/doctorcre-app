@@ -56,7 +56,7 @@ type Options = {
   onChange?(): void;
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
 const reviewReads = new WeakMap<Document, Promise<void>>();
-type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'retrying' | 'paused' } | { state: 'unavailable'; message: string };
+type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'retrying'; resumesAt: number } | { state: 'paused' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
   if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Not yet added by this proposal.';
   const field = candidate.kind === 'phase_move' ? 'phase' : 'next_step';
@@ -66,6 +66,11 @@ function beforeText(candidate: Candidate, detail: unknown) {
   const history: unknown[] = isObject(detail) && Array.isArray(detail.history) ? detail.history : [];
   const event = history.find(row => isObject(row) && row.id === base[field]);
   return isObject(event) && typeof event.new_value === 'string' ? event.new_value : 'Earlier value unavailable.';
+}
+function decisionRefusal(error: unknown) {
+  return isObject(error) && error.status === 429
+    ? 'Your decision was not saved. When the review is ready, choose Approve or Skip again.'
+    : 'Could not save this decision. Refresh and check before retrying.';
 }
 function signedOut(error: unknown) { return isObject(error) && (error.status === 401 || error.status === 403); }
 
@@ -83,11 +88,19 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   const cancelWait = () => { clearTimeout(retryTimer); retryTimer = undefined; };
   function retry(touchedDeal?: string | null) {
     cancelWait();
-    load = { state: automaticAttempts < 3 ? 'retrying' : 'paused' };
+    load = automaticAttempts < 3 ? { state: 'retrying', resumesAt: Date.now() + 60_000 } : { state: 'paused' };
     if (load.state === 'paused') return;
     automaticAttempts++;
-    // eslint-disable-next-line no-restricted-syntax -- At most three automatic read attempts, sixty seconds apart; dispose and sign-out cancel the timer.
-    retryTimer = setTimeout(() => { retryTimer = undefined; void refresh({ touchedDeal }); }, 60_000);
+    function tick() {
+      retryTimer = undefined;
+      if (load.state !== 'retrying') return;
+      const remaining = load.resumesAt - Date.now();
+      if (remaining <= 0) { void refresh({ touchedDeal }); return; }
+      render();
+      // eslint-disable-next-line no-restricted-syntax -- Update the countdown until the read retry deadline; dispose and sign-out cancel the timer.
+      retryTimer = setTimeout(tick, Math.min(1000, remaining));
+    }
+    tick();
   }
   const completed = () => load.state === 'completed';
   const reviewed = new Map<string, string>();
@@ -176,7 +189,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (disposed) return;
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
       // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
-      else if (isObject(error) && error.status === 429) retry(touchedDeal);
+      else if (isObject(error) && error.status === 429) { notice = refused(error); retry(touchedDeal); }
       else {
         notice = refused(error);
         writing = false;
@@ -222,11 +235,11 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       {load.state === 'completed' && <p role="status">Call review complete.</p>}
       {load.state === 'empty' && <p role="status">No call items to review.</p>}
       {load.state === 'signed_out' && <p role="status">Sign in again to review this call.</p>}
-      {load.state === 'retrying' && <p role="status">The call review is taking a short break. Trying again automatically in 60 seconds. Your place in this review is kept.</p>}
+      {load.state === 'retrying' && <p role="status">The call review is taking a short break. Trying again automatically in {Math.max(0, Math.ceil((load.resumesAt - Date.now()) / 1000))} {load.resumesAt - Date.now() > 1000 ? 'seconds' : 'second'}. Your place in this review is kept.</p>}
       {load.state === 'paused' && <p role="status">The call review is still busy. Try Refresh call review in a minute. Your place in this review is kept.</p>}
       {load.state === 'unavailable' && <p role="alert">{load.message}</p>}
       {notice && <p role="alert">{notice}</p>}
-      {load.state === 'ready' && item && <>
+      {['ready', 'retrying', 'paused'].includes(load.state) && item && <>
         <p className="call-review-meta">{options.dateLabel?.(item.call.call_date) ?? item.call.call_date} · Item {index + 1} of {items.length}</p>
         <p className="call-review-progress-label">{done} of {items.length} reviewed</p>
         <progress aria-label="Call review progress" value={done} max={items.length} />
@@ -247,8 +260,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
           {item.candidate.payload.assignee && <p>Assigned to {partnerNames[item.candidate.payload.assignee] ?? item.candidate.payload.assignee} · {item.candidate.payload.due_on ? (options.dateLabel?.(item.candidate.payload.due_on) ?? item.candidate.payload.due_on) : 'No due date'}</p>}
           <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal.</p>
           <div className="call-review-actions">
-            <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.', item.candidate.deal_id)}>Approve item</button>
-            <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.', item.candidate.deal_id)}>Skip item</button>
+            <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), decisionRefusal, item.candidate.deal_id)}>Approve item</button>
+            <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), decisionRefusal, item.candidate.deal_id)}>Skip item</button>
           </div>
           <p className="call-review-meta">Email proposals create drafts only.</p>
         </section>}

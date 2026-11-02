@@ -424,8 +424,12 @@ for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers auto
     }
     await page.getByRole('status').filter({ hasText: /Trying again automatically in 60 seconds/ }).waitFor();
     assert.equal(await page.getByText(/Could not check this call/).count(), 0);
-    await page.clock.runFor(59000);
-    assert.equal(await page.getByRole('button', { name: 'Approve or fix this item' }).count(), 0);
+    await page.clock.runFor(1000);
+    assert.match(await page.getByRole('status').innerText(), /automatically in 59 seconds/);
+    await page.clock.runFor(58000);
+    const decision = page.getByRole('button', { name: 'Approve or fix this item' });
+    if (target === 'decision') assert.equal(await decision.isDisabled(), true);
+    else assert.equal(await decision.count(), 0);
     await page.clock.runFor(1000);
     await page.getByRole('button', { name: 'Approve or fix this item' }).waitFor();
     assert.equal(await page.evaluate(() => window.decisionAttempts), target === 'decision' ? 1 : 0);
