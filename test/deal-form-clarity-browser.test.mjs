@@ -60,8 +60,14 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     const locked = page.locator('#accountName');
     const lockedStyle = await locked.evaluate(el => ({ opacity: getComputedStyle(el).opacity, cursor: getComputedStyle(el).cursor }));
     assert.deepEqual(lockedStyle, { opacity: '0.55', cursor: 'not-allowed' });
+    const lockedColors = await page.locator('#accountName, #accountOwner, #researchDiscrepancies').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color));
+    assert.equal(lockedColors.length, 3);
+    assert.equal(lockedColors[0], lockedColors[1], 'locked text inputs use the same muted color as selects');
+    assert.equal(lockedColors[0], lockedColors[2], 'locked text inputs use the same muted color as textareas');
     assert.equal(await page.locator('#accountOwner').isDisabled(), true);
     assert.equal(await page.locator('#researchDiscrepancies').isDisabled(), true);
+    await locked.scrollIntoViewIfNeeded();
+    await capture('locked-fields');
     const savedName = await locked.inputValue();
     await page.evaluate(() => document.activeElement.blur());
     await locked.evaluate(el => el.focus()); await page.keyboard.type('attempted edit');
