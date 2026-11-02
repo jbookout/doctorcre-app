@@ -245,3 +245,63 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: `.github/pr-evidence/WR39.S3.J7/schedule-${width}-${theme}.png`, animations: 'disabled' });
   });
 }
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+  test(`canonical history at ${width} in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await page.goto(`${server.url}/deals?deal=d14`);
+    const terms = page.getByRole('region', { name: 'Terms', exact: true });
+    await terms.scrollIntoViewIfNeeded();
+    await expect(terms.locator('[data-canonical-history]')).toHaveCount(1);
+    await page.evaluate(async () => {
+      const { state } = await import('/js/pipeline.js');
+      const { createFactReviewFixture } = await import('/data/fixtures/fact-review.mjs');
+      const fixture = createFactReviewFixture({ canonicalHistory: true });
+      window.historyReads = 0;
+      state.client.listFactReview = async args => {
+        window.historyReads++;
+        const result = await fixture.listFactReview(args);
+        const periods = [{ start_month: 1, end_month: 12, rate: '24.72', unit: 'USD/SF/year', expense_basis: 'nnn', escalation_percent: '3' }];
+        result.items.push({ entity_ref: 'd14', fact_key: 'rent_schedule', canonical_version: 1, review_version: '0'.repeat(64), pending: false, reasons: [], observations: [], review_history: [],
+          canonical_fact: { canonical_unit: 'schedule', normalized_value: null, normalized_schedule: periods },
+          canonical_history: [{ version: 1, canonical_unit: 'schedule', normalized_value: null, normalized_schedule: periods, basis: 'human_review', promoted_at: '2026-01-01T12:00:00Z' }] });
+        return result;
+      };
+    });
+    await terms.getByRole('button', { name: 'Refresh terms', exact: true }).click();
+    const history = terms.locator('[data-fact-key=base_rent_per_sf] [data-canonical-history]');
+    await expect(history).not.toHaveAttribute('open');
+    await history.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(history).toHaveAttribute('open');
+    await expect(history.locator('li > strong')).toHaveText(['Version 1', 'Version 2', 'Version 3']);
+    await expect(history).toContainText('$24/SF/yr');
+    await expect(history).toContainText('$25/SF/yr');
+    await expect(history).toContainText('$26/SF/yr');
+    await expect(history).toContainText('Historical citation unavailable');
+    await expect(history).toContainText('Excerpt no longer available');
+    await expect(history).toContainText('Demo Amendment.pdf · Page 3');
+    expect(await page.evaluate(() => window.historyReads)).toBe(1);
+    const reason = terms.locator('[data-fact-key=base_rent_per_sf] [name=reason]');
+    await reason.fill('Synthetic unsaved review reason');
+    await terms.getByRole('button', { name: 'Refresh terms', exact: true }).click();
+    await expect(reason).toHaveValue('Synthetic unsaved review reason');
+    expect(await page.evaluate(() => window.historyReads)).toBe(1);
+    const schedule = terms.locator('[data-fact-key=rent_schedule] [data-canonical-history]');
+    await schedule.locator('summary').click();
+    await expect(schedule).toContainText('$24.72/SF/yr');
+    await expect(schedule).toContainText('3%');
+    await expect(schedule).toContainText('NNN');
+    for (const [name, target] of [['scalar', history], ['schedule', schedule]]) {
+      await target.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`canonical-${name}-${width}-${theme}.png`), animations: 'disabled' });
+      expect(await target.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await history.locator('summary').focus();
+    await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+    await expect(terms.locator('[data-canonical-history]')).toHaveCount(0);
+    await expect(terms).not.toContainText('Demo Amendment.pdf');
+  });
+}

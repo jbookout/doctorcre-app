@@ -7,8 +7,9 @@ type Document = { id: string; display_name: string; stored_at: string };
 type Period = { start_month: number; end_month: number; rate: string; unit: string; expense_basis: string; escalation_percent: string | null };
 type SourcedPeriod = { [K in keyof Period]: { value: Period[K] } };
 type Value = { value: string | SourcedPeriod[]; normalized_schedule?: Period[]; unit: string; normalized_value?: string; canonical_unit?: string; expense_basis?: string | null; observation_ids?: string[] };
+type CanonicalFact = Omit<Value, 'value' | 'unit' | 'normalized_value'> & { version: number; normalized_value: string | null; canonical_unit: string; promoted_at?: string; basis?: string };
 type Observation = Value & { id: string; method: string; confidence_tier: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null; cited_text_expires_at: string } };
-type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: string; reasons: string[]; canonical_fact: Value | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; canonical_history: { version: number; promoted_at?: string }[]; review_version: string };
+type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: string; reasons: string[]; canonical_fact: CanonicalFact | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; canonical_history: CanonicalFact[]; review_version: string };
 type HumanFact = { fact_key: string; value: string; unit: string; expense_basis?: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string } };
 type Args = { idempotency_key: string; entity_ref: string } & ({ observation: HumanFact } | { fact_key: string; base_version: number; review_version: string; decision: string; reason: string; observation_id?: string; correction?: HumanFact });
 type Receipt = { ok: boolean; schema_version: string };
@@ -20,10 +21,10 @@ type Plan = { template: { name: string }; human_gate: string; edits: { where: st
 type Options = { client: Client; entityRef: string; terms: Record<string, { label: string; units: Record<string, number> }> };
 type Controls = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
 const BASES: Record<string, string> = { nnn: 'NNN', modified_gross: 'Modified gross', full_service_gross: 'Full service gross', gross: 'Gross' };
-function valueText(value: Value) {
-  if (value.unit === 'schedule' || value.canonical_unit === 'schedule') return 'Rent schedule';
-  const amount = value.canonical_unit ? value.normalized_value : value.value;
-  const unit = value.canonical_unit || value.unit;
+function valueText(value: Value | CanonicalFact) {
+  if (('unit' in value && value.unit === 'schedule') || value.canonical_unit === 'schedule') return 'Rent schedule';
+  const amount = 'value' in value && !value.canonical_unit ? value.value : value.normalized_value;
+  const unit = value.canonical_unit || ('unit' in value ? value.unit : '');
   const units: Record<string, string> = { 'USD/SF/year': '/SF/yr', 'USD/SF/month': '/SF/mo', 'USD/SF': '/SF', USD: '' };
   const formatted = Object.hasOwn(units, unit) ? `$${String(amount).replace(/^\d+/, integer => integer.replace(/\B(?=(\d{3})+(?!\d))/g, ','))}${units[unit]}` : `${amount} ${unit}`;
   return `${formatted}${value.expense_basis ? ` · ${BASES[value.expense_basis] || value.expense_basis}` : ''}`;
@@ -71,10 +72,28 @@ function Schedule({ periods }: { periods: Period[] }) {
 function sourcedPeriods(periods: SourcedPeriod[]): Period[] {
   return periods.map(p => ({ start_month: p.start_month.value, end_month: p.end_month.value, rate: p.rate.value, unit: p.unit.value, expense_basis: p.expense_basis.value, escalation_percent: p.escalation_percent.value }));
 }
+function CanonicalHistory({ item, documents }: { item: Item; documents: Document[] }) {
+  return <details className="fact-history" data-canonical-history><summary>Canonical history</summary>
+    {item.canonical_history?.length ? <ol>{item.canonical_history.map(fact => <li key={fact.version}>
+      <strong>Version {fact.version}</strong>
+      {fact.canonical_unit === 'schedule' && fact.normalized_schedule ? <Schedule periods={fact.normalized_schedule} /> : <p>{valueText(fact)}</p>}
+      <p>Promoted {fact.promoted_at ? <time dateTime={fact.promoted_at}>{fact.promoted_at}</time> : 'time unavailable'}</p>
+      <p>Promotion basis · {fact.basis === 'human_review' ? 'Human review' : fact.basis === 'independent_agreement' ? 'Independent agreement' : fact.basis || 'Unavailable'}</p>
+      {fact.observation_ids?.length ? fact.observation_ids.map(id => {
+        const observation = item.observations.find(row => row.id === id);
+        return <div key={id}>{observation ? <>
+          <p className="fact-source">{documentName(observation, documents)} · {observation.source.page_start === observation.source.page_end ? 'Page' : 'Pages'} {observation.source.page_start}{observation.source.page_start === observation.source.page_end ? '' : `–${observation.source.page_end}`}</p>
+          {(!observation.source.cited_text || !(Date.parse(observation.source.cited_text_expires_at) > Date.now())) && <p className="fact-excerpt-unavailable">Excerpt no longer available</p>}
+        </> : <p>Historical citation unavailable</p>}</div>;
+      }) : <p>Historical citation unavailable</p>}
+    </li>)}</ol> : <p>No canonical history recorded.</p>}
+  </details>;
+}
 function Review({ item, documents, index, terms }: { item: Item; documents: Document[]; index: number; terms: Options['terms'] }) {
   const schedule = item.fact_key === 'rent_schedule';
   return <article className="fact-term" id={`term-${item.fact_key}`} tabIndex={-1} data-fact-key={item.fact_key}><header><h3>{terms[item.fact_key]?.label || item.fact_key.replaceAll('_', ' ')}</h3><span className="fact-state">{reviewLabel(item)}</span></header>
     <div className="fact-canonical"><small>Canonical value</small>{schedule && item.canonical_fact?.normalized_schedule ? <Schedule periods={item.canonical_fact.normalized_schedule} /> : <p className={item.canonical_fact ? undefined : 'fact-empty'}>{item.canonical_fact ? valueText(item.canonical_fact) : 'No canonical value recorded'}</p>}</div>
+    <CanonicalHistory item={item} documents={documents} />
     <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <><strong>{scheduleLabel(o)}</strong><Schedule periods={sourcedPeriods(o.value)} /></> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
     <button type="button" className="btn" data-review-term hidden={item.pending}>Review term</button>
     <form data-fact-review={index} hidden={!item.pending}>
@@ -221,8 +240,9 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       listContent = <>{listContent}{Object.keys(comparisonRows).filter(key => !items.some(item => item.fact_key === key)).map(key => <section key={key} className="fact-term fact-empty" id={`term-${key}`} tabIndex={-1}><h3>{FACT_TERMS[key]?.label}</h3><p>No sourced terms recorded.</p></section>)}</>;
       render();
       status.textContent = message;
-    } catch {
+    } catch (caught) {
       if (!disposed && current === generation) {
+        if (caught && typeof caught === 'object' && 'status' in caught && (caught.status === 401 || caught.status === 403)) { expire(); return; }
         status.textContent = 'Terms unavailable. Refresh terms to try again.';
       }
     }
@@ -334,11 +354,22 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   root.addEventListener('change', markDirty);
   root.addEventListener('input', markDirty);
   root.addEventListener('click', click);
-  void refresh();
-  return { refresh, dispose() {
+  function expire() {
+    const restoreFocus = root.contains(root.ownerDocument.activeElement);
+    dispose();
+    root.textContent = 'Sign in again before reviewing terms.';
+    if (restoreFocus) { root.tabIndex = -1; root.focus(); }
+  }
+  function dispose() {
+    if (disposed) return;
     disposed = true; generation++; lifetime.abort();
+    items = []; documents = []; pending.clear(); listContent = null;
     reactRoot.unmount();
     root.removeEventListener('submit', submit); root.removeEventListener('change', onChange); root.removeEventListener('click', click);
     root.removeEventListener('change', markDirty); root.removeEventListener('input', markDirty);
-  } };
+    root.ownerDocument.defaultView?.removeEventListener('doctorcre-session-invalidated', expire);
+  }
+  root.ownerDocument.defaultView?.addEventListener('doctorcre-session-invalidated', expire);
+  void refresh();
+  return { refresh, dispose };
 }

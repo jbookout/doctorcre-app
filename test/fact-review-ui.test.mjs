@@ -178,3 +178,93 @@ test('schedule choices identify the corresponding observations with distinct rat
   assert.match(observations[1].textContent, /Schedule schedule-1/);
   panel.dispose();
 });
+
+
+test('canonical history shows three recorded versions without another read or changing the review draft', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture({ canonicalHistory: true });
+  const read = client.listFactReview.bind(client);
+  let reads = 0;
+  client.listFactReview = args => { reads++; return read(args); };
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const history = root.querySelector('[data-canonical-history]');
+  assert.ok(history, 'the term has an expandable canonical history');
+  assert.equal(history.open, false);
+  history.querySelector('summary').click();
+  const rows = [...history.querySelectorAll('li')];
+  assert.deepEqual(rows.map(row => row.querySelector('strong').textContent), ['Version 1', 'Version 2', 'Version 3']);
+  for (const [i, value] of ['24', '25', '26'].entries()) assert.ok(rows[i].textContent.includes(`$${value}/SF/yr`));
+  assert.match(rows[0].textContent, /Historical citation unavailable/);
+  assert.match(rows[0].textContent, /Independent agreement/);
+  assert.match(rows[1].textContent, /Demo Counteroffer.pdf · Page 2/);
+  assert.match(rows[1].textContent, /2026-01-02T12:00:00Z/);
+  assert.match(rows[1].textContent, /Human review/);
+  assert.match(rows[1].textContent, /Excerpt no longer available/);
+  assert.match(rows[2].textContent, /Demo Amendment.pdf · Page 3/);
+  const reason = root.querySelector('[name=reason]');
+  reason.value = 'Keep this unsaved reason';
+  reason.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  await panel.refresh();
+  assert.equal(root.querySelector('[name=reason]').value, 'Keep this unsaved reason');
+  assert.equal(reads, 1);
+  assert.equal((await read({ entity_ref: 'd14', include_resolved: true })).items[0].canonical_version, 3);
+  panel.dispose();
+  assert.equal(root.textContent, '');
+});
+
+test('session expiry clears canonical history and ignores a delayed refresh', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture({ canonicalHistory: true });
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const history = root.querySelector('[data-canonical-history]');
+  history.querySelector('summary').focus();
+  let finish;
+  const reply = await client.listFactReview({ entity_ref: 'd14', include_resolved: true });
+  client.listFactReview = () => new Promise(resolve => { finish = resolve; });
+  const refreshing = panel.refresh();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  assert.doesNotMatch(root.textContent, /\$26|Demo Amendment/);
+  assert.equal(root.querySelector('[data-canonical-history]'), null);
+  assert.equal(dom.window.document.activeElement, root);
+  finish(reply);
+  await refreshing;
+  assert.equal(root.querySelector('[data-canonical-history]'), null);
+  panel.dispose();
+});
+
+for (const status of [401, 403]) test(`a ${status} history refresh clears old terms`, async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture({ canonicalHistory: true });
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  client.listFactReview = async () => { throw Object.assign(new Error('refused'), { status }); };
+  await panel.refresh();
+  assert.equal(root.querySelector('[data-canonical-history]'), null);
+  assert.match(root.textContent, /Sign in again/);
+  panel.dispose();
+});
+
+test('empty canonical history is explicit and an unavailable refresh retains the recorded snapshot', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture();
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  root.querySelector('[data-canonical-history] summary').click();
+  assert.match(root.textContent, /No canonical history recorded/);
+  client.listFactReview = async () => { throw new Error('offline'); };
+  await panel.refresh();
+  assert.match(root.textContent, /Terms unavailable/);
+  assert.match(root.textContent, /No canonical history recorded/);
+  panel.dispose();
+});
