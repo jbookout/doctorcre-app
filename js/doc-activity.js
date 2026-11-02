@@ -12,7 +12,8 @@ const shown = value => value === null || value === undefined ? '—' : String(va
 export function mountDocActivity({ document: root, window, client, intervalMs }) {
   const $ = id => root.getElementById(id), form = $('activityFilters'), dialog = $('activityDetail');
   const view = { rows: [], sequence: 0, pages: 1, next: null, selected: null, opener: null, attempts: new Map(), feedback: new Map(), fingerprint: '', filters: '' };
-  const message = text => { $('activityStatus').textContent = text; };
+  let persistentMessage = false;
+  const message = (text, { persist = false } = {}) => { persistentMessage = persist; $('activityStatus').textContent = text; };
   const attemptLabel = row => {
     const attempt = view.attempts.get(row.id);
     return attempt?.state === 'pending' ? 'Undoing…' : attempt?.state === 'unknown' ? 'Check undo'
@@ -35,7 +36,10 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
     $('detailQuote').hidden = !row.evidence?.quote;
     $('detailQuote').textContent = row.evidence?.quote || '';
     $('detailUndo').textContent = attemptLabel(row);
-    $('detailUndo').disabled = !canUndo(row) || view.attempts.get(row.id)?.state === 'pending' || view.attempts.get(row.id)?.state === 'done';
+    const undoButton = $('detailUndo');
+    const disabled = !canUndo(row) || ['pending', 'done'].includes(view.attempts.get(row.id)?.state);
+    if (disabled && dialog.open && root.activeElement === undoButton) $('detailClose').focus();
+    undoButton.disabled = disabled;
     $('detailResult').textContent = view.feedback.get(row.id) || '';
   }
   function paint() {
@@ -104,7 +108,8 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
       const options = `<option value="">All records</option>${types.map(type => `<option value="${esc(type)}">${esc(typeLabel(type))}</option>`).join('')}`;
       if (select.innerHTML !== options) { select.innerHTML = options; select.value = selected; }
       $('activityUpdated').textContent = updatedLabel(answer.as_of);
-      message(view.rows.length ? '' : 'No activity'); paint();
+      if (!persistentMessage) message(view.rows.length ? '' : 'No activity');
+      paint();
     } catch {
       if (seq === view.sequence) { message('Activity temporarily unavailable'); $('activityUpdated').textContent = 'Updating…'; }
     }
@@ -117,11 +122,11 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
       const args = undoArgs(row, uuidv4()); if (!args) return;
       attempt = { args, state: 'pending' }; view.attempts.set(id, attempt);
     }
-    attempt.state = 'pending'; view.feedback.delete(id); paint();
+    attempt.state = 'pending'; view.feedback.delete(id); message(''); paint();
     try {
       const result = await readWithDeadline(() => client.revertDealField(attempt.args), { timeoutMs: 10_000 });
       if (result?.ok !== true || result.reverted_event_id !== id) throw new Error('undo_unconfirmed');
-      attempt.state = 'done'; view.feedback.set(id, 'Change undone'); message(`Change undone: ${row.record.name}`); paint();
+      attempt.state = 'done'; view.feedback.set(id, 'Change undone'); message(`Change undone: ${row.record.name}`, { persist: true }); paint();
       await refresh();
     } catch (error) {
       if (['newer_change_exists','event_not_revertible'].includes(error.payload?.error) || [401,403].includes(error.status)) {
@@ -144,14 +149,14 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
   $('detailClose').addEventListener('click', close);
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
   $('detailUndo').addEventListener('click', () => { void undo(view.selected); });
-  const resetPage = () => { view.pages = 1; void refresh(); };
+  const resetPage = () => { message(''); view.pages = 1; void refresh(); };
   form.addEventListener('change', resetPage);
   form.addEventListener('submit', event => { event.preventDefault(); resetPage(); });
   // eslint-disable-next-line no-restricted-syntax -- A single callback after each form reset reads native reset values and starts one budgeted refresh.
   form.addEventListener('reset', () => { window.setTimeout(resetPage, 0); });
-  $('activityMore').addEventListener('click', () => { view.pages++; void refresh(); });
+  $('activityMore').addEventListener('click', () => { message(''); view.pages++; void refresh(); });
   const polling = mountAutoRefresh({ document: root, window, refresh, intervalMs });
-  $('activityRefresh').addEventListener('click', () => { void polling.refresh(); });
+  $('activityRefresh').addEventListener('click', () => { message(''); void polling.refresh(); });
   void refresh();
   return { refresh, dispose() { view.sequence++; polling.dispose(); }, view };
 }
