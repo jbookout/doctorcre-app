@@ -132,3 +132,55 @@ test('a failed refresh preserves focus on a filing control within its panel', as
   await view.refresh();
   assert.equal(container.ownerDocument.activeElement, container.querySelector('[data-filing-undo]'));
 });
+
+test('filed receipts link to their own exact deals without exposing ids or private content', async () => {
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1), filing(2, { deal: '20000000-0000-4000-8000-000000000002' })] }) });
+  await view.refresh();
+  assert.deepEqual([...container.querySelectorAll('a')].map(link => [link.getAttribute('href'), link.textContent]), [
+    ['/deals?deal=20000000-0000-4000-8000-000000000001', 'Open filed deal'],
+    ['/deals?deal=20000000-0000-4000-8000-000000000002', 'Open filed deal'],
+  ]);
+  assert.doesNotMatch(container.textContent, /20000000|Private body/);
+});
+
+test('missing, null and unsafe deal identities never navigate and still allow Undo', async () => {
+  for (const deal of [undefined, null, '', 'javascript:alert(1)', '../deal', 'uuid" onclick="alert(1)', {}, '20000000-0000-4000-8000-000000000001?x=y']) {
+    const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1, { deal })] }) });
+    await view.refresh();
+    assert.equal(container.querySelector('a'), null);
+    assert.match(container.textContent, /Filed deal destination unavailable/);
+    assert.ok(container.querySelector('[data-filing-undo]'));
+  }
+});
+
+test('confirmed Undo removes the current-filing link, retains the receipt and focuses its outcome', async () => {
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1, { activity_version: null })] }), undoEmailThreadFiling: async () => ({ ok: true }) });
+  await view.refresh();
+  const button = container.querySelector('button'); button.focus();
+  await view.click({ target: button });
+  assert.equal(container.querySelector('a'), null);
+  assert.equal(container.ownerDocument.activeElement, container.querySelector('[role="status"]'));
+  await view.refresh();
+  assert.equal(container.querySelector('a'), null, 'a late read cannot restore an undone link');
+});
+
+test('refusal retains the exact destination and refresh preserves focused navigation', async () => {
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }), undoEmailThreadFiling: async () => { throw Error('refused'); } });
+  await view.refresh();
+  container.querySelector('a').focus();
+  await view.refresh();
+  assert.equal(container.ownerDocument.activeElement, container.querySelector('a'));
+  await undo(0);
+  assert.equal(container.querySelector('a').getAttribute('href'), '/deals?deal=20000000-0000-4000-8000-000000000001');
+  assert.match(container.textContent, /left as is/);
+});
+
+test('session invalidation discards filings and ignores a late read', async () => {
+  let resolve;
+  const { container, view } = setup({ listEmailThreadFilings: () => new Promise(done => { resolve = done; }) });
+  const pending = view.refresh();
+  container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
+  resolve({ filings: [filing(1)] }); await pending;
+  assert.equal(container.querySelector('a'), null);
+  assert.match(container.textContent, /Sign in/);
+});

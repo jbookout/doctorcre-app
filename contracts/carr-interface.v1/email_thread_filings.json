@@ -6,7 +6,7 @@
     "contract": "mcp-server/contracts/email-thread-filings.v1.json"
   },
   "schema": "carr-email-thread-filings.v1",
-  "read": "list-email-thread-filings {} returns {filings} for the authenticated partner. The app shows only subject and sender_name (null shows as unavailable), never summary, addresses or ids. activity_version is the server guard and is null for legacy events; never infer missing fields.",
+  "read": "list-email-thread-filings {} returns {filings} for the authenticated partner. The app shows only subject and sender_name (null shows as unavailable), never summary, addresses or ids as text. A still-filed receipt may link to /deals?deal= using only its exact deal UUID. Missing or invalid identities show destination unavailable. Confirmed Undo removes the current-filing link. activity_version is the server guard and is null for legacy events; never infer missing fields.",
   "read_fields": {
     "event_id": "Filing event UUID, supplied to undo",
     "deal": "Filed deal UUID",
