@@ -1,3 +1,4 @@
+import { mountLeadGuidance } from './ui.generated.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountContactReasons } from './contact-reasons.mjs';
 import { workCard } from './work-card.js';
@@ -26,6 +27,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   if (typeof client.getQuietFollowUps !== "function") $("quietFollowUps")?.remove();
   const reasons = $("contactReasons") && client.listPracticeOrigination ? mountContactReasons({host:$("contactReasons"),window:win,client}) : null;
   const engagement = engagementWriterFor(client, engagementStorage(win));
+  let guidance = null;
+  function clearGuidance() { guidance?.dispose(); guidance = null; }
   const engagementChecks = new Set();
   const expandedStages = new Set();
   const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, quietEpoch: 0, quietShown: false, openedRequestedLead: false, showEmptyStages: false, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
@@ -157,6 +160,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     }
   }
   function clearPrivateView() {
+    clearGuidance();
     clearQuiet();
     expandedStages.clear();
     pageDocContext?.clear();
@@ -278,7 +282,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       else if (state.detailId && $("leadDetail").open) {
         if (leadById(state.detailId)) await readDetail(state.detailId, false);
         else if (next.leads.some(lead => lead.id === state.detailId)) { state.detail = null; $("leadDetail").close(); }
-        else { state.detail = null; ++state.detailEpoch; $("detailTitle").textContent = "Lead unavailable"; $("detailBody").innerHTML = '<p class="empty">Unavailable</p>'; }
+        else { clearGuidance(); state.detail = null; ++state.detailEpoch; $("detailTitle").textContent = "Lead unavailable"; $("detailBody").innerHTML = '<p class="empty">Unavailable</p>'; }
       }
       openRequestedLead();
       return true;
@@ -290,7 +294,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (!state.identityReady) state.board = null;
       state.identityReady = false; state.detail = null; state.detailId = null;
       ++state.detailEpoch; state.trigger = null;
-      $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
+      clearGuidance(); $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
       render();
       state.connectionFeedback = "Connection interrupted · reconnecting…";
       paintCommandFeedback();
@@ -340,13 +344,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const scroll = intent?.scroll ?? $("leadDetail").scrollTop;
     $("detailTitle").textContent = leadTitle(detail);
     const contact = (kind, value) => value ? `<a href="${kind === "Email" ? "mailto:" : "tel:"}${esc(value)}">${esc(value)}</a>` : "—";
+    clearGuidance();
     $("detailBody").innerHTML = `<section class="detail-summary"><div><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section>
       <div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Plans</h3><p>${esc(summary(detail.plans || detail.notes) || "—")}</p>${detail.notes ? `<details data-entry-key="plans"><summary>Details</summary><div class="original-entry">${esc(detail.notes)}</div></details>` : ""}<dl class="plan-window"><dt>Lease window</dt><dd>${esc(detail.est_lease_event || "—")}</dd></dl></section>
       </div>
+      <div id="leadGuidance"></div>
       ${researchMarkup(detail.research)}
       ${detail.prospect_client_id && detail.prospect_engagement_status === "inactive" ? `<form id="activateProspect"><p>Mark active to return this prospect to the deal board.</p><label>Reason<input name="reason" maxlength="1000" required></label><button type="submit">Mark active</button></form>` : ""}
       <div class="detail-columns"><section class="detail-panel"><h3>Captured correspondence</h3><p>Other communication may not have been captured.</p>${historySummary(detail, "correspondence")}<ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No captured correspondence</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3>${historySummary(detail, "stage_history")}<ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
+    guidance = mountLeadGuidance($("leadGuidance"), detail);
     for (const button of $("detailBody").querySelectorAll("[data-load-history]")) button.addEventListener("click", () => loadHistory(button.dataset.loadHistory));
     $("detailStage").addEventListener("change", event => openReview(detail.id, event.target.value));
     $("activateProspect")?.addEventListener("submit", event => {
@@ -400,7 +407,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const lead = leadById(id), epoch = ++state.detailEpoch, actor = state.actor;
     state.historyRequest = null; state.historyError = null;
     if (!lead || !state.identityReady) return;
-    if (open) { state.resumeDetail = intent; state.selectedId = id; render(); selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
+    if (open) { clearGuidance(); state.resumeDetail = intent; state.selectedId = id; render(); selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
     try {
       const response = await client.getLeadDetail(lead);
       if (epoch !== state.detailEpoch || actor !== state.actor) return;
@@ -424,7 +431,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       const unchanged = JSON.stringify(state.detail) === JSON.stringify(response.detail);
       state.detail = response.detail; if (!unchanged) paintDetail(response.detail, intent);
       state.resumeDetail = null;
-    } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; state.detail = null; const unreachable = error?.code === "network_error" || error?.code === "read_timeout"; $("detailBody").innerHTML = `<p class="empty" role="alert">${unreachable ? "Connection interrupted · reconnecting…" : "Lead details were refused."}</p>`; }
+    } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; clearGuidance(); state.detail = null; const unreachable = error?.code === "network_error" || error?.code === "read_timeout"; $("detailBody").innerHTML = `<p class="empty" role="alert">${unreachable ? "Connection interrupted · reconnecting…" : "Lead details were refused."}</p>`; }
   }
   async function openReview(id, target, { updating = false, undoEventId = null, draft = null } = {}) {
     const lead = leadById(id);
@@ -607,7 +614,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   $("closeStage").addEventListener("click", () => $("stageDialog").close());
   for (const id of ["leadDetail", "stageDialog"]) onDialogClosed($(id), () => {
     if (id === "stageDialog") { ++state.reviewEpoch; state.reviewTarget = null; state.proposal = null; }
-    else { ++state.detailEpoch; state.detailId = null; state.detail = null; if (state.identityReady) state.resumeDetail = null; }
+    else { clearGuidance(); ++state.detailEpoch; state.detailId = null; state.detail = null; if (state.identityReady) state.resumeDetail = null; }
     paintCommandFeedback();
     if (!$("leadDetail").open && !$("stageDialog").open) {
       selectDocRecord("lead", null);
@@ -695,6 +702,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   });
   board.addEventListener("pointercancel", stopTouch);
   board.addEventListener("lostpointercapture", stopTouch);
+  win.addEventListener("pagehide", clearGuidance);
   render();
   let disposed = false;
   $("showTerritory").addEventListener("click", async () => {
@@ -722,6 +730,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       actor: state.actor, id: state.detailId, scroll: $("leadDetail").scrollTop,
       expanded: [...$("detailBody").querySelectorAll("details[open]")].map(node => node.dataset.entryKey),
     };
+    clearGuidance();
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;
     state.identityReady = false; state.board = null; state.detail = null; state.detailId = null;
     state.proposal = null; state.reviewTarget = null; state.trigger = null; state.drag = null;
@@ -734,6 +743,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   // eslint-disable-next-line no-restricted-syntax -- Hidden-state events only clear lead identity, document context, and drag state; they perform no HTTP reads.
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
-  return { state, refresh, openReview, readDetail, dispose() { reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
+  return { state, refresh, openReview, readDetail, dispose() { clearGuidance(); reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); win.removeEventListener("pagehide", clearGuidance); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("leadBoard")) mountLeadsWorkspace();

@@ -40,3 +40,5 @@ export { mountCallReview, mountCallReviewDialog } from './call-review';
 export { mountDealRoomBoard } from './deal-room-board';
 
 export { mountDealRoomAgenda } from './deal-room-agenda';
+
+export { mountLeadGuidance } from "./lead-guidance";
