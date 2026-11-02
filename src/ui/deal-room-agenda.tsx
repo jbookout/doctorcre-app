@@ -31,7 +31,7 @@ function DealRoomAgenda({ targets, action, ...props }: AgendaProps & { targets: 
   return <>
     {createPortal('Review deals', targets.button)}
     {createPortal(<>
-      <header><div><h2 id="agendaTitle">{review?.title || 'Deals'}</h2><p className="dialog-context">Review agenda</p></div>
+      <header><div><h2 id="agendaTitle" tabIndex={-1}>{review?.title || 'Deals'}</h2><p className="dialog-context">Review agenda</p></div>
         <button type="button" className="icon-button" id="agendaClose" aria-label="Close agenda" disabled={disabled} onClick={() => action('abandoned')}>×</button>
       </header>
       <div className="agenda-progress"><span id="agendaProgress">{review ? `${Math.min(review.index + 1, review.total)} of ${review.total}` : '0 of 0'}</span>

@@ -2,8 +2,7 @@ import { build } from "esbuild";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// React islands: strict TypeScript under src/ui/, shipped as one generated
-// browser module that a page imports on demand or while its flag is on. The island
+// React islands compile to browser modules with a shared runtime. The island
 // sources are read through readSource, so an artifact verified from committed
 // bytes compiles committed bytes; React itself resolves from the lockfile's
 // install in this checkout.
@@ -12,7 +11,23 @@ export const UI_ENTRY = `${UI_SOURCE}/index.tsx`;
 export const UI_OUTPUT = "js/ui.generated.js";
 const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
-export async function uiBundle(readSource) {
+export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
+export const UI_OUTPUTS = [UI_OUTPUT, 'js/deal-room-forms.generated.js', 'js/ui-shared.generated.js'];
+
+export async function uiBundle(readSource, entry = UI_ENTRY) {
+  const result = await buildUi(readSource, { entryPoints: [entry] });
+  return Buffer.from(result.outputFiles[0].contents);
+}
+
+export async function uiAssets(readSource) {
+  const result = await buildUi(readSource, {
+    entryPoints: { 'ui.generated': UI_ENTRY, 'deal-room-forms.generated': FORM_ENTRY },
+    splitting: true, outdir: 'js', chunkNames: 'ui-shared.generated',
+  });
+  return new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
+}
+
+async function buildUi(readSource, options) {
   const read = async (path) => {
     try {
       const source = await readSource(path);
@@ -20,7 +35,7 @@ export async function uiBundle(readSource) {
     } catch { return null; }
   };
   const result = await build({
-    entryPoints: [UI_ENTRY], absWorkingDir: INSTALL, bundle: true, write: false, format: "esm",
+    ...options, absWorkingDir: INSTALL, bundle: true, write: false, format: "esm",
     platform: "browser", target: "es2022", minify: true, legalComments: "eof", jsx: "automatic",
     tsconfigRaw: "{}", define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "ui-source", setup(builder) {
@@ -46,5 +61,5 @@ export async function uiBundle(readSource) {
       }));
     } }],
   });
-  return Buffer.from(result.outputFiles[0].contents);
+  return result;
 }

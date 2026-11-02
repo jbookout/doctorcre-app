@@ -3,14 +3,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
+import { uiBundle, FORM_ENTRY } from '../scripts/ui-bundle.mjs';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'), FORM_ENTRY);
+const { mountDealRoomForm } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
+
 import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { beginCommand, settleCommand, classifyCommandOutcome, commandMessage } from '../js/command-feedback.mjs';
 
 const fixture = JSON.parse(await readFile(new URL('./fixtures/national-account-schemas.json', import.meta.url)));
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
-const forms = app.slice(app.indexOf('function nationalResearchFields('), app.indexOf('function accountOwnerForm('));
-const open = app.slice(app.indexOf('function openForm('), app.indexOf('function nextStepForm('));
+const forms = app.slice(app.indexOf('function nationalResearchEvidence('), app.indexOf('function accountOwnerForm('));
+const open = app.slice(app.indexOf('let formView;'), app.indexOf('function nextStepForm('));
 
 // Validate the published schema, including extra top-level arguments rejected
 // by CARR's mutation dispatcher even where inputSchema omits that constraint.
@@ -42,6 +46,7 @@ function evidenceGate(evidence) {
 
 function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', deal_id: 'demo-deal' }), {online = () => true} = {}) {
   const dom = new JSDOM('<dialog id="formDialog"><form id="dialogForm"><span id="dialogContext"></span><h2 id="dialogTitle"></h2><div id="dialogBody"></div><p id="formError" hidden></p><button id="dialogSubmit"></button></form></dialog>');
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
   const document = dom.window.document;
   const $ = selector => document.querySelector(selector);
   const dialog = $('#formDialog');
@@ -65,7 +70,7 @@ function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', d
     }
   }});
   let keys = 0;
-  const bindings = {state, document, appWrite:(key,args,send) => { state.commands ||= createRetainedCommands({scope:()=>state.selfActor}); return state.commands.send(key,args,send); }, FormData:dom.window.FormData, $, $$:selector => [...document.querySelectorAll(selector)],
+  const bindings = {state, document, mountDealRoomForm, appWrite:(key,args,send) => { state.commands ||= createRetainedCommands({scope:()=>state.selfActor}); return state.commands.send(key,args,send); }, FormData:dom.window.FormData, $, $$:selector => [...document.querySelectorAll(selector)],
     esc:value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     actorName:String, uuidv4:() => `demo-key-${++keys}`, account:() => ({account_name:'Demo Account',account_client_id:'demo-account'}),
     loadHome:async () => {}, showToast:text => toasts.push(text), setTimeout:() => {},

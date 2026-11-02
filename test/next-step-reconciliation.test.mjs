@@ -37,7 +37,7 @@ test('lost answer retains the full next-step request across dialog reopen', asyn
   assert.equal(view.fields['#stepText'].disabled, true);
   view.nextStepForm('d1');
   assert.equal(view.forms[1].submit, 'Check outcome');
-  assert.match(view.forms[1].body, /Call Friday/);
+  assert.match(view.forms[1].form.text, /Call Friday/);
   await view.forms[1].onSubmit(new Map());
   assert.deepEqual(sent[1], sent[0]);
   assert.equal(view.keys(), 1);

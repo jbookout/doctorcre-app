@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
+import { uiBundle, FORM_ENTRY } from '../scripts/ui-bundle.mjs';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'), FORM_ENTRY);
+const { mountDealRoomForm } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
+
 import { randomUUID } from 'node:crypto';
 import { createRetainedCommands } from '../js/retained-commands.mjs';
 
@@ -14,6 +18,7 @@ for (const [method, values, currentText] of [
 ]) test(`${method} preserves an unsent draft across conflict, review and reopen`, async () => {
  const source = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
  const dom = new JSDOM('<dialog id="formDialog"><p id="dialogContext"></p><h2 id="dialogTitle"></h2><form id="dialogForm"><div id="dialogBody"></div><p id="formError"></p><button id="dialogSubmit"></button></form></dialog>');
+ globalThis.window = dom.window; globalThis.document = dom.window.document;
  const document = dom.window.document, dialog = document.querySelector('dialog');
  dialog.showModal = () => { dialog.open = true; }; dialog.close = () => { dialog.open = false; };
  const deal = {id:'synthetic-deal',name:'Synthetic deal',version:1,next_step:'Prior step',next_date:null,market_agent:'Prior agent',market:'Prior city'};
@@ -25,7 +30,7 @@ for (const [method, values, currentText] of [
    getBoard:async()=>({actor:'joe',accounts:[{...selected,base_version:2,account_owner:'dell'}]}),
    setNextStep:send,setMarketAgent:send,setNationalAccountOwner:send,
  }};
- const context = vm.createContext({document,state,createRetainedCommands,uuidv4:randomUUID,FormData:dom.window.FormData,
+ const context = vm.createContext({document,state,mountDealRoomForm,createRetainedCommands,uuidv4:randomUUID,FormData:dom.window.FormData,
    $:(selector,root=document)=>root.querySelector(selector),$$:(selector,root=document)=>[...root.querySelectorAll(selector)],
    esc:String,actorName:String,setTimeout:()=>0,account:()=>state.accounts[0],loadHome:async()=>{},showToast(){},renderBoardOnly(){},confirmLocalWrite:()=>deal});
  vm.runInContext(source.slice(source.indexOf('function appWrite('),source.indexOf('function addTeamDealForm(')) +
@@ -63,7 +68,7 @@ for (const live of [true,false]) test(`agenda start retains its exact request un
  const screenActions = new Map();
  const context = vm.createContext({state,createRetainedCommands,...reviewModel,performCommand,pendingCommand,commandMessage,
    screenCommands:{},screenActions,renderScreenActions(){},uuidv4:randomUUID,
-   agendaDeals:()=>[{id:'synthetic-deal'}],$:()=>({hidden:true}),showToast(){},renderAgenda(){renders++;}});
+   agendaDeals:()=>[{id:'synthetic-deal'}],$:()=>({hidden:true,focus(){}}),showToast(){},renderAgenda(){renders++;}});
  vm.runInContext(source.slice(source.indexOf('function appWrite('),source.indexOf('function openForm(')) +
    source.slice(source.indexOf('async function runScreenAction('),source.indexOf('async function loadConfirms(')) +
    source.slice(source.indexOf('async function startAgenda('),source.indexOf('function renderAgenda('))+'\nglobalThis.start = startAgenda;',context);

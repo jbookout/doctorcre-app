@@ -1,3 +1,4 @@
+import { mountDealRoomForm } from './deal-room-forms.generated.js';
 import { mountDealRoomBoard, mountDealRoomAgenda } from './ui.generated.js';
 import { renderDealSummary, renderDealItems } from './deal-items.js';
 import { requireReviewReceipt } from './deal-review-model.js';
@@ -504,11 +505,6 @@ function renderFocus(deals) {
     <button type="button" class="focus-item" data-open-deal="${esc(deal.id)}"><b>${esc(deal.name)}</b><span>${esc(reasonFor(deal))}</span></button>`).join('') : '';
 }
 
-function phaseOptions(current) {
-  // The option value stays the wire word the record layer speaks; only the
-  // text a human reads carries the display label.
-  return PHASES.map((phase) => `<option value="${esc(phase)}"${phase === current ? ' selected' : ''}>${esc(phaseLabel(phase))}</option>`).join('');
-}
 
 function boardRow(deal) {
   const days = daysFromNow(deal.next_date);
@@ -531,7 +527,6 @@ function boardRow(deal) {
       : { kind: 'local', text: deal.next_step || 'Set the next step…', empty: !deal.next_step, owner: deal.owner || '' },
   };
 }
-
 
 function renderCaptureStatus() {
   const active = state.captureSessions.find((session) => !['done','completed','failed','cancelled'].includes(session.state));
@@ -992,12 +987,14 @@ function appWrite(operationKey, args, send) {
   return state.commands.send(operationKey, args, send);
 }
 
-function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, operationKey = null, draftKey = null }) {
+let formView;
+function openForm({ context='Deal Room', title, submit='Save', form, national, onSubmit, operationKey = null, draftKey = null }) {
   const dialog = $('#formDialog');
   $('#dialogContext').textContent = context;
   $('#dialogTitle').textContent = title;
   $('#dialogSubmit').textContent = submit;
-  $('#dialogBody').innerHTML = body;
+  formView?.dispose();
+  formView = mountDealRoomForm($('#dialogBody'), form, national);
   $('#formError').hidden = true;
   let draft = null;
   if (draftKey) {
@@ -1026,9 +1023,10 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, o
   renderReview();
   const retained = () => operationKey && state.commands?.pending(operationKey);
   const renderPending = () => {
+    if (!operationKey) return;
     const request = retained();
     if (!request) {
-      if (operationKey) for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
+      for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
       $('#dialogSubmit').textContent = submit;
       return;
     }
@@ -1089,9 +1087,7 @@ function nextStepForm(dealId) {
   const deal = state.deals.get(dealId);
   const pending = state.nextStepRequests.get(dealId);
   const draftKey = `next-step:${dealId}`;
-  openForm({ draftKey, title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', body:`
-    <div class="field"><label for="stepText">What happens next?</label><textarea id="stepText" name="text" required${pending ? ' disabled' : ''}>${esc(pending?.text ?? deal.next_step ?? '')}</textarea><small>This becomes a real next action in today’s triage; the prior step stays in history.</small></div>
-    <div class="field"><label for="stepDate">When?</label><input id="stepDate" name="next_date" type="date" value="${esc(pending?.next_date ?? deal.next_date ?? '')}"${pending ? ' disabled' : ''}></div>`,
+  openForm({ draftKey, title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', form:{ kind:'next-step', text:pending?.text ?? deal.next_step ?? '', date:pending?.next_date ?? deal.next_date ?? '', pending:Boolean(pending) },
     onSubmit:async (data) => {
       if (state.nextStepInFlight.has(dealId)) throw new Error('Next step is still being sent. Wait for the server to answer.');
       const checking = state.nextStepRequests.has(dealId);
@@ -1141,14 +1137,7 @@ function nextStepForm(dealId) {
 
 function parkDealForm(dealId) {
   const deal = state.deals.get(dealId);
-  openForm({ context:'Active work', title:`Park — ${deal.name}`, submit:'Park record', body:`
-    <p class="form-guidance">Parking removes this record from active counts, focus lists, and weekly agendas. Its Salesforce link, phase, history, and participants stay intact.</p>
-    <div class="field"><label for="parkingReason">Why is this not active work?</label><select id="parkingReason" name="reason" required>
-      <option value="prospect_never_active">Prospect never became active work</option>
-      <option value="client_paused">Client paused activity</option>
-      <option value="other">Other / not active right now</option>
-    </select></div>
-    <div class="field"><label for="parkingNote">Context (optional)</label><textarea id="parkingNote" name="note" maxlength="500" placeholder="What would help when this record becomes active again?"></textarea></div>`,
+  openForm({ context:'Active work', title:`Park — ${deal.name}`, submit:'Park record', form:{ kind:'park' },
     onSubmit:async (data) => {
       const result = await patchOperatingState(dealId, {
         state:'parked', reason:String(data.get('reason')), note:String(data.get('note') || '').trim() || null,
@@ -1159,14 +1148,6 @@ function parkDealForm(dealId) {
       // over a dialog that has already thrown the draft away.
       if (result.status !== 'ok') throw new Error(result.message || 'This record was not parked.');
     } });
-}
-
-function nationalResearchFields() {
-  return `<fieldset><legend>Research for the new organization or sub-client</legend>
-    <p>Review sources before creating this record. Link the source you checked for each field, including a source documenting unavailable information. A source may support several fields.</p>
-    ${[['name','Name'],['company','Company'],['phone','Phone'],['specialty','Specialty'],['market','Market']].map(([field,label]) => `<div class="field"><label for="research_${field}">${label} source (HTTPS URL)</label><input id="research_${field}" name="research_${field}" type="url" required></div>`).join('')}
-    <div class="field"><label for="researchObserved">When did you review these sources?</label><input id="researchObserved" name="research_observed_at" type="datetime-local" required><small>Enter the observation time in your local time zone.</small></div>
-    <div class="field"><label for="researchDiscrepancies">Discrepancies found (optional)</label><textarea id="researchDiscrepancies" name="research_discrepancies" placeholder="One discrepancy per line; leave blank if none."></textarea></div></fieldset>`;
 }
 
 // Producer tools.js@804a3794: typed HTTPS sources and non-future observations,
@@ -1187,29 +1168,25 @@ function nationalResearchEvidence(data) {
   return {sources, field_evidence, discrepancies:String(data.get('research_discrepancies') || '').split('\n').map(line => line.trim()).filter(Boolean)};
 }
 
-function nationalCreationForm({operationKey, context, title, submit, body, request, send, receiptId, success, accountId}) {
+function nationalCreationForm({operationKey, context, title, submit, form, request, send, receiptId, success, accountId}) {
   const actor = state.selfActor;
   const key = `${actor}:${operationKey}`;
   const held = state.nationalCreations[key];
+  if (form.kind === 'market-deal') form = { ...form, existing:Boolean(held && !held.request.research_evidence) };
   let confirmation = state.nationalConfirmations[key];
-  const review = () => `<div id="nationalCandidates"><p>${esc(confirmation.hint || 'An organization with this name already exists. Review it before creating a separate brand.')}</p>
-    <ul>${confirmation.candidates.map(candidate => `<li>${esc(candidate.name)} (${esc(candidate.id)})</li>`).join('')}</ul>
-    <p>Cancel to use the existing client. Continue only if this is a genuinely separate brand.</p>
-    <div class="field"><label><input type="checkbox" name="confirm_separate" required${state.nationalCreations[key]?.request.force_new ? ' checked disabled' : ''}> I reviewed these candidates and confirm this is a separate brand.</label></div>
-    <button type="button" id="nationalEditDetails"${state.nationalCreations[key] ? ' disabled' : ''}>Edit account details</button></div>`;
-  const wireReview = () => {
-    if (!$('#nationalEditDetails')) return;
-    $('#nationalEditDetails').onclick = () => {
+  const renderCandidates = () => formView.candidates(confirmation ? {
+    hint:confirmation.hint, candidates:confirmation.candidates, held:Boolean(state.nationalCreations[key]?.request.force_new),
+    onEdit:() => {
       delete state.nationalConfirmations[key];
       confirmation = null;
-      $('#nationalCandidates').remove();
+      renderCandidates();
       $('#nationalCreationFields').disabled = false;
       $('#dialogSubmit').textContent = submit;
       $('#formError').hidden = true;
-    };
-  };
+    },
+  } : null);
   openForm({context, title, submit:held ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit,
-    body:`${held ? `<p>Check creation outcome for ${esc(held.request.name || held.request.deal_name)} before starting another record.</p>` : ''}<fieldset id="nationalCreationFields"${held || confirmation ? ' disabled' : ''}>${body}</fieldset>${confirmation ? review() : ''}`,
+    form, national:{ name:held ? held.request.name || held.request.deal_name : null, disabled:Boolean(held || confirmation) },
     onSubmit:async data => {
       if (state.selfActor !== actor || accountId && account()?.account_client_id !== accountId)
         throw new Error('The account or signed-in partner changed. Reopen this form in its original account and session.');
@@ -1229,9 +1206,7 @@ function nationalCreationForm({operationKey, context, title, submit, body, reque
           state.nationalCreations = settleCommand(state.nationalCreations,key,{status:'conflict'});
           confirmation = {request:started.request,candidates:result.candidates,hint:result.hint};
           state.nationalConfirmations[key] = confirmation;
-          $('#nationalCandidates')?.remove();
-          $('#dialogBody').insertAdjacentHTML('beforeend',review());
-          wireReview();
+          renderCandidates();
           $('#dialogSubmit').textContent = 'Create separate brand';
           return false;
         }
@@ -1264,7 +1239,7 @@ function nationalCreationForm({operationKey, context, title, submit, body, reque
       showToast(success);
       try { await loadHome(); } catch { showToast('Creation confirmed. The board could not refresh; reload to see the current records.'); }
     }});
-  wireReview();
+  renderCandidates();
   const retained = held?.request || confirmation?.request;
   if (retained) {
     const values = {...retained,client_mode:retained.research_evidence ? 'new' : 'existing'};
@@ -1285,9 +1260,7 @@ function nationalCreationForm({operationKey, context, title, submit, body, reque
 function marketAgentForm(dealId) {
   const operationKey = `market-agent:${dealId}`;
   const deal = state.deals.get(dealId);
-  openForm({ operationKey, draftKey:operationKey, title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
-    <div class="field"><label for="agentName">Assigned local agent</label><input id="agentName" name="agent_name" required value="${esc(deal.market_agent || '')}" placeholder="Agent’s full name"></div>
-    <div class="field"><label for="agentMarket">Market</label><input id="agentMarket" name="market" value="${esc(deal.market || '')}" placeholder="City, state"></div>`,
+  openForm({ operationKey, draftKey:operationKey, title:`Market assignment — ${deal.name}`, submit:'Save assignment', form:{ kind:'market-agent', agent:deal.market_agent || '', market:deal.market || '' },
     onSubmit:async (data) => {
       let request = state.commands?.pending(operationKey);
       if (!request) {
@@ -1310,13 +1283,7 @@ function marketAgentForm(dealId) {
 
 function addTeamDealForm() {
   const pending = state.pendingDealCreation?.request;
-  openForm({ title:'Add deal', submit:pending ? 'Check creation outcome' : 'Create deal', body:pending ? `
-    <div class="field"><b>${esc(pending.name)}</b><p>Client: ${esc(pending.client)}</p><p>${esc(pending.deal_type || 'other')} · ${esc(pending.phase || 'On Deck')} · ${esc(pending.market || '')} · ${esc(pending.segment || '')}</p><small>Check creation outcome continues this saved deal.</small></div>` : `
-    <div class="field"><label for="clientRef">Existing client</label><input id="clientRef" name="client" required placeholder="C-127 or exact client name"><small>A deal always belongs to a client. This prevents free-floating or duplicate records.</small></div>
-    <div class="field"><label for="dealName">Record name</label><input id="dealName" name="name" required></div>
-    <div class="field-row"><div class="field"><label for="dealType">Type</label><select id="dealType" name="deal_type"><option value="startup">Startup</option><option value="relocation">Relocation</option><option value="additional_office">Additional office</option><option value="renewal">Renewal</option><option value="expansion">Expansion</option><option value="purchase">Purchase</option><option value="other">Other</option></select></div>
-    <div class="field"><label for="dealPhase">Phase</label><select id="dealPhase" name="phase">${phaseOptions('On Deck')}</select></div></div>
-    <div class="field-row"><div class="field"><label for="dealMarket">Market</label><input id="dealMarket" name="market"></div><div class="field"><label for="dealSegment">Healthcare vertical</label><input id="dealSegment" name="segment" placeholder="Dental, Vet, DPC…"></div></div>`,
+  openForm({ title:'Add deal', submit:pending ? 'Check creation outcome' : 'Create deal', form:{ kind:'team-deal', pending:pending || null, phases:PHASES.map(value => [value, phaseLabel(value)]) },
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
       const signature = JSON.stringify(args);
@@ -1334,41 +1301,24 @@ function addTeamDealForm() {
 }
 
 function addAccountForm() {
-  nationalCreationForm({ operationKey:'account', context:'National accounts', title:'Add national account', submit:'Create account', body:`
-    <div class="field"><label for="accountName">Brand / organization</label><input id="accountName" name="name" required><small>Creates one parent account. Market transactions will live under their own sub-clients.</small></div>
-    <div class="field-row"><div class="field"><label for="accountOwner">Account owner</label><select id="accountOwner" name="owner"><option value="${esc(state.selfActor)}">${esc(actorName(state.selfActor))}</option><option value="${state.selfActor === 'joe' ? 'dell' : 'joe'}">${esc(actorName(state.selfActor === 'joe' ? 'dell' : 'joe'))}</option></select></div>
-    <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>${nationalResearchFields()}`,
+  nationalCreationForm({ operationKey:'account', context:'National accounts', title:'Add national account', submit:'Create account', form:{ kind:'account', owners:[state.selfActor, state.selfActor === 'joe' ? 'dell' : 'joe'].map(value => [value,actorName(value)]) },
     request:data => ({name:String(data.get('name') || '').trim(),owner:String(data.get('owner')),vertical:String(data.get('vertical') || '').trim(),research_evidence:nationalResearchEvidence(data)}),
     send:args => state.client.createNationalAccount(args), receiptId:'account_client_id', success:'National account created' });
 }
 
 function addMarketDealForm() {
   const selected = account();
-  nationalCreationForm({ operationKey:`market:${selected.account_client_id}`, accountId:selected.account_client_id, context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
-    <div class="field"><label for="marketClientMode">Sub-client</label><select id="marketClientMode" name="client_mode"><option value="new">New sub-client</option><option value="existing">Existing researched sub-client</option></select></div>
-    <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>For an existing researched sub-client, enter its exact name under ${esc(selected.account_name)}. An unmatched name requires new research.</small></div>
-    <div class="field"><label for="marketDealName">Deal name</label><input id="marketDealName" name="deal_name" required></div>
-    <div class="field-row"><div class="field"><label for="marketCity">Market</label><input id="marketCity" name="market" required placeholder="City"></div><div class="field"><label for="marketState">State</label><input id="marketState" name="state" maxlength="2"></div></div>
-    <div class="field-row"><div class="field"><label for="marketAgent">Assigned agent</label><input id="marketAgent" name="agent_name" placeholder="Leave blank if unknown"></div><div class="field"><label for="marketSegment">Healthcare vertical</label><input id="marketSegment" name="segment"></div></div>
-    <div id="marketResearch">${nationalResearchFields()}</div>`,
+  nationalCreationForm({ operationKey:`market:${selected.account_client_id}`, accountId:selected.account_client_id, context:selected.account_name, title:'Add market transaction', submit:'Create market deal', form:{ kind:'market-deal', accountName:selected.account_name, existing:false },
     request:data => ({account_client_id:selected.account_client_id,
       ...Object.fromEntries(['client_name','deal_name','market','state','agent_name','segment'].map(field => [field,String(data.get(field) || '').trim()])),
       deal_type:'startup',phase:'pending',...(data.get('client_mode') === 'existing' ? {} : {research_evidence:nationalResearchEvidence(data)})}),
     send:args => state.client.createNationalMarketDeal(args), receiptId:'deal_id', success:`Market deal added to ${selected.account_name}` });
-  const updateResearchFields = () => {
-    const existing = $('#marketClientMode').value === 'existing';
-    $('#marketResearch').hidden = existing;
-    $('#marketResearch fieldset').disabled = existing;
-  };
-  $('#marketClientMode').onchange = updateResearchFields;
-  updateResearchFields();
 }
 
 function accountOwnerForm() {
   const selected = account();
   const operationKey = `national-owner:${selected.account_client_id}`;
-  openForm({ operationKey, draftKey:operationKey, context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
-    <div class="field"><label for="newAccountOwner">Accountable partner</label><select id="newAccountOwner" name="owner"><option value="joe"${selected.account_owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${selected.account_owner === 'dell' ? ' selected' : ''}>Dell</option></select><small>This changes portfolio accountability only. Individual market-deal owners stay untouched.</small></div>`,
+  openForm({ operationKey, draftKey:operationKey, context:selected.account_name, title:'Change account owner', submit:'Save owner', form:{ kind:'account-owner', owner:selected.account_owner },
     onSubmit:async (data) => {
       let request = state.commands?.pending(operationKey);
       if (!request) {
@@ -1389,10 +1339,9 @@ function showConflict(conflict) {
   // Keep the request whole after an unanswered send. A second click must ask
   // about the same choice under the same key, never create a second decision.
   let request = null;
-  const choice = (side, caption) => `<div class="field"><label><input type="radio" name="winner" value="${side}" required> <strong>${caption}</strong> · ${esc(actorName(conflict[side].actor))}: ${esc(readableValue(conflict.field, conflict[side].value, { actorLabel: actorName }))}</label></div>`;
-  openForm({ context:'Two edits crossed', title:`Choose the ${fieldLabel(conflict.field)} value`, submit:'Keep selected value', body:`
-    <p>Review both values, then choose one. Both edits remain in the deal history.</p>
-    ${choice('a', 'Previously recorded value')} ${choice('b', 'Your proposed value')}`,
+  openForm({ context:'Two edits crossed', title:`Choose the ${fieldLabel(conflict.field)} value`, submit:'Keep selected value', form:{ kind:'conflict', choices:[['a','Previously recorded value'],['b','Your proposed value']].map(([side,caption]) => ({
+      side, caption, actor:actorName(conflict[side].actor), value:readableValue(conflict.field, conflict[side].value, { actorLabel:actorName }),
+    })) },
     onSubmit:async (data) => {
       if (!request) request = { conflict_id:conflict.conflict_id, winner:data.get('winner'), idempotency_key:uuidv4() };
       // Once a resolution may have reached CARR, changing sides would reuse a
@@ -1436,6 +1385,7 @@ async function startAgenda() {
     ...(state.accountId ? {account_client_id:state.accountId} : {})},'startReview','Start agenda',async result => {
     state.review = {sessionId:result.session_id,deals,index:0,reviewed:0,skipped:0,title};
     renderAgenda();
+    $('#agendaTitle').focus();
   });
 }
 
