@@ -60,6 +60,16 @@ test('absent and empty checklists render nothing', () => {
   }
 });
 
+test('unavailable requirements stay visible without due counts or completion evidence', () => {
+  const root = new JSDOM(renderDealChecklist({ schema_version: 'deal-checklist.v1',
+    template_state: 'unavailable', phases: [], due_items: [] })).window.document;
+  assert.match(root.body.textContent, /Checklist unavailable/);
+  assert.match(root.body.textContent, /Requirements could not be read/);
+  assert.match(root.body.textContent, /Refresh/);
+  assert.doesNotMatch(root.body.textContent, /0 due|Recorded complete|All complete/);
+  assert.equal(root.querySelector('[data-checklist-item]'), null);
+});
+
 test('unsupported contracts and changed doctrine retain their explicit review message', () => {
   for (const value of [{ schema_version: 'deal-checklist.v2' }, { ...checklist, template_state: 'source_changed' }]) {
     assert.match(renderDealChecklist(value), /Checklist unavailable|Checklist needs a doctrine review/);
