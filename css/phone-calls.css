@@ -19,7 +19,7 @@
 .phone-row { border-top: 1px solid var(--hairline-strong); padding: 18px 0; overflow-wrap: anywhere; }
 .phone-row strong { display: block; margin-bottom: 6px; }
 .phone-badge { display: inline-block; border: 1px solid var(--hairline-strong); border-radius: 20px; padding: 4px 12px; font-size: 13px; margin: 12px 0; }
-.phone-hold { border-left: 3px solid var(--accent); padding: 12px 16px; background: var(--ground); }
+#phoneReview summary { cursor: pointer; min-height: 44px; padding-block: 10px; box-sizing: border-box; text-decoration: underline; text-underline-offset: 4px; }
 #phoneReview ul { padding-left: 20px; }
 #phoneReview li { margin: 12px 0; }
 #phoneNotice:empty { display: none; }
@@ -34,7 +34,7 @@ body { margin: 0; background: var(--ground); font-family: var(--font-text); }
 #phoneCalls button:focus-visible, #phoneCalls input:focus-visible, #phoneQuestions textarea:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; }
 #phoneCalls input[type=checkbox] { width: 20px; height: 20px; }
 #phoneCalls #phoneSave { background: var(--accent); color: var(--on-accent); }
-#phoneOutcomes { margin-top: 24px; border-top: 1px solid var(--hairline); padding-top: 20px; }
+#phoneOutcomes { margin-block: 16px; }
 #phoneOutcomes ul { padding: 0; }
 @media (max-width: 720px) { #phoneCalls.has-review .phone-panel:last-child { order: -1; } }
 

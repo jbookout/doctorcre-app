@@ -52,7 +52,7 @@ test('phone import retains pending audio across reload and clears it only after 
   assert.equal(state.writes.some(r => r.method === 'PUT'), true);
   state.allowTransfer = true;
   await page.getByRole('button', { name: 'Transfer recording' }).click();
-  await page.getByText('Ready for review', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Review this call', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Transfer recording' }).count(), 0);
   assert.equal(state.writes.filter(r => r.method === 'POST').length, 1);
   const admission = JSON.parse(state.writes.find(r => r.method === 'POST').body);
@@ -67,8 +67,9 @@ test('phone import retains pending audio across reload and clears it only after 
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`review link shows summary, ambiguous holds and Undo at ${width} ${theme}`, async t => {
   const { page, state } = await open(t, { review: true, transferred: true, width, theme });
+  await page.getByText('Call summary and notes', { exact: true }).click();
   await page.getByText('Synthetic Clinic will review the revised proposal.', { exact: true }).waitFor();
-  await page.getByText(/Partner confirmation needed/).waitFor();
+  await page.getByText(/Speaker attribution may be ambiguous/).waitFor();
   assert.equal(state.writes.length, 0, 'opening an ambiguous single-track report never applies changes');
   await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
   await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
@@ -144,7 +145,8 @@ test('a failed transfer is labelled Failed and retains audio for retry after rel
   assert.equal(await page.getByRole('button', { name: 'Transfer recording' }).isEnabled(), true);
 });
 
-for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`phone decisions belong only to the guide at ${width} ${theme}`, async t => {
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (const accept of [true, false]) test(`phone decisions belong only to the guide at ${width} ${theme} ${accept ? 'approve' : 'skip'}`, async t => {
+  await mkdir('out/test-artifacts/call-guide-followups', { recursive: true });
   const { page } = await open(t, { review: true, transferred: true, width, theme });
   const writes = [];
   let pending = true, reviewed = false;
@@ -161,6 +163,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ph
   await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
   assert.equal(await page.locator('#phoneReview button:not(.call-review *)').filter({ hasText: /Confirm|Approve|Skip|Reviewed|Complete/ }).count(), 0);
   assert.deepEqual(writes, []);
+  assert.equal(await page.getByRole('button', { name: /Refresh.*review/ }).count(), 1);
+  await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-entry-${width}-${theme}.png`, fullPage: true });
   await page.getByRole('button', { name: 'Approve or fix this item' }).click();
   await page.getByText('Assigned to Joe · Oct 5', { exact: true }).waitFor();
   assert.equal(await page.getByText(/Email proposals create drafts only/).count(), 1);
@@ -168,21 +172,34 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ph
   const approve = page.getByRole('button', { name: 'Approve item', exact: true });
   const skip = page.getByRole('button', { name: 'Skip item', exact: true });
   const a = await approve.boundingBox(), b = await skip.boundingBox();
+  assert.ok(a.y >= 0 && a.y + a.height <= 900, 'Approve is in view after opening the panel');
   assert.ok(b.x >= a.x + a.width + 8 || b.y >= a.y + a.height + 8);
   const accent = await page.evaluate(() => { const node = document.createElement('div'); node.style.background = 'var(--accent)'; document.body.append(node); const color = getComputedStyle(node).backgroundColor; node.remove(); return color; });
   assert.equal(await approve.evaluate(button => getComputedStyle(button).backgroundColor), accent);
   await mkdir('out/test-artifacts/call-guide-followups', { recursive: true });
   await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-decide-${width}-${theme}.png`, fullPage: true });
-  await approve.click();
+  await (accept ? approve : skip).click();
+  await page.getByText('No longer pending', { exact: true }).waitFor();
+  assert.equal(await page.getByText(/Needs your confirmation|Confirm only after|Pending items have not been applied/).count(), 0);
+  await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-${accept ? 'approved' : 'skipped'}-${width}-${theme}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Refresh call review' }).click();
   await page.getByText('No longer pending', { exact: true }).waitFor();
   const complete = page.getByRole('button', { name: 'Complete call review' });
   assert.equal(await complete.evaluate(button => getComputedStyle(button).backgroundColor), accent);
   await complete.click();
   await page.getByText('Call review complete.', { exact: true }).waitFor();
-  assert.equal(await page.locator('#phoneReview .phone-badge').innerText(), 'Review complete');
+  assert.equal(await page.locator('#phoneReview .phone-badge').count(), 0);
+  assert.equal(await page.getByText(/Needs your confirmation|Confirm only after|Pending items have not been applied/).count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Refresh call review' }).count(), 0);
   await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-complete-${width}-${theme}.png`, fullPage: true });
+  assert.equal(await page.getByRole('link', { name: 'Back to Home', exact: true }).count(), 1);
   assert.deepEqual(writes.map(w => w.name), ['resolve-post-call-candidate', 'review-call-outcome']);
+  assert.equal(writes[0].args.accept, accept);
+  await page.reload();
+  await page.getByText('No call items to review.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#phoneReview .phone-badge').count(), 0);
+  assert.equal(await page.getByText(/Needs your confirmation|Confirm only after/).count(), 0);
+  await page.screenshot({ path: `out/test-artifacts/call-guide-followups/phone-after-refresh-${width}-${theme}.png`, fullPage: true });
 });
 
 test('phone capture navigation and review require no local companion', async t => {
@@ -190,6 +207,7 @@ test('phone capture navigation and review require no local companion', async t =
   const requests = [];
   page.on('request', r => { if (new URL(r.url()).port === '4682') requests.push(r.url()); });
   await page.reload();
+  await page.getByText('Call summary and notes', { exact: true }).click();
   await page.getByText('Synthetic Clinic will review the revised proposal.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.getByRole('link', { name: 'Phone capture', exact: true }).waitFor();
@@ -547,6 +565,7 @@ test('queued call shows a hold on status refresh and does not resend audio', asy
 
 for (const width of [390, 1440]) test(`phone filed calls finish through the guide at ${width}`, async t => {
   const { page, state } = await open(t, { review: true, transferred: true, width });
+  await page.getByText('Call summary and notes', { exact: true }).click();
   await page.getByText('Synthetic Clinic will review the revised proposal.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Looks right', exact: true }).count(), 0);

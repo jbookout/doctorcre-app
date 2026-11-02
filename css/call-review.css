@@ -43,3 +43,5 @@
 
 .call-review-decision { margin-top: 24px; padding: 20px; border: 1px solid var(--hairline-strong); border-radius: 12px; background: var(--surface-2); }
 .call-review-decision h4 { margin: 0 0 12px; font-size: 16px; }
+
+.call-review-body { white-space: pre-wrap; }

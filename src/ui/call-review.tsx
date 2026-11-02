@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+const partnerNames: Record<string, string> = { joe: 'Joe', dell: 'Dell' };
 type Payload = {
   summary?: string | null; text?: string | null; next_date?: string | null; value?: string | null;
   body?: string | null; assignee?: string | null; due_on?: string | null;
@@ -52,7 +53,7 @@ type Options = {
   describe(change: Candidate): string;
   dateLabel?(value: string): string;
   undoRefusal(error: unknown): string;
-  onChange?(state: { completed: boolean }): void;
+  onChange?(): void;
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
 type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
@@ -132,7 +133,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (disposed || revoked) return;
       writing = false;
       if (!completed()) await refresh({ preserveSelection: true });
-      if (!disposed && !revoked) options.onChange?.({ completed: completed() });
+      if (!disposed && !revoked) options.onChange?.();
     } catch (error) {
       if (disposed) return;
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
@@ -195,13 +196,13 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         <div className="call-review-actions">
           {item.state === 'applied' && <button type="button" className="primary" disabled={!ready || complete(item)} onClick={() => { reviewed.set(item.key, item.signature); selected = outstanding()?.key ?? item.key; notice = ''; render(); }}>Reviewed</button>}
           {item.state === 'applied' && !item.candidate.undone_at && <button type="button" className="secondary" data-call-undo={item.candidate.candidate_id} disabled={!ready} onClick={() => void act(() => options.client().undoCallChange({ candidate_id: item.candidate.candidate_id, base_version: item.candidate.deal_version }), options.undoRefusal)}>Undo</button>}
-          {item.state === 'pending' && <button type="button" className={deciding === item.key ? "secondary" : "primary"} disabled={!ready} onClick={() => { deciding = item.key; render(); }}>Approve or fix this item</button>}
+          {item.state === 'pending' && <button type="button" className={deciding === item.key ? "secondary" : "primary"} disabled={!ready} onClick={() => { deciding = item.key; render(); container.querySelector('.call-review-decision')?.scrollIntoView({ block: 'nearest' }); }}>Approve or fix this item</button>}
           {item.candidate.deal_id && <a className="call-outcome-link" href={`/deals?deal=${encodeURIComponent(item.candidate.deal_id)}`}>Open deal to fix</a>}
         </div>
         {item.state === 'pending' && deciding === item.key && <section className="call-review-decision" aria-label="Decide this item">
           <h4>Decide this item</h4>
-          {item.candidate.payload.body && <p style={{ whiteSpace: 'pre-wrap' }}>{item.candidate.payload.body}</p>}
-          {item.candidate.payload.assignee && <p>Assigned to {(item.candidate.payload.assignee === 'joe' ? 'Joe' : item.candidate.payload.assignee === 'dell' ? 'Dell' : item.candidate.payload.assignee)} · {item.candidate.payload.due_on ? (options.dateLabel?.(item.candidate.payload.due_on) ?? item.candidate.payload.due_on) : 'No due date'}</p>}
+          {item.candidate.payload.body && <p className="call-review-body">{item.candidate.payload.body}</p>}
+          {item.candidate.payload.assignee && <p>Assigned to {partnerNames[item.candidate.payload.assignee] ?? item.candidate.payload.assignee} · {item.candidate.payload.due_on ? (options.dateLabel?.(item.candidate.payload.due_on) ?? item.candidate.payload.due_on) : 'No due date'}</p>}
           <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal.</p>
           <div className="call-review-actions">
             <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.')}>Approve item</button>
@@ -217,7 +218,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         </nav>
         <p className="call-review-meta">Check each item before completing the call review.</p>
       </>}
-      {load.state === 'completed' ? <a href="/">Back to Home</a> : <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out'} onClick={() => void refresh()}>Refresh call review</button>}
+      {load.state !== 'completed' && <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out'} onClick={() => void refresh()}>Refresh call review</button>}
     </section>;
   }
   render();

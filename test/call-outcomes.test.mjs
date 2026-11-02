@@ -244,6 +244,7 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
     assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isEnabled(), true);
     await page.getByRole('button', { name: 'Complete call review' }).click();
     await page.getByRole('status').filter({ hasText: 'Call review complete.' }).waitFor();
+    assert.equal(await page.getByRole('link', { name: 'Back to Home', exact: true }).count(), 0);
     const writes = await page.evaluate(() => window.guideWrites);
     assert.equal(writes[1].candidate_id, 'card-1');
     assert.equal(writes[1].accept, true);
