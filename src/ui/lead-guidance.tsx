@@ -11,10 +11,12 @@ const text = (value: unknown) => typeof value === 'string' && value.trim() ? val
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : {};
 }
+const adviceStages = new Set(['new', 'qualified', 'outreach_active', 'engaged', 'nurture_drip',
+  'opportunity', 'active_deal', 'closed_won', 'closed_lost']);
 function parseGuidance(value: unknown): Guidance {
   const lead = record(value), strategy = record(lead.strategy);
   return { advice: text(lead.handling_advice),
-    restricted: lead.suppressed === true || lead.contact_eligible === false || lead.stage === 'do_not_contact',
+    restricted: lead.suppressed === true || lead.contact_eligible === false || !adviceStages.has(text(lead.stage) || ''),
     strategy: { basis: text(strategy.basis), objective: text(strategy.objective),
       discovery: Array.isArray(strategy.discovery) ? strategy.discovery.flatMap(value => text(value) ? [String(value)] : []) : [],
       decision_window: text(strategy.decision_window), confidence: text(strategy.confidence),

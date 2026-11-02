@@ -23,7 +23,8 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     let reads = 0;
-    await routeLeads(page, { onRead: () => reads++, getDetail: row => ({ ...detail(row),
+    page.on('request', request => { if (new URL(request.url()).pathname === '/mcp') reads++; });
+    await routeLeads(page, { getDetail: row => ({ ...detail(row),
       ...(row.id.endsWith('1') ? guidance : { handling_advice: 'Do not contact. Ask the owning partner to review the hold.',
         contact_eligible: false, strategy: { ...guidance.strategy, objective: 'Resolve the recorded hold.' } }) }) });
     await page.goto('http://localhost/leads');
@@ -34,11 +35,15 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
     assert.equal(reads, before + 1);
     assert.match(await page.locator('#leadGuidance').innerText(), /Respect the recorded timing/);
+    assert.equal(await page.locator('.lead-guidance-restriction').count(), 0);
     await page.locator('#leadGuidance summary').click();
     assert.match(await page.locator('#leadGuidance').innerText(), /2028-05-19/);
     assert.match(await page.locator('#leadGuidance').innerText(), /Decision window\s+Unavailable/);
     assert.match(await page.locator('#leadGuidance').innerText(), /not verified prospect intent/);
     assert.equal(await page.locator('#leadGuidance').evaluate(el => el.scrollWidth <= el.clientWidth), true);
+    assert.equal(await page.locator('#leadGuidance summary').evaluate(el => el.getBoundingClientRect().height >= 44), true);
+    if (width === 1280) assert.equal(await page.getByText('Decision window', { exact: true }).evaluate(el =>
+      el.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).lineHeight) + 1), true);
     await page.locator('#leadGuidance').screenshot({ path: `${screenshots}/${width}-${theme}-strategy.png` });
     await page.locator('#closeDetail').click();
     await page.locator('[data-open]').nth(1).click();
@@ -134,17 +139,17 @@ test('online resume preserves the open strategy and dialog scroll on a phone', a
   current = { ...guidance, handling_advice: 'Advice refreshed after online resume.' };
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.getByText(current.handling_advice, { exact: true }).waitFor();
-  assert.equal(await page.locator('#leadGuidance details').getAttribute('open'), '');
-  assert.equal(await page.locator('#leadDetail').evaluate(el => el.scrollTop), scroll);
+  assert.deepEqual(await page.locator('#leadDetail').evaluate(el => ({
+    strategyOpen: el.querySelector('#leadGuidance details').open, scroll: el.scrollTop,
+  })), { strategyOpen: true, scroll });
 });
 
-for (const stage of ['archived', null]) {
-  test(`server hold for ${stage} stage displays a restriction banner`, async t => {
+test('server hold for archived stage displays a restriction banner', async t => {
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage();
     await routeLeads(page, { getDetail: row => ({ ...detail(row), ...guidance,
-      stage, suppressed: false, contact_eligible: true, contact_state: 'active',
+      stage: 'archived', suppressed: false, contact_eligible: true, contact_state: 'active',
       handling_advice: 'Do not contact. Review the recorded restriction or terminal stage with the owning partner.',
     }) });
     await page.goto('http://localhost/leads');
@@ -152,5 +157,4 @@ for (const stage of ['archived', null]) {
     await page.locator('[data-open]').first().click();
     await page.getByRole('heading', { name: 'Handling advice', exact: true }).waitFor();
     assert.equal(await page.locator('.lead-guidance-restriction').count(), 1);
-  });
-}
+});

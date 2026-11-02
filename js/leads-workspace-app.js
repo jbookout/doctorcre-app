@@ -722,7 +722,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     }
   }, { once: true });
   function suspendPrivateView() {
-    clearGuidance();
     clearQuiet();
     pageDocContext?.clear();
     if (state.reviewTarget && $("stageDialog").open) state.resumeReview = captureReviewDraft();
@@ -731,6 +730,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       actor: state.actor, id: state.detailId, scroll: $("leadDetail").scrollTop,
       expanded: [...$("detailBody").querySelectorAll("details[open]")].map(node => node.dataset.entryKey),
     };
+    clearGuidance();
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;
     state.identityReady = false; state.board = null; state.detail = null; state.detailId = null;
     state.proposal = null; state.reviewTarget = null; state.trigger = null; state.drag = null;

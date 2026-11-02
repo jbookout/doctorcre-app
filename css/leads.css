@@ -245,9 +245,13 @@ dialog::backdrop { background: var(--scrim); }
 .lead-card .score { display: inline-flex; align-items: baseline; gap: var(--space-1); }
 
 .lead-guidance { overflow-wrap: anywhere; }
-.lead-guidance details { margin-top: 1rem; }
-.lead-guidance summary { cursor: pointer; font-weight: 600; }
-.lead-guidance dl { margin-top: 1rem; }
+.lead-guidance details { margin-top: var(--space-4); }
+.lead-guidance summary { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); list-style: none; }
+.lead-guidance summary::-webkit-details-marker { display: none; }
+.lead-guidance summary::before { content: "▸"; color: var(--fg-muted); }
+.lead-guidance details[open] > summary::before { content: "▾"; }
+.lead-guidance dl { margin-top: var(--space-4); grid-template-columns: max-content minmax(0, 1fr); }
+.lead-guidance dt { overflow-wrap: normal; }
 .lead-guidance dd { min-width: 0; white-space: pre-wrap; }
-.lead-guidance ul { margin: 0; padding-left: 1.25rem; }
-.lead-guidance-restriction { border: 2px solid currentColor; border-radius: .5rem; padding: .75rem; }
+.lead-guidance ul { margin: 0; padding-left: var(--space-5); }
+.lead-guidance .lead-guidance-restriction { margin-bottom: var(--space-3); border: 2px solid var(--status-danger); border-radius: var(--radius-2); padding: var(--space-3); background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-1)); }
