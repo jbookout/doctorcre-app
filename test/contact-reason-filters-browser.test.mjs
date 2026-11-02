@@ -102,7 +102,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   assert.match(await reasons.innerText(),/No matches among loaded reasons/);
   assert.equal(await reasons.getByRole('list',{name:'Source coverage'}).count(),1);
   await reasons.getByRole('button',{name:'Clear',exact:true}).click();
-  assert.match(await reasons.innerText(),/No new reasons to reach out/);
+  assert.match(await reasons.innerText(),/No matches among loaded reasons/);
   assert.equal(await search.evaluate(node => node === document.activeElement),true);
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   assert.match(await reasons.innerText(),/Sign in to view contact reasons/);

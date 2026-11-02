@@ -33,7 +33,6 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const query = search.trim().toLocaleLowerCase('en-US');
-  const filtering = !home && Boolean(query || category);
   const rows = (payload?.cards || []).filter(row => home ? row.route === 'research' :
     (!category || row.route === category) && (!query || [row.name, row.city, row.state, ...row.client_refs]
       .some(text => text.toLocaleLowerCase('en-US').includes(query))));
@@ -52,7 +51,7 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
         <p role="status">{rows.length} matching loaded reasons</p>
         {(search || category) && <button type="button" className="btn home-outline" onClick={() => { setSearch(''); setCategory(''); searchInput.current?.focus(); }}>Clear</button>}
       </>}
-      <div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>{filtering ? 'No matches among loaded reasons.' : 'No new reasons to reach out.'}</p>}</div>
+      <div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>{home ? 'No new reasons to reach out.' : 'No matches among loaded reasons.'}</p>}</div>
         {rows.length > visibleCount && <button type="button" className="btn home-outline" data-reason-key="show" data-show-reasons>Show {rows.length - visibleCount} more</button>}
         {!home && <><p className="contact-reason-note">Registry and publication dates do not confirm when a practice opened.</p>
           <ul className="contact-reason-coverage" aria-label="Source coverage">{payload.coverage.map(row => <li key={row.source}>{sources[row.source]} · {row.status === 'available' ? 'Covered' : row.status === 'blocked' ? 'Updates blocked' : 'Not yet covered'}{row.status === 'available' && row.coverage && <> <small>{row.coverage}</small></>}</li>)}</ul>
