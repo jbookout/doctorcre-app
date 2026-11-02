@@ -40,6 +40,18 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
   assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
 });
 
+test('Deal Room forms ship separately from the shared UI with one React runtime', async t => {
+  const outDir = await temporaryDirectory('doctorcre-form-bundle-', t);
+  await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  const shared = await readFile(join(outDir, 'site/js/ui.generated.js'), 'utf8');
+  const forms = await readFile(join(outDir, 'site/js/deal-room-forms.generated.js'), 'utf8');
+  assert.ok(!shared.includes('Research for the new organization or sub-client'));
+  assert.ok(forms.includes('Research for the new organization or sub-client'));
+  assert.match(shared, /ui-shared.generated.js/);
+  assert.match(forms, /ui-shared.generated.js/);
+  assert.ok(forms.length < 15000, 'forms reuse React instead of bundling a second runtime');
+});
+
 test("the static artifact rebuild is byte-for-byte reproducible", async (t) => {
   const first = await temporaryDirectory("doctorcre-artifact-a-", t);
   const second = await temporaryDirectory("doctorcre-artifact-b-", t);
