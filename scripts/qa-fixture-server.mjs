@@ -83,10 +83,11 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     if(!namespaces.has(namespace)) namespaces.set(namespace,makeState('realistic'));
     return namespaces.get(namespace);
   };
-  const identify = request => {
+  const sessionKey = request => {
     const cookie = request.headers.get('cookie')?.split(';').map(part=>part.trim()).find(part=>part.startsWith(`${cookieName}=`));
-    return identities.get(cookie?.slice(cookieName.length+1));
+    return cookie?.slice(cookieName.length+1);
   };
+  const identify = request => identities.get(sessionKey(request));
   async function fallback(state, viewer) {
     if(!state.clients.has(viewer)) state.clients.set(viewer,await createFixtureClient({selfActor:viewer,dealStore:state.dealStore,seedUrl:`data:application/json,${encodeURIComponent(JSON.stringify(seed))}`}));
     return state.clients.get(viewer);
@@ -132,6 +133,13 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
   }
   async function carr(request) {
     const url=new URL(request.url);const identity=identify(request);
+    if(url.pathname==='/auth/signout') {
+      if(request.method!=='POST')return json({error:'method_not_allowed'},405);
+      if(!identity)return json({error:'not_authenticated'},401);
+      if(request.headers.get('origin')!==url.origin||request.headers.get('sec-fetch-site')!=='same-origin'||request.headers.get('x-carr-csrf')!==`synthetic-qa-${identity.viewer}`)return json({error:'forbidden',reason:'csrf_mismatch'},403);
+      identities.delete(sessionKey(request));
+      return new Response(null,{status:302,headers:{location:`${url.origin}/`,'set-cookie':`${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`}});
+    }
     if(url.pathname==='/auth/logout')return new Response(null,{status:302,headers:{location:'/auth/login','set-cookie':`${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`}});
     if(url.pathname==='/auth/login')return new Response('<!doctype html><title>Fixture sign in</title><h1>Fixture sign in required</h1><p>Synthetic identities are created by the QA setup fixture.</p>',{headers:{'content-type':'text/html'}});
     if(!identity)return url.pathname==='/mcp'||url.pathname==='/auth/session'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
