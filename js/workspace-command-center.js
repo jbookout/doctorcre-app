@@ -464,37 +464,14 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
   const outcomes = document.getElementById('homeCallOutcomes');
-  // The answer to an Undo or "Looks right" is shown briefly, then cleared,
-  // unless something else has written to the notice since.
   const notice = document.getElementById('homeNotice');
   const toast = message => {
     notice.hidden = false; notice.textContent = message;
     // eslint-disable-next-line no-restricted-syntax -- One local notice-dismiss callback after 6 seconds per toast invocation; no reads.
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
-  // The cards still waiting are decided in Call Mode's post-call report.
   const lifetime = new AbortController();
   const { signal } = lifetime;
-  const openCards = async (session, candidateId) => {
-    try {
-      const { mountGlobalCallMode } = await import('./global-call-mode.js');
-      if (signal.aborted) return;
-      const call = await mountGlobalCallMode(document);
-      if (signal.aborted) return;
-      if (!await call.open({ session, signal })) {
-        if (!signal.aborted) toast('Open Call Mode on the Mac that recorded the call to decide them.');
-        return;
-      }
-      if (candidateId && !signal.aborted) {
-        const control = [...document.querySelectorAll('#postCallReport [data-post-call-confirm], #postCallReport [data-draft-candidate]')]
-          .find(button => button.dataset.postCallConfirm === candidateId || button.dataset.draftCandidate === candidateId);
-        if (control) { control.scrollIntoView({ block: 'center' }); control.focus(); }
-        else toast('This decision card is unavailable. Refresh the report on the recording Mac.');
-      }
-    } catch {
-      if (!signal.aborted) toast('The call report could not open. Try again on the Mac that recorded this call.');
-    }
-  };
   let review = null;
   let reviewLoading = null;
   const openReview = async session => {
@@ -503,12 +480,11 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
       const [{ mountCallReviewDialog }, { callChangeText, undoRefusal, dayLabel }] = await reviewLoading;
       if (signal.aborted) return;
       review ||= mountCallReviewDialog(document, { client: () => client, describe: callChangeText, undoRefusal, dateLabel: dayLabel,
-        openCandidate: (id, session) => void openCards(session, id),
         onChange: () => callOutcomes?.refresh() });
       await review.open(session);
     } catch { if (!signal.aborted) toast('The call review could not open. Try again.'); }
   };
-  const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards, openReview }) : null;
+  const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, openReview }) : null;
   window.addEventListener('doctorcre-session-invalidated', () => { lifetime.abort(); review?.dispose(); callOutcomes?.dispose(); }, { once: true });
   callOutcomes?.refresh();
 }
