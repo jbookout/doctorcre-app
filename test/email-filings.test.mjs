@@ -184,3 +184,27 @@ test('session invalidation discards filings and ignores a late read', async () =
   assert.equal(container.querySelector('a'), null);
   assert.match(container.textContent, /Sign in/);
 });
+
+test('lost Undo receipt stays uncertain and replays the original request after a refresh', async () => {
+  const calls = [];
+  let committed = false;
+  const { container, view, undo } = setup({
+    listEmailThreadFilings: async () => ({ filings: committed ? [] : [filing(1, { activity_version: null })] }),
+    undoEmailThreadFiling: async args => {
+      calls.push(structuredClone(args));
+      if (!committed) { committed = true; throw Error('Synthetic lost response after commit'); }
+      return { ok: true, replayed: true };
+    },
+  });
+  await view.refresh();
+  await undo(0);
+  assert.match(container.textContent, /could not confirm/i);
+  assert.doesNotMatch(container.textContent, /left as is|Undone\./);
+  assert.equal(container.querySelector('button').textContent, 'Check outcome');
+  await view.refresh();
+  assert.match(container.textContent, /could not confirm/i);
+  await undo(0);
+  assert.deepEqual(calls[1], calls[0]);
+  assert.match(container.textContent, /Undone\./);
+  assert.equal(container.querySelector('a'), null);
+});
