@@ -1,12 +1,13 @@
 import test from 'node:test';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { detail, workspace } from './leads-workspace-fixture.mjs';
 
-await mkdir('test-artifacts', { recursive: true });
-const screenshots = await mkdtemp('test-artifacts/lead-guidance-');
+const screenshots = `test-artifacts/lead-guidance-${randomUUID()}`;
+await mkdir(screenshots, { recursive: true });
 
 const guidance = {
   handling_advice: 'Respect the recorded timing before preparing a draft.',

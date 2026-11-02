@@ -246,10 +246,7 @@ dialog::backdrop { background: var(--scrim); }
 
 .lead-guidance { overflow-wrap: anywhere; }
 .lead-guidance details { margin-top: var(--space-4); }
-.lead-guidance summary { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); list-style: none; }
-.lead-guidance summary::-webkit-details-marker { display: none; }
-.lead-guidance summary::before { content: "▸"; color: var(--fg-muted); }
-.lead-guidance details[open] > summary::before { content: "▾"; }
+.lead-guidance summary { display: list-item; align-content: center; min-height: var(--touch); cursor: pointer; font-weight: 600; }
 .lead-guidance dl { margin-top: var(--space-4); grid-template-columns: max-content minmax(0, 1fr); }
 .lead-guidance dt { overflow-wrap: normal; }
 .lead-guidance dd { min-width: 0; white-space: pre-wrap; }
