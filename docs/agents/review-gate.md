@@ -19,7 +19,9 @@ The existing app exemption covers complete, safe diffs with net additions of at
 most 150 lines. Existing risky paths and newly added files under `ops/`,
 `scripts/`, or `.github/workflows/` require review. Large Markdown-only changes
 have no separate exemption. A missing App variable blocks review-required PRs;
-a configured human login blocks every PR. Human-authored PRs need a canonical
+a configured human login blocks every PR. A missing variable also blocks every
+merge group, including groups whose PRs qualify for exemptions. Human-authored
+PRs need a canonical
 `Card: WR<number>.S<number>.J<number>` body line. Skip-CI markers in the PR title
 or auto-merge commit title or message always fail.
 

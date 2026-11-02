@@ -165,7 +165,8 @@ def evaluate_pr(root, number, queue_head=None):
     reviewer_login = os.environ.get("CARR_REVIEW_APP_LOGIN", "").strip()
     passed = card_ok and approved(pr, files, reviews, reviewer_login)
     latest = api(f"{root}/pulls/{number}")
-    if latest["head"]["sha"] == sha and all(latest.get(k) == pr.get(k) for k in ("body", "title", "base", "auto_merge")):
+    if (latest["head"]["sha"] == sha and latest["base"]["ref"] == pr["base"]["ref"]
+            and all(latest.get(k) == pr.get(k) for k in ("body", "title", "auto_merge"))):
         description = ("No skip-CI marker; small safe diff or current-head approval required" if card_ok else
                        "Missing PR body line: Card: WR<number>.S<number>.J<number>")
         if card_ok and not reviewer_login and not review_exempt(pr, files):

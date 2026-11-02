@@ -109,6 +109,17 @@ class ReviewGate(unittest.TestCase):
                     self.assertIn('/pulls/4/reviews?', api.call_args_list[3].args[0])
                     self.assertFalse(any('/issues/' in c.args[0] for c in api.call_args_list))
 
+    def test_workflow_review_triggers_and_permissions(self):
+        workflow = Path(__file__).resolve().parents[1] / '.github/workflows/review-gate.yml'
+        text = workflow.read_text()
+        self.assertRegex(text, r'pull_request_target:\s+branches: \[main\]\s+types: \[[^\]]*synchronize[^\]]*\]')
+        self.assertRegex(text, r'pull_request_review:\s+types: \[submitted, edited, dismissed\]')
+        self.assertRegex(text, r'merge_group:\s+types: \[checks_requested\]')
+        self.assertIn('    permissions: {contents: read, pull-requests: read, statuses: write}', text)
+        self.assertNotIn('issue_comment:', text)
+        self.assertNotIn('issues:', text)
+        self.assertIn('persist-credentials: false', text)
+
     def test_missing_config_and_card_fail(self):
         for login, body in (('', self.pr['body']), ('human', self.pr['body']), (self.login, '')):
             pr = {**self.pr, 'body': body}
