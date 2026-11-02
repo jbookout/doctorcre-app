@@ -9,6 +9,7 @@ import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const evidence = join(root, 'out/test-artifacts/deal-checklist');
+const focusEvidence = join(root, '.github/pr-evidence/WR39.S1.J15');
 let outDir, server, browser, origin;
 before(async () => {
   outDir = await temporaryDirectory('deal-checklist-');
@@ -18,6 +19,7 @@ before(async () => {
   origin = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch();
   await mkdir(evidence, { recursive: true });
+  await mkdir(focusEvidence, { recursive: true });
 });
 after(async () => {
   await browser?.close();
@@ -51,7 +53,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
       const lease = { id: 'lease', label: 'Executed lease', status: 'not_recorded', evidence_ref: null, source: { document: 'deal-room-kit', version: 1 } };
       return { ...detail, checklist: window.checklistMode === 'absent' ? null : {
         schema_version: 'deal-checklist.v1', template_state: ['unavailable', 'source_changed', 'deal_type_unknown'].includes(window.checklistMode) ? window.checklistMode : 'current',
-        due_items: complete || received || window.checklistMode === 'unavailable' ? [] : [review],
+        due_items: complete || received || ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [review],
         phases: ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
       } };
     };
@@ -95,15 +97,26 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   await checklist.scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(evidence, `${width}-${theme}-refreshed.png`), animations: 'disabled' });
-  for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'complete', 'source_changed', 'deal_type_unknown', 'long']) {
+  for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'empty', 'unavailable', 'complete', 'source_changed', 'deal_type_unknown', 'long']) {
     const reads = await page.evaluate(() => window.checklistReads);
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
-    if (mode === 'complete') {
+    const recovering = await checklist.getByText('Requirements could not be read.', { exact: true }).count() > 0;
+    if (recovering) {
       const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
-      await retry.click({ timeout: 3000 });
+      await retry.focus();
+      await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
     }
     else await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
     await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, !['empty', 'absent'].includes(mode));
+    if (mode === 'empty' && recovering) {
+      const refresh = page.locator('.deal-freshness [data-refresh-detail]');
+      assert.equal(await refresh.evaluate(element => document.activeElement === element), true, 'empty recovery returns focus to the header refresh control');
+      const refreshBox = await refresh.boundingBox();
+      assert.ok(refreshBox.y >= 0 && refreshBox.y + refreshBox.height <= 960, 'the focused refresh control is visible after recovery');
+      await page.screenshot({ path: join(focusEvidence, `${width}-${theme}-empty-recovery.png`), animations: 'disabled' });
+      await page.keyboard.press('Tab');
+      assert.equal(await page.locator('#recordPanel').evaluate(element => element.contains(document.activeElement) && document.activeElement.matches('button, input, select, textarea, summary, a[href]')), true, 'Tab continues to a deal control after recovery');
+    }
     if (mode === 'unavailable') {
       await checklist.getByText(/Requirements could not be read/).waitFor();
       assert.match(await checklist.textContent(), /Requirements could not be read.*Refresh deal/);
