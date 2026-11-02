@@ -28,6 +28,7 @@ function ReasonCard({ row, home }: { row: Card; home: boolean }) {
     <div className="work-card-actions"><a data-reason-key={`source:${row.id}`} href={row.source_url} target="_blank" rel="noopener noreferrer">{sources[row.source]} source<span className="sr-only"> for {row.name} (opens in new tab)</span> ↗</a></div>
   </article>;
 }
+const filterLabelStyle = { display: 'grid', gap: 'var(--space-1)', color: 'var(--fg-muted)', fontSize: 'var(--font-size-1)' };
 function ContactReasons({ payload, error, busy, retired, home, visibleCount }: State) {
   const searchInput = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
@@ -40,10 +41,10 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
   return <><header className={home ? 'home-panel-head' : 'section-heading'}><h2>Reasons to reach out</h2>{home && <a className="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>}</header>
     {retired ? <p role="status">Sign in to view contact reasons.</p> : <>
       {error && <p role="status">Contact reasons unavailable.{payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>}
-      {payload ? <>{!home && <>
-        <div className="controls">
-          <label className="search">Search loaded reasons<input ref={searchInput} type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <label>Action category<select value={category} onChange={event => setCategory(event.target.value)}>
+      {payload ? <>{!home && Boolean(payload.cards.length || payload.next_cursor || search || category) && <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 'var(--space-3)', marginBlock: 'var(--space-3)' }}>
+          <label className="search" style={filterLabelStyle}>Search loaded reasons<input ref={searchInput} type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+          <label style={filterLabelStyle}>Action category<select value={category} onChange={event => setCategory(event.target.value)}>
             <option value="">All</option><option value="research">Research</option>
             <option value="relationship_follow_up">Relationship follow-up</option><option value="identity_review">Identity review</option>
           </select></label>
