@@ -21,6 +21,8 @@ function node(tag, text, className) {
 }
 
 function setState(next) {
+  const focusRoadmap = next.kind === 'ready' &&
+    (form.contains(document.activeElement) || document.activeElement === document.body);
   if (state.kind === 'loading') state.controller.abort();
   state = next;
   content.replaceChildren();
@@ -35,7 +37,9 @@ function setState(next) {
   }[state.kind];
   if (state.kind !== 'ready') return;
   const portal = state.portal;
-  content.append(node('h2', 'Your transaction roadmap'));
+  const heading = node('h2', 'Your transaction roadmap');
+  heading.tabIndex = -1;
+  content.append(heading);
   const phases = node('ol'); phases.id = 'portalPhases';
   for (const phase of portal.roadmap.phases) {
     const item = node('li', phase.label);
@@ -54,6 +58,7 @@ function setState(next) {
     materials.append(article);
   }
   content.append(phases, materials);
+  if (focusRoadmap) heading.focus();
 }
 
 form.addEventListener('submit', async event => {

@@ -58,6 +58,68 @@ test('fixture portal renders canonical current phase and shared text at phone an
   }
 });
 
+test('held unlock only focuses the current roadmap and respects focus moved to Lock', async t => {
+  for (const action of ['wait', 'focus-lock', 'blur', 'lock', 'obsolete', 'pagehide', 'invalidate', 'mismatched-slug']) {
+    await t.test(action, async t => {
+      const page = await open(t);
+      await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'demo-partner' }, csrf_token: 'synthetic-session' } }));
+      let release, complete;
+      const pending = new Promise(resolve => { release = resolve; });
+      const completed = new Promise(resolve => { complete = resolve; });
+      t.after(() => release());
+      let reads = 0;
+      await page.route('**/mcp', async route => {
+        const first = ++reads === 1;
+        if (first) await pending;
+        await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({
+          ok: true, schema_version: 'client-portal.v1', portal: {
+            slug: action === 'mismatched-slug' ? 'another-practice' : 'demo-practice',
+            roadmap: { current_phase: 'research', phases: [{ slug: 'research', label: first ? 'Research' : 'Current research' }] }, materials: [],
+          },
+        }) }] } } }).catch(() => {});
+        if (first) complete();
+      });
+      await page.goto(page.url() + '?mode=live');
+      await page.getByLabel('Portal name').fill('demo-practice');
+      await page.getByLabel('Portal password').fill('synthetic-password');
+      const sent = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp');
+      await page.keyboard.press('Enter');
+      await sent;
+      assert.equal(await page.getByLabel('Portal password').inputValue(), '');
+      assert.equal(await page.locator('#portalContent').innerText(), '');
+      const lock = page.getByRole('button', { name: 'Lock portal' });
+      if (action === 'focus-lock') await lock.focus();
+      if (action === 'blur') await page.evaluate(() => document.activeElement.blur());
+      if (['lock', 'obsolete'].includes(action)) {
+        await lock.click();
+        assert.equal(await page.getByLabel('Portal password').evaluate(element => element === document.activeElement), true);
+      }
+      if (action === 'pagehide') await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+      if (action === 'invalidate') await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+      const heading = page.getByRole('heading', { name: 'Your transaction roadmap' });
+      if (action === 'obsolete') {
+        await page.getByLabel('Portal password').fill('synthetic-password');
+        await page.keyboard.press('Enter');
+        await heading.waitFor();
+        await lock.focus();
+      }
+      release();
+      await completed;
+      if (['wait', 'focus-lock', 'blur'].includes(action)) await heading.waitFor();
+      if (action === 'mismatched-slug') await page.getByText('Portal unavailable. Check the portal name and password, then try again.', { exact: true }).waitFor();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      if (['wait', 'blur'].includes(action)) assert.equal(await heading.evaluate(element => element === document.activeElement), true);
+      else if (['focus-lock', 'obsolete'].includes(action)) assert.equal(await lock.evaluate(element => element === document.activeElement), true);
+      else {
+        assert.equal(await page.locator('#portalContent').innerText(), '');
+        if (['lock', 'mismatched-slug'].includes(action)) assert.equal(await page.getByLabel('Portal password').evaluate(element => element === document.activeElement), true);
+      }
+      if (action === 'obsolete') assert.equal(await page.locator('#portalPhases').innerText(), 'Current research\nCurrent step');
+      assert.equal(await page.getByLabel('Portal password').inputValue(), '');
+    });
+  }
+});
+
 test('live portal transport renders shared text safely and clears material before a refused portal switch', async t => {
   const page = await open(t);
   const requests = [];
