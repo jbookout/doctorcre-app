@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
@@ -27,13 +28,39 @@ function ReasonCard({ row, home }: { row: Card; home: boolean }) {
     <div className="work-card-actions"><a data-reason-key={`source:${row.id}`} href={row.source_url} target="_blank" rel="noopener noreferrer">{sources[row.source]} source<span className="sr-only"> for {row.name} (opens in new tab)</span> ↗</a></div>
   </article>;
 }
+type ReasonCategory = '' | 'research' | 'relationship_follow_up' | 'identity_review';
+const reasonCategories: { value: ReasonCategory; label: string }[] = [
+  { value: '', label: 'All' }, { value: 'research', label: 'Research' },
+  { value: 'relationship_follow_up', label: 'Relationship follow-up' }, { value: 'identity_review', label: 'Identity review' },
+];
+const filterLabelStyle = { display: 'grid', gap: 'var(--space-1)', color: 'var(--fg-muted)', fontSize: 'var(--font-size-1)' };
 function ContactReasons({ payload, error, busy, retired, home, visibleCount }: State) {
-  const rows = payload?.cards.filter(row => !home || row.route === 'research') || [];
+  const searchInput = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<ReasonCategory>('');
+  const query = search.trim().toLocaleLowerCase('en-US');
+  const rows = (payload?.cards || []).filter(row => home ? row.route === 'research' :
+    (!category || row.route === category) && (!query || [row.name, row.city, row.state, ...row.client_refs]
+      .some(text => text.toLocaleLowerCase('en-US').includes(query))));
   const shown = rows.slice(0, visibleCount);
+  const emptyMessage = home || (!search && !category && !payload?.next_cursor) ? 'No new reasons to reach out.'
+    : search || category ? 'No matches among loaded reasons.' : 'None on this page. Load more reasons below.';
   return <><header className={home ? 'home-panel-head' : 'section-heading'}><h2>Reasons to reach out</h2>{home && <a className="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>}</header>
     {retired ? <p role="status">Sign in to view contact reasons.</p> : <>
       {error && <p role="status">Contact reasons unavailable.{payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>}
-      {payload ? <><div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>No new reasons to reach out.</p>}</div>
+      {payload ? <>{!home && Boolean(payload.cards.length || payload.next_cursor || search || category) && <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 'var(--space-3)', marginBlock: 'var(--space-3)' }}>
+          <label className="search" style={filterLabelStyle}>Search loaded reasons<input ref={searchInput} type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+          <label style={filterLabelStyle}>Action category<select value={category} onChange={event => { const selected = reasonCategories.find(option => option.value === event.target.value); if (selected) setCategory(selected.value); }}>
+            {reasonCategories.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select></label>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          <p role="status">{rows.length} {search || category ? 'matching loaded' : 'loaded'} {rows.length === 1 ? 'reason' : 'reasons'}</p>
+          {(search || category) && <button type="button" className="btn home-outline" onClick={() => { setSearch(''); setCategory(''); searchInput.current?.focus(); }}>Clear</button>}
+        </div>
+      </>}
+      <div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>{emptyMessage}</p>}</div>
         {rows.length > visibleCount && <button type="button" className="btn home-outline" data-reason-key="show" data-show-reasons>Show {rows.length - visibleCount} more</button>}
         {!home && <><p className="contact-reason-note">Registry and publication dates do not confirm when a practice opened.</p>
           <ul className="contact-reason-coverage" aria-label="Source coverage">{payload.coverage.map(row => <li key={row.source}>{sources[row.source]} · {row.status === 'available' ? 'Covered' : row.status === 'blocked' ? 'Updates blocked' : 'Not yet covered'}{row.status === 'available' && row.coverage && <> <small>{row.coverage}</small></>}</li>)}</ul>
