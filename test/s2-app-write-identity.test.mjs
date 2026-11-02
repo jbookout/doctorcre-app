@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
-import { uiBundle } from '../scripts/ui-bundle.mjs';
-const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
+import { uiBundle, FORM_ENTRY } from '../scripts/ui-bundle.mjs';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'), FORM_ENTRY);
 const { mountDealRoomForm } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
 
 import { randomUUID } from 'node:crypto';

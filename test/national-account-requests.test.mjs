@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { uiBundle } from '../scripts/ui-bundle.mjs';
-const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
+import { uiBundle, FORM_ENTRY } from '../scripts/ui-bundle.mjs';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'), FORM_ENTRY);
 const { mountDealRoomForm } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
 
 import { createLiveClient } from '../js/live-client.js';

@@ -1,7 +1,7 @@
 import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
-import { UI_OUTPUT, UI_SOURCE, uiBundle } from "./ui-bundle.mjs";
+import { UI_OUTPUTS, UI_SOURCE, uiAssets } from "./ui-bundle.mjs";
 import { CARR_INTERFACE, carrInterfaceText, composeCarrInterface } from "./carr-interface.mjs";
 import { build, transform } from "esbuild";
 import { createHash } from "node:crypto";
@@ -11,7 +11,7 @@ import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
-const GENERATED_PATHS = [GENERATED_PATH, UI_OUTPUT];
+const GENERATED_PATHS = [GENERATED_PATH, ...UI_OUTPUTS];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
   carr_interface: CARR_INTERFACE,
@@ -176,12 +176,12 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
 }
 
 export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
-  const shell = await generatedShell(path => readFile(join(root, path)));
-  const ui = await uiBundle(path => readFile(join(root, path)));
+  const ui = await uiAssets(path => readFile(join(root, path)));
+  const shell = await generatedShell(path => ui.get(path) ?? readFile(join(root, path)));
   const paths = await inputPaths(root);
   const readSource = async (path) => {
     if (path === GENERATED_PATH) return shell;
-    if (path === UI_OUTPUT) return ui;
+    if (ui.has(path)) return ui.get(path);
     const sourcePath = join(root, path);
     if (!(await lstat(sourcePath)).isFile()) throw new Error(`artifact input is not a file: ${path}`);
     return readFile(sourcePath);
@@ -248,9 +248,8 @@ export async function verifyCommittedSource(root, archive, result = null) {
     }
     source.set(path, committed);
   }
-  const shell = await generatedShell(async path => source.get(path));
-  source.set(GENERATED_PATH, shell);
-  source.set(UI_OUTPUT, await uiBundle(async path => source.get(path)));
+  for (const [path, bytes] of await uiAssets(async path => source.get(path))) source.set(path, bytes);
+  source.set(GENERATED_PATH, await generatedShell(async path => source.get(path)));
   const expected = await assembleArtifact(commit, paths, sourceContracts, async (path) => source.get(path));
   if (!archive.equals(expected.archive)) throw new Error("artifact does not match committed source");
   return expected;
