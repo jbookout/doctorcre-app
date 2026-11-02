@@ -8,6 +8,8 @@ test.beforeAll(async () => { server = await startFixtureServer(); });
 test.afterAll(async () => { await server?.stop(); });
 
 test('opening a deal replaces the board with a workspace and Back restores its scroll', async ({ page }) => {
+  // A late web font can change layout after fonts.ready resolves and invalidate the scroll baseline.
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
   const seed = JSON.parse(await readFile(new URL('../../data/board-seed.json', import.meta.url), 'utf8'));
   seed.deals.push(...Array.from({length:30}, (_, i) => ({...seed.deals.find(deal => deal.id === 'd14'), id:`demo-scroll-${i}`, name:`Demo scroll practice ${i}`, phase:'Research', operating_state:'active', outcome:null, closed_on:null, invoiced_on:null, workspace_kind:'team', account_client_id:null})));
   await page.route('**/data/board-seed.json', route => route.fulfill({json:seed}));
