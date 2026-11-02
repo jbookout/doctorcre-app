@@ -1185,7 +1185,7 @@ function nationalCreationForm({operationKey, context, title, submit, form, reque
     },
   } : null);
   openForm({context, title, submit:held ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit,
-    form, national:{ heldName:held ? held.request.name || held.request.deal_name : null, disabled:Boolean(held || confirmation) },
+    form, national:{ name:held ? held.request.name || held.request.deal_name : null, disabled:Boolean(held || confirmation) },
     onSubmit:async data => {
       if (state.selfActor !== actor || accountId && account()?.account_client_id !== accountId)
         throw new Error('The account or signed-in partner changed. Reopen this form in its original account and session.');
@@ -1282,7 +1282,7 @@ function marketAgentForm(dealId) {
 
 function addTeamDealForm() {
   const pending = state.pendingDealCreation?.request;
-  openForm({ title:'Add deal', submit:pending ? 'Check creation outcome' : 'Create deal', form:{ kind:'team-deal', pending:pending || null, phases:PHASES.map(value => ({ value, label:phaseLabel(value) })) },
+  openForm({ title:'Add deal', submit:pending ? 'Check creation outcome' : 'Create deal', form:{ kind:'team-deal', pending:pending || null, phases:PHASES.map(value => [value, phaseLabel(value)]) },
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
       const signature = JSON.stringify(args);
@@ -1300,7 +1300,7 @@ function addTeamDealForm() {
 }
 
 function addAccountForm() {
-  nationalCreationForm({ operationKey:'account', context:'National accounts', title:'Add national account', submit:'Create account', form:{ kind:'account', owners:[state.selfActor, state.selfActor === 'joe' ? 'dell' : 'joe'].map(value => ({value,label:actorName(value)})) },
+  nationalCreationForm({ operationKey:'account', context:'National accounts', title:'Add national account', submit:'Create account', form:{ kind:'account', owners:[state.selfActor, state.selfActor === 'joe' ? 'dell' : 'joe'].map(value => [value,actorName(value)]) },
     request:data => ({name:String(data.get('name') || '').trim(),owner:String(data.get('owner')),vertical:String(data.get('vertical') || '').trim(),research_evidence:nationalResearchEvidence(data)}),
     send:args => state.client.createNationalAccount(args), receiptId:'account_client_id', success:'National account created' });
 }

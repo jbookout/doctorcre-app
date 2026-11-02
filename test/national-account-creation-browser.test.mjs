@@ -36,7 +36,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`na
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().waitFor();
   await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
-  await page.getByRole('button',{name:'Workspace sidebar',exact:true}).click();
+  if (!await page.locator('#stickyAddButton').isVisible()) await page.getByRole('button',{name:'Workspace sidebar',exact:true}).click();
   await page.locator('#stickyAddButton').click();
   await page.locator('#accountName').fill('Demo Separate Brand');
   await page.locator('#dialogSubmit').click();
@@ -56,7 +56,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`na
 
   await page.keyboard.press('Escape');
   await page.locator('.account-card').first().click();
-  await page.getByRole('button',{name:'Workspace sidebar',exact:true}).click();
+  if (!await page.locator('#stickyAddButton').isVisible()) await page.getByRole('button',{name:'Workspace sidebar',exact:true}).click();
   await page.locator('#stickyAddButton').click();
   await page.locator('#marketClientMode').selectOption('existing');
   assert.equal(await page.locator('#marketResearch').isVisible(),false);
