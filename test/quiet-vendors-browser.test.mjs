@@ -9,7 +9,7 @@ const id = '00000000-0000-4000-8000-000000000002';
 const snapshot = () => ({ schema_version: 'quiet-follow-ups.v1', cadence: { lead_days: 45, vendor_days: 90 }, sent: false, tasks_created: false,
   proposals: Array.from({ length: 26 }, (_, n) => ({ subject_type: n === 25 ? 'lead' : 'vendor', subject_id: id,
     ref: `V-DEMO-${n}`, name: n === 25 ? 'Hidden lead' : `Quiet vendor ${n + 1} ${'Synthetic long name '.repeat(3)}`,
-    owner: 'dell', basis: n % 2 ? 'last_contact' : 'created_at', anchor_on: '2028-01-01', due_on: '2028-03-31', days_overdue: 12 })) });
+    owner: 'dell', basis: n % 2 ? 'last_contact' : 'created_at', anchor_on: '2028-01-01', due_on: '2028-03-31', days_overdue: n % 3 })) });
 
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
   test(`quiet vendors are opt-in, bounded and preserve directory navigation at ${width} ${theme}`, async t => {
@@ -42,16 +42,25 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.keyboard.press('Enter');
     const section = page.getByRole('region', { name: 'Quiet vendor follow-ups' });
     await section.getByText('Showing 1–20 of 25 quiet vendors.', { exact: true }).waitFor();
+    const focusFailures = [];
+    const checkFocus = async action => {
+      if (await page.evaluate(() => document.activeElement === document.body)) focusFailures.push(action);
+    };
+    await checkFocus('Show');
     assert.equal(reads, 1);
     assert.equal(await section.getByText('Hidden lead').count(), 0);
     assert.match(await section.innerText(), /Never contacted/);
     assert.match(await section.innerText(), /Last contact/);
-    await section.getByRole('button', { name: 'Next vendors' }).click();
+    await section.getByRole('button', { name: 'Next vendors' }).focus();
+    await page.keyboard.press('Enter');
     await section.getByText('Showing 21–25 of 25 quiet vendors.', { exact: true }).waitFor();
     assert.equal(reads, 1);
     assert.equal(await section.getByRole('link').count(), 5);
-    await section.getByRole('button', { name: 'Previous vendors' }).click();
+    await checkFocus('Next at last page');
+    await section.getByRole('button', { name: 'Previous vendors' }).focus();
+    await page.keyboard.press('Enter');
     assert.equal(await section.getByRole('link').count(), 20);
+    await checkFocus('Previous at first page');
     await page.locator('#searchInput').fill('Demo Partner');
     await page.locator('#searchInput').press('Enter');
     await section.getByRole('link').first().scrollIntoViewIfNeeded();
@@ -64,9 +73,25 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.goBack();
     assert.equal(new URL(page.url()).search, prior);
     assert.equal(await page.evaluate(() => Math.round(window.scrollY)), Math.round(priorScroll));
-    await section.getByRole('button', { name: 'Refresh quiet vendors' }).click();
+    await section.getByRole('button', { name: 'Refresh quiet vendors' }).focus();
+    await page.keyboard.press('Enter');
     await section.getByText('Showing 1–20 of 25 quiet vendors.', { exact: true }).waitFor();
     assert.equal(reads, 2);
+    await checkFocus('Refresh');
+    const wrappedDates = await section.locator('li p').evaluateAll(paragraphs => paragraphs.flatMap(p => {
+      const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      const failures = [];
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        for (const match of node.textContent.matchAll(/2028-\d{2}-\d{2}/g)) {
+          const range = document.createRange();
+          range.setStart(node, match.index); range.setEnd(node, match.index + match[0].length);
+          if (range.getClientRects().length > 1) failures.push(match[0]);
+        }
+      }
+      return failures;
+    }));
+    assert.deepEqual({ focusFailures, wrappedDates }, { focusFailures: [], wrappedDates: [] });
     assert.equal(await section.evaluate(el => el.scrollWidth <= el.clientWidth), true);
     await mkdir('.github/pr-evidence/WR647.S1.J24', { recursive: true });
     await page.evaluate(() => window.scrollTo(0, 0));
