@@ -109,6 +109,7 @@ export function mountAppLayout(root, host, pathname) {
     if (previous) (drawerOpener?.isConnected && !drawerOpener.closest("[inert]") ? drawerOpener : previous === 'sidebar' ? sidebarToggle : todayToggle).focus();
     drawerOpener = null;
   };
+  layout.querySelector('#agendaButton')?.addEventListener('click', () => { if (phone.matches) closeDrawer(); });
   sidebarToggle.onclick = () => toggle('sidebar'); todayToggle.onclick = () => toggle('today');
   layout.querySelector('#appDrawerScrim').onclick = closeDrawer;
   layout.querySelectorAll('[data-layout-close]').forEach(button => button.onclick = () => phone.matches ? closeDrawer() : toggle(button.dataset.layoutClose));

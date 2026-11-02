@@ -180,7 +180,7 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .account-open { white-space: nowrap; }
 
 /* ------------------------------------------------------------ review agenda */
-.agenda-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 90; width: min(440px, 100vw); padding: var(--space-5); overflow: auto; border-left: var(--hairline-width) solid var(--hairline); background: var(--surface-1); box-shadow: var(--shadow-overlay); }
+.agenda-panel { position: fixed; right: 0; top: 0; bottom: var(--layout-bottom, 0px); z-index: 90; width: min(440px, 100vw); padding: var(--space-5); overflow: auto; border-left: var(--hairline-width) solid var(--hairline); background: var(--surface-1); box-shadow: var(--shadow-overlay); }
 .agenda-panel > header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
 .agenda-panel h2 { margin: 0; font-size: var(--font-size-3); }
 .agenda-progress { margin: var(--space-4) 0; }
@@ -197,7 +197,10 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .agenda-panel footer .text-button { width: 100%; }
 
 /* ------------------------------------------------------------ confirmations, toast */
-.confirm-dock { position: fixed; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); z-index: 80; display: flex; gap: var(--space-2); overflow: auto; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); box-shadow: var(--shadow-overlay); }
+body:has(#confirmDock:not([hidden])) { --confirm-clearance: calc(var(--touch) + 2 * var(--space-1) + 2 * var(--space-2) + 4 * var(--hairline-width) + 2 * var(--space-3)); }
+body:has(#confirmDock:not([hidden])) :is(.app-layout-center, .app-layout-sidebar, .app-layout-today) { padding-bottom: var(--confirm-clearance); }
+body.has-app-layout:has(#confirmDock:not([hidden])) .toast { bottom: calc(var(--layout-bottom) + var(--confirm-clearance)); }
+.confirm-dock { position: fixed; left: calc(var(--layout-rail, 0px) + var(--space-3)); right: var(--space-3); bottom: calc(var(--layout-bottom, 0px) + var(--space-3)); z-index: 80; display: flex; gap: var(--space-2); overflow: auto; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); box-shadow: var(--shadow-overlay); }
 .confirm-chip { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); font-size: var(--font-size-1); white-space: nowrap; }
 .confirm-chip button { min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); font-weight: var(--font-weight-strong); }
 .confirm-chip .yes { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
@@ -380,7 +383,7 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
   .account-metrics { gap: var(--space-2) var(--space-3); }
   .field-row { grid-template-columns: 1fr; }
   .deal-summary { grid-template-columns: 1fr; }
-  .confirm-dock { left: var(--space-2); right: var(--space-2); bottom: var(--space-2); }
+  .confirm-dock { left: var(--space-2); right: var(--space-2); bottom: calc(var(--layout-bottom, 0px) + var(--space-2)); }
   .toast { width: calc(100vw - 20px); text-align: center; }
   .agenda-panel { padding: var(--space-4); }
   .call-mode-starts { grid-template-columns: 1fr; }
