@@ -63,9 +63,8 @@ test('absent and empty checklists render nothing', () => {
 test('unavailable requirements stay visible without due counts or completion evidence', () => {
   const root = new JSDOM(renderDealChecklist({ schema_version: 'deal-checklist.v1',
     template_state: 'unavailable', phases: [], due_items: [] })).window.document;
-  assert.match(root.body.textContent, /Checklist unavailable/);
-  assert.match(root.body.textContent, /Requirements could not be read/);
-  assert.match(root.body.textContent, /Refresh/);
+  assert.equal(root.querySelector('[role="status"]').textContent, 'Requirements could not be read.');
+  assert.equal(root.querySelector('button').textContent, 'Refresh deal');
   assert.doesNotMatch(root.body.textContent, /0 due|Recorded complete|All complete/);
   assert.equal(root.querySelector('[data-checklist-item]'), null);
 });

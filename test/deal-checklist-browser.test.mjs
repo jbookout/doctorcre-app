@@ -100,8 +100,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
     if (mode === 'complete') {
       const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
-      await retry.focus({ timeout: 3000 });
-      await page.keyboard.press('Enter');
+      await retry.click({ timeout: 3000 });
     }
     else await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
     await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, !['empty', 'absent'].includes(mode));
