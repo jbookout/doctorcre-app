@@ -40,6 +40,9 @@ function reviewLabel(item: Item) {
   return `${item.priority === 'high' ? 'High priority · ' : ''}${[...new Set(item.reasons.map(reason => ({ ocr_disagreement: 'OCR disagreement', unsupported_ocr: 'OCR could not read this', no_text_layer: 'No text layer', ambiguous: 'Ambiguous value', absent: 'Value not found', conflict: 'Conflicting values', verify_band: 'Verify confidence', human_review: 'Human review required' } as Record<string, string>)[reason] || 'Review required'))].join(' · ') || 'Review required'}`;
 }
 function documentName(o: Observation, documents: Document[]) { return documents.find(doc => doc.id === o.source.document_ref)?.display_name || 'Document name unavailable'; }
+function Source({ observation, documents }: { observation: Observation; documents: Document[] }) {
+  return <p className="fact-source">{documentName(observation, documents)} · {observation.source.page_start === observation.source.page_end ? 'Page' : 'Pages'} {observation.source.page_start}{observation.source.page_start === observation.source.page_end ? '' : `–${observation.source.page_end}`}</p>;
+}
 function Entry({ documents, factKey, prefix, terms }: { documents: Document[]; factKey?: string; prefix: string; terms: Options['terms'] }) {
   const [selectedTerm, setSelectedTerm] = useState(factKey || 'base_rent_per_sf');
   const units = Object.keys(terms[selectedTerm]?.units || {});
@@ -82,7 +85,7 @@ function CanonicalHistory({ item, documents }: { item: Item; documents: Document
       {fact.observation_ids?.length ? fact.observation_ids.map(id => {
         const observation = item.observations.find(row => row.id === id);
         return <div key={id}>{observation ? <>
-          <p className="fact-source">{documentName(observation, documents)} · {observation.source.page_start === observation.source.page_end ? 'Page' : 'Pages'} {observation.source.page_start}{observation.source.page_start === observation.source.page_end ? '' : `–${observation.source.page_end}`}</p>
+          <Source observation={observation} documents={documents} />
           {(!observation.source.cited_text || !(Date.parse(observation.source.cited_text_expires_at) > Date.now())) && <p className="fact-excerpt-unavailable">Excerpt no longer available</p>}
         </> : <p className="fact-excerpt-unavailable">Historical citation unavailable</p>}</div>;
       }) : <p className="fact-excerpt-unavailable">Historical citation unavailable</p>}
@@ -94,7 +97,7 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
   return <article className="fact-term" id={`term-${item.fact_key}`} tabIndex={-1} data-fact-key={item.fact_key}><header><h3>{terms[item.fact_key]?.label || item.fact_key.replaceAll('_', ' ')}</h3><span className="fact-state">{reviewLabel(item)}</span></header>
     <div className="fact-canonical"><small>Canonical value</small>{schedule && item.canonical_fact?.normalized_schedule ? <Schedule periods={item.canonical_fact.normalized_schedule} /> : <p className={item.canonical_fact ? undefined : 'fact-empty'}>{item.canonical_fact ? valueText(item.canonical_fact) : 'No canonical value recorded'}</p>}</div>
     <CanonicalHistory item={item} documents={documents} />
-    <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <><strong>{scheduleLabel(o)}</strong><Schedule periods={sourcedPeriods(o.value)} /></> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><p className="fact-source">{documentName(o, documents)} · {o.source.page_start === o.source.page_end ? 'Page' : 'Pages'} {o.source.page_start}{o.source.page_start === o.source.page_end ? '' : `–${o.source.page_end}`}</p>{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
+    <div className="fact-observations">{item.observations.map(o => <section key={o.id} className="fact-observation">{schedule && Array.isArray(o.value) ? <><strong>{scheduleLabel(o)}</strong><Schedule periods={sourcedPeriods(o.value)} /></> : <strong>{valueText(o)}</strong>}{item.canonical_fact?.observation_ids?.includes(o.id) && <span className="fact-state"> · Settled value</span>}<p className="fact-read">{readLabel(o)}</p><Source observation={o} documents={documents} />{!o.source.cited_text || Date.parse(o.source.cited_text_expires_at) <= Date.now() ? <p className="fact-excerpt-unavailable">Excerpt no longer available</p> : <blockquote>{o.source.cited_text}</blockquote>}</section>)}</div>
     <button type="button" className="btn" data-review-term hidden={item.pending}>Review term</button>
     <form data-fact-review={index} hidden={!item.pending}>
       <label>Decision<select aria-label="Decision" name="decision" defaultValue={item.observations.length ? "approve" : "reject"}><option value="approve" disabled={!item.observations.length}>Approve a sourced value</option><option value="correct" disabled={!documents.length || schedule}>Correct with a source</option><option value="reject">Reject this review</option></select></label>
