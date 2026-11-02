@@ -150,8 +150,8 @@ function detailRow(label, value) {
 
 function dealLink(entry) {
   return entry.deal_id
-    ? `<a class="small" href="/deals?deal=${escapeHtml(encodeURIComponent(entry.deal_id))}">Open ${escapeHtml(entry.deal_name)}</a>`
-    : "";
+    ? `<a class="small" href="/deals?deal=${escapeHtml(encodeURIComponent(entry.deal_id))}">${escapeHtml(entry.deal_name)}</a>`
+    : escapeHtml(entry.deal_name);
 }
 
 function paintDayPanel() {
@@ -188,8 +188,7 @@ function paintDayPanel() {
     const near = approach(entry, view.today);
     return `<li class="cal-day-entry" data-band="${near.band}" data-focus="${entry.key === view.focusEntry}">`
       + `<h3><span class="cal-pulse" data-pulse="${near.pulse}" aria-hidden="true"></span>${escapeHtml(entry.label)}</h3>`
-      + `<dl>${detailRow("Deal", entry.deal_name)}${detailRow("When", near.label)}${detailRow("Kind", entry.kind_label)}${detailRow("Reference", entry.source)}${detailRow("Status", entry.status)}</dl>`
-      + dealLink(entry)
+      + `<dl><dt>Deal</dt><dd>${dealLink(entry)}</dd>${detailRow("When", near.label)}${detailRow("Kind", entry.kind_label)}${detailRow("Reference", entry.source)}${detailRow("Status", entry.status)}</dl>`
       + "</li>";
   }).join("")}</ol>`;
 }
@@ -222,7 +221,7 @@ function paintAgenda() {
   const missing = ["ready", "partial", "empty", "reading"].includes(phase) ? view.result.undated : [];
   if (undated) undated.hidden = missing.length === 0;
   if (undatedList) {
-    undatedList.innerHTML = missing.map((entry) => `<li><b>${escapeHtml(entry.label)}</b> · ${escapeHtml(entry.deal_name)} — Date unavailable ${dealLink(entry)}</li>`).join("");
+    undatedList.innerHTML = missing.map((entry) => `<li><b>${escapeHtml(entry.label)}</b> · ${dealLink(entry)} — Date unavailable</li>`).join("");
   }
 }
 
