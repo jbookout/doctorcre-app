@@ -54,6 +54,12 @@ test('invoice details open the owning deal without recording payment', async t =
         await opener.click();
         const link = page.getByRole('link', { name: 'Open deal', exact: true });
         await expect(link).toHaveAttribute('href', i < 2 ? '/deals?deal=qa-deal-1' : i === 2 ? '/deals?deal=qa-deal-2' : '/deals?deal=qa-deal-3');
+        const appearance = await link.evaluate(node => {
+          const style = getComputedStyle(node);
+          return { color: style.color, height: node.getBoundingClientRect().height };
+        });
+        assert.notEqual(appearance.color, theme === 'light' ? 'rgb(0, 0, 238)' : 'rgb(158, 158, 255)', 'Open deal uses the app palette');
+        assert.ok(appearance.height >= 44, `Open deal has a 44px target, got ${appearance.height}`);
         assert.equal(calls.filter(name => name === 'read-invoice-tracker').length, reads);
         if (i === 0) {
           await page.locator('#invoicePaidDate').fill('2026-10-01');
@@ -62,12 +68,19 @@ test('invoice details open the owning deal without recording payment', async t =
           await page.evaluate(() => document.querySelector('#refreshInvoices').click());
           await expect(page.locator('#invoiceDetailFacts')).toContainText('$12,501.00');
           await expect(link).toBeFocused();
+          const focus = await link.evaluate(node => {
+            const style = getComputedStyle(node);
+            return { visible: node.matches(':focus-visible'), style: style.outlineStyle, width: parseFloat(style.outlineWidth) };
+          });
+          assert.equal(focus.visible, true);
+          assert.equal(focus.style, 'solid');
+          assert.ok(focus.width >= 2);
           await expect(page.locator('#invoicePaidDate')).toHaveValue('2026-10-01');
           await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           const box = await page.locator('#invoiceDetail').boundingBox();
           assert.ok(box.width <= width && (width === 390 || box.width > 850));
-          const evidence = join(root, '.github/pr-evidence/WR39.S1.J18');
+          const evidence = join(root, 'out/test-artifacts/invoice-deal-link');
           await mkdir(evidence, { recursive: true });
           await page.screenshot({ path: join(evidence, `${width}-${theme}-invoice.png`) });
         }
