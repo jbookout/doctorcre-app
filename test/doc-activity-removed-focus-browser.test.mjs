@@ -17,7 +17,7 @@ async function open(t, { width = 1280, theme = 'light', undoSucceeds = false } =
   }, theme);
   const fixture = createDocActivityFixture(() => new Date('2026-10-01T15:00:00Z'));
   const original = await fixture.read(), calls = [], errors = [];
-  let entries = original.entries, fail = false, held = null, release = null;
+  let entries = original.entries, fail = false, held = null, release = null, undoHeld = null, releaseUndo = null;
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/mcp', async route => {
     const { params } = route.request().postDataJSON();
@@ -28,6 +28,7 @@ async function open(t, { width = 1280, theme = 'light', undoSucceeds = false } =
       return route.fulfill({ json: { result: { content: [{ text: JSON.stringify({ ...original, entries }) }] } } });
     }
     if (params.name === 'revert-deal-field') {
+      if (undoHeld) { const wait = undoHeld; undoHeld = null; await wait; }
       if (!undoSucceeds) return route.fulfill({ status: 504, body: '' });
       return route.fulfill({ json: { result: { content: [{ text: JSON.stringify(await fixture.undo(params.arguments)) }] } } });
     }
@@ -54,6 +55,8 @@ async function open(t, { width = 1280, theme = 'light', undoSucceeds = false } =
     fail: () => { fail = true; },
     hold: () => { held = new Promise(resolve => { release = resolve; }); },
     release: () => release(),
+    holdUndo: () => { undoHeld = new Promise(resolve => { releaseUndo = resolve; }); },
+    releaseUndo: () => releaseUndo(),
     refresh: async () => {
       const response = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON().params.name === 'read-doc-activity');
       await page.locator('#activityRefresh').evaluate(button => button.click());
@@ -165,7 +168,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await read;
     assert.equal(await page.locator('#detailUndo').isDisabled(), true);
     assert.equal(await page.locator('#activityDetail').evaluate(dialog => dialog.open), true);
-    assert.equal(await page.evaluate(() => document.activeElement === document.body), true);
+    assert.equal(await focused(page), 'detailClose');
     app.replace(original.slice(1));
     app.release();
     await page.locator('#activityDetail').waitFor({ state: 'hidden' });
@@ -173,5 +176,54 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     assert.equal(app.calls.filter(call => call.name === 'revert-deal-field').length, 1);
     assert.equal(app.calls.filter(call => call.name === 'read-doc-activity').length, 2);
+  });
+}
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+  for (const undoSucceeds of [true, false]) test(`detail Undo keeps dialog focus on ${undoSucceeds ? 'success' : 'Check undo'} at ${width} in ${theme}`, async t => {
+    const app = await open(t, { width, theme, undoSucceeds }), { page } = app;
+    await page.locator('.activity-open').first().click();
+    await page.locator('#detailUndo').focus();
+    app.holdUndo();
+    const sent = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON().params.name === 'revert-deal-field');
+    await page.keyboard.press('Enter');
+    await sent;
+    assert.equal(await page.locator('#detailUndo').isDisabled(), true);
+    assert.equal(await focused(page), 'detailClose');
+    await page.locator('#detailOriginal summary').focus();
+    app.releaseUndo();
+    await page.locator('#detailUndo').getByText(undoSucceeds ? 'Undone' : 'Check undo', { exact: true }).waitFor();
+    assert.equal(await page.locator('#detailOriginal summary').evaluate(el => el === document.activeElement), true);
+    assert.equal(await page.locator('#detailUndo').isDisabled(), undoSucceeds);
+    assert.equal(await page.locator('#activityDetail').evaluate(dialog => dialog.open), true);
+    assert.equal(app.calls.filter(call => call.name === 'revert-deal-field').length, 1);
+  });
+
+  test(`Undo announcement survives completed background refreshes at ${width} in ${theme}`, async t => {
+    const app = await open(t, { width, theme, undoSucceeds: true }), { page, original } = app;
+    await page.locator('.activity-open').first().click();
+    app.hold();
+    const read = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON().params.name === 'read-doc-activity');
+    await page.locator('#detailUndo').click();
+    await read;
+    const announcement = `Change undone: ${original[0].record.name}`;
+    assert.equal(await page.locator('#activityStatus').textContent(), announcement);
+    app.replace(original.slice(0, 4));
+    app.release();
+    await page.waitForFunction(() => document.querySelectorAll('.activity-row').length === 4);
+    assert.equal(await page.locator('#activityStatus').textContent(), announcement);
+    app.replace(original.slice(0, 3));
+    await page.clock.runFor(60_001);
+    await page.waitForFunction(() => document.querySelectorAll('.activity-row').length === 3);
+    assert.equal(await page.locator('#activityStatus').textContent(), announcement);
+    assert.equal(await page.locator('#activityStatus').getAttribute('role'), 'status');
+    assert.equal(await page.locator('#activityStatus').getAttribute('aria-live'), 'polite');
+    const evidence = new URL('../.github/pr-evidence/WR39.S1.J39/', import.meta.url);
+    await mkdir(evidence, { recursive: true });
+    await page.locator('#detailClose').focus();
+    await page.screenshot({ path: new URL(`${width}-${theme}-undo.png`, evidence).pathname, fullPage: true });
+    await page.keyboard.press('Escape');
+    await app.refresh();
+    assert.equal(await page.locator('#activityStatus').textContent(), '');
   });
 }

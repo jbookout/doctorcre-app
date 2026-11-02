@@ -1,0 +1,250 @@
+✖ detail Undo keeps dialog focus on success at 1280 in light (630.428375ms)
+✖ detail Undo keeps dialog focus on Check undo at 1280 in light (455.345541ms)
+✖ Undo announcement survives completed background refreshes at 1280 in light (966.715708ms)
+✖ detail Undo keeps dialog focus on success at 1280 in dark (796.107709ms)
+✖ detail Undo keeps dialog focus on Check undo at 1280 in dark (1135.2875ms)
+✖ Undo announcement survives completed background refreshes at 1280 in dark (1034.486042ms)
+✖ detail Undo keeps dialog focus on success at 390 in light (925.798666ms)
+✖ detail Undo keeps dialog focus on Check undo at 390 in light (1092.449916ms)
+✖ Undo announcement survives completed background refreshes at 390 in light (814.686708ms)
+✖ detail Undo keeps dialog focus on success at 390 in dark (636.77825ms)
+✖ detail Undo keeps dialog focus on Check undo at 390 in dark (766.026083ms)
+✖ Undo announcement survives completed background refreshes at 390 in dark (958.044458ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 0
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10560.875792
+
+✖ failing tests:
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on success at 1280 in light (630.428375ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on Check undo at 1280 in light (455.345541ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:202:3
+✖ Undo announcement survives completed background refreshes at 1280 in light (966.715708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + ''
+  - 'Change undone: Demo Harbor Dental'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:214:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: 'Change undone: Demo Harbor Dental',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on success at 1280 in dark (796.107709ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on Check undo at 1280 in dark (1135.2875ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:202:3
+✖ Undo announcement survives completed background refreshes at 1280 in dark (1034.486042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + ''
+  - 'Change undone: Demo Harbor Dental'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:214:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: 'Change undone: Demo Harbor Dental',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on success at 390 in light (925.798666ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on Check undo at 390 in light (1092.449916ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:202:3
+✖ Undo announcement survives completed background refreshes at 390 in light (814.686708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + ''
+  - 'Change undone: Demo Harbor Dental'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:214:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: 'Change undone: Demo Harbor Dental',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on success at 390 in dark (636.77825ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:183:45
+✖ detail Undo keeps dialog focus on Check undo at 390 in dark (766.026083ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + undefined
+  - 'detailClose'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:192:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'detailClose',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/doc-activity-removed-focus-browser.test.mjs:202:3
+✖ Undo announcement survives completed background refreshes at 390 in dark (958.044458ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + ''
+  - 'Change undone: Demo Harbor Dental'
+
+      at TestContext.<anonymous> (file:///private/tmp/wt-wr39-s1-j39/test/doc-activity-removed-focus-browser.test.mjs:214:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: 'Change undone: Demo Harbor Dental',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
