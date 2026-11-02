@@ -70,6 +70,12 @@ test('unavailable requirements stay visible without due counts or completion evi
   assert.equal(root.querySelector('[data-checklist-item]'), null);
 });
 
+test('unavailable checklists never expose stale phases or due evidence', () => {
+  const html = renderDealChecklist({ ...checklist, template_state: 'unavailable' });
+  assert.match(html, /Requirements could not be read/);
+  assert.doesNotMatch(html, /data-checklist-item|Attorney review|Demo contract clause 3|1 due/);
+});
+
 test('unsupported contracts and changed doctrine retain their explicit review message', () => {
   for (const value of [{ schema_version: 'deal-checklist.v2' }, { ...checklist, template_state: 'source_changed' }]) {
     assert.match(renderDealChecklist(value), /Checklist unavailable|Checklist needs a doctrine review/);

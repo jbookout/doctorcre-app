@@ -5,6 +5,9 @@ const STATUS = { complete: 'Recorded complete', received: 'Received', not_record
 
 export function renderDealChecklist(checklist) {
   if (!checklist) return '';
+  if (checklist.template_state === 'unavailable') {
+    return '<section class="deal-checklist" aria-label="Deal checklist"><h3>Deal checklist</h3><p>Checklist unavailable. Requirements could not be read. Use Refresh deal to try again.</p></section>';
+  }
   const unavailable = checklist.schema_version !== 'deal-checklist.v1';
   if (unavailable || checklist.template_state === 'source_changed') {
     return `<section class="deal-checklist" aria-label="Deal checklist"><h3>Deal checklist</h3><p>${unavailable ? 'Checklist unavailable.' : 'Checklist needs a doctrine review.'}</p></section>`;
