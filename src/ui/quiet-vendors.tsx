@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+
+const PAGE_SIZE = 5;
 
 type Proposal = {
   subject_type: string; subject_id: string; ref: string; name: string;
@@ -20,6 +22,8 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
   const root = createRoot(host);
   let disposed = false;
   function QuietVendors() {
+    const [expanded, setExpanded] = useState(false);
+    const action = useRef<HTMLButtonElement>(null);
     const [state, setState] = useState<State>({ kind: 'idle' });
     async function read() {
       if (state.kind === 'loading' || disposed) return;
@@ -32,42 +36,50 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
       }
     }
     const vendors = state.kind === 'ready' ? state.snapshot.proposals.filter(row => row.subject_type === 'vendor') : [];
-    if (state.kind === 'idle') return <>
-      <style>{`@media(max-width:767px){.quiet-vendors-idle{position:absolute;inset:0 0 auto auto;z-index:1}}`}</style>
-      <section className="quiet-vendors-idle" aria-label="Quiet vendor follow-ups">
-        <button type="button" className="action" style={{ marginTop: 0, marginBottom: 'var(--space-2)' }} onClick={() => void read()}>Show quiet vendors</button>
-      </section></>;
-    return <section className="module-card glass" aria-labelledby="quietVendorsTitle" style={{ overflowWrap: 'anywhere', marginBottom: 'var(--space-4)' }}>
-      <h2 id="quietVendorsTitle">Quiet vendor follow-ups</h2>
-      <p>Review vendor relationships that CARR has marked due for attention.</p>
-      <button type="button" className="action" onClick={() => void read()} disabled={state.kind === 'loading'}>
-        {state.kind === 'loading' ? 'Loading quiet vendors…' : 'Refresh quiet vendors'}
+    return <section className={expanded ? 'quiet-vendors module-card glass' : 'quiet-vendors quiet-vendors-idle'} aria-label="Quiet vendor follow-ups">
+      <h2 id="quietVendorsTitle" hidden={!expanded}>Quiet vendor follow-ups</h2>
+      <p hidden={!expanded}>Review vendor relationships that CARR has marked due for attention.</p>
+      <button ref={action} type="button" className="action" aria-expanded={expanded} aria-controls="quietVendorsContent"
+        aria-disabled={expanded && state.kind === 'loading'} onClick={() => {
+          if (!expanded) { setExpanded(true); if (state.kind === 'idle') void read(); }
+          else void read();
+        }}>
+        {!expanded ? 'Show quiet vendors' : state.kind === 'loading' ? 'Loading quiet vendors…' : 'Refresh quiet vendors'}
       </button>
+      {expanded && <button type="button" className="action" onClick={() => {
+        action.current?.focus(); setExpanded(false);
+      }}>Hide quiet vendors</button>}
+      <div id="quietVendorsContent" hidden={!expanded} aria-busy={state.kind === 'loading'}>
       {state.kind === 'loading' && <p role="status">Loading the server snapshot…</p>}
       {state.kind === 'refused' && <p role="alert">The quiet vendor list is unavailable or was refused. Try refreshing.</p>}
       {state.kind === 'ready' && <>
         <p>Server cadence · {state.snapshot.cadence.vendor_days} days</p>
         {vendors.length === 0 ? <p>No quiet vendors in this server snapshot.</p> : <>
-          <p role="status">Showing {state.offset + 1}–{Math.min(state.offset + 20, vendors.length)} of {vendors.length} quiet vendors.</p>
-          <ol style={{ maxHeight: 'min(22rem, 30dvh)', overflowY: 'auto', paddingInlineStart: 'var(--space-5)' }}>{vendors.slice(state.offset, state.offset + 20).map((row, index) => <li key={`${row.subject_id}-${row.ref}-${state.offset + index}`}>
+          <p role="status">Showing {state.offset + 1}–{Math.min(state.offset + PAGE_SIZE, vendors.length)} of {vendors.length} quiet vendors.</p>
+          <div role="group" aria-label="Quiet vendor pages">
+            <button type="button" className="action" aria-disabled={state.offset === 0} onClick={() => {
+              if (state.offset > 0) setState({ ...state, offset: state.offset - PAGE_SIZE });
+            }}>Previous vendors</button>
+            {' '}
+            <button type="button" className="action" aria-disabled={state.offset + PAGE_SIZE >= vendors.length} onClick={() => {
+              if (state.offset + PAGE_SIZE < vendors.length) setState({ ...state, offset: state.offset + PAGE_SIZE });
+            }}>Next vendors</button>
+          </div>
+          <ol>{vendors.slice(state.offset, state.offset + PAGE_SIZE).map((row, index) => <li key={`${row.subject_id}-${row.ref}-${state.offset + index}`}>
             <a id={`quiet-vendor-${index}`} href={options.href(row.subject_id)} onClick={event => {
               if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
               options.open(event.currentTarget.href, event.currentTarget.id);
             }}>{row.name || row.ref}</a>
-            <p>{row.basis === 'created_at' ? 'Never contacted · Created' : 'Last contact'} {row.anchor_on}
-              {' · Due '}{row.due_on}{' · '}{row.days_overdue} days overdue
-              {' · Owner '}{typeof row.owner === 'string' && row.owner.trim() ? row.owner : 'not recorded'}</p>
+            <p><span className="quiet-vendor-detail">{row.basis === 'created_at' ? 'Never contacted · Created' : 'Last contact'} <time dateTime={row.anchor_on}>{row.anchor_on}</time></span>
+              {' · '}<span className="quiet-vendor-detail">Due <time dateTime={row.due_on}>{row.due_on}</time></span>
+              {' · '}<span className="quiet-vendor-detail">{row.days_overdue === 0 ? 'Due today' : `${row.days_overdue} ${row.days_overdue === 1 ? 'day' : 'days'} overdue`}</span>
+              {' · Owner '}{row.owner === 'dell' ? 'Dell' : row.owner === 'joe' ? 'Joe' : typeof row.owner === 'string' && row.owner.trim() ? row.owner : 'not recorded'}</p>
           </li>)}</ol>
-          <div role="group" aria-label="Quiet vendor pages">
-            <button type="button" className="action" disabled={state.offset === 0} onClick={() =>
-              setState({ ...state, offset: state.offset - 20 })}>Previous vendors</button>
-            {' '}
-            <button type="button" className="action" disabled={state.offset + 20 >= vendors.length} onClick={() =>
-              setState({ ...state, offset: state.offset + 20 })}>Next vendors</button>
-          </div>
+
         </>}
       </>}
+      </div>
     </section>;
   }
   flushSync(() => root.render(<QuietVendors />));
