@@ -10,6 +10,30 @@ import { chromium, settles } from './browser-harness.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
+function closeShareFixture(t, browser, server) {
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  t.after(() => browser.close());
+}
+
+test('S8 fixture cleanup releases an unfinished browser response', async t => {
+  const outDir = await temporaryDirectory('s8-cleanup-');
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  const { server } = await createQaServer({ buildRoot: outDir });
+  const [serve] = server.listeners('request');
+  server.removeListener('request', serve);
+  server.on('request', (request, response) => {
+    if (request.url !== '/s8-held-response') return serve(request, response);
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.write('<!doctype html><title>Unfinished response</title>');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const browser = await chromium.launch();
+  closeShareFixture(t, browser, server);
+  const page = await browser.newPage();
+  await page.goto(`http://127.0.0.1:${server.address().port}/s8-held-response`, { waitUntil: 'commit' });
+  assert.equal(await page.evaluate(() => document.readyState), 'loading');
+});
+
 // The share page ships as its own built stylesheet (tokens + page + shell), so
 // it is checked from a real build, at desktop and phone width.
 test('S8 the share page sits in the V2 shell with a gutter, a compact stepper and a footer', async t => {
@@ -18,9 +42,9 @@ test('S8 the share page sits in the V2 shell with a gutter, a compact stepper an
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
   const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch();
+  closeShareFixture(t, browser, server);
 
   for (const width of [1440, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -61,9 +85,9 @@ test('QA confidential Share exchanges its scrubbed link before showing propertie
   await buildArtifact({ root, outDir, commit:'0'.repeat(40) });
   const { server } = await createQaServer({ buildRoot:join(outDir,'site') });
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch();
+  closeShareFixture(t, browser, server);
   for (const theme of ['dark','light']) await t.test(theme, async () => {
     const page = await browser.newPage({ viewport:{width:390,height:844}, colorScheme:theme });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -110,10 +134,7 @@ for (const fonts of ['held', 'available']) test(`Slice A built shared report pai
   const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const browser = await chromium.launch();
-  t.after(async () => {
-    await browser.close();
-    await new Promise(resolve => server.close(resolve));
-  });
+  closeShareFixture(t, browser, server);
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   let fontRequests = 0, fontCompleted = false;
   await page.route('https://fonts.googleapis.com/**', route => {
