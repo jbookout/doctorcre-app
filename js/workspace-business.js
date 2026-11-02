@@ -103,6 +103,46 @@ view.evidence = { id: null, sequence: 0, result: null };
 view.sessionGeneration = 0;
 view.panelState = null;
 view.trustOperation = null;
+let quietVendors = null;
+let quietVendorsHost = null;
+let quietVendorsGeneration = 0;
+
+function clearQuietVendors() {
+  quietVendorsGeneration++;
+  quietVendors?.dispose();
+  quietVendors = null;
+  quietVendorsHost?.remove();
+  quietVendorsHost = null;
+}
+
+async function syncQuietVendors() {
+  if (view.dataset !== 'vendors' || view.signedOut) { clearQuietVendors(); return; }
+  if (quietVendorsHost) return;
+  const generation = ++quietVendorsGeneration;
+  const host = document.createElement('div');
+  quietVendorsHost = host;
+  host.setAttribute('data-panel-background', '');
+  document.querySelector('.search-dock').before(host);
+  try {
+    const { mountQuietVendors } = await import('./ui-quiet-vendors.js');
+    if (generation !== quietVendorsGeneration) return;
+    quietVendors = mountQuietVendors(host, {
+      load: async () => {
+        const { createLeadBoardClient } = await import('./leads-client.js');
+        return createLeadBoardClient().getQuietFollowUps();
+      },
+      href: id => viewHref(view.query, id),
+      open: (href, returnFocusId) => {
+        view.returnFocusId = returnFocusId;
+        const url = new URL(href, window.location.href);
+        navigate(`${url.pathname}${url.search}`);
+      },
+    });
+  } catch {
+    if (generation === quietVendorsGeneration) host.textContent = 'Quiet vendor follow-ups unavailable.';
+  }
+}
+
 let searchTimer = null;
 let dealroomClientPromise = null;
 const initialBootMode = resolveDealroomBoot(window.location);
@@ -758,6 +798,7 @@ async function loadActivity(id, record) {
  * generations — and repaints as signed out.
  */
 function expireNow() {
+  clearQuietVendors();
   pageDocContext?.clear();
   view.sessionGeneration++;
   view.panelState = null;
@@ -957,6 +998,7 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   view.dataset = parsed.dataset;
   view.query = parsed.query;
   view.recordId = parsed.recordId;
+  void syncQuietVendors();
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.footer) dom.footer.textContent = `DoctorCRE · ${DATASET_LABEL[parsed.dataset]}`;

@@ -25,6 +25,7 @@ const UI_ENTRIES = {
   'ui-board': 'deal-room-board',
   'ui-agenda': 'deal-room-agenda',
   'ui-lead': 'lead-guidance',
+  'ui-quiet-vendors': 'quiet-vendors',
   'ui-inbox': 'inbox-entry',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',
