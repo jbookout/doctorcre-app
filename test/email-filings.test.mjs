@@ -165,7 +165,7 @@ test('confirmed Undo removes the current-filing link, retains the receipt and fo
 });
 
 test('refusal retains the exact destination and refresh preserves focused navigation', async () => {
-  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }), undoEmailThreadFiling: async () => { throw Error('refused'); } });
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }), undoEmailThreadFiling: async () => { throw Object.assign(Error('refused'), { payload: { error: 'email_thread_filing_changed' } }); } });
   await view.refresh();
   container.querySelector('a').focus();
   await view.refresh();
@@ -208,3 +208,70 @@ test('lost Undo receipt stays uncertain and replays the original request after a
   assert.match(container.textContent, /Undone\./);
   assert.equal(container.querySelector('a'), null);
 });
+
+for (const failure of [Error('Network failed before commit'), { payload: { error: 'unknown_server_failure' } }, { ok: false }]) {
+  test(`unsettled Undo retains its request for ${JSON.stringify(failure)}`, async () => {
+    const calls = [];
+    const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1), filing(2)] }),
+      undoEmailThreadFiling: async args => {
+        calls.push(structuredClone(args));
+        if (calls.length === 1) { if ('ok' in failure) return failure; throw failure; }
+        return { ok: true };
+      } });
+    await view.refresh();
+    await undo(0);
+    assert.match(container.textContent, /could not confirm/);
+    await undo(0);
+    assert.deepEqual(calls[0], calls[1]);
+    await undo(0);
+    assert.notEqual(calls[2].idempotency_key, calls[0].idempotency_key);
+    assert.equal(calls[2].event_id, filing(2).event_id);
+  });
+}
+
+for (const error of ['email_thread_filing_changed', 'email_thread_filing_not_found']) {
+  test(`explicit ${error} settles the request`, async () => {
+    const calls = [];
+    const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+      undoEmailThreadFiling: async args => { calls.push(args); throw { payload: { error } }; } });
+    await view.refresh(); await undo(0);
+    assert.match(container.textContent, error.endsWith('changed') ? /changed since it was filed/ : /no longer available/);
+    assert.doesNotMatch(container.textContent, /could not confirm/);
+    await undo(0);
+    assert.notEqual(calls[1].idempotency_key, calls[0].idempotency_key);
+  });
+}
+
+test('pending Undo blocks duplicate clicks and leaves outside focus alone on completion', async () => {
+  let finish, calls = 0;
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+    undoEmailThreadFiling: () => { calls++; return new Promise(resolve => { finish = resolve; }); } });
+  await view.refresh();
+  container.querySelector('button').focus();
+  const pending = undo(0);
+  assert.equal(container.querySelector('button').disabled, true);
+  await undo(0);
+  assert.equal(calls, 1);
+  const outside = container.ownerDocument.createElement('button');
+  container.ownerDocument.body.append(outside); outside.focus();
+  finish({ ok: true }); await pending;
+  assert.equal(container.ownerDocument.activeElement, outside);
+});
+
+for (const retire of ['sign-out', 'dispose']) for (const late of ['success', 'failure']) {
+  test(`${retire} ignores late Undo ${late}`, async () => {
+    let finish, fail;
+    const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+      undoEmailThreadFiling: () => new Promise((resolve, reject) => { finish = resolve; fail = reject; }) });
+    await view.refresh();
+    const pending = undo(0);
+    if (retire === 'dispose') { view.dispose(); container.replaceChildren(); }
+    else container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
+    const retired = container.innerHTML;
+    if (late === 'success') finish({ ok: true }); else fail(Error('Synthetic late failure'));
+    await pending;
+    assert.equal(container.innerHTML, retired);
+    assert.doesNotMatch(container.textContent, /Demo Sender|Undone/);
+    await view.click({ target: container });
+  });
+}
