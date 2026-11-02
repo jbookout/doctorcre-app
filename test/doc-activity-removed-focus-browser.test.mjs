@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer, pausedClock, settles } from './browser-harness.mjs';
 import { createDocActivityFixture } from '../js/doc-activity-fixture.js';
 
-async function open(t, { width = 1280, theme = 'light' } = {}) {
+async function open(t, { width = 1280, theme = 'light', undoSucceeds = false } = {}) {
   const server = await fixtureServer();
   t.after(() => server.close());
   const browser = await chromium.launch();
@@ -27,7 +27,10 @@ async function open(t, { width = 1280, theme = 'light' } = {}) {
       if (fail) return route.fulfill({ status: 503, body: '' });
       return route.fulfill({ json: { result: { content: [{ text: JSON.stringify({ ...original, entries }) }] } } });
     }
-    if (params.name === 'revert-deal-field') return route.fulfill({ status: 504, body: '' });
+    if (params.name === 'revert-deal-field') {
+      if (!undoSucceeds) return route.fulfill({ status: 504, body: '' });
+      return route.fulfill({ json: { result: { content: [{ text: JSON.stringify(await fixture.undo(params.arguments)) }] } } });
+    }
     const answers = {
       'deal-room-board': { actor: 'joe', deals: [] },
       'today-triage': { items: [] },
@@ -42,6 +45,8 @@ async function open(t, { width = 1280, theme = 'light' } = {}) {
   await page.route('**/api/system-work/session', route => route.fulfill({ json: { csrf_token: 'synthetic', actor: { slug: 'joe' } } }));
   await page.goto(`${server.origin}/doc-activity?mode=live`);
   await page.locator('.activity-row').first().waitFor();
+  if (await page.locator('html').getAttribute('data-theme') !== theme) await page.locator('[data-pref="theme"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   t.after(() => assert.deepEqual(errors, []));
   return {
     page, calls, original: original.entries,
@@ -144,5 +149,29 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: new URL(`${width}-${theme}-empty.png`, evidence).pathname, fullPage: true });
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     assert.equal(app.calls.filter(call => call.name === 'read-doc-activity').length, 3);
+  });
+}
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+  test(`detail Undo then removed event restores next row focus at ${width} in ${theme}`, async t => {
+    const app = await open(t, { width, theme, undoSucceeds: true }), { page, original } = app;
+    await page.locator('.activity-open').first().focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#activityDetail[open]').waitFor();
+    await page.locator('#detailUndo').focus();
+    app.hold();
+    const read = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON().params.name === 'read-doc-activity');
+    await page.keyboard.press('Enter');
+    await read;
+    assert.equal(await page.locator('#detailUndo').isDisabled(), true);
+    assert.equal(await page.locator('#activityDetail').evaluate(dialog => dialog.open), true);
+    assert.equal(await page.evaluate(() => document.activeElement === document.body), true);
+    app.replace(original.slice(1));
+    app.release();
+    await page.locator('#activityDetail').waitFor({ state: 'hidden' });
+    assert.equal(await focused(page), original[1].id);
+    assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
+    assert.equal(app.calls.filter(call => call.name === 'revert-deal-field').length, 1);
+    assert.equal(app.calls.filter(call => call.name === 'read-doc-activity').length, 2);
   });
 }
