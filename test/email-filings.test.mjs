@@ -172,7 +172,7 @@ test('refusal retains the exact destination and refresh preserves focused naviga
   assert.equal(container.ownerDocument.activeElement, container.querySelector('a'));
   await undo(0);
   assert.equal(container.querySelector('a').getAttribute('href'), '/deals?deal=20000000-0000-4000-8000-000000000001');
-  assert.match(container.textContent, /left as is/);
+  assert.match(container.textContent, /Undo was refused/);
 });
 
 test('session invalidation discards filings and ignores a late read', async () => {
@@ -273,6 +273,97 @@ for (const retire of ['sign-out', 'dispose']) for (const late of ['success', 'fa
     assert.equal(container.innerHTML, retired);
     assert.doesNotMatch(container.textContent, /Demo Sender|Undone/);
     await view.click({ target: container });
+  });
+}
+
+for (const failure of ['network loss', 'timeout', 'email_thread_filing_changed', 'email_thread_filing_not_found', 'unknown_server_failure']) {
+  test(`${failure} reconciles the current filing before exposing its destination`, async t => {
+    if (failure === 'timeout') t.mock.timers.enable({ apis: ['setTimeout'] });
+    let reads = 0;
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => ({ filings: ++reads === 1 ? [filing(1)] : [] }),
+      undoEmailThreadFiling: async () => {
+        if (failure === 'timeout') return new Promise(() => {});
+        throw { payload: { error: failure } };
+      },
+    });
+    await view.refresh();
+    const pending = undo(0);
+    if (failure === 'timeout') t.mock.timers.tick(10_000);
+    await pending;
+    assert.equal(reads, 2, 'Undo failure triggers authoritative readback');
+    assert.equal(container.querySelector('a'), null);
+    assert.match(container.textContent, /no longer currently filed/i);
+    assert.doesNotMatch(container.textContent, /Undone\./);
+    if (failure.startsWith('email_thread')) assert.equal(container.querySelector('[data-filing-undo]'), null);
+    else assert.equal(container.querySelector('[data-filing-undo]').textContent, 'Check outcome');
+  });
+}
+
+test('readback replaces a historical destination with the currently filed deal', async () => {
+  let reads = 0;
+  const currentDeal = '20000000-0000-4000-8000-000000000002';
+  const { container, view, undo } = setup({
+    listEmailThreadFilings: async () => ({ filings: [filing(1, { deal: ++reads === 1 ? filing(1).deal : currentDeal })] }),
+    undoEmailThreadFiling: async () => { throw { payload: { error: 'email_thread_filing_changed' } }; },
+  });
+  await view.refresh(); await undo(0);
+  assert.equal(container.querySelector('a').getAttribute('href'), `/deals?deal=${currentDeal}`);
+  assert.match(container.textContent, /Undo was refused/);
+});
+
+for (const failure of ['network', 'invalid', 'timeout']) {
+  test(`unavailable ${failure} readback hides the historical destination and preserves the original request`, async t => {
+    if (failure === 'timeout') t.mock.timers.enable({ apis: ['setTimeout'] });
+    let reads = 0;
+    const calls = [];
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => {
+        if (++reads === 1) return { filings: [filing(1)] };
+        if (failure === 'invalid') return {};
+        if (failure === 'timeout') return new Promise(() => {});
+        throw Error('Synthetic read unavailable');
+      },
+      undoEmailThreadFiling: async args => {
+        calls.push(structuredClone(args));
+        if (calls.length === 1) throw { payload: { error: 'email_thread_filing_changed' } };
+        return { ok: true, replayed: true };
+      },
+    });
+    await view.refresh();
+    const pending = undo(0);
+    await new Promise(resolve => setImmediate(resolve));
+    if (failure === 'timeout') {
+      assert.equal(container.querySelector('a'), null, 'no stale link while readback is pending');
+      t.mock.timers.tick(10_000);
+    }
+    await pending;
+    assert.equal(container.querySelector('a'), null);
+    assert.match(container.textContent, /Current filing destination unavailable/);
+    const retry = container.querySelector('[data-filing-undo]');
+    assert.equal(retry.textContent, 'Check outcome');
+    await view.click({ target: retry });
+    assert.deepEqual(calls[1], calls[0]);
+    assert.match(container.textContent, /Undone\./);
+  });
+}
+
+for (const retirement of ['sign-out', 'dispose']) {
+  test(`${retirement} ignores late reconciliation`, async () => {
+    let reads = 0, finish;
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => ++reads === 1 ? { filings: [filing(1)] } : new Promise(resolve => { finish = resolve; }),
+      undoEmailThreadFiling: async () => { throw Error('Synthetic response loss'); },
+    });
+    await view.refresh();
+    const pending = undo(0);
+    await new Promise(resolve => setImmediate(resolve));
+    if (retirement === 'dispose') { view.dispose(); container.replaceChildren(); }
+    else container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
+    const retired = container.innerHTML;
+    finish({ filings: [filing(1)] });
+    await pending;
+    assert.equal(container.innerHTML, retired);
   });
 }
 

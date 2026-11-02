@@ -89,7 +89,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.goBack();
     if (!await page.locator('#homeEmailActivity').evaluate(node => node.open)) await page.locator('#homeEmailActivity summary').click();
     await first.getByRole('button', { name: 'Undo', exact: true }).click();
-    await first.getByText(/left as is/).waitFor();
+    await first.getByText(/Undo was refused/).waitFor();
     assert.equal(await first.getByRole('link').count(), 1);
     refuse = false;
     await first.getByRole('button', { name: 'Undo', exact: true }).click();
