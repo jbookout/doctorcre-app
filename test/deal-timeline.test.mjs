@@ -216,3 +216,15 @@ test('recorded instants display in Central time with the zone named', () => {
  const html = renderDealUpdates({thread:[{id:'n',at:'2026-10-01T12:00:00Z',text:'Synthetic note'}]});
  assert.match(new JSDOM(html).window.document.querySelector('.deal-note time').textContent,/7:00 AM CDT$/);
 });
+
+test('recorded LOI evidence survives a missing due date without claiming the kind is absent', () => {
+ const value={deal:detail.deal,critical_dates:[{id:'undated-loi',kind:'loi_expiry',due_on:null,note:'Synthetic LOI requires confirmation',source:'Synthetic clause 4',status:'open'}]};
+ const root=new JSDOM(renderCriticalDates(value,now)).window.document;
+ const row=root.querySelector('[data-date-id="undated-loi"]');
+ assert.ok(row,'recorded undated LOI evidence remains readable');
+ assert.match(row.textContent,/Date not recorded/);
+ assert.match(row.textContent,/Synthetic LOI requires confirmation/);
+ assert.match(row.textContent,/Synthetic clause 4/);
+ assert.equal(row.querySelector('[data-countdown]'),null);
+ assert.equal(dealTimeline(value,now).missing.some(d=>d.kind==='loi_expiry'),false);
+});
