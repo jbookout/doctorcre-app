@@ -58,7 +58,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
       serviceWorkers: task.id === 'task-tour-offline' ? 'allow' : 'block' });
     try {
       const page = await context.newPage();
-      const cdp = task.id === 'task-tour-offline' ? await scenarios.applyPhoneProfile(context, page) : undefined;
+      const cdp = ['task-tour-offline', 'task-leads'].includes(task.id) ? await scenarios.applyPhoneProfile(context, page) : undefined;
       const result = await scenarios.runTaskScenario({ page, context, origin: server.url, task, cdp }).catch(async error => {
         if (task.id === 'task-tour-offline') t.diagnostic(JSON.stringify(await page.evaluate(() => ({
           online: navigator.onLine, status: document.querySelector('#day-status')?.textContent,
@@ -79,7 +79,12 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
         assert.equal(result.reads.includes('listPracticeOrigination'), false, 'contact reasons wait for the secondary Home grid');
         assert.equal(result.reads.includes('readLeaseRadar'), false, 'past-client reads wait for the secondary Home grid');
       }
-      if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
+      if (task.id === 'task-leads') {
+        assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
+        const budget = JSON.parse(await readFile(new URL('../contracts/performance-budget.v1.json', import.meta.url)));
+        assert.ok(result.criticalBytes <= budget.screens[task.id].criticalBytes.limit,
+          `Lead task loaded ${result.criticalBytes} bytes, budget ${budget.screens[task.id].criticalBytes.limit}`);
+      }
       if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
       assert.deepEqual(result.errors, []);
     } finally { await context.close(); }

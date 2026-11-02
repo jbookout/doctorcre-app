@@ -1,7 +1,7 @@
 import { FACT_TERMS } from '../../js/client.js';
 import { uuidv4 } from '../../js/uuid.js';
 
-export function createFactReviewFixture() {
+export function createFactReviewFixture({ canonicalHistory = false } = {}) {
   const documents = ['Demo Lease.pdf', 'Demo Counteroffer.pdf', 'Demo Amendment.pdf'].map((filename, i) => ({
     id: `00000000-0000-4000-8000-00000000003${i}`, subject_type: 'deal', subject_id: 'd14', filename,
   }));
@@ -11,6 +11,16 @@ export function createFactReviewFixture() {
       cited_text_expires_at: i === 1 ? '2020-01-01T00:00:00Z' : '2099-01-01T00:00:00Z', cited_text_sha256: 'a'.repeat(64) } }));
   const fields = new Map([['d14|base_rent_per_sf', { entity_ref: 'd14', fact_key: 'base_rent_per_sf', canonical_version: 0,
     review_version: '0'.repeat(64), pending: true, reasons: ['conflict', 'verify_band', 'human_review'], observations, canonical_fact: null, canonical_history: [], review_history: [] }]]);
+  if (canonicalHistory) {
+    const item = fields.get('d14|base_rent_per_sf');
+    item.canonical_history = observations.map((observation, i) => ({
+      version: i + 1, normalized_value: observation.normalized_value, canonical_unit: 'USD/SF/year', expense_basis: 'nnn',
+      observation_ids: [i === 0 ? 'unavailable-old-observation' : observation.id],
+      basis: i === 0 ? 'independent_agreement' : 'human_review', promoted_at: `2026-01-0${i + 1}T12:00:00Z`,
+    }));
+    item.canonical_fact = structuredClone(item.canonical_history[2]);
+    item.canonical_version = 3;
+  }
   const receipts = new Map();
   const refuse = error => { throw Object.assign(new Error(error), { payload: { error } }); };
   const response = result => structuredClone({ ...result, ok: true, schema_version: 'fact-review.v1' });
@@ -118,7 +128,7 @@ export function createFactReviewFixture() {
         field.canonical_version++;
         field.canonical_fact = { entity_ref: field.entity_ref, fact_key: field.fact_key, normalized_value: chosen.normalized_value,
           canonical_unit: Object.keys(FACT_TERMS[field.fact_key].units)[0], expense_basis: chosen.expense_basis || null, version: field.canonical_version,
-          observation_ids: [chosen.id], basis: 'human_review' };
+          observation_ids: [chosen.id], basis: 'human_review', promoted_at: new Date().toISOString() };
         field.canonical_history.push(structuredClone(field.canonical_fact));
       }
       const review_receipt = { decision: args.decision, reason: args.reason, canonical_version: field.canonical_version, chosen_observation_id: chosen?.id || null };
