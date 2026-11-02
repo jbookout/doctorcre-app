@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { mountDocPresence } from '../js/doc-presence.js';
 import { createDocContext } from '../js/doc-context-model.js';
 import { createCallMode, CALL_MODE_URL } from '../js/call-mode.js';
 import { createServer } from 'node:http';
 import { extname } from 'node:path';
-import { chromium, animationsSettled, settles } from './browser-harness.mjs';
+import { chromium, animationsSettled, settles, fixtureServer } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { appShellMarkup } from '../js/navigation.js';
 import { mountGlobalCallMode } from '../js/global-call-mode.js';
@@ -379,4 +379,50 @@ test('shared Call Mode builds at load only when a call is already recording', as
     assert.equal(doc.querySelectorAll('#callModeDialog').length, 1);
     assert.ok(doc.getElementById('callModeButton').classList.contains('recording'));
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
+});
+
+
+test('held recording review keeps the next call available on desktop and phone in both themes', async () => {
+  const server = await fixtureServer();
+  const browser = await chromium.launch({ headless: true });
+  const evidence = new URL('../.github/pr-evidence/WR638.S1.J19/', import.meta.url);
+  await mkdir(evidence, { recursive: true });
+  try {
+    for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme, reducedMotion: 'reduce' });
+      await page.addInitScript(theme => localStorage.setItem('dealroom-theme', theme), theme);
+      await page.route(/\/(pipeline|app)\.js$/, route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+      let starts = 0;
+      await page.route('http://127.0.0.1:4682/**', route => {
+        if (route.request().url().endsWith('/api/start')) {
+          starts += 1;
+          assert.deepEqual(route.request().postDataJSON(), { mode: 'other_call', consent_confirmed: true });
+          return route.fulfill({ json: { state: 'recording', session: 'synthetic-new-call', started_at: new Date().toISOString() } });
+        }
+        return route.fulfill({ json: { state: 'held_review', session: 'synthetic-held-call' } });
+      });
+      await page.goto(`${server.origin}/deals`);
+      await page.evaluate(async () => {
+        const { mountGlobalCallMode } = await import('/js/global-call-mode.js');
+        const call = await mountGlobalCallMode(document);
+        await call.open();
+      });
+      await page.locator('#callModeDialog[open]').waitFor();
+      assert.equal(await page.locator('#callModeTimer').textContent(), 'Waiting for your review');
+      assert.equal(await page.locator('#callModeState').textContent(), 'An earlier recording is waiting for your review. You can start another call.');
+      for (const button of await page.locator('[data-call-mode-start]').all()) {
+        assert.equal(await button.isVisible(), true);
+        assert.equal(await button.isEnabled(), true);
+      }
+      const panel = await page.locator('#callModeDialog').boundingBox();
+      assert.ok(panel.x >= 0 && panel.x + panel.width <= width, 'Call Mode fits the viewport');
+      await animationsSettled(page);
+      await page.screenshot({ path: new URL(`held-${width}-${theme}.png`, evidence).pathname });
+      await page.locator('#callModeConsent').check();
+      await page.locator('[data-call-mode-start="other_call"]').click();
+      await page.getByText('Recording live', { exact: true }).waitFor();
+      assert.equal(starts, 1, 'one consented Start reaches the synthetic companion');
+      await page.close();
+    }
+  } finally { await browser.close(); await server.close(); }
 });
