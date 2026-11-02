@@ -197,7 +197,7 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .agenda-panel footer .text-button { width: 100%; }
 
 /* ------------------------------------------------------------ confirmations, toast */
-.confirm-dock { position: fixed; left: var(--space-3); right: var(--space-3); bottom: calc(var(--layout-bottom, 0px) + var(--space-3)); z-index: 80; display: flex; gap: var(--space-2); overflow: auto; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); box-shadow: var(--shadow-overlay); }
+.confirm-dock { position: fixed; left: calc(var(--layout-rail, 0px) + var(--space-3)); right: var(--space-3); bottom: calc(var(--layout-bottom, 0px) + var(--space-3)); z-index: 80; display: flex; gap: var(--space-2); overflow: auto; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); box-shadow: var(--shadow-overlay); }
 .confirm-chip { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); font-size: var(--font-size-1); white-space: nowrap; }
 .confirm-chip button { min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); font-weight: var(--font-weight-strong); }
 .confirm-chip .yes { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }

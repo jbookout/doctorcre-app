@@ -41,6 +41,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     const page = await open(t, width, theme);
     await page.screenshot({ path: join(evidence, `suggestion-${width}-${theme}.png`), animations: 'disabled' });
     const chip = page.locator('.confirm-chip');
+    if (width === 1440) {
+      const rail = await page.locator('#appShell').boundingBox();
+      const suggestion = await chip.boundingBox();
+      assert.ok(suggestion.x >= rail.x + rail.width, 'suggestion text clears the workspace rail');
+    }
     const center = await hit(chip);
     assert.equal(center.reachable, true, JSON.stringify(center));
     for (const action of ['Confirm', 'Skip']) {
