@@ -275,3 +275,26 @@ for (const retire of ['sign-out', 'dispose']) for (const late of ['success', 'fa
     await view.click({ target: container });
   });
 }
+
+test('an unanswered Undo becomes uncertain and ignores a receipt arriving after its deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let finish;
+  const calls = [];
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+    undoEmailThreadFiling: args => {
+      calls.push(structuredClone(args));
+      return calls.length === 1 ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({ ok: true });
+    } });
+  await view.refresh();
+  const pending = undo(0);
+  t.mock.timers.tick(10_000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(container.textContent, /could not confirm/);
+  await pending;
+  finish({ ok: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.doesNotMatch(container.textContent, /Undone\./);
+  await undo(0);
+  assert.deepEqual(calls[1], calls[0]);
+  assert.match(container.textContent, /Undone\./);
+});

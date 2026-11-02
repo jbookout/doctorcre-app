@@ -65,7 +65,7 @@ export function mountEmailFilings({ container, client }) {
     const hadFocus = container.contains(container.ownerDocument.activeElement);
     outcomes.set(row.event_id, { status: 'submitting', request, message: 'Checking Undo outcome…' }); render();
     try {
-      const result = await client.undoEmailThreadFiling(request);
+      const result = await readWithDeadline(() => client.undoEmailThreadFiling(request), { timeoutMs: 10_000 });
       if (disposed || loadState === 'denied') return;
       if (result?.ok !== true) throw Error('Unexpected undo result');
       outcomes.set(row.event_id, { status: 'undone' });
