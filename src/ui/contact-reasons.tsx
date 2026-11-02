@@ -38,6 +38,8 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
     (!category || row.route === category) && (!query || [row.name, row.city, row.state, ...row.client_refs]
       .some(text => text.toLocaleLowerCase('en-US').includes(query))));
   const shown = rows.slice(0, visibleCount);
+  const emptyMessage = home || (!search && !category && !payload?.next_cursor) ? 'No new reasons to reach out.'
+    : search || category ? 'No matches among loaded reasons.' : 'None on this page. Load more reasons below.';
   return <><header className={home ? 'home-panel-head' : 'section-heading'}><h2>Reasons to reach out</h2>{home && <a className="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>}</header>
     {retired ? <p role="status">Sign in to view contact reasons.</p> : <>
       {error && <p role="status">Contact reasons unavailable.{payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>}
@@ -52,7 +54,7 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
         <p role="status">{rows.length} matching loaded reasons</p>
         {(search || category) && <button type="button" className="btn home-outline" onClick={() => { setSearch(''); setCategory(''); searchInput.current?.focus(); }}>Clear</button>}
       </>}
-      <div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>{home ? 'No new reasons to reach out.' : 'No matches among loaded reasons.'}</p>}</div>
+      <div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>{emptyMessage}</p>}</div>
         {rows.length > visibleCount && <button type="button" className="btn home-outline" data-reason-key="show" data-show-reasons>Show {rows.length - visibleCount} more</button>}
         {!home && <><p className="contact-reason-note">Registry and publication dates do not confirm when a practice opened.</p>
           <ul className="contact-reason-coverage" aria-label="Source coverage">{payload.coverage.map(row => <li key={row.source}>{sources[row.source]} · {row.status === 'available' ? 'Covered' : row.status === 'blocked' ? 'Updates blocked' : 'Not yet covered'}{row.status === 'available' && row.coverage && <> <small>{row.coverage}</small></>}</li>)}</ul>
