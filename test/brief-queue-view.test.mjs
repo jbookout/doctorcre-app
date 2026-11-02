@@ -90,3 +90,37 @@ test('queue list replaces the classic brief and keeps the row contract', t => {
   content.innerHTML = '<p>Classic brief</p>';
   assert.equal(content.textContent, 'Classic brief');
 });
+
+test('a verified terminal empty queue explains that it has no eligible work', t => {
+  const { document, view } = host(t);
+  view.renderList({ active: 'today', items: [], page: { total: 0, has_more: false, state: 'empty' }, busy: false, error: false });
+  assert.match(document.getElementById('content').textContent, /No eligible work in this queue\./);
+});
+
+test('successful emptiness requires a settled complete zero-total page', t => {
+  const { document, view } = host(t);
+  const emptyPage = { total: 0, has_more: false, state: 'empty' };
+  const row = { number: '9', kind: 'open_loop', title: 'Synthetic eligible loop' };
+  const cases = [
+    ['initial', { page: null }, false],
+    ['busy', { busy: true }, false],
+    ['error', { error: true }, false],
+    ['partial', { page: { ...emptyPage, state: 'partial', total_scope: 'available_sources' } }, false],
+    ['available sources only', { page: { ...emptyPage, total_scope: 'available_sources' } }, false],
+    ['unavailable', { page: { ...emptyPage, state: 'unavailable' } }, false],
+    ['unknown state', { page: { ...emptyPage, state: 'unknown' } }, false],
+    ['ready empty', { page: { ...emptyPage, state: 'ready' } }, true],
+    ['optional state', { page: { total: 0, has_more: false } }, true],
+    ['empty', {}, true],
+    ['nonempty', { items: [row], page: { total: 1, has_more: false, state: 'ready' } }, false],
+    ['positive total', { page: { ...emptyPage, total: 1 } }, false],
+    ['more pages', { page: { ...emptyPage, has_more: true } }, false],
+  ];
+  for (const [name, overrides, successful] of cases) {
+    view.renderList({ active: 'loops', items: [], page: emptyPage, busy: false, error: false, ...overrides });
+    const content = document.getElementById('content');
+    assert.equal(content.textContent.includes('No eligible work in this queue.'), successful, name);
+    if (name === 'partial') assert.match(content.textContent, /Some sources are unavailable\. This list may be incomplete\./);
+    if (name === 'nonempty') assert.equal(content.querySelector('[data-queue-item]').dataset.queueItem, 'open_loop:9');
+  }
+});
