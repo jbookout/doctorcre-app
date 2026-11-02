@@ -223,6 +223,8 @@ test('recorded LOI evidence survives a missing due date without claiming the kin
  const row=root.querySelector('[data-date-id="undated-loi"]');
  assert.ok(row,'recorded undated LOI evidence remains readable');
  assert.match(row.textContent,/Date not recorded/);
+ assert.equal(row.querySelector('small').textContent,'Status: open');
+ assert.match(row.querySelector('details').textContent,/Source: Synthetic clause 4/);
  assert.match(row.textContent,/Synthetic LOI requires confirmation/);
  assert.match(row.textContent,/Synthetic clause 4/);
  assert.equal(row.querySelector('[data-countdown]'),null);
@@ -233,7 +235,7 @@ test('undated originals keep their identities, status and evidence alongside con
  const value={deal:detail.deal,lease:{id:'blank',status:'current'},critical_dates:[
   {id:'missing',kind:'loi_expiry',due_on:null,note:'Synthetic original <draft>',source:'Synthetic source A',status:'cleared'},
   {id:'invalid',kind:'loi_expiry',due_on:'2026-02-30',note:'Synthetic impossible date',source:'Synthetic source B',status:'passed'},
-  {id:'unknown',kind:'custom_notice',due_on:'bad',note:'Synthetic custom requirement'},
+  {id:'unknown',kind:'custom_notice',label:'Synthetic custom requirement',date:'bad',due_on:'bad',note:'Synthetic custom requirement'},
   {id:'second-missing',kind:'loi_expiry',due_on:null,note:'Synthetic second original'},
   {id:'dated',kind:'loi_expiry',due_on:'2026-10-05',note:'Synthetic dated original'},
   {id:'conflict',kind:'loi_expiry',due_on:'2026-10-06',note:'Synthetic conflicting original'},
@@ -251,6 +253,7 @@ test('undated originals keep their identities, status and evidence alongside con
   assert.match(card.textContent,new RegExp(row.note.replace(/[<>]/g,'.')));
   if(row.source) assert.ok(card.textContent.includes(row.source));
  }
+ assert.equal(root.querySelector('[data-date-id="unknown"] > span').textContent,'custom notice');
  assert.match(root.querySelector('[data-date-id="invalid"]').textContent,/Date unavailable/);
  assert.match(root.querySelector('[data-date-id="missing"]').textContent,/cleared/);
  const undatedBefore=[...root.querySelectorAll('[data-state="unknown"]')].map(n=>n.outerHTML);

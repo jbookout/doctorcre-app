@@ -32,22 +32,24 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  await page.clock.install({time:new Date('2026-10-04T17:00:00Z')});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  assert.equal((await page.request.post(`${origin}/api/test/seed`,{data:{namespace:`dates-${width}-${theme}`,viewer:'joe',reset:true}})).status(),200);
+ const probe={reads:0,writes:0,empty:false,changed:false};
+ await page.route('**/mcp',async route=>{
+  const {params}=route.request().postDataJSON();
+  if(params.name==='add-deal-note') probe.writes++;
+  if(params.name!=='get-deal-room') return route.continue();
+  probe.reads++;
+  const response=await route.fetch();const body=await response.json();
+  const content=body.result.content.find(c=>c.type==='text');const detail=JSON.parse(content.text);
+  content.text=JSON.stringify({...detail,lease:null,critical_dates:probe.empty?[]:[
+   {id:'undated-loi',kind:'loi_expiry',due_on:null,status:'open',note:'Synthetic LOI requirement. '+ 'Original clause text. '.repeat(35),source:probe.changed?'Synthetic refreshed clause 4':'Synthetic clause 4'},
+   {id:'invalid-loi',kind:'loi_expiry',due_on:'2026-02-30',status:'passed',note:'Synthetic malformed date original',source:'Synthetic clause 5'},
+   {id:'dated-loi',kind:'loi_expiry',due_on:'2026-10-05',status:'open',note:'Synthetic dated original'},
+   {id:'unknown',kind:'custom_notice',due_on:null,note:'Synthetic custom original'},
+  ]});
+  await route.fulfill({response,json:body});
+ });
  await page.goto(`${origin}/deals?mode=live`);
  await page.locator('.kanban-card').first().waitFor();
- await page.evaluate(async()=>{
-  const {state}=await import('/js/pipeline.js');const get=state.client.getDeal;
-  window.dateProbe={reads:0,writes:0,empty:false,changed:false};
-  const write=state.client.addUpdate;state.client.addUpdate=(...args)=>{window.dateProbe.writes++;return write(...args);};
-  state.client.getDeal=async(...args)=>{
-   window.dateProbe.reads++;const detail=await get(...args);
-   return {...detail,lease:null,critical_dates:window.dateProbe.empty?[]:[
-    {id:'undated-loi',kind:'loi_expiry',due_on:null,status:'open',note:'Synthetic LOI requirement. '+ 'Original clause text. '.repeat(35),source:window.dateProbe.changed?'Synthetic refreshed clause 4':'Synthetic clause 4'},
-    {id:'invalid-loi',kind:'loi_expiry',due_on:'2026-02-30',status:'passed',note:'Synthetic malformed date original',source:'Synthetic clause 5'},
-    {id:'dated-loi',kind:'loi_expiry',due_on:'2026-10-05',status:'open',note:'Synthetic dated original'},
-    {id:'unknown',kind:'custom_notice',due_on:null,note:'Synthetic custom original'},
-   ]};
-  };
- });
  await page.locator('.kanban-card .card-open').first().click();
  await page.locator('#detailUpdateForm').waitFor();
  const card=page.locator('[data-date-id="undated-loi"]');
@@ -55,7 +57,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  assert.match(await card.textContent(),/Date not recorded/);
  assert.equal(await card.locator('[data-countdown]').count(),0);
  assert.match(await page.locator('[data-date-id="invalid-loi"]').textContent(),/Date unavailable.*passed/);
- assert.match(await page.locator('[data-date-id="unknown"]').textContent(),/custom notice.*Date not recorded/);
+ assert.equal(await page.locator('[data-date-id="unknown"] > span').textContent(),'custom notice');
  assert.equal(await page.locator('.critical-date').filter({hasText:'LOI'}).getByText('Not recorded',{exact:true}).count(),0);
  await card.evaluate(n=>n.scrollIntoView({block:'center'}));
  await page.screenshot({path:join(evidence,`${width}-${theme}-overview.png`),animations:'disabled'});
@@ -65,13 +67,14 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  await summary.evaluate(n=>n.scrollIntoView({block:'center'}));
  await page.screenshot({path:join(evidence,`${width}-${theme}-before-refresh.png`),animations:'disabled'});
  await page.getByLabel('Update',{exact:true}).fill('Synthetic unsaved update');
- const reads=await page.evaluate(()=>window.dateProbe.reads);
+ const reads=probe.reads;
  await summary.focus();
  await page.clock.fastForward(61_000);
- await page.waitForFunction(reads=>window.dateProbe.reads>reads,reads);
+ await waitForAsync(page,()=>document.activeElement?.dataset.detailFocus==='date-original:undated-loi');
+ assert.ok(probe.reads>reads);
  assert.equal(await summary.evaluate(n=>document.activeElement===n),true);
  assert.equal(await card.locator('details').evaluate(n=>n.open),true);
- await page.evaluate(()=>window.dateProbe.changed=true);
+ probe.changed=true;
  await page.locator('[data-refresh-detail]').click();
  await card.getByText(/Synthetic refreshed clause 4/).waitFor();
  assert.equal(await card.locator('details').evaluate(n=>n.open),true);
@@ -84,12 +87,12 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`cr
  await waitForAsync(page, () => document.querySelector('[data-date-id="dated-loi"] [data-countdown]')?.textContent === 'Due today');
  assert.equal(await dated.textContent(),'Due today');
  assert.match(await card.textContent(),/Date not recorded/);
- assert.equal(await page.evaluate(()=>window.dateProbe.writes),0);
+ assert.equal(probe.writes,0);
  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
  assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
  await summary.evaluate(n=>n.scrollIntoView({block:'center'}));
  await page.screenshot({path:join(evidence,`${width}-${theme}.png`),animations:'disabled'});
- await page.evaluate(()=>window.dateProbe.empty=true);
+ probe.empty=true;
  await page.locator('[data-refresh-detail]').click();
  await card.waitFor({state:'detached'});
  assert.equal(await page.locator('.critical-date').filter({hasText:'Not recorded'}).count(),6);
