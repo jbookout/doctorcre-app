@@ -440,6 +440,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 @keyframes walkthrough-highlight { from { outline-color: transparent; } }
 
 .email-source, .email-proposal q { color: var(--fg-muted); font-size: var(--font-size-1); }
+.email-proposal { overflow-wrap: anywhere; }
 .email-proposal q { display: block; max-width: 80ch; }
 .email-change { font-size: var(--font-size-1); }
 .email-controls, .email-review { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }

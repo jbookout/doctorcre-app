@@ -1,6 +1,6 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -59,6 +59,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.locator('#homeEmailActivity summary').click();
     const panel = page.locator('#homeEmailFilings'), first = panel.locator('article').first();
     await first.getByRole('link', { name: 'Open filed deal', exact: true }).waitFor({ timeout: 5000 }).catch(async error => { assert.fail(`${error.message}\n${await panel.innerHTML()}\n${JSON.stringify(calls)}\n${errors.join('\n')}`); });
+    await first.locator('h3').evaluate(node => { node.textContent = 'LongSubject'.repeat(30); });
+    await first.locator('p').first().evaluate(node => { node.textContent = 'LongSender'.repeat(30); });
+    assert.equal(await first.evaluate(node => node.scrollWidth <= node.clientWidth), true, 'long subject and sender fit in the card');
     assert.deepEqual(await panel.getByRole('link').evaluateAll(links => links.map(a => a.getAttribute('href'))), [`/deals?deal=${deal(1)}`, `/deals?deal=${deal(2)}`]);
     assert.doesNotMatch(await panel.innerText(), /PRIVATE|example\.test|20000000/);
     await panel.getByText('Filed deal destination unavailable.', { exact: true }).waitFor();
@@ -72,7 +75,8 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     });
     assert.ok(controls.gap >= 4 && controls.backgrounds[0] === controls.backgrounds[1],
       `Filed receipt controls need a gap and matching backgrounds: ${JSON.stringify(controls)}`);
-    await panel.screenshot({ path: `.github/pr-evidence/WR634.S1.J6/${width}-${theme}-filed.png`, animations: 'disabled' });
+    await mkdir('.github/pr-evidence/WR634.S1.J10', { recursive: true });
+    await panel.screenshot({ path: `.github/pr-evidence/WR634.S1.J10/${width}-${theme}-filed.png`, animations: 'disabled' });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.equal(calls.filter(call => call.name === 'list-email-thread-filings').length, 1);
     assert.equal(calls.filter(call => call.name === 'get-deal-room').length, 0);
