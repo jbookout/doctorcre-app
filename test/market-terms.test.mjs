@@ -86,3 +86,66 @@ test('quarantined citations are visibly distinguished from supporting sources', 
   assert.match(root.textContent, /human review/);
   panel.dispose();
 });
+
+test('selected business date reaches the read and clearing restores all history', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div'), calls = [];
+  const response = {ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:0,canonical_receipts:0,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:0}};
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:async args => { calls.push(args); return response; }}});
+  await new Promise(done => setTimeout(done, 30));
+  const date = root.querySelector('[name=as_of]');
+  assert.ok(date, 'comparison offers an as-of date');
+  assert.match(root.textContent, /All recorded history/);
+  date.value = '2025-01-01';
+  root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
+  await new Promise(done => setTimeout(done, 30));
+  assert.deepEqual(calls[1], {as_of:'2025-01-01'});
+  assert.match(root.textContent, /Terms as of 2025-01-01/);
+  assert.match(root.textContent, /No comparable terms/);
+  date.value = '';
+  root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
+  await new Promise(done => setTimeout(done, 30));
+  assert.deepEqual(calls[2], {});
+  assert.match(root.textContent, /All recorded history/);
+  panel.dispose();
+});
+
+test('newer dates discard delayed replies and invalid dates issue no read', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div'), pending = [];
+  const response = {ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:0,canonical_receipts:0,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:0}};
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:args => new Promise(resolve => pending.push({args,resolve}))}});
+  const date = root.querySelector('[name=as_of]');
+  const submit = () => root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
+  date.value = '2024-12-31'; submit();
+  date.value = '2025-01-01'; submit();
+  assert.deepEqual(pending.map(read => read.args), [{},{as_of:'2024-12-31'},{as_of:'2025-01-01'}]);
+  pending[2].resolve(response);
+  await new Promise(done => setTimeout(done, 30));
+  pending[1].resolve(response); pending[0].resolve(response);
+  await new Promise(done => setTimeout(done, 30));
+  assert.match(root.textContent, /Terms as of 2025-01-01/);
+  date.type = 'text';
+  for (const invalid of ['2025-02-30','0000-01-01','not-a-date','2025-1-1']) { date.value = invalid; submit(); }
+  panel.refresh();
+  await new Promise(done => setTimeout(done, 30));
+  assert.equal(pending.length, 3);
+  assert.match(root.textContent, /Enter a valid business date/);
+  panel.dispose();
+});
+
+test('superseded display uses the selected date and history never depends on the clock', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div');
+  const term = {entity_ref:'d1',fact_key:'rent',value:'25',unit:'USD',term_kind:'executed',term_date:'2090-01-01',effective_from:'2090-01-01',effective_to:'2091-01-01',confidence:'human_review',sources:[]};
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:async () => ({ok:true,schema_version:'market-terms.v1',rows:[term,{...term,value:'30',effective_from:'2091-01-01',effective_to:null}],coverage:{recorded_documents:1,canonical_receipts:2,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:1}})}});
+  await new Promise(done => setTimeout(done, 30));
+  assert.equal(root.querySelectorAll('.superseded').length, 1);
+  root.querySelector('[name=as_of]').value = '2090-12-31'; panel.refresh();
+  await new Promise(done => setTimeout(done, 30));
+  assert.equal(root.querySelectorAll('.superseded').length, 0);
+  root.querySelector('[name=as_of]').value = '2091-01-01'; panel.refresh();
+  await new Promise(done => setTimeout(done, 30));
+  assert.equal(root.querySelectorAll('.superseded').length, 1);
+  panel.dispose();
+});
