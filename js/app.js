@@ -1,4 +1,4 @@
-import { mountDealRoomBoard } from './ui.generated.js';
+import { mountDealRoomBoard, mountDealRoomAgenda } from './ui.generated.js';
 import { renderDealSummary, renderDealItems } from './deal-items.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';
@@ -361,7 +361,7 @@ function renderChrome() {
   $('#stickyAddButton').textContent = `+ ${addLabel}`;
   $('#stickyAddButton').setAttribute('aria-label', addLabel);
   $('#ownerButton').hidden = !selected;
-  $('#agendaButton').hidden = isAccountHome;
+  renderAgendaView();
   const agentHeading = state.workspace === 'national_account' ? 'Market agent' : 'Owner';
   $('#agentHeading').textContent = agentHeading;
   $('#stickyAgentHeading').textContent = agentHeading;
@@ -580,14 +580,13 @@ function renderScreenActions() {
     const busy = pending?.status === 'pending';
     return `<div data-screen-outcome="${esc(key)}" role="status"><p>${esc(entry.label)}: ${busy ? 'Saving…' : esc(entry.message || 'Outcome unknown. Check the original request before changing it.')}</p>${entry.denied ? '<a href="/auth/login">Sign in</a>' : busy ? '' : `<button type="button" data-screen-retry="${esc(key)}">${pending ? 'Check outcome' : 'Retry'}</button>`}</div>`;
   }).join('');
-  const busy = Object.values(screenCommands).some(command => command.status === 'pending');
-  for (const control of $$('#agendaButton,#agendaReviewed,#agendaSkip,#agendaEnd,#agendaClose,[data-confirm]')) control.disabled = Boolean(busy || state.accessDenied);
+  renderAgendaView();
 }
 function refuseScreenAccess() {
   state.accessDenied = true;
   screenCommands = {};
   state.review = null; state.confirms = []; state.deals.clear();
-  $('#agendaPanel').hidden = true; $('#confirmDock').hidden = true;
+  renderAgendaView();
   boardRows?.dispose(); boardRows = null;
   $('#rows').replaceChildren(); selectDocRecord(null,null);
 }
@@ -634,10 +633,31 @@ async function loadConfirms() {
   renderConfirms();
 }
 function renderConfirms() {
-  const dock = $('#confirmDock');
-  dock.hidden = !state.confirms.length && !state.confirmError;
-  dock.innerHTML = (state.confirmError ? `<span role="status">Suggestions unavailable. ${state.confirmError === 'denied' ? '<a href="/auth/login">Sign in</a>' : '<button type="button" data-confirms-retry>Retry suggestions</button>'}</span>` : '') + state.confirms.map((proposal) => `<span class="confirm-chip" data-proposal="${esc(proposal.id)}">${esc(proposal.label)}
-    <button type="button" class="yes" data-confirm="yes">Confirm</button><button type="button" class="skip-confirm" data-confirm="no">Skip</button></span>`).join('');
+  renderAgendaView();
+}
+
+let agendaView;
+function agendaAction(action) {
+  const work = action === 'start' ? startAgenda
+    : action === 'reviewed' || action === 'skipped' ? () => advanceAgenda(action)
+    : () => finishAgenda(action);
+  Promise.resolve().then(work).catch(error => showToast(
+    error.pendingRequest ? 'Outcome unknown. Repeat the same agenda action to check its original request.' : error.message));
+}
+function renderAgendaView() {
+  agendaView ||= mountDealRoomAgenda({ button: $('#agendaButton'), panel: $('#agendaPanel'), dock: $('#confirmDock') }, agendaAction);
+  const review = state.review;
+  const captured = review && (review.deals[review.index] || review.deals.at(-1));
+  const deal = review && resolveCurrentRow(captured, state.deals);
+  agendaView.render({
+    buttonHidden: state.workspace === 'national_account' && !state.accountId && !state.query,
+    disabled: state.accessDenied || Object.values(screenCommands).some(command => command.status === 'pending'),
+    review: review && deal ? { title: review.title, index: review.index, total: review.deals.length,
+      deal: { id: deal.id, name: deal.name, context: deal.market || deal.client_name || '', reason: reasonFor(deal),
+        phase: phaseLabel(deal.phase), nextStep: deal.next_step || 'Not set', nextDate: dateLabel(deal.next_date),
+        marketAgent: deal.workspace_kind === 'national_account' ? deal.market_agent || 'Unassigned' : null } } : null,
+    confirms: state.confirms.map(({ id, label }) => ({ id, label })), confirmError: state.confirmError || null,
+  });
 }
 
 function renderReceipts() {
@@ -1408,40 +1428,22 @@ function agendaDeals() {
 }
 
 async function startAgenda() {
-  if (state.review) { $('#agendaPanel').hidden = false; return true; }
+  if (state.review) { renderAgendaView(); return true; }
   const deals = agendaDeals();
   if (!deals.length) return showToast('No active work in this agenda');
   const title = state.workspace === 'team' ? 'Deals' : account()?.account_name || 'National account';
   return runScreenAction('agenda-start',{workspace_kind:state.workspace,
     ...(state.accountId ? {account_client_id:state.accountId} : {})},'startReview','Start agenda',async result => {
     state.review = {sessionId:result.session_id,deals,index:0,reviewed:0,skipped:0,title};
-    $('#agendaPanel').hidden = false; renderAgenda();
+    renderAgenda();
   });
 }
 
 function renderAgenda() {
   const review = state.review;
   if (!review) return;
-  // The agenda captured its set and its order when it started, and both are
-  // kept: a record does not join or leave the list mid-review. The VALUES are
-  // resolved now, because a snapshot has replaced every row object since —
-  // possibly several times, on the periodic read alone — and the captured copy
-  // would show the partner the phase and next step as they were at the start.
-  const captured = review.deals[review.index];
-  const deal = resolveCurrentRow(captured, state.deals);
-  $('#agendaTitle').textContent = review.title;
-  $('#agendaProgress').textContent = `${Math.min(review.index + 1,review.deals.length)} of ${review.deals.length}`;
-  $('#agendaMeter').max = review.deals.length;
-  $('#agendaMeter').value = review.index;
-  if (!deal) return finishAgenda();
-  $('#agendaCard').innerHTML = `<article class="agenda-deal"><h3>${esc(deal.name)}</h3><p class="agenda-context">${esc(deal.market || deal.client_name || '')}</p>
-    <span class="agenda-reason">${esc(reasonFor(deal))}</span>
-    <div class="agenda-fact"><label>Phase</label><p>${esc(phaseLabel(deal.phase))}</p></div>
-    <div class="agenda-fact"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
-    <div class="agenda-fact"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
-    ${deal.workspace_kind === 'national_account' ? `<div class="agenda-fact"><label>Assigned market agent</label><p>${esc(deal.market_agent || 'Unassigned')}</p></div>` : ''}
-    <button type="button" class="secondary" data-open-deal="${esc(deal.id)}">Open full record</button>
-    <button type="button" class="secondary" data-agenda-step="${esc(deal.id)}">Set next step</button></article>`;
+  if (!resolveCurrentRow(review.deals[review.index], state.deals)) return finishAgenda();
+  renderAgendaView();
 }
 
 async function advanceAgenda(disposition) {
@@ -1464,7 +1466,7 @@ async function finishAgenda(status = 'completed') {
   const review = state.review;
   return runScreenAction(`agenda:${review.sessionId}`,{session_id:review.sessionId,status},'endReview','Finish agenda',async result => {
   state.review = null;
-  $('#agendaPanel').hidden = true;
+  renderAgendaView();
   await loadHome();
   showToast(status === 'completed' ? `Agenda finished · ${result.reviewed ?? review.reviewed} records reviewed` : 'Agenda closed without changing the review clock');
   });
@@ -1542,16 +1544,9 @@ function wireEvents() {
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;
   $('#ownerButton').onclick = accountOwnerForm;
-  const agendaAction = work => () => Promise.resolve().then(work).catch(error => showToast(
-    error.pendingRequest ? 'Outcome unknown. Repeat the same agenda action to check its original request.' : error.message));
-  $('#agendaButton').onclick = agendaAction(startAgenda);
   $('#callModeButton').onclick = () => state.callModeUi.open();
   $('#callModeStop').onclick = () => state.callModeUi.stop();
   $('#postCallRefresh').onclick = () => state.callModeUi.refreshPostCall();
-  $('#agendaReviewed').onclick = agendaAction(() => advanceAgenda('reviewed'));
-  $('#agendaSkip').onclick = agendaAction(() => advanceAgenda('skipped'));
-  $('#agendaEnd').onclick = agendaAction(() => finishAgenda('completed'));
-  $('#agendaClose').onclick = agendaAction(() => finishAgenda('abandoned'));
 
   // Coming back is not the same as being current: BOTH reads start again from
   // scratch, and `force` supersedes whatever was left hanging when the
