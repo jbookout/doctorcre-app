@@ -36,12 +36,13 @@ export function mountAppLayout(root, host, pathname) {
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
   const vendorDirectory = pathname === '/vendors';
+  const homeOrInbox = pathname === '/' || pathname === '/inbox' || pathname === '/inbox.html' || pathname.startsWith('/inbox/card/');
   const progressPage = pathname === '/control-room/progress' || pathname.startsWith('/control-room/progress/board/');
   const title = progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   if (vendorDirectory) layout.querySelector('.app-layout-working').remove();
   host.after(layout, status);
-  if (pathname === '/') layout.querySelector('.app-layout-working').hidden = true;
+  if (homeOrInbox) layout.querySelector('.app-layout-working').hidden = true;
   const main = layout.querySelector('#appMainSlot');
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
@@ -161,7 +162,7 @@ export function mountAppLayout(root, host, pathname) {
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
   const renderToday = () => {
-    if (pathname === '/') {
+    if (homeOrInbox) {
       const day = businessDay();
       render('#appTodayNext', `<a class="app-layout-item" href="/calendar?day=${day}&d=${day}"><time datetime="${day}">${escape(new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</time><span>Open Calendar</span></a>`);
       layout.querySelector('#appTodayNext').previousElementSibling.textContent = 'Calendar day';
