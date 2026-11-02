@@ -296,3 +296,29 @@ test('QA Home agenda reads the signed-in namespace through the current contract'
   assert.equal(agenda.deals[0].next_actions[0].hold_until, null);
   assert.equal(agenda.deals[0].thread, undefined);
 });
+
+test('QA sign-out requires the authenticated POST and CSRF headers before revoking the session', async () => {
+  const { dispatch } = await createQaServer();
+  const origin = 'http://localhost';
+  const seeded = await dispatch(new Request(`${origin}/api/test/seed`, {
+    method: 'POST', body: JSON.stringify({ namespace: 'signout-contract' }),
+  }));
+  const { cookie } = await seeded.json();
+  const headers = { cookie: `${cookie.name}=${cookie.value}`, origin,
+    'sec-fetch-site': 'same-origin', 'x-carr-csrf': 'synthetic-qa-joe' };
+  const signout = (method, extra = {}) => dispatch(new Request(`${origin}/auth/signout`, {
+    method, headers: { ...headers, ...extra },
+  }));
+  assert.equal((await signout('GET')).status, 405);
+  for (const refused of [{ 'x-carr-csrf': '' }, { origin: 'https://example.test' }, { 'sec-fetch-site': 'cross-site' }]) {
+    assert.equal((await signout('POST', refused)).status, 403);
+    assert.equal((await dispatch(new Request(`${origin}/auth/session`, { headers }))).status, 200);
+  }
+  assert.equal((await signout('POST', { cookie: '' })).status, 401);
+  const response = await signout('POST');
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), `${origin}/`);
+  assert.match(response.headers.get('set-cookie'), /doctorcre_qa=; Path=\/; Max-Age=0; HttpOnly; SameSite=Lax/);
+  assert.equal((await dispatch(new Request(`${origin}/auth/session`, { headers }))).status, 401);
+  assert.equal((await signout('POST')).status, 401);
+});
