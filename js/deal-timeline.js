@@ -49,17 +49,19 @@ export function dealTimeline(detail, now = Date.now()) {
   const lease = detail.lease?.status === 'current' ? detail.lease : null;
   const recordedDates = [...(detail.critical_dates || [])];
   if (lease) {
-    recordedDates.unshift({id:`lease-${lease.id}-commencement`,kind:'lease_commencement',due_on:lease.commencement_on,note:lease.evidence_ref,source:lease.source});
-    recordedDates.push({id:`lease-${lease.id}-expiration`,kind:'lease_expiration',due_on:lease.expiration_on,note:lease.evidence_ref,source:lease.source});
+    if (calendarDay(lease.commencement_on)) recordedDates.unshift({id:`lease-${lease.id}-commencement`,kind:'lease_commencement',due_on:lease.commencement_on,note:lease.evidence_ref,source:lease.source});
+    if (calendarDay(lease.expiration_on)) recordedDates.push({id:`lease-${lease.id}-expiration`,kind:'lease_expiration',due_on:lease.expiration_on,note:lease.evidence_ref,source:lease.source});
   }
-  const rows = recordedDates.filter(row => calendarDay(row.due_on || row.date)).map((row,i) => {
+  const rows = recordedDates.map((row,i) => {
     const definition = DATE_KINDS.find(d => d.kinds.includes(row.kind));
-    return {id:row.id || `date-${i}`,kind:definition?.kind || row.kind,label:definition?.label || row.label || row.kind?.replace(/[_-]+/g,' ') || 'Date',
-      day:calendarDay(row.due_on || row.date),original:noteText(row.note),evidence:row.source || '',status:row.status,deadline:Boolean(definition?.deadline)};
+    const value = row.due_on ?? row.date;
+    return {dateState:calendarDay(value) ? 'dated' : value == null || value === '' ? 'missing' : 'invalid',id:row.id || `date-${i}`,kind:definition?.kind || row.kind,label:definition?.label || row.label || row.kind?.replace(/[_-]+/g,' ') || 'Date',
+      day:calendarDay(value),original:noteText(row.note),evidence:row.source || '',status:row.status,deadline:Boolean(definition?.deadline)};
   });
   // Co-located dates share a card, preserving every original and status.
   const grouped = new Map();
-  for (const row of rows) {
+  const undated = rows.filter(row => !row.day);
+  for (const row of rows.filter(row => row.day)) {
     const key = `${row.kind}|${row.day}|${row.status || ''}`;
     const existing = grouped.get(key);
     const references = [row.original,row.evidence].filter(Boolean);
@@ -68,9 +70,9 @@ export function dealTimeline(detail, now = Date.now()) {
   }
   const dates = [...grouped.values()].map(({references,...row}) => ({...row,
     original:[...new Set(references)].join('\n\n')})).sort((a,b) => a.day.localeCompare(b.day));
-  const missing = DATE_KINDS.filter(d => !dates.some(row => row.kind === d.kind));
+  const missing = DATE_KINDS.filter(d => !rows.some(row => row.kind === d.kind));
   const entries = (detail.entries || []).filter(e => e.source !== 'hold').map(e => ({...e, day:calendarDay(e.when), type:e.kind}));
-  return {phases,dates,missing,entries,today:today(now)};
+  return {phases,dates,undated,missing,entries,today:today(now)};
 }
 
 export function renderCriticalDates(detail, now = Date.now()) {
@@ -78,7 +80,7 @@ export function renderCriticalDates(detail, now = Date.now()) {
   return `<section class="critical-dates" data-detail-read="dates" aria-label="Critical dates">${view.dates.map(d => {
     const count = countdown(d,now);
     return `<article class="critical-date" data-date-id="${esc(d.id)}" data-state="${count.state}"><span>${esc(d.label)}</span><strong data-countdown="${esc(d.day)}" data-deadline="${Boolean(d.deadline)}" data-date-status="${esc(d.status || '')}">${esc(count.text)}</strong><time datetime="${esc(d.day)}">${esc(dateCaption(d.day))}</time>${d.original || d.evidence ? `<details><summary data-detail-focus="date-original:${esc(d.id)}">Details</summary><p class="note-original">${esc(d.original || d.evidence)}</p></details>` : ''}</article>`;
-  }).join('')}${view.missing.map(d => `<article class="critical-date"><span>${esc(d.label)}</span><strong>Not recorded</strong></article>`).join('')}</section>`;
+  }).join('')}${view.undated.map(d => `<article class="critical-date" data-date-id="${esc(d.id)}" data-state="unknown" data-date-status="${esc(d.status || '')}"><span>${esc(d.label)}</span><strong>${d.dateState === 'missing' ? 'Date not recorded' : 'Date unavailable'}</strong>${d.status ? `<small>${esc(d.status)}</small>` : ''}${d.original || d.evidence ? `<details><summary data-detail-focus="date-original:${esc(d.id)}">Details</summary><p class="note-original">${esc([d.original,d.evidence].filter(Boolean).join('\n\n'))}</p></details>` : ''}</article>`).join('')}${view.missing.map(d => `<article class="critical-date"><span>${esc(d.label)}</span><strong>Not recorded</strong></article>`).join('')}</section>`;
 }
 
 export function renderDealTimeline(detail, now = Date.now()) {
