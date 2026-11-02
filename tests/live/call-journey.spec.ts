@@ -128,7 +128,7 @@ test('Home completes the real filed call after its pending proposals are resolve
   }
   await expect(guide.getByRole('button', { name: 'Complete call review' })).toBeEnabled();
   await guide.getByRole('button', { name: 'Complete call review' }).click();
-  await expect(guide).toContainText('No call items to review.');
+  await expect(guide).toContainText('Call review complete.');
   await expect(page.locator('.call-outcome')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close call review', exact: true }).click();
   await page.reload();

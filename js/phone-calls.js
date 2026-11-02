@@ -4,7 +4,7 @@ import { createDayStore } from '../tours/day-store.js';
 import { createDayRecorder } from '../tours/day-recorder.js';
 import { createPhoneCallClient, sessionId } from './phone-call-client.js';
 import { createLiveClient } from './live-client.js';
-import { callOutcomesHtml, undoRefusal } from './call-outcomes.js';
+import { callChangeText, dayLabel, undoRefusal } from './call-outcomes.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 
 const $ = id => document.getElementById(id);
@@ -14,7 +14,7 @@ const api = createPhoneCallClient();
 let store, recorder, scope, client, disposed = false, busy = false, currentId = null;
 const answers = new Map(), answering = new Set();
 const tour_id = 'calls';
-let reviewGeneration = 0;
+let reviewGeneration = 0, guide = null;
 let wakeLock = null, wakeGeneration = 0, transferringId = null, pollTimer = null, pollDelay = 30000, pollAttempts = 0;
 const pollPresence = watchPresence({ document, window, onResume: resumeReads, onWake: resumeReads });
 function resumeReads() {
@@ -166,13 +166,17 @@ async function review(id) {
   $('phoneSession').value = id;
   $('phoneOpen').hidden = true;
   const held = [...(result.actions || []), ...(result.deal_updates || [])].some(r => r.status === 'pending');
+  guide?.dispose(); guide = null;
   $('phoneReview').innerHTML = `<span class="phone-badge">${esc(Object.hasOwn(labels, result.state) ? labels[result.state] : 'Status unavailable')}</span>${statusReason(result) ? `<p>${esc(statusReason(result))}</p>` : ''}<p><a href="${esc(url.pathname + url.search)}">Review link for another authorized device</a></p>${result.report ? `<h3>Summary</h3><p>${esc(result.report.summary)}</p>${result.report.decisions.length ? `<h3>Decisions</h3><ul>${result.report.decisions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}${held ? '<p class="phone-hold">Partner confirmation needed. Speaker attribution may be ambiguous in a single track. Pending items have not been applied. Confirm only after checking who said what.</p>' : ''}<h3>Assigned actions</h3>${(result.actions || []).map(r => `<div class="phone-row"><strong>${esc(r.action)}</strong><p>${esc(({ joe: 'Joe', dell: 'Dell' })[r.assignee] || r.assignee)} · ${esc(r.due_on || 'No due date')} · ${esc(r.status === 'pending' ? 'Needs your confirmation' : r.status)}</p>${r.status === 'pending' ? `<button data-confirm-action="${esc(r.id)}">Confirm assigned action</button>` : ''}</div>`).join('') || '<p>No assigned actions.</p>'}<h3>Deal changes</h3>${(result.deal_updates || []).map(r => `<div class="phone-row"><p>${esc(r.payload?.text || r.payload?.summary || r.payload?.value || r.kind)}</p><p class="phone-meta">${esc(r.status)}${r.status === 'confirmed' ? ' · Confirmed changes are revised on the deal. Call Undo covers automatic changes only.' : ''}</p>${r.status === 'pending' ? `<button data-confirm-change="${esc(r.id)}">Confirm deal change</button>` : ''}</div>`).join('') || '<p>No deal changes.</p>'}<h3>Open questions</h3><ul>${result.report.open_questions.map(s => `<li>${esc(s)}</li>`).join('')}</ul><div id="phoneOutcomes"></div>` : statusReason(result) ? '' : '<p>The call service is waiting for transfer or processing. Refresh to check again.</p>'}<button id="phoneRefresh">Refresh review</button><button id="phoneAnother">Open another call</button>`;
   const questions = Array.isArray(session.review_questions) ? session.review_questions : [];
   $('phoneReview').insertAdjacentHTML('afterbegin', questions.length ? `<section id="phoneQuestions"><h3>Questions to answer</h3>${questions.map(q => `<form class="phone-row" data-question="${esc(q.id)}"><p>${esc(q.question)}</p><label>Answer <textarea name="answer" maxlength="1000" required ${answering.has(id + ':' + q.id) ? 'disabled' : ''} ${answers.has(id + ':' + q.id) ? 'readonly' : ''}>${esc(answers.get(id + ':' + q.id)?.answer || '')}</textarea></label><button type="submit" ${answering.has(id + ':' + q.id) ? 'disabled' : ''}>Submit answer</button><p role="status"></p></form>`).join('')}</section>` : '');
   if (result.report) {
     try {
-      const answer = await client.readCallOutcomes();
-      if (!disposed && generation === reviewGeneration && currentId === id) $('phoneOutcomes').innerHTML = callOutcomesHtml((answer.calls || []).filter(c => c.session_id === id)) || '<p class="phone-meta">No unreviewed automatic changes were returned. Confirmed changes remain listed above.</p>';
+      const { mountCallReview } = await import('./ui.generated.js');
+      if (disposed || generation !== reviewGeneration || currentId !== id) return;
+      guide = mountCallReview($('phoneOutcomes'), { sessionId: id, client: () => client,
+        describe: callChangeText, dateLabel: dayLabel, undoRefusal });
+      await guide.refresh();
     } catch { if (!disposed && generation === reviewGeneration) notice('Applied changes could not be checked. Refresh review to retry.'); }
   }
 }
@@ -246,12 +250,6 @@ async function start() {
     });
     if (button.id === 'phoneAnother') { $('phoneOpen').hidden = false; $('phoneSession').focus(); }
     if (button.id === 'phoneRefresh') void run(() => review(currentId));
-    if (button.dataset.callReviewed) void run(async () => { await client.reviewCallOutcome({ session_id: button.dataset.callReviewed }); await review(currentId); });
-    if (button.dataset.callUndo) void run(async () => {
-      try { await client.undoCallChange({ candidate_id: button.dataset.callUndo, base_version: Number(button.dataset.baseVersion) }); }
-      catch (error) { throw new Error(undoRefusal(error)); }
-      await review(currentId);
-    });
     if (button.dataset.confirmAction || button.dataset.confirmChange) void run(async () => {
       if (button.dataset.confirmAction) await client.resolvePostCallCandidate({ candidate_id: button.dataset.confirmAction, accept: true, idempotency_key: crypto.randomUUID() });
       else await client.resolveConfirm({ proposal_id: button.dataset.confirmChange, accept: true, idempotency_key: crypto.randomUUID() });
@@ -260,7 +258,7 @@ async function start() {
   });
   const id = new URL(location.href).searchParams.get('session'); if (id) await review(id);
 }
-window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
+window.addEventListener('doctorcre-session-invalidated', () => { disposed = true; guide?.dispose(); answers.clear(); answering.clear(); pollPresence.dispose(); clearTimeout(pollTimer); releaseWakeLock(); recorder?.dispose(); void store?.close(); $('phoneCalls').replaceChildren(); }, { once: true });
 // eslint-disable-next-line no-restricted-syntax -- Visibility handler calls clearTimeout for transfer polling when hidden and manages 1 recorder wake lock; it performs 0 status reads.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { clearTimeout(pollTimer); pollTimer = null; }

@@ -27,7 +27,8 @@ async function open(t, options = {}) {
     const rpc = r.request().postDataJSON();
     const { name, arguments: args } = rpc.params;
     let payload = { calls: [] };
-    if (name === 'read-call-outcomes' && state.transferred) payload = { calls: [{ session_id: id, call_date: '2026-10-30', applied: [{ candidate_id: 'applied-1', deal_name: 'Synthetic Clinic', kind: 'next_step', payload: { text: 'Review revised proposal' }, evidence_quote: 'Review it.', deal_version: 3, undone_at: state.undone ? '2026-10-30' : null }], open_cards: [] }] };
+    if (name === 'read-call-outcomes' && state.transferred && !state.reviewed) payload = { calls: [{ session_id: id, call_date: '2026-10-30', applied: [{ candidate_id: 'applied-1', deal_name: 'Synthetic Clinic', deal_id: null, kind: 'next_step', payload: { text: 'Review revised proposal' }, evidence_quote: 'Review it.', deal_version: 3, undone_at: state.undone ? '2026-10-30' : null }], open_cards: [] }] };
+    if (name === 'review-call-outcome') { state.reviewed = true; state.writes.push({ name, args }); payload = { ok: true }; }
     if (name === 'undo-call-change') { state.undone = true; state.writes.push({ name, args }); payload = { ok: true }; }
     return r.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
@@ -522,4 +523,20 @@ test('queued call shows a hold on status refresh and does not resend audio', asy
   assert.equal(await page.locator('audio').count(), 1);
   await page.reload();
   await page.locator('#phonePending').getByText('Held for review', { exact: true }).waitFor();
+});
+
+for (const width of [390, 1440]) test(`phone filed calls finish through the guide at ${width}`, async t => {
+  const { page, state } = await open(t, { review: true, transferred: true, width });
+  await page.getByText('Synthetic Clinic will review the revised proposal.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  await mkdir('/tmp/wr617-s2-j8-shots', { recursive: true });
+  await page.screenshot({ path: `/tmp/wr617-s2-j8-shots/phone-calls-${width}-${process.env.GUIDE_SHOT_PHASE || 'after'}.png`, fullPage: true });
+  assert.equal(await page.getByRole('button', { name: 'Looks right', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('region', { name: 'Review this call' }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  assert.equal(state.writes.length, 0);
+  await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
+  await page.getByRole('button', { name: 'Complete call review' }).click();
+  await page.getByText('Call review complete.', { exact: true }).waitFor();
+  assert.deepEqual(state.writes.map(w => ({ name: w.name, session_id: w.args.session_id })), [{ name: 'review-call-outcome', session_id: id }]);
 });

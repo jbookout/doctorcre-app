@@ -2,10 +2,11 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 type Payload = {
   summary?: string | null; text?: string | null; next_date?: string | null; value?: string | null;
+  body?: string | null; assignee?: string | null; due_on?: string | null;
   started_on?: string | null; action?: string | null; subject?: string | null;
   base_event_id?: string | null; plan_base?: Record<string, string | null>;
 };
-type Candidate = { candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
+type Candidate = { resolver: string | null; candidate_id: string; kind: string; deal_id: string | null; deal_name: string | null; payload: Payload; evidence_quote: string | null };
 type Change = Candidate & { deal_version: number; undone_at: string | null };
 type Call = { session_id: string; call_date: string; applied: Change[]; open_cards: Candidate[] };
 function isObject(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -15,11 +16,11 @@ function optionalText(value: unknown) { return value == null ? null : text(value
 function list(value: unknown): unknown[] { if (!Array.isArray(value)) throw new Error('Call items unavailable'); return value; }
 function candidate(value: unknown): Candidate {
   const row = object(value), raw = row.payload === undefined ? {} : object(row.payload), payload: Payload = {};
-  for (const key of ['summary', 'text', 'next_date', 'value', 'started_on', 'action', 'subject', 'base_event_id'] as const) {
+  for (const key of ['summary', 'text', 'next_date', 'value', 'started_on', 'action', 'subject', 'base_event_id', 'body', 'assignee', 'due_on'] as const) {
     if (Object.hasOwn(raw, key)) payload[key] = optionalText(raw[key]);
   }
   if (raw.plan_base !== undefined) payload.plan_base = Object.fromEntries(Object.entries(object(raw.plan_base)).map(([field, value]) => [field, optionalText(value)]));
-  return { candidate_id: text(row.candidate_id), kind: text(row.kind), deal_id: optionalText(row.deal_id),
+  return { resolver: optionalText(row.resolver), candidate_id: text(row.candidate_id), kind: text(row.kind), deal_id: optionalText(row.deal_id),
     deal_name: optionalText(row.deal_name), evidence_quote: optionalText(row.evidence_quote), payload };
 }
 function callAnswer(value: unknown): { calls: Call[] } {
@@ -41,6 +42,8 @@ type Client = {
   readCallOutcomes(): Promise<unknown>;
   getDeal?(id: string): Promise<unknown>;
   undoCallChange(args: { candidate_id: string; base_version: number }): Promise<unknown>;
+  resolvePostCallCandidate?(args: { candidate_id: string; accept: boolean; idempotency_key: string }): Promise<unknown>;
+  resolveConfirm?(args: { proposal_id: string; accept: boolean; idempotency_key: string }): Promise<unknown>;
   reviewCallOutcome(args: { session_id: string }): Promise<unknown>;
 };
 type Options = {
@@ -48,10 +51,9 @@ type Options = {
   describe(change: Candidate): string;
   dateLabel?(value: string): string;
   undoRefusal(error: unknown): string;
-  openCandidate(id: string, sessionId: string): void;
   onChange?(): void;
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
-type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' } | { state: 'unavailable'; message: string };
+type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
   if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Not yet added by this proposal.';
   const field = candidate.kind === 'phase_move' ? 'phase' : 'next_step';
@@ -68,6 +70,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   const root = createRoot(container);
   let disposed = false, revoked = false, sequence = 0, writing = false;
   let load: Load = { state: 'loading' }, items: Item[] = [], selected: string | undefined, notice = '';
+  let deciding: string | undefined;
+  const completed = () => load.state === 'completed';
   const reviewed = new Map<string, string>();
   const complete = (item: Item) => item.state === 'resolved' || reviewed.get(item.key) === item.signature;
   const outstanding = () => items.find(item => !complete(item));
@@ -78,8 +82,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     container.hidden = false;
     flushSync(() => root.render(<Guide />));
   }
-  async function refresh({ preserveSelection = false } = {}) {
-    if (disposed || revoked || writing) return;
+  async function refresh({ preserveSelection = true } = {}) {
+    if (disposed || revoked || writing || load.state === 'completed') return;
     const read = ++sequence;
     if (!items.length) { load = { state: 'loading' }; render(); }
     try {
@@ -126,7 +130,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (isObject(result) && result.ok === false) throw new Error('Command refused');
       if (disposed || revoked) return;
       writing = false;
-      await refresh();
+      if (!completed()) await refresh({ preserveSelection: true });
       if (!disposed && !revoked) options.onChange?.();
     } catch (error) {
       if (disposed) return;
@@ -146,6 +150,19 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     });
     if (disposed || revoked) return;
     await Promise.all([...sessions].map(async session_id => receipt(await options.client().reviewCallOutcome({ session_id }))));
+    if (disposed || revoked) return;
+    clear(); load = { state: 'completed' };
+  }
+  async function decide(item: Item, accept: boolean) {
+    const client = options.client(), idempotency_key = crypto.randomUUID();
+    if (item.candidate.resolver === 'resolve-post-call-candidate' && client.resolvePostCallCandidate) {
+      const result = await client.resolvePostCallCandidate({ candidate_id: item.candidate.candidate_id, accept, idempotency_key });
+      if (isObject(result) && result.ok === false) throw new Error('Decision refused');
+    } else if (item.candidate.resolver === 'resolve-candidate' && client.resolveConfirm) {
+      const result = await client.resolveConfirm({ proposal_id: item.candidate.candidate_id, accept, idempotency_key });
+      if (isObject(result) && result.ok === false) throw new Error('Decision refused');
+    } else throw new Error('Decision unavailable');
+    deciding = undefined;
   }
   function proposalText(candidate: Candidate) {
     if (candidate.kind === 'next_step' || candidate.kind === 'phase_move') return options.describe(candidate);
@@ -154,12 +171,13 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   function Guide() {
     const item = current(), index = item ? items.indexOf(item) : 0;
     const ready = load.state === 'ready' && !writing;
-    const deals = [...new Set(items.map(row => row.candidate.deal_id))];
+    const deals = [...new Set(items.flatMap(row => row.candidate.deal_id ? [row.candidate.deal_id] : []))];
     const done = items.filter(complete).length;
     return <section className="call-review" aria-label="Review this call" data-review-candidate={item?.candidate.candidate_id}>
       <link rel="stylesheet" href="/css/call-review.css" />
       <h2>Review this call</h2>
       {load.state === 'loading' && <p role="status">Loading call review…</p>}
+      {load.state === 'completed' && <p role="status">Call review complete.</p>}
       {load.state === 'empty' && <p role="status">No call items to review.</p>}
       {load.state === 'signed_out' && <p role="status">Sign in again to review this call.</p>}
       {load.state === 'unavailable' && <p role="alert">{load.message}</p>}
@@ -176,9 +194,16 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         <div className="call-review-actions">
           {item.state === 'applied' && <button type="button" className="primary" disabled={!ready || complete(item)} onClick={() => { reviewed.set(item.key, item.signature); selected = outstanding()?.key ?? item.key; notice = ''; render(); }}>Reviewed</button>}
           {item.state === 'applied' && !item.candidate.undone_at && <button type="button" className="secondary" data-call-undo={item.candidate.candidate_id} disabled={!ready} onClick={() => void act(() => options.client().undoCallChange({ candidate_id: item.candidate.candidate_id, base_version: item.candidate.deal_version }), options.undoRefusal)}>Undo</button>}
-          {item.state === 'pending' && <button type="button" className="primary" disabled={!ready} onClick={() => options.openCandidate(item.candidate.candidate_id, item.call.session_id)}>Approve or fix this item</button>}
+          {item.state === 'pending' && <button type="button" className="primary" disabled={!ready} onClick={() => { deciding = item.key; render(); }}>Approve or fix this item</button>}
           {item.candidate.deal_id && <a className="call-outcome-link" href={`/deals?deal=${encodeURIComponent(item.candidate.deal_id)}`}>Open deal to fix</a>}
         </div>
+        {item.state === 'pending' && deciding === item.key && <section aria-label="Decide this item">
+          {item.candidate.payload.body && <p style={{ whiteSpace: 'pre-wrap' }}>{item.candidate.payload.body}</p>}
+          {item.candidate.payload.assignee && <p>Assigned to {item.candidate.payload.assignee} · {item.candidate.payload.due_on || 'No due date'}</p>}
+          <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal. Email proposals create drafts only.</p>
+          <button type="button" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.')}>Approve item</button>
+          <button type="button" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.')}>Skip item</button>
+        </section>}
         {item.state === 'pending' && <p className="call-review-meta">This item stays outstanding until its decision is recorded. Email proposals create drafts only.</p>}
         <nav aria-label="Call review navigation">
           <button type="button" className="secondary" disabled={!ready || index === 0} onClick={() => { selected = items[Math.max(index - 1, 0)]?.key; notice = ''; render(); }}>Back</button>
@@ -187,7 +212,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         </nav>
         <p className="call-review-meta">Check each item before completing the call review.</p>
       </>}
-      <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out'} onClick={() => void refresh()}>Refresh call review</button>
+      <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out' || load.state === 'completed'} onClick={() => void refresh()}>Refresh call review</button>
     </section>;
   }
   render();
@@ -224,10 +249,7 @@ export function mountCallReviewDialog(document: Document, options: Omit<Options,
       if (session !== sessionId) {
         guide?.dispose();
         session = sessionId;
-        guide = mountCallReview(node, { ...options, sessionId, openCandidate(id, session) {
-          dialog.close();
-          options.openCandidate(id, session);
-        } });
+        guide = mountCallReview(node, { ...options, sessionId });
       }
       if (!dialog.open) dialog.showModal();
       await guide?.refresh();
