@@ -132,3 +132,13 @@ test('a failed refresh preserves focus on a filing control within its panel', as
   await view.refresh();
   assert.equal(container.ownerDocument.activeElement, container.querySelector('[data-filing-undo]'));
 });
+
+test('filed receipts link to their own exact deals without exposing ids or private content', async () => {
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1), filing(2, { deal: '20000000-0000-4000-8000-000000000002' })] }) });
+  await view.refresh();
+  assert.deepEqual([...container.querySelectorAll('a')].map(link => [link.getAttribute('href'), link.textContent]), [
+    ['/deals?deal=20000000-0000-4000-8000-000000000001', 'Open filed deal'],
+    ['/deals?deal=20000000-0000-4000-8000-000000000002', 'Open filed deal'],
+  ]);
+  assert.doesNotMatch(container.textContent, /20000000|Private body/);
+});
