@@ -133,6 +133,18 @@ for (const finished of ['ready_to_extract', 'filed']) {
   });
 }
 
+test('a held newest recording leaves Start available with review wording', async () => {
+  await callSurface(async () => ({ ok: true, json: async () => ({ state: 'held_review', session: 'synthetic-held-call' }) }), async (ui, doc) => {
+    assert.equal(await ui.checkEligibility(), true);
+    assert.equal(doc.querySelector('#callModeStarts').hidden, false);
+    assert.equal(doc.querySelector('#callModeConsentRow').hidden, false);
+    assert.equal(doc.querySelector('#callModeStop').hidden, true);
+    assert.equal(doc.querySelector('#callModeTimer').textContent, 'Waiting for your review');
+    assert.equal(doc.querySelector('#callModeState').textContent, 'An earlier recording is waiting for your review. You can start another call.');
+    for (const button of doc.querySelectorAll('[data-call-mode-start]')) assert.equal(button.disabled, false);
+  });
+});
+
 test('a call Quill is still transcribing keeps Start hidden', async () => {
   await callSurface(async () => ({ ok: true, json: async () => ({ state: 'transcribing', session: '2026.10.26-1031' }) }), async (ui, doc) => {
     assert.equal(await ui.checkEligibility(), true);
