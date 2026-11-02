@@ -427,7 +427,7 @@ for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers auto
       await page.getByRole('button', { name: 'Approve or fix this item' }).click();
       await page.getByRole('button', { name: 'Skip item', exact: true }).click();
     }
-    await page.getByRole('status').filter({ hasText: /Trying again automatically in 60 seconds/ }).waitFor();
+    await page.getByText('Trying again automatically in 60 seconds.', { exact: true }).waitFor();
     assert.equal(await page.getByText(/Could not check this call/).count(), 0);
     const announcement = await page.getByRole('status').ariaSnapshot();
     await page.clock.runFor(1000);
@@ -544,7 +544,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
     await page.getByRole('button', { name: 'Approve or fix this item' }).click();
     const button = page.getByRole('button', { name: accept ? 'Approve item' : 'Skip item', exact: true });
     await button.click();
-    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved/);
+    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved. When the countdown ends, choose Approve or Skip again./);
     assert.equal(await page.getByRole('heading', { name: 'Demo Bayside relocation' }).isVisible(), true);
     assert.equal(await page.getByText('Needs your decision', { exact: true }).isVisible(), true);
     assert.equal(await button.isDisabled(), true);
@@ -560,21 +560,22 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
       assert.equal(colors.background, colors.mutedBackground, 'disabled primary buttons use the neutral surface');
       assert.equal(colors.cursor, 'not-allowed');
     }
-    await page.getByRole('status').filter({ hasText: /automatically in 60 seconds/ }).waitFor();
+    await page.getByText('Trying again automatically in 60 seconds.', { exact: true }).waitFor();
     if (accept) {
-      await mkdir('out/test-artifacts/call-guide-refused', { recursive: true });
-      await page.screenshot({ path: `out/test-artifacts/call-guide-refused/waiting-${width}-${theme}.png`, fullPage: true });
+      const directory = process.env.UI_SCREENSHOT_DIR || 'out/test-artifacts/call-guide-refused';
+      await mkdir(directory, { recursive: true });
+      await page.screenshot({ path: `${directory}/waiting-${width}-${theme}.png`, fullPage: true });
     }
     const announcement = await page.getByRole('status').ariaSnapshot();
     await page.clock.runFor(1000);
     assert.equal(await page.getByRole('status').ariaSnapshot(), announcement, 'countdown ticks must not change the live announcement');
     assert.match(await page.getByText(/automatically in 59 seconds/).innerText(), /59 seconds/);
     await page.clock.runFor(58000);
-    assert.match(await page.getByRole('status').innerText(), /automatically in 1 second\./);
+    assert.match(await page.getByText('Trying again automatically in 1 second.', { exact: true }).innerText(), /automatically in 1 second\./);
     assert.equal(await page.evaluate(() => window.decisionAttempts), 1);
     await page.clock.runFor(1000);
     assert.equal(await button.isEnabled(), true);
-    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved/);
+    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved. When the countdown ends, choose Approve or Skip again./);
     assert.equal(await page.evaluate(() => window.decisionAttempts), 1, 'only reads retry automatically');
     await button.click();
     await page.getByText('No longer pending', { exact: true }).waitFor();

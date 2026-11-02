@@ -66,6 +66,8 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     assert.equal(lockedColors[0], lockedColors[2], 'locked text inputs use the same muted color as textareas');
     assert.equal(await page.locator('#accountOwner').isDisabled(), true);
     assert.equal(await page.locator('#researchDiscrepancies').isDisabled(), true);
+    await locked.scrollIntoViewIfNeeded();
+    await capture('locked-fields');
     const savedName = await locked.inputValue();
     await page.evaluate(() => document.activeElement.blur());
     await locked.evaluate(el => el.focus()); await page.keyboard.type('attempted edit');
