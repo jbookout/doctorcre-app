@@ -21,7 +21,13 @@
  *      verb accepts and in the shape the companion accepts, and a session left
  *      in awaiting_context is supplied again (the 2026-08-17 stall).
  */
-import test from "node:test";
+import test, { after } from "node:test";
+import { JSDOM } from "jsdom";
+const guideDom = new JSDOM();
+const priorWindow = globalThis.window, priorDocument = globalThis.document;
+globalThis.window = guideDom.window;
+globalThis.document = guideDom.window.document;
+after(() => { guideDom.window.close(); globalThis.window = priorWindow; globalThis.document = priorDocument; });
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { chromium, fixtureServer } from "./browser-harness.mjs";
@@ -89,7 +95,11 @@ function callModeDocument() {
   const ids = ["callModeButton", "callModeDialog", "callModeClose", "callModeStage", "callModeState", "callModeTimer",
     "callModeDetail", "callModeSpeakers", "callModeConsentRow", "callModeConsent", "callModeStarts", "callModeStop",
     "callModePermission", "postCallPanel", "postCallRefresh", "postCallStatus", "postCallOutcomes", "postCallReport"];
-  const nodes = ids.map((id) => new StubElement(id === "callModeConsent" ? "input" : "div", { id }));
+  const nodes = ids.map((id) => {
+    if (id !== 'postCallOutcomes') return new StubElement(id === "callModeConsent" ? "input" : "div", { id });
+    const node = guideDom.window.document.createElement('section'); node.id = id;
+    return node;
+  });
   nodes.push(new StubElement("button", { "data-call-mode-start": "weekly_deal_call" }));
   nodes.push(new StubElement("button", { "data-call-mode-start": "other_call" }));
   const doc = new StubDocument(nodes);
@@ -207,11 +217,13 @@ test('refresh without a supplied snapshot reads and recovers the companion sessi
 // ---------------------------------------------- 1. nothing before a click
 
 test("importing the Deal Room shell with no page around it starts nothing", async () => {
+  delete globalThis.document;
+  delete globalThis.window;
   assert.equal(typeof globalThis.document, "undefined");
   const saved = globalThis.fetch;
   const seen = [];
   globalThis.fetch = (...args) => { seen.push(args); throw new Error("the shell reached fetch"); };
-  try { await import(APP); } finally { globalThis.fetch = saved; }
+  try { await import(APP); } finally { globalThis.fetch = saved; globalThis.window = guideDom.window; globalThis.document = guideDom.window.document; }
   assert.deepEqual(seen, [], "importing the shell must make no request");
 });
 
@@ -424,7 +436,7 @@ test("Call Mode waits for the automatic apply before it claims or lists anything
     assert.equal(reads.length, 1);
     const outcomes = h.doc.getElementById("postCallOutcomes");
     assert.equal(outcomes.hidden, false);
-    assert.match(outcomes.innerHTML, /Applied from the Sep 23 pipeline call/);
+    assert.match(outcomes.innerHTML, /Review this call/);
     assert.match(outcomes.innerHTML, /due Nov 6/);
     const report = h.doc.getElementById("postCallReport").innerHTML;
     assert.doesNotMatch(report, /Send the lease draft/, "the applied step is listed once, in the applied section");
@@ -435,9 +447,10 @@ test("Call Mode waits for the automatic apply before it claims or lists anything
     // Undo inside Call Mode goes through its own click routing with the deal version.
     const undone = [];
     h.client.undoCallChange = async (args) => { undone.push(args); };
-    await h.controller.handleClick(drawnButton(outcomes.innerHTML, "data-call-undo", "step-a"));
+    outcomes.querySelector('[data-call-undo="step-a"]').click();
+    await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(undone, [{ candidate_id: "step-a", base_version: 4 }]);
-    assert.ok(h.calls.toasts.includes("Change undone."));
+    assert.match(outcomes.textContent, /Review this call/);
   } finally { h.controller.dispose(); }
 });
 

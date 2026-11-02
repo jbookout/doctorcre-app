@@ -30,18 +30,25 @@ const task = (id, owner = 'joe', due_on = '2026-10-02') => ({
   evidence_quote: 'Joe will call the demo lender.', created_at: '2026-10-01T14:00:00Z',
 });
 
-async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null, outcomes = [], holdCommands = false, theme = 'dark' } = {}) {
+async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null, outcomes = [], holdCommands = false, theme = 'dark', viewer = 'joe' } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
-  assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `call-tasks-${width}`, viewer: 'joe', reset: true } })).status(), 200);
+  assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `call-tasks-${width}`, viewer, reset: true } })).status(), 200);
   const pending = structuredClone(candidates), actions = [], writes = [], reads = [], errors = [], gate = { hold: null };
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/mcp', async route => {
     const rpc = route.request().postDataJSON();
     const { name, arguments: args } = rpc.params;
     const reply = payload => route.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
+    if (name === 'review-call-outcome') {
+      writes.push({ name, ...args });
+      const index = outcomes.findIndex(call => call.session_id === args.session_id);
+      assert.ok(index >= 0);
+      outcomes.splice(index, 1);
+      return reply({ ok: true });
+    }
     if (name === 'read-call-outcomes') return reply({ schema_version: 'call-outcomes.v1', calls: outcomes, send: false });
     if (name === 'read-post-call-followups') {
       reads.push(name);
@@ -285,4 +292,61 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ca
   assert.equal(await second.locator('.work-card-title').innerText(), 'Demo coastal purchase');
   assert.equal(await first.locator('.work-card-title a').getAttribute('href'), '/deals?deal=qa-deal-1');
   assert.equal((await first.boundingBox()).height, (await second.boundingBox()).height);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Home finishes an older filed call without its companion at ${width}px in ${theme}`, async t => {
+  const session = '11111111-1111-4111-8111-111111111111';
+  const call = { session_id: session, call_date: '2026-09-28', recorder: 'joe', open_cards: [], applied: [
+    { candidate_id: 'old-step', kind: 'next_step', deal_id: 'qa-deal-1', deal_name: 'Demo coastal purchase', deal_version: 7,
+      payload: { text: 'Send the lease draft to the landlord', next_date: '2026-10-02' },
+      evidence_quote: 'Send the lease draft on Friday.', undone_at: null },
+    { candidate_id: 'old-note', kind: 'note', deal_id: null, deal_name: null, deal_version: 7,
+      payload: { text: 'Confirm the walkthrough with Dell' }, evidence_quote: 'Confirm the walkthrough with Dell.', undone_at: null },
+  ] };
+  const { page, writes, companionRequests, errors } = await open(t, { width, theme, viewer: 'dell', candidates: [],
+    companion: theme === 'light' ? { unavailable: true } : {},
+    outcomes: [{ ...call, session_id: 'newer-call', applied: [{ ...call.applied[0], candidate_id: 'newer-step' }] }, call] });
+  const entry = page.locator(`[data-call-session="${session}"]`);
+  companionRequests.length = 0;
+  await entry.getByRole('button', { name: 'Review call', exact: true }).click();
+  const guide = page.getByRole('region', { name: 'Review this call' });
+  await guide.getByRole('heading', { name: 'Demo coastal purchase', exact: true }).waitFor({ timeout: 2000 });
+  assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  assert.deepEqual(writes, []);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await mkdir('/tmp/wr617-s2-j3-shots', { recursive: true });
+  await page.locator('.call-review-dialog').screenshot({ path: `/tmp/wr617-s2-j3-shots/${width}-${theme}-guide.png` });
+  await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
+  await page.getByRole('button', { name: 'Close call review', exact: true }).click();
+  await entry.getByRole('button', { name: 'Review call', exact: true }).click();
+  await guide.getByText('Confirm the walkthrough with Dell', { exact: true }).first().waitFor();
+  assert.equal(await guide.getAttribute('data-review-candidate'), 'old-note');
+  await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
+  assert.deepEqual(writes, []);
+  await guide.getByRole('button', { name: 'Complete call review' }).click();
+  await page.getByText('No call items to review.', { exact: true }).waitFor();
+  assert.deepEqual(writes.map(row => ({ name: row.name, session_id: row.session_id })), [{ name: 'review-call-outcome', session_id: session }]);
+  await page.locator(`[data-call-session="${session}"]`).waitFor({ state: 'detached' });
+  assert.equal(await page.locator('[data-call-session="newer-call"]').count(), 1);
+  assert.deepEqual(companionRequests, [], 'Home review never contacts the recording Mac');
+  assert.deepEqual(errors, []);
+});
+
+test('Home keeps pending call decisions outstanding without the recording Mac and clears the guide on sign-out', async t => {
+  const { page, writes, errors } = await open(t, { candidates: [], companion: { unavailable: true },
+    outcomes: [callOutcome('demo-older-call')] });
+  const entry = page.locator('[data-call-session="demo-older-call"] [data-call-open-review]');
+  await entry.click();
+  const guide = page.locator('.call-review-dialog .call-review');
+  await guide.getByText('Needs your decision', { exact: true }).waitFor();
+  assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  await guide.getByRole('button', { name: 'Approve or fix this item' }).click();
+  await page.getByText('Open Call Mode on the Mac that recorded the call to decide them.', { exact: true }).waitFor();
+  await entry.click();
+  await guide.getByText('Needs your decision', { exact: true }).waitFor();
+  assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+  assert.deepEqual(writes, []);
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('.call-review-dialog').count(), 0);
+  assert.deepEqual(errors, []);
 });

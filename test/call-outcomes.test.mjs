@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
+import { chromium, fixtureServer } from './browser-harness.mjs';
 import { callChangeText, callOutcomesHtml, callsFor, mountCallOutcomes } from '../js/call-outcomes.js';
 
 // Synthetic read-call-outcomes rows (CARR call-outcomes.v1).
@@ -8,7 +9,7 @@ const synthetic = () => [{
   session_id: 'session-1', call_date: '2026-10-26', recorder: 'joe',
   applied: [
     { candidate_id: 'phase-1', kind: 'phase_move', deal_id: 'deal-a', deal_name: 'Demo Bayside relocation', deal_version: 7,
-      payload: { deal: 'deal-a', field: 'phase', value: 'negotiation', started_on: '2026-10-20' },
+      payload: { deal: 'deal-a', field: 'phase', value: 'negotiation', started_on: '2026-10-20', base_event_id: 'phase-base' },
       evidence_quote: 'Bayside moves to negotiation', applied_at: '2026-10-26T14:00:00Z', undone_at: null },
     { candidate_id: 'step-1', kind: 'next_step', deal_id: 'deal-b', deal_name: 'Demo Harbor expansion', deal_version: 3,
       payload: { deal: 'deal-b', text: 'Schedule the second walkthrough', next_date: '2026-11-03' },
@@ -101,7 +102,8 @@ test("Home's count of undecided items opens the cards", async () => {
   const view = mountCallOutcomes({ container, openCards: session => { opened.push(session); },
     client: () => ({ readCallOutcomes: async () => ({ calls: [...synthetic(), older] }) }) });
   await view.refresh();
-  const link = container.querySelector('[data-call-open-cards]');
+  const link = [...container.querySelectorAll('[data-call-open-cards]')].find(button => button.textContent.startsWith('1 item'));
+  assert.equal(container.querySelector('[data-call-reviewed]'), null, 'Home opens the guide before acknowledging');
   assert.equal(link.tagName, 'BUTTON');
   assert.equal(link.textContent, '1 item from this call still needs Joe or Dell to decide');
   await view.click({ target: link });
@@ -150,4 +152,112 @@ test('retiring an outcome list clears its controls and ignores late reads and de
   assert.equal(container.innerHTML, '');
   assert.equal(writes, 0);
   dom.window.close();
+});
+
+test('the call guide orders deals, preserves the outstanding item and acknowledges only after review', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.guideWrites = [];
+      window.guideRows = rows;
+      window.guide = mountCallReview(node, { filter: () => ['step-1'], client: () => ({
+        readCallOutcomes: async () => ({ calls: window.guideRows }),
+        getDeal: async () => ({ history: [{ id: 'phase-base', new_value: 'Prospecting' }] }),
+        undoCallChange: async args => { window.guideWrites.push(args); throw Object.assign(new Error('stale'), { payload: { error: 'version_conflict' } }); },
+        reviewCallOutcome: async args => { window.guideWrites.push(args); window.guideRows = []; return { ok: true }; },
+      }), describe: change => change.payload.text || 'Phase moved to Negotiation', undoRefusal: () => 'Deal changed. Check it again.', openCandidate: () => {} });
+      await window.guide.refresh();
+    }, synthetic());
+    const guide = page.getByRole('region', { name: 'Review this call' });
+    await guide.getByRole('heading', { name: 'Demo Bayside relocation' }).waitFor();
+    await guide.getByText('Prospecting', { exact: true }).waitFor();
+    assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+    await guide.getByRole('button', { name: 'Undo', exact: true }).click();
+    await guide.getByRole('alert').filter({ hasText: 'Deal changed' }).waitFor();
+    assert.equal(await guide.getByText(/Item 1 of 3$/).count(), 1);
+    await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
+    await guide.getByText('Needs your decision', { exact: true }).waitFor();
+    await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    await guide.getByRole('heading', { name: 'Demo Harbor expansion' }).waitFor();
+    await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
+    await page.evaluate(() => window.guide.refresh());
+    await guide.getByText('Needs your decision', { exact: true }).waitFor();
+    assert.equal(await guide.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
+    await page.evaluate(async () => { window.guideRows[0].open_cards = []; await window.guide.refresh(); });
+    await page.evaluate(() => window.guideRows[0].open_cards.push({ candidate_id: 'late-card', kind: 'assigned_action', deal_id: 'deal-a' }));
+    await guide.getByRole('button', { name: 'Complete call review' }).click();
+    await guide.getByRole('alert').filter({ hasText: 'Could not complete' }).waitFor();
+    assert.equal(await page.evaluate(() => window.guideWrites.length), 1, 'a stale guide sends no call acknowledgement');
+    await page.evaluate(async () => { window.guideRows[0].open_cards = []; await window.guide.refresh(); });
+    await guide.getByRole('button', { name: 'Complete call review' }).click();
+    await page.getByText('No call items to review.', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.guideWrites), [
+      { candidate_id: 'phase-1', base_version: 7 }, { session_id: 'session-1' },
+    ]);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+test('the guide distinguishes loading, empty, unavailable and sign-out, and fences late reads', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch({ headless: true }), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.rows = rows; window.failGuide = false;
+      window.guide = mountCallReview(node, { filter: () => ['phase-1'], client: () => ({
+        readCallOutcomes: () => window.holdGuide ? new Promise(resolve => { window.releaseGuide = () => resolve({ calls: window.rows }); })
+          : window.failGuide ? Promise.reject(new Error('offline')) : Promise.resolve({ calls: window.rows }),
+      }), describe: () => 'Phase moved', undoRefusal: () => 'Refused', openCandidate: () => {} });
+    }, synthetic());
+    await page.getByText('Loading call review…', { exact: true }).waitFor();
+    await page.evaluate(() => window.guide.refresh());
+    await page.getByRole('heading', { name: 'Demo Bayside relocation' }).waitFor();
+    await page.evaluate(async () => { window.failGuide = true; await window.guide.refresh(); });
+    await page.getByRole('alert').filter({ hasText: 'Could not check this call' }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Reviewed', exact: true }).count(), 0);
+    await page.evaluate(async () => { window.failGuide = false; window.rows = []; await window.guide.refresh(); });
+    await page.getByText('No call items to review.', { exact: true }).waitFor();
+    await page.evaluate(() => { window.holdGuide = true; void window.guide.refresh(); });
+    await page.evaluate(() => { window.dispatchEvent(new Event('doctorcre-session-invalidated')); window.releaseGuide(); });
+    await page.getByText('Sign in again to review this call.', { exact: true }).waitFor();
+    await page.evaluate(() => window.guide.refresh());
+    assert.equal(await page.getByRole('heading', { name: 'Demo Bayside relocation' }).count(), 0);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+test('Undo refusal refreshes the version, preserves the notice and selection, and allows a safe retry', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch({ headless: true }), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.undoWrites = [];
+      window.guide = mountCallReview(node, { filter: () => ['step-1'], client: () => ({
+        readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
+        undoCallChange: async args => {
+          window.undoWrites.push(args);
+          rows[0].applied[1].deal_version = 8;
+          if (args.base_version !== 8) throw Object.assign(new Error('stale'), { payload: { error: 'version_conflict' } });
+          rows[0].applied[1].undone_at = '2026-10-26T15:00:00Z';
+          return { ok: true };
+        },
+      }), describe: change => change.payload.text || 'Phase moved', undoRefusal: () => 'Deal changed. Check it again.', openCandidate: () => {} });
+      await window.guide.refresh();
+    }, synthetic());
+    const guide = page.getByRole('region', { name: 'Review this call' });
+    await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    await guide.getByRole('button', { name: 'Undo', exact: true }).click();
+    await guide.getByRole('alert').filter({ hasText: 'Deal changed' }).waitFor();
+    assert.equal(await guide.getAttribute('data-review-candidate'), 'step-1');
+    await guide.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.waitForFunction(() => window.undoWrites.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.undoWrites.map(row => row.base_version)), [3, 8]);
+  } finally { await page.close(); await browser.close(); await server.close(); }
 });
