@@ -11,8 +11,10 @@ import { chromium, settles } from './browser-harness.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 function closeShareFixture(t, browser, server) {
-  t.after(() => new Promise(resolve => server.close(resolve)));
-  t.after(() => browser.close());
+  t.after(async () => {
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  });
 }
 
 test('S8 fixture cleanup releases an unfinished browser response', async t => {
