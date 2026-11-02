@@ -305,3 +305,30 @@ for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) for
     assert.equal(typeof writes[1].idempotency_key, 'string');
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
+
+test('Undo leaves an earlier reviewed change on the same deal reviewed', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      rows[0].applied[1].deal_id = rows[0].applied[0].deal_id;
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      const guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
+        readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
+        undoCallChange: async () => {
+          rows[0].applied[1].undone_at = '2026-10-26';
+          rows[0].applied.forEach(change => change.deal_version = 8);
+          return { ok: true };
+        },
+      }), describe: () => 'Change', undoRefusal: () => 'Refused' });
+      await guide.refresh();
+    }, synthetic());
+    await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.getByText('Undone', { exact: true }).waitFor();
+    assert.equal(await page.locator('[data-review-candidate]').getAttribute('data-review-candidate'), 'step-1');
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Reviewed', exact: true }).isEnabled(), false, 'a version-only change must not unmark the earlier item');
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});

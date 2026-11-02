@@ -34,6 +34,7 @@ function callAnswer(value: unknown): { calls: Call[] } {
       }) };
   }) };
 }
+function appliedSignature(change: Change) { return JSON.stringify({ ...change, deal_version: undefined }); }
 function receipt(value: unknown) { if (object(value).ok !== true) throw new Error('Command refused'); }
 type Item = { call: Call; key: string; signature: string; before: string } & (
   { state: 'applied'; candidate: Change } | { state: 'pending' | 'resolved'; candidate: Candidate }
@@ -101,7 +102,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       const previous = items;
       items = calls.flatMap(call => {
         const applied: Item[] = call.applied.map(candidate => ({ call, candidate, state: 'applied',
-          key: `${call.session_id}:${candidate.candidate_id}`, signature: JSON.stringify(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
+          key: `${call.session_id}:${candidate.candidate_id}`, signature: appliedSignature(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
         const pending: Item[] = call.open_cards.map(candidate => ({ call, candidate, state: 'pending',
           key: `${call.session_id}:${candidate.candidate_id}`, signature: JSON.stringify(candidate), before: beforeText(candidate, details.get(candidate.deal_id ?? '')) }));
         const resolved: Item[] = previous.filter(item => item.call.session_id === call.session_id && item.state !== 'applied'
@@ -146,7 +147,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     const latest = callAnswer(await options.client().readCallOutcomes());
     const sessions = new Set(items.map(row => row.call.session_id));
     latest.calls.filter(call => sessions.has(call.session_id)).forEach(call => {
-      if (call.open_cards.length || call.applied.some(candidate => reviewed.get(`${call.session_id}:${candidate.candidate_id}`) !== JSON.stringify(candidate))) throw new Error('Call changed');
+      if (call.open_cards.length || call.applied.some(candidate => reviewed.get(`${call.session_id}:${candidate.candidate_id}`) !== appliedSignature(candidate))) throw new Error('Call changed');
     });
     if (disposed || revoked) return;
     await Promise.all([...sessions].map(async session_id => receipt(await options.client().reviewCallOutcome({ session_id }))));
