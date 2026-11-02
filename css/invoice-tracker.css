@@ -103,6 +103,7 @@ body { background: var(--ground); color: var(--fg); }
 /* --- the invoice dialog -------------------------------------------------------- */
 .invoice-detail { width: min(1000px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; overflow: auto; padding: var(--space-6); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); font-family: var(--font-text); font-size: var(--font-size-1); line-height: var(--line-height-body); box-shadow: var(--shadow-overlay); }
 .invoice-detail::backdrop { background: var(--scrim); }
+.invoice-detail a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
 .invoice-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); padding-bottom: var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); }
 .invoice-detail-heading h2 { margin-top: var(--space-1); font-size: var(--font-size-4); overflow-wrap: anywhere; }
 .invoice-eyebrow { color: var(--fg-muted); font-size: var(--font-size-1); }
