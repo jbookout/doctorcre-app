@@ -13,6 +13,25 @@ async function open(t, width = 390) {
   return page;
 }
 
+test('keyboard unlock focuses the current roadmap in both themes and viewport sizes', async t => {
+  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+    const page = await open(t, width);
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    await page.getByLabel('Portal name').fill('demo-practice');
+    await page.getByLabel('Portal password').fill('demo-portal');
+    await page.keyboard.press('Enter');
+    const heading = page.getByRole('heading', { name: 'Your transaction roadmap' });
+    await heading.waitFor();
+    assert.equal(await heading.evaluate(element => element === document.activeElement), true);
+    assert.equal(await heading.getAttribute('tabindex'), '-1');
+    assert.equal(await page.getByLabel('Portal password').inputValue(), '');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await page.locator('#portalContent input, #portalContent button, #portalContent textarea').count(), 0);
+    await mkdir('out/test-artifacts/client-portal', { recursive: true });
+    await page.screenshot({ path: `out/test-artifacts/client-portal/${width}-${theme}-focus.png`, fullPage: true });
+  }
+});
+
 test('fixture portal renders canonical current phase and shared text at phone and desktop widths', async t => {
   for (const width of [390, 1440]) {
     const page = await open(t, width);
