@@ -455,3 +455,50 @@ test('guide refreshes share one read at a time and coalesce repeated refresh req
     assert.deepEqual(counts, { calls: 2, peak: 1 });
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
+
+test('persistent budget refusals pause after three automatic attempts and allow a later manual retry', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async rows => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.budgetReads = 0; window.budgetRefused = true;
+      window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => {
+        window.budgetReads++;
+        if (window.budgetRefused) throw Object.assign(new Error('budget'), { status: 429 });
+        return { calls: rows };
+      } }), describe: () => 'Change', undoRefusal: () => '' });
+      await window.guide.refresh();
+    }, synthetic());
+    for (let attempt = 0; attempt < 3; attempt++) await page.clock.runFor(60_000);
+    await page.getByRole('status').filter({ hasText: 'The call review is still busy.' }).waitFor();
+    await page.clock.runFor(120_000);
+    assert.equal(await page.evaluate(() => window.budgetReads), 4);
+    await page.evaluate(() => { window.budgetRefused = false; });
+    await page.getByRole('button', { name: 'Refresh call review' }).click();
+    await page.getByRole('heading', { name: 'Demo Bayside relocation' }).waitFor();
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});
+
+for (const end of ['dispose', 'sign out']) test(`${end} cancels an automatic budget retry`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage();
+  try {
+    await page.goto(server.origin);
+    await page.clock.install();
+    await page.evaluate(async end => {
+      const { mountCallReview } = await import('/js/ui.generated.js');
+      const node = document.createElement('section'); document.body.replaceChildren(node);
+      window.budgetReads = 0;
+      const guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({ readCallOutcomes: async () => {
+        window.budgetReads++; throw Object.assign(new Error('budget'), { status: 429 });
+      } }), describe: () => '', undoRefusal: () => '' });
+      await guide.refresh();
+      if (end === 'dispose') guide.dispose();
+      else window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    }, end);
+    await page.clock.runFor(120_000);
+    assert.equal(await page.evaluate(() => window.budgetReads), 1);
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});

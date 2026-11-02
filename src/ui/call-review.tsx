@@ -55,7 +55,8 @@ type Options = {
   undoRefusal(error: unknown): string;
   onChange?(): void;
 } & ({ sessionId: string; filter?: never } | { filter(): string[]; sessionId?: never });
-type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'unavailable'; message: string };
+const reviewReads = new WeakMap<Document, Promise<void>>();
+type Load = { state: 'loading' | 'ready' | 'empty' | 'signed_out' | 'completed' } | { state: 'retrying' | 'paused' } | { state: 'unavailable'; message: string };
 function beforeText(candidate: Candidate, detail: unknown) {
   if (!['phase_move', 'next_step'].includes(candidate.kind)) return 'Not yet added by this proposal.';
   const field = candidate.kind === 'phase_move' ? 'phase' : 'next_step';
@@ -72,7 +73,22 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   const root = createRoot(container);
   let disposed = false, revoked = false, sequence = 0, writing = false;
   let load: Load = { state: 'loading' }, items: Item[] = [], selected: string | undefined, notice = '';
-  let deciding: string | undefined;
+  let deciding: string | undefined, automaticAttempts = 0;
+  let inFlight: Promise<void> | undefined, retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const details = new Map<string, unknown>();
+  const active = () => {
+    const dialog = container.ownerDocument.querySelector('.call-review-dialog[open]');
+    return dialog ? dialog.contains(container) : !container.closest('.call-review-dialog');
+  };
+  const cancelWait = () => { clearTimeout(retryTimer); retryTimer = undefined; };
+  function retry(touchedDeal?: string | null) {
+    cancelWait();
+    load = { state: automaticAttempts < 3 ? 'retrying' : 'paused' };
+    if (load.state === 'paused') return;
+    automaticAttempts++;
+    // eslint-disable-next-line no-restricted-syntax -- At most three automatic read attempts, sixty seconds apart; dispose and sign-out cancel the timer.
+    retryTimer = setTimeout(() => { retryTimer = undefined; void refresh({ touchedDeal }); }, 60_000);
+  }
   const completed = () => load.state === 'completed';
   const reviewed = new Map<string, string>();
   const complete = (item: Item) => item.state === 'resolved' || reviewed.get(item.key) === item.signature;
@@ -84,21 +100,38 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     container.hidden = false;
     flushSync(() => root.render(<Guide />));
   }
-  async function refresh({ preserveSelection = true } = {}) {
-    if (disposed || revoked || writing || load.state === 'completed') return;
+  function refresh(args: { preserveSelection?: boolean; touchedDeal?: string | null | undefined } = {}): Promise<void> {
+    if (disposed || revoked || writing || completed() || !active() || retryTimer !== undefined) return Promise.resolve();
+    if (inFlight) return inFlight;
+    if (load.state === 'paused') automaticAttempts = 0;
+    const previous = reviewReads.get(container.ownerDocument) ?? Promise.resolve();
+    const pending = previous.then(() => read(args));
+    inFlight = pending.finally(() => { inFlight = undefined; render(); });
+    reviewReads.set(container.ownerDocument, inFlight);
+    return inFlight;
+  }
+  async function read({ preserveSelection = true, touchedDeal }: { preserveSelection?: boolean; touchedDeal?: string | null | undefined }) {
+    if (disposed || revoked || writing || completed() || !active()) return;
     const read = ++sequence;
     if (!items.length) { load = { state: 'loading' }; render(); }
     try {
       const answer = callAnswer(await options.client().readCallOutcomes());
+      if (disposed || revoked || read !== sequence) return;
       const ids = new Set(options.filter?.());
       const calls = answer.calls.filter(call => options.sessionId !== undefined
         ? call.session_id === options.sessionId
         : [...call.applied, ...call.open_cards].some(item => ids.has(item.candidate_id)));
       const deals = [...new Set(calls.flatMap(call => [...call.applied, ...call.open_cards].flatMap(item => item.deal_id ? [item.deal_id] : [])))];
-      const details = new Map(await Promise.all(deals.map(async id => {
-        try { return [id, await options.client().getDeal?.(id)] as const; }
-        catch (error) { if (signedOut(error)) throw error; return [id, null] as const; }
-      })));
+      if (touchedDeal) { details.delete(touchedDeal); if (!deals.includes(touchedDeal)) deals.push(touchedDeal); }
+      // eslint-disable-next-line no-restricted-syntax -- Read each distinct discussed deal once; actions invalidate only the touched deal.
+      for (const id of deals.filter(id => !details.has(id))) {
+        try { details.set(id, await options.client().getDeal?.(id)); }
+        catch (error) {
+          if (signedOut(error) || (isObject(error) && error.status === 429)) throw error;
+          details.set(id, null);
+        }
+        if (disposed || revoked || read !== sequence) { details.clear(); return; }
+      }
       if (disposed || revoked || read !== sequence) return;
       const previous = items;
       items = calls.flatMap(call => {
@@ -109,38 +142,45 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         const resolved: Item[] = previous.filter(item => item.call.session_id === call.session_id && item.state !== 'applied'
           && ![...applied, ...pending].some(next => next.key === item.key)).map(item => ({ ...item, state: 'resolved' }));
         const dealOrder = new Map<string, number>();
-        for (const candidate of [...call.applied, ...call.open_cards, ...resolved.map(item => item.candidate)]) {
+        for (const candidate of [...previous.filter(item => item.call.session_id === call.session_id).map(item => item.candidate), ...call.applied, ...call.open_cards]) {
           const deal = candidate.deal_id ?? '';
           if (!dealOrder.has(deal)) dealOrder.set(deal, dealOrder.size);
         }
-        return [...applied, ...pending, ...resolved].sort((a, b) => (dealOrder.get(a.candidate.deal_id ?? '') ?? 0) - (dealOrder.get(b.candidate.deal_id ?? '') ?? 0));
+        const itemOrder = new Map(previous.map((item, index) => [item.key, index]));
+        return [...applied, ...pending, ...resolved].sort((a, b) => (dealOrder.get(a.candidate.deal_id ?? '') ?? 0) - (dealOrder.get(b.candidate.deal_id ?? '') ?? 0)
+          || (itemOrder.get(a.key) ?? previous.length) - (itemOrder.get(b.key) ?? previous.length));
       });
       if (!preserveSelection || !items.some(item => item.key === selected)) selected = outstanding()?.key ?? items[0]?.key;
+      automaticAttempts = 0;
       load = { state: items.length ? 'ready' : 'empty' };
     } catch (error) {
       if (disposed || revoked || read !== sequence) return;
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
+      // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
+      else if (isObject(error) && error.status === 429) retry(touchedDeal);
       else load = { state: 'unavailable', message: 'Could not check this call. Refresh before continuing the review.' };
     }
     render();
   }
-  async function act(run: () => Promise<unknown>, refused: (error: unknown) => string) {
-    if (disposed || revoked || writing || load.state !== 'ready') return;
-    writing = true; notice = ''; render();
+  async function act(run: () => Promise<unknown>, refused: (error: unknown) => string, touchedDeal?: string | null) {
+    if (disposed || revoked || writing || inFlight || load.state !== 'ready') return;
+    writing = true; sequence++; notice = ''; render();
     try {
       const result = await run();
       if (isObject(result) && result.ok === false) throw new Error('Command refused');
       if (disposed || revoked) return;
       writing = false;
-      if (!completed()) await refresh({ preserveSelection: true });
+      if (!completed()) await refresh({ preserveSelection: true, touchedDeal });
       if (!disposed && !revoked) options.onChange?.();
     } catch (error) {
       if (disposed) return;
       if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
+      // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
+      else if (isObject(error) && error.status === 429) retry(touchedDeal);
       else {
         notice = refused(error);
         writing = false;
-        await refresh({ preserveSelection: true });
+        await refresh({ preserveSelection: true, touchedDeal });
       }
     } finally { writing = false; render(); }
   }
@@ -172,7 +212,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   }
   function Guide() {
     const item = current(), index = item ? items.indexOf(item) : 0;
-    const ready = load.state === 'ready' && !writing;
+    const ready = load.state === 'ready' && !writing && !inFlight;
     const deals = [...new Set(items.flatMap(row => row.candidate.deal_id ? [row.candidate.deal_id] : []))];
     const done = items.filter(complete).length;
     return <section className="call-review" aria-label="Review this call" data-review-candidate={item?.candidate.candidate_id}>
@@ -182,6 +222,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       {load.state === 'completed' && <p role="status">Call review complete.</p>}
       {load.state === 'empty' && <p role="status">No call items to review.</p>}
       {load.state === 'signed_out' && <p role="status">Sign in again to review this call.</p>}
+      {load.state === 'retrying' && <p role="status">The call review is taking a short break. Trying again automatically in 60 seconds. Your review progress is saved.</p>}
+      {load.state === 'paused' && <p role="status">The call review is still busy. Try Refresh call review in a minute. Your review progress is saved.</p>}
       {load.state === 'unavailable' && <p role="alert">{load.message}</p>}
       {notice && <p role="alert">{notice}</p>}
       {load.state === 'ready' && item && <>
@@ -195,7 +237,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         <blockquote aria-label="What was said">{item.candidate.evidence_quote || 'No transcript quote included. Check the full report below.'}</blockquote>
         <div className="call-review-actions">
           {item.state === 'applied' && <button type="button" className="primary" disabled={!ready || complete(item)} onClick={() => { reviewed.set(item.key, item.signature); selected = outstanding()?.key ?? item.key; notice = ''; render(); }}>Reviewed</button>}
-          {item.state === 'applied' && !item.candidate.undone_at && <button type="button" className="secondary" data-call-undo={item.candidate.candidate_id} disabled={!ready} onClick={() => void act(() => options.client().undoCallChange({ candidate_id: item.candidate.candidate_id, base_version: item.candidate.deal_version }), options.undoRefusal)}>Undo</button>}
+          {item.state === 'applied' && !item.candidate.undone_at && <button type="button" className="secondary" data-call-undo={item.candidate.candidate_id} disabled={!ready} onClick={() => void act(() => options.client().undoCallChange({ candidate_id: item.candidate.candidate_id, base_version: item.candidate.deal_version }), options.undoRefusal, item.candidate.deal_id)}>Undo</button>}
           {item.state === 'pending' && <button type="button" className={deciding === item.key ? "secondary" : "primary"} disabled={!ready} onClick={() => { deciding = item.key; render(); container.querySelector('.call-review-decision')?.scrollIntoView({ block: 'nearest' }); }}>Approve or fix this item</button>}
           {item.candidate.deal_id && <a className="call-outcome-link" href={`/deals?deal=${encodeURIComponent(item.candidate.deal_id)}`}>Open deal to fix</a>}
         </div>
@@ -205,8 +247,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
           {item.candidate.payload.assignee && <p>Assigned to {partnerNames[item.candidate.payload.assignee] ?? item.candidate.payload.assignee} · {item.candidate.payload.due_on ? (options.dateLabel?.(item.candidate.payload.due_on) ?? item.candidate.payload.due_on) : 'No due date'}</p>}
           <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal.</p>
           <div className="call-review-actions">
-            <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.')}>Approve item</button>
-            <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.')}>Skip item</button>
+            <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), () => 'Could not approve this item. Refresh and check before retrying.', item.candidate.deal_id)}>Approve item</button>
+            <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), () => 'Could not skip this item. Refresh and check before retrying.', item.candidate.deal_id)}>Skip item</button>
           </div>
           <p className="call-review-meta">Email proposals create drafts only.</p>
         </section>}
@@ -218,14 +260,14 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         </nav>
         <p className="call-review-meta">Check each item before completing the call review.</p>
       </>}
-      {load.state !== 'completed' && <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out'} onClick={() => void refresh()}>Refresh call review</button>}
+      {load.state !== 'completed' && <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out' || load.state === 'retrying'} onClick={() => void refresh()}>Refresh call review</button>}
     </section>;
   }
   render();
-  const invalidate = () => { revoked = true; sequence++; clear(); load = { state: 'signed_out' }; render(); };
+  const invalidate = () => { revoked = true; sequence++; cancelWait(); details.clear(); clear(); load = { state: 'signed_out' }; render(); };
   container.ownerDocument.defaultView?.addEventListener('doctorcre-session-invalidated', invalidate);
   return { refresh, dispose() {
-    disposed = true; sequence++; clear();
+    disposed = true; sequence++; cancelWait(); details.clear(); clear();
     container.ownerDocument.defaultView?.removeEventListener('doctorcre-session-invalidated', invalidate);
     root.unmount(); container.hidden = true;
   } };
