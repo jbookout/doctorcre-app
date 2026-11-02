@@ -195,6 +195,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (con
   assert.equal(await page.getByRole('link', { name: 'Back to Home', exact: true }).count(), 1);
   assert.deepEqual(writes.map(w => w.name), ['resolve-post-call-candidate', 'review-call-outcome']);
   assert.equal(writes[0].args.accept, accept);
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
   await page.reload();
   await page.getByText('No call items to review.', { exact: true }).waitFor();
   assert.equal(await page.locator('#phoneReview .phone-badge').count(), 0);
