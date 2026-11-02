@@ -1,5 +1,6 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -17,11 +18,13 @@ async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved =
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
-  await page.addInitScript(({ theme, path, saved }) => {
+  const binding = createHash('sha256').update(JSON.stringify(['joe', 'synthetic'])).digest('hex');
+  await page.addInitScript(({ theme, path, saved, binding }) => {
+    localStorage.setItem('doctorcre-session-binding-v1', binding);
     localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } }));
     localStorage.setItem(`doctorcre:sidebar:${path}`, saved);
     localStorage.setItem('doctorcre:today', saved);
-  }, { theme, path, saved });
+  }, { theme, path, saved, binding });
   let signedOut = false;
   await page.route('**/auth/session', route => route.fulfill(signedOut ? { status: 401, json: { error: 'signed_out' } } : { json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/auth/signout', route => { signedOut = true; return route.fulfill({ status: 401, json: { error: 'signed_out' } }); });
