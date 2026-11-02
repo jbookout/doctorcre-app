@@ -1026,7 +1026,7 @@ function openForm({ context='Deal Room', title, submit='Save', form, national, o
     if (!operationKey) return;
     const request = retained();
     if (!request) {
-      if (operationKey) for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
+      for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
       $('#dialogSubmit').textContent = submit;
       return;
     }
@@ -1313,7 +1313,6 @@ function addMarketDealForm() {
       ...Object.fromEntries(['client_name','deal_name','market','state','agent_name','segment'].map(field => [field,String(data.get(field) || '').trim()])),
       deal_type:'startup',phase:'pending',...(data.get('client_mode') === 'existing' ? {} : {research_evidence:nationalResearchEvidence(data)})}),
     send:args => state.client.createNationalMarketDeal(args), receiptId:'deal_id', success:`Market deal added to ${selected.account_name}` });
-
 }
 
 function accountOwnerForm() {
@@ -1386,7 +1385,6 @@ async function startAgenda() {
     ...(state.accountId ? {account_client_id:state.accountId} : {})},'startReview','Start agenda',async result => {
     state.review = {sessionId:result.session_id,deals,index:0,reviewed:0,skipped:0,title};
     renderAgenda();
-    $('#agendaTitle').tabIndex = -1;
     $('#agendaTitle').focus();
   });
 }

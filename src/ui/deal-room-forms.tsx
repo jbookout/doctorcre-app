@@ -32,7 +32,7 @@ function researchFields(disabled = false) {
   return <fieldset disabled={disabled}><legend>Research for the new organization or sub-client</legend>
     <p>Review sources before creating this record. Link the source you checked for each field, including a source documenting unavailable information. A source may support several fields.</p>
     {['Name', 'Company', 'Phone', 'Specialty', 'Market'].map(label => {
-  const name = `research_${label.toLowerCase()}`;
+      const name = `research_${label.toLowerCase()}`;
       return <TextField key={name} field={[name, name, `${label} source (HTTPS URL)`]} type="url" required />;
     })}
     <TextField field={["researchObserved", "research_observed_at", "When did you review these sources?"]} hint="Enter the observation time in your local time zone." type="datetime-local" required />
@@ -70,18 +70,22 @@ function formFields(form: DealRoomForm) {
     case 'team-deal': return form.pending ? <div className="field"><b>{form.pending.name}</b><p>{`Client: ${form.pending.client}`}</p><p>{[form.pending.deal_type || 'other', form.pending.phase || 'On Deck', form.pending.market || '', form.pending.segment || ''].join(' · ')}</p><small>Check creation outcome continues this saved deal.</small></div> : <>
       <TextField field={["clientRef", "client", "Existing client"]} hint="A deal always belongs to a client. This prevents free-floating or duplicate records." required placeholder="C-127 or exact client name" />
       <TextField field={["dealName", "name", "Record name"]} required />
-      <div className="field-row"><SelectField field={["dealType", "deal_type", "Type"]}   >{[["startup", "Startup"], ["relocation", "Relocation"], ["additional_office", "Additional office"], ["renewal", "Renewal"], ["expansion", "Expansion"], ["purchase", "Purchase"], ["other", "Other"]]}</SelectField>
+      <div className="field-row"><SelectField field={["dealType", "deal_type", "Type"]}>{[["startup", "Startup"], ["relocation", "Relocation"], ["additional_office", "Additional office"], ["renewal", "Renewal"], ["expansion", "Expansion"], ["purchase", "Purchase"], ["other", "Other"]]}</SelectField>
         <SelectField field={["dealPhase", "phase", "Phase"]} defaultValue="On Deck">{form.phases}</SelectField></div>
       <div className="field-row"><TextField field={["dealMarket", "market", "Market"]} /><TextField field={["dealSegment", "segment", "Healthcare vertical"]} placeholder="Dental, Vet, DPC…" /></div>
     </>;
     case 'account': return <>
       <TextField field={["accountName", "name", "Brand / organization"]} hint="Creates one parent account. Market transactions will live under their own sub-clients." required />
-      <div className="field-row"><SelectField field={["accountOwner", "owner", "Account owner"]}   >{form.owners}</SelectField><TextField field={["accountVertical", "vertical", "Healthcare vertical"]} /></div>
+      <div className="field-row"><SelectField field={["accountOwner", "owner", "Account owner"]}>{form.owners}</SelectField><TextField field={["accountVertical", "vertical", "Healthcare vertical"]} /></div>
       {researchFields()}
     </>;
     case 'market-deal': return <MarketDealFields {...form} />;
     case 'account-owner': return <SelectField field={["newAccountOwner", "owner", "Accountable partner"]} hint="This changes portfolio accountability only. Individual market-deal owners stay untouched." defaultValue={form.owner}>{[["joe", "Joe"], ["dell", "Dell"]]}</SelectField>;
     case 'conflict': return <><p>Review both values, then choose one. Both edits remain in the deal history.</p>{form.choices.map(choice => <div className="field" key={choice.side}><label><input type="radio" name="winner" value={choice.side} required /> <strong>{choice.caption}</strong>{` · ${choice.actor}: ${choice.value}`}</label></div>)}</>;
+    default: {
+      const unhandled: never = form;
+      return unhandled;
+    }
   }
 }
 
