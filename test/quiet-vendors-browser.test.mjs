@@ -52,12 +52,15 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await section.getByRole('link').count(), 5);
     await section.getByRole('button', { name: 'Previous vendors' }).click();
     assert.equal(await section.getByRole('link').count(), 20);
+    await page.locator('#searchInput').fill('Demo Partner');
+    await page.locator('#searchInput').press('Enter');
     await section.getByRole('link').first().scrollIntoViewIfNeeded();
     const priorScroll = await page.evaluate(() => window.scrollY);
     const prior = new URL(page.url()).search;
     await section.getByRole('link').first().click();
     await page.locator('#recordPanel.open').waitFor();
     assert.equal(new URL(page.url()).searchParams.get('record'), id);
+    assert.equal(new URL(page.url()).searchParams.get('q'), 'Demo Partner');
     await page.goBack();
     assert.equal(new URL(page.url()).search, prior);
     assert.equal(await page.evaluate(() => Math.round(window.scrollY)), Math.round(priorScroll));

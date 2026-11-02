@@ -66,5 +66,8 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
     </section>;
   }
   flushSync(() => root.render(<QuietVendors />));
-  return { dispose() { disposed = true; flushSync(() => root.unmount()); } };
+  return {
+    update() { flushSync(() => root.render(<QuietVendors />)); },
+    dispose() { disposed = true; flushSync(() => root.unmount()); },
+  };
 }

@@ -117,7 +117,7 @@ function clearQuietVendors() {
 
 async function syncQuietVendors() {
   if (view.dataset !== 'vendors' || view.signedOut) { clearQuietVendors(); return; }
-  if (quietVendorsHost) return;
+  if (quietVendorsHost) { quietVendors?.update(); return; }
   const generation = ++quietVendorsGeneration;
   const host = document.createElement('div');
   quietVendorsHost = host;
