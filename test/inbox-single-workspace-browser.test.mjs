@@ -13,7 +13,7 @@ const title = 'Synthetic overdue lease with a long title for the single attentio
 const deal = { id: 'synthetic-deal', name: title, owner: 'joe', phase: 'legal', operating_state: 'active', next_step: 'Call synthetic owner', next_date: '2020-01-01' };
 const item = { item_id: 'synthetic-action', source_type: 'next_action', source_id: 'synthetic-action', source_version: 'v1', source_state: 'needs_attention', title, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1' };
 
-async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved = 'open', inboxError = false } = {}) {
+async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved = 'open', inboxError = false, pending = false } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
@@ -25,9 +25,13 @@ async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved =
   let signedOut = false;
   await page.route('**/auth/session', route => route.fulfill(signedOut ? { status: 401, json: { error: 'signed_out' } } : { json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/auth/signout', route => { signedOut = true; return route.fulfill({ status: 401, json: { error: 'signed_out' } }); });
+  let releaseInbox;
+  const inboxReady = pending ? new Promise(resolve => { releaseInbox = resolve; }) : Promise.resolve();
+  await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   const calls = [];
-  await page.route('**/mcp', route => {
+  await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params; calls.push(name);
+    if (name === 'read-home-inbox') await inboxReady;
     const today = { subject_type: 'deal', subject_id: deal.id, subject_name: title, what: deal.next_step, due_on: deal.next_date, owner_partner: 'joe' };
     const payload = name === 'deal-room-board' ? { actor: 'joe', deals: [deal] }
       : name === 'morning-brief' ? { sponsor: 'joe', sections: { today: { state: 'ready', items: [today] }, deals: { state: 'ready', items: [deal] }, loops: { state: 'empty', items: [] } } }
@@ -38,7 +42,7 @@ async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved =
   });
   await page.goto(`${server.origin}${path}?mode=live`);
   await page.locator(path === '/vendors' ? '#appTodayNeeds [data-layout-deal]' : '#appWorkingList [data-layout-deal]').first().waitFor({ state: 'attached' });
-  return { page, calls };
+  return { page, calls, releaseInbox };
 }
 
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
@@ -79,6 +83,18 @@ test('Inbox respects closed sidebar preferences, opens Today by keyboard, and cl
   await page.locator('#accountSignOut').click();
   await page.locator('#appLayout').waitFor({ state: 'detached' });
   assert.equal(await page.getByText(title, { exact: true }).count(), 0);
+});
+
+test('Inbox loading preserves one workspace until its read resolves', async t => {
+  const { page, releaseInbox } = await open(t, { width: 390, pending: true });
+  assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+  await page.locator('#appTodayToggle').click();
+  assert.equal(await page.locator('#appTodayNext a').isVisible(), true);
+  assert.equal(await page.locator('#appTodayNeeds').isVisible(), false);
+  await page.keyboard.press('Escape');
+  releaseInbox();
+  await page.locator('[data-inbox-row="synthetic-action"]').waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 });
 
 test('Inbox read error keeps the same Calendar day treatment', async t => {
