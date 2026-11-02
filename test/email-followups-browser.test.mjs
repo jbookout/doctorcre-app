@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
-import { chromium } from './browser-harness.mjs';
+import { chromium, settles } from './browser-harness.mjs';
 
 let outDir, server, browser, origin;
 before(async () => {
@@ -172,15 +172,13 @@ for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards e
   let releaseAgenda;
   const agendaGate = new Promise(resolve => { releaseAgenda = resolve; });
   const submitted = [];
-  let reloadGate = Promise.resolve(), markHeld;
+  let reloadGate = Promise.resolve(), holdReload = false;
   const heldReads = new Set();
-  let readsHeld;
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
     let result;
-    if (markHeld && ['read-home-agenda', 'list-email-proposals'].includes(name)) {
+    if (holdReload && ['read-home-agenda', 'list-email-proposals'].includes(name)) {
       heldReads.add(name);
-      if (heldReads.size === 2) markHeld();
       await reloadGate;
     }
     if (name === 'read-home-agenda') { await agendaGate; return route.continue(); }
@@ -223,13 +221,16 @@ for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards e
   await card.getByText('Sending in 10s ·').waitFor();
   let releaseReload;
   reloadGate = new Promise(resolve => { releaseReload = resolve; });
-  readsHeld = new Promise(resolve => { markHeld = resolve; });
-  await page.reload();
-  await readsHeld;
+  holdReload = true;
   const readiness = card.getByRole('button', { name: 'Review reply', exact: true });
-  assert.equal(await readiness.count(), 0);
-  markHeld = null;
-  releaseReload();
+  try {
+    await page.reload();
+    await settles(() => assert.deepEqual([...heldReads].sort(), ['list-email-proposals', 'read-home-agenda'], 'both post-reload reads must reach the response gate'));
+    assert.equal(await readiness.count(), 0);
+  } finally {
+    holdReload = false;
+    releaseReload();
+  }
   if (width === 390) await panel.getByRole('button', { name: 'Show 1 more', exact: true }).click();
   await readiness.waitFor({ state: 'visible' });
   await card.locator('button[data-email-action="edit-draft"]:enabled').waitFor();
