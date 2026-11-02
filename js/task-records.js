@@ -703,14 +703,29 @@ async function loadViewer({ signal } = {}) {
 }
 
 async function refreshVerified({ signal } = {}) {
-  const focusAttribute = document.activeElement?.hasAttribute("data-task") ? "data-task" : "data-handover";
-  const focusKey = document.activeElement?.getAttribute(focusAttribute);
+  const focused = document.activeElement;
+  const taskControls = [...document.querySelectorAll("#taskList [data-task], #systemList [data-task]")]
+    .filter(node => node.checkVisibility());
+  const focusAttribute = focused?.hasAttribute("data-task") ? "data-task" : "data-handover";
+  const focusKey = focused?.getAttribute(focusAttribute);
+  const taskKeys = taskControls.map(node => node.getAttribute("data-task"));
+  const focusIndex = taskKeys.indexOf(focusKey);
   const focusViewer = viewer;
   const verified = await loadViewer({ signal });
   if (verified == null) return;
   if (!verified) { refuseUnverifiedViewer(); return; }
   await load({ signal });
-  if (focusKey && viewer === focusViewer && document.activeElement === document.body) [...document.querySelectorAll(`#taskList [${focusAttribute}], #systemList [${focusAttribute}]`)].find(node => node.getAttribute(focusAttribute) === focusKey)?.focus({ preventScroll: true });
+  if (focusIndex < 0 || viewer !== focusViewer || document.activeElement !== document.body) return;
+  if (view.status === "loading" || view.status === "unverified" || view.status === "unauthorized") return;
+  const controls = [...document.querySelectorAll("#taskList [data-task], #systemList [data-task]")]
+    .filter(node => node.checkVisibility());
+  const exact = [...document.querySelectorAll(`#taskList [${focusAttribute}], #systemList [${focusAttribute}]`)]
+    .find(node => node.getAttribute(focusAttribute) === focusKey && node.checkVisibility());
+  const nearbyKeys = [...taskKeys.slice(focusIndex), ...taskKeys.slice(0, focusIndex).reverse()];
+  const nearby = nearbyKeys.map(key => controls.find(node => node.getAttribute("data-task") === key)).find(Boolean);
+  const fallback = $("retryRead")?.checkVisibility() ? $("retryRead")
+    : document.querySelector('#scopeSwitch [aria-pressed="true"]');
+  (exact || nearby || controls[Math.min(focusIndex, controls.length - 1)] || fallback)?.focus({ preventScroll: true });
 }
 
 /* ------------------------------------------------------------------------ boot */
