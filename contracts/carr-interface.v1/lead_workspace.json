@@ -32,6 +32,7 @@
     "engagement": "set-prospect-engagement-status (client_id, client base_version, active or inactive, reason, expected_actor, same idempotency key on retry)"
   },
   "coverage": {
+    "strategy_hold": "strategy.hold from the lead-board detail read; null means no hold, absent or unknown means unavailable",
     "correspondence": "captured_entries_only; zero captures do not imply zero communication; Details exposes stored original entry",
     "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
     "scores": "existing record score; null shown as missing",

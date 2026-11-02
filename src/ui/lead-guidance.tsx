@@ -7,9 +7,9 @@ type Strategy = {
   channel: string | null; risk: string | null;
 };
 const holdReasons = {
-  suppressed: 'Suppressed.',
-  contact_ineligible: 'Contact is ineligible.',
-  unsupported_stage: 'Lead stage is not supported.',
+  suppressed: 'This contact is suppressed.',
+  contact_ineligible: 'This contact is not eligible for outreach.',
+  unsupported_stage: "This lead's stage has no outreach guidance.",
 };
 type Hold = { kind: 'none' } | { kind: 'unavailable' } | { kind: 'held'; reason: keyof typeof holdReasons };
 type Guidance = { advice: string | null; hold: Hold; strategy: Strategy };
@@ -17,10 +17,13 @@ const text = (value: unknown) => typeof value === 'string' && value.trim() ? val
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : {};
 }
+function isHoldReason(value: unknown): value is keyof typeof holdReasons {
+  return typeof value === 'string' && Object.hasOwn(holdReasons, value);
+}
 function parseHold(value: unknown): Hold {
   if (value === null) return { kind: 'none' };
   const { reason } = record(value);
-  if (reason === 'suppressed' || reason === 'contact_ineligible' || reason === 'unsupported_stage') {
+  if (isHoldReason(reason)) {
     return { kind: 'held', reason };
   }
   return { kind: 'unavailable' };
