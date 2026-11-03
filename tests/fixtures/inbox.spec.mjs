@@ -48,8 +48,11 @@ test('Home meeting confirmation offers only open, active deals', async ({ page }
   seed.deals.push({ ...base, id: 'demo-closed', name: 'Demo closed purchase', phase: 'Closed', outcome: 'won', closed_on: '2026-09-01' },
     { ...base, id: 'demo-paused', name: 'Demo paused lease', operating_state: 'paused' });
   await page.route('**/data/board-seed.json', route => route.fulfill({ json: seed }));
+  // The brief loads independently of the agenda. Inject the review only after
+  // its initial calendar publication, so that read cannot overwrite our case.
   await page.goto(`${server.url}/review-workflows`);
   await expect(page.locator('#observedAt')).not.toHaveText('Updating…');
+  await expect(page.locator('#morningUpdated')).toHaveAttribute('datetime', /.+/);
   await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
     state: 'partial', items: [], notes: [], follow_up_reviews: [{ key: 'cccccccccccccccc', state: 'needs_review', title: 'Demo picker meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
   } })));
