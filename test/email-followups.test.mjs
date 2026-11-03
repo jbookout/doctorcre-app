@@ -1005,3 +1005,55 @@ for (const error of ['email_new_deal_client_mismatch', 'email_filing_correction_
   assert.equal(writes[0].deal, 'created-demo'); assert.equal(writes[0].correction_reason, 'Separate transaction for the selected client');
   assert.equal(writes[0].note, 'Discussed by phone'); view.dispose();
 });
+
+for (const outcome of ['lost', 'success', 'refusal', 'in-flight']) test(`changed-target remount reconciles original filing after ${outcome}`, async () => {
+  const row = filingRow(), calls = [];
+  const originalDeal = row.deal;
+  let release;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'deal-room-board') result = { deals: [] };
+    else if (name === 'preview-email-filing') result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    else if (name === 'confirm-email-filing') {
+      calls.push(args);
+      if (calls.length === 1 && outcome === 'lost') throw Error('synthetic lost response');
+      if (calls.length === 1 && outcome === 'in-flight') await waiting;
+      result = outcome === 'refusal' ? { error: 'version_conflict' } : { ok: true, proposal_id: row.id, version: args.base_version + 1, note: args.note,
+        status: 'confirmed', disposition: 'filed', deal: args.deal, activity_id: row.source.activity_id };
+    } else throw Error(name);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const file = async (mounted, deal) => {
+    await clickFollowup(mounted.container, 'File to existing deal');
+    fillFollowup(mounted.container, 'deal', deal);
+    await clickFollowup(mounted.container, 'Review selected deal');
+    await clickFollowup(mounted.container, 'Confirm filing');
+  };
+  const first = setup(client); await first.view.refresh(); await file(first, originalDeal);
+  assert.equal(calls.length, 1); first.view.dispose();
+  const changedDeal = '20000000-0000-4000-8000-000000000002'; row.suggested_deals = [{ deal: changedDeal, name: 'Other demo', reasons: [] }];
+  let reopened = setup(client); await reopened.view.refresh();
+  if (outcome === 'in-flight') {
+    reopened.view.dispose(); reopened = setup(client); await reopened.view.refresh();
+    release(); await settle();
+  }
+  if (outcome === 'lost' || outcome === 'in-flight') {
+    assert.match(reopened.container.textContent, /Outcome unknown/, 'recover before offering a changed target');
+    assert.equal([...reopened.container.querySelectorAll('button')].some(button => button.textContent === 'File to existing deal'), false);
+    await clickFollowup(reopened.container, 'Check outcome');
+    assert.equal(calls.length, outcome === 'lost' ? 2 : 1);
+    if (outcome === 'lost') assert.deepEqual(calls[1], calls[0]);
+    assert.match(reopened.container.textContent, /Filed to the selected deal/);
+    assert.equal(calls.every(args => args.deal === originalDeal), true);
+  } else {
+    await file(reopened, changedDeal);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].deal, '20000000-0000-4000-8000-000000000002');
+    assert.notEqual(calls[1].idempotency_key, calls[0].idempotency_key);
+  }
+  reopened.view.dispose();
+});
