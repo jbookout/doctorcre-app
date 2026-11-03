@@ -1,0 +1,18 @@
+stateDiagram-v2
+  [*] --> Draft: Type an ask
+  Draft --> Queued: Save and send
+  Queued --> Submitting: Reconnect
+  Submitting --> Accepted: Matching receipt
+  Submitting --> Refused: Verified refusal
+  Submitting --> Unknown: Interrupted or receipt unavailable
+  Unknown --> Submitting: Reconnect or check same request
+  Refused --> Submitting: Partner retries same request
+  Accepted --> Accepted: Reopen or late receipt
+  Draft --> Draft: Late cleanup preserves newer typing
+  Queued --> Queued: Offline
+  Unknown --> Unknown: Offline
+  Refused --> Refused: Reconnect without retry
+  %% never Acceptance without a matching server receipt.
+  %% never A retry changes the request body or key.
+  %% never A late receipt erases newer typing or replaces acceptance.
+  %% never Storage failure is described as saved on this device.
