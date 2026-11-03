@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { deepLinkView } from '../js/notifications-model.js';
 import { handleDoctorcreRequest } from '../src/worker.js';
+import { activeDestination } from '../js/navigation.js';
 import * as routes from '../js/routes.js';
 import { store, CONVERSATION, JOE_ASK, ANSWER } from './doc-request-fixture.mjs';
 const carr = process.env.CARR_CHECKOUT;
@@ -35,6 +36,7 @@ test('contract examples share one strict matcher and malformed paths stay unrout
   const contract = JSON.parse(await readFile(mirrored, 'utf8'));
   for (const example of contract.examples) {
     assert.equal(deepLinkView(example.deep_link).href, example.deep_link);
+    assert.equal(activeDestination(example.deep_link), '/doc-chats');
     assert.equal(routes.routeKey(example.deep_link), '/doc/conversations/:conversation_id/turns/:msg_id');
   }
   for (const path of ['/doc/conversations/not-a-uuid/turns/'+ANSWER,

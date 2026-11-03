@@ -171,6 +171,7 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
+  "/doc/conversations/:conversation_id/turns/:msg_id": "/doc-chats",
   "/inbox": "/",
   "/inbox/card/:item_id": "/",
   "/a/:ref": "/leads",
