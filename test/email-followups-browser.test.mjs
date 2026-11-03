@@ -301,7 +301,7 @@ test('Home creates a new deal and files its email through the live client at pho
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('out/test-artifacts/email-followups', { recursive: true });
   await card.screenshot({ path: 'out/test-artifacts/email-followups/filing-new-deal.png', animations: 'disabled' });
-  await card.getByRole('button', { name: 'Review selected deal', exact: true }).click();
+  await card.getByRole('button', { name: 'Create deal and review filing', exact: true }).click();
   await card.getByRole('button', { name: 'Confirm filing', exact: true }).click();
   await card.getByText('Filed to the selected deal.', { exact: true }).first().waitFor();
   assert.equal(calls[0].name, 'new-deal'); assert.equal(calls[0].args.client, 'Demo Client');

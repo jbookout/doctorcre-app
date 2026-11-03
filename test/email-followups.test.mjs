@@ -867,7 +867,7 @@ for (const kind of ['file_to_deal', 'possible_new_deal']) test(`${kind} recovers
     confirmEmailFiling: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'confirmed', version: 4, disposition: 'filed', note: args.note, deal: args.deal, activity_id: row.source.activity_id }; } });
   await view.refresh(); await clickFollowup(container, 'New deal');
   fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Demo existing client'); fillFollowup(container, 'note', 'Separate transaction confirmed');
-  await clickFollowup(container, 'Review selected deal');
+  await clickFollowup(container, 'Create deal and review filing');
   assert.match(container.textContent, /Outcome unknown/);
   await view.refresh(); await clickFollowup(container, 'Check outcome');
   assert.deepEqual(creates[0], creates[1]);
@@ -924,7 +924,7 @@ test('cancelling or refusing filing after creation retains the created deal inst
     createDeal: async () => { creates++; return { deal_id: 'created-demo' }; },
     previewEmailFiling: async args => ({ ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: 3 }),
     confirmEmailFiling: async () => { refuse = true; throw Object.assign(Error('stale'), { payload: { error: 'version_conflict' } }); } });
-  await view.refresh(); await clickFollowup(container, 'New deal'); fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Demo Client'); await clickFollowup(container, 'Review selected deal');
+  await view.refresh(); await clickFollowup(container, 'New deal'); fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Demo Client'); await clickFollowup(container, 'Create deal and review filing');
   await clickFollowup(container, 'Cancel');
   assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
   await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Confirm filing');

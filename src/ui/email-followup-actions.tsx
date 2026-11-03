@@ -88,7 +88,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
             </> : <p>Mark this follow-up handled. Nothing will be sent.</p>}
         {matching && draft.action !== 'defer' && field('reason', 'Reason for changing the client or filed deal, if needed', draft.reason)}
         <label>Optional note<textarea data-field="note" maxLength={2000} defaultValue={draft.note}/></label>
-        <button className="btn home-outline" type="submit">{draft.action === 'defer' ? 'Defer follow-up' : matching ? 'Review selected deal' : 'Confirm handled'}</button>
+        <button className="btn home-outline" type="submit">{draft.action === 'defer' ? 'Defer follow-up' : draft.action === 'new' ? 'Create deal and review filing' : matching ? 'Review selected deal' : 'Confirm handled'}</button>
         {button('cancel', 'Cancel')}<p role="status" data-action-message=""/>
       </form>;
     } else if (state.kind === 'preview') content = <>
