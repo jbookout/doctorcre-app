@@ -1,23 +1,25 @@
 {
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "c6f99ab0f6c96d03f08aa732492c5c64729ea0a6",
-    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2596",
+    "source_commit": "4bbb9e582a6e79e280ac35f1da4d31804af8876e",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2914",
     "contract": "mcp-server/contracts/email-thread-filings.v1.json"
   },
   "schema": "carr-email-thread-filings.v1",
-  "read": "list-email-thread-filings {} returns {filings} for the authenticated partner. The app shows only subject and sender_name (null shows as unavailable), never summary, addresses or ids as text. A still-filed receipt may link to /deals?deal= using only its exact deal UUID. Missing or invalid identities show destination unavailable. Confirmed Undo removes the current-filing link. activity_version is the server guard and is null for legacy events; never infer missing fields.",
+  "read": "list-email-thread-filings {} returns {filings} for the authenticated partner. The app shows only subject and sender_name, never summary, addresses or ids as text. Only current_deal_id supplies the current deal link. Null means currently unfiled; missing or invalid means current destination unavailable. Historical deal and receipt membership never establish a current destination. An omitted receipt removes its destination link without proving whether an uncertain Undo succeeded. activity_version remains the server Undo guard, including null for legacy events.",
   "read_fields": {
     "event_id": "Filing event UUID, supplied to undo",
-    "deal": "Filed deal UUID",
+    "deal": "Historical filing event deal UUID",
+    "current_deal_id": "UUID | null. Current source activity deal_id read in the same SELECT as its filing event. Null means currently unfiled. Independent of historical deal and event order or timestamps; does not establish Undo eligibility.",
     "activity_id": "Source activity UUID",
     "recorded_at": "Filing event timestamp",
     "summary": "Source activity summary",
     "subject": "Source email subject, null when unavailable",
     "sender_name": "Source email sender display name, null when unavailable",
-    "occurred_at": "Source email timestamp; falls back to filing time when intake did not pass the email time",
+    "occurred_at": "Source email timestamp",
     "activity_version": "Activity version recorded at filing, null for legacy events"
   },
-  "undo": "undo-email-thread-filing {event_id,idempotency_key} with a new UUID key per attempt. Refusals such as email_thread_filing_changed leave the filing intact and are shown, never retried.",
-  "deployment_order": "The app must not merge before the producer PR is deployed."
+  "undo": "undo-email-thread-filing {event_id,idempotency_key} with a fresh UUID key for a new request. Uncertain outcomes retain the original request and key for replay. Refusals trigger a current-state readback; an unavailable read leaves the outcome uncertain.",
+  "deployment_order": "The app must not merge before the producer PR is deployed.",
+  "membership": "Automatic filing receipts only. Explicitly undone receipts and never-filed emails remain omitted. Manual unfiling can leave a historical receipt with current_deal_id null."
 }
