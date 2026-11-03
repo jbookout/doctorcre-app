@@ -335,6 +335,7 @@ for (const action of ['Mark done', 'Hide from inbox']) test(`offline before ${ac
   if (action === 'Mark done') {
     await page.getByText('Result uncertain.', { exact: false }).waitFor();
     await retry.click();
+    await page.getByText('Undone.', { exact: false }).waitFor();
     const attempts = calls.filter(call => call.name === inverseName);
     assert.equal(attempts.length, 2);
     assert.deepEqual(attempts[0], attempts[1]);
@@ -353,10 +354,13 @@ for (const target of ['extra10', 'extra9']) test(`scrolled completion of ${targe
   await page.waitForFunction(id => document.activeElement.closest('[data-inbox-row]')?.dataset.inboxRow === id, target === 'extra10' ? 'extra11' : 'extra8');
   const notice = await page.locator('.inbox-notice').boundingBox();
   const undo = await page.getByRole('button', { name: 'Undo', exact: true }).boundingBox();
-  assert.ok(notice.y >= 70 && notice.y + notice.height <= 810, 'named receipt clears fixed mobile chrome');
-  assert.ok(undo.y >= 70 && undo.y + undo.height <= 810, 'Undo clears fixed mobile chrome');
-  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `/tmp/j62-${target}-receipt.png` });
+  const safe = await page.evaluate(() => ({ top: Math.max(0, document.querySelector('.app-layout-tabbar')?.getBoundingClientRect().bottom || 0), bottom: Math.min(innerHeight, ...[...document.querySelectorAll('.app-shell-header, .app-layout-status')].map(node => node.getBoundingClientRect()).filter(box => box.height && box.top > innerHeight / 2).map(box => box.top)) }));
+  assert.ok(notice.y >= safe.top && notice.y + notice.height <= safe.bottom, 'named receipt clears fixed mobile chrome');
+  assert.ok(undo.y >= safe.top && undo.y + undo.height <= safe.bottom, 'Undo clears fixed mobile chrome');
+  const focused = await page.locator('[data-inbox-row] h3 a:focus').boundingBox();
+  assert.ok(focused.y >= notice.y + notice.height || focused.y + focused.height <= notice.y, 'receipt does not cover the focused neighbour');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 });
 test('collapsed Working and Done shelves do not intercept previous-card focus', async t => {
   const { page } = await open(t);

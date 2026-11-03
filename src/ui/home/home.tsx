@@ -8,6 +8,7 @@ import { recordRoutes } from './routes';
 type Pending = { request: Command; before: readonly InboxItem[]; undoing?: true };
 type Undo = { action: Action | 'reopen'; items: readonly InboxItem[]; until?: string; receipt?: TaskReceipt };
 const queryKey = ['home-inbox'];
+const visibleRow = (node: HTMLElement) => !node.closest('details:not([open])') && node.getClientRects().length > 0;
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
 function Inbox({ client }: { client: InboxClient }) {
   const { item_id } = useParams();
@@ -38,17 +39,19 @@ function Inbox({ client }: { client: InboxClient }) {
   function focusRow(preferred: string[] = []) { setFocusTargets([...preferred]); }
   useLayoutEffect(() => {
     if (!focusTargets) return;
-    const links = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row] h3 a') || []).filter(node => node.getClientRects().length);
+    const links = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row] h3 a') || []).filter(visibleRow);
     const target = focusTargets.map(id => links.find(node => node.closest<HTMLElement>('[data-inbox-row]')?.dataset.inboxRow === id)).find(Boolean) || links[0] || root.current?.querySelector<HTMLElement>('.inbox-header button');
     target?.focus();
+    target?.scrollIntoView({ block: 'center' });
   }, [focusTargets]);
   async function run(operation: Pending) {
     if (inFlight.current) return;
-    if (!navigator.onLine) { setNotice('Offline. No change was sent. Reconnect and retry manually.'); return; }
-    const visible = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row]') || []).filter(node => node.getClientRects().length).map(node => node.dataset.inboxRow || '');
+    setPending(operation);
+    if (!navigator.onLine) { setNotice('Offline. No change was sent. Reconnect and retry the same request.'); return; }
+    const visible = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row]') || []).filter(visibleRow).map(node => node.dataset.inboxRow || '');
     const index = visible.indexOf(operation.before[0]?.item_id || '');
     const neighbours = [...visible.slice(index + 1), ...visible.slice(0, index).reverse(), ...visible.slice(index, index + 1)];
-    inFlight.current = true; setBusy(true); setPending(operation); setNotice('Waiting for server confirmation…');
+    inFlight.current = true; setBusy(true); setNotice('Waiting for server confirmation…');
     try {
       const results = await client.run(operation.request);
       const successes = results.flatMap(result => result.ok ? [result.item] : []);
@@ -111,7 +114,7 @@ function Inbox({ client }: { client: InboxClient }) {
   }
   return <div ref={root} onKeyDown={event => {
     if (!['ArrowDown', 'ArrowUp'].includes(event.key) || !(event.target instanceof HTMLElement) || !event.target.matches('[data-inbox-row] h3 a')) return;
-    const links = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row] h3 a') || []).filter(link => link.getClientRects().length);
+    const links = Array.from(root.current?.querySelectorAll<HTMLElement>('[data-inbox-row] h3 a') || []).filter(visibleRow);
     const index = links.indexOf(event.target); const next = links[index + (event.key === 'ArrowDown' ? 1 : -1)];
     if (next) { event.preventDefault(); next.focus(); }
   }}>
