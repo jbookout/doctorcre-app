@@ -1,0 +1,1 @@
+export function requireEmailActionReceipt(method: string, request: { proposal_id: string; base_version: number; note: string; disposition?: string; deferred_until?: string; deal?: string }, receipt: unknown, activityId?: string): { kind: 'deferred'; until: string } | { kind: 'confirmed' };

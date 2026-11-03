@@ -16,6 +16,7 @@ import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
+import { requireEmailActionReceipt } from './email-action-receipt.mjs';
 import { createRetainedCommands } from './retained-commands.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
@@ -60,7 +61,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'review-deal-update', 'confirm-email-filing', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'edit-email-draft', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
+    'undo-call-change', 'review-call-outcome', 'review-deal-update', 'confirm-email-filing', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'snooze-email-proposal', 'handle-email-proposal', 'edit-email-draft', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -159,6 +160,16 @@ export function createLiveClient(opts = {}) {
       return rawRpc(verb, request, signal, timeoutMs || opts.writeTimeoutMs || 10_000,
         sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined);
     });
+  }
+
+  function emailAction(method, verb, args, context) {
+    const activityId = context?.activityId;
+    return sessionCommands.send(JSON.stringify(['email-action', args.proposal_id]), args, async (request, binding) => {
+      if (!online()) throw Object.assign(new Error('Offline. Reconnect before checking outcome.'), { payload: { error: 'offline' } });
+      const receipt = await rawRpc(verb, request, undefined, opts.writeTimeoutMs || 10_000, { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) });
+      requireEmailActionReceipt(method, request, receipt, activityId);
+      return receipt;
+    }, method);
   }
 
   // CARR phase slugs and board labels map one-to-one in both directions.
@@ -364,7 +375,13 @@ export function createLiveClient(opts = {}) {
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
-    async confirmEmailFiling(args) { return write('confirm-email-filing', args); },
+    async previewEmailFiling(args) { return rpc('preview-email-filing', args); },
+    getPendingEmailAction(proposalId) {
+      return sessionCommands.details(JSON.stringify(['email-action', proposalId]));
+    },
+    async snoozeEmailProposal(args) { return emailAction('snoozeEmailProposal', 'snooze-email-proposal', args); },
+    async handleEmailProposal(args) { return emailAction('handleEmailProposal', 'handle-email-proposal', args); },
+    async confirmEmailFiling(args, context) { return emailAction('confirmEmailFiling', 'confirm-email-filing', args, context); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async editEmailDraft(args) { return write('edit-email-draft', args); },

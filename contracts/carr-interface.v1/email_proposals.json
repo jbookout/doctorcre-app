@@ -136,8 +136,8 @@
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2503"
     },
     "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
-    "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
-    "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
+    "confirmation": "See home_actions for the current exact-target v2 preview and confirmation protocol. Both filing card kinds offer an existing deal or a separate new deal.",
+    "deployment_order": "The current producer is pinned in home_actions and must be deployed before this consumer."
   },
   "non_deal_next_steps": {
     "producer": {
@@ -146,7 +146,22 @@
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2724"
     },
     "read": "Home calls list-email-proposals with include_non_deal=true. Non-deal next_step rows have deal=null and subject_type, subject_id and subject_name matching their preview. Deal pages keep their existing deal filter.",
-    "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews remain dismissible.",
+    "confirmation": "Reuse preview-email-next-step and confirm-email-next-step with deal=null, the exact activity, quote, text, date, owner and fresh digest. Show the affected contact and replacement action before confirmation. Joe alone confirms. Null previews retain Not now and Already handled.",
     "deployment_order": "Merge and verify the pinned server producer before merging this consumer. Do not auto-merge this app change."
+  },
+  "home_actions": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "4bbb9e582a6e79e280ac35f1da4d31804af8876e",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2914"
+    },
+    "contract": "carr-email-followups.v2 2.1.0",
+    "preview": "preview-email-filing {proposal_id,deal,correction_reason?} returns email-followups.v2 bound to selected target and proposal/source/target versions. New consumers never confirm a list digest.",
+    "file": "confirm-email-filing {proposal_id,base_version,deal,proposal_digest,disposition:filed|handled,note?,correction_reason?,idempotency_key}. Handled requires a selected deal. New deal uses retained new-deal then exact-target preview before confirming.",
+    "handle": "handle-email-proposal {proposal_id,base_version,note?,idempotency_key} for supported next_step and owned reply_draft rows. No send.",
+    "defer": "snooze-email-proposal {proposal_id,base_version,deferred_until,note?,idempotency_key}. Future absolute UTC instant. App defaults to tomorrow 09:00 America/Chicago with a picker. Pending reads exclude it strictly before this instant and include it at expiry.",
+    "receipt": "ok, proposal_id, incremented version, status, disposition, note and stored deferred_until for snooze; filing also returns activity_id and selected deal. current_deal_id is the source activity current deal, not history.",
+    "recovery": "Retain exact uncertain requests and keys. Refusals require explicit review. Cancel saves nothing. Reply editing, grace and Undo keep their original contracts.",
+    "deployment": "Producer merge and deployed identity were verified by the coordinator in the implementation brief. No production calls by this builder."
   }
 }

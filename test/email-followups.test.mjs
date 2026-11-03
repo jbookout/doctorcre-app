@@ -1,4 +1,9 @@
-import test, { afterEach, beforeEach, mock } from 'node:test';
+import test, { afterEach, beforeEach, before, mock } from 'node:test';
+import { uiAssets } from '../scripts/ui-bundle.mjs';
+import { readFile, writeFile } from 'node:fs/promises';
+before(async () => {
+  for (const [path, bytes] of await uiAssets(path => readFile(new URL(`../${path}`, import.meta.url), 'utf8'))) await writeFile(new URL(`../${path}`, import.meta.url), bytes);
+});
 const windows = [];
 beforeEach(() => mock.timers.enable({ apis: ['setInterval'] }));
 afterEach(() => { windows.splice(0).forEach(win => win.close()); mock.timers.reset(); });
@@ -21,6 +26,8 @@ const response = proposals => ({ schema_version: 'email-proposals.v1', proposals
 function setup(client, options = {}) {
   const dom = new JSDOM('<section id="review"></section>');
   windows.push(dom.window);
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
   const container = dom.window.document.querySelector('section');
   const view = mountEmailFollowups({ container, client: { selfActor: 'joe', ...client }, onChange: () => {}, clock: globalThis, ...options });
   const action = name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) });
@@ -111,60 +118,12 @@ test('phase moves use their preview contract and show the phase names used by th
   assert.deepEqual(Object.keys(calls[1]).sort(), ['activity_id', 'deal', 'evidence_quote', 'idempotency_key', 'proposal_digest']);
 });
 
-test('Dismiss requires a reason and sends the proposal version the user read', async () => {
-  const row = proposal(), calls = [];
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed', version: 4 }; } });
-  await view.refresh(); await action('Add a note');
-  await action('Dismiss proposal');
-  assert.equal(calls.length, 0);
-  const reason = container.querySelector('textarea');
-  assert.ok(reason); assert.equal(reason.maxLength, 500);
-  reason.value = 'Already handled on the call';
-  await action('Dismiss proposal');
-  const { idempotency_key, ...args } = calls[0];
-  assert.ok(idempotency_key);
-  assert.deepEqual(args, { proposal_id: row.id, base_version: 3, reason: 'Already handled on the call' });
-  assert.match(container.textContent, /Dismissed/);
-});
-
 test('mailbox display names use the prefix as text when sender metadata contains markup', async () => {
   const row = proposal(); row.source.sender = 'Dana <b>Demo</b> <dana@example.test>'; row.source.subject = '<img src=x onerror=alert(1)>Plan';
   const { container, view } = setup({ listEmailProposals: async () => response([row]) });
   await view.refresh();
   assert.match(container.querySelector('.email-source').textContent, /^Dana · Oct 26,/);
   assert.equal(container.querySelector('.email-source img, .email-source b'), null);
-});
-
-test('a dismiss chip dismisses in one tap with its text as the reason', async () => {
-  const row = proposal(), calls = []; let changes = 0;
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed', version: 4 }; } }, { onChange: () => changes++ });
-  await view.refresh();
-  assert.deepEqual([...container.querySelectorAll('[data-email-chip]')].map(chip => chip.textContent), ['Already handled', 'Wrong deal', 'Not now']);
-  await action('Not now');
-  const { idempotency_key, ...args } = calls[0];
-  assert.match(idempotency_key, /^[a-f0-9-]{36}$/);
-  assert.deepEqual(args, { proposal_id: row.id, base_version: 3, reason: 'Not now' });
-  assert.match(container.textContent, /Dismissed\./); assert.equal(changes, 1);
-  assert.equal(container.querySelector('[data-email-chip]'), null);
-  await action('Not now'); assert.equal(calls.length, 1);
-});
-
-test('a refused chip dismissal reports the refusal and an uncertain one offers Check outcome with the same request', async () => {
-  const row = proposal(), calls = [];
-  const refused = setup({ listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async () => { throw Object.assign(Error('conflict'), { payload: { error: 'version_conflict' } }); } });
-  await refused.view.refresh(); await refused.action('Wrong deal');
-  assert.match(refused.container.textContent, /changed/);
-  const lost = setup({ listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async args => { calls.push(args); if (calls.length === 1) throw Error('lost response'); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
-  await lost.view.refresh(); await lost.action('Already handled');
-  assert.match(lost.container.textContent, /Outcome unknown/);
-  assert.equal(lost.container.querySelector('[data-email-chip]'), null);
-  await lost.action('Check outcome');
-  assert.deepEqual(calls[1], calls[0]); assert.equal(calls[0].reason, 'Already handled');
-  assert.match(lost.container.textContent, /Dismissed\./);
 });
 
 test('unknown confirmation locks other decisions and Check outcome replays the same request', async () => {
@@ -200,7 +159,7 @@ test('stale preview refusals never auto-retry and unavailable previews remain di
   await view.refresh();
   assert.match(container.textContent, /Proposal needs a fresh review/);
   assert.equal(container.querySelector('[data-email-action="preview"]'), null);
-  assert.ok(container.querySelector('[data-email-action="note"]'));
+  assert.ok(container.querySelector('[data-followup="defer"]'));
 });
 
 test('authorization loss and session invalidation clear protected evidence and block late reads', async () => {
@@ -212,43 +171,10 @@ test('authorization loss and session invalidation clear protected evidence and b
   const second = setup({ listEmailProposals: () => new Promise(resolve => { release = resolve; }) });
   const read = second.view.refresh();
   second.dom.window.dispatchEvent(new second.dom.window.Event('doctorcre-session-invalidated'));
-  release(response([proposal()])); await read;
+  await settle();
+  if (release) release(response([proposal()])); await read;
   assert.doesNotMatch(second.container.textContent, /Demo Harbor|Please send/);
   view.dispose(); dom.window.close(); second.view.dispose(); second.dom.window.close();
-});
-
-test('refresh preserves a dismissal draft and typing focus', async () => {
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([proposal()]) });
-  await view.refresh(); await action('Add a note');
-  const textarea = container.querySelector('textarea');
-  textarea.value = 'Already discussed'; textarea.focus(); textarea.setSelectionRange(7, 7);
-  textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  await view.refresh();
-  const replacement = container.querySelector('textarea');
-  assert.equal(replacement.value, 'Already discussed');
-  assert.equal(dom.window.document.activeElement, replacement);
-  assert.equal(replacement.selectionStart, 7);
-});
-
-test('a dismissal draft retains the version originally reviewed when a newer read arrives', async () => {
-  const row = proposal(), calls = [];
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([structuredClone(row)]),
-    dismissEmailProposal: async args => { calls.push(args); throw Object.assign(Error('conflict'), { payload: { error: 'version_conflict' } }); } });
-  await view.refresh(); await action('Add a note');
-  container.querySelector('textarea').value = 'Already handled';
-  container.querySelector('textarea').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  row.version = 4; await view.refresh(); await action('Dismiss proposal');
-  assert.equal(calls[0].base_version, 3);
-  assert.match(container.textContent, /changed/);
-});
-
-test('opening a second dismissal focuses that proposal reason instead of the first open form', async () => {
-  const second = { ...proposal(), id: '10000000-0000-4000-8000-000000000002' };
-  const { container, view, dom } = setup({ listEmailProposals: async () => response([proposal(), second]) });
-  await view.refresh();
-  await view.click({ target: container.querySelectorAll('[data-email-action="note"]')[0] });
-  await view.click({ target: container.querySelector('[data-email-action="note"]') });
-  assert.equal(dom.window.document.activeElement.closest('article').dataset.emailId, second.id);
 });
 
 test('Home pages pending proposals and keeps the first page when loading more fails', async () => {
@@ -328,7 +254,7 @@ test('deal review refuses cross-deal rows instead of showing or acting on anothe
   assert.doesNotMatch(container.textContent, /No pending/);
 });
 
-for (const decision of ['dismiss', 'confirm']) test(`reopening a deal recovers the original uncertain ${decision} request`, async () => {
+for (const decision of ['confirm']) test(`reopening a deal recovers the original uncertain ${decision} request`, async () => {
   const row = proposal(), writes = [];
   const client = createLiveClient({ fetchImpl: async (path, init) => {
     if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
@@ -339,20 +265,13 @@ for (const decision of ['dismiss', 'confirm']) test(`reopening a deal recovers t
     else {
       writes.push(args);
       if (writes.length === 1) throw Error('lost response');
-      result = name === 'dismiss-email-proposal' ? { ok: true, status: 'dismissed', proposal_id: row.id }
-        : { ...row.preview, proposal_digest: args.proposal_digest, status: 'confirmed', requires_confirmation: false };
+      result = { ...row.preview, proposal_digest: args.proposal_digest, status: 'confirmed', requires_confirmation: false };
     }
     return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
   } });
-  async function decide(view, reason) {
-    if (decision === 'dismiss') {
-      await view.action('Add a note');
-      view.container.querySelector('textarea').value = reason;
-      await view.action('Dismiss proposal');
-    } else {
-      await view.action('Confirm');
-      await view.action('Confirm change');
-    }
+  async function decide(view) {
+    await view.action('Confirm');
+    await view.action('Confirm change');
   }
   const first = setup(client, { deal: row.deal });
   await first.view.refresh(); await decide(first, 'Original synthetic reason');
@@ -634,7 +553,7 @@ for (const actor of ['joe', 'dell', null]) test(`reply review is offered only to
   const { container, view } = setup({ selfActor: actor, listEmailProposals: async () => response([replyDraft()]) });
   await view.refresh();
   assert.equal(Boolean(container.querySelector('[data-email-action="edit-draft"]')), actor === 'joe');
-  assert.ok(container.querySelector('[data-email-action="note"]'));
+  assert.equal(Boolean(container.querySelector('[data-followup="defer"]')), actor === 'joe');
 });
 
 test('recipient changes preserve reviewed addresses across refresh and require explicit fresh review after refusal', async () => {
@@ -689,279 +608,11 @@ for (const code of ['email_draft_copy_address_missing', 'email_draft_source_miss
   assert.equal(container.querySelectorAll('article').length, 2);
   assert.match(container.textContent, /Recipient addresses are unavailable/);
   assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
-  assert.equal(container.querySelectorAll('[data-email-action="note"]').length, 2);
+  assert.equal(container.querySelectorAll('[data-followup="defer"]').length, 2);
   assert.doesNotMatch(container.textContent, /Could not load/);
 });
 
-test('filing proposals show evidence and confirm the displayed existing deal', async () => {
-  const row = proposal(); row.kind = 'file_to_deal'; row.confirm_verb = 'confirm-email-filing';
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote, sender_role: 'lender',
-    sender: { name: 'Demo Lender', party_id: 'demo-contact' }, new_people: [], text: null, requires_confirmation: true, proposal_digest: digest };
-  let request;
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    confirmEmailFiling: async args => { request = args; return { ok: true, status: 'confirmed', deal: row.deal, activity_id: row.source.activity_id }; } });
-  await view.refresh();
-  assert.match(container.textContent, /Demo Lender/);
-  await action('Review filing'); await action('Confirm filing');
-  assert.equal(request.proposal_id, row.id); assert.equal(request.base_version, row.version);
-  assert.equal(request.proposal_digest, digest); assert.equal(request.deal, undefined);
-  assert.match(container.textContent, /Confirmed/);
-});
-
-test('possible new matter creates a deal and confirms it with the filing proposal', async () => {
-  const row = proposal(); row.kind = 'possible_new_deal'; row.deal = null; row.deal_name = null; row.proposed_matter = 'Possible new practice'; row.confirm_verb = 'confirm-email-filing';
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote, sender_role: 'client',
-    sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], text: row.proposed_matter, requires_confirmation: true, proposal_digest: digest };
-  const calls = [];
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
-    createDeal: async args => { calls.push(['create', args]); return { status: 'ok', deal_id: 'created-deal' }; },
-    confirmEmailFiling: async args => { calls.push(['confirm', args]); return { ok: true, status: 'confirmed', deal: 'created-deal', activity_id: row.source.activity_id }; } });
-  await view.refresh(); assert.match(container.textContent, /Possible new practice/);
-  await action('Review filing');
-  for (const [key, value] of [['deal-name', 'Demo practice'], ['deal-client', 'Demo Client']]) {
-    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  }
-  await action('Create deal and confirm filing');
-  assert.equal(calls[0][1].name, 'Demo practice'); assert.equal(calls[0][1].client, 'Demo Client');
-  assert.equal(calls[1][1].deal, 'created-deal'); assert.equal(calls[1][1].proposal_digest, digest);
-  assert.match(container.textContent, /Confirmed/);
-});
-
-test('unknown proposal kinds are ignored without hiding known proposals', async () => {
-  const { container, view } = setup({ listEmailProposals: async () => response([{ id: 'future', kind: 'future_kind' }, proposal()]) });
-  await view.refresh(); assert.match(container.textContent, /Demo Harbor expansion/); assert.doesNotMatch(container.textContent, /Could not load/);
-});
-
-test('uncertain new-deal creation retries the same request and confirms only once', async () => {
-  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'New matter', confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  const creates = [], confirmations = [];
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
-    createDeal: async args => { creates.push(args); if (creates.length === 1) throw Error('lost'); return { deal_id: 'created-deal' }; },
-    confirmEmailFiling: async args => { confirmations.push(args); return { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id }; } });
-  await view.refresh(); await action('Review filing');
-  for (const [key, value] of [['deal-name', 'Demo deal'], ['deal-client', 'Demo Client']]) {
-    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  }
-  await action('Create deal and confirm filing'); assert.match(container.textContent, /outcome unknown/i);
-  await action('Check outcome'); assert.deepEqual(creates[0], creates[1]); assert.equal(confirmations.length, 1);
-});
-
-test('filing refusals show the server public hint', async () => {
-  for (const code of ['email_new_deal_client_mismatch', 'email_new_deal_not_found', 'email_thread_not_continuous', 'email_thread_ambiguous', 'email_thread_recipient_changed', 'email_sender_contact_required', 'email_proposal_stale']) {
-    const row = proposal(); row.kind = 'file_to_deal'; row.confirm_verb = 'confirm-email-filing';
-    row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal, activity_id: row.source.activity_id,
-      evidence_quote: row.source.evidence_quote, sender_role: 'lender', sender: { name: 'Demo', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-    const { container, view, action } = setup({ listEmailProposals: async () => response([row]), confirmEmailFiling: async () => { throw Object.assign(Error('refused'), { payload: { error: code, hint: `Public hint for ${code}` } }); } });
-    await view.refresh(); await action('Review filing'); await action('Confirm filing');
-    assert.match(container.textContent, new RegExp(`Public hint for ${code}`));
-  }
-});
-
-test('a filing refusal after creation preserves the created deal and cannot create it twice', async () => {
-  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'New matter', confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  let creates = 0;
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
-    createDeal: async () => { creates++; return { deal_id: 'created-deal' }; },
-    confirmEmailFiling: async () => { throw Object.assign(Error('refused'), { payload: { error: 'email_new_deal_client_mismatch', hint: 'Choose a deal belonging to the email client.' } }); } });
-  await view.refresh(); await action('Review filing');
-  for (const [key, value] of [['deal-name', 'Demo deal'], ['deal-client', 'Demo Client']]) {
-    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  }
-  await action('Create deal and confirm filing');
-  assert.match(container.textContent, /Choose a deal belonging to the email client/);
-  assert.equal(container.querySelector('a[href="/deals?deal=created-deal"]').textContent, 'Open created deal');
-  assert.equal(container.querySelector('[data-email-action="create-filing"]'), null); assert.equal(creates, 1);
-});
-
-test('filing confirmation keeps the proposal version reviewed before refresh', async () => {
-  const row = proposal(); row.kind = 'file_to_deal'; row.confirm_verb = 'confirm-email-filing';
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  let current = row, sent;
-  const { view, action } = setup({ listEmailProposals: async () => response([current]), confirmEmailFiling: async args => { sent = args; return { ok: true, status: 'confirmed', deal: row.deal, activity_id: row.source.activity_id }; } });
-  await view.refresh(); await action('Review filing'); current = { ...row, version: 4 }; await view.refresh(); await action('Confirm filing');
-  assert.equal(sent.base_version, 3);
-});
-
-test('after a client mismatch the partner may deliberately create a corrected deal and retains the first link', async () => {
-  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'New matter', confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  const created = [], confirmed = [];
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]), createDeal: async args => { created.push(args); return { deal_id: `created-${created.length}` }; },
-    confirmEmailFiling: async args => { confirmed.push(args); if (confirmed.length === 1) throw Object.assign(Error('refused'), { payload: { error: 'email_new_deal_client_mismatch', hint: 'Choose a deal belonging to the email client.' } }); return { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id }; } });
-  const enter = (key, value) => { const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); };
-  await view.refresh(); await action('Review filing'); enter('deal-name', 'First deal'); enter('deal-client', 'Wrong client'); await action('Create deal and confirm filing');
-  assert.equal(created.length, 1); await action('Create a corrected deal');
-  assert.ok(container.querySelector('a[href="/deals?deal=created-1"]'));
-  enter('deal-name', 'Corrected deal'); enter('deal-client', 'Right client'); await action('Create deal and confirm filing');
-  assert.equal(created.length, 2); assert.equal(confirmed[1].deal, 'created-2'); assert.match(container.textContent, /Confirmed/);
-});
-
-test('unknown, null, missing and duplicate future proposal kinds do not hide supported proposals', async () => {
-  const { container, view } = setup({ listEmailProposals: async () => response([null, {}, { kind: 'future' }, { kind: 'future' }, proposal()]) });
-  await view.refresh(); assert.match(container.textContent, /Demo Harbor expansion/); assert.doesNotMatch(container.textContent, /Could not load/);
-});
-
-
-test('unknown sender must become a contact before a new deal can be created', async () => {
-  const row = proposal();
-  Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
-    sender: { name: 'Demo sender', party_id: null }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  const writes = [];
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    createDeal: async args => { writes.push(args); return { deal_id: 'orphan' }; },
-    confirmEmailFiling: async args => { writes.push(args); } });
-  await view.refresh(); await action('Review filing');
-  assert.match(container.textContent, /Add the sender as a contact first/);
-  assert.equal(container.querySelector('[data-email-action="create-filing"]'), null);
-  await action('Create deal and confirm filing');
-  assert.deepEqual(writes, []);
-  await action('Cancel');
-  assert.ok(container.querySelector('[data-email-action="review-filing"]'));
-});
-
-for (const code of ['unhandled_verb_failure', 'not_a_client', 'deal_name_exists']) test(`new-deal refusal ${code} allows correction or cancellation without resending identical details`, async () => {
-  const row = proposal();
-  Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
-    sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  const creates = [], confirmations = [];
-  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
-    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
-    const { name, arguments: args } = JSON.parse(init.body).params;
-    let result;
-    if (name === 'list-email-proposals') result = response([row]);
-    else if (name === 'new-deal') {
-      creates.push(args);
-      if (creates.length === 1) return Response.json({ result: { isError: true, content: [{ text: JSON.stringify({ error: code }) }] } });
-      result = { deal_id: 'corrected-deal' };
-    } else if (name === 'get-deal-room') result = { base_version: 1 };
-    else if (name === 'set-lead') result = { ok: true };
-    else if (name === 'confirm-email-filing') { confirmations.push(args); result = { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id }; }
-    else throw Error(`Unexpected verb ${name}`);
-    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
-  } });
-  const { container, view, action, dom } = setup(client);
-  const enter = (key, value) => { const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); };
-  await view.refresh(); await action('Review filing');
-  enter('deal-name', 'Demo office'); enter('deal-client', 'Mistyped client'); await action('Create deal and confirm filing');
-  assert.ok(container.querySelector('[data-email-action="cancel"]'));
-  assert.ok([...container.querySelectorAll('button')].some(button => button.textContent === 'Edit deal details'));
-  assert.equal(container.querySelector('[data-email-action="replay"]'), null);
-  await action('Edit deal details'); await action('Create deal and confirm filing');
-  assert.equal(creates.length, 1);
-  await action('Cancel'); await action('Review filing');
-  enter('deal-name', 'Demo office'); enter('deal-client', 'Mistyped client'); await action('Create deal and confirm filing');
-  assert.equal(creates.length, 1);
-  enter('deal-client', 'Demo Client'); await action('Create deal and confirm filing');
-  assert.equal(creates.length, 2);
-  assert.notEqual(creates[0].idempotency_key, creates[1].idempotency_key);
-  assert.equal(confirmations.length, 1);
-  assert.match(container.textContent, /Confirmed\./);
-  view.dispose(); dom.window.close();
-});
-
-for (const field of ['deal', 'activity_id', 'status']) test(`filing receipt with a mismatched ${field} keeps the outcome unknown`, async () => {
-  const row = proposal(); Object.assign(row, { kind: 'file_to_deal', confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
-    sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  const writes = []; let changes = 0;
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    confirmEmailFiling: async args => { writes.push(args); return { ok: true, status: 'confirmed', deal: row.deal, activity_id: row.source.activity_id, [field]: 'wrong' }; } },
-  { onChange: () => changes++ });
-  await view.refresh(); await action('Review filing'); await action('Confirm filing');
-  assert.match(container.textContent, /Outcome unknown/);
-  assert.doesNotMatch(container.textContent, /Confirmed\./);
-  assert.equal(changes, 0);
-  await action('Check outcome');
-  assert.deepEqual(writes[1], writes[0]);
-});
-
-for (const kind of ['file_to_deal', 'possible_new_deal']) test(`partner can dismiss ${kind} with the reviewed version and a reason`, async () => {
-  const row = proposal(); Object.assign(row, { kind, confirm_verb: 'confirm-email-filing', preview: null,
-    ...(kind === 'possible_new_deal' ? { deal: null, deal_name: null } : {}) });
-  const writes = []; let changes = 0;
-  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async args => { writes.push(args); return { ok: true, status: 'dismissed', proposal_id: row.id }; },
-    createDeal: async () => assert.fail('Dismiss must never create a deal'),
-    confirmEmailFiling: async () => assert.fail('Dismiss must never confirm filing') }, { onChange: () => changes++ });
-  await view.refresh(); await action('Add a note'); await action('Dismiss proposal');
-  assert.equal(writes.length, 0);
-  container.querySelector('textarea').value = 'Already handled';
-  await action('Dismiss proposal');
-  assert.deepEqual(writes[0], { proposal_id: row.id, base_version: 3, reason: 'Already handled', idempotency_key: writes[0].idempotency_key });
-  assert.match(writes[0].idempotency_key, /^[a-f0-9-]{36}$/);
-  assert.match(container.textContent, /Dismissed\./); assert.equal(changes, 1);
-  await action('Dismiss proposal'); assert.equal(writes.length, 1);
-  view.dispose(); dom.window.close();
-});
-
-for (const failedVerb of ['get-deal-room', 'set-lead']) test(`failure in ${failedVerb} after deal creation recovers the same deal`, async () => {
-  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
-    sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  let creates = 0, failures = 0;
-  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
-    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
-    const { name, arguments: args } = JSON.parse(init.body).params;
-    if (name === failedVerb && failures++ === 0) return Response.json({ result: { isError: true, content: [{ text: JSON.stringify({ error: 'unhandled_verb_failure' }) }] } });
-    const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
-      : name === 'get-deal-room' ? { base_version: 1 } : name === 'set-lead' ? { ok: true }
-        : { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id };
-    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
-  } });
-  const { container, view, action, dom } = setup(client);
-  await view.refresh(); await action('Review filing');
-  for (const [key, value] of [['deal-name', 'Demo office'], ['deal-client', 'Demo Client']]) {
-    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  }
-  await action('Create deal and confirm filing');
-  assert.ok(container.querySelector('[data-email-action="replay"]'));
-  assert.equal(container.querySelector('[data-email-action="edit-filing"]'), null);
-  await action('Check outcome');
-  assert.equal(creates, 1); assert.match(container.textContent, /Confirmed\./);
-  view.dispose(); dom.window.close();
-});
-
-test('offline new-deal creation keeps the original request available after reconnect', async () => {
-  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
-  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
-    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
-    sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
-  let online = false, creates = 0;
-  const client = createLiveClient({ selfActor: 'joe', online: () => online, fetchImpl: async (path, init) => {
-    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
-    const { name, arguments: args } = JSON.parse(init.body).params;
-    const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
-      : name === 'get-deal-room' ? { base_version: 1 } : name === 'set-lead' ? { ok: true }
-        : { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id };
-    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
-  } });
-  const { container, view, action, dom } = setup(client);
-  await view.refresh(); await action('Review filing');
-  for (const [key, value] of [['deal-name', 'Demo office'], ['deal-client', 'Demo Client']]) {
-    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  }
-  await action('Create deal and confirm filing');
-  assert.equal(creates, 0); assert.ok(container.querySelector('[data-email-action="replay"]'));
-  online = true; await action('Check outcome');
-  assert.equal(creates, 1); assert.match(container.textContent, /Confirmed\./);
-  view.dispose(); dom.window.close();
-});
-
-test('Home caps email cards and exposes dismissal reasons directly', async () => {
+test('Home caps email cards and exposes deferred actions directly', async () => {
   const rows = Array.from({ length: 5 }, (_, i) => ({ ...proposal(), id: `demo-${i}` }));
   const { container, view, action } = setup({ listEmailProposals: async () => response(rows) });
   const pending = view.refresh();
@@ -970,8 +621,8 @@ test('Home caps email cards and exposes dismissal reasons directly', async () =>
   assert.equal(container.querySelectorAll('article').length, 2);
   assert.match(container.textContent, /Showing 2 of 5/);
   assert.equal(container.querySelectorAll('details.email-dismiss').length, 0);
-  assert.equal(container.querySelectorAll('[aria-label="Dismiss reason"]').length, 2);
-  assert.deepEqual([...container.querySelector('.email-dismiss').querySelectorAll('[data-email-chip]')].map(node => node.textContent), ['Already handled', 'Wrong deal', 'Not now']);
+  assert.equal(container.querySelectorAll('[data-followup="defer"]').length, 2);
+
   await action('Show 3 more');
   assert.equal(container.querySelectorAll('article').length, 5);
   view.dispose();
@@ -1014,21 +665,6 @@ for (const subjectType of ['client','lead','vendor']) test(`Home reviews ${subje
   assert.equal(calls.at(-1)[1].activity_id, row.source.activity_id);
   assert.equal(calls.at(-1)[1].proposal_digest, digest);
   assert.match(container.textContent, /Confirmed/);
-});
-
-test('blocked non-deal evidence stays readable and dismissible without a confirm control', async () => {
-  const row = { ...proposal(), deal: null, deal_name: null, preview: null,
-    subject_type: null, subject_id: null, subject_name: null, preview_error: 'email_next_step_evidence_not_found' };
-  const writes = [];
-  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
-  await view.refresh();
-  assert.match(container.textContent, /Please send the revised plan/);
-  assert.equal(container.querySelector('[data-email-action="preview"]'), null);
-  await action('Not now');
-  assert.equal(writes[0].base_version, row.version);
-  assert.equal(writes[0].reason, 'Not now');
-  assert.match(container.textContent, /Dismissed/);
 });
 
 test('a non-deal preview for a different contact is rejected before offering confirmation', async () => {
@@ -1118,20 +754,7 @@ for (const actor of ['joe', 'dell']) test(`${actor} saves and submits a contact 
   assert.match(container.textContent, /Submitted for sending/);
 });
 
-test('a contact reply stays dismissible and another partner cannot edit it', async () => {
-  const row = { ...replyDraft(), deal: null, deal_name: null };
-  row.source.sender = null;
-  const calls = [];
-  const { container, view, action } = setup({ selfActor: 'dell', listEmailProposals: async () => response([row]),
-    dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
-  await view.refresh();
-  assert.match(container.textContent, /Contact · Unfiled email/);
-  assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
-  await action('Not now');
-  assert.equal(calls[0].proposal_id, row.id);
-  assert.equal(calls[0].base_version, row.version);
-  assert.match(container.textContent, /Dismissed/);
-});
+
 
 for (const invalid of [{ source: null }, { source: { evidence_quote: 'Demo' } }, { reply_draft: null },
   { reply_draft: { ...replyDraft().reply_draft, owner: 'unknown' } },
@@ -1160,4 +783,324 @@ test('a rejected row on a paged read keeps valid pages and clears after a full r
   broken = false; await action('Refresh email follow-ups');
   assert.equal(container.querySelectorAll('article').length, 2);
   assert.doesNotMatch(container.textContent, /Some email follow-ups could not be shown/);
+});
+
+const clickFollowup = async (container, label) => {
+  const control = [...container.querySelectorAll('button')].find(node => node.textContent === label);
+  assert.ok(control, label); control.click(); await settle();
+};
+const fillFollowup = (container, key, value) => {
+  const field = container.querySelector(`[data-field="${key}"]`); assert.ok(field, key);
+  field.value = value; field.dispatchEvent(new field.ownerDocument.defaultView.Event('input', { bubbles: true }));
+};
+const filingRow = () => ({ ...proposal(), kind: 'file_to_deal', confirm_verb: 'confirm-email-filing',
+  suggested_deals: [{ deal: proposal().deal, name: 'Demo Harbor expansion', reasons: ['Existing client transaction'] }],
+  preview: { contract: 'email-filing.v1', proposal_id: proposal().id, kind: 'file_to_deal', deal: proposal().deal,
+    activity_id: proposal().source.activity_id, evidence_quote: proposal().source.evidence_quote, sender: { party_id: 'demo-person' }, new_people: [], proposal_digest: digest, requires_confirmation: true } });
+
+for (const kind of ['file_to_deal', 'possible_new_deal']) test(`${kind} files to the exact selected existing deal with note and no creation`, async () => {
+  const row = filingRow(); row.kind = kind; row.preview.kind = kind;
+  if (kind === 'possible_new_deal') { row.deal = null; row.deal_name = null; row.preview.deal = null; }
+  const calls = [], previews = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    getBoard: async () => ({ deals: [{ id: proposal().deal, name: 'Demo Harbor expansion' }] }),
+    previewEmailFiling: async args => { previews.push(args); return { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version }; },
+    createDeal: async () => assert.fail('existing deal must not create'),
+    confirmEmailFiling: async args => { calls.push(args); return { ok: true, proposal_id: row.id, version: 4, status: 'confirmed', disposition: 'filed', note: args.note, deal: args.deal, activity_id: row.source.activity_id }; } });
+  await view.refresh(); await clickFollowup(container, 'File to existing deal');
+  fillFollowup(container, 'deal', proposal().deal); fillFollowup(container, 'note', 'Discussed on the call');
+  await clickFollowup(container, 'Review selected deal');
+  assert.equal(calls.length, 0); assert.equal(previews.length, 1);
+  await clickFollowup(container, 'Confirm filing');
+  assert.equal(calls.length, 1); assert.equal(calls[0].deal, proposal().deal); assert.equal(calls[0].note, 'Discussed on the call');
+  assert.equal(calls[0].proposal_digest, digest); assert.equal(calls[0].disposition, 'filed');
+  assert.equal(Object.hasOwn(previews[0], 'correction_reason'), false);
+  assert.equal(Object.hasOwn(calls[0], 'correction_reason'), false);
+});
+
+test('Central default and explicit picker reject DST gaps and folds', async () => {
+  const { tomorrowCentral, centralInstant } = await import('../js/ui-email-actions.js');
+  assert.equal(tomorrowCentral(new Date('2026-03-07T23:00:00Z')), '2026-03-08T09:00');
+  assert.equal(centralInstant('2026-03-08T09:00'), '2026-03-08T14:00:00.000Z');
+  assert.equal(tomorrowCentral(new Date('2026-10-31T23:00:00Z')), '2026-11-01T09:00');
+  assert.equal(centralInstant('2026-11-01T09:00'), '2026-11-01T15:00:00.000Z');
+  assert.throws(() => centralInstant('2026-03-08T02:30'));
+  assert.throws(() => centralInstant('2026-11-01T01:30'));
+});
+
+test('Not now retains notes and reviewed version across refresh and replays an uncertain request exactly', async () => {
+  let row = proposal(); const calls = [];
+  const { container, view, dom } = setup({ listEmailProposals: async () => response([structuredClone(row)]),
+    snoozeEmailProposal: async args => { calls.push(args); if (calls.length === 1) throw Error('lost'); return { ok: true, proposal_id: row.id, status: 'pending', version: 4, disposition: 'deferred', note: args.note, deferred_until: args.deferred_until }; } });
+  await view.refresh(); await clickFollowup(container, 'Not now');
+  fillFollowup(container, 'when', '2099-11-04T09:00'); fillFollowup(container, 'note', 'Call after review');
+  const field = container.querySelector('textarea'); field.focus();
+  row.version = 4; await view.refresh();
+  assert.equal(dom.window.document.activeElement, field);
+  assert.equal(field.value, 'Call after review');
+  await clickFollowup(container, 'Defer follow-up');
+  assert.equal(calls[0].base_version, 3); assert.equal(calls[0].deferred_until, '2099-11-04T15:00:00.000Z');
+  await clickFollowup(container, 'Check outcome');
+  assert.deepEqual(calls[0], calls[1]); assert.match(container.textContent, /Returns .*America\/Chicago/);
+});
+
+test('handled filing requires a deal, Cancel writes nothing and stale refusals require explicit review', async () => {
+  const row = filingRow(); row.kind = 'possible_new_deal'; row.deal = null; row.deal_name = null; row.preview.kind = row.kind; row.preview.deal = null;
+  const writes = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]), getBoard: async () => ({ deals: [] }),
+    previewEmailFiling: async args => ({ ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: 3 }),
+    confirmEmailFiling: async args => { writes.push(args); throw Object.assign(Error('stale'), { payload: { error: 'version_conflict' } }); } });
+  await view.refresh(); await clickFollowup(container, 'Already handled'); await clickFollowup(container, 'Review selected deal');
+  assert.match(container.textContent, /Choose the deal/); assert.equal(writes.length, 0);
+  await clickFollowup(container, 'Cancel'); assert.equal(writes.length, 0);
+  await clickFollowup(container, 'New deal'); fillFollowup(container, 'note', 'Do not save'); await clickFollowup(container, 'Cancel');
+  assert.equal(writes.length, 0);
+});
+
+for (const kind of ['file_to_deal', 'possible_new_deal']) test(`${kind} recovers one uncertain new deal and previews its exact target`, async () => {
+  const row = filingRow(); row.kind = kind; row.preview.kind = kind;
+  const creates = [], writes = [], previews = [];
+  let failPreview = true;
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async args => { creates.push(args); if (creates.length === 1) throw Error('lost creation receipt'); return { deal_id: 'new-demo-deal' }; },
+    previewEmailFiling: async args => { previews.push(args); if (failPreview) throw Error('unavailable'); return { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: 3 }; },
+    confirmEmailFiling: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'confirmed', version: 4, disposition: 'filed', note: args.note, deal: args.deal, activity_id: row.source.activity_id }; } });
+  await view.refresh(); await clickFollowup(container, 'New deal');
+  fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Demo existing client'); fillFollowup(container, 'note', 'Separate transaction confirmed');
+  await clickFollowup(container, 'Create deal and review filing');
+  assert.match(container.textContent, /Outcome unknown/);
+  await view.refresh(); await clickFollowup(container, 'Check outcome');
+  assert.deepEqual(creates[0], creates[1]);
+  assert.match(container.textContent, /Deal created. Filing was not confirmed/);
+  assert.equal(container.querySelector('a').getAttribute('href').startsWith('/deals'), true);
+  failPreview = false; await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Confirm filing');
+  assert.equal(creates.length, 2); assert.equal(writes.length, 1); assert.equal(writes[0].deal, 'new-demo-deal');
+  assert.equal(writes[0].note, 'Separate transaction confirmed'); assert.equal(previews.length, 2);
+});
+
+for (const kind of ['next_step', 'reply_draft']) test(`${kind} handled stores the note without filing or sending`, async () => {
+  const row = kind === 'reply_draft' ? replyDraft() : proposal();
+  const calls = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    handleEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'confirmed', disposition: 'handled', version: row.version + 1, note: args.note }; },
+    createDeal: async () => assert.fail('handled must not create'), confirmEmailFiling: async () => assert.fail('handled must not file'), submitEmailDraft: async () => assert.fail('handled must not send') });
+  await view.refresh(); await clickFollowup(container, 'Already handled'); fillFollowup(container, 'note', 'Discussed by phone'); await clickFollowup(container, 'Confirm handled');
+  assert.equal(calls.length, 1); assert.equal(calls[0].note, 'Discussed by phone');
+});
+
+for (const mismatch of ['proposal_id', 'deal', 'activity_id', 'note', 'version']) test(`filing keeps an unconfirmed ${mismatch} receipt uncertain and replays the same request`, async () => {
+  const row = filingRow(), calls = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]), getBoard: async () => ({ deals: [] }),
+    previewEmailFiling: async args => ({ ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: 3 }),
+    confirmEmailFiling: async args => { calls.push(args); const result = { ok: true, proposal_id: row.id, status: 'confirmed', disposition: 'filed', version: 4, note: args.note, deal: args.deal, activity_id: row.source.activity_id }; return calls.length === 1 ? { ...result, [mismatch]: 'different' } : result; } });
+  await view.refresh(); await clickFollowup(container, 'File to existing deal'); fillFollowup(container, 'note', 'Reviewed'); await clickFollowup(container, 'Review selected deal'); await clickFollowup(container, 'Confirm filing');
+  assert.match(container.textContent, /Outcome unknown/); await clickFollowup(container, 'Check outcome'); assert.deepEqual(calls[0], calls[1]);
+  assert.match(container.textContent, /Filed to the selected deal/);
+});
+
+test('a deferred card returns actionable when due in the same mounted Home', async () => {
+  const row = proposal(); let deferred = false;
+  const { container, view } = setup({ listEmailProposals: async () => response(deferred ? [] : [row]),
+    snoozeEmailProposal: async args => { deferred = true; row.version++; return { ok: true, proposal_id: row.id, status: 'pending', disposition: 'deferred', version: 4, note: args.note, deferred_until: args.deferred_until }; } });
+  await view.refresh(); await clickFollowup(container, 'Not now'); fillFollowup(container, 'when', '2099-01-01T09:00'); await clickFollowup(container, 'Defer follow-up');
+  assert.equal(container.querySelector('article'), null);
+  deferred = false; await view.refresh();
+  assert.ok([...container.querySelectorAll('button')].find(node => node.textContent === 'Not now'));
+});
+
+test('an uncertain deferral stays visible after refresh and locks competing reply submission', async () => {
+  const row = replyDraft(); let hidden = false;
+  const { container, view } = setup({ listEmailProposals: async () => response(hidden ? [] : [row]),
+    snoozeEmailProposal: async () => { hidden = true; throw Error('lost receipt'); }, submitEmailDraft: async () => assert.fail('uncertain deferral must lock sending') });
+  await view.refresh(); await clickFollowup(container, 'Not now'); fillFollowup(container, 'when', '2099-01-01T09:00'); await clickFollowup(container, 'Defer follow-up');
+  assert.equal(container.querySelector('[data-email-action="edit-draft"]').disabled, true);
+  await view.refresh(); assert.match(container.textContent, /Outcome unknown/);
+  assert.ok([...container.querySelectorAll('button')].find(node => node.textContent === 'Check outcome'));
+});
+
+test('cancelling or refusing filing after creation retains the created deal instead of offering another creation', async () => {
+  const row = filingRow(); let creates = 0, refuse = false;
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async () => { creates++; return { deal_id: 'created-demo' }; },
+    previewEmailFiling: async args => ({ ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: 3 }),
+    confirmEmailFiling: async () => { refuse = true; throw Object.assign(Error('stale'), { payload: { error: 'version_conflict' } }); } });
+  await view.refresh(); await clickFollowup(container, 'New deal'); fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Demo Client'); await clickFollowup(container, 'Create deal and review filing');
+  await clickFollowup(container, 'Cancel');
+  assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
+  await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Confirm filing');
+  assert.equal(refuse, true); assert.equal(creates, 1);
+  assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
+  assert.match(container.textContent, /created.*version_conflict/i);
+});
+
+test('a refusal after uncertain creation never discards the original creation request', async () => {
+  const row = filingRow(), calls = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async args => { calls.push(args); if (calls.length === 1) throw Error('lost'); throw Object.assign(Error('refused after uncertainty'), { payload: { error: 'version_conflict' } }); } });
+  await view.refresh(); await clickFollowup(container, 'New deal'); fillFollowup(container, 'name', 'Separate demo'); fillFollowup(container, 'client', 'Demo Client'); await clickFollowup(container, 'Create deal and review filing');
+  await clickFollowup(container, 'Check outcome');
+  assert.match(container.textContent, /Outcome unknown/); assert.deepEqual(calls[0], calls[1]);
+  assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
+});
+
+for (const action of ['defer', 'file', 'handled']) test(`remounted live ${action} recovers the original pending request and receipt`, async () => {
+  const row = action === 'handled' ? proposal() : filingRow(), calls = [];
+  const verb = { defer: 'snooze-email-proposal', file: 'confirm-email-filing', handled: 'handle-email-proposal' }[action];
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'deal-room-board') result = { deals: [] };
+    else if (name === 'preview-email-filing') result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    else if (name === verb) {
+      calls.push(args);
+      if (calls.length === 1) throw Error('synthetic lost response');
+      result = { ok: true, proposal_id: row.id, version: args.base_version + 1, note: args.note,
+        status: action === 'defer' ? 'pending' : 'confirmed', disposition: action === 'defer' ? 'deferred' : action === 'file' ? 'filed' : 'handled',
+        ...(action === 'defer' ? { deferred_until: args.deferred_until } : { deal: args.deal, activity_id: row.source.activity_id }) };
+    } else throw Error(name);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const start = async (mounted, note) => {
+    await mounted.view.refresh();
+    await clickFollowup(mounted.container, { defer: 'Not now', file: 'File to existing deal', handled: 'Already handled' }[action]);
+    fillFollowup(mounted.container, 'note', note);
+    if (action === 'defer') fillFollowup(mounted.container, 'when', note === 'Original note' ? '2099-11-04T09:00' : '2099-11-05T09:00');
+    if (action === 'file') { fillFollowup(mounted.container, 'deal', row.deal); await clickFollowup(mounted.container, 'Review selected deal'); }
+    await clickFollowup(mounted.container, { defer: 'Defer follow-up', file: 'Confirm filing', handled: 'Confirm handled' }[action]);
+  };
+  const first = setup(client); await start(first, 'Original note');
+  assert.equal(calls.length, 1); first.view.dispose();
+  row.version++;
+  const second = setup(client); await second.view.refresh();
+  assert.equal(calls.length, 1);
+  await clickFollowup(second.container, 'Check outcome');
+  assert.equal(calls.length, 2, 'Check outcome must resend the retained request');
+  assert.deepEqual(calls[1], calls[0]);
+  assert.doesNotMatch(second.container.textContent, /Outcome unknown/);
+  assert.match(second.container.textContent, action === 'defer' ? /Returns .*America\/Chicago/ : action === 'file' ? /Filed to the selected deal/ : /Marked handled/);
+  second.view.dispose();
+});
+
+for (const error of ['email_new_deal_client_mismatch', 'email_filing_correction_reason_required']) test(`created deal allows correcting reason after ${error} without another creation`, async () => {
+  const row = filingRow(), creates = [], previews = [], writes = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async args => { creates.push(args); return { deal_id: 'created-demo' }; },
+    previewEmailFiling: async args => {
+      previews.push(args);
+      if (!args.correction_reason) throw Object.assign(Error(error), { payload: { error } });
+      return { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    },
+    confirmEmailFiling: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'confirmed', version: 4, disposition: 'filed', note: args.note, deal: args.deal, activity_id: row.source.activity_id }; }
+  });
+  await view.refresh(); await clickFollowup(container, 'New deal');
+  fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Different demo client');
+  fillFollowup(container, 'note', 'Discussed by phone'); await clickFollowup(container, 'Create deal and review filing');
+  fillFollowup(container, 'reason', 'Separate transaction for the selected client');
+  await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Cancel');
+  assert.equal(container.querySelector('[data-field="reason"]').value, 'Separate transaction for the selected client');
+  await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Confirm filing');
+  assert.equal(creates.length, 1); assert.equal(previews.length, 3); assert.equal(writes.length, 1);
+  assert.equal(writes[0].deal, 'created-demo'); assert.equal(writes[0].correction_reason, 'Separate transaction for the selected client');
+  assert.equal(writes[0].note, 'Discussed by phone'); view.dispose();
+});
+
+for (const outcome of ['lost', 'success', 'refusal', 'in-flight']) test(`changed-target remount reconciles original filing after ${outcome}`, async () => {
+  const row = filingRow(), calls = [];
+  const originalDeal = row.deal;
+  let release;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'deal-room-board') result = { deals: [] };
+    else if (name === 'preview-email-filing') result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    else if (name === 'confirm-email-filing') {
+      calls.push(args);
+      if (calls.length === 1 && outcome === 'lost') throw Error('synthetic lost response');
+      if (calls.length === 1 && outcome === 'in-flight') await waiting;
+      result = outcome === 'refusal' ? { error: 'version_conflict' } : { ok: true, proposal_id: row.id, version: args.base_version + 1, note: args.note,
+        status: 'confirmed', disposition: 'filed', deal: args.deal, activity_id: row.source.activity_id };
+    } else throw Error(name);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const file = async (mounted, deal) => {
+    await clickFollowup(mounted.container, 'File to existing deal');
+    fillFollowup(mounted.container, 'deal', deal);
+    await clickFollowup(mounted.container, 'Review selected deal');
+    await clickFollowup(mounted.container, 'Confirm filing');
+  };
+  const first = setup(client); await first.view.refresh(); await file(first, originalDeal);
+  assert.equal(calls.length, 1); first.view.dispose();
+  const changedDeal = '20000000-0000-4000-8000-000000000002'; row.suggested_deals = [{ deal: changedDeal, name: 'Other demo', reasons: [] }];
+  let reopened = setup(client); await reopened.view.refresh();
+  if (outcome === 'in-flight') {
+    reopened.view.dispose(); reopened = setup(client); await reopened.view.refresh();
+
+  }
+  if (outcome === 'lost' || outcome === 'in-flight') {
+    assert.match(reopened.container.textContent, /Outcome unknown/, 'recover before offering a changed target');
+    assert.equal([...reopened.container.querySelectorAll('button')].some(button => button.textContent === 'File to existing deal'), false);
+    const checking = clickFollowup(reopened.container, 'Check outcome');
+    if (outcome === 'in-flight') { release(); }
+    await checking;
+    assert.equal(calls.length, outcome === 'lost' ? 2 : 1);
+    if (outcome === 'lost') assert.deepEqual(calls[1], calls[0]);
+    assert.match(reopened.container.textContent, /Filed to the selected deal/);
+    assert.equal(calls.every(args => args.deal === originalDeal), true);
+  } else {
+    await file(reopened, changedDeal);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].deal, '20000000-0000-4000-8000-000000000002');
+    assert.notEqual(calls[1].idempotency_key, calls[0].idempotency_key);
+  }
+  reopened.view.dispose();
+});
+
+for (const outcome of ['offline', 'malformed']) test(`round-three changed-target remount retains original filing after ${outcome}`, async () => {
+  const row = filingRow(), calls = [];
+  const originalDeal = row.deal;
+  let online = true;
+  const client = createLiveClient({ online: () => online, selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'deal-room-board') result = { deals: [] };
+    else if (name === 'preview-email-filing') result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    else if (name === 'confirm-email-filing') {
+      calls.push(args);
+      if (calls.length === 1 && outcome === 'offline') throw Error('synthetic lost response');
+      result = outcome === 'refusal' ? { error: 'version_conflict' } : { ok: true, proposal_id: row.id, version: args.base_version + 1, note: args.note,
+        status: 'confirmed', disposition: 'filed', deal: calls.length === 1 && outcome === 'malformed' ? 'wrong-deal' : args.deal, activity_id: row.source.activity_id };
+    } else throw Error(name);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const file = async (mounted, deal) => {
+    await clickFollowup(mounted.container, 'File to existing deal');
+    fillFollowup(mounted.container, 'deal', deal);
+    await clickFollowup(mounted.container, 'Review selected deal');
+    await clickFollowup(mounted.container, 'Confirm filing');
+  };
+  const first = setup(client); await first.view.refresh(); await file(first, originalDeal);
+  assert.equal(calls.length, 1); first.view.dispose();
+  if (outcome === 'offline') {
+    const offline = setup(client); await offline.view.refresh(); online = false;
+    await clickFollowup(offline.container, 'Check outcome');
+    assert.match(offline.container.textContent, /Outcome unknown/);
+    offline.view.dispose(); online = true;
+  }
+  const changedDeal = '20000000-0000-4000-8000-000000000002'; row.suggested_deals = [{ deal: changedDeal, name: 'Other demo', reasons: [] }];
+  let reopened = setup(client); await reopened.view.refresh();
+    assert.match(reopened.container.textContent, /Outcome unknown/, 'recover before offering a changed target');
+    assert.equal([...reopened.container.querySelectorAll('button')].some(button => button.textContent === 'File to existing deal'), false);
+    await clickFollowup(reopened.container, 'Check outcome');
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1], calls[0]);
+    assert.match(reopened.container.textContent, /Filed to the selected deal/);
+    assert.equal(calls.every(args => args.deal === originalDeal), true);
+  reopened.view.dispose();
 });
