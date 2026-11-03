@@ -240,16 +240,16 @@ test('an unavailable draft report explains where to review it', async () => {
 });
 
 
-test('call follow-ups show recorded proposal time separately from task due date', async () => {
+test('call follow-ups show source call time separately from proposal and due dates', async () => {
   const email = { ...wire, id: 'demo-source-email', kind: 'email_draft', payload: { deal_id: task.dealId,
     recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo email', body_sha256: 'a'.repeat(64) } };
   const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([
-    { ...wire, payload: { ...wire.payload, due_on: '2026-10-05' } }, email,
+    { ...wire, source_call_started_at: '2026-10-01T14:00:00Z', source_call_label_key: wire.session_id, payload: { ...wire.payload, due_on: '2026-10-05' } }, { ...email, source_call_started_at: '2026-10-01T14:00:00Z', source_call_label_key: wire.session_id },
   ]) });
   const h = mount();
   h.controller.update({ ...ready, tasks });
   for (const article of h.host.querySelectorAll('article')) {
-    assert.match(article.textContent, /From your call with Demo deal, .* ago/);
+    assert.match(article.textContent, /From the pipeline call.*ago/);
     assert.equal(article.querySelector('.home-call-source time').dateTime, '2026-10-01T14:00:00Z');
   }
   assert.equal(h.host.querySelector('[data-call-task] .home-call-task-controls time').dateTime, '2026-10-05');
@@ -259,7 +259,7 @@ test('call follow-ups show recorded proposal time separately from task due date'
 test('call review labels its source age, due date and empty/loading states', () => {
   const h = mount();
   h.controller.update({ ...ready, tasks: [{ ...task, dueOn: '2026-10-02' }] });
-  assert.match(h.host.textContent, /From your call with Demo deal, .* ago/);
+  assert.match(h.host.textContent, /Source call unavailable/);
   assert.match(h.host.querySelector('.home-call-task-controls').textContent, /Due Oct 2/);
   h.controller.update({ ...ready, tasks: [] });
   assert.equal(h.host.hidden, false);
@@ -267,4 +267,40 @@ test('call review labels its source age, due date and empty/loading states', () 
   h.controller.update({ ...ready, tasks: [], busy: true });
   assert.ok(h.host.querySelector('.home-followup-skeleton'));
   h.close();
+});
+
+
+test('follow-ups name and age their own call despite a newer call for the same deal', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-02T14:00:00Z') });
+  const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([
+    { ...wire, source_call_started_at: '2026-10-26T14:00:00Z', source_call_label_key: wire.session_id, created_at: '2026-10-31T14:00:00Z' },
+    { ...wire, id: 'newer-card', session_id: 'newer-call', source_call_started_at: '2026-10-31T14:00:00Z', source_call_label_key: 'newer-call' },
+  ]) });
+  const h = mount();
+  try {
+    h.controller.update({ ...ready, tasks });
+    const sources = [...h.host.querySelectorAll('.home-call-source')];
+    assert.match(sources[0].textContent, /pipeline call.*Oct 26.*9:00 AM CDT.*7d ago/);
+    assert.match(sources[1].textContent, /pipeline call.*Oct 31.*9:00 AM CDT.*2d ago/);
+    assert.doesNotMatch(sources[0].textContent, /with Demo deal/);
+    assert.equal(sources[0].querySelector('time').dateTime, '2026-10-26T14:00:00Z');
+  } finally { h.close(); }
+});
+
+
+test('missing source provenance never substitutes proposal time or the deal name', () => {
+  const h = mount();
+  try {
+    assert.match(h.host.textContent, /Source call unavailable/);
+    assert.equal(h.host.querySelector('.home-call-source time'), null);
+    assert.doesNotMatch(h.host.textContent, /call with/);
+  } finally { h.close(); }
+});
+
+
+test('invalid source timestamps and mismatched session keys fail the read', async () => {
+  for (const source of [
+    { source_call_started_at: 'invalid' },
+    { source_call_started_at: '2026-10-26T14:00:00Z', source_call_label_key: 'another-session' },
+  ]) await assert.rejects(readHomeCallFollowups({ getPostCallFollowups: async () => envelope([{ ...wire, ...source }]) }), { code: 'malformed_response' });
 });
