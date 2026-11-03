@@ -1,0 +1,38 @@
+stateDiagram-v2
+  state Composer {
+    state Session {
+      [*] --> Verifying: Open conversation
+      Verifying --> Unavailable: Session verification fails
+      Unavailable --> Verifying: Reconnect again
+      Verifying --> Ready: Session recovered
+      Verifying --> Closed: Close or session invalidated
+      Unavailable --> Closed: Close or session invalidated
+      Ready --> Closed: Close or session invalidated
+    }
+    --
+    state Editor {
+      [*] --> Draft: Session recovered
+      Draft --> Draft: Type while an ask sends or late cleanup arrives
+    }
+    --
+    state Requests {
+      [*] --> Queued: Save and send a draft
+      Queued --> Submitting: Reconnect or current submission settles
+      Submitting --> Accepted: Matching receipt
+      Submitting --> Refused: Verified refusal
+      Submitting --> Unknown: Interrupted or receipt unavailable
+      Unknown --> Submitting: Reconnect or check same request
+      Refused --> Submitting: Partner retries same request
+      Accepted --> Accepted: Reopen or late receipt
+      Queued --> Queued: Offline
+      Unknown --> Unknown: Offline
+      Refused --> Refused: Reconnect without retry
+      Submitting --> Submitting: Another draft queues and drains after this attempt
+    }
+  }
+  %% never Acceptance without a matching server receipt.
+  %% never A retry changes the request body or key.
+  %% never A late receipt erases newer typing or replaces acceptance.
+  %% never Storage failure is described as saved on this device.
+  %% never Failed reconnects prevent a later session recovery.
+  %% never An ask queued during submission needs another reconnect to send.
