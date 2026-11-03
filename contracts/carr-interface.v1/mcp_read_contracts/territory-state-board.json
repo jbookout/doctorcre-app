@@ -1,0 +1,54 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "62a9a37ef2b799185f060856874447906e79a5b9",
+    "source_path": "mcp-server/src/lead-follow-up.ts"
+  },
+  "schema_version": "territory-state-board.v1",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "vertical": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "city": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "state": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    }
+  },
+  "coverage": "recorded_geographies_only",
+  "conditions": [
+    "soft",
+    "balanced",
+    "tight",
+    "unknown",
+    "conflicting"
+  ],
+  "submarkets": {
+    "city": "string",
+    "state": "string",
+    "condition": "server-provided condition",
+    "evidence": {
+      "flag_id": "string",
+      "condition": "soft|balanced|tight",
+      "source": "string",
+      "observed_at": "timestamp",
+      "expires_on": "date|null",
+      "expired": "boolean",
+      "current": "boolean"
+    }
+  },
+  "limit": 1000,
+  "overflow": "territory_board_limit_exceeded; no partial snapshot is returned.",
+  "current_evidence": "Server requires found=true, explicit unexpired expires_on and nonfuture observed_at. Expired evidence remains historical."
+}
