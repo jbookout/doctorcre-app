@@ -57,7 +57,7 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
     dialog.querySelector('footer .cr-keyboard-hint').hidden = mode !== 'commands';
     if (mode === 'commands') { input.value = ''; selected = 0; paint(); }
     else sheet.innerHTML = `<p>Use shortcuts outside text fields.</p><dl>${[
-      ['Open command menu', ['⌘ / Ctrl', 'Shift', 'K']], ['Move selection', ['j', 'k', '↑', '↓']],
+      ['Open command menu', ['⌘ / Ctrl', 'K']], ['Move selection', ['j', 'k', '↑', '↓']],
       ['Open selected detail', ['Enter']], ['Close menu or detail', ['Esc']],
     ].map(shortcutHtml).join('')}</dl><h3 id="crTabShortcutsTitle">Go to a tab</h3><dl aria-labelledby="crTabShortcutsTitle">${commands.filter(command => command.keys[0] === 'g').map(command => shortcutHtml([command.label, command.keys])).join('')}</dl>`;
     if (!dialog.open) { focusBefore = root.activeElement; dialog.showModal(); }
@@ -101,7 +101,7 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
     if (event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
     const otherModal = root.querySelector('dialog[open]');
     if (otherModal && otherModal !== dialog) return;
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.shiftKey && event.key.toLowerCase() === 'k') {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
       event.preventDefault(); event.stopImmediatePropagation();
       if (!event.repeat) { if (dialog.open) dialog.close(); else open(); }
       return;
@@ -127,7 +127,7 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
       if (hadSelection) list.dispatchEvent(new win.KeyboardEvent('keydown', { key: event.key, bubbles: true }));
     }
   };
-  // Shift keeps local commands separate from the global quick switcher.
+  // Window capture owns Cmd-K before Doc's document listener. Cmd-D still opens Doc.
   win.addEventListener('keydown', shortcut, true);
   return { dispose() { win.clearTimeout(prefixTimer); win.removeEventListener('keydown', shortcut, true); dialog.remove(); } };
 }

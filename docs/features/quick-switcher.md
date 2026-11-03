@@ -2,6 +2,17 @@
 
 Card: WR617.S11.J3
 
+Control Room keeps Cmd/Ctrl+K, exactly as on main. Doc keeps Cmd/Ctrl+D.
+The global switcher uses Cmd/Ctrl+Alt+K. Its button advertises the same shortcut.
+Cmd/Ctrl+Shift+K was rejected because Edge on Windows reserves it for Duplicate
+Tab. The Alt variant is unused by app keydown handlers and is not listed in the
+published [Chrome](https://support.google.com/chrome/answer/157179),
+[Safari](https://support.apple.com/guide/safari/keyboard-and-other-shortcuts-cpsh003/mac)
+or [Edge](https://support.microsoft.com/en-us/edge/keyboard-shortcuts-in-microsoft-edge)
+shortcut tables. Safari coverage applies to macOS. Chrome and Edge tables cover
+macOS and Windows. User remappings and extensions can still claim shortcuts.
+The handler uses physical KeyK so Option-generated characters on macOS work.
+
 The switcher is a lazy island over the authorized board, relationship network
 and navigation registry. Recents retain only destination IDs in session storage
 and intersect them with fresh reads. Labels are never persisted.
@@ -9,7 +20,7 @@ and intersect them with fresh reads. Labels are never persisted.
 ```mermaid
 stateDiagram-v2
   [*] --> closed
-  closed --> loading: shortcut or Search control
+  closed --> loading: Cmd/Ctrl+Alt+K or Search control
   loading --> open_empty: read completes, blank query
   loading --> typing: read completes, matching query
   loading --> no_results: read completes, unmatched query

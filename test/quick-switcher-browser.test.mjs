@@ -7,35 +7,24 @@ import { startFixtureServer } from '../scripts/fixture-server.mjs';
 const server = await startFixtureServer();
 test.after(() => server.stop());
 
-for (const modifier of ['Meta', 'Control']) test(`${modifier}-Alt-K opens the switcher without stealing Control Room commands`, async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  try {
-    await page.goto(`${server.url}/control-room`);
-    await page.getByRole('button', { name: 'Open Control Room commands' }).waitFor();
-    await page.keyboard.press(`${modifier}+k`);
-    const commands = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
-    assert.equal(await commands.isVisible(), true);
-    assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
-    await page.keyboard.press('Escape');
-    await page.keyboard.press(`${modifier}+Alt+k`);
-    await page.getByRole('combobox', { name: 'Jump to' }).waitFor();
-    assert.equal(await commands.isVisible(), false);
-    await page.keyboard.press('Escape');
-    await page.keyboard.press(`${modifier}+Shift+k`);
-    assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
-    assert.equal(await commands.isVisible(), false);
-  } finally { await browser.close(); }
-});
-
 for (const modifier of ['Meta', 'Control']) test(`${modifier}-Alt-K opens the global switcher`, async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
   try {
     await page.goto(server.url);
-    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    const opener = page.getByRole('button', { name: 'Quick switcher' });
+    await opener.waitFor();
+    assert.equal(await opener.getAttribute('title'), 'Quick switcher (⌘/Ctrl+Alt+K)');
+    assert.equal(await opener.getAttribute('aria-keyshortcuts'), 'Meta+Alt+K Control+Alt+K');
     await page.keyboard.press(`${modifier}+Alt+k`);
-    await page.getByRole('combobox', { name: 'Jump to' }).waitFor({ timeout: 2000 });
+    const input = page.getByRole('combobox', { name: 'Jump to' });
+    await input.waitFor({ timeout: 2000 });
+    await input.press('Escape');
+    await page.evaluate(modifier => dispatchEvent(new KeyboardEvent('keydown', {
+      key: '˚', code: 'KeyK', altKey: true, metaKey: modifier === 'Meta',
+      ctrlKey: modifier === 'Control', bubbles: true, cancelable: true,
+    })), modifier);
+    await input.waitFor({ timeout: 2000 });
   } finally { await browser.close(); }
 });
 

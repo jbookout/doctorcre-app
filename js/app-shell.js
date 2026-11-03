@@ -34,7 +34,8 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     toggle.className = 'app-shell-search quick-switcher-toggle';
     toggle.setAttribute('aria-label', 'Quick switcher');
     toggle.setAttribute('aria-haspopup', 'dialog');
-    toggle.title = 'Quick switcher (⌘/Ctrl+K)';
+    toggle.setAttribute('aria-keyshortcuts', 'Meta+Alt+K Control+Alt+K');
+    toggle.title = 'Quick switcher (⌘/Ctrl+Alt+K)';
     toggle.innerHTML = search.innerHTML;
     search.after(toggle);
     let opening = false, retired = false;
@@ -64,7 +65,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     };
     toggle.addEventListener('click', open);
     root.defaultView.addEventListener('keydown', event => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !event.altKey && !event.shiftKey && !event.isComposing) {
+      if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK' && event.altKey && !event.shiftKey && !event.isComposing) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (!event.repeat) void open();
       }
