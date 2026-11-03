@@ -115,3 +115,48 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
   assert.deepEqual(result.current_item, current, 'the caller can display the newer state');
   if (retry) assert.deepEqual(writes[0], writes[1]);
 });
+
+ test('completion receipt authorizes only its exact task version and event', async () => {
+  const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const calls = [];
+  const event = '00000000-0000-0000-0000-000000000009';
+  const client = createInboxClient(async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'read-home-inbox-v2') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]);
+    return { ok: true, action_id: item('a').action_id, status: 'done', version: 8, completion_event_id: event };
+  });
+  const [result] = await client.run(taskCommand('complete', item('a')));
+  assert.equal(result.ok, true);
+  const undo = taskCommand('reopen', result.item, result.receipt);
+  assert.equal(undo.args.base_version, 8);
+  assert.equal(undo.args.completion_event_id, event);
+  assert.equal(undo.args.action_id, item('a').action_id);
+  assert.equal(calls[0].name, 'complete-one-action');
+  assert.equal(calls[0].args.base_version, 7);
+  assert.equal('items' in calls[0].args, false);
+ });
+
+for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`completion cannot authorize a newer version ${laterVersion}, lost response ${lost}`, async () => {
+  const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const writes = [];
+  const client = createInboxClient(async (name, args) => {
+    if (name === 'read-home-inbox-v2') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: laterVersion })]);
+    writes.push(structuredClone(args));
+    if (lost && writes.length === 1) throw Error('Response lost');
+    return { ok: true, action_id: item('a').action_id, status: 'done', version: 8, completion_event_id: '00000000-0000-0000-0000-000000000009' };
+  });
+  const request = taskCommand('complete', item('a'));
+  if (lost) await assert.rejects(client.run(request), /Response lost/);
+  const [result] = await client.run(request);
+  assert.equal(result.ok, false); assert.equal(result.error, 'intervening_change');
+  assert.equal(result.current_item.action_version, laterVersion);
+  if (lost) assert.deepEqual(writes[0], writes[1]);
+});
+test('legacy and wrong-identity receipts cannot manufacture Undo', async () => {
+  const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const client = createInboxClient(async name => name === 'read-home-inbox-v2' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
+  const [result] = await client.run(taskCommand('complete', item('a')));
+  assert.equal(result.ok, true);
+  assert.throws(() => taskCommand('reopen', result.item, result.receipt), /Can't undo/);
+  assert.throws(() => taskCommand('complete', item('working', { source_state: 'working' })), /cannot be marked done/);
+});

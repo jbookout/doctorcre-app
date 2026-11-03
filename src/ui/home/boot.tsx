@@ -20,7 +20,7 @@ export async function bootInbox(host: HTMLElement) {
       rpc = async (name, args, signal) => {
         const result: McpResult = await request(name, args, { signal, timeoutMs: 10000 });
         if (result.kind !== 'payload') throw Error('Server confirmation unavailable.');
-        if (result.isError) throw Error('Inbox unavailable. The server refused this request.');
+        if (result.isError) throw Object.assign(Error('Inbox unavailable. The server refused this request.'), { payload: result.payload });
         return result.payload;
       };
     }

@@ -11,21 +11,40 @@ let outDir;
 before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
-const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
-async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false, extra = [], malformed = false, intervening = null } = {}) {
+const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: item_id === 'b' ? '00000000-0000-0000-0000-000000000003' : '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
+async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false, extra = [], malformed = false, intervening = null, legacy = false, taskLost = null, taskConflict = false } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
+  page.setDefaultTimeout(10_000);
   if (clock) await page.clock.install({ time: new Date('2026-10-30T12:00:00Z') });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   const items = [row('a', { hold_until: holdUntil }), row('b', { source_state: 'needs_attention', unseen: true }), row('working', { source_state: 'working', section: 'working' }), ...extra];
   if (malformed) delete items[0].action_version;
+  const taskReceipts = new Map(); const taskCalls = [];
   const calls = []; let writes = 0; let originalReceipt;
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
     let payload;
     if (name === 'read-home-inbox-v2') payload = refusal ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false };
+    else if (['complete-one-action', 'reopen-one-action'].includes(name)) {
+      taskCalls.push({name, args});
+      const prior = taskReceipts.get(args.idempotency_key);
+      if (prior) payload = prior;
+      else {
+        const item = items.find(item => item.action_id === args.action_id);
+        if (taskConflict && name === 'reopen-one-action') item.action_version += 2;
+        if (item.action_version !== args.base_version) payload = { ok: false, error: 'version_conflict' };
+        else {
+          const done = name === 'complete-one-action';
+          Object.assign(item, { action_version: args.base_version + 1, source_state: done ? 'done' : 'needs_attention', section: done ? 'done' : 'inbox', base_version: `task:${args.base_version + 1}` });
+          payload = { ok: true, action_id: args.action_id, version: item.action_version, status: done ? 'done' : 'open', ...(!legacy ? { completion_event_id: args.completion_event_id || '00000000-0000-0000-0000-000000000009' } : {}) };
+          taskReceipts.set(args.idempotency_key, payload);
+          if (taskLost === name) { taskLost = null; return route.abort(); }
+        }
+      }
+    }
     else if (!name.endsWith('-home-inbox')) payload = { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
     else {
       writes++;
@@ -58,12 +77,12 @@ test('The selected Working card opens in its shelf without an Unseen filter', as
 });
 test('settle and snooze have reversible Undo, and focus returns to a reachable row', async t => {
   const { page } = await open(t);
-  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).click();
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Snooze', exact: true }).click();
-  await page.getByRole('button', { name: '1 hour', exact: true }).click();
+  await page.getByRole('button', { name: /^1 hour/ }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).waitFor();
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Hide from inbox', exact: true }).waitFor();
   assert.equal(await page.locator('details[open]').count(), 0);
   await page.waitForFunction(() => document.activeElement.closest('[data-inbox-row]') !== null);
 });
@@ -71,7 +90,7 @@ test('partial bulk failure keeps failed card and retry preserves key and argumen
   const { page, calls } = await open(t, { partial: true });
   await page.getByLabel('Select Synthetic a', { exact: true }).check();
   await page.getByLabel('Select Synthetic b', { exact: true }).check();
-  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.getByRole('button', { name: 'Hide selected', exact: true }).click();
   await page.getByText('This card changed on the server.', { exact: false }).waitFor();
   await page.getByRole('button', { name: 'Retry same request', exact: true }).click();
   await page.getByText('This card changed on the server.', { exact: false }).waitFor();
@@ -82,14 +101,14 @@ test('partial bulk failure keeps failed card and retry preserves key and argumen
 });
 test('uncertain outcome never moves card; manual retry reuses exact request; offline sends nothing', async t => {
   const { page, calls } = await open(t, { uncertain: true });
-  const settle = page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true });
+  const settle = page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Hide from inbox', exact: true });
   await settle.click(); await page.getByRole('button', { name: 'Retry same request' }).waitFor();
   assert.equal(await settle.isVisible(), true);
   await page.getByRole('button', { name: 'Retry same request' }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
   assert.deepEqual(calls.filter(call => call.name === 'settle-home-inbox')[0], calls.filter(call => call.name === 'settle-home-inbox')[1]);
   await page.context().setOffline(true);
-  await page.locator('[data-inbox-row="b"]').getByRole('button', { name: 'Settle', exact: true }).click();
+  await page.locator('[data-inbox-row="b"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
   await page.getByText('Offline.', { exact: false }).first().waitFor();
   assert.equal(calls.filter(call => call.name === 'settle-home-inbox').length, 2);
 });
@@ -120,8 +139,8 @@ test('keyboard movement and phone swipes act on the selected card; un-settle has
     node.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [touch(220)] }));
   });
   await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
-  await page.getByText('Settled', { exact: true }).click();
-  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Un-settle', exact: true }).click();
+  await page.getByText('Hidden', { exact: true }).click();
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Show in inbox', exact: true }).click();
   await page.locator('section[aria-label="Inbox"] [data-inbox-row="a"]').waitFor();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.locator('details [data-inbox-row="a"]').waitFor();
@@ -131,7 +150,7 @@ test('undoing one bulk result keeps the Undo for every other confirmed card', as
   const { page, calls } = await open(t);
   await page.getByLabel('Select Synthetic a', { exact: true }).check();
   await page.getByLabel('Select Synthetic b', { exact: true }).check();
-  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.getByRole('button', { name: 'Hide selected', exact: true }).click();
   await page.getByRole('button', { name: 'Undo Synthetic a', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Undo Synthetic a', exact: true }).click();
   const undoB = page.getByRole('button', { name: /^Undo( Synthetic b)?$/ });
@@ -155,7 +174,7 @@ test('a command receipt does not make an old inbox snapshot look fresh', async t
   await page.locator('[data-inbox-row="a"]').waitFor();
   await page.clock.fastForward(91_000);
   await page.getByText('Snapshot may be stale', { exact: false }).waitFor();
-  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).click();
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
   await page.getByText('1 confirmed.', { exact: false }).waitFor();
   assert.match(await page.locator('.inbox-health').textContent(), /Snapshot may be stale/);
 });
@@ -209,7 +228,7 @@ test('missing completion identity shows an error instead of actionable cards', a
 
 for (const intervening of ['snooze', 'source edit']) for (const uncertain of [false, true]) test(`newer ${intervening} is visible without stale Undo${uncertain ? ' after retry' : ''}`, async t => {
   const { page, calls } = await open(t, { intervening, uncertain, card: 'a', width: 390 });
-  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).click();
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
   if (uncertain) {
     await page.getByRole('button', { name: 'Retry same request' }).click();
   }
@@ -229,4 +248,70 @@ for (const intervening of ['snooze', 'source edit']) for (const uncertain of [fa
     assert.deepEqual(writes[0], writes[1]);
   }
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+});
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`Mark done receipt and exact Undo ${width} ${theme}`, async t => {
+  const { page, calls } = await open(t, { width, theme });
+  const a = page.locator('[data-inbox-row="a"]');
+  await a.getByRole('button', { name: 'Mark done', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.getByText('Marked done: Synthetic a.', { exact: false }).waitFor();
+  await page.waitForFunction(() => document.activeElement.closest('[data-inbox-row]')?.dataset.inboxRow === 'b');
+  assert.equal(await page.locator('[data-inbox-row="working"] .inbox-primary').count(), 0);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: `test-artifacts/home-inbox/complete-${width}-${theme}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.getByText('Undone.', { exact: false }).waitFor();
+  await a.getByRole('button', { name: 'Mark done', exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement.closest('[data-inbox-row]')?.dataset.inboxRow === 'a');
+  const inverse = calls.find(call => call.name === 'reopen-one-action');
+  assert.equal(inverse.args.base_version, 8);
+  assert.equal(inverse.args.completion_event_id, '00000000-0000-0000-0000-000000000009');
+  assert.equal(inverse.args.action_id, '00000000-0000-0000-0000-000000000002');
+});
+for (const taskLost of ['complete-one-action', 'reopen-one-action']) test(`lost ${taskLost} response retries the frozen request`, async t => {
+  const { page, calls } = await open(t, { taskLost });
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Mark done', exact: true }).click();
+  if (taskLost === 'reopen-one-action') await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry same request' }).click();
+  await page.getByText(taskLost === 'complete-one-action' ? 'Marked done: Synthetic a.' : 'Undone.', { exact: false }).waitFor();
+  const attempts = calls.filter(call => call.name === taskLost);
+  assert.equal(attempts.length, 2); assert.deepEqual(attempts[0], attempts[1]);
+});
+test('a newer task version refuses Undo without overwriting', async t => {
+  const { page, calls } = await open(t, { taskConflict: true });
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.getByText(/This task changed.*Nothing was overwritten/).waitFor();
+  assert.equal(calls.filter(call => call.name === 'reopen-one-action').length, 1);
+  assert.equal(await page.getByRole('button', { name: 'Retry same request' }).count(), 0);
+});
+test('a legacy completion receipt honestly refuses Undo', async t => {
+  const { page, calls } = await open(t, { legacy: true });
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByText(/Can't undo this completion/).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Undo', exact: true }).count(), 0);
+  assert.equal(calls.some(call => call.name === 'reopen-one-action'), false);
+});
+
+test('independent task receipts survive another Undo and refresh cannot invent one', async t => {
+  const { page, calls } = await open(t);
+  for (const id of ['a', 'b']) await page.locator(`[data-inbox-row="${id}"]`).getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo Synthetic a', exact: true }).click();
+  await page.getByText('Undone.', { exact: false }).waitFor();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.getByText('Undone.', { exact: false }).waitFor();
+  assert.deepEqual(calls.filter(call => call.name === 'reopen-one-action').map(call => call.args.action_id), ['00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003']);
+  await page.reload(); await page.locator('[data-inbox-row="a"]').waitFor();
+  assert.equal(await page.getByRole('button', { name: /^Undo/ }).count(), 0);
+});
+test('snooze Cancel restores its opener and Working cannot be hidden or completed', async t => {
+  const { page, calls } = await open(t, { card: 'working' });
+  const working = page.locator('[data-inbox-row="working"]');
+  assert.equal(await working.getByRole('button', { name: /Mark done|Hide from inbox/ }).count(), 0);
+  assert.equal(await working.getByRole('checkbox').isDisabled(), true);
+  const snooze = working.getByRole('button', { name: 'Snooze', exact: true });
+  await snooze.click(); await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await snooze.evaluate(node => node === document.activeElement), true);
+  assert.equal(calls.some(call => call.name === 'complete-one-action' || call.name === 'settle-home-inbox'), false);
 });
