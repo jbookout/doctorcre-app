@@ -36,7 +36,7 @@ async function open(t, { total = 60, answerAt = 59, failure = false, hold = fals
         return {...base, identity: {...base.identity, id: args.conversation_id},
           turns: Array.from({length: Math.min(args.limit, Math.max(0, ${total}-start))}, (_, i) => ({
             sequence: start+i, msg_id: start+i === ${answerAt} ? '${ANSWER}' : '5b1c0a52-0000-4000-8000-'+String(start+i).padStart(12,'0'),
-            role: start+i === ${answerAt} ? 'assistant' : 'human', body: 'Synthetic turn '+(start+i), at:'2026-11-01T00:00:00Z'
+            role: start+i === ${answerAt} ? 'assistant' : 'human', body: 'Synthetic turn '+(start+i)+String.fromCharCode(39), at:'2026-11-01T00:00:00Z'
           })), more: start+args.limit < ${total}};
       };
       return c;
@@ -58,6 +58,7 @@ test('the exact answer beyond 50 turns receives focus and background refresh doe
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => window.reads.length >= 4);
   assert.equal(await page.evaluate(() => window.scrolls), scrolls);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.msgId), ANSWER);
 });
 for (const [name, options] of [['missing target',{answerAt:-1}], ['empty conversation',{total:0}], ['read failure',{failure:true}], ['inaccessible conversation',{inaccessible:true}]]) {
   test(name+' never selects an invented answer', async t => {

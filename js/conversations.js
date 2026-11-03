@@ -63,6 +63,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** The page of turns this page asks for. */
 const LIMIT = 50;
 let focusedRoute = null;
+let renderedTurns = null;
 
 /** One place holds what this page believes; nothing else keeps a copy. */
 const view = {
@@ -191,7 +192,10 @@ function renderTurns() {
     <div class="turn-top"><span class="turn-role">${escapeHtml(turn.role)}</span><span>${escapeHtml(turn.clock)}</span></div>
     <p class="turn-body">${escapeHtml(turn.body)}</p>
   </li>`).join("");
-  if ($("turnList").innerHTML !== turnsHtml) $("turnList").innerHTML = turnsHtml;
+  if (renderedTurns !== turnsHtml) {
+    $("turnList").innerHTML = turnsHtml;
+    renderedTurns = turnsHtml;
+  }
   const paging = pagingState(payload);
   $("pagingBlock").hidden = !paging.more;
   if (view.route.targetMsgId && view.conversation.state === 'read'
