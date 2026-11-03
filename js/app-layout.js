@@ -58,7 +58,7 @@ export function mountAppLayout(root, host, pathname) {
   for (const node of [...root.body.children]) {
     if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.app-shell-account-menu, .skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
-    else main.append(node);
+    else main.insertBefore(node, pageTools);
   }
   pageTools.open = Boolean(layout.querySelector('#appSidebarSlot').childElementCount);
   pageTools.hidden = homeOrInbox && !pageTools.open;
