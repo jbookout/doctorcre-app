@@ -42,7 +42,7 @@ import {
   COMPOSER_ABSENT, DOC_REPLY_PENDING, EXPOSURE_STATEMENT, LIST_EMPTY, LIST_SCOPE,
   PARTNER_SLUGS, SHARING_CAVEAT, TITLE_HISTORY_UNREADABLE,
   accessRows, archiveOperationKey, classifyReadFailure, conversationState, createArgs,
-  createOperationKey, idFromSearch, identityHeader, listArgs, listPagingState, listRows,
+  createOperationKey, conversationRoute, idFromSearch, identityHeader, listArgs, listPagingState, listRows,
   pagingState, pinOperationKey, renameArgs, renameOperationKey, shareArgs,
   shareCandidates, shareOperationKey, turnRows, visibleCountLine,
 } from "./conversations-model.js";
@@ -62,6 +62,8 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 
 /** The page of turns this page asks for. */
 const LIMIT = 50;
+let focusedRoute = null;
+let renderedTurns = null;
 
 /** One place holds what this page believes; nothing else keeps a copy. */
 const view = {
@@ -186,12 +188,26 @@ function renderTurns() {
     state.state === "ready" || state.state === "empty" ? "healthy"
       : ["refused", "unavailable", "not_found", "malformed"].includes(state.state) ? "urgent" : "still",
   );
-  $("turnList").innerHTML = turnRows(payload).map((turn) => `<li class="turn" data-role="${escapeHtml(turn.role)}" data-sequence="${turn.sequence}">
+  const turnsHtml = turnRows(payload).map((turn) => `<li class="turn" data-role="${escapeHtml(turn.role)}" data-sequence="${turn.sequence}" data-msg-id="${escapeHtml(turn.msgId)}" tabindex="-1" data-target="${turn.msgId === view.route.targetMsgId}">
     <div class="turn-top"><span class="turn-role">${escapeHtml(turn.role)}</span><span>${escapeHtml(turn.clock)}</span></div>
     <p class="turn-body">${escapeHtml(turn.body)}</p>
   </li>`).join("");
+  if (renderedTurns !== turnsHtml) {
+    $("turnList").innerHTML = turnsHtml;
+    renderedTurns = turnsHtml;
+  }
   const paging = pagingState(payload);
-  $("pagingBlock").hidden = !paging.more;
+  $("pagingBlock").hidden = !paging.more && !view.conversation.catchup;
+  $("pagingTitle").textContent = view.conversation.catchup
+    ? 'Conversation refresh is incomplete. Show more to finish refreshing.' : 'More turns are held';
+  if (view.route.targetMsgId && view.conversation.state === 'read'
+      && !turnRows(payload).some(turn => turn.msgId === view.route.targetMsgId)) {
+    block.hidden = false;
+    block.setAttribute('data-state', paging.more ? 'target_pending' : 'target_missing');
+    $("turnsStateTitle").textContent = paging.more
+      ? 'The linked turn has not been reached. Show more to continue toward it.'
+      : 'The linked turn is unavailable in this conversation.';
+  }
 }
 
 function renderAccess() {
@@ -470,31 +486,51 @@ async function takeConversation({ after = null, background = false, signal } = {
   render();
   try {
     const args = { conversation_id: view.route.id, limit: LIMIT };
-    if (Number.isInteger(after)) args.after_sequence = after;
+    const catchup = background ? view.conversation.catchup : null;
+    const prefix = catchup?.payload || (Number.isInteger(after) ? held : null);
+    if (catchup) args.after_sequence = pagingState(catchup.payload).after;
+    else if (Number.isInteger(after)) args.after_sequence = after;
     let payload = await readClient("readDocConversation", args, signal);
     if (view.sequence !== sequence || signal?.aborted) return;
-    if (background) {
-      const takePage = createPageBudget();
-      // eslint-disable-next-line no-restricted-syntax -- Conversation catch-up has a max of 100 pages; takePage runs before each retained-page read.
-      for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
-        takePage();
-        const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
-        if (view.sequence !== sequence || signal?.aborted) return;
-        payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
+    let pages = catchup ? catchup.pages + 1 : Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
+    payload = prefix ? { ...payload, turns: [...prefix.turns, ...payload.turns] } : payload;
+    const takePage = createPageBudget();
+    takePage();
+    // eslint-disable-next-line no-restricted-syntax -- Conversation target traversal has a max of 100 pages; takePage runs before each page read.
+    while (pagingState(payload).more && (background ? pages < loadedPages.conversation
+      : view.route.targetMsgId && !turnRows(payload).some(turn => turn.msgId === view.route.targetMsgId))) {
+      try { takePage(); } catch (error) {
+        if (['page_limit', 'read_paused'].includes(error.message)) break;
+        throw error;
       }
-    } else loadedPages.conversation = Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
-    // Paging APPENDS; the server's order is kept and nothing is re-sorted.
-    const merged = (Number.isInteger(after) && held)
-      ? { ...payload, turns: [...held.turns, ...payload.turns] }
-      : payload;
-    view.conversation = { state: "read", payload: merged, observed_at: new Date().toISOString() };
+      const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
+      if (view.sequence !== sequence || signal?.aborted) return;
+      if (pagingState(incoming).more && pagingState(incoming).after <= pagingState(payload).after) throw new Error('Conversation paging did not advance');
+      payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
+      pages++;
+    }
+    if (background && pages < loadedPages.conversation && pagingState(payload).more) {
+      view.conversation = { ...view.conversation, refreshing: false, catchup: { payload, pages } };
+    } else {
+      loadedPages.conversation = pages;
+      view.conversation = { state: "read", payload, observed_at: new Date().toISOString() };
+    }
   } catch (error) {
+    if (view.sequence !== sequence || signal?.aborted) return;
     if ([401,403].includes(error.status)) { invalidateConversations(); return; }
-    if (view.sequence !== sequence) return;
     const failure = classifyReadFailure(error);
     view.conversation = { state: failure.state, sentence: failure.sentence };
   }
   render();
+  if (!background && focusedRoute !== view.route && view.route.targetMsgId && view.conversation.state === 'read') {
+    const target = [...$("turnList").querySelectorAll('[data-msg-id]')]
+      .find(node => node.dataset.msgId === view.route.targetMsgId);
+    if (target) {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView?.({ block: 'center' });
+      focusedRoute = view.route;
+    }
+  }
 }
 
 /**
@@ -829,7 +865,7 @@ async function boot() {
   if (outcomeCardsNoOpen) outcomeCardsNoOpen.textContent = OUTCOME_CARDS_NO_OPEN_SENTENCE;
   const location = globalThis.location || { hostname: "", search: "" };
   const params = new URLSearchParams(location.search || "");
-  view.route = idFromSearch(location.search || "");
+  view.route = conversationRoute(location);
   $("retryRead")?.addEventListener("click", () => load());
   $("outcomeCardsRetry")?.addEventListener("click", () => takeOutcomeCards());
   mountAutoRefresh({ document, window: globalThis.window, periodic: false, shouldRefresh: () => Boolean(pendingOutcomeOpen && client), refresh: async () => {
@@ -881,7 +917,8 @@ async function boot() {
   });
   $("showMore")?.addEventListener("click", () => {
     const paging = pagingState(payloadOf());
-    if (paging.more) takeConversation({ after: paging.after });
+    if (view.conversation.catchup) takeConversation({ background: true });
+    else if (paging.more) takeConversation({ after: paging.after });
   });
   // The toggle is not a filter over rows this page already holds: it is the
   // verb's `include_archived`, so pressing it costs a fresh read and the page
@@ -921,7 +958,7 @@ async function boot() {
     rename({ archived: !pressed }, archiveOperationKey(header?.id), pressed ? "Unarchive this conversation" : "Archive this conversation");
   });
   globalThis.addEventListener?.("popstate", () => {
-    view.route = idFromSearch(globalThis.location?.search || "");
+    view.route = conversationRoute(globalThis.location);
     view.conversation = { state: "pending" };
     load();
   });

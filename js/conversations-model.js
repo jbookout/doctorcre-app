@@ -30,6 +30,7 @@
 //   6. NOTHING HERE WRITES A TURN. `add-doc-conversation-turn` is authorityOnly
 //      and the app holds no authority binding, so this page shows a sentence
 //      where a composer would be rather than a box that could not send.
+import { docRequestTarget } from "./routes.js";
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
 
@@ -90,13 +91,15 @@ const isText = (value) => typeof value === "string" && value.length > 0;
 
 /* ------------------------------------------------------------------- the route */
 
-/**
- * The conversation this page was opened on, read from the query string alone.
- *
- * Three answers, and the two failures are different on purpose: a bare page is
- * a person who arrived with no link and should be given the list, while a
- * malformed one is a person holding something that looks like an id and is not.
- */
+export function conversationRoute(location) {
+  const target = docRequestTarget(location?.pathname || '');
+  if (target) return { state: 'ok', ...target, given: target.id };
+  if ((location?.pathname || '').startsWith('/doc/conversations/')) {
+    return { state: 'malformed', id: null, given: location.pathname };
+  }
+  return idFromSearch(location?.search || '');
+}
+
 export function idFromSearch(search) {
   const params = new URLSearchParams(typeof search === "string" ? search : "");
   const raw = params.get("id");

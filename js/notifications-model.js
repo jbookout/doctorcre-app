@@ -2,7 +2,7 @@
 // Names are absent from the feed contract: use human record labels rather than
 // guessing a name or fetching a second record. Identifiers stay in Details.
 import { BOARD_ROUTE, boardIdFromPath } from './progress-board-route.js';
-import { routeContract } from "./routes.js";
+import { routeContract, docRequestTarget } from "./routes.js";
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
 import { CONVERSATION_ID } from "./conversations-model.js";
@@ -117,6 +117,9 @@ export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   const path = isText(deepLink) ? deepLink : null;
   if (!path) return { path: null, href: null, routed: false, sentence: null, label: null };
   const routeList = Array.isArray(routes) ? routes : [];
+  if (docRequestTarget(path) && routeList.includes('/doc-chats')) {
+    return { path, href: path, routed: true, sentence: null, label: 'Open conversation' };
+  }
   const docMatch = DOC_CONVERSATION_LINK.exec(path);
   if (docMatch && CONVERSATION_ID.test(docMatch[1]) && routeList.includes("/doc-chats")) {
     return { path, href: `/doc-chats?id=${docMatch[1]}`, routed: true, sentence: null, label: "Open conversation" };
