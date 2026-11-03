@@ -7,7 +7,7 @@ type McpResult = { kind: string; isError?: boolean; payload?: unknown };
 const sibling = (path: string) => import(/* runtime module beside ui-inbox.js */ new URL(path, import.meta.url).href);
 
 export async function bootInbox(host: HTMLElement) {
-  const legacy = new Set(['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief', 'homeMeetingReviews', 'homeMissingNextStep', 'homeCalendar', 'homeMeetings', 'homeCallOutcomes', 'homeEmailFilings', 'homeInvoices', 'homePastClients', 'homeIntroductions', 'homeContactReasons', 'homeLeads', 'dealAttention', 'dealFlags', 'homeEmailActivity']);
+  const legacy = new Set(['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief', 'homeMeetingReviews', 'homeMissingNextStep', 'homeCalendar', 'homeMeetings', 'homeCallOutcomes', 'homeEmailFilings', 'homeInvoices', 'homePastClients', 'homeIntroductions', 'homeContactReasons', 'homeLeads', 'dealAttention', 'dealFlags', 'homeEmailActivity', 'homeReplyOutcomes']);
   const migrate = () => {
     if (location.pathname !== '/' || !legacy.has(location.hash.slice(1))) return false;
     location.replace(`/review-workflows${location.search}${location.hash}`);

@@ -71,13 +71,13 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   assert.equal(await page.locator('[data-inbox-row]').count(), 0);
 });
 
-for (const fragment of ['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief']) test(`legacy Home bookmark ${fragment}`, async t => {
+for (const fragment of ['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief', 'homeReplyOutcomes']) test(`legacy Home bookmark ${fragment}`, async t => {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
   await page.goto(`${server.origin}/?review=2#${fragment}`);
   await page.waitForURL(`**/review-workflows?review=2#${fragment}`, { timeout: 5000 });
-  await page.locator(`#${fragment}`).waitFor();
+  await page.locator(`#${fragment}`).waitFor({ state: 'attached' });
 });
 
 test('Calendar rail leaves page tools in the center at narrow desktop sizes', async t => {
