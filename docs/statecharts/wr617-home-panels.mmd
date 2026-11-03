@@ -33,3 +33,9 @@ stateDiagram-v2
     AccountOpen --> GuideDeferred: assistant arrives / preserve account menu
     Walkthrough --> GuideDismissed: skip or finish
   }
+  state CalendarPreviews {
+    [*] --> Fitted: schedule arrives / show complete previews that fit
+    Fitted --> Fitted: rail resizes or fonts settle / refit complete previews
+    Fitted --> Calendar: N more / open full calendar
+    %% never clip meeting text or require internal rail scrolling
+  }

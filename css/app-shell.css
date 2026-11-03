@@ -504,6 +504,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .contact-reasons .home-plain-link { white-space: nowrap; }
 
 .app-look-ahead { font-size: 10px; letter-spacing: 1.4px; color: var(--accent-ink); margin: 0 0 20px; }
+.app-layout-sidebar { overflow: hidden; }
 .calendar-panel { min-width: 0; font-size: 12px; line-height: 1.6; padding-bottom: 20px; }
 .calendar-panel h3 { font-size: 14px; }
 .calendar-panel h4 { font-size: 12px; margin-bottom: 8px; }
