@@ -81,8 +81,10 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await region.getByLabel('State', { exact: true }).fill('TX');
     await region.getByLabel('Vertical', { exact: true }).fill('Dental');
     await region.getByRole('button', { name: 'Apply filters' }).click();
-    await region.getByText('Dental', { exact: true }).waitFor(); held();
-    await page.waitForLoadState('networkidle');
+    await region.getByText('Dental', { exact: true }).waitFor();
+    const delayedReply = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postData()?.includes('Delayed'));
+    held(); await (await delayedReply).finished();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.doesNotMatch(await region.innerText(), /Stale response/);
     assert.deepEqual(reads.at(-1), { city: 'Demo City', state: 'TX', vertical: 'Dental' });
     assert.equal(await page.locator('#chartsCanvas').innerText(), buckets);
