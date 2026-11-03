@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 type Row = { id: string; version: number; kind: string; deal: string | null; source: { activity_id: string; evidence_quote: string }; suggested_deals?: { deal: string; name: string; reasons: string[] }[] };
 type Request = { proposal_id: string; base_version: number; idempotency_key: string; note: string; deal?: string; proposal_digest?: string; correction_reason?: string; disposition?: string; deferred_until?: string };
 type Client = {
+  getPendingEmailAction?(proposalId: string): { method: Method; request: Request } | null;
   getBoard(): Promise<{ deals: { id: string; name: string }[] }>;
   previewEmailFiling(args: { proposal_id: string; deal: string; correction_reason?: string }): Promise<unknown>;
   confirmEmailFiling(args: Request): Promise<unknown>;
@@ -54,6 +55,8 @@ function record(value: unknown): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value));
 }
 export function mountEmailActions(host: HTMLElement, row: Row, client: Client, model: ActionModel, changed: (message?: string) => void, denied: () => void, now = () => new Date()) {
+  const retained = client.getPendingEmailAction?.(row.id);
+  if (retained) model.state = { kind: 'unknown', ...retained };
   const root = createRoot(host);
   let disposed = false, enabled = true;
   const current = () => !disposed;
@@ -105,7 +108,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     else if (state.kind === 'created') content = <div className="email-action-form"><p role="status">{state.message}</p><a href={`/deals?deal=${encodeURIComponent(state.draft.deal)}`}>Open created deal</a><label>Reason for changing the client or filed deal, if needed<input data-field="reason" maxLength={500} defaultValue={state.draft.reason}/></label>{button('preview-created', 'Review created deal')}</div>;
     else if (state.kind === 'busy') content = <p role="status">Saving…</p>;
     else if (state.kind === 'unknown' || state.kind === 'creation-unknown') content = <><p role="status">Outcome unknown. Check outcome to recover the original request.</p>
-      {state.kind === 'unknown' && <><p>Original note: {state.request.note || 'No note'}</p>{state.request.deferred_until && <p>Original return time: {returnTime(state.request.deferred_until)}</p>}{state.savedDraft && <p>Current draft note: {state.savedDraft.note || 'No note'}. Check the original outcome before continuing.</p>}</>}
+      {state.kind === 'unknown' && <><p>Original note: {state.request.note || 'No note'}</p>{state.request.deal && <p>Original filing deal: <a href={`/deals?deal=${encodeURIComponent(state.request.deal)}`}>{state.request.deal}</a></p>}{state.request.deferred_until && <p>Original return time: {returnTime(state.request.deferred_until)}</p>}{state.savedDraft && <p>Current draft note: {state.savedDraft.note || 'No note'}. Check the original outcome before continuing.</p>}</>}
       {button('replay', 'Check outcome')}</>;
     else content = <><p role="status">{state.message}</p>{state.kind === 'refused' && button('refresh', 'Refresh and review')}</>;
     flushSync(() => root.render(content));
@@ -145,7 +148,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     if ([401, 403].includes(Number(value.status)) || value.code === 'session_changed') { denied(); return; }
     const payload = value.payload && typeof value.payload === 'object' ? record(value.payload) : {};
     if (fallback.kind === 'unknown' && isRequest(value.pendingRequest) && value.pendingRequest.proposal_id === row.id) {
-      model.state = { ...fallback, request: value.pendingRequest }; render(); return;
+      model.state = { ...fallback, method: value.pendingMethod === 'confirmEmailFiling' || value.pendingMethod === 'snoozeEmailProposal' || value.pendingMethod === 'handleEmailProposal' ? value.pendingMethod : fallback.method, request: value.pendingRequest }; render(); return;
     }
     model.state = typeof payload.error === 'string' && !value.pendingRequest && (fallback.kind !== 'creation-unknown' || value.creationRefused === true) ? createdDraft ? { kind: 'created', draft: createdDraft, message: `Deal created. Filing refused (${payload.error}). Review the created deal before continuing.` } : { kind: 'refused', message: `Action refused (${payload.error}). Refresh and review before trying again.` } : fallback;
     render();

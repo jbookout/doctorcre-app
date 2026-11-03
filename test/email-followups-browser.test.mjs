@@ -508,7 +508,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       source, confirm_verb: 'confirm-email-filing', suggested_deals: [{ deal: 'qa-deal-1', name: 'Demo Harbor expansion', reasons: ['Existing client transaction'] }],
       email_summary: { status: 'available', text: 'Dana asks for a review of the lease.' },
       preview: { contract: 'email-filing.v1', proposal_id: '10000000-0000-4000-8000-000000000010', kind: 'possible_new_deal', deal: null, activity_id: source.activity_id, evidence_quote: source.evidence_quote, sender: {}, new_people: [], requires_confirmation: true, proposal_digest: digest } };
-    const calls = []; let until = null, filed = false, stale = false, lose = true;
+    const calls = []; let until = null, filed = false, stale = false, lose = true, loseFiling = true;
     await page.route('**/mcp', async route => {
       const { name, arguments: args } = route.request().postDataJSON().params;
       let result;
@@ -517,7 +517,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       else if (name === 'confirm-email-filing') {
         calls.push({ name, args });
         if (stale) result = { error: 'version_conflict' };
-        else { filed = true; result = { ok: true, proposal_id: row.id, status: 'confirmed', version: row.version + 1, disposition: args.disposition, note: args.note, deal: args.deal, activity_id: source.activity_id }; }
+        else {
+          if (loseFiling) { loseFiling = false; await route.abort('failed'); return; }
+          filed = true; result = { ok: true, proposal_id: row.id, status: 'confirmed', version: row.version + 1, disposition: args.disposition, note: args.note, deal: args.deal, activity_id: source.activity_id }; }
       } else if (name === 'snooze-email-proposal') {
         calls.push({ name, args }); until = args.deferred_until;
         if (lose) { lose = false; await route.abort('failed'); return; }
@@ -575,6 +577,10 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await panel.getByRole('button', { name: 'Review selected deal', exact: true }).click();
     stale = false;
     await panel.getByRole('button', { name: 'Confirm filing', exact: true }).click();
+    await panel.getByRole('button', { name: 'Check outcome', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await panel.screenshot({ path: `out/test-artifacts/email-followups/filing-recovery-${width}-${theme}.png` });
+    await panel.getByRole('button', { name: 'Check outcome', exact: true }).click();
     await panel.getByText('No email follow-ups.', { exact: true }).waitFor();
     assert.match(await panel.innerText(), /Filed to the selected deal/);
     const confirmed = calls.filter(call => call.name === 'confirm-email-filing').at(-1).args;

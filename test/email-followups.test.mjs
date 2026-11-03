@@ -973,7 +973,7 @@ for (const action of ['defer', 'file', 'handled']) test(`remounted live ${action
   const first = setup(client); await start(first, 'Original note');
   assert.equal(calls.length, 1); first.view.dispose();
   row.version++;
-  const second = setup(client); await start(second, 'New draft note');
+  const second = setup(client); await second.view.refresh();
   assert.equal(calls.length, 1);
   await clickFollowup(second.container, 'Check outcome');
   assert.equal(calls.length, 2, 'Check outcome must resend the retained request');
@@ -1039,12 +1039,14 @@ for (const outcome of ['lost', 'success', 'refusal', 'in-flight']) test(`changed
   let reopened = setup(client); await reopened.view.refresh();
   if (outcome === 'in-flight') {
     reopened.view.dispose(); reopened = setup(client); await reopened.view.refresh();
-    release(); await settle();
+
   }
   if (outcome === 'lost' || outcome === 'in-flight') {
     assert.match(reopened.container.textContent, /Outcome unknown/, 'recover before offering a changed target');
     assert.equal([...reopened.container.querySelectorAll('button')].some(button => button.textContent === 'File to existing deal'), false);
-    await clickFollowup(reopened.container, 'Check outcome');
+    const checking = clickFollowup(reopened.container, 'Check outcome');
+    if (outcome === 'in-flight') { release(); }
+    await checking;
     assert.equal(calls.length, outcome === 'lost' ? 2 : 1);
     if (outcome === 'lost') assert.deepEqual(calls[1], calls[0]);
     assert.match(reopened.container.textContent, /Filed to the selected deal/);

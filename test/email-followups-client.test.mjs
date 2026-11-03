@@ -315,3 +315,28 @@ test('fixture deferral hides a pending follow-up until its exact stored return i
   const returned = (await client.listEmailProposals()).proposals.find(item => item.id === row.id);
   assert.equal(returned.version, row.version + 1); assert.equal(returned.note, request.note);
 });
+
+test('pending email actions block a different target and method until explicit recovery', async () => {
+  const calls = []; let lost = true;
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const params = JSON.parse(init.body).params; calls.push(params);
+    if (lost) { lost = false; throw Error('synthetic lost response'); }
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true }) }] } });
+  } });
+  const request = { proposal_id: 'p', deal: 'original', base_version: 3, note: 'Original note', idempotency_key: 'original-key' };
+  await assert.rejects(client.confirmEmailFiling(request));
+  const pending = client.getPendingEmailAction('p');
+  assert.deepEqual(pending, { method: 'confirmEmailFiling', request });
+  pending.request.note = 'Mutated copy';
+  assert.equal(client.getPendingEmailAction('p').request.note, request.note);
+  for (const method of ['confirmEmailFiling', 'snoozeEmailProposal', 'handleEmailProposal']) {
+    await assert.rejects(client[method]({ ...request, deal: 'different', idempotency_key: 'different-key' }), error => {
+      assert.equal(error.pendingMethod, 'confirmEmailFiling'); assert.deepEqual(error.pendingRequest, request); return true;
+    });
+  }
+  assert.equal(calls.length, 1);
+  await client.confirmEmailFiling(client.getPendingEmailAction('p').request);
+  assert.deepEqual(calls[0], calls[1]);
+  assert.equal(client.getPendingEmailAction('p'), null);
+});
