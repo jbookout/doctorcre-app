@@ -18,3 +18,11 @@ stateDiagram-v2
     Collapsed --> Expanded: See all
     Expanded --> Collapsed: Show less
   }
+  state HomeStartup {
+    [*] --> InboxLoading: shell frame appears
+    InboxLoading --> InboxVisible: ready, empty or unavailable inbox paints
+    InboxVisible --> PanelsLoading: start schedule and assistant reads
+    PanelsLoading --> HomeReady: panel reads settle
+    InboxLoading --> SessionEnded: session revoked
+    PanelsLoading --> SessionEnded: session revoked / reject late assistant mount
+  }

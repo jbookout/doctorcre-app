@@ -93,3 +93,51 @@ test('Calendar rail leaves page tools in the center at narrow desktop sizes', as
     assert.ok(await page.locator('#appSidebar').evaluate(node => node.scrollHeight <= node.clientHeight));
   }
 });
+
+for (const outcome of ['empty', 'unavailable']) test(`Home reserves its frame and defers panels until the ${outcome} inbox paints`, async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  let release; const pending = new Promise(resolve => { release = resolve; }); t.after(() => release());
+  const panelReads = [];
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
+  await page.route('**/mcp', async route => {
+    const { name } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v2') await pending;
+    else panelReads.push(name);
+    const value = name === 'read-home-inbox-v2' ? outcome === 'empty'
+      ? { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: false }
+      : { ok: false, error: 'synthetic_unavailable' }
+      : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] }
+      : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
+    await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
+  });
+  await page.goto(`${server.origin}/?mode=live`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('Loading your inbox…', { exact: true }).waitFor();
+  await page.locator('#appSidebarToggle').waitFor();
+  assert.deepEqual(panelReads, []);
+  release();
+  await page.locator('#appScheduleSlot').getByText('No meetings scheduled today.', { exact: true }).waitFor();
+  assert.ok(panelReads.includes('calendar-meeting-prep'));
+  await page.getByText(outcome === 'empty' ? 'Nothing here right now.' : 'Inbox unavailable', { exact: true }).first().waitFor();
+});
+
+test('a session ending during the assistant download prevents a late mount', async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  let release; const pending = new Promise(resolve => { release = resolve; }); t.after(() => release());
+  await page.route('**/js/doc-presence.js', async route => {
+    const response = await route.fetch();
+    await pending;
+    await route.fulfill({ response, body: `${await response.text()}\nwindow.__assistantModuleReady = true;` });
+  });
+  await page.goto(server.origin, { waitUntil: 'domcontentloaded' });
+  await page.locator('.home-slice [data-inbox-row]').first().waitFor();
+  await page.locator('#appSidebarToggle').waitFor();
+  await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+  release();
+  await page.waitForFunction(() => window.__assistantModuleReady);
+  assert.equal(await page.locator('#docPresence').count(), 0);
+});

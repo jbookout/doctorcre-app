@@ -26,6 +26,11 @@ export function inboxRefusal(code: unknown): string {
   }
 }
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
+export function markHomeReady(host: HTMLElement) {
+  if (host.dataset.homeReady) return;
+  host.dataset.homeReady = 'true';
+  host.dispatchEvent(new Event('doctorcre:home-ready'));
+}
 function Inbox({ client }: { client: InboxClient }) {
   const { item_id } = useParams();
   const home = location.pathname === '/';
@@ -36,6 +41,10 @@ function Inbox({ client }: { client: InboxClient }) {
     // eslint-disable-next-line no-restricted-syntax -- One read per 60000ms while visible and online; paused during writes and cleared on unmount by Query.
     refetchInterval: () => navigator.onLine && document.visibilityState === 'visible' && !inFlight.current ? 60_000 : false,
   });
+  useEffect(() => {
+    const host = document.getElementById('homeRoot');
+    if (home && !query.isPending && host) markHomeReady(host);
+  }, [home, query.isPending]);
   const [selected, select] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);

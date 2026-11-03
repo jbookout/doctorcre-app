@@ -1,4 +1,4 @@
-import { mountInbox, inboxRefusal } from './home';
+import { mountInbox, inboxRefusal, markHomeReady } from './home';
 import { createInboxClient } from './inbox';
 import { fixtureInboxRpc } from './fixture';
 
@@ -38,7 +38,6 @@ export async function bootInbox(host: HTMLElement) {
     const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = 'Inbox unavailable. Sign in or refresh to try again.';
     const link = document.createElement('a'); link.href = '/auth/login'; link.textContent = 'Sign in';
     host.append(notice, link);
-  } finally {
-    if (location.pathname === '/') await sibling('./app-shell.js');
+    if (location.pathname === '/') markHomeReady(host);
   }
 }

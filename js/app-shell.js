@@ -1,6 +1,5 @@
 import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
-import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
@@ -17,7 +16,12 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const reactWorkspace = new URLSearchParams(location?.search || "").get("ui") === "react";
   if (!base) mountAccount(root, host, pathname, () => disposeDocPresence(), reactWorkspace);
   if (!base && pathname !== "/share") {
-    mountAppLayout(root, host, pathname);
+    const home = pathname === '/' && root.getElementById('homeRoot');
+    const ready = home ? new Promise(resolve => {
+      if (home.dataset.homeReady) resolve();
+      else home.addEventListener('doctorcre:home-ready', resolve, { once: true });
+    }) : Promise.resolve();
+    mountAppLayout(root, host, pathname, { ready });
     const status = root.querySelector(".app-layout-status");
     const availability = host.querySelector(".app-shell-call-availability");
     status.append(availability);
@@ -56,8 +60,11 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     phone.addEventListener("change", arrangeNavigation);
     arrangeControls();
     arrangeNavigation();
-    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
-    disposeDocPresence = () => docPresence?.dispose();
+    let docPresence = null, docRetired = false;
+    disposeDocPresence = () => { docRetired = true; docPresence?.dispose(); };
+    void ready.then(() => import('./doc-presence.js')).then(({ mountDocPresence }) => {
+      if (!docRetired && host.isConnected) docPresence = mountDocPresence({ document:root, window:root.defaultView });
+    }).catch(() => {});
   }
 }
 

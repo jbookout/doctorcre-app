@@ -98,7 +98,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
     let content = await readSource(path);
     if (path === "workspace.html") {
       await init;
-      const dependencies = new Set();
+      const dependencies = new Set(['js/ui-inbox.js']);
       const visit = async module => {
         const [imports] = parse((await readSource(module)).toString());
         for (const entry of imports.filter(entry => entry.d === -1 && entry.n?.startsWith('.'))) {

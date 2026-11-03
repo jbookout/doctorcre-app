@@ -23,9 +23,6 @@ test("workspace routes share navigation while the client portal stays outside th
     if (page === "reports/share.html") {
       assert.match(html, /<link rel="stylesheet" href="\/share\.css">/, `${page}: report stylesheet`);
       assert.match(html, /<div id="appShell"><\/div>/, `${page}: shared shell mount`);
-    } else if (page === 'workspace.html') {
-      assert.match(html, /<div id="appShell"><\/div>/, 'Home keeps the shared shell mount');
-      assert.match(html, /src="\/js\/ui-inbox.js"/, 'Home boots its center before the shell');
     } else {
       assert.match(html, /<link rel="stylesheet" href="\/css\/app-shell\.css">/, `${page}: shared shell styles`);
       assert.match(html, /<div id="appShell"><\/div><script type="module" src="\/js\/app-shell\.js"><\/script>/, `${page}: shared shell mount`);

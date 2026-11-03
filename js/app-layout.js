@@ -30,7 +30,7 @@ export function createAppLayout(root, title = '') {
 
 // Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
 // lazy tab reads therefore retain their existing owner across layout changes.
-export function mountAppLayout(root, host, pathname) {
+export function mountAppLayout(root, host, pathname, { ready = Promise.resolve() } = {}) {
   if (root.getElementById('appLayout')) return;
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
@@ -157,7 +157,7 @@ export function mountAppLayout(root, host, pathname) {
     items[next]?.focus();
   });
   const boot = resolveDealroomBoot(globalThis.location);
-  const calendarPanels = import('./ui-calendar-panels.js').then(module => module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot'))).catch(() => {
+  const calendarPanels = ready.then(() => import('./ui-calendar-panels.js')).then(module => layout.isConnected ? module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot')) : null).catch(() => {
     for (const id of ['#appCalendarSlot', '#appScheduleSlot']) layout.querySelector(id).textContent = 'Calendar unavailable. Reload to try again.';
     return null;
   });
@@ -327,7 +327,7 @@ export function mountAppLayout(root, host, pathname) {
     try { root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); } finally { fanOut = false; }
   };
   pageRefresh?.addEventListener('click', () => { if (!fanOut) auto.refresh(); });
-  auto.refresh();
+  void ready.then(() => auto.refresh());
   // Ages are relative to now, so the list repaints each minute; render() skips the DOM when the text is unchanged.
   const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
   win.addEventListener('pagehide', event => {

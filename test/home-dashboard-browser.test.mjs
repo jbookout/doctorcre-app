@@ -861,7 +861,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Me
   const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
     { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
   ] } });
-  assert.equal(calls.includes('calendar-meeting-prep'), true, 'The shared schedule reads meetings before preparation is opened');
+  await settles(async () => assert.equal(calls.includes('calendar-meeting-prep'), true, 'The shared schedule reads meetings before preparation is opened'));
   responses.set('calendar-meeting-prep', {
     state: 'partial', observed_at: '2026-10-01T14:00:00Z', notes: ['Check Outlook for cancellations.'],
     sources: { outlook_calendar: { state: 'stale' }, deal_suggestions: { state: 'ready' }, meeting_prep: { state: 'ready' } },
