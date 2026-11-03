@@ -15,8 +15,17 @@ const text = (value: unknown): value is string => typeof value === 'string' && v
 function destinations({ board, network }: { board: unknown; network: unknown }): Destination[] {
   if (!record(board) || !Array.isArray(board.deals) || !record(network) || !Array.isArray(network.nodes)) throw Error('Unavailable');
   const result: Destination[] = [];
-  for (const deal of board.deals) {
+  const seen = new Set<string>();
+  const deals = [...board.deals];
+  for (const key of ['closed_deals', 'lost_deals']) {
+    if (board[key] === undefined) continue;
+    if (!Array.isArray(board[key])) throw Error('Invalid deals');
+    deals.push(...board[key]);
+  }
+  for (const deal of deals) {
     if (!record(deal) || !text(deal.id) || !text(deal.name)) throw Error('Invalid deal');
+    if (seen.has(deal.id)) continue;
+    seen.add(deal.id);
     const href = `/deals?deal=${encodeURIComponent(deal.id)}`;
     result.push({ id: `deal:${deal.id}`, label: deal.name, kind: 'Deal', href });
     if (Array.isArray(deal.open_actions)) for (const action of deal.open_actions) {

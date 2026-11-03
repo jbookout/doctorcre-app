@@ -90,7 +90,7 @@ test('loading, retry, access narrowing, outside close and session retirement', a
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: async () => {
         attempt++;
         if (attempt === 1) throw Error('Unavailable');
-        return { board: { deals: [{ id: 'allowed', name: 'Allowed deal', open_actions: [{ id: 'action-1', description: 'Call the lender' }] }] }, network: { nodes: [] } };
+        return { board: { deals: [{ id: 'allowed', name: 'Allowed deal', open_actions: [{ id: 'action-1', description: 'Call the lender' }] }], closed_deals: [{ id: 'closed', name: 'Closed deal' }], lost_deals: [{ id: 'closed', name: 'Closed deal' }] }, network: { nodes: [] } };
       } });
     });
     await page.getByText('Deals and contacts unavailable. Pages are still available.').waitFor();
@@ -100,6 +100,9 @@ test('loading, retry, access narrowing, outside close and session retirement', a
     await page.getByText('No matches. Try a deal, contact or page name.').waitFor();
     await input.fill('lender');
     await page.getByRole('option', { name: 'Call the lender · Allowed deal Task' }).waitFor();
+    await input.fill('Closed deal');
+    await page.getByRole('option', { name: 'Closed deal Deal', exact: true }).waitFor();
+    assert.equal(await page.getByRole('option').count(), 1);
     await input.fill('');
     await page.getByRole('heading', { name: 'Recent', exact: true }).waitFor();
     await page.mouse.click(5, 5);
