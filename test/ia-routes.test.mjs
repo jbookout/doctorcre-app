@@ -70,7 +70,7 @@ test("the approved map accounts for every original path with a permanent home", 
     assert.equal(final.status, 200, `${path}: destination renders`);
     const page = await final.text();
     assert.match(page, /id="appShell"/, `${path}: shared shell mount`);
-    assert.match(page, /src="(?:\.\.\/)?\/?js\/app-shell\.js"/, `${path}: shared shell script`);
+    assert.match(page, destination === '/' ? /src="\/js\/ui-inbox.js"/ : /src="(?:\.\.\/)?\/?js\/app-shell\.js"/, `${path}: shared shell entry`);
     assert.deepEqual(
       [...appShellMarkup(new URL(destination, origin).pathname).matchAll(/data-app-nav-item[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]),
       navigationItems.map((item) => item.label), `${path}: identical navigation`,

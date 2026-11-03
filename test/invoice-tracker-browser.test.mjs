@@ -42,7 +42,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
 }
 for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${width}px`, async t => {
   const { page, errors } = await open(t, { width }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.equal(await page.locator('.app-layout-sidebar #invoiceSearch').count(), 1);
+  assert.equal(await page.locator('#appMainSlot .app-layout-page-tools #invoiceSearch').count(), 1);
   assert.equal(await page.locator('#invoiceAging strong').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().height<30)),true,'ordinary aging amounts stay on one line');
   await page.locator('[data-invoice]').first().click(); await page.waitForFunction(() => document.querySelector('#invoiceDetail').open);
   assert.equal(await page.getByRole('link', { name: 'Open deal', exact: true }).getAttribute('href'), '/deals?deal=demo-invoice-deal-4');
