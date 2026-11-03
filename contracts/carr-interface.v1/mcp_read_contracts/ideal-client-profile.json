@@ -1,0 +1,46 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "f50aa7ab95ff4f13b0c3baa9d1bd97d546fc2209",
+    "source_path": "mcp-server/src/lead-follow-up.ts"
+  },
+  "schema_version": "ideal-client-profile.v1",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "vertical": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "city": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "state": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    }
+  },
+  "coverage": "recorded_closed_won_only",
+  "profiles": {
+    "vertical": "string|null",
+    "deal_type": "string|null",
+    "city": "string|null (transaction city)",
+    "state": "string|null (client state)",
+    "won_deals": "integer",
+    "clients": "distinct client integer",
+    "evidence": {
+      "deal_id": "UUID",
+      "closed_on": "date"
+    },
+    "hypothesis": "Historical fit, not a prediction or qualification rule."
+  },
+  "limit": 1000,
+  "overflow": "client_profile_limit_exceeded; no partial snapshot is returned.",
+  "eligibility": "phase=closed, outcome=won, recorded closed_on not future; excludes merged clients and merged/deleted parties. Missing dimensions stay unrecorded."
+}

@@ -1,3 +1,4 @@
+import { sourceTime } from './email-source-line.js';
 import { callChangeText, dayLabel } from './call-change-words.js';
 
 export { callChangeText, dayLabel };
@@ -21,7 +22,11 @@ export function callOutcomesHtml(calls) {
   return calls.map(call => {
     const applied = Array.isArray(call.applied) ? call.applied : [];
     const open = Array.isArray(call.open_cards) ? call.open_cards.length : 0;
-    const title = `Applied from the ${dayLabel(call.call_date)} pipeline call`;
+    const time = call.started_at ? sourceTime(call.started_at) : '';
+    const matching = calls.filter(other => other.call_date === call.call_date
+      && (other.started_at ? sourceTime(other.started_at) : '') === time)
+      .map(other => other.session_id).sort();
+    const title = `Applied from the ${dayLabel(call.call_date)} pipeline call${time ? ` · ${time}` : ''}${matching.length > 1 ? ` · call ${matching.indexOf(call.session_id) + 1}` : ''}`;
     const rows = applied.map(change => {
       const undone = Boolean(change.undone_at);
       return `<li class="call-outcome-change${undone ? ' undone' : ''}">
