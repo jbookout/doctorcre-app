@@ -139,7 +139,6 @@ test('broker notes autosave one revision after a pause and preserve drafts acros
   await editor.fill('First draft'); await page.clock.runFor(600);
   await editor.fill('Final draft'); await page.clock.runFor(600);
   assert.equal(writes.length, 0);
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.getByRole('button', { name: 'Other synthetic Tour' }).click();
   assert.match(await page.locator('#status').innerText(), /Save the current sheet/);
   assert.equal(await editor.inputValue(), 'Final draft');

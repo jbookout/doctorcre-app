@@ -69,7 +69,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       await control.scrollIntoViewIfNeeded();
       targets.push({ control: selector, ...await hit(control) });
     }
-    const sidebar = page.locator('#appSidebar');
+    if (!await page.locator('.app-layout-page-tools').evaluate(node => node.open)) await page.locator('.app-layout-page-tools > summary').click();
+    const sidebar = page.locator('.app-layout-page-tools');
     await sidebar.evaluate(element => { element.scrollTop = element.scrollHeight; });
     const card = sidebar.locator('#appWorkingList [data-layout-deal]').last();
     await card.scrollIntoViewIfNeeded();
@@ -95,7 +96,6 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
 
   test(`review agenda is interactive in front of the workspace at ${width}px in ${theme}`, async t => {
     const page = await open(t, width, theme);
-    if (width === 390) await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
     await page.getByRole('button', { name: 'Review deals', exact: true }).click();
     await page.locator('#agendaPanel').waitFor();
     await animationsSettled(page);

@@ -7,6 +7,14 @@ type McpResult = { kind: string; isError?: boolean; payload?: unknown };
 const sibling = (path: string) => import(/* runtime module beside ui-inbox.js */ new URL(path, import.meta.url).href);
 
 export async function bootInbox(host: HTMLElement) {
+  const legacy = new Set(['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief', 'homeMeetingReviews', 'homeMissingNextStep', 'homeCalendar', 'homeMeetings', 'homeCallOutcomes', 'homeEmailFilings', 'homeInvoices', 'homePastClients', 'homeIntroductions', 'homeContactReasons', 'homeLeads', 'dealAttention', 'dealFlags', 'homeEmailActivity']);
+  const migrate = () => {
+    if (location.pathname !== '/' || !legacy.has(location.hash.slice(1))) return false;
+    location.replace(`/review-workflows${location.search}${location.hash}`);
+    return true;
+  };
+  if (migrate()) return;
+  addEventListener('hashchange', migrate);
   try {
     const { resolveDealroomBoot } = await sibling('./boot-mode.js');
     let rpc: Rpc = fixtureInboxRpc();
@@ -30,5 +38,7 @@ export async function bootInbox(host: HTMLElement) {
     const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = 'Inbox unavailable. Sign in or refresh to try again.';
     const link = document.createElement('a'); link.href = '/auth/login'; link.textContent = 'Sign in';
     host.append(notice, link);
+  } finally {
+    if (location.pathname === '/') await sibling('./app-shell.js');
   }
 }

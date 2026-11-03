@@ -310,10 +310,10 @@ test('R8 page environment capture and freshness feedback stays visible in the st
  assert.equal(await page.locator('#observedAt').isVisible(),true);
 });
 test('R9 Recent changes transfers phone focus into Today and keeps its keyboard trap',async t=>{
- const {page,goto}=await open(t,{width:390});await goto('/deals?view=board');await page.locator('#appSidebarToggle').click();await page.locator('#receiptsOpen').click();
+ const {page,goto}=await open(t,{width:390});await goto('/deals?view=board');await page.locator('#receiptsOpen').click();
  assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
- await page.keyboard.press('Escape');assert.equal(await page.locator('#appTodayToggle').evaluate(n=>n===document.activeElement),true);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#receiptsOpen').evaluate(n=>n===document.activeElement),true);
 });
 
 // PR 129 numbered review regressions. All data is synthetic.

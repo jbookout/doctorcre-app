@@ -14,7 +14,7 @@ export async function applyPhoneProfile(context, page) {
 }
 
 export const screens = [
-  { id: 'home', route: '/review-workflows', ready: '#dealFlags .home-flag', tap: '[data-scope="mine"]', complete: () => document.querySelectorAll('#dealFlags .home-flag').length === 2 },
+  { id: 'home', route: '/', ready: '.home-slice [data-inbox-row]', tap: '.home-slice header button', complete: () => document.querySelector('.home-slice header button')?.getAttribute('aria-expanded') === 'true' },
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailUpdateForm')?.getClientRects().length > 0 },
   { id: 'vendors', route: '/vendors', ready: '.record-row', tap: '.record-row', complete: () => document.querySelector('#recordPanel')?.getClientRects().length > 0 },
   { id: 'tours', route: '/tours', ready: '[data-market="Pensacola, FL"]', tap: '[data-market="Pensacola, FL"]', complete: () => document.querySelector('#space-area')?.value === 'Pensacola, FL' },
@@ -63,7 +63,6 @@ export const tasks = [
   { id: 'task-tour-library', route: '/tours', fixture: 'tours', conditions: '40 synthetic saved tours; client directory delayed 250ms',
     ready: '#appSidebarToggle',
     async verify(page) {
-      await page.locator('#appSidebarToggle').tap();
       await page.locator('#upcoming-tours .tour-button').first().tap();
       await page.waitForFunction(() => document.querySelector('#tour-dialog').open && document.querySelector('#detail-title').textContent === 'Synthetic tour');
       await page.locator('#detail-content').getByText('Demo waterfront office', { exact: false }).waitFor();

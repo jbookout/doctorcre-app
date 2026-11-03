@@ -51,7 +51,7 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
       await page.route(url => !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), route => route.abort());
       const errors = []; page.on("pageerror", e => errors.push(e.message));
-      await page.goto(`${base}/tours`); await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
+      await page.goto(`${base}/tours`); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
       const root = page.locator("#accepted-itinerary"); await root.waitFor({ state: "visible" });
       await page.locator('#property-evidence-panel > summary').click();
       const coverage = page.locator('#property-evidence details').filter({ hasText: 'Field coverage' });

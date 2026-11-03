@@ -18,8 +18,8 @@ export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
   layout.className = 'app-layout';
-  layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appCalendarSlot"></div><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></aside>
-    <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div></div>
+  layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appCalendarSlot"></div></aside>
+    <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div><details class="app-layout-page-tools"><summary>Page tools</summary><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></details></div>
     <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><p class="home-kicker app-look-ahead">A LITTLE LOOK AHEAD</p><div id="appScheduleSlot"></div><div id="appTodayOwners"></div><p id="appTodayReadStatus" class="app-layout-empty" role="status" hidden></p><button type="button" id="appTodayRetry" class="app-layout-item" hidden>Retry Today</button><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Dated reminders</h3><div id="appTodayNext">Updating…</div><button type="button" id="appTodayShowAll" class="app-layout-item app-layout-show-all" aria-controls="appTodayNext" hidden>Show all</button></section><section><h3>Deal pulse</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
     <button class="app-layout-scrim" id="appDrawerScrim" type="button" aria-label="Close sidebar" hidden></button>`;
   const status = root.createElement('footer');
@@ -38,12 +38,14 @@ export function mountAppLayout(root, host, pathname) {
   const vendorDirectory = pathname === '/vendors';
   const homeOrInbox = pathname === '/' || pathname === '/review-workflows' || pathname === '/inbox' || pathname === '/inbox.html' || pathname.startsWith('/inbox/card/');
   const progressPage = pathname === '/control-room/progress' || pathname.startsWith('/control-room/progress/board/');
-  const title = progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const title = pathname === '/' ? 'Home' : progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   if (vendorDirectory) layout.querySelector('.app-layout-working').remove();
   host.after(layout, status);
   if (homeOrInbox) layout.querySelector('.app-layout-working').hidden = true;
   const main = layout.querySelector('#appMainSlot');
+  main.append(layout.querySelector('.app-layout-page-tools'));
+  const pageTools = main.firstElementChild;
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
   // Lift declarative page slots before putting the remaining page into main.
@@ -58,6 +60,8 @@ export function mountAppLayout(root, host, pathname) {
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }
+  pageTools.open = Boolean(layout.querySelector('#appSidebarSlot').childElementCount);
+  pageTools.hidden = homeOrInbox && !pageTools.open;
   root.body.classList.add('has-app-layout');
   // A page that brings its own freshness and refresh owns the band's one clock and one refresh.
   const pageRefresh = status.querySelector('#appStatusSlot [data-layout-refresh]');

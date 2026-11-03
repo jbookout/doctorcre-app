@@ -200,7 +200,6 @@ for (const width of [1440, 390])
       path: `out/test-artifacts/w14/referrals-${width}.png`,
       animations: "disabled",
     });
-    if (width === 390) await page.locator("#appSidebarToggle").click();
     await page.locator("#networkTerritory").selectOption("Demo Inland");
     assert.equal(await page.locator(".relationship-referral").count(), 0);
     await page.locator("#networkReset").click();

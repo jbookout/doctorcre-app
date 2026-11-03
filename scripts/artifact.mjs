@@ -1,3 +1,4 @@
+import { init, parse } from "es-module-lexer";
 import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
@@ -95,6 +96,22 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
   const files = new Map();
   for (const path of paths) {
     let content = await readSource(path);
+    if (path === "workspace.html") {
+      await init;
+      const dependencies = new Set();
+      const visit = async module => {
+        const [imports] = parse((await readSource(module)).toString());
+        for (const entry of imports.filter(entry => entry.d === -1 && entry.n?.startsWith('.'))) {
+          const dependency = posix.normalize(posix.join(posix.dirname(module), entry.n));
+          if (dependencies.has(dependency)) continue;
+          dependencies.add(dependency);
+          await visit(dependency);
+        }
+      };
+      await visit('js/ui-inbox.js');
+      const preload = [...dependencies].map(module => `<link rel="modulepreload" href="/${module}">`).join('\n');
+      content = Buffer.from(content.toString().replace('</head>', `${preload}\n</head>`));
+    }
     if (path.startsWith("js/") && /\.m?js$/.test(path)) {
       const result = await transform(content.toString("utf8"), {
         target: "es2022", legalComments: "none", minify: true, charset: "utf8",

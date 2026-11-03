@@ -71,9 +71,7 @@ test('search from National Accounts keeps dates visible on local deals', async t
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().click();
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('#search').fill('Demo Surgical');
-  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   const row = page.locator('#rows tr[data-deal-id="d14"]');
   await row.waitFor();
   assert.equal(await row.locator('.due').isVisible(), true, 'local results retain their date column');
