@@ -942,3 +942,66 @@ test('a refusal after uncertain creation never discards the original creation re
   assert.match(container.textContent, /Outcome unknown/); assert.deepEqual(calls[0], calls[1]);
   assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
 });
+
+for (const action of ['defer', 'file', 'handled']) test(`remounted live ${action} recovers the original pending request and receipt`, async () => {
+  const row = action === 'handled' ? proposal() : filingRow(), calls = [];
+  const verb = { defer: 'snooze-email-proposal', file: 'confirm-email-filing', handled: 'handle-email-proposal' }[action];
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'deal-room-board') result = { deals: [] };
+    else if (name === 'preview-email-filing') result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    else if (name === verb) {
+      calls.push(args);
+      if (calls.length === 1) throw Error('synthetic lost response');
+      result = { ok: true, proposal_id: row.id, version: args.base_version + 1, note: args.note,
+        status: action === 'defer' ? 'pending' : 'confirmed', disposition: action === 'defer' ? 'deferred' : action === 'file' ? 'filed' : 'handled',
+        ...(action === 'defer' ? { deferred_until: args.deferred_until } : { deal: args.deal, activity_id: row.source.activity_id }) };
+    } else throw Error(name);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const start = async (mounted, note) => {
+    await mounted.view.refresh();
+    await clickFollowup(mounted.container, { defer: 'Not now', file: 'File to existing deal', handled: 'Already handled' }[action]);
+    fillFollowup(mounted.container, 'note', note);
+    if (action === 'defer') fillFollowup(mounted.container, 'when', note === 'Original note' ? '2099-11-04T09:00' : '2099-11-05T09:00');
+    if (action === 'file') { fillFollowup(mounted.container, 'deal', row.deal); await clickFollowup(mounted.container, 'Review selected deal'); }
+    await clickFollowup(mounted.container, { defer: 'Defer follow-up', file: 'Confirm filing', handled: 'Confirm handled' }[action]);
+  };
+  const first = setup(client); await start(first, 'Original note');
+  assert.equal(calls.length, 1); first.view.dispose();
+  row.version++;
+  const second = setup(client); await start(second, 'New draft note');
+  assert.equal(calls.length, 1);
+  await clickFollowup(second.container, 'Check outcome');
+  assert.equal(calls.length, 2, 'Check outcome must resend the retained request');
+  assert.deepEqual(calls[1], calls[0]);
+  assert.doesNotMatch(second.container.textContent, /Outcome unknown/);
+  assert.match(second.container.textContent, action === 'defer' ? /Returns .*America\/Chicago/ : action === 'file' ? /Filed to the selected deal/ : /Marked handled/);
+  second.view.dispose();
+});
+
+for (const error of ['email_new_deal_client_mismatch', 'email_filing_correction_reason_required']) test(`created deal allows correcting reason after ${error} without another creation`, async () => {
+  const row = filingRow(), creates = [], previews = [], writes = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async args => { creates.push(args); return { deal_id: 'created-demo' }; },
+    previewEmailFiling: async args => {
+      previews.push(args);
+      if (!args.correction_reason) throw Object.assign(Error(error), { payload: { error } });
+      return { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    },
+    confirmEmailFiling: async args => { writes.push(args); return { ok: true, proposal_id: row.id, status: 'confirmed', version: 4, disposition: 'filed', note: args.note, deal: args.deal, activity_id: row.source.activity_id }; }
+  });
+  await view.refresh(); await clickFollowup(container, 'New deal');
+  fillFollowup(container, 'name', 'Separate demo transaction'); fillFollowup(container, 'client', 'Different demo client');
+  fillFollowup(container, 'note', 'Discussed by phone'); await clickFollowup(container, 'Create deal and review filing');
+  fillFollowup(container, 'reason', 'Separate transaction for the selected client');
+  await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Cancel');
+  assert.equal(container.querySelector('[data-field="reason"]').value, 'Separate transaction for the selected client');
+  await clickFollowup(container, 'Review created deal'); await clickFollowup(container, 'Confirm filing');
+  assert.equal(creates.length, 1); assert.equal(previews.length, 3); assert.equal(writes.length, 1);
+  assert.equal(writes[0].deal, 'created-demo'); assert.equal(writes[0].correction_reason, 'Separate transaction for the selected client');
+  assert.equal(writes[0].note, 'Discussed by phone'); view.dispose();
+});
