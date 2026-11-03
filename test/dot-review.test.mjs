@@ -214,7 +214,7 @@ test("Dot 25: a task due today is not overdue at 8 AM Central", () => {
 
 function tourHarness() {
   const $=elements(); const replies=new Map(); const state={tour:{id:"A"},feedbackSeq:0,hydrationSeq:0,cheatDirty:false};
-  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
+  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,dealContext:null,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
   return {h,state,$,replies};
 }
 test("Dot 1: current main serializes Tour navigation instead of applying out-of-order loads", async () => {
@@ -511,7 +511,7 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   $("#route-stops").replaceChildren=noop;
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
-    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
+    state,$,dealContext:null,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
     request:async()=>({id:"A",stops:[],projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,

@@ -333,3 +333,9 @@
   .market-terms-table tr { border:1px solid var(--border); margin:1rem 0; }
   .market-terms-table td::before { content:attr(data-label); display:block; font-weight:600; }
 }
+/* Deal Tours uses the workspace's tokens and controls at every width. */
+.deal-tour-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.deal-tour-list { list-style: none; padding: 0; }
+.deal-tour-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block: var(--space-3); }
+.deal-tours .btn { min-height: 44px; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.deal-tours li, .deal-tours h3 { overflow-wrap: anywhere; }
