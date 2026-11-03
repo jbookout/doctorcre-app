@@ -29,11 +29,11 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/data/board-seed.json') return route.fulfill({ json: seed });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ json: {} });
-    const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/deals' ? 'pipeline.html' : url.pathname.slice(1);
+    const file = ['/', '/review-workflows'].includes(url.pathname) ? 'review-workflows.html' : url.pathname === '/deals' ? 'pipeline.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto('http://localhost/');
+  await page.goto('http://localhost/review-workflows');
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
   const home = await page.locator('#dealFlags .home-flag').count();
   const homeOverdue = await page.locator('#dealFlags .home-flag .work-card-status').allTextContents();
@@ -58,7 +58,7 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   assert.ok(todayRows.length >= 2 && todayRows.every(text => /\d+ days? overdue$/.test(text)), JSON.stringify(todayRows));
   assert.deepEqual(days(todayRows), [...days(todayRows)].sort((a, b) => b - a));
   seed.deals.forEach(deal => { deal.next_date = '2026-10-20'; deal.items.forEach(item => {item.due_on = '2026-10-20';}); });
-  await page.goto('http://localhost/');
+  await page.goto('http://localhost/review-workflows');
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
   assert.equal(await page.locator('#dealFlags .home-flag').count(), 0);
   assert.match(await page.locator('#dealFlags').textContent(), /No overdue next steps/);

@@ -142,7 +142,7 @@ test('Home discovers its boot mode while the client bootstrap is downloading', a
   const bootstrap = new Promise(resolve => { release = resolve; });
   await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => { await bootstrap; await route.continue(); });
   const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: WAIT_MS });
-  await page.goto(server.url + '/', { waitUntil: 'commit' });
+  await page.goto(server.url + '/review-workflows', { waitUntil: 'commit' });
   try { await mode; } finally { release(); }
   await page.locator('#dealFlags .home-flag').first().waitFor();
   assert.ok(await page.locator('#dealFlags .home-flag').count() > 0);

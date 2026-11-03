@@ -211,10 +211,10 @@ for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired con
   return producerRoute(route,env);
  }});
  if(failure===401){
-  await page.goto('http://localhost/?mode=live');await page.waitForURL('**/public-shell/session-ended.html');
+  await page.goto('http://localhost/review-workflows?mode=live');await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await page.locator('#docPresence').count(),0);return;
  }
- await goto('/?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
+ await goto('/review-workflows?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
  const before=await readContext(page);
  assert.equal(before.ready,failure===null,JSON.stringify(before));
  if(!failure) assert.ok(before.records.some(r=>r.kind==='deal'));

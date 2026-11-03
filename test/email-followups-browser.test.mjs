@@ -31,7 +31,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `email-${width}-${theme}`, viewer: 'joe', reset: true } })).status(), 200);
-    await page.goto(`${origin}/?mode=fixture`);
+    await page.goto(`${origin}/review-workflows?mode=fixture`);
     const card = page.locator('#homeEmailFollowups');
     await card.scrollIntoViewIfNeeded();
     await card.locator('article').first().waitFor().catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
@@ -69,7 +69,7 @@ test('signed-in synthetic Home distinguishes load failure, keeps last good rows,
     if (fail && rpc.params.name === 'list-email-proposals') return route.fulfill({ status: 503, json: { error: 'synthetic_outage' } });
     return route.continue();
   });
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.scrollIntoViewIfNeeded();
   await card.getByText('Could not load email follow-ups.', { exact: true }).waitFor();
@@ -194,7 +194,7 @@ for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards e
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
   });
   await page.clock.install();
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const panel = page.locator('#homeEmailFollowups');
   await panel.scrollIntoViewIfNeeded();
   if (width === 390) await panel.getByRole('button', { name: 'Show 1 more', exact: true }).click();
@@ -291,7 +291,7 @@ test('Home creates a new deal and files its email through the live client at pho
     else return route.continue();
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
   });
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.scrollIntoViewIfNeeded();
   await card.getByText('Possible new demo practice').waitFor();
@@ -317,7 +317,7 @@ test('Home loads email follow-ups even outside the viewport', async t => {
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
   let reviewDownloads = 0;
   await page.route('**/js/email-followups.js', async route => { reviewDownloads++; await route.continue(); });
-  await page.goto(origin, { waitUntil: 'networkidle' });
+  await page.goto(origin + '/review-workflows', { waitUntil: 'networkidle' });
   await page.locator('#dealFlags .home-flag').first().waitFor();
   assert.equal(reviewDownloads, 1, 'email follow-ups load with Home without scrolling');
   await page.locator('#homeEmailFollowups article').first().waitFor();
@@ -339,7 +339,7 @@ test('session loss during the email command download prevents a late confirmatio
     await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
     await route.continue();
   });
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).click();
   await card.getByRole('button', { name: 'Confirm change', exact: true }).click();
@@ -372,7 +372,7 @@ test('a failed command download after leaving keeps the cancelled reply draft ed
   const download = new Promise(resolve => { requested = resolve; });
   await page.route('**/js/email-proposal-command.js', route => { held = route; requested(); });
   await page.clock.install();
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.scrollIntoViewIfNeeded();
   await card.getByRole('button', { name: 'Review reply', exact: true }).click();
@@ -419,7 +419,7 @@ for (const [subject_type,width] of [['client',1440],['lead',390],['vendor',390]]
       else return route.continue();
       return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
     });
-    await page.goto(`${origin}/?mode=live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await page.goto(`${origin}/review-workflows?mode=live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
     const card = page.locator('#homeEmailFollowups');
     await card.getByText('Demo contact follow-up', { exact: true }).waitFor();
     assert.match(await card.innerText(), new RegExp(`${subject_type[0].toUpperCase()+subject_type.slice(1)} · Demo contact`));
@@ -462,7 +462,7 @@ test('Home saved reply survives send Undo and submits once after grace', async t
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
   });
   await page.clock.install();
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.scrollIntoViewIfNeeded();
   await card.getByText('Reply draft · Re: Demo floor plan · Joe', { exact: true }).waitFor();
@@ -531,7 +531,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       else return route.continue();
       await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
     });
-    await page.goto(`${origin}/?mode=live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await page.goto(`${origin}/review-workflows?mode=live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
     const panel = page.locator('#homeEmailFollowups');
     await panel.getByText('Dana asks for a review of the lease.', { exact: true }).waitFor();
     assert.equal(await panel.locator('q:visible').count(), 0);

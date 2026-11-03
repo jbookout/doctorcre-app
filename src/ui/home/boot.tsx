@@ -2,9 +2,6 @@ import { mountInbox, inboxRefusal } from './home';
 import { createInboxClient } from './inbox';
 import { fixtureInboxRpc } from './fixture';
 
-// The opt-in inbox page boots here. Home stays the classic dashboard; this
-// page holds only the inbox, so no workflow lives in two places. The page's
-// session and transport helpers are the app's own modules beside this bundle.
 type Rpc = (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>;
 type McpResult = { kind: string; isError?: boolean; payload?: unknown };
 const sibling = (path: string) => import(/* runtime module beside ui-inbox.js */ new URL(path, import.meta.url).href);

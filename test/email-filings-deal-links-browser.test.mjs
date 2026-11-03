@@ -55,7 +55,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       }
       return route.continue();
     });
-    await page.goto(`${origin}/?mode=live`);
+    await page.goto(`${origin}/review-workflows?mode=live`);
     await page.locator('#homeEmailActivity summary').click();
     const panel = page.locator('#homeEmailFilings'), first = panel.locator('article').first();
     await first.getByRole('link', { name: 'Open filed deal', exact: true }).waitFor({ timeout: 5000 }).catch(async error => { assert.fail(`${error.message}\n${await panel.innerHTML()}\n${JSON.stringify(calls)}\n${errors.join('\n')}`); });

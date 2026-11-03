@@ -59,7 +59,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { changes: [], cursor: null } });
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
-    const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
+    const file = ['/', '/review-workflows'].includes(url.pathname) ? 'review-workflows.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });

@@ -37,7 +37,7 @@ for (const path of ['/', '/leads', '/deals']) for (const fonts of ['held', 'avai
     assert.ok(fontRequests > 0, 'the font request really started');
     assert.equal(fontCompleted, fonts === 'available', 'held CSS has not completed at first contentful paint');
     await page.getByRole('button', { name: 'Joe: account and settings', exact: true }).waitFor();
-    const primary = page.locator(path === '/' ? '#refreshHome' : path === '/leads' ? '#leadSearch' : '#boardView');
+    const primary = page.locator(path === '/' ? '.inbox-header > button' : path === '/leads' ? '#leadSearch' : '#boardView');
     await primary.waitFor();
     assert.ok(await primary.isEnabled());
     if (fonts === 'available') {
@@ -60,7 +60,7 @@ test('Home applies available font CSS before the application modules finish down
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({
     contentType: 'text/css', body: ':root { --synthetic-font-loaded: yes; }',
   }));
-  await page.goto(server.origin, { waitUntil: 'commit' });
+  await page.goto(server.origin + '/review-workflows', { waitUntil: 'commit' });
   try {
     await page.waitForFunction(() => getComputedStyle(document.documentElement)
       .getPropertyValue('--synthetic-font-loaded').trim() === 'yes', null, { timeout: 3000 });

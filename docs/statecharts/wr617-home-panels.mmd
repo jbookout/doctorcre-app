@@ -1,0 +1,20 @@
+stateDiagram-v2
+  state Desktop {
+    [*] --> Open: right default / left page default
+    Open --> Closed: toggle or close / persist preference / focus toggle
+    Closed --> Open: toggle / persist preference
+  }
+  state Phone {
+    [*] --> NoDrawer
+    NoDrawer --> Calendar: workspace toggle / focus close
+    NoDrawer --> LookAhead: Today toggle / focus close
+    Calendar --> NoDrawer: close, Escape, scrim / return focus
+    LookAhead --> NoDrawer: close, Escape, scrim / return focus
+  }
+  Desktop --> Phone: narrow viewport / preserve desktop preference
+  Phone --> Desktop: wide viewport / clear drawer, restore preference
+  state HomeSlice {
+    [*] --> Collapsed
+    Collapsed --> Expanded: See all
+    Expanded --> Collapsed: Show less
+  }
