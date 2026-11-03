@@ -27,3 +27,4 @@ export { mountDealRoomBoard } from './deal-room-board';
 export { mountDealRoomAgenda } from './deal-room-agenda';
 
 export { mountLeadGuidance } from "./lead-guidance";
+export { mountTerritoryEvidence } from './territory-evidence';
