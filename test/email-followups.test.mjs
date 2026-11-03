@@ -932,3 +932,13 @@ test('cancelling or refusing filing after creation retains the created deal inst
   assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
   assert.match(container.textContent, /created.*version_conflict/i);
 });
+
+test('a refusal after uncertain creation never discards the original creation request', async () => {
+  const row = filingRow(), calls = [];
+  const { container, view } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async args => { calls.push(args); if (calls.length === 1) throw Error('lost'); throw Object.assign(Error('refused after uncertainty'), { payload: { error: 'version_conflict' } }); } });
+  await view.refresh(); await clickFollowup(container, 'New deal'); fillFollowup(container, 'name', 'Separate demo'); fillFollowup(container, 'client', 'Demo Client'); await clickFollowup(container, 'Create deal and review filing');
+  await clickFollowup(container, 'Check outcome');
+  assert.match(container.textContent, /Outcome unknown/); assert.deepEqual(calls[0], calls[1]);
+  assert.equal([...container.querySelectorAll('button')].some(node => node.textContent === 'New deal'), false);
+});

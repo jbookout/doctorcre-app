@@ -136,7 +136,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     const value = error && typeof error === 'object' ? record(error) : {};
     if ([401, 403].includes(Number(value.status)) || value.code === 'session_changed') { denied(); return; }
     const payload = value.payload && typeof value.payload === 'object' ? record(value.payload) : {};
-    model.state = typeof payload.error === 'string' && !value.pendingRequest ? createdDraft ? { kind: 'created', draft: createdDraft, message: `Deal created. Filing refused (${payload.error}). Review the created deal before continuing.` } : { kind: 'refused', message: `Action refused (${payload.error}). Refresh and review before trying again.` } : fallback;
+    model.state = typeof payload.error === 'string' && !value.pendingRequest && (fallback.kind !== 'creation-unknown' || value.creationRefused === true) ? createdDraft ? { kind: 'created', draft: createdDraft, message: `Deal created. Filing refused (${payload.error}). Review the created deal before continuing.` } : { kind: 'refused', message: `Action refused (${payload.error}). Refresh and review before trying again.` } : fallback;
     render();
   }
   async function write(method: Method, request: Request, createdDraft?: Draft) {
@@ -184,7 +184,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     const state = model.state;
     if (action === 'refresh') { model.state = { kind: 'idle' }; changed(); render(); }
     if (action === 'cancel') { model.state = state.kind === 'preview' && state.draft.action === 'new' ? { kind: 'created', draft: state.draft, message: 'Deal created. Filing cancelled. Review the created deal before continuing.' } : { kind: 'idle' }; render(); }
-    if (action === 'preview-created' && state.kind === 'created') void preview(state.draft);
+    if (action === 'preview-created' && state.kind === 'created') void preview({ ...state.draft, baseVersion: row.version });
     if (action === 'confirm' && state.kind === 'preview') void write('confirmEmailFiling', state.request, state.draft.action === 'new' ? state.draft : undefined);
     if (action === 'replay' && state.kind === 'unknown') void write(state.method, state.request, state.createdDraft);
     if (action === 'replay' && state.kind === 'creation-unknown') void create(state.draft, state.request);
