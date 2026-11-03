@@ -1059,3 +1059,48 @@ for (const outcome of ['lost', 'success', 'refusal', 'in-flight']) test(`changed
   }
   reopened.view.dispose();
 });
+
+for (const outcome of ['offline', 'malformed']) test(`round-three changed-target remount retains original filing after ${outcome}`, async () => {
+  const row = filingRow(), calls = [];
+  const originalDeal = row.deal;
+  let online = true;
+  const client = createLiveClient({ online: () => online, selfActor: 'joe', fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'deal-room-board') result = { deals: [] };
+    else if (name === 'preview-email-filing') result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version };
+    else if (name === 'confirm-email-filing') {
+      calls.push(args);
+      if (calls.length === 1 && outcome === 'offline') throw Error('synthetic lost response');
+      result = outcome === 'refusal' ? { error: 'version_conflict' } : { ok: true, proposal_id: row.id, version: args.base_version + 1, note: args.note,
+        status: 'confirmed', disposition: 'filed', deal: calls.length === 1 && outcome === 'malformed' ? 'wrong-deal' : args.deal, activity_id: row.source.activity_id };
+    } else throw Error(name);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const file = async (mounted, deal) => {
+    await clickFollowup(mounted.container, 'File to existing deal');
+    fillFollowup(mounted.container, 'deal', deal);
+    await clickFollowup(mounted.container, 'Review selected deal');
+    await clickFollowup(mounted.container, 'Confirm filing');
+  };
+  const first = setup(client); await first.view.refresh(); await file(first, originalDeal);
+  assert.equal(calls.length, 1); first.view.dispose();
+  if (outcome === 'offline') {
+    const offline = setup(client); await offline.view.refresh(); online = false;
+    await clickFollowup(offline.container, 'Check outcome');
+    assert.match(offline.container.textContent, /Outcome unknown/);
+    offline.view.dispose(); online = true;
+  }
+  const changedDeal = '20000000-0000-4000-8000-000000000002'; row.suggested_deals = [{ deal: changedDeal, name: 'Other demo', reasons: [] }];
+  let reopened = setup(client); await reopened.view.refresh();
+    assert.match(reopened.container.textContent, /Outcome unknown/, 'recover before offering a changed target');
+    assert.equal([...reopened.container.querySelectorAll('button')].some(button => button.textContent === 'File to existing deal'), false);
+    await clickFollowup(reopened.container, 'Check outcome');
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1], calls[0]);
+    assert.match(reopened.container.textContent, /Filed to the selected deal/);
+    assert.equal(calls.every(args => args.deal === originalDeal), true);
+  reopened.view.dispose();
+});
