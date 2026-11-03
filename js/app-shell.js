@@ -38,7 +38,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     search.after(toggle);
     let opening = false, retired = false;
     const open = async () => {
-      if (opening || retired || root.querySelector('dialog:modal')) return;
+      if (opening || retired) return;
       opening = true;
       const opener = root.activeElement instanceof HTMLElement && root.activeElement !== root.body ? root.activeElement : toggle;
       try {

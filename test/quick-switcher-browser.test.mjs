@@ -33,6 +33,21 @@ test('switcher keyboard, recents, navigation and phone control', async () => {
     await page.getByRole('heading', { name: 'Recent', exact: true }).waitFor();
     await page.getByRole('option', { name: 'Calendar Page' }).click();
     await page.waitForURL('**/calendar');
+    await page.evaluate(() => {
+      const dialog = document.createElement('dialog');
+      dialog.id = 'fixtureParent';
+      const input = document.createElement('input');
+      input.setAttribute('aria-label', 'Parent field');
+      dialog.append(input);
+      document.body.append(dialog);
+      dialog.showModal();
+      input.focus();
+    });
+    await page.keyboard.press('Control+k');
+    await input.waitFor();
+    await input.press('Escape');
+    assert.equal(await page.getByRole('textbox', { name: 'Parent field' }).evaluate(el => el === document.activeElement), true);
+    await page.evaluate(() => document.getElementById('fixtureParent').remove());
   } finally { await browser.close(); }
 });
 
