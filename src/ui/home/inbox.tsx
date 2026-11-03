@@ -1,3 +1,4 @@
+import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
 type BaseItem = Readonly<{
   item_id: string; source_type: string; source_id: string; source_version: string;
   source_state: 'working' | 'needs_attention' | 'done' | 'failed'; title: string;
@@ -14,8 +15,17 @@ export type InboxItem = BaseItem & Readonly<{
 export type Snapshot = Readonly<{ ok: true; schema_version: 'home-inbox.v2'; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true; auto_settle_enabled: false }>;
 export type Action = 'snooze' | 'settle' | 'unsettle';
 type CommandArgs = Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>> }>;
-export type Command = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
-export type ItemResult = { item_id: string; ok: true; item: InboxItem } | { item_id: string; ok: false; error: string; current_version?: string; current_item?: InboxItem };
+type DispositionCommand = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
+export type { TaskReceipt } from './task-done';
+type TaskCommand = Readonly<{ action: 'complete' | 'reopen'; args: CommandArgs & { action_id: string; base_version: number; completion_event_id?: string } }>;
+export type Command = DispositionCommand | TaskCommand;
+export function taskCommand(action: 'complete' | 'reopen', item: InboxItem, receipt?: TaskReceipt): TaskCommand {
+  if (!item.action_id || !item.action_version || (action === 'complete' && item.source_state !== 'needs_attention')) throw Error('This card cannot be marked done.');
+  if (action === 'reopen' && (!receipt?.completion_event_id || receipt.action_id !== item.action_id || receipt.status !== 'done')) throw Error("Can't undo this completion. Its original receipt has no completion event.");
+  return { action, args: { idempotency_key: crypto.randomUUID(), items: [{ item_id: item.item_id, base_version: item.base_version }], action_id: item.action_id, base_version: action === 'reopen' && receipt ? receipt.version : item.action_version, ...(action === 'reopen' && receipt?.completion_event_id ? { completion_event_id: receipt.completion_event_id } : {}) } };
+}
+
+export type ItemResult = { item_id: string; ok: true; item: InboxItem; receipt?: TaskReceipt } | { item_id: string; ok: false; error: string; current_version?: string; current_item?: InboxItem };
 export function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const timestamp = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
@@ -87,6 +97,16 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
     read: async signal => parseSnapshot(await rpc('read-home-inbox-v2', {}, signal)),
     async run(request) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
+      if (request.action === 'complete' || request.action === 'reopen') {
+        const { items, ...args } = request.args;
+        const receipt = request.action === 'complete' ? await completeAction({ completeOneAction: args => rpc('complete-one-action', args) }, args) : parseActionReceipt(await rpc('reopen-one-action', args), args, 'open');
+        const snapshot = parseSnapshot(await rpc('read-home-inbox-v2', {}));
+        const item_id = items[0]!.item_id;
+        const item = snapshot.items.find(item => item.item_id === item_id && item.action_id === receipt.action_id);
+        if (!item) throw Error('Task receipt confirmed, but readback is unavailable. Retry the same request.');
+        if (item.action_version !== receipt.version || item.source_state !== (receipt.status === 'done' ? 'done' : 'needs_attention')) return [{ item_id, ok: false, error: 'intervening_change', current_item: item }];
+        return [{ item_id, ok: true, item, receipt }];
+      }
       const results = parseResults(await rpc(`${request.action}-home-inbox`, request.args), request);
       if (!results.some(result => result.ok)) return results.flatMap(result => result.ok ? [] : [result]);
       const snapshot = parseSnapshot(await rpc('read-home-inbox-v2', {}));

@@ -51,6 +51,6 @@
     "limit": 1000,
     "truncated": "boolean; the item limit or 10000-notification scan bound was exceeded",
     "ordering": "Unfinished first, newest activity first, item ID as tie breaker",
-    "completion": "Only task items have action_id and action_version. Complete the representative action only; merged_source_ids are display provenance, never a bulk completion instruction. No task reopening verb is added."
+    "completion": "Only task items have action_id and action_version. Complete the representative action only; merged_source_ids are display provenance, never a bulk completion instruction. reopen-one-action reverses the exact completion receipt using action_id, numeric version and completion_event_id. See action_reopen for the pinned producer contract."
   }
 }
