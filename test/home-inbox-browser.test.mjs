@@ -290,6 +290,7 @@ test('a legacy completion receipt honestly refuses Undo', async t => {
   const { page, calls } = await open(t, { legacy: true });
   await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Mark done', exact: true }).click();
   await page.getByText(/Can't undo this completion/).waitFor();
+  assert.doesNotMatch(await page.locator('.inbox-notice').textContent(), /You can undo/);
   assert.equal(await page.getByRole('button', { name: 'Undo', exact: true }).count(), 0);
   assert.equal(calls.some(call => call.name === 'reopen-one-action'), false);
 });

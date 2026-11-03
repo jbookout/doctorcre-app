@@ -68,7 +68,7 @@ function Inbox({ client }: { client: InboxClient }) {
       }
       const completion = operation.request.action === 'complete' ? successes.map(item => `Marked done: ${item.title}.`).join(' ') : '';
       const legacy = results.some(result => result.ok && result.receipt && !result.receipt.completion_event_id) ? " Can't undo this completion. Its original receipt has no completion event." : '';
-      setNotice(`${completion}${legacy} ${successes.length + changed.length} confirmed. ${changed.length ? `${changed.length} changed again after confirmation. Showing the latest state. Undo is unavailable for those cards. ` : ''}${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : successes.length ? operation.undoing ? 'Undone.' : 'You can undo this change.' : ''}`);
+      setNotice(`${completion}${legacy} ${successes.length + changed.length} confirmed. ${changed.length ? `${changed.length} changed again after confirmation. Showing the latest state. Undo is unavailable for those cards. ` : ''}${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : successes.length ? operation.undoing ? 'Undone.' : legacy ? 'Completion confirmed.' : 'You can undo this change.' : ''}`);
       if (!failed.length) setPending(null);
       focusRow(operation.undoing ? operation.before.map(item => item.item_id) : neighbours);
     } catch (error) {
