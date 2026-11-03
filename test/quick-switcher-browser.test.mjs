@@ -221,3 +221,127 @@ for (const fallback of [false, true]) test(`composing Enter preserves switcher b
     await page.waitForURL('**/calendar');
   } finally { await browser.close(); }
 });
+
+for (const variant of ['composing', '229', 'AltGraph', 'printable']) test(`global walkthrough preserves ${variant} text entry`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    const result = await page.evaluate(async variant => {
+      const { openWalkthrough } = await import('/js/app-walkthrough.js');
+      openWalkthrough(document);
+      const field = document.createElement('input'); document.body.append(field); field.focus();
+      const event = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, altKey: variant === 'AltGraph' || variant === 'printable', modifierAltGraph: variant === 'AltGraph', isComposing: variant === 'composing', keyCode: variant === '229' ? 229 : 0, bubbles: true, cancelable: true });
+      field.dispatchEvent(event);
+      return { open: !!document.querySelector('[data-walkthrough]'), prevented: event.defaultPrevented };
+    }, variant);
+    assert.deepEqual(result, { open: true, prevented: false });
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('[data-walkthrough]').count(), 0);
+  } finally { await browser.close(); }
+});
+
+for (const fallback of [false, true]) test(`global slash search preserves composition, keyCode fallback ${fallback}`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${server.url}/deals?view=national`);
+    await page.locator('#search').waitFor();
+    assert.equal(await page.evaluate(fallback => {
+      const event = new KeyboardEvent('keydown', { key: '/', isComposing: !fallback, keyCode: fallback ? 229 : 0, bubbles: true, cancelable: true });
+      document.body.dispatchEvent(event);
+      return event.defaultPrevented;
+    }, fallback), false);
+    await page.keyboard.press('/');
+    assert.equal(await page.locator('#search').evaluate(el => el === document.activeElement), true);
+  } finally { await browser.close(); }
+});
+
+for (const query of ['needle', 'absent']) test(`held read completes with ${query} query and clears to pages`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    await page.evaluate(async () => {
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: () => new Promise(resolve => { window.finishSwitcherRead = resolve; }) });
+    });
+    const input = page.getByRole('combobox');
+    await input.fill(query);
+    await page.getByText('Loading accessible items…').waitFor();
+    await page.evaluate(() => window.finishSwitcherRead({ board: { deals: [{ id: 'needle', name: 'Needle deal' }] }, network: { nodes: [] } }));
+    if (query === 'needle') await page.getByRole('option', { name: 'Needle deal Deal' }).waitFor();
+    else await page.getByText('No matches. Try a deal, contact or page name.').waitFor();
+    await input.fill('');
+    await page.getByRole('option', { name: 'Calendar Page' }).waitFor();
+    await input.press('Escape');
+    assert.equal(await page.getByRole('button', { name: 'Quick switcher' }).evaluate(el => el === document.activeElement), true);
+  } finally { await browser.close(); }
+});
+
+for (const phase of ['loading', 'error', 'open_empty', 'typing', 'no_results']) for (const close of ['Escape', 'outside']) test(`${phase} closes with ${close} and restores focus`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    const opener = page.getByRole('button', { name: 'Quick switcher' });
+    await opener.waitFor();
+    await page.evaluate(async phase => {
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: () => phase === 'loading' ? new Promise(() => {}) : phase === 'error' ? Promise.reject(Error('Unavailable')) : Promise.resolve({ board: { deals: [] }, network: { nodes: [] } }) });
+    }, phase);
+    const input = page.getByRole('combobox');
+    await input.waitFor();
+    if (phase === 'loading') await page.getByText('Loading accessible items…').waitFor();
+    else if (phase === 'error') await page.getByText('Deals and contacts unavailable. Pages are still available.').waitFor();
+    else {
+      await page.getByText('1 destinations', { exact: true }).waitFor();
+      if (phase === 'typing') await input.fill('calendar');
+      if (phase === 'no_results') { await input.fill('absent'); await page.getByText('No matches. Try a deal, contact or page name.').waitFor(); }
+    }
+    if (close === 'Escape') await input.press('Escape'); else await page.mouse.click(5, 5);
+    await input.waitFor({ state: 'detached' });
+    assert.equal(await opener.evaluate(el => el === document.activeElement), true);
+  } finally { await browser.close(); }
+});
+
+for (const phase of ['loading', 'error']) test(`${phase} page result navigates with Enter`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    await page.evaluate(async phase => {
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: () => phase === 'loading' ? new Promise(() => {}) : Promise.reject(Error('Unavailable')) });
+    }, phase);
+    await page.getByText(phase === 'loading' ? 'Loading accessible items…' : 'Deals and contacts unavailable. Pages are still available.').waitFor();
+    await page.getByRole('combobox').press('Enter');
+    await page.waitForURL('**/calendar');
+  } finally { await browser.close(); }
+});
+
+test('arrow selection wraps exactly and Tab stays inside switcher', async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    await page.evaluate(async () => {
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }, { label: 'Deals', href: '/deals' }], read: async () => ({ board: { deals: [] }, network: { nodes: [] } }) });
+    });
+    const input = page.getByRole('combobox');
+    await input.waitFor();
+    for (const [key, id] of [['ArrowUp', 'quick-option-1'], ['ArrowDown', 'quick-option-0'], ['ArrowDown', 'quick-option-1'], ['ArrowDown', 'quick-option-0']]) {
+      await input.press(key);
+      assert.equal(await input.getAttribute('aria-activedescendant'), id);
+    }
+    for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+      await page.keyboard.press(key);
+      assert.equal(await page.evaluate(() => !!document.activeElement.closest('[data-quick-switcher]')), true);
+    }
+  } finally { await browser.close(); }
+});
