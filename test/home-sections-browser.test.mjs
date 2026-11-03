@@ -28,11 +28,14 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await page.addScriptTag({ content: axe.source });
   assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
   await page.locator('#appSidebar').getByText('Demo practice planning', { exact: true }).waitFor();
+  if (width === 390) await page.screenshot({ path: `/tmp/wr617-s1-j23-shots/calendar-drawer-${width}-${theme}.png`, fullPage: true });
   assert.equal(await page.locator('#appSidebar').getByRole('link', { name: 'Review call follow-ups ↗', exact: true }).isVisible(), false);
   if (width === 390) { await page.keyboard.press('Escape'); assert.equal(await calendar.evaluate(n => n === document.activeElement), true); await today.click(); }
   assert.equal(await today.getAttribute('aria-expanded'), 'true');
   await page.getByText('A LITTLE LOOK AHEAD', { exact: true }).waitFor();
   await page.locator('#appToday').getByText('Demo practice planning', { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
+  if (width === 390) await page.screenshot({ path: `/tmp/wr617-s1-j23-shots/today-drawer-${width}-${theme}.png`, fullPage: true });
   await page.locator('[data-layout-close="today"]').click(); assert.equal(await today.getAttribute('aria-expanded'), 'false');
   await today.click(); assert.equal(await today.getAttribute('aria-expanded'), 'true');
   if (width === 390) await page.keyboard.press('Escape');

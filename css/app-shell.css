@@ -523,3 +523,4 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 
 .app-layout-page-tools { padding: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--hairline); }
 .app-layout-page-tools > summary { cursor: pointer; min-height: var(--touch); align-content: center; }
+.workspace-open .app-layout-page-tools { display: none; }
