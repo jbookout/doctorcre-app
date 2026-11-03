@@ -82,3 +82,18 @@ test('national/review/candidate writes retain original keys across timeout retri
   assert.deepEqual(calls[0], calls[1]);
   assert.equal(receipts.size, 1);
 });
+
+test('an email outcome check joins its observed send when it settles during session verification', async () => {
+  let releaseSend, releaseScope, checks = 0, sends = 0;
+  const commands = createRetainedCommands({ scope: () => ++checks === 1 ? 'original-session' : new Promise(resolve => { releaseScope = resolve; }) });
+  const request = { proposal_id: 'proposal', idempotency_key: 'original-key' };
+  const first = commands.send('email', request, () => { sends++; return new Promise(resolve => { releaseSend = resolve; }); }, 'confirmEmailFiling');
+  await Promise.resolve();
+  const checking = commands.send('email', request, async () => { sends++; return { ok: true }; }, 'confirmEmailFiling');
+  releaseSend({ ok: true });
+  await first;
+  releaseScope('original-session');
+  await checking;
+  assert.equal(sends, 1);
+  assert.equal(commands.details('email'), null);
+});
