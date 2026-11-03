@@ -1,3 +1,4 @@
+import { isTextEntry } from './keyboard-input';
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { recentIds, rememberDestination as remember, clearRecents } from './switcher-history';
@@ -105,6 +106,7 @@ function Switcher({ pages, read, close }: Omit<Options, 'opener'> & { close: () 
     <input ref={input} id="quick-input" role="combobox" aria-label="Jump to" autoComplete="off" placeholder="Deals, contacts, tasks and pages"
       aria-expanded="true" aria-autocomplete="list" aria-controls="quick-results" aria-activedescendant={selected ? `quick-option-${active}` : undefined}
       value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={event => {
+        if (isTextEntry(event.nativeEvent)) return;
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault();
           if (results.length) setActive(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length);

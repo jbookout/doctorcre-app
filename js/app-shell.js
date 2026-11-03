@@ -1,3 +1,4 @@
+import { isTextEntry } from './ui-keyboard-input.js';
 import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
 import { mountAppLayout } from "./app-layout.js";
@@ -65,7 +66,8 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     };
     toggle.addEventListener('click', open);
     root.defaultView.addEventListener('keydown', event => {
-      if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK' && event.altKey && !event.shiftKey && !event.isComposing) {
+      if (isTextEntry(event)) return;
+      if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK' && event.altKey && !event.shiftKey) {
         event.preventDefault(); event.stopImmediatePropagation();
         if (!event.repeat) void open();
       }

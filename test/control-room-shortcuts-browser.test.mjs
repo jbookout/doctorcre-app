@@ -46,6 +46,7 @@ for (const modifier of ['Meta', 'Control']) test(`${modifier}-Alt-K opens the sw
   assert.equal(await commands.isVisible(), true);
   assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
   await page.keyboard.press('Escape');
+  await page.locator('#crQueueList').focus();
   await page.keyboard.press(`${modifier}+Alt+k`);
   await page.getByRole('combobox', { name: 'Jump to' }).waitFor();
   assert.equal(await commands.isVisible(), false);

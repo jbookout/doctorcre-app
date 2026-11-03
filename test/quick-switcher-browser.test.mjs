@@ -67,6 +67,8 @@ test('switcher keyboard, recents, navigation and phone control', async () => {
       input.focus();
     });
     await page.keyboard.press('Control+Alt+k');
+    assert.equal(await input.count(), 0);
+    await page.keyboard.press('Meta+Alt+k');
     await input.waitFor();
     await input.press('Escape');
     assert.equal(await page.getByRole('textbox', { name: 'Parent field' }).evaluate(el => el === document.activeElement), true);
@@ -323,7 +325,7 @@ for (const phase of ['loading', 'error']) test(`${phase} page result navigates w
   } finally { await browser.close(); }
 });
 
-test('arrow selection wraps exactly and Tab stays inside switcher', async () => {
+test('arrow selection wraps exactly and Tab excludes background controls', async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
   try {
@@ -341,7 +343,7 @@ test('arrow selection wraps exactly and Tab stays inside switcher', async () => 
     }
     for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
       await page.keyboard.press(key);
-      assert.equal(await page.evaluate(() => !!document.activeElement.closest('[data-quick-switcher]')), true);
+      assert.equal(await page.evaluate(() => document.activeElement === document.body || !!document.activeElement.closest('[data-quick-switcher]')), true);
     }
   } finally { await browser.close(); }
 });

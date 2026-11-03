@@ -12,6 +12,9 @@ or [Edge](https://support.microsoft.com/en-us/edge/keyboard-shortcuts-in-microso
 shortcut tables. Safari coverage applies to macOS. Chrome and Edge tables cover
 macOS and Windows. User remappings and extensions can still claim shortcuts.
 The handler uses physical KeyK so Option-generated characters on macOS work.
+Composition events, including keyCode 229, and AltGraph pass through. Printable
+Ctrl+Alt characters in editable fields also pass through. Composing Enter
+never chooses a destination.
 
 The switcher is a lazy island over the authorized board, relationship network
 and navigation registry. Recents retain only destination IDs in session storage
@@ -26,6 +29,8 @@ stateDiagram-v2
   loading --> no_results: read completes, unmatched query
   loading --> error: read fails
   error --> loading: Retry
+  loading --> navigating: choose page
+  error --> navigating: choose page
   open_empty --> typing: type
   typing --> no_results: unmatched query
   no_results --> typing: matching query
@@ -43,7 +48,7 @@ stateDiagram-v2
 
 Close always restores the opener. Session invalidation closes and retires the
 island, clears recents and discards late reads. New opens revalidate data.
-Arrow keys wrap while focus stays on the combobox. Native dialog contains Tab.
+Arrow keys wrap while focus stays on the combobox. Native dialog excludes background Tab targets.
 
 Two designs were considered. The full Search page preserves broad search but
 its producer does not supply navigable deal links. The chosen local index gives
@@ -51,3 +56,12 @@ instant filtering over existing navigable reads without a new server contract.
 Board actions supply task destinations. Contacts open their relationship node.
 The model excludes transport and destination authorization checks, which remain
 with the authenticated adapters and destination pages.
+
+Named regression coverage in `test/quick-switcher-browser.test.mjs`:
+
+- `held read completes with needle/absent query and clears to pages` covers delayed matching, delayed no-results and clearing to pages.
+- `<phase> closes with Escape/outside and restores focus` covers both close paths in loading, error, open_empty, typing and no_results.
+- `loading/error page result navigates with Enter` covers available page navigation before a successful record read.
+- `arrow selection wraps exactly and Tab excludes background controls` covers both arrow directions, wrapping and focus containment.
+- `global switcher preserves <variant> text entry` covers AltGraph, printable editable fields and both composition signals.
+- `composing Enter preserves switcher before normal Enter` covers the composition self-transition and ordinary navigation afterward.
