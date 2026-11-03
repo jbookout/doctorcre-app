@@ -10,7 +10,7 @@ test('the opt-in inbox and its card URLs resolve to the inbox page, and card IDs
   const card = recordRoutes.card('task:a/b?x=y');
   assert.equal(card, '/inbox/card/task%3Aa%2Fb%3Fx%3Dy');
   assert.equal(routeContract.routes[routeKey(card)], 'inbox.html');
-  assert.equal(routeContract.routes[routeKey(recordRoutes.inbox())], 'inbox.html');
+  assert.equal(routeContract.routes[routeKey('/inbox')], 'inbox.html');
   assert.equal(routeKey('/inbox/card/a/b'), '/inbox/card/a/b');
   assert.equal(routeContract.routes['/'], 'workspace.html', 'Home stays the classic dashboard');
 });

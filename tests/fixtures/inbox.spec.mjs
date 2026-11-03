@@ -27,6 +27,7 @@ test('Open source record links each inbox source type to a page that opens it, o
   for (const item of items) {
     item.open_url = ['capture_session', 'capture_post_call_action'].includes(item.source_type) ? '/calls' : item.source_type === 'notification' ? '/updates' : null;
     if (!['next_action', 'capture_post_call_action'].includes(item.source_type)) Object.assign(item, { action_id: null, action_version: null });
+    if (['capture_session', 'email_proposal'].includes(item.source_type)) item.deal_id = null;
   }
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
