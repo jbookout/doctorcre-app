@@ -2,9 +2,8 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
 type Tour = { id: string; deal_id: string | null; name: string; status: string };
-type Detail = Tour & { stops: string[] };
 type Library = { kind: 'loading' } | { kind: 'ready'; tours: Tour[] } | { kind: 'unavailable' };
-type Selection = { kind: 'none' } | { kind: 'loading'; id: string } | { kind: 'ready'; tour: Detail } | { kind: 'unavailable'; id: string };
+type Selection = { kind: 'none' } | { kind: 'loading'; id: string } | { kind: 'ready'; tour: Tour } | { kind: 'creating' } | { kind: 'unavailable'; id: string };
 type Client = {
   library(options: { signal: AbortSignal }): Promise<unknown>;
   tour(id: string, options: { signal: AbortSignal }): Promise<unknown>;
@@ -42,13 +41,48 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     }
     scope = next;
   });
-  const editor = (id?: string) => `/tours/route-editor.html?${id ? `tour=${encodeURIComponent(id)}&` : ''}deal=${encodeURIComponent(dealId)}`;
+  function setUrl(id?: string, push = false) {
+    if (!view || view.location.pathname !== '/deals') return;
+    const url = new URL(view.location.href);
+    url.searchParams.set('tab', 'tours');
+    if (push && !url.searchParams.has('tour')) {
+      view.history.replaceState(view.history.state, '', url);
+      url.searchParams.set('tour', id || 'new');
+      view.history.pushState({...view.history.state,doctorcreTourWorkspace:dealId}, '', url); return;
+    }
+    if (id) url.searchParams.set('tour', id); else url.searchParams.delete('tour');
+    view.history.replaceState(view.history.state, '', url);
+  }
+  function back() {
+    const frame = element.querySelector('iframe');
+    if (frame?.contentWindow) {
+      const leaving = element.ownerDocument.createEvent('Event');
+      leaving.initEvent('beforeunload', false, true);
+      if (!frame.contentWindow.dispatchEvent(leaving) && !view?.confirm('Leave this tour? Unsaved changes stay in this tab only.')) return;
+    }
+    if (view?.history.state?.doctorcreTourWorkspace === dealId) { view.history.back(); return; }
+    ++detailGeneration; selection = { kind: 'none' }; setUrl(); render(); void refresh();
+  }
+  function receive(event: MessageEvent) {
+    const frame = element.querySelector('iframe');
+    if (!view || event.origin !== view.location.origin || !frame || event.source !== frame.contentWindow || !record(event.data)) return;
+    if (event.data.type === 'deal-tour-size' && typeof event.data.height === 'number' && Number.isFinite(event.data.height)) {
+      frame.style.height = `${Math.max(700, Math.min(30000, event.data.height))}px`;
+    }
+    if (event.data.type === 'deal-tour-opened' && typeof event.data.id === 'string' && uuid.test(event.data.id)) setUrl(event.data.id);
+    if (event.data.type === 'deal-tour-invalidated') invalidate();
+  }
+  view?.addEventListener('message', receive);
   function render() {
     if (disposed) return;
     flushSync(() => root.render(<section className="deal-tours" aria-label="Deal tours">
       <h2>Properties &amp; tours</h2>
       <p>Plan and review the shortlist, route and packet for this deal.</p>
-      <div className="deal-tour-actions"><a className="btn" data-start-tour href={editor()}>Start a tour</a>
+      {(selection.kind === 'ready' || selection.kind === 'creating') ? <>
+        <button type="button" className="btn btn-quiet" data-back-tours onClick={back}>Back to deal tours</button>
+        <iframe title="Tour shortlist, route and packet" src={`/tours/route-editor.html?embedded=1&deal=${encodeURIComponent(dealId)}${selection.kind === 'ready' ? `&tour=${encodeURIComponent(selection.tour.id)}` : ''}`}
+          style={{ width: '100%', minHeight: 700, border: 0, display: 'block' }} />
+      </> : <><div className="deal-tour-actions"><button type="button" className="btn" data-start-tour onClick={() => { selection = { kind: 'creating' }; setUrl('new',true); render(); }}>Start a tour</button>
         <button type="button" className="btn btn-quiet" data-refresh-tours onClick={() => void refresh()}>Refresh tours</button></div>
       <div aria-live="polite">
         {library.kind === 'loading' && <p>Loading tours…</p>}
@@ -58,15 +92,11 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
         </li>)}</ul> : <p>No tours for this deal. Start a tour to select properties.</p>)}
         {selection.kind === 'loading' && <p>Opening tour…</p>}
         {selection.kind === 'unavailable' && <p>Tour not available. <button type="button" className="btn btn-quiet" onClick={() => { if (selection.kind === 'unavailable') void open(selection.id); }}>Retry tour</button></p>}
-        {selection.kind === 'ready' && <section aria-label="Selected tour"><h3>{selection.tour.name}</h3>
-          {selection.tour.stops.length ? <ol>{selection.tour.stops.map((stop, index) => <li key={index}>{stop}</li>)}</ol> : <p>No properties selected.</p>}
-          <a className="btn" data-edit-tour href={editor(selection.tour.id)}>Edit shortlist, route and packet</a>
-        </section>}
-      </div>
+      </div></>}
     </section>));
   }
   async function refresh() {
-    const selected = selection.kind === 'ready' ? selection.tour.id : selection.kind === 'unavailable' ? selection.id : null;
+    if (selection.kind === 'ready' || selection.kind === 'creating') return;
     const ticket = ++generation; ++detailGeneration; controller.abort(); controller = new AbortController();
     library = { kind: 'loading' }; selection = { kind: 'none' }; render();
     try {
@@ -76,10 +106,11 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
       library = { kind: 'ready', tours: rows.map(parseTour).filter(tour => tour.deal_id === dealId) };
     } catch { if (disposed || ticket !== generation) return; library = { kind: 'unavailable' }; }
     render();
-    if (library.kind === 'ready' && (requested || selected)) {
-      const id = requested || selected; requested = null;
+    if (library.kind === 'ready' && requested) {
+      const id = requested; requested = null;
       if (!id) return;
-      if (uuid.test(id)) await open(id);
+      if (id === 'new') { selection = { kind: 'creating' }; render(); }
+      else if (uuid.test(id)) await open(id);
     }
   }
   async function open(id: string) {
@@ -90,14 +121,10 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
       if (disposed || ticket !== detailGeneration) return;
       const tour = parseTour(value);
       if (tour.id !== id || tour.deal_id !== dealId || !record(value) || !Array.isArray(value.stops)) throw Error('Unavailable tour');
-      const stops = value.stops.filter(stop => record(stop) && stop.stop_state !== 'excluded').map(stop => {
-        if (!record(stop)) throw Error('Invalid stop');
-        return typeof stop.property_name === 'string' ? stop.property_name : typeof stop.name === 'string' ? stop.name : 'Selected property';
-      });
-      selection = { kind: 'ready', tour: { ...tour, stops } };
+      selection = { kind: 'ready', tour }; setUrl(id,true);
     } catch { if (disposed || ticket !== detailGeneration) return; selection = { kind: 'unavailable', id }; }
     render();
   }
   void refresh();
-  return { refresh, dispose() { disposed = true; ++generation; ++detailGeneration; controller.abort(); unsubscribe?.(); view?.removeEventListener('doctorcre-session-invalidated', invalidate); root.unmount(); } };
+  return { refresh, dispose() { disposed = true; ++generation; ++detailGeneration; controller.abort(); unsubscribe?.(); view?.removeEventListener('message', receive); view?.removeEventListener('doctorcre-session-invalidated', invalidate); root.unmount(); } };
 }

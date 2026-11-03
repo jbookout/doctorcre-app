@@ -1,25 +1,29 @@
 stateDiagram-v2
   [*] --> Loading
-  Loading --> List: Deal tours arrive
-  Loading --> Empty: No tours belong to this deal
-  Loading --> Unavailable: Read fails
-  List --> Loading: Refresh
-  Empty --> Loading: Refresh
-  Unavailable --> Loading: Retry
-  List --> DetailLoading: Open a tour
-  DetailLoading --> Detail: Same deal detail arrives
-  DetailLoading --> NotAvailable: Tour hidden, missing or belongs elsewhere
-  Detail --> DetailLoading: Open another tour
-  NotAvailable --> DetailLoading: Retry
-  List --> Editor: Start a tour
-  Empty --> Editor: Start a tour
-  Detail --> Editor: Edit shortlist, route and packet
-  Editor --> BoundTour: Save with immutable deal subject
+  Loading --> List: Tours arrive
+  Loading --> Error: Library read fails
+  Error --> Loading: Refresh tours
+  List --> Opening: Open a tour
+  Opening --> Open: Same deal detail arrives
+  Opening --> NotAvailable: Missing, inaccessible or wrong deal
+  NotAvailable --> Opening: Retry tour
+  Opening --> Opening: Choose another tour
+  Open --> List: Back to deal tours
+  List --> Creating: Start a tour
+  Creating --> Saving: Submit creation
+  Saving --> Open: Creation receipt and detail arrive
+  Saving --> Error: Creation refused or outcome unknown
+  Open --> Saving: Save shortlist, route or packet
+  Saving --> Open: Saved receipt and detail arrive
+  Error --> Saving: Reconcile retained request
+  Open --> Unavailable: Session changes
+  Opening --> Unavailable: Session changes
+  Creating --> Unavailable: Session changes
   Loading --> Closed: Leave workspace
-  DetailLoading --> Closed: Leave workspace
-  Detail --> Unavailable: Session changes
-  List --> Unavailable: Session changes
-  Closed --> Closed: Ignore late reads
-  %% never Show another deal's tours or detail
+  Opening --> Closed: Leave workspace
+  Open --> Closed: Leave workspace
+  Closed --> Closed: Ignore late reads and frame messages
+  %% never Create a tour outside a deal workspace
+  %% never Show another deal's detail
   %% never Let a late read repaint a closed workspace
   %% never Show server errors as tour content

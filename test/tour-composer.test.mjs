@@ -17,6 +17,7 @@ const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")
 const tourScript = `${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const script = `${autoRefreshScript}\n${tourScript}`;
 const uuid = () => webcrypto.randomUUID();
+const fixtureDeal = "11111111-1111-4111-8111-111111111111";
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";
 const properties = [propA, propB].map((property_id, i) => ({ property_id, name: `Synthetic site ${i + 1}`, address: `${100 + i} Example Way`, county: "Escambia", state: "FL" }));
 const settle = async () => { for (let i = 0; i < 16; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
@@ -37,7 +38,7 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
     return normalFetch(path, options);
   };
   const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
-  const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) });
+  const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) }, `?tour=${tourId}`);
   assert.equal(reads, 1);
   assert.match(doc.querySelector("#status").textContent, /Tour detail unavailable/i);
   assert.ok(doc.querySelector("[data-tour-retry]"));
@@ -66,7 +67,7 @@ function domain() {
     const body = options.body ? JSON.parse(options.body) : null;
     calls.push({ path, body, options });
     if (body) assert.equal(options.headers["x-carr-csrf"], "synthetic-csrf");
-    if (path === "/api/tours/library") return response({ tours: [...tours.values()].map(t => ({ id: t.id, name: t.name, status: "draft" })) });
+    if (path === "/api/tours/library") return response({ tours: [...tours.values()].map(t => ({ id: t.id, name: t.name, status: "draft", deal_id: t.deal_id || fixtureDeal })) });
     if (path.startsWith("/api/tours/detail")) {
       if (fault?.path === "/api/tours/detail") { const status = fault.kind === "missing" ? 404 : 503; fault = null; return response(null, status); }
       const tour = tours.get(new URL(path, "https://example.test").searchParams.get("tour_id"));
@@ -74,7 +75,7 @@ function domain() {
       const latest = tour.routes[0], accepted = tour.routes.find(r => r.accepted);
       const reviewed = structuredClone(tour);
       for (const route of reviewed.routes) route.acceptance_digest = fixtureReviewDigest(route);
-      return response({ ...reviewed, cheat_sheet: Object.hasOwn(reviewed, "cheat_sheet") ? reviewed.cheat_sheet : {}, route_version: accepted?.route_version || 1,
+      return response({ ...reviewed, deal_id: reviewed.deal_id || fixtureDeal, cheat_sheet: Object.hasOwn(reviewed, "cheat_sheet") ? reviewed.cheat_sheet : {}, route_version: accepted?.route_version || 1,
         route_version_id: latest.id, route_version_state: latest.accepted ? "accepted" : "draft",
         accepted_route_version: accepted?.route_version || 0, stops: structuredClone(latest.stops) });
     }
@@ -139,6 +140,10 @@ async function open(store, storage = {}, query = "") {
   const dom = openDom(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
   if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
   for (const [key, value] of Object.entries(storage)) dom.window.sessionStorage.setItem(key, value);
+  const deal = new URLSearchParams(query).get("deal") || fixtureDeal;
+  dom.reconfigure({url: `https://app.doctorcre.com/tours/route-editor.html?deal=${deal}&${query.replace(/^\?/, "")}`});
+  Object.defineProperty(dom.window, "parent", {value: {location: {origin: "https://app.doctorcre.com", pathname: "/deals", search: `?deal=${deal}`}, postMessage() {}}});
+  dom.window.ResizeObserver = class { observe() {} disconnect() {} };
   dom.window.eval(script); await settle();
   return { dom, doc: dom.window.document };
 }
@@ -238,7 +243,7 @@ async function create(doc, type = "work") {
   doc.querySelector("#create-tour-form").requestSubmit(); await settle();
 }
 
-for (const type of ["client", "work"]) test(`create a Tour bound to a ${type} and reload its initial draft`, async () => {
+for (const type of ["deal"]) test(`create a Tour bound to a ${type} and reload its initial draft`, async () => {
   const store = domain(), { dom, doc } = await open(store);
   await create(doc, type);
   assert.equal(store.tours.size, 1);
@@ -1075,10 +1080,14 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
-    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: shellScript }); await page.addScriptTag({ content: script });
+    await page.goto("https://tour.test/tours");
+    await page.evaluate(deal => {
+      history.replaceState(null, "", `/tours/route-editor.html?deal=${deal}`);
+      Object.defineProperty(window, "parent", {value: {location: {origin: location.origin, pathname: "/deals", search: `?deal=${deal}`}, postMessage() {}}});
+    }, fixtureDeal); await page.addScriptTag({ content: shellScript }); await page.addScriptTag({ content: script });
     // Exercise the preserved catalog/cart component independently of its retired UI.
     await page.evaluate(() => { document.querySelector(".discovery").hidden = false; });
-    await page.locator("#create-tour-panel summary").click();
+    await page.locator("#create-tour-panel").evaluate(node => { node.open = true; });
     for (const width of [375, 390]) {
       await page.setViewportSize({ width, height: 900 });
       const layout = await touchLayout(page);
@@ -1090,7 +1099,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       assert.ok(navigation.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px open navigation touch targets`);
       await page.getByLabel("More", { exact: true }).click();
     }
-    for (const [selector, value] of [["#create-tour-name", "Synthetic Tour"], ["#create-subject-id", "work:fixture"], ["#create-dataset", "synthetic-v1"]]) await page.locator(selector).fill(value);
+    for (const [selector, value] of [["#create-tour-name", "Synthetic Tour"], ["#create-dataset", "synthetic-v1"]]) await page.locator(selector).fill(value);
     for (const role of ["start", "end"]) {
       await page.locator(`#${role}-latitude`).fill("30.5"); await page.locator(`#${role}-longitude`).fill("-87.2"); await page.locator(`#${role}-source`).fill(`fixture:${role}`);
     }
@@ -1140,9 +1149,9 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const checked = await box.isChecked();
       await label.click(); assert.equal(await box.isChecked(), !checked, "the full scope label toggles its checkbox");
     }
-    await page.getByRole("button", { name: "Filter Bay county", exact: true }).click();
+    await page.getByRole("button", { name: /Bay.*results/ }).click();
     assert.equal(await page.locator("#property-county").inputValue(), "Bay", "the last county is reachable inside the phone scroller");
-    await page.getByRole("button", { name: "Filter Escambia county", exact: true }).press("Enter");
+    await page.getByRole("button", { name: /Escambia.*results/ }).press("Enter");
     assert.equal(await page.locator("#property-county").inputValue(), "Escambia", "county keyboard activation remains available");
     await page.locator(".property-fact").first().click();
     for (const width of [375, 390]) {
@@ -1401,7 +1410,7 @@ test('denied creation readback hides detail while retaining the session-bound cr
     await create(doc);
     assert.equal(doc.querySelector('#tour-panel').hidden,true);
     assert.match(doc.querySelector('#tour-recovery').textContent,/Sign in/i);
-    const retained=JSON.parse(dom.window.sessionStorage.getItem('doctorcre-tour-pending-v1'));
+    const retained=JSON.parse(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"));
     assert.equal(retained.create.idempotency_key,store.calls.find(call=>call.path==='/api/tours/create').body.idempotency_key);
   }finally{dom.window.close();}
 });

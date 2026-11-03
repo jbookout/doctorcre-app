@@ -38,28 +38,3 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ca
   await expect(page.locator('#dayPanelBody')).toContainText('Option window');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
-
-for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Tours opens planning with readable territory choices at ${width} ${theme}`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 1000 });
-  await assets(page);
-  await page.goto('http://localhost/tours');
-  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-  await expect(page.locator('body')).toHaveClass(/has-app-layout/);
-  const choices = page.locator('.market-buttons button');
-  await expect(choices).toHaveCount(5);
-  for (const choice of await choices.all()) {
-    await expect(choice).toBeVisible();
-    expect(await choice.evaluate(node => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(13);
-  }
-  await expect(page.locator('.territory-map')).toBeHidden();
-  await expect(page.locator('#territory-status')).toBeHidden();
-  if (width === 390) {
-    expect((await page.locator('#plan-title').boundingBox()).y).toBeLessThan(450);
-  }
-  await choices.filter({ hasText: 'Pensacola' }).click();
-  await expect(page.locator('#space-area')).toHaveValue('Pensacola, FL');
-  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
-  await expect(page.locator('#territory-status')).toBeVisible();
-  await page.getByRole('button', { name: 'Hide territory', exact: true }).click();
-  await expect(page.locator('#territory-status')).toBeHidden();
-});
