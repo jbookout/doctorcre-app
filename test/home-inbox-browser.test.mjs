@@ -11,44 +11,49 @@ let outDir;
 before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
-const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', ...fields });
-async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false } = {}) {
+const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
+async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false, extra = [], malformed = false, intervening = null } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
   if (clock) await page.clock.install({ time: new Date('2026-10-30T12:00:00Z') });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
-  const items = [row('a', { hold_until: holdUntil }), row('b', { source_state: 'done', unseen: true }), row('working', { source_state: 'working', section: 'working' })];
-  const calls = []; let writes = 0;
+  const items = [row('a', { hold_until: holdUntil }), row('b', { source_state: 'needs_attention', unseen: true }), row('working', { source_state: 'working', section: 'working' }), ...extra];
+  if (malformed) delete items[0].action_version;
+  const calls = []; let writes = 0; let originalReceipt;
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
     let payload;
-    if (name === 'read-home-inbox') payload = refusal ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v1', items, working_collapsed: true, auto_settle_enabled: false };
+    if (name === 'read-home-inbox-v2') payload = refusal ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false };
     else if (!name.endsWith('-home-inbox')) payload = { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
     else {
       writes++;
-      if (uncertain && writes === 1) return route.abort();
-      payload = { ok: true, schema_version: 'home-inbox-command.v1', results: args.items.map(({ item_id }) => {
+      if (uncertain && !intervening && writes === 1) return route.abort();
+      payload = originalReceipt || { ok: true, schema_version: 'home-inbox-command.v1', results: args.items.map(({ item_id }) => {
         if (partial && item_id === 'b') return { item_id, ok: false, error: 'version_conflict', current_version: 'v9' };
         const item = items.find(item => item.item_id === item_id);
         Object.assign(item, { disposition: name.startsWith('unsettle') ? 'inbox' : name.startsWith('snooze') ? 'snoozed' : 'settled', snoozed_until: args.until || null, base_version: `opaque:${writes + 1}` });
         item.section = item.disposition !== 'inbox' ? item.disposition : item.source_state === 'working' ? 'working' : 'inbox';
-        return { item_id, ok: true, item };
+        const receipt = structuredClone(item);
+        if (intervening) Object.assign(item, { base_version: 'later:3', ...(intervening === 'snooze' ? { disposition: 'snoozed', section: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' } : { title: 'Edited elsewhere', source_version: 'v2', action_version: 8, context_label: 'New deal', due_on: '2026-11-06' }) });
+        return { item_id, ok: true, item: receipt };
       }) };
+      if (intervening) originalReceipt = payload;
+      if (uncertain && intervening && writes === 1) return route.abort();
     }
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(`${server.origin}/inbox${card ? `/card/${card}` : ''}?mode=live`);
   return { page, calls };
 }
-test('The inbox renders one inbox, collapsed Working and Done badge; current card stays reachable', async t => {
+test('The selected Working card opens in its shelf without an Unseen filter', async t => {
   const { page, calls } = await open(t, { card: 'working' });
   await page.getByRole('heading', { name: 'Synthetic working', exact: true }).waitFor();
-  assert.equal(await page.locator('details[open]').count(), 0);
+  assert.equal(await page.locator('details[open]').count(), 1);
   assert.equal(await page.locator('[data-inbox-row]').count(), 3);
-  assert.equal(await page.getByText('Done · Unseen', { exact: true }).count(), 1);
-  assert.equal(calls.filter(call => call.name === 'read-home-inbox').length, 1);
+  assert.equal(await page.getByText('Unseen', { exact: true }).count(), 0);
+  assert.equal(calls.filter(call => call.name === 'read-home-inbox-v2').length, 1);
   assert.deepEqual(calls.filter(call => ['read-home-agenda', 'get-deal-room'].includes(call.name)), [], 'The inbox reads no agenda and no per-card records');
 });
 test('settle and snooze have reversible Undo, and focus returns to a reachable row', async t => {
@@ -93,7 +98,7 @@ test('read refusal shows error instead of empty', async t => {
   await page.getByRole('alert').filter({ hasText: 'Inbox unavailable' }).waitFor();
   assert.equal(await page.getByText('You’re all caught up.', { exact: true }).count(), 0);
 });
-for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`inbox evidence ${width} ${theme}`, async t => {
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`inbox evidence ${width} ${theme}`, async t => {
   const { page } = await open(t, { width, theme });
   await page.locator('[data-inbox-row="a"]').waitFor();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -153,4 +158,75 @@ test('a command receipt does not make an old inbox snapshot look fresh', async t
   await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).click();
   await page.getByText('1 confirmed.', { exact: false }).waitFor();
   assert.match(await page.locator('.inbox-health').textContent(), /Snapshot may be stale/);
+});
+
+test('opening a card preserves its section, count and keyboard focus', async t => {
+  const { page } = await open(t);
+  const section = page.locator('section[aria-label="Inbox"]');
+  const link = section.locator('[data-inbox-row="a"] h3 a');
+  await link.focus();
+  const count = await section.locator('h2 span').textContent();
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/inbox\/card\/a/);
+  assert.equal(await section.locator('[data-inbox-row="a"]').count(), 1);
+  assert.equal(await section.locator('h2 span').textContent(), count);
+  assert.equal(await link.evaluate(node => node === document.activeElement), true);
+});
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`v2 context and selected shelves ${width} ${theme}`, async t => {
+  const title = 'Review the full task instructions and preserve this long title when opened. '.repeat(9);
+  const { page } = await open(t, { width, theme, extra: [
+    row('held', { title, section: 'held', hold_until: '2099-01-01' }),
+    row('done', { source_state: 'done', section: 'done' }),
+    row('loop', { source_type: 'notification', kind_label: 'Update', action_id: null, action_version: null, deal_id: null, context_label: 'Demo loop context', open_url: '/unsupported-page' }),
+  ] });
+  await page.getByText('Held', { exact: true }).click();
+  const held = page.locator('[data-inbox-row="held"]');
+  const link = held.locator('h3 a');
+  await link.focus(); await page.keyboard.press('Enter');
+  await page.waitForURL(/card\/held/);
+  await page.locator('[data-current="true"]').waitFor();
+  assert.equal(await link.evaluate(node => node === document.activeElement), true);
+  assert.equal(await held.locator('h3').evaluate(node => node.scrollHeight <= node.clientHeight), true);
+  assert.match(await held.textContent(), /Demo practice.*Due 2026-11-05/s);
+  assert.match(await page.locator('[data-inbox-row="loop"]').textContent(), /Demo loop context/);
+  await page.locator('[data-inbox-row="loop"] h3 a').click();
+  assert.equal(await page.locator('[data-inbox-row="loop"] .inbox-source').count(), 0);
+  await page.getByText('Done', { exact: true }).first().click();
+  assert.equal(await page.locator('[data-inbox-row="done"]').isVisible(), true);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: `test-artifacts/home-inbox/context-${width}-${theme}.png`, fullPage: true });
+  await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+  await page.waitForFunction(() => document.querySelector('[data-inbox-row]') === null);
+});
+
+test('missing completion identity shows an error instead of actionable cards', async t => {
+  const { page, calls } = await open(t, { malformed: true });
+  await page.getByRole('alert').filter({ hasText: 'completion identity' }).waitFor();
+  assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+  assert.equal(calls.some(call => call.name === 'settle-home-inbox'), false);
+});
+
+for (const intervening of ['snooze', 'source edit']) for (const uncertain of [false, true]) test(`newer ${intervening} is visible without stale Undo${uncertain ? ' after retry' : ''}`, async t => {
+  const { page, calls } = await open(t, { intervening, uncertain, card: 'a', width: 390 });
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).click();
+  if (uncertain) {
+    await page.getByRole('button', { name: 'Retry same request' }).click();
+  }
+  await page.getByText(/changed again.*latest state/i).waitFor();
+  assert.equal(await page.getByRole('button', { name: /^Undo/ }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Retry same request' }).count(), 0);
+  const card = page.locator('[data-inbox-row="a"]');
+  assert.equal(await card.isVisible(), true);
+  if (intervening === 'snooze') {
+    assert.match(await card.textContent(), /Snoozed until/);
+    assert.equal(await card.locator('xpath=..').getAttribute('class'), 'inbox-shelf');
+  } else {
+    assert.match(await card.textContent(), /Edited elsewhere.*New deal.*Due 2026-11-06/s);
+  }
+  if (uncertain) {
+    const writes = calls.filter(call => call.name === 'settle-home-inbox');
+    assert.deepEqual(writes[0], writes[1]);
+  }
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 });

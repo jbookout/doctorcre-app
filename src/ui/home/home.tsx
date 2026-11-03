@@ -13,7 +13,6 @@ function Inbox({ client }: { client: InboxClient }) {
   const { item_id } = useParams();
   const cache = useQueryClient();
   const query = useQuery({ queryKey, queryFn: ({ signal }) => client.read(signal) });
-  const [scope, setScope] = useState('all');
   const [selected, select] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,17 +44,19 @@ function Inbox({ client }: { client: InboxClient }) {
     try {
       const results = await client.run(operation.request);
       const successes = results.flatMap(result => result.ok ? [result.item] : []);
-      const failed = results.filter(result => !result.ok);
-      cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => successes.find(next => next.item_id === item.item_id) || item) } : snapshot, { updatedAt: query.dataUpdatedAt });
+      const changed = results.flatMap(result => !result.ok && result.current_item ? [result.current_item] : []);
+      const updates = [...successes, ...changed];
+      const failed = results.filter(result => !result.ok && !result.current_item);
+      cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => updates.find(next => next.item_id === item.item_id) || item) } : snapshot, { updatedAt: query.dataUpdatedAt });
       setFailures(failed);
       select(new Set(failed.map(result => result.item_id)));
-      if (successes.length && !operation.undoing) {
+      if ((successes.length || changed.length) && !operation.undoing) {
         setUndo(successes.flatMap(item => {
           const previous = operation.before.find(before => before.item_id === item.item_id);
           return previous ? [{ action: previous.disposition === 'settled' ? 'settle' : previous.disposition === 'snoozed' ? 'snooze' : 'unsettle', items: [item], ...(previous.snoozed_until ? { until: previous.snoozed_until } : {}) }] : [];
         }));
       }
-      setNotice(`${successes.length} confirmed. ${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : operation.undoing ? 'Undone.' : 'You can undo this change.'}`);
+      setNotice(`${successes.length + changed.length} confirmed. ${changed.length ? `${changed.length} changed again after confirmation. Showing the latest state. Undo is unavailable for those cards. ` : ''}${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : successes.length ? operation.undoing ? 'Undone.' : 'You can undo this change.' : ''}`);
       if (!failed.length) setPending(null);
       focusRow();
     } catch (error) { setNotice(`Result uncertain. ${message(error)} Retry the same request.`); }
@@ -67,11 +68,11 @@ function Inbox({ client }: { client: InboxClient }) {
     catch (error) { setNotice(message(error)); }
   }
   const items = query.data?.items || [];
-  const placed = shelves(scope === 'unseen' ? items.filter(item => item.unseen || item.item_id === item_id) : items, item_id);
+  const placed = shelves(items, item_id);
   const picked = items.filter(item => selected.has(item.item_id));
   function row(item: InboxItem) {
     const primary = item.disposition === 'settled' ? 'Un-settle' : item.disposition === 'snoozed' ? 'Wake' : 'Settle';
-    return <article key={item.item_id} className="inbox-row" data-inbox-row={item.item_id}
+    return <article key={item.item_id} className="inbox-row" data-inbox-row={item.item_id} data-current={item_id === item.item_id || undefined}
       onTouchStart={event => { const touch = event.touches[0]; if (touch) gesture.current = { x: touch.clientX, y: touch.clientY }; }}
       onTouchEnd={event => {
         const touch = event.changedTouches[0], start = gesture.current; gesture.current = null;
@@ -81,8 +82,9 @@ function Inbox({ client }: { client: InboxClient }) {
       }}>
       <label className="inbox-select"><input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.item_id)} disabled={busy}
         onChange={event => select(previous => { const next = new Set(previous); if (event.target.checked) next.add(item.item_id); else next.delete(item.item_id); return next; })} /></label>
-      <div className="inbox-copy"><p className="inbox-meta"><span>{item.source_type.replaceAll('_', ' ')}</span><span className={`inbox-badge inbox-${item.source_state}`}>{item.source_state === 'done' ? `Done${item.unseen ? ' · Unseen' : ''}` : item.source_state.replaceAll('_', ' ')}</span></p>
-        <h3><Link to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
+      <div className="inbox-copy"><p className="inbox-meta"><span>{item.kind_label}</span><span className={`inbox-badge inbox-${item.source_state}`}>{item.source_state.replaceAll('_', ' ')}</span></p>
+        <h3 className={item_id === item.item_id ? 'inbox-title-expanded' : undefined}><Link aria-current={item_id === item.item_id ? 'true' : undefined} to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
+        <p className="inbox-context">{item.context_label || 'No linked deal'}{item.due_on && <> · Due <time dateTime={item.due_on}>{item.due_on}</time></>}</p>
         <p className="inbox-detail">{item.disposition === 'snoozed' && item.snoozed_until ? `Snoozed until ${new Date(item.snoozed_until).toLocaleString()}` : item.disposition === 'settled' ? 'Settled by you' : item.source_state === 'working' ? 'Dr. CRE is working. You can come back to this.' : 'Ready for your attention'}{item.hold_until ? ` · On hold until ${item.hold_until}` : ''}</p>
         {item_id === item.item_id && recordRoutes.source(item) && <a className="inbox-source" href={recordRoutes.source(item) || undefined}>Open source record ↗</a>}
       </div>
@@ -102,11 +104,11 @@ function Inbox({ client }: { client: InboxClient }) {
       {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo(entries => entries.filter(entry => entry !== previous)); act(previous.action, previous.items, previous.until, true); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
     </div>}
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
-      {item_id && <section className="inbox-section"><div className="inbox-section-title"><h2>Current card</h2><Link to={recordRoutes.inbox()}>Back to inbox</Link></div>{placed.current ? row(placed.current) : <p role="status">This card is not in your current inbox snapshot.</p>}</section>}
-      <div className="inbox-filters" role="group" aria-label="Inbox scope"><button data-scope="all" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>All cards</button><button data-scope="mine" aria-pressed={scope === 'unseen'} onClick={() => setScope('unseen')}>Unseen</button></div>
+      {item_id && !placed.current && <p role="status">This card is not in your current inbox snapshot.</p>}
+      {query.data?.truncated && <p role="status">Showing the first 1,000 cards. More work is available.</p>}
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Done means finished work. Settle when you’re ready.</p></div>
         {placed.inbox.length ? placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
-      {(['working', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
+      {(['working', 'held', 'done', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf} open={placed.current?.section === shelf || undefined}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'held' ? 'Held' : shelf === 'done' ? 'Done' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
     </>}
     {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Settle selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Un-settle selected</button><button disabled={busy || picked.length > 100} onClick={() => setSnooze(picked)}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
     {snooze && <dialog className="inbox-snooze" ref={node => { if (node && !node.open) node.showModal(); }} onCancel={() => { setSnooze(null); focusRow(); }} aria-label="Snooze cards"><h2>Snooze {snooze.length === 1 ? 'card' : `${snooze.length} cards`}</h2><p>Return this to your inbox later.</p>{[1, 24].map(hours => <button autoFocus={hours === 1} key={hours} onClick={() => { const rows = snooze; setSnooze(null); act('snooze', rows, new Date(Date.now() + hours * 3_600_000).toISOString()); }}>{hours === 1 ? '1 hour' : '24 hours'}</button>)}<button onClick={() => { setSnooze(null); focusRow(); }}>Cancel</button></dialog>}
