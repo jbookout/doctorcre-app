@@ -57,7 +57,7 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
-    const payload = name === 'read-home-inbox-v2' ? { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: false }
+    const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
       : name === 'calendar-meeting-prep' ? { state, items: [] }
       : name === 'deal-room-board' ? { actor: 'joe', deals: [] }
       : { items: [], events: [], cursor: 'end' };
@@ -104,10 +104,10 @@ for (const outcome of ['empty', 'unavailable']) test(`Home reserves its frame an
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v2') await pending;
+    if (name === 'read-home-inbox-v3') await pending;
     else panelReads.push(name);
-    const value = name === 'read-home-inbox-v2' ? outcome === 'empty'
-      ? { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: false }
+    const value = name === 'read-home-inbox-v3' ? outcome === 'empty'
+      ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
       : { ok: false, error: 'synthetic_unavailable' }
       : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] }
       : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };

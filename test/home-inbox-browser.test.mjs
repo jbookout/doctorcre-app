@@ -11,7 +11,7 @@ let outDir;
 before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
-const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: item_id === 'b' ? '00000000-0000-0000-0000-000000000003' : '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
+const row = (item_id, fields = {}) => ({ auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: item_id === 'b' ? '00000000-0000-0000-0000-000000000003' : '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
 async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false, extra = [], malformed = false, intervening = null, legacy = false, taskLost = null, taskConflict = false } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
@@ -27,7 +27,7 @@ async function open(t, { refusal = false, width = 1440, theme = 'light', card = 
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
     let payload;
-    if (name === 'read-home-inbox-v2') payload = refusal ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false };
+    if (name === 'read-home-inbox-v3') payload = refusal ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true };
     else if (['complete-one-action', 'reopen-one-action'].includes(name)) {
       taskCalls.push({name, args});
       const prior = taskReceipts.get(args.idempotency_key);
@@ -38,7 +38,7 @@ async function open(t, { refusal = false, width = 1440, theme = 'light', card = 
         if (item.action_version !== args.base_version) payload = { ok: false, error: 'version_conflict' };
         else {
           const done = name === 'complete-one-action';
-          Object.assign(item, { action_version: args.base_version + 1, source_state: done ? 'done' : 'needs_attention', section: done ? 'done' : 'inbox', base_version: `task:${args.base_version + 1}` });
+          Object.assign(item, { action_version: args.base_version + 1, source_state: done ? 'done' : 'needs_attention', auto_settled: done, disposition: done ? 'settled' : 'inbox', section: done ? 'settled' : 'inbox', base_version: `task:${args.base_version + 1}` });
           payload = { ok: true, action_id: args.action_id, version: item.action_version, status: done ? 'done' : 'open', ...(!legacy ? { completion_event_id: args.completion_event_id || '00000000-0000-0000-0000-000000000009' } : {}) };
           taskReceipts.set(args.idempotency_key, payload);
           if (taskLost === name) { taskLost = null; return route.abort(); }
@@ -72,7 +72,7 @@ test('The selected Working card opens in its shelf without an Unseen filter', as
   assert.equal(await page.locator('details[open]').count(), 1);
   assert.equal(await page.locator('[data-inbox-row]').count(), 3);
   assert.equal(await page.getByText('Unseen', { exact: true }).count(), 0);
-  assert.equal(calls.filter(call => call.name === 'read-home-inbox-v2').length, 1);
+  assert.equal(calls.filter(call => call.name === 'read-home-inbox-v3').length, 1);
   assert.deepEqual(calls.filter(call => ['read-home-agenda', 'get-deal-room'].includes(call.name)), [], 'The inbox reads no agenda and no per-card records');
 });
 test('settle and snooze have reversible Undo, and focus returns to a reachable row', async t => {
@@ -139,7 +139,7 @@ test('keyboard movement and phone swipes act on the selected card; un-settle has
     node.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [touch(220)] }));
   });
   await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
-  await page.getByText('Hidden', { exact: true }).click();
+  await page.getByText('Settled', { exact: true }).click();
   await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Show in inbox', exact: true }).click();
   await page.locator('section[aria-label="Inbox"] [data-inbox-row="a"]').waitFor();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();

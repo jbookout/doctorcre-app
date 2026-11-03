@@ -10,7 +10,7 @@ let outDir;
 before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
-const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: item_id === 'b' ? '00000000-0000-0000-0000-000000000003' : '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
+const row = (item_id, fields = {}) => ({ auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: item_id === 'b' ? '00000000-0000-0000-0000-000000000003' : '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
 async function open(t, { width = 1440, theme = 'light', clock = false, extra = [], taskLost = null } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
@@ -25,7 +25,7 @@ async function open(t, { width = 1440, theme = 'light', clock = false, extra = [
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
     let payload;
-    if (name === 'read-home-inbox-v2') payload = { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false };
+    if (name === 'read-home-inbox-v3') payload = { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true };
     else if (['complete-one-action', 'reopen-one-action'].includes(name)) {
       const prior = taskReceipts.get(args.idempotency_key);
       if (prior) payload = prior;
@@ -48,7 +48,7 @@ async function open(t, { width = 1440, theme = 'light', clock = false, extra = [
   return { page, calls };
 }
 
-const reads = calls => calls.filter(call => call.name === 'read-home-inbox-v2').length;
+const reads = calls => calls.filter(call => call.name === 'read-home-inbox-v3').length;
 async function focus(page) { await page.evaluate(() => { dispatchEvent(new Event('focus')); dispatchEvent(new Event('focus')); }); }
 async function visible(page, state) { await page.evaluate(state => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: state }); document.dispatchEvent(new Event('visibilitychange')); }, state); }
 test('focus refreshes once; visible clock refreshes every minute; hidden offline and retired views do not poll', async t => {
@@ -68,7 +68,7 @@ test('focus refreshes once; visible clock refreshes every minute; hidden offline
   await visible(page, 'visible');
   await page.clock.runFor(120_000);
   assert.equal(reads(calls), initial + 2);
-  const reconnected = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-inbox-v2');
+  const reconnected = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-inbox-v3');
   await page.context().setOffline(false);
   await reconnected;
   await page.waitForFunction(() => !document.querySelector('.inbox-health').textContent.includes('Updating'));
@@ -113,11 +113,11 @@ test('a delayed pre-Undo read cannot restore an old task version', async t => {
   const waiting = new Promise(resolve => { requested = resolve; });
   let held = false;
   await page.route('**/mcp', async route => {
-    if (route.request().postDataJSON().params.name !== 'read-home-inbox-v2' || held) return route.fallback();
+    if (route.request().postDataJSON().params.name !== 'read-home-inbox-v3' || held) return route.fallback();
     held = true; requested();
     await new Promise(resolve => { release = resolve; });
     const items = [row('a', { action_version: 8, source_state: 'done', section: 'done', base_version: 'task:8' }), row('b')];
-    await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false }) }] } } }).catch(() => {});
+    await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true }) }] } } }).catch(() => {});
   });
   await focus(page); await waiting;
   await page.getByRole('button', { name: 'Undo', exact: true }).click();

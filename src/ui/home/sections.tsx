@@ -20,7 +20,7 @@ export function HomeSections({ items, current, row }: { items: readonly InboxIte
     <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => item.section === 'inbox' && !dueToday(item))} current={current} row={row} />
     <Slice title="Today" detail="Your tasks dated today." items={items.filter(dueToday)} current={current} row={row} />
     <Slice title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(item.section))} current={current} row={row} />
-    <Slice title="Recently done" detail="Completed work, ordered by latest activity." items={items.filter(item => item.section === 'done').sort((a, b) => b.activity_at.localeCompare(a.activity_at))} current={current} row={row} />
-    <Slice title="Hidden from inbox" detail="Set aside by you. These tasks may still be open." items={items.filter(item => item.section === 'settled')} current={current} row={row} />
+    <Slice title="Recently done" detail="Completed work, ordered by latest activity." items={items.filter(item => (item.section === 'done' || item.auto_settled)).sort((a, b) => b.activity_at.localeCompare(a.activity_at))} current={current} row={row} />
+    <Slice title="Hidden from inbox" detail="Set aside by you. These tasks may still be open." items={items.filter(item => item.section === 'settled' && !item.auto_settled)} current={current} row={row} />
   </div>;
 }

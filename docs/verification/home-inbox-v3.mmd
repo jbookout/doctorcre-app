@@ -1,0 +1,24 @@
+stateDiagram-v2
+  [*] --> Working
+  Working --> Attention: Work needs review
+  Working --> Done: Processing completes
+  Attention --> SetAside: Hide from inbox
+  Attention --> Snoozed: Snooze
+  Attention --> AutoSettled: Canonical work resolves
+  Attention --> AutoSettled: Mark task done
+  Done --> SetAside: Hide completed update
+  Snoozed --> Attention: Wake
+  Snoozed --> AutoSettled: Snooze expires after resolution
+  SetAside --> Undone: Undo hide
+  AutoSettled --> Undone: Show in inbox
+  AutoSettled --> Attention: Undo task completion
+  Undone --> Snoozed: Snooze again
+  Undone --> SetAside: Hide again
+  Undone --> Attention: Canonical work reopens
+  state "Dr. CRE is working" as Working
+  state "Needs your attention" as Attention
+  state "Done update" as Done
+  state "Set aside by you" as SetAside
+  state "Snoozed until chosen time" as Snoozed
+  state "Settled by what happened" as AutoSettled
+  state "Returned to inbox by you" as Undone
