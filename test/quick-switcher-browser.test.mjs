@@ -175,3 +175,49 @@ test('deal and contact choices navigate to the exact fixture records', async () 
     assert.equal(await page.locator('#docOpen').count(), 1);
   } finally { await browser.close(); }
 });
+
+for (const variant of ['AltGraph', 'printable input', 'printable textarea', 'printable contenteditable', 'composing', '229']) test(`global switcher preserves ${variant} text entry`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    const result = await page.evaluate(variant => {
+      const field = document.createElement(variant.includes('textarea') ? 'textarea' : variant.includes('contenteditable') ? 'div' : 'input');
+      if (variant.includes('contenteditable')) field.contentEditable = 'true';
+      document.body.append(field); field.focus();
+      const event = new KeyboardEvent('keydown', {
+        key: variant.startsWith('printable') || variant === 'AltGraph' ? 'ĸ' : 'k', code: 'KeyK', ctrlKey: true, altKey: true,
+        modifierAltGraph: variant === 'AltGraph', isComposing: variant === 'composing', keyCode: variant === '229' ? 229 : 0,
+        bubbles: true, cancelable: true,
+      });
+      field.dispatchEvent(event);
+      return { prevented: event.defaultPrevented, focused: document.activeElement === field };
+    }, variant);
+    assert.deepEqual(result, { prevented: false, focused: true });
+    assert.equal(await page.locator('[data-quick-switcher]').count(), 0);
+  } finally { await browser.close(); }
+});
+
+for (const fallback of [false, true]) test(`composing Enter preserves switcher before normal Enter, keyCode fallback ${fallback}`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    await page.evaluate(async () => {
+      const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+      openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: async () => ({ board: { deals: [] }, network: { nodes: [] } }) });
+    });
+    const input = page.getByRole('combobox');
+    await input.waitFor();
+    const result = await input.evaluate((field, fallback) => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', isComposing: !fallback, keyCode: fallback ? 229 : 13, bubbles: true, cancelable: true });
+      field.dispatchEvent(event);
+      return { prevented: event.defaultPrevented, open: !!document.querySelector('[data-quick-switcher]'), pathname: location.pathname };
+    }, fallback);
+    assert.deepEqual(result, { prevented: false, open: true, pathname: '/' });
+    await input.press('Enter');
+    await page.waitForURL('**/calendar');
+  } finally { await browser.close(); }
+});
