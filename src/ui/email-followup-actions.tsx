@@ -1,3 +1,4 @@
+import { requireEmailActionReceipt } from '../../js/email-action-receipt.js';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
@@ -8,7 +9,7 @@ type Client = {
   getPendingEmailAction?(proposalId: string): { method: Method; request: Request } | null;
   getBoard(): Promise<{ deals: { id: string; name: string }[] }>;
   previewEmailFiling(args: { proposal_id: string; deal: string; correction_reason?: string }): Promise<unknown>;
-  confirmEmailFiling(args: Request): Promise<unknown>;
+  confirmEmailFiling(args: Request, context?: { activityId: string }): Promise<unknown>;
   snoozeEmailProposal(args: Request): Promise<unknown>;
   handleEmailProposal(args: Request): Promise<unknown>;
   createDeal(args: { name: string; client: string; idempotency_key: string }): Promise<{ deal_id: string }>;
@@ -156,14 +157,12 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   async function write(method: Method, request: Request, createdDraft?: Draft, savedDraft?: Draft) {
     model.state = { kind: 'busy' }; render();
     try {
-      const receipt = record(await client[method](request));
+      const result = method === 'confirmEmailFiling' ? await client.confirmEmailFiling(request, { activityId: row.source.activity_id }) : await client[method](request);
+      const receipt = requireEmailActionReceipt(method, request, result, method === 'confirmEmailFiling' && !client.getPendingEmailAction ? row.source.activity_id : undefined);
       if (!current()) return;
-      if (receipt.ok !== true || receipt.proposal_id !== row.id || receipt.version !== request.base_version + 1 || receipt.note !== request.note) throw Error('Unconfirmed action receipt');
-      if (method === 'snoozeEmailProposal') {
-        if (receipt.status !== 'pending' || receipt.disposition !== 'deferred' || typeof receipt.deferred_until !== 'string' || Date.parse(receipt.deferred_until) !== Date.parse(request.deferred_until || '')) throw Error('Unconfirmed deferral receipt');
-        model.state = { kind: 'done', message: `Returns ${returnTime(receipt.deferred_until)}.` };
+      if (receipt.kind === 'deferred') {
+        model.state = { kind: 'done', message: `Returns ${returnTime(receipt.until)}.` };
       } else {
-        if (receipt.status !== 'confirmed' || receipt.disposition !== (request.disposition || 'handled') || (method === 'confirmEmailFiling' && (receipt.deal !== request.deal || receipt.activity_id !== row.source.activity_id))) throw Error('Unconfirmed filing receipt');
         model.state = { kind: 'done', message: request.disposition === 'filed' ? 'Filed to the selected deal.' : 'Marked handled.' };
       }
       render(); changed(model.state.message);

@@ -17,7 +17,7 @@ test('filing confirmation retains its request and binds retries to the reviewed 
     if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     calls.push({ params: JSON.parse(init.body).params, csrf: init.headers['x-carr-csrf'] });
     if (lost) { lost = false; throw Error('lost response'); }
-    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed', disposition: 'handled', proposal_id: JSON.parse(init.body).params.arguments.proposal_id, version: JSON.parse(init.body).params.arguments.base_version + 1, note: JSON.parse(init.body).params.arguments.note, activity_id: 'synthetic-activity' }) }] } });
   } });
   const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
     proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'filing-once' };
@@ -33,7 +33,7 @@ test('filing refuses confirmation after the reviewed actor changes', async () =>
   const live = createLiveClient({ selfActor: 'synthetic-reviewer', fetchImpl: async (path, init) => {
     if (path === '/auth/session') return Response.json({ actor: { slug: 'synthetic-other' }, csrf_token: 'synthetic-other-session' });
     calls.push(JSON.parse(init.body).params);
-    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed', disposition: 'handled', proposal_id: JSON.parse(init.body).params.arguments.proposal_id, version: JSON.parse(init.body).params.arguments.base_version + 1, note: JSON.parse(init.body).params.arguments.note, activity_id: 'synthetic-activity' }) }] } });
   } });
   await assert.rejects(live.confirmEmailFiling({
     proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
@@ -51,7 +51,7 @@ test('filing refuses confirmation and unknown-outcome recovery after the session
         : Response.json({ actor: { slug: 'synthetic-reviewer' }, csrf_token: 'synthetic-reviewed-session' });
       calls.push(JSON.parse(init.body).params);
       if (retry && calls.length === 1) throw Error('lost filing response');
-      return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+      return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed', disposition: 'handled', proposal_id: JSON.parse(init.body).params.arguments.proposal_id, version: JSON.parse(init.body).params.arguments.base_version + 1, note: JSON.parse(init.body).params.arguments.note, activity_id: 'synthetic-activity' }) }] } });
     } });
     const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
       proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'expired-session-filing' };
@@ -72,7 +72,7 @@ test('filing cannot replay an unknown confirmation under a different session', a
       if (path === '/auth/session') return Response.json(session);
       calls.push({ params: JSON.parse(init.body).params, csrf: init.headers['x-carr-csrf'] });
       if (calls.length === 1) throw Error('lost filing response');
-      return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed' }) }] } });
+      return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, status: 'confirmed', disposition: 'handled', proposal_id: JSON.parse(init.body).params.arguments.proposal_id, version: JSON.parse(init.body).params.arguments.base_version + 1, note: JSON.parse(init.body).params.arguments.note, activity_id: 'synthetic-activity' }) }] } });
     } });
     const args = { proposal_id: '10000000-0000-4000-8000-000000000001', base_version: 1,
       proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'cross-session-filing' };
@@ -292,7 +292,7 @@ test('exact-target filing and snooze use the public live command seam with retai
     if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const params = JSON.parse(init.body).params; calls.push(params);
     if (params.name === 'snooze-email-proposal' && lost) { lost = false; throw Error('lost'); }
-    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true }) }] } });
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, proposal_id: params.arguments.proposal_id, version: params.arguments.base_version + 1, note: params.arguments.note, status: params.name === 'snooze-email-proposal' ? 'pending' : 'confirmed', disposition: params.name === 'snooze-email-proposal' ? 'deferred' : 'handled', deferred_until: params.arguments.deferred_until, deal: params.arguments.deal, activity_id: 'synthetic-activity' }) }] } });
   } });
   await live.previewEmailFiling({ proposal_id: 'p', deal: 'd' });
   const request = { proposal_id: 'p', base_version: 3, deferred_until: '2026-11-04T15:00:00.000Z', note: 'Call later', idempotency_key: 'once' };
@@ -322,7 +322,7 @@ test('pending email actions block a different target and method until explicit r
     if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
     const params = JSON.parse(init.body).params; calls.push(params);
     if (lost) { lost = false; throw Error('synthetic lost response'); }
-    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true }) }] } });
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, proposal_id: params.arguments.proposal_id, version: params.arguments.base_version + 1, note: params.arguments.note, status: params.name === 'snooze-email-proposal' ? 'pending' : 'confirmed', disposition: params.name === 'snooze-email-proposal' ? 'deferred' : 'handled', deferred_until: params.arguments.deferred_until, deal: params.arguments.deal, activity_id: 'synthetic-activity' }) }] } });
   } });
   const request = { proposal_id: 'p', deal: 'original', base_version: 3, note: 'Original note', idempotency_key: 'original-key' };
   await assert.rejects(client.confirmEmailFiling(request));
@@ -340,3 +340,31 @@ test('pending email actions block a different target and method until explicit r
   assert.deepEqual(calls[0], calls[1]);
   assert.equal(client.getPendingEmailAction('p'), null);
 });
+
+for (const method of ['confirmEmailFiling', 'snoozeEmailProposal', 'handleEmailProposal']) {
+  for (const field of ['proposal_id', 'version', 'note', ...(method === 'confirmEmailFiling' ? ['deal', 'activity_id'] : method === 'snoozeEmailProposal' ? ['deferred_until', 'disposition'] : ['status', 'disposition'])]) {
+    test(`retained ${method} keeps malformed ${field} discoverable until exact replay`, async () => {
+      const calls = [];
+      let malformed = true;
+      const request = { proposal_id: 'synthetic-proposal', base_version: 3, note: 'Original note', idempotency_key: 'original-key',
+        ...(method === 'confirmEmailFiling' ? { deal: 'original-deal', disposition: 'filed' } : method === 'snoozeEmailProposal' ? { deferred_until: '2099-11-04T15:00:00.000Z' } : {}) };
+      const client = createLiveClient({ fetchImpl: async (path, init) => {
+        if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+        calls.push(JSON.parse(init.body).params);
+        const receipt = { ok: true, proposal_id: request.proposal_id, version: 4, note: request.note,
+          status: method === 'snoozeEmailProposal' ? 'pending' : 'confirmed', disposition: method === 'snoozeEmailProposal' ? 'deferred' : method === 'confirmEmailFiling' ? 'filed' : 'handled',
+          deal: request.deal, activity_id: 'original-activity', deferred_until: request.deferred_until };
+        if (malformed) receipt[field] = field === 'version' ? 99 : 'wrong';
+        return Response.json({ result: { content: [{ text: JSON.stringify(receipt) }] } });
+      } });
+      await assert.rejects(client[method](request, { activityId: 'original-activity' }));
+      assert.deepEqual(client.getPendingEmailAction(request.proposal_id), { method, request });
+      await assert.rejects(client.handleEmailProposal({ ...request, idempotency_key: 'new-key' }), { code: 'unresolved_command' });
+      assert.equal(calls.length, 1);
+      malformed = false;
+      await client[method](client.getPendingEmailAction(request.proposal_id).request, { activityId: 'changed-on-remount' });
+      assert.deepEqual(calls[1], calls[0]);
+      assert.equal(client.getPendingEmailAction(request.proposal_id), null);
+    });
+  }
+}

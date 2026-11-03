@@ -71,7 +71,7 @@ async function buildUi(readSource, options) {
         if (args.kind !== "entry-point" && args.namespace !== "ui-source") return undefined;
         const base = args.kind === "entry-point" ? posix.normalize(args.path)
           : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
-        if (base === 'js/read-budget.mjs') {
+        if (['js/read-budget.mjs', 'js/email-action-receipt.js'].includes(base)) {
           const contents = await read(base);
           if (contents !== null) return { path: base, namespace: 'ui-source', pluginData: contents };
         }

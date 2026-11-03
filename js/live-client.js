@@ -16,7 +16,7 @@ import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
-import { stableText } from './command-feedback.mjs';
+import { requireEmailActionReceipt } from './email-action-receipt.js';
 import { createRetainedCommands } from './retained-commands.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
@@ -47,7 +47,6 @@ export function createLiveClient(opts = {}) {
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   const requestMcp = createMcpRequests({ fetchImpl, typedContent: false });
   const dealCreations = new Map();
-  const emailActions = new Map();
   const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
   const commands = createRetainedCommands({ scope: () => selfActor });
   const sessionCommands = createRetainedCommands({ scope: async () => {
@@ -163,24 +162,14 @@ export function createLiveClient(opts = {}) {
     });
   }
 
-  function emailAction(method, verb, args) {
-    const prior = emailActions.get(args.proposal_id);
-    if (prior && (prior.method !== method || stableText(prior.request) !== stableText(args))) {
-      return Promise.reject(Object.assign(new Error('Reconcile the original email action before continuing.'), {
-        code: 'unresolved_command', pendingMethod: prior.method, pendingRequest: structuredClone(prior.request),
-      }));
-    }
-    if (prior?.promise) return prior.promise;
-    const action = prior || { method, request: structuredClone(args), promise: null };
-    emailActions.set(args.proposal_id, action);
-    action.promise = write(verb, action.request).then(receipt => {
-      emailActions.delete(args.proposal_id);
+  function emailAction(method, verb, args, context) {
+    const activityId = context?.activityId;
+    return sessionCommands.send(JSON.stringify(['email-action', args.proposal_id]), args, async (request, binding) => {
+      if (!online()) throw Object.assign(new Error('Offline. Reconnect before checking outcome.'), { payload: { error: 'offline' } });
+      const receipt = await rawRpc(verb, request, undefined, opts.writeTimeoutMs || 10_000, { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) });
+      requireEmailActionReceipt(method, request, receipt, activityId);
       return receipt;
-    }, error => {
-      if (error.payload?.error && !error.pendingRequest) emailActions.delete(args.proposal_id);
-      throw error;
-    }).finally(() => { action.promise = null; });
-    return action.promise;
+    }, method);
   }
 
   // CARR phase slugs and board labels map one-to-one in both directions.
@@ -388,12 +377,11 @@ export function createLiveClient(opts = {}) {
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
     async previewEmailFiling(args) { return rpc('preview-email-filing', args); },
     getPendingEmailAction(proposalId) {
-      const action = emailActions.get(proposalId);
-      return action ? { method: action.method, request: structuredClone(action.request) } : null;
+      return sessionCommands.details(JSON.stringify(['email-action', proposalId]));
     },
     async snoozeEmailProposal(args) { return emailAction('snoozeEmailProposal', 'snooze-email-proposal', args); },
     async handleEmailProposal(args) { return emailAction('handleEmailProposal', 'handle-email-proposal', args); },
-    async confirmEmailFiling(args) { return emailAction('confirmEmailFiling', 'confirm-email-filing', args); },
+    async confirmEmailFiling(args, context) { return emailAction('confirmEmailFiling', 'confirm-email-filing', args, context); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async editEmailDraft(args) { return write('edit-email-draft', args); },
