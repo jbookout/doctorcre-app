@@ -7,7 +7,7 @@ import { carrInterface } from "./carr-contract.mjs";
 
 const filing = (n, extra = {}) => ({ event_id: `40000000-0000-4000-8000-00000000000${n}`, deal: '20000000-0000-4000-8000-000000000001',
   activity_id: `30000000-0000-4000-8000-00000000000${n}`, recorded_at: '2026-10-27T15:00:00Z', summary: `Private body text ${n}`,
-  subject: `Demo lease terms ${n}`, sender_name: `Demo Sender ${n}`, occurred_at: '2026-10-27T14:00:00Z', activity_version: 4, ...extra });
+  subject: `Demo lease terms ${n}`, sender_name: `Demo Sender ${n}`, occurred_at: '2026-10-27T14:00:00Z', activity_version: 4, current_deal_id: extra.deal === undefined ? '20000000-0000-4000-8000-000000000001' : extra.deal, ...extra });
 function setup(client) {
   const dom = new JSDOM('<section id="filings"></section>');
   const container = dom.window.document.querySelector('section');
@@ -72,7 +72,7 @@ test('live client forwards the exact read and undo arguments, and the contract p
   assert.deepEqual(calls, [{ name: 'list-email-thread-filings', arguments: {} }, { name: 'undo-email-thread-filing', arguments: { event_id: filing(1).event_id, idempotency_key: 'k' } }]);
   const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('list-email-thread-filings') && contract.mcp_operations.includes('undo-email-thread-filing'));
-  assert.deepEqual(Object.keys(contract.email_thread_filings.read_fields), ['event_id', 'deal', 'activity_id', 'recorded_at', 'summary', 'subject', 'sender_name', 'occurred_at', 'activity_version']);
+  assert.deepEqual(Object.keys(contract.email_thread_filings.read_fields), ['event_id', 'deal', 'current_deal_id', 'activity_id', 'recorded_at', 'summary', 'subject', 'sender_name', 'occurred_at', 'activity_version']);
 });
 
 
@@ -304,7 +304,7 @@ test('readback replaces a historical destination with the currently filed deal',
   let reads = 0;
   const currentDeal = '20000000-0000-4000-8000-000000000002';
   const { container, view, undo } = setup({
-    listEmailThreadFilings: async () => ({ filings: [filing(1, { deal: ++reads === 1 ? filing(1).deal : currentDeal })] }),
+    listEmailThreadFilings: async () => ({ filings: [filing(1, { current_deal_id: ++reads === 1 ? filing(1).deal : currentDeal })] }),
     undoEmailThreadFiling: async () => { throw { payload: { error: 'email_thread_filing_changed' } }; },
   });
   await view.refresh(); await undo(0);
@@ -388,4 +388,50 @@ test('an unanswered Undo becomes uncertain and ignores a receipt arriving after 
   await undo(0);
   assert.deepEqual(calls[1], calls[0]);
   assert.match(container.textContent, /Undone\./);
+});
+
+for (const state of ['filed now', 'manually unfiled', 'refiled', 'older producer']) {
+  test(`authoritative current_deal_id readback for ${state}`, async () => {
+    let reads = 0;
+    const calls = [];
+    const current = state === 'filed now' ? filing(1).deal : state === 'refiled' ? '20000000-0000-4000-8000-000000000002' : null;
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => {
+        const row = filing(1, { current_deal_id: ++reads === 1 ? filing(1).deal : current });
+        if (reads > 1 && state === 'older producer') delete row.current_deal_id;
+        return { filings: [row] };
+      },
+      undoEmailThreadFiling: async args => { calls.push(structuredClone(args)); throw Error('Synthetic lost response'); },
+    });
+    await view.refresh(); await undo(0);
+    assert.equal(reads, 2);
+    assert.equal(container.querySelector('a')?.getAttribute('href') ?? null,
+      current ? `/deals?deal=${current}` : null);
+    if (state === 'manually unfiled') assert.match(container.textContent, /no longer currently filed/i);
+    if (state === 'older producer') {
+      assert.match(container.textContent, /Current filing destination unavailable/);
+      assert.match(container.textContent, /could not confirm/i);
+      await undo(0);
+      assert.deepEqual(calls[1], calls[0]);
+    }
+    view.dispose();
+  });
+}
+
+test('never-filed emails omitted by the producer do not create a filing destination', async () => {
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [] }) });
+  await view.refresh();
+  assert.match(container.textContent, /No filed emails to review/);
+  assert.equal(container.querySelector('a'), null);
+  assert.equal(container.querySelector('[data-filing-undo]'), null);
+  view.dispose();
+});
+
+test('missing current_deal_id never exposes historical deal on an initial read', async () => {
+  const row = filing(1); delete row.current_deal_id;
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [row] }) });
+  await view.refresh();
+  assert.equal(container.querySelector('a'), null);
+  assert.match(container.textContent, /Current filing destination unavailable/);
+  view.dispose();
 });
