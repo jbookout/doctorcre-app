@@ -42,6 +42,8 @@ const shownColumns = (page, table) => page.locator(table).evaluate(node => {
 
 test('Charts on a phone keep every accounts and owner column under its own header', async t => {
   const page = await open(t, { width: 360 });
+  assert.match(await page.locator('#chartAccounts').ariaSnapshot(), /Details for Example Network 1/);
+  assert.match(await page.locator('#chartPhase').ariaSnapshot(), /caption:.*records/);
   const accounts = await shownColumns(page, '#chartAccounts table');
   assert.deepEqual(accounts.head, ['Account', 'Open', 'Flagged', 'Overdue', 'Stale', 'Parked', 'Last review', 'Details']);
   assert.equal(accounts.row, accounts.head.length);
