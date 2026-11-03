@@ -12,7 +12,7 @@ before(async () => { outDir = await temporaryDirectory('inbox-workspace-'); awai
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 const title = 'Synthetic overdue lease with a long title for the single attention workspace';
 const deal = { id: 'synthetic-deal', name: title, owner: 'joe', phase: 'legal', operating_state: 'active', next_step: 'Call synthetic owner', next_date: '2020-01-01' };
-const item = { item_id: 'synthetic-action', source_type: 'next_action', source_id: 'synthetic-action', source_version: 'v1', source_state: 'needs_attention', title, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: title, due_on: deal.next_date, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000002', action_version: 1, deal_id: null };
+const item = { auto_settled: false, item_id: 'synthetic-action', source_type: 'next_action', source_id: 'synthetic-action', source_version: 'v1', source_state: 'needs_attention', title, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: title, due_on: deal.next_date, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000002', action_version: 1, deal_id: null };
 
 async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved = 'open', inboxError = false, pending = false } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
@@ -34,12 +34,12 @@ async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved =
   const calls = [];
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params; calls.push(name);
-    if (name === 'read-home-inbox-v2') await inboxReady;
+    if (name === 'read-home-inbox-v3') await inboxReady;
     const today = { subject_type: 'deal', subject_id: deal.id, subject_name: title, what: deal.next_step, due_on: deal.next_date, owner_partner: 'joe' };
     const payload = name === 'deal-room-board' ? { actor: 'joe', deals: [deal] }
       : name === 'morning-brief' ? { sponsor: 'joe', sections: { today: { state: 'ready', items: [today] }, deals: { state: 'ready', items: [deal] }, loops: { state: 'empty', items: [] } } }
       : name === 'today-triage' ? { items: [today] }
-      : name === 'read-home-inbox-v2' ? inboxError ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items: [item], working_collapsed: true, auto_settle_enabled: false }
+      : name === 'read-home-inbox-v3' ? inboxError ? { ok: false, error: 'read_limit_exceeded' } : { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [item], working_collapsed: true, auto_settle_enabled: true }
       : { ok: true, events: [], cursor: 'end', items: [], counts: {}, suggestions: [], enabled: false };
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });

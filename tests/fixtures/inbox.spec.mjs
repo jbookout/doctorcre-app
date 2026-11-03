@@ -20,7 +20,7 @@ test('Sectioned Home opens a card in the full inbox', async ({ page }) => {
 });
 
 test('Open source record links each inbox source type to a page that opens it, or not at all', async ({ page }) => {
-  const card = (item_id, source_type, source_id) => ({ item_id, source_type, source_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${source_type}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001',  });
+  const card = (item_id, source_type, source_id) => ({ auto_settled: false, item_id, source_type, source_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${source_type}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001',  });
   const items = [card('next_action:t1', 'next_action', 't1'), card('capture_session:s1', 'capture_session', 's1'), card('capture_post_call_action:a1', 'capture_post_call_action', 'a1'), card('email_proposal:p1', 'email_proposal', 'p1'), card('notification:n1', 'notification', '["deal","d1"]')];
   for (const item of items) {
     item.open_url = ['capture_session', 'capture_post_call_action'].includes(item.source_type) ? '/calls' : item.source_type === 'notification' ? '/updates' : null;
@@ -30,7 +30,7 @@ test('Open source record links each inbox source type to a page that opens it, o
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
-    const payload = name === 'read-home-inbox-v2' ? { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, working_collapsed: true, auto_settle_enabled: false, items } : { ok: true };
+    const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, working_collapsed: true, auto_settle_enabled: true, items } : { ok: true };
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   for (const [itemId, href] of [['next_action:t1', null], ['capture_session:s1', '/calls'], ['capture_post_call_action:a1', '/calls'], ['notification:n1', '/updates'], ['email_proposal:p1', null]]) {

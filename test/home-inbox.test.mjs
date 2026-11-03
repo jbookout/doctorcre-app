@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
 const { parseSnapshot, shelves } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-export const item = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'source:1', source_state: 'needs_attention', title: 'Synthetic follow-up', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
-const snapshot = items => ({ ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false });
+export const item = (item_id, fields = {}) => ({ auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'source:1', source_state: 'needs_attention', title: 'Synthetic follow-up', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
+const legacySnapshot = items => ({ ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false });
+const snapshot = items => ({ ...legacySnapshot(items), schema_version: 'home-inbox.v3', auto_settle_enabled: true });
 test('actor snapshot rejects duplicate identities and refusal is not empty', () => {
   assert.throws(() => parseSnapshot(snapshot([item('a'), item('a')])));
   assert.throws(() => parseSnapshot({ ok: false, error: 'read_limit_exceeded' }));
@@ -23,7 +24,7 @@ test('commands retain exact retry identity and inspect mixed and missing results
   const { createInboxClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const calls = []; let attempt = 0;
   const client = createInboxClient(async (name, args) => {
-    if (name === 'read-home-inbox-v2') return snapshot([item('a', { disposition: 'settled', base_version: 'opaque:2' })]);
+    if (name === 'read-home-inbox-v3') return snapshot([item('a', { disposition: 'settled', base_version: 'opaque:2' })]);
     calls.push({ name, args: structuredClone(args) });
     if (++attempt === 1) throw Error('Response lost');
     return { ok: true, schema_version: 'home-inbox-command.v1', results: [
@@ -74,7 +75,7 @@ test('v1 command receipts recover v2 metadata through one authoritative read', a
   const request = command('settle', [item('a', { base_version: 'do-not-parse:007' })]);
   const client = createInboxClient(async (name, args) => {
     calls.push({ name, args });
-    if (name === 'read-home-inbox-v2') return snapshot([item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque', context_label: 'Updated deal' })]);
+    if (name === 'read-home-inbox-v3') return snapshot([item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque', context_label: 'Updated deal' })]);
     const { context_label, due_on, open_url, kind_label, merged_source_ids, action_id, action_version, deal_id, ...legacy } = item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque' });
     return { ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'a', ok: true, item: legacy }] };
   });
@@ -84,7 +85,7 @@ test('v1 command receipts recover v2 metadata through one authoritative read', a
   assert.equal(result.ok, true);
   assert.equal(result.item.base_version, 'next:opaque');
   assert.equal(command('unsettle', [result.item]).args.items[0].base_version, 'next:opaque');
-  assert.deepEqual(calls.map(call => call.name), ['settle-home-inbox', 'read-home-inbox-v2']);
+  assert.deepEqual(calls.map(call => call.name), ['settle-home-inbox', 'read-home-inbox-v3']);
   assert.equal(calls[0].args.items[0].base_version, 'do-not-parse:007');
 });
 
@@ -102,7 +103,7 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
   const current = item('a', { ...receipt, base_version: 'later:3', ...(change === 'snooze' ? { disposition: 'snoozed', section: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' } : { title: 'Edited elsewhere', source_version: 'source:2', action_version: 8, context_label: 'New deal', due_on: '2026-11-06' }) });
   const writes = [];
   const client = createInboxClient(async (name, args) => {
-    if (name === 'read-home-inbox-v2') return snapshot([current]);
+    if (name === 'read-home-inbox-v3') return snapshot([current]);
     writes.push(structuredClone(args));
     if (retry && writes.length === 1) throw Error('Response lost');
     return { ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'a', ok: true, item: receipt }] };
@@ -122,7 +123,7 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
   const event = '00000000-0000-0000-0000-000000000009';
   const client = createInboxClient(async (name, args) => {
     calls.push({ name, args });
-    if (name === 'read-home-inbox-v2') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]);
+    if (name === 'read-home-inbox-v3') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]);
     return { ok: true, action_id: item('a').action_id, status: 'done', version: 8, completion_event_id: event };
   });
   const [result] = await client.run(taskCommand('complete', item('a')));
@@ -140,7 +141,7 @@ for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`comp
   const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const writes = [];
   const client = createInboxClient(async (name, args) => {
-    if (name === 'read-home-inbox-v2') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: laterVersion })]);
+    if (name === 'read-home-inbox-v3') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: laterVersion })]);
     writes.push(structuredClone(args));
     if (lost && writes.length === 1) throw Error('Response lost');
     return { ok: true, action_id: item('a').action_id, status: 'done', version: 8, completion_event_id: '00000000-0000-0000-0000-000000000009' };
@@ -154,7 +155,7 @@ for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`comp
 });
 test('legacy and wrong-identity receipts cannot manufacture Undo', async () => {
   const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-  const client = createInboxClient(async name => name === 'read-home-inbox-v2' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
+  const client = createInboxClient(async name => name === 'read-home-inbox-v3' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
   const [result] = await client.run(taskCommand('complete', item('a')));
   assert.equal(result.ok, true);
   assert.throws(() => taskCommand('reopen', result.item, result.receipt), /Can't undo/);
