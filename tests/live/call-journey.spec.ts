@@ -45,7 +45,7 @@ test('a filed call shows its decisions and tasks on Home and updates the deal pa
   // The decisions it applied, each with what was said.
   const outcome = page.locator('.call-outcome');
   await expect(outcome).toHaveCount(1);
-  await expect(outcome.locator('h4')).toHaveText(/^Applied from the .+ pipeline call$/);
+  await expect(outcome.locator('h4')).toHaveText('Applied from the Oct 27 pipeline call · Oct 27, 10:00 AM CDT');
   const change = (deal: string, text: string) => outcome.locator('li').filter({ hasText: deal }).filter({ hasText: text });
   await expect(change(BAYSIDE, 'Phase moved to Negotiation, started Oct 20'))
     .toContainText('The LOI was signed on October 20, 2026, so Bayside moves to negotiation');
