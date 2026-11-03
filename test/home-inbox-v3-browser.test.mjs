@@ -79,6 +79,7 @@ for (const refusal of ['unknown_tool', 'partner_required', 'malformed']) test(`H
 });
 
 for (const [transition, before, after] of [
+  ['Canonical work resolves', { source_state: 'needs_attention', section: 'inbox' }, { source_state: 'done', section: 'settled', disposition: 'settled', auto_settled: true }],
   ['Work needs review', { source_state: 'working', section: 'working' }, { source_state: 'needs_attention', section: 'inbox' }],
   ['Processing completes', { source_state: 'working', section: 'working' }, { source_state: 'done', section: 'done' }],
   ['Snooze expires after resolution', { source_state: 'done', section: 'snoozed', disposition: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' }, { source_state: 'done', section: 'settled', disposition: 'settled', auto_settled: true }],

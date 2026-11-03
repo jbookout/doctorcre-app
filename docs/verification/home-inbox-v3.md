@@ -10,7 +10,7 @@
 | Processing completes into Done, hide completed update | `Home refresh transition Processing completes` |
 | Hide from inbox, Undo hide, hide again | `automatic settlement reasons and lifecycle on Home` at all four widths and both themes |
 | Snooze, Wake, snooze again | `automatic settlement reasons and lifecycle on Home` at all four widths and both themes |
-| Canonical task, reply, fact review or tour feedback resolves | `v3 accepts canonical resolution of … outside the working list`; `automatic settlement reasons and lifecycle on Home` checks the visible reason and grouping |
+| Canonical task, reply, fact review or tour feedback resolves | `Home refresh transition Canonical work resolves`; `v3 accepts canonical resolution of … outside the working list`; `automatic settlement reasons and lifecycle on Home` checks the visible reason and grouping |
 | Mark task done, Undo task completion | `Mark done receipt and exact Undo` in `test/home-inbox-browser.test.mjs`, using v3 automatic settlement on completion |
 | Show automatically settled card in inbox | `automatic settlement reasons and lifecycle on Home` |
 | Snooze expires after resolution | `Home refresh transition Snooze expires after resolution` |
