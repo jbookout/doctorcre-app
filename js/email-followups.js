@@ -20,8 +20,7 @@ const KINDS = {
   reply_draft: { verb: 'submit-email-draft' },
   phase_move: { preview: 'previewEmailDealProgress', confirm: 'confirmEmailDealProgress', verb: 'confirm-email-deal-progress', contract: 'email-deal-progress.v1' },
 };
-const DISMISS_REASONS = ['Already handled', 'Wrong deal', 'Not now'];
-const createdLinks = deals => (deals || []).map(deal => `<p>Previously created deal: <a href="/deals?deal=${encodeURIComponent(deal)}">Open created deal</a></p>`).join('');
+
 const SUBJECT_LABELS = new Map([['client','Client'],['lead','Lead'],['vendor','Vendor']]);
 const subjectLabel = type => SUBJECT_LABELS.get(type);
 const filing = row => ['file_to_deal', 'possible_new_deal'].includes(row.kind);
@@ -62,7 +61,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], rejectedRows = false, loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
-  const refusedCreations = new Map();
+  const actionViews = new Map();
+  let actionModule, actionNotice = '';
   const graces = new Map();
   function render() {
     if (disposed) return;
@@ -76,34 +76,41 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       : loadState === 'error' ? `<p role="status">Could not load email follow-ups.${loaded && rows.length ? ' Showing the last successful read.' : ''}</p>${button('retry', 'Retry email follow-ups')}`
         : loadState === 'loading' && !loaded ? '<div class="home-followup-skeleton" role="status">Loading email follow-ups…</div>' : '';
     const partial = rejectedRows && loadState === 'ready' ? `<p role="status">Some email follow-ups could not be shown. Refresh to try again.</p>${button('refresh-rows', 'Refresh email follow-ups')}` : '';
-    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && rows.length > visibleCount ? `<span class="home-list-count">Showing ${visibleCount} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${partial}${loaded && !rejectedRows && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
+    container.innerHTML = `<header class="home-panel-head"><h2>Email follow-ups</h2>${!deal && rows.length > visibleCount ? `<span class="home-list-count">Showing ${visibleCount} of ${rows.length}${cursor ? "+" : ""}</span>` : ""}</header>${notice}${actionNotice ? `<p role="status">${E(actionNotice)}</p>` : ''}${partial}${loaded && !rejectedRows && !rows.length && loadState === 'ready' ? '<p class="home-empty">No email follow-ups.</p>' : ''}${rows.slice(0, visibleCount).map(row => {
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
         controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Save draft keeps your edits without sending. Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${button('undo-edit', 'Undo edit', !state.undo)}${state.conflict ? button('review-updated', state.method === 'editEmailDraft' ? 'Reload draft' : 'Review updated draft', loadState !== 'ready') : `${button('save-draft', 'Save draft', loadState !== 'ready')}${button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}`}${button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'grace') {
         controls = `<p class="email-grace">Sending in ${state.remaining}s · ${button('undo-send', 'Undo')}</p>`;
-      } else if (state.status === 'filing') {
-        controls = `<div class="email-review">${createdLinks(state.createdDeals)}${preview.new_people.map(person => `<p>Person: ${E(person.name || person.email || 'Unknown')}</p>`).join('')}${row.kind === 'possible_new_deal' && !state.deal ? !preview.sender.party_id ? '<p>Add the sender as a contact first. Refresh the proposal after adding the contact.</p>' : `<label>Deal name<input data-email-deal-name value="${E(state.name || '')}"></label><label>Existing client (reference or exact name)<input data-email-deal-client value="${E(state.client || '')}"></label>${button('create-filing', 'Create deal and confirm filing', loadState !== 'ready')}` : `${state.deal ? `<p>Created deal: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a></p>` : ''}${button('confirm-filing', 'Confirm filing', loadState !== 'ready')}`}${state.deal ? '' : button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'reviewing') {
         const replaces = row.kind === 'phase_move' ? `Moves from ${phase(preview.from_phase)} to ${phase(preview.to_phase)}.`
           : preview.owner === 'dell' ? `Replaces Dell's open actions: ${(preview.current_owner_actions || []).map(item => `${item.description} · ${day(item.due_date)}`).join('; ') || 'None'}.`
             : `Replaces ${preview.current_next_step || 'no current next step'} · ${day(preview.current_next_date)}.`;
         controls = `<div class="email-review"><p>${E(replaces)}</p><p>Joe confirms this change to the ${row.deal ? 'deal' : E(row.subject_type)}.</p>${button('confirm', 'Confirm change', loadState !== 'ready')}${button('cancel', 'Cancel')}</div>`;
-      } else if (state.status === 'dismissing') {
-        controls = `<label>Reason for dismissal<textarea maxlength="500" rows="2" data-email-reason>${E(state.reason || '')}</textarea></label>${button('submit-dismiss', 'Dismiss proposal', loadState !== 'ready')}${button('cancel', 'Cancel')}`;
-      } else if (state.status === 'creation-refused') controls = `${button('edit-filing', 'Edit deal details')}${button('cancel', 'Cancel')}`;
-      else if (state.status === 'filing-refused') controls = `<p>Deal created: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a>. Refresh the proposal before filing it.</p>${button('refresh-filing', 'Refresh filing')}${state.correctable ? button('correct-filing', 'Create a corrected deal') : ''}`;
-      else if (state.status === 'submitting') controls = button('confirm', 'Saving…', true);
+      }      else if (state.status === 'submitting') controls = button('confirm', 'Saving…', true);
       else if (state.status === 'previewing') controls = button('preview', 'Checking preview…', true);
       else if (state.status === 'unknown') controls = button('replay', 'Check outcome');
-      else if (state.status !== 'done') controls = `${row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor ? button('edit-draft', 'Review reply', loadState !== 'ready') : ''}${preview && validPreview(row, preview) ? button(filing(row) ? 'review-filing' : 'preview', filing(row) ? 'Review filing' : 'Confirm', loadState !== 'ready') : ''}<div class="email-dismiss" role="group" aria-label="Dismiss reason"><span>Dismiss</span>${DISMISS_REASONS.map(reason => `<button type="button" class="btn home-outline email-chip" data-email-action="dismiss-chip" data-email-chip="${reason}"${loadState !== 'ready' ? ' disabled' : ''}>${reason}</button>`).join('')}${button('note', 'Add a note', loadState !== 'ready')}</div>`;
+      else if (state.status !== 'done') controls = `${row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor ? button('edit-draft', 'Review reply', loadState !== 'ready') : ''}${!filing(row) && preview && validPreview(row, preview) ? button('preview', 'Confirm', loadState !== 'ready') : ''}`;
+      if (row.kind !== 'reply_draft' || row.reply_draft.owner === client.selfActor) controls += `<div data-followup-host="${E(row.id)}"></div>`;
       return workCard({ className: 'email-proposal', attributes: `data-email-id="${E(row.id)}"`,
         title: E(row.source.subject || 'Subject unavailable'),
         meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : row.kind === 'possible_new_deal' ? 'Possible new deal' : `${E(subjectLabel(row.subject_type) || 'Contact')} · ${E(row.subject_name || (row.kind === 'reply_draft' ? row.source.sender || 'Unfiled email' : 'Follow-up'))}`}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
         status: state.status === 'done' ? 'Reviewed' : '',
-        body: `<q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Review the source email or dismiss it with a reason.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
+        body: `<p>${E(row.email_summary?.status === 'available' && row.email_summary.text ? row.email_summary.text : 'Summary unavailable.')}</p><details><summary>Review source email</summary><p>Email text is untrusted evidence.</p><q>${E(row.source.evidence_quote)}</q></details>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Review the source email or choose Not now.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or choose Not now.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
     }).join('')}${rows.length > visibleCount ? button('show', `Show ${rows.length - visibleCount} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
+    if (actionModule) for (const placeholder of container.querySelectorAll('[data-followup-host]')) {
+      const row = rows.find(item => item.id === placeholder.dataset.followupHost);
+      let view = actionViews.get(row.id);
+      if (!view) {
+        const host = container.ownerDocument.createElement('div');
+        host.className = 'email-home-actions';
+        view = { host, ...actionModule.mountEmailActions(host, row, client, actionModule.actionModel(), (message) => { actionNotice = message || ''; onChange(); refresh(); }, retire) };
+        actionViews.set(row.id, view);
+      }
+      placeholder.replaceWith(view.host);
+      view.update(row, loadState === 'ready' && !['editing', 'grace', 'submitting', 'unknown'].includes(decisions.get(row.id)?.status));
+    }
     for (const article of container.querySelectorAll('[data-email-id]')) {
       const { source } = rows.find(row => row.id === article.dataset.emailId);
       article.querySelector('.email-source').textContent = emailSource(source);
@@ -111,7 +118,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     if (active) {
       const article = [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === focusId);
-      const replacement = (selection && article?.querySelector(`[data-email-${focusField}]`)) || [...(article || container).querySelectorAll('[data-email-action]')].find(node => node.dataset.emailAction === focusAction && !node.disabled)
+      const replacement = container.contains(active) ? active : (selection && article?.querySelector(`[data-email-${focusField}]`)) || [...(article || container).querySelectorAll('[data-email-action]')].find(node => node.dataset.emailAction === focusAction && !node.disabled)
         || article?.querySelector('button:not(:disabled), a') || container.querySelector('button:not(:disabled), h2');
       replacement?.focus();
       if (selection && replacement?.matches('textarea, input')) replacement.setSelectionRange(...selection);
@@ -142,7 +149,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const leave = () => { if (!graces.size) return; for (const id of [...graces.keys()]) stopGrace(id, true); render(); };
   function retire() {
     for (const id of [...graces.keys()]) stopGrace(id, false);
-    minute.dispose(); epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; rejectedRows = false; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
+    minute.dispose(); actionNotice = ''; epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; rejectedRows = false; decisions.clear(); for (const view of actionViews.values()) view.dispose(); actionViews.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
@@ -150,6 +157,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     retryCursor = pageCursor;
     loadState = 'loading'; render();
     try {
+      if (!actionModule) actionModule = await import('./ui-email-actions.js');
+      if (disposed || ticket !== epoch) return;
       let next = pageCursor ? [...rows] : [], nextRejected = pageCursor ? rejectedRows : false, currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       const takePage = createPageBudget({ document: container.ownerDocument });
@@ -169,6 +178,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       }
       cursor = currentCursor;
       for (const row of rows) if (!next.some(item => item.id === row.id) && ['grace', 'submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
+      for (const row of rows) if (!next.some(item => item.id === row.id) && actionViews.get(row.id)?.pending()) next.push(row);
+      for (const [id, view] of actionViews) if (view.done() && !next.some(row => row.id === id)) { view.dispose(); actionViews.delete(id); }
       rows = next; rejectedRows = nextRejected; loaded = true; loadState = 'ready';
     } catch (error) {
       if (disposed || ticket !== epoch) return;
@@ -183,7 +194,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const { submitEmailProposal } = await import('./email-proposal-command.js');
       if (disposed || loadState === 'denied' || grace?.cancelled) return;
       if (grace) graces.delete(row.id);
-      const decision = await submitEmailProposal(client, row, state);
+      const decision = await submitEmailProposal(client, state);
       if (disposed || loadState === 'denied') return;
       const current = rows.find(item => item.id === row.id);
       if (decision.saved && current && current.version <= decision.baseVersion) {
@@ -199,28 +210,6 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     render();
   }
-  async function createFiling(row, state) {
-    decisions.set(row.id, { ...state, status: 'submitting' }); render();
-    try {
-      const result = await client.createDeal(state.createRequest);
-      if (!result?.deal_id) throw Error('Created deal receipt unavailable');
-      if (disposed || loadState === 'denied') return;
-      return submit(row, { method: 'confirmEmailFiling', request: { proposal_id: row.id, base_version: state.baseVersion, proposal_digest: state.preview.proposal_digest, deal: result.deal_id, idempotency_key: uuidv4() }, createdDeals: state.createdDeals });
-    } catch (error) {
-      if (disposed || loadState === 'denied') return;
-      if (denied(error)) return retire();
-      if (error.creationRefused || (error.creationStage === 'new-deal' && error.payload?.error)) {
-        const refused = refusedCreations.get(row.id) || [];
-        refused.push({ name: state.createRequest.name, client: state.createRequest.client });
-        refusedCreations.set(row.id, refused);
-        decisions.set(row.id, { ...state, status: 'creation-refused', message: error.creationRefused
-          ? 'Deal creation was refused. Edit the deal name or existing client before trying again.'
-          : 'Deal creation was not confirmed. Check the Deals list before editing the details to avoid creating a duplicate.' });
-      }
-      else decisions.set(row.id, { ...state, status: 'unknown', message: 'Deal creation outcome unknown. Check outcome to recover the original request.' });
-      render();
-    }
-  }
   async function click(event) {
     const button = event.target?.closest('[data-email-action]');
     if (!button || button.disabled || !container.contains(button) || disposed || loadState === 'denied') return;
@@ -230,7 +219,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     if (action === 'refresh-rows') return refresh();
     if (action === 'more' && cursor) { pages++; return refresh(cursor); }
     const row = rows.find(item => item.id === button.closest('[data-email-id]')?.dataset.emailId);
-    if (!row) return;
+    if (!row || actionViews.get(row.id)?.locked()) return;
     const state = decisions.get(row.id) || { status: 'pending' };
     if (action === 'undo-send' && state.status === 'grace') {
       stopGrace(row.id, true); render();
@@ -238,18 +227,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       return;
     }
     if (['grace', 'previewing', 'submitting', 'done'].includes(state.status)) return;
-    if (state.status === 'filing-refused' && !['refresh-filing', 'correct-filing'].includes(action)) return;
-    if (['refresh-filing', 'correct-filing'].includes(action) && state.status === 'filing-refused') {
-      await refresh();
-      const current = rows.find(item => item.id === row.id);
-      if (!disposed && loadState === 'ready' && current && validPreview(current, current.preview)) decisions.set(row.id, { status: 'filing', preview: current.preview, baseVersion: current.version, ...(action === 'correct-filing' ? { createdDeals: [...state.createdDeals, state.deal] } : { deal: state.deal, createdDeals: state.createdDeals }) });
-      render(); return;
-    }
-    if (action === 'replay' && state.status === 'unknown') return state.createRequest ? createFiling(row, state) : submit(row, state);
+    if (action === 'replay' && state.status === 'unknown') return submit(row, state);
     if (state.status === 'unknown') return;
-    if (action === 'edit-filing' && state.status === 'creation-refused') {
-      decisions.set(row.id, { ...state, status: 'filing', createRequest: null }); render(); return;
-    }
     if (action === 'cancel') { decisions.delete(row.id); render(); return; }
     if (loadState !== 'ready') return;
     if (action === 'edit-draft' && row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
@@ -274,22 +253,6 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     if (action === 'undo-edit' && state.status === 'editing' && state.undo) {
       decisions.set(row.id, { ...state, ...state.undo, undo: null, editField: null }); render(); return;
     }
-    if (action === 'dismiss-chip' && DISMISS_REASONS.includes(button.dataset.emailChip)) return submit(row, { method: 'dismissEmailProposal', request: { proposal_id: row.id, base_version: row.version, reason: button.dataset.emailChip, idempotency_key: uuidv4() } });
-    if (action === 'note') { decisions.set(row.id, { status: 'dismissing', baseVersion: row.version }); render(); [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === row.id)?.querySelector('textarea')?.focus(); }
-    if (action === 'submit-dismiss' && state.status === 'dismissing') {
-      const reason = button.closest('article').querySelector('textarea').value.trim();
-      if (!reason || reason.length > 500) { button.closest('article').querySelector('textarea').focus(); return; }
-      return submit(row, { method: 'dismissEmailProposal', request: { proposal_id: row.id, base_version: state.baseVersion, reason, idempotency_key: uuidv4() } });
-    }
-    if (action === 'review-filing' && filing(row) && validPreview(row, row.preview)) { decisions.set(row.id, { status: 'filing', preview: row.preview, baseVersion: row.version }); render(); return; }
-    if (action === 'confirm-filing' && state.status === 'filing' && (row.kind === 'file_to_deal' || state.deal)) return submit(row, { method: 'confirmEmailFiling', request: { proposal_id: row.id, base_version: state.baseVersion, proposal_digest: state.preview.proposal_digest, ...(state.deal ? { deal: state.deal } : {}), idempotency_key: uuidv4() }, createdDeals: state.createdDeals });
-    if (action === 'create-filing' && state.status === 'filing' && row.kind === 'possible_new_deal' && state.preview.sender.party_id) {
-      if (!state.name?.trim() || !state.client?.trim()) { state.message = 'Enter a deal name and client.'; render(); return; }
-      if (refusedCreations.get(row.id)?.some(request => request.name === state.name.trim() && request.client === state.client.trim())) {
-        state.message = 'These details were already refused. Change the deal name or existing client before trying again.'; render(); return;
-      }
-      return createFiling(row, { ...state, createRequest: { name: state.name.trim(), client: state.client.trim(), idempotency_key: uuidv4() } });
-    }
     if (action === 'preview' && validPreview(row, row.preview)) {
       decisions.set(row.id, { status: 'previewing' }); render();
       try {
@@ -310,8 +273,6 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const input = event => {
     if (!event.target.matches('[data-email-reason], [data-email-subject], [data-email-body], [data-email-deal-name], [data-email-deal-client]')) return;
     const state = decisions.get(event.target.closest('[data-email-id]').dataset.emailId);
-    if (state?.status === 'dismissing') state.reason = event.target.value;
-    if (state?.status === 'filing') state[event.target.hasAttribute('data-email-deal-name') ? 'name' : 'client'] = event.target.value;
     if (state?.status === 'editing') {
       const field = event.target.hasAttribute('data-email-subject') ? 'subject' : 'body';
       // One edit lasts while the partner keeps typing in one field; Undo edit returns to the draft before it.

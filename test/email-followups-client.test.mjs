@@ -284,3 +284,34 @@ test('live draft save binds session, retains unknown requests, and rejects malfo
   assert.equal(calls[0].name, 'edit-email-draft');
   assert.equal(calls[0].headers['x-carr-csrf'], 'synthetic-session');
 });
+
+
+test('exact-target filing and snooze use the public live command seam with retained retries', async () => {
+  const calls = []; let lost = true;
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const params = JSON.parse(init.body).params; calls.push(params);
+    if (params.name === 'snooze-email-proposal' && lost) { lost = false; throw Error('lost'); }
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true }) }] } });
+  } });
+  await live.previewEmailFiling({ proposal_id: 'p', deal: 'd' });
+  const request = { proposal_id: 'p', base_version: 3, deferred_until: '2026-11-04T15:00:00.000Z', note: 'Call later', idempotency_key: 'once' };
+  await assert.rejects(live.snoozeEmailProposal(request));
+  await live.snoozeEmailProposal(request);
+  assert.deepEqual(calls.map(call => call.name), ['preview-email-filing', 'snooze-email-proposal', 'snooze-email-proposal']);
+  assert.deepEqual(calls[1], calls[2]);
+});
+
+test('fixture deferral hides a pending follow-up until its exact stored return instant', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-01T12:00:00Z') });
+  const client = await createFixtureClient({ seedUrl });
+  const row = (await client.listEmailProposals()).proposals[0];
+  const request = { proposal_id: row.id, base_version: row.version, deferred_until: '2026-11-01T15:00:00.000Z', note: 'Review later', idempotency_key: 'fixture-defer-once' };
+  const receipt = await client.snoozeEmailProposal(request);
+  assert.equal(receipt.deferred_until, request.deferred_until);
+  assert.equal((await client.listEmailProposals()).proposals.some(item => item.id === row.id), false);
+  assert.deepEqual(await client.snoozeEmailProposal(request), receipt);
+  t.mock.timers.setTime(new Date('2026-11-01T15:00:00Z').getTime());
+  const returned = (await client.listEmailProposals()).proposals.find(item => item.id === row.id);
+  assert.equal(returned.version, row.version + 1); assert.equal(returned.note, request.note);
+});

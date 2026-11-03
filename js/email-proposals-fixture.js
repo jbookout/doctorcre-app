@@ -91,7 +91,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       const proposals = [];
       const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
       if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
-      const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!deal || item.deal === deal)
+      const pending = rows.slice(start).filter(item => item.status === (status || 'pending') && (!item.deferred_until || Date.parse(item.deferred_until) <= Date.now()) && (!deal || item.deal === deal)
         && (include_non_deal || item.kind !== 'next_step' || item.deal !== null));
       // eslint-disable-next-line no-restricted-syntax -- Synthetic proposal preview visits each row in the finite pending snapshot at most 1 time, shortened by limit when provided; no retry scheduler.
       for (const row of pending.slice(0, limit || pending.length)) {
@@ -107,17 +107,48 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     },
     previewEmailNextStep: args => preview(args, 'next_step'),
     previewEmailDealProgress: args => preview(args, 'phase_move'),
+    async previewEmailFiling(args) {
+      const row = rows.find(item => item.id === args.proposal_id);
+      const target = deals.get(args.deal);
+      if (!row || !target) fail('email_proposal_deal_invalid');
+      const shown = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote }, row.kind);
+      const value = { ...shown, contract: 'email-followups.v2', deal: args.deal, base_version: row.version,
+        target_version: target.version || 1, correction_reason: args.correction_reason || null };
+      return { ...value, proposal_digest: await digest(value) };
+    },
+    async snoozeEmailProposal(args) {
+      if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
+      const row = rows.find(item => item.id === args.proposal_id);
+      if (!row || row.status !== 'pending') fail('email_proposal_not_pending');
+      if (row.reply_draft && row.reply_draft.owner !== actor) fail('email_draft_not_owner');
+      if (row.version !== args.base_version) fail('version_conflict');
+      if (!(Date.parse(args.deferred_until) > Date.now())) fail('email_proposal_fields_invalid');
+      row.version++; row.disposition = 'deferred'; row.deferred_until = new Date(args.deferred_until).toISOString(); row.note = args.note ?? null;
+      const receipt = { ok: true, proposal_id: row.id, version: row.version, status: 'pending', disposition: row.disposition, deferred_until: row.deferred_until, note: row.note };
+      receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
+    },
+    async handleEmailProposal(args) {
+      if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
+      const row = rows.find(item => item.id === args.proposal_id);
+      if (!row || !['next_step','reply_draft'].includes(row.kind) || row.status !== 'pending') fail('email_proposal_deal_invalid');
+      if (row.reply_draft && row.reply_draft.owner !== actor) fail('email_draft_not_owner');
+      if (row.version !== args.base_version) fail('version_conflict');
+      row.status = 'confirmed'; row.version++; row.note = args.note ?? null;
+      const receipt = { ok: true, proposal_id: row.id, status: 'confirmed', disposition: 'handled', note: row.note, version: row.version };
+      receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
+    },
     async confirmEmailFiling(args) {
       if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
       const row = rows.find(item => item.id === args.proposal_id && ['file_to_deal', 'possible_new_deal'].includes(item.kind));
       if (!row || row.status !== 'pending') fail('email_proposal_not_pending');
       if (row.version !== args.base_version) fail('version_conflict');
-      const shown = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote }, row.kind);
+      const shown = args.deal ? await this.previewEmailFiling(args) : await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote }, row.kind);
       if (shown.proposal_digest !== args.proposal_digest) fail('email_proposal_stale');
-      const deal = row.kind === 'possible_new_deal' ? args.deal : row.deal;
+      const deal = args.deal || row.deal;
       if (!deals.has(deal)) fail('email_new_deal_not_found');
       row.status = 'confirmed'; row.version++;
-      const receipt = { ok: true, status: 'confirmed', deal, activity_id: row.source.activity_id };
+      const receipt = { ok: true, status: 'confirmed', proposal_id: row.id, version: row.version, disposition: args.disposition || 'filed', note: args.note ?? null, deal, activity_id: row.source.activity_id };
+      row.current_deal_id = deal; row.note = args.note ?? null;
       receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
     },
     confirmEmailNextStep: args => confirm(args, 'next_step'),

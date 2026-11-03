@@ -20,12 +20,12 @@ before(async () => {
 });
 after(async () => {
   await browser?.close();
-  if (server) await new Promise(resolve => server.close(resolve));
+  if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
-for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
-  test(`Home email review confirms and dismisses at ${width}px in ${theme}`, async t => {
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+  test(`Home email review confirms and defers at ${width}px in ${theme}`, async t => {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
     t.after(() => page.close());
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
@@ -37,9 +37,9 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await card.locator('article').first().waitFor().catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
     assert.equal(await card.locator('article').count(), width === 390 ? 1 : 2);
     if (width === 390) await card.getByRole('button', { name: 'Show 1 more', exact: true }).click();
-    const chips = card.locator('article').first().getByRole('group', { name: 'Dismiss reason' }).getByRole('button');
-    assert.deepEqual(await chips.allInnerTexts(), ['Already handled', 'Wrong deal', 'Not now', 'Add a note']);
-    for (const box of await Promise.all((await chips.all()).map(chip => chip.boundingBox()))) assert.ok(box.height >= 44, 'dismiss choices are full touch targets');
+    const defer = card.locator('article').first().getByRole('button', { name: 'Not now', exact: true });
+    assert.ok((await defer.boundingBox()).height >= 44, 'actions are full touch targets');
+    assert.equal(await card.getByRole('button', { name: 'Wrong deal', exact: true }).count(), 0);
     assert.match(await card.locator('.email-source').first().innerText(), /Dana Demo · Oct 26, .* CDT · \d+ days waiting/);
     const first = card.locator('article').first();
     await first.getByRole('button', { name: 'Confirm', exact: true }).click();
@@ -49,7 +49,8 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await first.getByText('Confirmed.', { exact: true }).waitFor();
     const second = card.locator('article').last();
     await second.getByRole('button', { name: 'Not now', exact: true }).click();
-    await second.getByText('Dismissed.', { exact: true }).waitFor();
+    await second.getByRole('button', { name: 'Defer follow-up', exact: true }).click();
+    await card.getByText(/Returns .*America\/Chicago/).waitFor();
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
     await card.getByText('No email follow-ups.', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
@@ -101,6 +102,7 @@ for (const width of [1440, 390]) {
     await page.route('**/mcp', route => { calls.push(route.request().postDataJSON().params); return route.continue(); });
     await page.goto(`${origin}/deals?mode=live&deal=qa-deal-1`);
     const panel = page.locator('#recordPanel'), review = page.locator('#panelEmailFollowups');
+    await review.getByText('Review source email', { exact: true }).click();
     await review.getByText('Please send the revised plan by November 3.', { exact: true }).waitFor();
     assert.equal(await review.locator('article').count(), 1);
     assert.doesNotMatch(await review.innerText(), /The tour is confirmed/);
@@ -118,15 +120,16 @@ for (const width of [1440, 390]) {
     await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#recordPanel').hidden);
     await page.locator('.kanban-column [data-id="qa-deal-2"] .card-open').click();
+    await review.getByText('Review source email', { exact: true }).click();
     await review.getByText('The tour is confirmed for November 3.', { exact: true }).waitFor();
     assert.doesNotMatch(await review.innerText(), /Please send the revised plan/);
-    await review.getByRole('button', { name: 'Add a note', exact: true }).click();
-    await review.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Synthetic tour already handled');
-    await review.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();
-    await review.getByText('Dismissed.', { exact: true }).waitFor();
+    await review.getByRole('button', { name: 'Not now', exact: true }).click();
+    await review.getByLabel('Optional note').fill('Synthetic tour later');
+    await review.getByRole('button', { name: 'Defer follow-up', exact: true }).click();
+    await review.getByText(/Returns .*America\/Chicago/).first().waitFor();
     await panel.getByRole('button', { name: 'Refresh deal', exact: true }).click();
     await review.getByText('No email follow-ups.', { exact: true }).waitFor();
-    assert.equal(calls.find(call => call.name === 'dismiss-email-proposal').arguments.reason, 'Synthetic tour already handled');
+    assert.equal(calls.find(call => call.name === 'snooze-email-proposal').arguments.note, 'Synthetic tour later');
     assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth), true);
     assert.deepEqual(errors, []);
   });
@@ -283,7 +286,8 @@ test('Home creates a new deal and files its email through the live client at pho
     else if (name === 'new-deal') { calls.push({ name, args }); result = { deal_id: 'demo-created' }; }
     else if (name === 'get-deal-room' && args.deal === 'demo-created') result = { base_version: 1 };
     else if (name === 'set-lead' && args.deal === 'demo-created') result = { ok: true };
-    else if (name === 'confirm-email-filing') { calls.push({ name, args }); result = { ok: true, status: 'confirmed', deal: args.deal, activity_id: activity }; }
+    else if (name === 'preview-email-filing') { calls.push({ name, args }); result = { ...row.preview, contract: 'email-followups.v2', base_version: 1, deal: args.deal }; }
+    else if (name === 'confirm-email-filing') { calls.push({ name, args }); result = { ok: true, proposal_id: id, version: 2, disposition: args.disposition, note: args.note, status: 'confirmed', deal: args.deal, activity_id: activity }; }
     else return route.continue();
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
   });
@@ -291,17 +295,19 @@ test('Home creates a new deal and files its email through the live client at pho
   const card = page.locator('#homeEmailFollowups');
   await card.scrollIntoViewIfNeeded();
   await card.getByText('Possible new demo practice').waitFor();
-  await card.getByRole('button', { name: 'Review filing' }).click();
+  await card.getByRole('button', { name: 'New deal', exact: true }).click();
   await card.getByRole('textbox', { name: 'Deal name' }).fill('Demo office');
-  await card.getByRole('textbox', { name: 'Existing client (reference or exact name)' }).fill('Demo Client');
+  await card.getByRole('textbox', { name: 'Existing client reference or exact name' }).fill('Demo Client');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('out/test-artifacts/email-followups', { recursive: true });
   await card.screenshot({ path: 'out/test-artifacts/email-followups/filing-new-deal.png', animations: 'disabled' });
-  await card.getByRole('button', { name: 'Create deal and confirm filing' }).click();
-  await card.getByText('Confirmed.', { exact: true }).waitFor();
+  await card.getByRole('button', { name: 'Review selected deal', exact: true }).click();
+  await card.getByRole('button', { name: 'Confirm filing', exact: true }).click();
+  await card.getByText('Filed to the selected deal.', { exact: true }).first().waitFor();
   assert.equal(calls[0].name, 'new-deal'); assert.equal(calls[0].args.client, 'Demo Client');
-  assert.equal(calls[1].name, 'confirm-email-filing'); assert.equal(calls[1].args.deal, 'demo-created');
-  assert.equal(calls[1].args.proposal_digest, digest);
+  assert.equal(calls[1].name, 'preview-email-filing');
+  assert.equal(calls[2].name, 'confirm-email-filing'); assert.equal(calls[2].args.deal, 'demo-created');
+  assert.equal(calls[2].args.proposal_digest, digest);
 });
 
 test('Home loads email follow-ups even outside the viewport', async t => {
@@ -413,7 +419,7 @@ for (const [subject_type,width] of [['client',1440],['lead',390],['vendor',390]]
       else return route.continue();
       return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
     });
-    await page.goto(`${origin}/?mode=live`);
+    await page.goto(`${origin}/?mode=live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
     const card = page.locator('#homeEmailFollowups');
     await card.getByText('Demo contact follow-up', { exact: true }).waitFor();
     assert.match(await card.innerText(), new RegExp(`${subject_type[0].toUpperCase()+subject_type.slice(1)} · Demo contact`));
@@ -488,3 +494,88 @@ test('Home saved reply survives send Undo and submits once after grace', async t
   assert.ok(idempotency_key);
   assert.deepEqual(args, { proposal_id: row.id, base_version: 4, subject: 'Re: Demo plan reviewed', body: 'I reviewed the plan.\nPlease send the dimensions.', to: row.reply_draft.to, cc: row.reply_draft.cc });
 });
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
+  test(`Home exact-target file and durable deferral ${width} ${theme}`, async t => {
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    t.after(() => page.close());
+    await page.clock.install({ time: new Date('2026-10-31T18:00:00Z') });
+    await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `home-file-defer-${width}-${theme}`, viewer: 'joe', reset: true } });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
+    const source = { activity_id: '30000000-0000-4000-8000-000000000010', subject: 'Demo lease follow-up', sender: 'Dana Demo', evidence_quote: 'Please review the lease.', occurred_at: '2026-10-30T12:00:00Z' };
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const row = { id: '10000000-0000-4000-8000-000000000010', kind: 'possible_new_deal', version: 1, deal: null, deal_name: null,
+      source, confirm_verb: 'confirm-email-filing', suggested_deals: [{ deal: 'qa-deal-1', name: 'Demo Harbor expansion', reasons: ['Existing client transaction'] }],
+      email_summary: { status: 'available', text: 'Dana asks for a review of the lease.' },
+      preview: { contract: 'email-filing.v1', proposal_id: '10000000-0000-4000-8000-000000000010', kind: 'possible_new_deal', deal: null, activity_id: source.activity_id, evidence_quote: source.evidence_quote, sender: {}, new_people: [], requires_confirmation: true, proposal_digest: digest } };
+    const calls = []; let until = null, filed = false, stale = false, lose = true;
+    await page.route('**/mcp', async route => {
+      const { name, arguments: args } = route.request().postDataJSON().params;
+      let result;
+      if (name === 'list-email-proposals' && !args.mode && !args.status) result = { schema_version: 'email-proposals.v1', proposals: filed || until && Date.parse('2026-10-31T18:00:00Z') < Date.parse(until) ? [] : [row], send: false, more: false, next_cursor: null };
+      else if (name === 'preview-email-filing') { calls.push({ name, args }); result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version }; }
+      else if (name === 'confirm-email-filing') {
+        calls.push({ name, args });
+        if (stale) result = { error: 'version_conflict' };
+        else { filed = true; result = { ok: true, proposal_id: row.id, status: 'confirmed', version: row.version + 1, disposition: args.disposition, note: args.note, deal: args.deal, activity_id: source.activity_id }; }
+      } else if (name === 'snooze-email-proposal') {
+        calls.push({ name, args }); until = args.deferred_until;
+        if (lose) { lose = false; await route.abort('failed'); return; }
+        row.version = 2;
+        result = { ok: true, proposal_id: row.id, status: 'pending', version: 2, disposition: 'deferred', deferred_until: until, note: args.note };
+      } else if (name === 'new-deal') assert.fail('Selecting an existing deal must not create');
+      else return route.continue();
+      await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
+    });
+    await page.goto(`${origin}/?mode=live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    const panel = page.locator('#homeEmailFollowups');
+    await panel.getByText('Dana asks for a review of the lease.', { exact: true }).waitFor();
+    assert.equal(await panel.locator('q:visible').count(), 0);
+    await panel.getByText('Review source email', { exact: true }).click();
+    await panel.getByText('Please review the lease.', { exact: true }).waitFor();
+    await panel.getByRole('button', { name: 'Already handled', exact: true }).click();
+    await panel.getByRole('button', { name: 'Review selected deal', exact: true }).click();
+    await panel.getByText('Choose the deal before continuing.', { exact: true }).waitFor();
+    await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await panel.getByRole('button', { name: 'Not now', exact: true }).click();
+    assert.equal(await panel.getByLabel('Return time in America/Chicago').inputValue(), '2026-11-01T09:00');
+    assert.equal(await panel.getByLabel('Return time in America/Chicago').evaluate(node => node === document.activeElement), true);
+    await panel.getByLabel('Optional note').fill('Review tomorrow');
+    await panel.screenshot({ path: `out/test-artifacts/email-followups/file-defer-${width}-${theme}.png` });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await panel.getByRole('button', { name: 'Defer follow-up', exact: true }).click();
+    await panel.getByRole('button', { name: 'Check outcome', exact: true }).click();
+    await panel.getByText('No email follow-ups.', { exact: true }).waitFor();
+    assert.match(await panel.innerText(), /Returns .*America\/Chicago/);
+    const snoozes = calls.filter(call => call.name === 'snooze-email-proposal');
+    assert.equal(snoozes.length, 2); assert.deepEqual(snoozes[0], snoozes[1]);
+    assert.equal(until, '2026-11-01T15:00:00.000Z');
+    await page.reload(); await panel.getByText('No email follow-ups.', { exact: true }).waitFor();
+    until = '2026-10-30T15:00:00.000Z';
+    row.suggested_deals = []; row.source.subject = 'Demo lease follow-up with a long recorded subject '.repeat(8);
+    await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+    await panel.getByRole('button', { name: 'File to existing deal', exact: true }).click();
+    await panel.getByLabel('Selected deal', { exact: true }).selectOption('qa-deal-1');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await panel.getByLabel('Optional note').fill('Lease reviewed');
+    await panel.getByRole('button', { name: 'Review selected deal', exact: true }).click();
+    await panel.getByRole('button', { name: 'Confirm filing', exact: true }).waitFor();
+    assert.equal(calls.filter(call => call.name === 'confirm-email-filing').length, 0);
+    await panel.getByRole('button', { name: 'Confirm filing', exact: true }).focus();
+    assert.equal(await panel.getByRole('button', { name: 'Confirm filing', exact: true }).evaluate(node => node === document.activeElement), true);
+    stale = true;
+    await panel.getByRole('button', { name: 'Confirm filing', exact: true }).click();
+    await panel.getByText(/Action refused \(version_conflict\)/).waitFor();
+    await panel.getByRole('button', { name: 'Refresh and review', exact: true }).click();
+    await panel.getByRole('button', { name: 'File to existing deal', exact: true }).click();
+    await panel.getByLabel('Selected deal', { exact: true }).selectOption('qa-deal-1');
+    await panel.getByLabel('Optional note').fill('Lease reviewed');
+    await panel.getByRole('button', { name: 'Review selected deal', exact: true }).click();
+    stale = false;
+    await panel.getByRole('button', { name: 'Confirm filing', exact: true }).click();
+    await panel.getByText('No email follow-ups.', { exact: true }).waitFor();
+    assert.match(await panel.innerText(), /Filed to the selected deal/);
+    const confirmed = calls.filter(call => call.name === 'confirm-email-filing').at(-1).args;
+    assert.equal(confirmed.deal, 'qa-deal-1'); assert.equal(confirmed.note, 'Lease reviewed'); assert.equal(confirmed.proposal_digest, digest);
+  });
+}
