@@ -14,6 +14,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const base = appOriginForReport(location?.origin || "");
   if (!base && pathname !== '/share') {
     const history = () => import('./ui-switcher-history.js');
+    // eslint-disable-next-line no-restricted-syntax -- One frame after initial page readiness records local recents; it performs no network reads or polling.
     const track = () => root.defaultView.requestAnimationFrame(() => {
       void Promise.all([history(), import('./doc-context.js')]).then(([{ rememberAddress, rememberDestination }, { pageDocContext }]) => {
         if (retired) return;

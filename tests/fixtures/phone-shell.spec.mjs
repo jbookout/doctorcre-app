@@ -35,7 +35,7 @@ test('Inbox uses one phone shell row and grouped controls in both themes', async
       return { label, left: layout.bounds[index][0], top: layout.bounds[index][1] };
     });
     await session.detach();
-    const rows = await Promise.all(['#docOpen', '.app-shell-search', '[data-pref="theme"]', '#colorAssistButton', '#appSyncRefresh']
+    const rows = await Promise.all(['#docOpen', 'a.app-shell-search', '[data-pref="theme"]', '#colorAssistButton', '#appSyncRefresh']
       .map(selector => page.locator(selector).boundingBox()));
     const offsets = positions.map((item, index) => item.top - rows[index].y);
     await testInfo.attach(`workspace-390-${theme}-geometry`, { body: JSON.stringify({ positions, offsets }), contentType: 'application/json' });
