@@ -14,7 +14,7 @@ export async function applyPhoneProfile(context, page) {
 }
 
 export const screens = [
-  { id: 'home', route: '/', ready: '.home-slice [data-inbox-row]', tap: '.home-slice header button', complete: () => document.querySelector('.home-slice header button')?.getAttribute('aria-expanded') === 'true' },
+  { id: 'home', route: '/', ready: '.home-slice [data-inbox-row]', tap: '.home-slice[aria-label="Needs your attention"] header button', complete: () => document.querySelector('.home-slice[aria-label="Needs your attention"] header button')?.getAttribute('aria-expanded') === 'true' },
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailUpdateForm')?.getClientRects().length > 0 },
   { id: 'vendors', route: '/vendors', ready: '.record-row', tap: '.record-row', complete: () => document.querySelector('#recordPanel')?.getClientRects().length > 0 },
   { id: 'tours', route: '/tours', ready: '[data-market="Pensacola, FL"]', tap: '[data-market="Pensacola, FL"]', complete: () => document.querySelector('#space-area')?.value === 'Pensacola, FL' },
