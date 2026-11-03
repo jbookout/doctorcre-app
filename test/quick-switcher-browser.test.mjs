@@ -249,7 +249,7 @@ for (const fallback of [false, true]) test(`global slash search preserves compos
   const page = await browser.newPage();
   try {
     await page.goto(`${server.url}/deals?view=national`);
-    await page.locator('#search').waitFor();
+    await page.locator('#accountGrid [data-account]').first().waitFor();
     assert.equal(await page.evaluate(fallback => {
       const event = new KeyboardEvent('keydown', { key: '/', isComposing: !fallback, keyCode: fallback ? 229 : 0, bubbles: true, cancelable: true });
       document.body.dispatchEvent(event);
