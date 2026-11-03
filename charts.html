@@ -10,6 +10,30 @@
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/business-workspace.css">
   <link rel="stylesheet" href="/css/app-shell.css">
+  <style>
+    .historical-fit { margin-top: var(--space-4, 24px); min-width: 0; }
+    .historical-fit form { display: flex; flex-wrap: wrap; gap: 12px; margin-block: 16px; }
+    .historical-fit label { display: grid; gap: 4px; min-width: 0; flex: 1 1 180px; }
+    .historical-fit :is(input, button) { min-height: var(--touch); padding: 8px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; }
+    .historical-fit summary { min-height: var(--touch); cursor: pointer; }
+    .historical-fit input { width: 100%; min-width: 0; box-sizing: border-box; }
+    .historical-fit table { width: 100%; min-width: 580px; font-size: var(--font-size-1); }
+    .historical-fit th, .historical-fit td { padding: 8px; text-align: left; vertical-align: top; }
+    .historical-fit td:last-child { max-width: 320px; overflow-wrap: anywhere; }
+    .historical-fit .chart-scroll { overflow-x: auto; max-width: 100%; }
+    @media (max-width: 600px) {
+      .historical-fit table { min-width: 0; }
+      .historical-fit caption { display: block; text-align: left; }
+      .historical-fit thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+      .historical-fit :is(table, tbody, tr) { display: block; }
+      .historical-fit tr { padding-block: 12px; border-top: 1px solid var(--hairline); }
+      .historical-fit td { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .historical-fit td::before { content: attr(data-label); font-weight: 600; }
+      .historical-fit td:last-child { max-width: none; }
+      .historical-fit td ul { padding-left: 16px; }
+      .historical-fit form button { flex: 1 1 auto; }
+    }
+  </style>
 </head>
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
@@ -25,6 +49,7 @@
     <p class="sr-only" id="chartsLive" aria-live="polite" role="status"></p>
     <div class="state-block" id="chartsState" data-state="loading" hidden></div>
     <div id="chartsCanvas" class="charts-canvas" aria-busy="false"></div>
+    <div id="historicalClientFit"></div>
   </main>
   <script type="module" src="/js/charts-page.js"></script>
 </body>
