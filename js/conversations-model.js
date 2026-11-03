@@ -91,13 +91,6 @@ const isText = (value) => typeof value === "string" && value.length > 0;
 
 /* ------------------------------------------------------------------- the route */
 
-/**
- * The conversation this page was opened on, read from the query string alone.
- *
- * Three answers, and the two failures are different on purpose: a bare page is
- * a person who arrived with no link and should be given the list, while a
- * malformed one is a person holding something that looks like an id and is not.
- */
 export function conversationRoute(location) {
   const target = docRequestTarget(location?.pathname || '');
   if (target) return { state: 'ok', ...target, given: target.id };
