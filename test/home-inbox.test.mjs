@@ -75,13 +75,15 @@ test('v1 command receipts recover v2 metadata through one authoritative read', a
   const client = createInboxClient(async (name, args) => {
     calls.push({ name, args });
     if (name === 'read-home-inbox-v2') return snapshot([item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque', context_label: 'Updated deal' })]);
-    const { context_label, due_on, open_url, kind_label, merged_source_ids, action_id, action_version, deal_id, ...legacy } = item('a', { disposition: 'settled', section: 'settled' });
+    const { context_label, due_on, open_url, kind_label, merged_source_ids, action_id, action_version, deal_id, ...legacy } = item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque' });
     return { ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'a', ok: true, item: legacy }] };
   });
   const [result] = await client.run(request);
   assert.equal(result.item.context_label, 'Updated deal');
   assert.equal(result.item.action_version, 7);
+  assert.equal(result.ok, true);
   assert.equal(result.item.base_version, 'next:opaque');
+  assert.equal(command('unsettle', [result.item]).args.items[0].base_version, 'next:opaque');
   assert.deepEqual(calls.map(call => call.name), ['settle-home-inbox', 'read-home-inbox-v2']);
   assert.equal(calls[0].args.items[0].base_version, 'do-not-parse:007');
 });

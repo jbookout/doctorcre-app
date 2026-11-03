@@ -44,17 +44,19 @@ function Inbox({ client }: { client: InboxClient }) {
     try {
       const results = await client.run(operation.request);
       const successes = results.flatMap(result => result.ok ? [result.item] : []);
-      const failed = results.filter(result => !result.ok);
-      cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => successes.find(next => next.item_id === item.item_id) || item) } : snapshot, { updatedAt: query.dataUpdatedAt });
+      const changed = results.flatMap(result => !result.ok && result.current_item ? [result.current_item] : []);
+      const updates = [...successes, ...changed];
+      const failed = results.filter(result => !result.ok && !result.current_item);
+      cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(item => updates.find(next => next.item_id === item.item_id) || item) } : snapshot, { updatedAt: query.dataUpdatedAt });
       setFailures(failed);
       select(new Set(failed.map(result => result.item_id)));
-      if (successes.length && !operation.undoing) {
+      if ((successes.length || changed.length) && !operation.undoing) {
         setUndo(successes.flatMap(item => {
           const previous = operation.before.find(before => before.item_id === item.item_id);
           return previous ? [{ action: previous.disposition === 'settled' ? 'settle' : previous.disposition === 'snoozed' ? 'snooze' : 'unsettle', items: [item], ...(previous.snoozed_until ? { until: previous.snoozed_until } : {}) }] : [];
         }));
       }
-      setNotice(`${successes.length} confirmed. ${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : operation.undoing ? 'Undone.' : 'You can undo this change.'}`);
+      setNotice(`${successes.length + changed.length} confirmed. ${changed.length ? `${changed.length} changed again after confirmation. Showing the latest state. Undo is unavailable for those cards. ` : ''}${failed.length ? `${failed.length} failed or uncertain. Kept for review.` : successes.length ? operation.undoing ? 'Undone.' : 'You can undo this change.' : ''}`);
       if (!failed.length) setPending(null);
       focusRow();
     } catch (error) { setNotice(`Result uncertain. ${message(error)} Retry the same request.`); }

@@ -15,7 +15,7 @@ export type Snapshot = Readonly<{ ok: true; schema_version: 'home-inbox.v2'; tru
 export type Action = 'snooze' | 'settle' | 'unsettle';
 type CommandArgs = Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>> }>;
 export type Command = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
-export type ItemResult = { item_id: string; ok: true; item: InboxItem } | { item_id: string; ok: false; error: string; current_version?: string };
+export type ItemResult = { item_id: string; ok: true; item: InboxItem } | { item_id: string; ok: false; error: string; current_version?: string; current_item?: InboxItem };
 export function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const timestamp = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
@@ -93,7 +93,9 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
       return results.map(result => {
         if (!result.ok) return result;
         const item = snapshot.items.find(item => item.item_id === result.item_id);
-        return item ? { item_id: result.item_id, ok: true, item } : { item_id: result.item_id, ok: false, error: 'Confirmed change, but card readback is unavailable. Refresh to check its state.' };
+        if (!item) return { item_id: result.item_id, ok: false, error: 'Confirmed change, but card readback is unavailable. Refresh to check its state.' };
+        if (item.base_version !== result.item.base_version) return { item_id: result.item_id, ok: false, error: 'intervening_change', current_item: item };
+        return { item_id: result.item_id, ok: true, item: { ...item, base_version: result.item.base_version } };
       });
     },
   };
