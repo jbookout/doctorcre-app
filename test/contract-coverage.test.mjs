@@ -11,7 +11,7 @@ test('deal reads bind vendor assignments and held action history to their produc
   for (const verb of ['deal-room-board', 'get-deal-room']) {
     const operation = contract.mcp_read_contracts[verb];
     assert.equal(operation.producer.source_commit, verb === 'get-deal-room'
-      ? '4dac1adcadce720d2b6e9709b36dd10bdc0e20f6' : 'b281ef8c69dad3c1dab98229074de1b167f06e02');
+      ? contract.producer.source_commit : 'b281ef8c69dad3c1dab98229074de1b167f06e02');
 
     assert.deepEqual(operation.response.vendors.item_keys, ['party_id', 'role', 'company', 'contact', 'note', 'updated_at']);
   }
