@@ -12,7 +12,7 @@ before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); awai
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
 const row = (item_id, fields = {}) => ({ item_id, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'needs_attention', title: `Synthetic ${item_id}`, activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
-async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false, extra = [], malformed = false } = {}) {
+async function open(t, { refusal = false, width = 1440, theme = 'light', card = '', partial = false, uncertain = false, holdUntil = null, clock = false, extra = [], malformed = false, intervening = null } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
@@ -20,7 +20,7 @@ async function open(t, { refusal = false, width = 1440, theme = 'light', card = 
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   const items = [row('a', { hold_until: holdUntil }), row('b', { source_state: 'needs_attention', unseen: true }), row('working', { source_state: 'working', section: 'working' }), ...extra];
   if (malformed) delete items[0].action_version;
-  const calls = []; let writes = 0;
+  const calls = []; let writes = 0; let originalReceipt;
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
@@ -29,14 +29,18 @@ async function open(t, { refusal = false, width = 1440, theme = 'light', card = 
     else if (!name.endsWith('-home-inbox')) payload = { ok: true, items: [], counts: {}, suggestions: [], enabled: false };
     else {
       writes++;
-      if (uncertain && writes === 1) return route.abort();
-      payload = { ok: true, schema_version: 'home-inbox-command.v1', results: args.items.map(({ item_id }) => {
+      if (uncertain && !intervening && writes === 1) return route.abort();
+      payload = originalReceipt || { ok: true, schema_version: 'home-inbox-command.v1', results: args.items.map(({ item_id }) => {
         if (partial && item_id === 'b') return { item_id, ok: false, error: 'version_conflict', current_version: 'v9' };
         const item = items.find(item => item.item_id === item_id);
         Object.assign(item, { disposition: name.startsWith('unsettle') ? 'inbox' : name.startsWith('snooze') ? 'snoozed' : 'settled', snoozed_until: args.until || null, base_version: `opaque:${writes + 1}` });
         item.section = item.disposition !== 'inbox' ? item.disposition : item.source_state === 'working' ? 'working' : 'inbox';
-        return { item_id, ok: true, item };
+        const receipt = structuredClone(item);
+        if (intervening) Object.assign(item, { base_version: 'later:3', ...(intervening === 'snooze' ? { disposition: 'snoozed', section: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' } : { title: 'Edited elsewhere', source_version: 'v2', action_version: 8, context_label: 'New deal', due_on: '2026-11-06' }) });
+        return { item_id, ok: true, item: receipt };
       }) };
+      if (intervening) originalReceipt = payload;
+      if (uncertain && intervening && writes === 1) return route.abort();
     }
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
@@ -201,4 +205,28 @@ test('missing completion identity shows an error instead of actionable cards', a
   await page.getByRole('alert').filter({ hasText: 'completion identity' }).waitFor();
   assert.equal(await page.locator('[data-inbox-row]').count(), 0);
   assert.equal(calls.some(call => call.name === 'settle-home-inbox'), false);
+});
+
+for (const intervening of ['snooze', 'source edit']) for (const uncertain of [false, true]) test(`newer ${intervening} is visible without stale Undo${uncertain ? ' after retry' : ''}`, async t => {
+  const { page, calls } = await open(t, { intervening, uncertain, card: 'a', width: 390 });
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Settle', exact: true }).click();
+  if (uncertain) {
+    await page.getByRole('button', { name: 'Retry same request' }).click();
+  }
+  await page.getByText(/changed again.*latest state/i).waitFor();
+  assert.equal(await page.getByRole('button', { name: /^Undo/ }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Retry same request' }).count(), 0);
+  const card = page.locator('[data-inbox-row="a"]');
+  assert.equal(await card.isVisible(), true);
+  if (intervening === 'snooze') {
+    assert.match(await card.textContent(), /Snoozed until/);
+    assert.equal(await card.locator('xpath=..').getAttribute('class'), 'inbox-shelf');
+  } else {
+    assert.match(await card.textContent(), /Edited elsewhere.*New deal.*Due 2026-11-06/s);
+  }
+  if (uncertain) {
+    const writes = calls.filter(call => call.name === 'settle-home-inbox');
+    assert.deepEqual(writes[0], writes[1]);
+  }
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 });

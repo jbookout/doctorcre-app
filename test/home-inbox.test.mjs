@@ -93,3 +93,23 @@ test('source links use only supported producer destinations', async () => {
   const url = '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step';
   assert.equal(recordRoutes.source(item('a', { open_url: url })), url);
 });
+
+for (const change of ['snooze', 'source edit']) for (const retry of [false, true]) test(`newer ${change} readback cannot authorize Undo${retry ? ' after exact-key retry' : ''}`, async () => {
+  const { createInboxClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const receipt = item('a', { disposition: 'settled', section: 'settled', base_version: 'receipt:2' });
+  const current = item('a', { ...receipt, base_version: 'later:3', ...(change === 'snooze' ? { disposition: 'snoozed', section: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' } : { title: 'Edited elsewhere', source_version: 'source:2', action_version: 8, context_label: 'New deal', due_on: '2026-11-06' }) });
+  const writes = [];
+  const client = createInboxClient(async (name, args) => {
+    if (name === 'read-home-inbox-v2') return snapshot([current]);
+    writes.push(structuredClone(args));
+    if (retry && writes.length === 1) throw Error('Response lost');
+    return { ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'a', ok: true, item: receipt }] };
+  });
+  const request = command('settle', [item('a')]);
+  if (retry) await assert.rejects(client.run(request), /Response lost/);
+  const [result] = await client.run(request);
+  assert.equal(result.ok, false, 'the older command must not offer Undo against a newer version');
+  assert.equal(result.error, 'intervening_change');
+  assert.deepEqual(result.current_item, current, 'the caller can display the newer state');
+  if (retry) assert.deepEqual(writes[0], writes[1]);
+});
