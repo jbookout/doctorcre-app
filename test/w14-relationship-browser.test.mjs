@@ -209,6 +209,7 @@ for (const width of [1440, 390])
     assert.ok(
       h.verbs.every((v) =>
         [
+          "calendar-meeting-prep",
           "deal-room-board",
           "morning-brief",
           "today-triage",

@@ -3,7 +3,7 @@ import { expect } from 'e2e';
 
 // W2: Home lists overdue local deals, most overdue first; a row opens that exact deal.
 test('W2 Home lists overdue local deals, scopes to the viewer and opens the exact deal', async ({ app, browser, screen }) => {
-  await app.open('/');
+  await app.open('/review-workflows');
 
   const flags = browser.locator('#dealFlags .home-flag');
   await expect(flags).toContainText(['Demo Specialty Clinic', 'Demo Osteopathic Office', 'Demo Surgical Practice']);

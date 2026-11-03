@@ -36,7 +36,7 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       else if(name==='today-triage') body=await fixture.todayTriage();
       else if(name==='get-deal-room') body=await fixture.getDeal(args.deal || args.deal_id);
       else if(name==='deal-room-changes') body=await fixture.getChanges(args.cursor);
-      else { if(!/^(morning-brief$|read-|list-|get-|notification-|correspondence-)/.test(name)) writes.push(name); body={ok:true}; }
+      else { if(!/^(calendar-meeting-prep$|morning-brief$|read-|list-|get-|notification-|correspondence-)/.test(name)) writes.push(name); body={ok:true}; }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{type:'text',text:JSON.stringify(body)}]}})});
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release') return route.fulfill({contentType:'application/json',body:'{}'});
@@ -128,7 +128,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and keeps Tod
  await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
  assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
  await page.getByRole('button',{name:'Back to deals',exact:true}).click();await page.locator('#recordPanel').waitFor({state:'hidden'});assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),false);
- await page.locator('#appTodayToggle').click();
+ if (await page.locator('#appTodayToggle').getAttribute('aria-expanded') === 'false') await page.locator('#appTodayToggle').click();
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>!document.querySelector('#recordPanel')?.hidden);await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});});
  await page.clock.fastForward(3_000);
@@ -139,7 +139,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and keeps Tod
 test('blocked localStorage, automatic Today refresh, and wide item details stay usable',async t=>{
  const{page,goto,errors}=await open(t,{deniedStorage:true,clock:true});await goto('/deals');
  await page.locator('#appSidebarToggle').click();
- await page.locator('#appTodayToggle').click();
+ if (await page.locator('#appTodayToggle').getAttribute('aria-expanded') === 'false') await page.locator('#appTodayToggle').click();
  const first=page.locator('#appTodayNeeds [data-layout-deal]').first();await first.click();
  await page.waitForFunction(()=>!document.querySelector('#recordPanel')?.hidden);assert.equal(await page.locator('#recordPanel').evaluate(n=>{const parent=getComputedStyle(n.parentElement);return n.offsetWidth===n.parentElement.clientWidth-parseFloat(parent.paddingLeft)-parseFloat(parent.paddingRight);}),true);
  const before=await page.locator('#appSyncTime').getAttribute('datetime');await page.clock.fastForward(61_000);await page.waitForFunction(before=>document.querySelector('#appSyncTime').getAttribute('datetime')!==before,before);
@@ -303,10 +303,10 @@ test('R8 page environment capture and freshness feedback stays visible in the st
   await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture active';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
   const badge=await page.locator('#deploymentBadge').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(badge.y>=bar.y && badge.y+badge.height<=bar.y+bar.height,JSON.stringify({width,badge,bar}));
   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/w1b/environment-${width}.png`,root).pathname});
-  await goto('/');assert.equal(await page.locator('#observedAt').isVisible(),true);
+  await goto('/review-workflows');assert.equal(await page.locator('#observedAt').isVisible(),true);
  }
  await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
- await page.goto('http://localhost/?mode=live');await page.waitForFunction(()=>/Partial|Unavailable/.test(document.querySelector('#observedAt').textContent));
+ await page.goto('http://localhost/review-workflows?mode=live');await page.waitForFunction(()=>/Partial|Unavailable/.test(document.querySelector('#observedAt').textContent));
  assert.equal(await page.locator('#observedAt').isVisible(),true);
 });
 test('R9 Recent changes transfers phone focus into Today and keeps its keyboard trap',async t=>{

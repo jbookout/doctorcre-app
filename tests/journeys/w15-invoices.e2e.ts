@@ -35,7 +35,7 @@ test('W15 invoice tracker filters by age and status and records a payment', asyn
 });
 
 test('W15 Home invoice attention lists overdue invoices for the chosen scope', async ({ app, browser }) => {
-  await app.open('/');
+  await app.open('/review-workflows');
 
   const attention = browser.locator('#homeInvoices [data-home-key]');
   await expect(attention).toHaveCount(3);

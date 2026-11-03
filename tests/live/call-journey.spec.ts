@@ -22,7 +22,7 @@ async function openHome(page: Page) {
   const read = (name: string) => page.waitForResponse(response => response.url().endsWith('/mcp')
     && response.request().postDataJSON()?.params?.name === name && response.ok());
   const reads = Promise.all([read('read-call-outcomes'), read('read-post-call-followups')]);
-  await page.goto('/?mode=live');
+  await page.goto('/review-workflows?mode=live');
   await reads;
 }
 

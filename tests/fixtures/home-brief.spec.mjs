@@ -7,7 +7,7 @@ import { routeContract } from '../../js/routes.js';
 for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only', 'email-only', 'unavailable-call', 'unavailable-email']) for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Home decisions ${state} at ${width} in ${theme}`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
-  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const agenda = await client.getHomeAgenda();
   agenda.deals = agenda.deals.slice(0, 2).map((deal, i) => ({ ...deal, next_actions: [{ id: `synthetic-${i}`, description: `${['Send the lease summary', 'Review the revised plan'][i]}`, due_on: null, status: 'open', owner: 'joe' }] }));
@@ -40,6 +40,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
       const payload = name === 'read-home-agenda' ? agenda
         : name === 'deal-room-board' ? { ...await client.getBoard(args), deals: agenda.deals.map((deal, i) => ({ ...deal, next_step: `${['Send the lease summary', 'Review the revised plan'][i]}`, next_date: '2026-09-30' })) }
         : name === 'morning-brief' ? briefData
+        : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] }
         : name === 'lead-board' ? { leads: [] }
         : name === 'read-post-call-followups' ? followups
         : name === 'read-invoice-tracker' ? { schema_version: 'invoice-tracker.v1', actor: 'joe', entries: [], observed_at: '2026-10-01T15:00:00Z' }
@@ -56,8 +57,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     try { return route.fulfill({ body: await readFile(new URL(`../../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto('http://localhost/?mode=live');
-  await page.getByRole('button', { name: 'Skip walkthrough', exact: true }).click();
+  await page.goto('http://localhost/review-workflows?mode=live');
   const dir = new URL('../../test/review-artifacts/home-decisions/', import.meta.url);
   await mkdir(dir, { recursive: true });
   const capture = () => page.screenshot({ path: `${dir.pathname}${state}-${width}-${theme}.png`, fullPage: true });
@@ -129,14 +129,13 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
   await expect(email.locator('.email-source').first()).toContainText('Dana Demo · Oct 1, 8:00 AM CDT · 0 days waiting');
   await expect(page.locator('footer[aria-label="Deal counts"]')).toContainText('Active deals: 2');
   for (const title of ['Send the lease summary', 'Review the revised plan']) {
-    await expect(page.getByText(title, { exact: true }).filter({ visible: true })).toHaveCount(1);
-    expect((await page.locator('body').innerText()).split(title).length - 1).toBe(1);
+    await expect(page.locator('main').getByText(title, { exact: true }).filter({ visible: true })).toHaveCount(1);
+    expect((await page.locator('main').innerText()).split(title).length - 1).toBe(1);
   }
   await expect(brief.getByRole('button', { name: /Complete/ })).toHaveCount(0);
   await expect(page.locator('#homeCalendar .home-item-type')).toHaveCount(0);
-  await expect(page.locator('#appToday')).not.toContainText('Send the lease summary');
-  await expect(page.locator('#appTodayOwners')).toBeHidden();
-  await expect(page.locator('#appTodayNext time')).toHaveAttribute('datetime', '2026-10-01');
+  await expect(page.locator('#appTodayNext')).toContainText('Send the lease summary');
+  await expect(page.locator('#appScheduleSlot')).toContainText('No meetings scheduled today.');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   await page.locator('.home-grid').scrollIntoViewIfNeeded();
