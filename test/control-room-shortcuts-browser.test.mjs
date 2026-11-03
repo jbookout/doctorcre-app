@@ -39,10 +39,10 @@ async function open(t, { width = 1440, theme = 'dark', touch = false } = {}) {
   return { page, calls, errors };
 }
 
-for (const modifier of ['Meta', 'Control']) test(`${modifier}-Shift-K opens, filters, jumps and closes the command menu`, async t => {
+for (const modifier of ['Meta', 'Control']) test(`${modifier}-K opens, filters, jumps and closes the command menu`, async t => {
   const { page, errors } = await open(t);
   await page.locator('#crQueueList').focus();
-  await page.keyboard.press(`${modifier}+Shift+k`);
+  await page.keyboard.press(`${modifier}+k`);
   const dialog = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
   await dialog.waitFor();
   assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
@@ -54,7 +54,7 @@ for (const modifier of ['Meta', 'Control']) test(`${modifier}-Shift-K opens, fil
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => location.search.includes('tab=waiting'));
   assert.equal(await dialog.isVisible(), false);
-  await page.keyboard.press(`${modifier}+Shift+k`);
+  await page.keyboard.press(`${modifier}+k`);
   await page.keyboard.press('Escape');
   assert.equal(await dialog.isVisible(), false);
   assert.equal(await page.locator('#tabWaiting').evaluate(node => node === document.activeElement), true);
@@ -141,13 +141,13 @@ test('every tab is reachable, modal focus stays contained, and navigation introd
   const { page, calls, errors } = await open(t);
   const tabs = await page.locator('#controlRoomTabs [role="tab"]').evaluateAll(nodes => nodes.map(node => ({ key: node.dataset.tabKey, label: node.querySelector('.cr-nav-label').textContent })));
   for (const tab of tabs) {
-    await page.keyboard.press('Control+Shift+k');
+    await page.keyboard.press('Control+k');
     await page.getByRole('combobox', { name: 'Find a command' }).fill(tab.label);
     await page.getByRole('option', { name: `Go to ${tab.label}`, exact: true }).click();
     assert.equal(new URL(page.url()).searchParams.get('tab'), tab.key);
   }
   await page.keyboard.press('g'); await page.keyboard.press('q');
-  await page.keyboard.press('Control+Shift+k');
+  await page.keyboard.press('Control+k');
   const dialog = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
   for (let index = 0; index < 8; index++) {
     await page.keyboard.press('Tab');

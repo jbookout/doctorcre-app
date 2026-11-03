@@ -7,6 +7,38 @@ import { startFixtureServer } from '../scripts/fixture-server.mjs';
 const server = await startFixtureServer();
 test.after(() => server.stop());
 
+for (const modifier of ['Meta', 'Control']) test(`${modifier}-Alt-K opens the switcher without stealing Control Room commands`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${server.url}/control-room`);
+    await page.getByRole('button', { name: 'Open Control Room commands' }).waitFor();
+    await page.keyboard.press(`${modifier}+k`);
+    const commands = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
+    assert.equal(await commands.isVisible(), true);
+    assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press(`${modifier}+Alt+k`);
+    await page.getByRole('combobox', { name: 'Jump to' }).waitFor();
+    assert.equal(await commands.isVisible(), false);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press(`${modifier}+Shift+k`);
+    assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
+    assert.equal(await commands.isVisible(), false);
+  } finally { await browser.close(); }
+});
+
+for (const modifier of ['Meta', 'Control']) test(`${modifier}-Alt-K opens the global switcher`, async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(server.url);
+    await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+    await page.keyboard.press(`${modifier}+Alt+k`);
+    await page.getByRole('combobox', { name: 'Jump to' }).waitFor({ timeout: 2000 });
+  } finally { await browser.close(); }
+});
+
 test('switcher keyboard, recents, navigation and phone control', async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -25,13 +57,13 @@ test('switcher keyboard, recents, navigation and phone control', async () => {
     assert.ok(await input.getAttribute('aria-activedescendant'));
     await input.press('Escape');
     assert.equal(await opener.evaluate(el => el === document.activeElement), true);
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('Control+Alt+k');
     await input.fill('calendar');
     await input.press('Enter');
     await page.waitForURL('**/calendar');
     await page.goto(`${server.url}/calendar?day=2026-11-03`);
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
-    await page.keyboard.press('Meta+k');
+    await page.keyboard.press('Meta+Alt+k');
     await page.getByRole('heading', { name: 'Recent', exact: true }).waitFor();
     await page.getByRole('option', { name: 'Calendar Page' }).click();
     await page.waitForURL('**/calendar');
@@ -45,7 +77,7 @@ test('switcher keyboard, recents, navigation and phone control', async () => {
       dialog.showModal();
       input.focus();
     });
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('Control+Alt+k');
     await input.waitFor();
     await input.press('Escape');
     assert.equal(await page.getByRole('textbox', { name: 'Parent field' }).evaluate(el => el === document.activeElement), true);
@@ -140,14 +172,14 @@ test('deal and contact choices navigate to the exact fixture records', async () 
     await deal.click();
     await page.waitForURL('**/deals?deal=*');
     await page.locator('#panelTitle').filter({ hasText: title }).waitFor();
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('Control+Alt+k');
     await page.getByRole('heading', { name: 'Recent', exact: true }).waitFor();
     await page.getByRole('combobox', { name: 'Jump to' }).fill('Demo Coastal Dental');
     await page.getByRole('option', { name: 'Demo Coastal Dental Contact', exact: true }).click();
     await page.waitForURL('**/relationships?node=party%3Ademo-client');
     await page.locator('[data-node="party:demo-client"]').first().waitFor();
     await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
-    await page.keyboard.press('Control+k');
+    await page.keyboard.press('Control+Alt+k');
     await page.getByRole('combobox', { name: 'Jump to' }).waitFor();
     assert.equal(await page.locator('[data-quick-switcher] #docOpen').count(), 0);
     await page.getByRole('combobox', { name: 'Jump to' }).press('Escape');
