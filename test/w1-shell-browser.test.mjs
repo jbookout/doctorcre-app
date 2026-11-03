@@ -462,7 +462,7 @@ test('background controls and Doc shortcuts retire the walkthrough without inter
   assert.equal(await guide.count(), 0);
   assert.equal(await page.locator('#accountMenu').isVisible(), false);
   await start();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+d');
   await page.locator('#docDetail[open]').waitFor();
   assert.equal(await guide.count(), 0);
   await page.keyboard.press('Escape');
