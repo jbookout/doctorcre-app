@@ -1212,6 +1212,7 @@ export async function createFixtureClient(opts = {}) {
   }
 
   const emailSeedDeals = [...deals.values()].map(({ id, phase }) => ({ id, phase }));
+  const askRequests = new Map();
   const client = {
     ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
@@ -2454,6 +2455,22 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async askSession() { return { actor:selfActor }; },
+    async submitDocRequest({ idempotency_key, conversation_id, body }, actor) {
+      const row = docConversations.get(conversation_id);
+      const base = { contract:'doc-request.v1', idempotency_key, conversation_id };
+      if (actor !== selfActor || !row || !docVisibleTo(row, selfActor) || !body?.trim())
+        return { ...base, status:'refused', reason:'doc_request_refused' };
+      const key = `${actor}:${idempotency_key}`;
+      const previous = askRequests.get(key);
+      if (previous && (previous.body !== body || previous.conversation_id !== conversation_id)) throw Error('idempotency_key_reused');
+      if (!row.turns.some(turn => turn.msg_id === idempotency_key)) row.turns.push({
+        sequence:row.turns.length + 1, role:'human', body, msg_id:idempotency_key,
+        origin_actor:selfActor, origin_channel:'app', at:new Date().toISOString(),
+      });
+      askRequests.set(key, { body, conversation_id });
+      return { ...base, ok:true, status:'accepted', request_msg_id:idempotency_key };
+    },
     async createDocConversation({ idempotency_key, title, visibility = 'private' } = {}) {
       docGuardKey('create-doc-conversation', idempotency_key, { title, visibility });
       return withIdem(idempotency_key, () => {

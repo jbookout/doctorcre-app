@@ -2,36 +2,7 @@ import { createPageBudget } from './read-budget.mjs';
 import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
-// V5-UX-B07 — the Doc conversations page: DOM wiring only.
-//
-// Every decision about a payload, a state or a sentence lives in
-// ./conversations-model.js, and every decision about what a command DID lives
-// in the shared kernel (./command-feedback.mjs) and its dock. This file reads,
-// paints, and sends exactly three writes.
-//
-// Five shapes govern the file:
-//
-//   1. THE LIST IS A READ, NOT A MEMORY. `list-doc-conversations` returns the
-//      conversations the signed-in actor may see, and this page keeps nothing
-//      on the device: no id, no title, no cursor. The rows are painted in the
-//      order the verb returned them — pinned first, then most recently updated
-//      — and nothing here re-sorts them. Every write re-reads the list, because
-//      only the record layer knows what the store now holds.
-//   2. `visible_conversation_count` is PRINTED from the list payload. The page
-//      never counts its own rows: a first page of 25 is not the number of
-//      conversations a person can see, and printing it as one would be a lie
-//      the store never told.
-//   3. Each read stamps its OWN clock, and a read that answers after a newer
-//      one was issued is IGNORED — the `view.sequence` guard. The server's
-//      prose never reaches the page: only its STATUS and its CODE cross.
-//   4. Every write goes through performCommand with ONE operation key per
-//      intent per subject, and the kernel mints and retains the idempotency
-//      key. An unknown outcome keeps its entry so "Check outcome" re-sends the
-//      SAME frozen request — which matters most for create, where the key
-//      becomes the conversation id and a second key is a second conversation.
-//   5. A `version_conflict` is never retried automatically and never answered
-//      with the version the refusal carried. The page re-reads, which is the
-//      only source of the new version, and asks the person to press again.
+// Conversation reads and record controls stay here; the lazy React composer owns queued asks.
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
 import { createLiveClient } from "./live-client.js";
@@ -64,6 +35,23 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 const LIMIT = 50;
 let focusedRoute = null;
 let renderedTurns = null;
+let askConversation = null, disposeAsk = null, askMount = 0;
+function renderAskComposer() {
+  const host = $('askComposer');
+  const id = payloadOf()?.identity?.id || null;
+  $('askComposerPanel').hidden = !id;
+  if (!host || id === askConversation) return;
+  const ticket = ++askMount;
+  disposeAsk?.(); disposeAsk = null; host.replaceChildren(); askConversation = id;
+  if (!id || !client) return;
+  const slot = document.createElement('div'); host.append(slot);
+  import('./ui-host.js').then(async ({ mountAskComposer }) => {
+    if (ticket !== askMount) return;
+    const dispose = await mountAskComposer(slot, client, id);
+    if (ticket !== askMount) dispose();
+    else disposeAsk = dispose;
+  }).catch(() => { if (ticket === askMount) host.textContent = 'The ask composer could not open. Reload to try again.'; });
+}
 
 /** One place holds what this page believes; nothing else keeps a copy. */
 const view = {
@@ -459,6 +447,7 @@ function renderSuggestions() {
 }
 
 function render() {
+  renderAskComposer();
   renderHero();
   renderTurns();
   renderAccess();

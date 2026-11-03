@@ -773,6 +773,19 @@ export function createLiveClient(opts = {}) {
     async listDocSuggestions(args = {}, { signal } = {}) { return rpc('list-doc-suggestions', args, signal); },
     async decideDocSuggestion(args) { return write('decide-doc-suggestion', args); },
     async proposeDocCorrection(args) { return write('propose-doc-correction', args); },
+    async askSession() {
+      const response = await fetchReadImpl('/auth/session', { credentials:'same-origin', cache:'no-store' });
+      const session = await response.json();
+      if (!response.ok || !session?.actor?.slug) throw Error('Sign in to continue.');
+      return { actor:session.actor.slug };
+    },
+    async submitDocRequest(args, actor) {
+      if (!online()) throw Error('Offline');
+      const response = await fetchReadImpl('/auth/session', { credentials:'same-origin', cache:'no-store' });
+      const session = await response.json();
+      if (!response.ok || session?.actor?.slug !== actor || !session.csrf_token) throw Error('Session changed.');
+      return rawRpc('submit-doc-request', args, undefined, opts.writeTimeoutMs || 10_000, { 'x-carr-csrf':session.csrf_token });
+    },
     async createDocConversation(args) { return write('create-doc-conversation', args); },
     async renameDocConversation(args) { return write('rename-doc-conversation', args); },
     async shareDocConversation(args) { return write('share-doc-conversation', args); },
