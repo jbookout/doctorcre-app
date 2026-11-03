@@ -255,7 +255,13 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
         const item = element("li"), button = element("button", undefined, "tour-button");
         button.type = "button"; button.dataset.tourId = tour.id;
         button.title = tour.name || "Untitled tour"; button.append(element("strong", tourDisplayName(tour.name)), element("span", (tour.status || "draft").replaceAll("_", " ")));
-        button.addEventListener("click", () => void openTour(tour.id, button)); item.append(button); list.append(item);
+        button.addEventListener("click", () => void openTour(tour.id, button)); item.append(button);
+        if (tour.deal_id) {
+          const link = element('a', tour.deal_name || 'Open deal workspace', 'btn btn-quiet');
+          link.href = `/deals?deal=${encodeURIComponent(tour.deal_id)}&tab=tours&tour=${encodeURIComponent(tour.id)}`;
+          item.append(link);
+        }
+        list.append(item);
       }
       if (!groups[group].length) list.append(element("li", $("#tour-filter").value ? "No matching tours" : group === "upcoming" ? "No upcoming tours" : "No past tours", "empty-library"));
       list.scrollTop = scroll;

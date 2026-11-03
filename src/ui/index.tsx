@@ -30,3 +30,4 @@ export { mountLeadGuidance } from "./lead-guidance";
 export { mountTerritoryEvidence } from './territory-evidence';
 
 export { mountIdealClientProfile } from './ideal-client-profile';
+export { mountDealTours } from './deal-tours';
