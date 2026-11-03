@@ -699,3 +699,55 @@ test('same-day call reviews have distinct recorded Chicago times', () => {
   assert.match(titles[1], /3:00 PM CDT/);
   dom.window.close();
 });
+
+
+test('identical start times still distinguish separate call reviews', () => {
+  const call = { ...synthetic()[0], started_at: '2026-10-26T14:00:00Z' };
+  const dom = new JSDOM(callOutcomesHtml([call, { ...call, session_id: 'second-session' }]));
+  const titles = [...dom.window.document.querySelectorAll('h4')].map(node => node.textContent);
+  assert.notEqual(titles[0], titles[1]);
+  dom.window.close();
+});
+
+for (const width of [1280, 390]) for (const theme of ['light', 'dark'])
+test(`Home source calls at ${width} in ${theme}`, async () => {
+  const server = await fixtureServer(), browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
+  try {
+    await page.clock.install({ time: new Date('2026-11-02T14:00:00Z') });
+    await page.goto(server.origin);
+    await page.evaluate(async ({ calls, theme }) => {
+      document.documentElement.dataset.theme = theme;
+      const { callOutcomesHtml } = await import('/js/call-outcomes.js');
+      const { mountHomeCallTasks, readHomeCallFollowups } = await import('/js/home-call-tasks.js');
+      const area = document.createElement('main');
+      area.style.cssText = 'max-width:960px;margin:24px auto;padding:16px';
+      area.innerHTML = `<h1>Home</h1><div>${callOutcomesHtml(calls)}</div><section id="source-tasks"></section>`;
+      document.body.replaceChildren(area);
+      const rows = calls.map((call, index) => ({
+        id: `demo-card-${index}`, session_id: call.session_id, kind: 'assigned_action',
+        source_call_started_at: call.started_at, source_call_label_key: call.session_id,
+        deal_id: 'demo-deal', deal_name: 'Demo Bayside relocation', contact_name: 'Alex Example',
+        created_at: '2026-10-31T14:00:00Z', evidence_quote: 'Joe will schedule the walkthrough.',
+        payload: { deal_id: 'demo-deal', assignee: 'joe', action: 'Schedule the walkthrough', due_on: '2026-11-04' },
+      }));
+      const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => ({ schema_version: 'post-call-followups.v1', send: false, candidates: rows }) });
+      window.sourceTasks = mountHomeCallTasks({ document, host: document.getElementById('source-tasks'), client: {}, onChanged: async () => {} });
+      window.sourceTasks.update({ read: { state: 'read' }, tasks, actor: 'joe', scope: 'team' });
+    }, { calls: [
+      { ...synthetic()[0], started_at: '2026-10-26T14:00:00Z' },
+      { ...synthetic()[0], session_id: 'session-2', started_at: '2026-10-26T20:00:00Z' },
+    ], theme });
+    const headings = await page.locator('.call-outcome h4').allTextContents();
+    assert.notEqual(headings[0], headings[1]);
+    assert.match(headings[0], /9:00 AM CDT/);
+    assert.match(headings[1], /3:00 PM CDT/);
+    assert.match(await page.locator('.home-call-source').first().innerText(), /Oct 26.*9:00 AM CDT.*7d ago/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    const directory = process.env.CALL_LABEL_SCREENSHOT_DIR;
+    if (directory) {
+      await mkdir(directory, { recursive: true });
+      await page.screenshot({ path: `${directory}/home-${width}-${theme}.png`, fullPage: true });
+    }
+  } finally { await page.close(); await browser.close(); await server.close(); }
+});

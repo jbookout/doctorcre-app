@@ -21,17 +21,21 @@ export async function readHomeCallFollowups(client, { signal } = {}) {
       || !(row.contact_name == null || text(row.contact_name))
       || row.payload.deal_id !== row.deal_id || !text(row.created_at) || !Number.isFinite(Date.parse(row.created_at))
       || !(row.evidence_quote === null || typeof row.evidence_quote === 'string')) throw malformed();
+    if (row.source_call_started_at != null && (!text(row.source_call_started_at) || !Number.isFinite(Date.parse(row.source_call_started_at)))
+      || row.source_call_label_key != null && row.source_call_label_key !== row.session_id) throw malformed();
+    const source = row.source_call_started_at && row.source_call_label_key
+      ? { sourceCallStartedAt: row.source_call_started_at, sourceCallLabelKey: row.source_call_label_key } : {};
     ids.add(row.id);
     const p = row.payload;
     if (row.kind === 'email_draft') {
       if (!text(p.recipient_party_id) || !text(p.recipient_ref) || !text(p.subject) || !/^[a-f0-9]{64}$/.test(p.body_sha256)) throw malformed();
-      tasks.push({ kind: 'email_draft', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id,
+      tasks.push({ ...source, kind: 'email_draft', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id,
         dealName: row.deal_name, ...(row.contact_name ? { contactName: row.contact_name } : {}), createdAt: row.created_at, subject: p.subject, recipientRef: p.recipient_ref, evidence: row.evidence_quote || '' });
       continue;
     }
     if (!ownerLabel(p.assignee) || !text(p.action)
       || !(p.due_on === null || typeof p.due_on === 'string' && toDay(p.due_on) === p.due_on)) throw malformed();
-    tasks.push({ kind: 'assigned_action', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id, dealName: row.deal_name,
+    tasks.push({ ...source, kind: 'assigned_action', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id, dealName: row.deal_name,
       ...(row.contact_name ? { contactName: row.contact_name } : {}), createdAt: row.created_at, owner: p.assignee, description: p.action, dueOn: p.due_on, evidence: row.evidence_quote || '' });
   }
   return tasks;
@@ -56,7 +60,9 @@ export function mountHomeCallTasks({ document, client, host, onChanged, openRepo
     const unavailable = view.read?.state === 'error' || view.scope === 'mine' && !actor;
     host.hidden = false;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
-    const source = task => `<p class="home-call-source">From your call with ${E(task.dealName)}, <time datetime="${E(task.createdAt)}" title="${E(sourceTime(task.createdAt))}">${E(relativeAge(task.createdAt))}</time></p>`;
+    const source = task => task.sourceCallStartedAt
+      ? `<p class="home-call-source" data-source-call="${E(task.sourceCallLabelKey)}">From the pipeline call · ${E(sourceTime(task.sourceCallStartedAt))}, <time datetime="${E(task.sourceCallStartedAt)}" title="${E(sourceTime(task.sourceCallStartedAt))}">${E(relativeAge(task.sourceCallStartedAt))}</time></p>`
+      : '<p class="home-call-source">Source call unavailable</p>';
     const title = task => `<a ${task.contactName ? 'class="home-call-contact" ' : ''}href="/deals?deal=${encodeURIComponent(task.dealId)}">${task.contactName ? `<span>${E(`${task.contactName} · ${task.dealName}`)}</span>` : E(task.dealName)}</a>`;
     const markup = `<header class="home-panel-head"><h2>Call follow-ups to review</h2></header>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${view.busy && !tasks.length ? '<div class="home-followup-skeleton" role="status">Loading call follow-ups…</div>' : !tasks.length && !unavailable ? '<p class="home-empty">No call follow-ups</p>' : ''}${tasks.map(task => {
       if (task.kind === 'email_draft') {
