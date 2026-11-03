@@ -32,6 +32,7 @@ export async function bootInbox(host: HTMLElement) {
         return result.payload;
       };
     }
+    if (location.pathname === '/') await sibling('./app-shell.js');
     mountInbox(host, createInboxClient(rpc));
   } catch {
     host.replaceChildren();
