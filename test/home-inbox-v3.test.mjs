@@ -45,3 +45,15 @@ for (const code of ['partner_required', 'network_error', 'invalid_projection']) 
   await assert.rejects(client.read(), new RegExp(code));
   assert.deepEqual(calls, ['read-home-inbox-v3']);
 });
+test('a failed legacy fallback is attempted once and cannot change schema', async () => {
+  for (const payload of [{ error: 'unknown_tool' }, snapshot([])]) {
+    const calls = [];
+    const client = createInboxClient(async name => {
+      calls.push(name);
+      if (name === 'read-home-inbox-v3' || payload.error) throw Object.assign(Error('Unsupported'), { payload: { error: 'unknown_tool' } });
+      return payload;
+    });
+    await assert.rejects(client.read());
+    assert.deepEqual(calls, ['read-home-inbox-v3', 'read-home-inbox-v2']);
+  }
+});

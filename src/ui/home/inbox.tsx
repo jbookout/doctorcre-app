@@ -96,15 +96,19 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
 export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
-    try {
-      const value = await rpc('read-home-inbox-v3', {}, signal);
-      if (object(value) && value.error === 'unknown_tool') return parseSnapshot(await rpc('read-home-inbox-v2', {}, signal));
-      if (!object(value) || value.schema_version !== 'home-inbox.v3') throw Error('Inbox unavailable. Automatic settlement could not be verified.');
-      return parseSnapshot(value);
-    } catch (error) {
+    let value: unknown;
+    try { value = await rpc('read-home-inbox-v3', {}, signal); }
+    catch (error) {
       if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error;
-      return parseSnapshot(await rpc('read-home-inbox-v2', {}, signal));
+      value = { error: 'unknown_tool' };
     }
+    if (object(value) && value.error === 'unknown_tool') {
+      const legacy = await rpc('read-home-inbox-v2', {}, signal);
+      if (!object(legacy) || legacy.schema_version !== 'home-inbox.v2') throw Error('Inbox unavailable. The earlier inbox could not be verified.');
+      return parseSnapshot(legacy);
+    }
+    if (!object(value) || value.schema_version !== 'home-inbox.v3') throw Error('Inbox unavailable. Automatic settlement could not be verified.');
+    return parseSnapshot(value);
   }
   return {
     read,
