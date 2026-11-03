@@ -56,6 +56,52 @@ async function openEditor(t, { width = 390, theme = 'light', refusal = null } = 
   await card.getByRole('textbox', { name: 'Message', exact: true }).fill('  I reviewed the plan.\nPlease send the dimensions.  ');
   return { page, card, row, writes };
 }
+test('half-written reply survives reload without saving or submitting', async t => {
+  const { page, card, writes } = await openEditor(t);
+  await page.reload();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), '  I reviewed the plan.\nPlease send the dimensions.  ');
+  assert.equal(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue(), 'Re: Demo plan reviewed');
+  assert.equal(writes.length, 0);
+  await card.getByRole('button', { name: 'Discard device draft', exact: true }).click();
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'Thank you for the plan.');
+});
+test('offline typing restores after reconnect without replaying a command', async t => {
+  const { page, card, writes } = await openEditor(t);
+  await page.context().setOffline(true);
+  await card.getByRole('textbox', { name: 'Message', exact: true }).fill('An unfinished offline reply');
+  await card.getByText('Draft saved on this device. Nothing was sent.', { exact: true }).waitFor();
+  await page.context().setOffline(false);
+  await page.reload();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'An unfinished offline reply');
+  assert.equal(writes.length, 0);
+});
+test('restored text never silently adopts changed server version or recipients', async t => {
+  const { page, card, writes, row } = await openEditor(t);
+  row.version = 4; row.reply_draft.to = ['another-demo@example.test'];
+  await page.reload();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), '  I reviewed the plan.\nPlease send the dimensions.  ');
+  assert.equal(await card.getByRole('button', { name: 'Submit', exact: true }).count(), 0);
+  assert.equal(writes.length, 0);
+  await card.getByRole('button', { name: 'Reload draft', exact: true }).click();
+  await card.getByText('another-demo@example.test', { exact: false }).first().waitFor();
+  await card.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await card.getByText('Saved as a draft. Nothing was sent.', { exact: true }).waitFor();
+  assert.equal(writes[0].args.base_version, 4);
+  await page.reload();
+  await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+  assert.equal(await card.getByText('Device draft restored. Nothing was sent.', { exact: true }).count(), 0);
+});
+test('storage quota failure leaves edits usable and names the persistence limit', async t => {
+  const { page, card, writes } = await openEditor(t);
+  await page.evaluate(() => { Storage.prototype.setItem = () => { throw Error('synthetic quota'); }; });
+  await card.getByRole('textbox', { name: 'Message', exact: true }).fill('Still in this page');
+  await card.getByText('Draft is only in this page. Device storage is unavailable.', { exact: true }).waitFor();
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'Still in this page');
+  assert.equal(writes.length, 0);
+});
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`partner saves draft without sending at ${width}px ${theme}`, async t => {
   const { page, card, row, writes } = await openEditor(t, { width, theme });
   await card.getByRole('button', { name: 'Save draft', exact: true }).click();

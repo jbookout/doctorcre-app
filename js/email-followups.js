@@ -58,6 +58,12 @@ const denied = error => [401, 403].includes(error.status) || error.code === 'ses
 
 export function mountEmailFollowups({ container, client, deal, onChange = () => {}, clock = container.ownerDocument.defaultView }) {
   const win = container.ownerDocument.defaultView;
+  let storage = null;
+  try { storage = win.localStorage; } catch { /* The editor still works without device storage. */ }
+  const deviceDrafts = () => actionModule.createReplyDeviceDrafts(storage, client.selfActor || '');
+  const persistDraft = (id, state) => {
+    state.deviceMessage = deviceDrafts().save(id, state) ? 'Draft saved on this device. Nothing was sent.' : 'Draft is only in this page. Device storage is unavailable.';
+  };
   let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], rejectedRows = false, loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
@@ -80,7 +86,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const state = decisions.get(row.id) || { status: 'pending' }, preview = state.preview || row.preview;
       let controls = '';
       if (state.status === 'editing') {
-        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Save draft keeps your edits without sending. Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${button('undo-edit', 'Undo edit', !state.undo)}${state.conflict ? button('review-updated', state.method === 'editEmailDraft' ? 'Reload draft' : 'Review updated draft', loadState !== 'ready') : `${button('save-draft', 'Save draft', loadState !== 'ready')}${button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}`}${button('cancel', 'Cancel')}</div>`;
+        controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Save draft keeps your edits without sending. Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}<p role="status" data-device-draft-status>${E(state.deviceMessage || '')}</p>${button('discard-device-draft', 'Discard device draft')}${button('undo-edit', 'Undo edit', !state.undo)}${state.conflict ? button('review-updated', state.method === 'editEmailDraft' ? 'Reload draft' : 'Review updated draft', loadState !== 'ready') : `${button('save-draft', 'Save draft', loadState !== 'ready')}${button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}`}${button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'grace') {
         controls = `<p class="email-grace">Sending in ${state.remaining}s · ${button('undo-send', 'Undo')}</p>`;
       } else if (state.status === 'reviewing') {
@@ -197,6 +203,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const decision = await submitEmailProposal(client, state);
       if (disposed || loadState === 'denied') return;
       const current = rows.find(item => item.id === row.id);
+      if (decision.saved || decision.status === 'done') deviceDrafts().remove(row.id, { baseVersion: state.request.base_version, subject: state.request.subject, body: state.request.body });
       if (decision.saved && current && current.version <= decision.baseVersion) {
         current.version = decision.baseVersion;
         current.reply_draft = { ...current.reply_draft, subject: decision.subject, body: decision.body };
@@ -232,8 +239,14 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     if (action === 'cancel') { decisions.delete(row.id); render(); return; }
     if (loadState !== 'ready') return;
     if (action === 'edit-draft' && row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
-      decisions.set(row.id, { status: 'editing', baseVersion: row.version, subject: row.reply_draft.subject, body: row.reply_draft.body, to: [...row.reply_draft.to], cc: [...row.reply_draft.cc] }); render();
+      const restored = deviceDrafts().restore(row);
+      decisions.set(row.id, { status: 'editing', baseVersion: row.version, subject: row.reply_draft.subject, body: row.reply_draft.body, to: [...row.reply_draft.to], cc: [...row.reply_draft.cc], ...restored,
+        ...(restored ? { method: 'editEmailDraft', deviceMessage: restored.conflict ? 'Device draft restored. The saved reply changed. Reload draft to review it before saving or submitting.' : 'Device draft restored. Nothing was sent.' } : {}) }); render();
       [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === row.id)?.querySelector('input')?.focus();
+    }
+    if (action === 'discard-device-draft' && state.status === 'editing') {
+      deviceDrafts().remove(row.id);
+      decisions.set(row.id, { status: 'editing', baseVersion: row.version, subject: row.reply_draft.subject, body: row.reply_draft.body, to: [...row.reply_draft.to], cc: [...row.reply_draft.cc] }); render(); return;
     }
     if (action === 'review-updated' && state.status === 'editing' && state.conflict) {
       await refresh();
@@ -251,7 +264,9 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       return startGrace(row, { ...state, message: '' }, { proposal_id: row.id, base_version: state.baseVersion, subject: state.subject, body: state.body, to: [...state.to], cc: [...state.cc], idempotency_key: uuidv4() });
     }
     if (action === 'undo-edit' && state.status === 'editing' && state.undo) {
-      decisions.set(row.id, { ...state, ...state.undo, undo: null, editField: null }); render(); return;
+      const restored = { ...state, ...state.undo, undo: null, editField: null };
+      persistDraft(row.id, restored);
+      decisions.set(row.id, restored); render(); return;
     }
     if (action === 'preview' && validPreview(row, row.preview)) {
       decisions.set(row.id, { status: 'previewing' }); render();
@@ -282,7 +297,10 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         if (undo) undo.disabled = false;
       }
       state[field] = event.target.value;
-      if (state.saved) { state.saved = false; state.message = ''; event.target.closest('article').querySelector('[role="status"]')?.remove(); }
+      persistDraft(event.target.closest('[data-email-id]').dataset.emailId, state);
+      const notice = event.target.closest('[data-email-id]').querySelector('[data-device-draft-status]');
+      if (notice) notice.textContent = state.deviceMessage;
+      if (state.saved) { state.saved = false; state.message = ''; event.target.closest('article').querySelector('[role="status"]:not([data-device-draft-status])')?.remove(); }
     }
   };
   const blur = event => {

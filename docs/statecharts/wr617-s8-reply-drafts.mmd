@@ -1,0 +1,28 @@
+stateDiagram-v2
+    [*] --> Reviewing: Open reply
+    Reviewing --> SavedOnDevice: Type subject or message
+    SavedOnDevice --> SavedOnDevice: Keep typing, including offline
+    SavedOnDevice --> Restored: Reload and open same reply
+    Restored --> ChangedElsewhere: Saved version or recipients changed
+    ChangedElsewhere --> Reviewing: Review updated draft
+    SavedOnDevice --> Reviewing: Discard device draft
+    Restored --> Reviewing: Discard device draft
+    ChangedElsewhere --> Reviewing: Discard device draft
+    SavedOnDevice --> Saving: Save draft
+    Restored --> Saving: Save draft
+    Saving --> Reviewing: Server confirms exact saved text
+    Saving --> ChangedElsewhere: Version conflict
+    Saving --> SavedOnDevice: Outcome unknown
+    SavedOnDevice --> Grace: Submit
+    Restored --> Grace: Submit
+    Grace --> SavedOnDevice: Undo or leave page
+    Grace --> Submitting: Grace expires
+    Submitting --> Queued: Server confirms queued reply
+    Submitting --> SavedOnDevice: Outcome unknown
+    SavedOnDevice --> MemoryOnly: Device storage fails
+    MemoryOnly --> SavedOnDevice: Next edit persists
+    SavedOnDevice --> Hidden: Session ends
+    Hidden --> Restored: Same partner signs in and opens reply
+    %% never Reload, reconnect or restore sends email or submits a reply.
+    %% never Another partner restores this partner's text.
+    %% never Restoring old text silently adopts a newer version or recipients.
