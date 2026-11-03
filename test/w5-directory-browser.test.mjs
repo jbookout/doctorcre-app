@@ -34,6 +34,7 @@ test('V01 shared directory has neutral loading identity before its module starts
   await page.route('**/js/workspace-business.js', route => route.abort());
   await page.goto(`${origin}/vendors`);
   assert.equal(await page.title(), 'Records · DoctorCRE');
+  await page.locator('.app-layout-page-tools > summary').click();
   assert.equal(await page.locator('#pageTitle').innerText(), 'Records');
   assert.equal(await page.locator('#resultsTitle').innerText(), 'Records');
   assert.equal(await page.locator('.footer').innerText(), 'DoctorCRE · Records');
