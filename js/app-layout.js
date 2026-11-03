@@ -61,7 +61,7 @@ export function mountAppLayout(root, host, pathname) {
     else main.insertBefore(node, pageTools);
   }
   pageTools.open = Boolean(layout.querySelector('#appSidebarSlot').childElementCount);
-  pageTools.hidden = homeOrInbox && !pageTools.open;
+  pageTools.hidden = !pageTools.open && !layout.querySelector('.app-layout-working:not([hidden])');
   root.body.classList.add('has-app-layout');
   // A page that brings its own freshness and refresh owns the band's one clock and one refresh.
   const pageRefresh = status.querySelector('#appStatusSlot [data-layout-refresh]');
