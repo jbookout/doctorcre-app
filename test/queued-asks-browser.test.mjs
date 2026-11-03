@@ -33,8 +33,8 @@ for (const width of [390,1280]) test(`recovery after repeated failed reconnects 
  const server=await fixtureServer();t.after(()=>server.close());
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:900}});
- await page.goto(`${server.origin}/conversations?id=${conversation}`);
- await page.getByRole('textbox',{name:'Ask Dr. CRE',exact:true}).waitFor();
+ await page.goto(`${server.origin}/conversations`);
+ await page.locator('main').waitFor();
  await page.evaluate(async conversation=>{
   const {mountAskComposer}=await import('/js/ui-host.js');
   const host=document.createElement('section');host.id='recoveryProbe';document.querySelector('main').append(host);
@@ -72,4 +72,35 @@ for (const width of [390,1280]) test(`recovery after repeated failed reconnects 
  assert.equal(await host.textContent(),'');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  assert.equal(await page.evaluate(()=>window.askProbe.sessionCalls),4);
+});
+
+test('session verification stays single-flight and closing prevents later startup', async t => {
+ const server=await fixtureServer();t.after(()=>server.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto(`${server.origin}/conversations`);
+ await page.locator('main').waitFor();
+ await page.evaluate(async conversation=>{
+  const {mountAskComposer}=await import('/js/ui-host.js');
+  const host=document.createElement('section');host.id='sessionProbe';document.querySelector('main').append(host);
+  let calls=0;
+  window.sessionProbe={get calls(){return calls;}};
+  window.sessionProbe.mounted=mountAskComposer(host,{askSession:()=>{calls++;return new Promise(resolve=>{window.sessionProbe.release=()=>resolve({actor:'closing-probe'});});},submitDocRequest:async()=>({})},conversation);
+ },conversation);
+ const host=page.locator('#sessionProbe');
+ await host.getByText('Verifying your session to open saved asks…',{exact:true}).waitFor();
+ await page.evaluate(()=>{window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('online'));});
+ assert.equal(await page.evaluate(()=>window.sessionProbe.calls),1);
+ await page.evaluate(async()=>{window.dispatchEvent(new Event('doctorcre-session-invalidated'));window.sessionProbe.release();await window.sessionProbe.mounted;window.dispatchEvent(new Event('online'));});
+ assert.equal(await host.textContent(),'');
+ assert.equal(await page.evaluate(()=>window.sessionProbe.calls),1);
+ await page.evaluate(async conversation=>{
+  const {mountAskComposer}=await import('/js/ui-host.js');
+  const host=document.createElement('section');host.id='unavailableProbe';document.querySelector('main').append(host);
+  let calls=0;const dispose=await mountAskComposer(host,{askSession:async()=>{calls++;throw Error('offline');},submitDocRequest:async()=>({})},conversation);
+  window.unavailableProbe={get calls(){return calls;},dispose};
+ },conversation);
+ await page.locator('#unavailableProbe').getByText('Reconnect and sign in to open your saved asks.',{exact:true}).waitFor();
+ await page.evaluate(()=>{window.unavailableProbe.dispose();window.dispatchEvent(new Event('online'));});
+ assert.equal(await page.locator('#unavailableProbe').textContent(),'');
+ assert.equal(await page.evaluate(()=>window.unavailableProbe.calls),1);
 });

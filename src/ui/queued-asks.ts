@@ -33,6 +33,7 @@ export function createAskOutbox(o: Options) {
   const prefix = `doctorcre:asks:v1:${encodeURIComponent(o.actor)}:${o.conversation}:`;
   const draftKey = prefix + 'draft';
   let busy = false, stopped = false;
+  const retries = new Set<string>();
   function savedDraft(): { text: string; version: number } {
     const raw = o.storage.getItem(draftKey);
     if (!raw) return { text:'', version:0 };
@@ -69,16 +70,22 @@ export function createAskOutbox(o: Options) {
     if (!stopped) put({ ...row, kind });
   }
   async function run(only?: string) {
-    if (busy || stopped || !o.online()) return;
+    if (stopped || !o.online()) return;
+    if (only) retries.add(only);
+    if (busy) return;
     busy = true;
+    const attempted = new Set<string>();
     try {
-      // eslint-disable-next-line no-restricted-syntax -- Single finite snapshot, at most one attempt per saved ask per reconnect.
-      for (const row of entries()) {
-        if (row.kind === 'accepted' || row.kind === 'submitting') continue;
-        if (only ? row.request.idempotency_key !== only : row.kind === 'refused') continue;
+      // eslint-disable-next-line no-restricted-syntax -- Re-read newly queued asks after each await; each key gets at most one attempt in this drain.
+      while (!stopped && o.online()) {
+        const row = entries().find(row => !attempted.has(row.request.idempotency_key)
+          && (row.kind === 'queued' || row.kind === 'unknown' || (row.kind === 'refused' && retries.has(row.request.idempotency_key)))
+          && (!only || retries.has(row.request.idempotency_key) || row.kind === 'queued'));
+        if (!row) break;
+        attempted.add(row.request.idempotency_key);
         await send(row);
       }
-    } finally { busy = false; }
+    } finally { busy = false; retries.clear(); }
   }
   return {
     draft, entries,
@@ -94,7 +101,7 @@ export function createAskOutbox(o: Options) {
       if (o.storage.getItem(draftKey) === snapshot) o.storage.removeItem(draftKey);
       return request;
     },
-    // eslint-disable-next-line no-restricted-syntax -- Single explicit reconnect trigger runs one finite saved-ask snapshot.
+    // eslint-disable-next-line no-restricted-syntax -- Single explicit trigger drains saved asks, bounded to one attempt per key.
     flush: () => run(), retry: (key: string) => run(key), stop() { stopped = true; },
   };
 }

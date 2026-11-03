@@ -13,12 +13,12 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
   let closed = false, started = false, starting = false;
   const root = createRoot(host);
   let stop = () => {};
-  const dispose = () => { closed = true; stop(); root.unmount(); };
+  const dispose = () => { closed = true; window.removeEventListener('online', restart); stop(); root.unmount(); };
   const unavailable = () => flushSync(() => root.render(<p role="status">Reconnect and sign in to open your saved asks.</p>));
-  unavailable();
   async function start() {
     if (started || starting || closed) return;
     starting = true;
+    flushSync(() => root.render(<p role="status">Verifying your session to open saved asks…</p>));
     try {
       const { actor } = await client.askSession();
       if (closed) return;
@@ -60,6 +60,7 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
       }
       flushSync(() => root.render(<Composer />));
       started = true;
+      window.removeEventListener('online', restart);
       const reconnect = () => { box.flush().catch(() => {}); };
       const storage = () => redraw();
       // eslint-disable-next-line no-restricted-syntax -- Reconnect attempts each saved ask once, with no timer or recursive retry.
@@ -72,8 +73,8 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
     finally { starting = false; }
   }
   const restart = () => { if (!closed) void start(); };
-  // eslint-disable-next-line no-restricted-syntax -- Single reconnect verifies the session if initial offline bootstrap failed.
-  window.addEventListener('online', restart, { once:true });
+  // eslint-disable-next-line no-restricted-syntax -- Reconnect verifies the session until startup succeeds or the composer closes.
+  window.addEventListener('online', restart);
   window.addEventListener('doctorcre-session-invalidated', dispose, { once:true });
   await start();
   return () => { window.removeEventListener('online', restart); window.removeEventListener('doctorcre-session-invalidated', dispose); if (!closed) dispose(); };
