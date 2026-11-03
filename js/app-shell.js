@@ -21,12 +21,12 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
         pageDocContext?.subscribe(snapshot => {
           if (!retired && snapshot.selected?.kind === 'deal') rememberDestination(`deal:${snapshot.selected.id}`);
         });
-      });
+      }).catch(() => {});
     });
     const homeRoot = pathname === '/' && root.getElementById('homeRoot');
     if (homeRoot && !homeRoot.dataset.homeReady) homeRoot.addEventListener('doctorcre:home-ready', track, { once: true });
     else track();
-    root.defaultView.addEventListener('popstate', () => { if (!retired) void history().then(({ rememberAddress }) => rememberAddress(location.href)); });
+    root.defaultView.addEventListener('popstate', () => { if (!retired) void history().then(({ rememberAddress }) => rememberAddress(location.href)).catch(() => {}); });
     const search = host.querySelector('.app-shell-search');
     const toggle = root.createElement('button');
     toggle.type = 'button';
@@ -68,7 +68,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
         if (!event.repeat) void open();
       }
     }, true);
-    root.defaultView.addEventListener('doctorcre-session-invalidated', () => { retired = true; toggle.disabled = true; void history().then(({ clearRecents }) => clearRecents()); }, { once: true });
+    root.defaultView.addEventListener('doctorcre-session-invalidated', () => { retired = true; toggle.disabled = true; void history().then(({ clearRecents }) => clearRecents()).catch(() => {}); }, { once: true });
   }
   let disposeDocPresence = () => {}, resolveAssistant;
   const assistantReady = new Promise(resolve => { resolveAssistant = resolve; });
