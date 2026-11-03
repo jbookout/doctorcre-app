@@ -519,3 +519,8 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 @media (max-width: 760px) {
   .calendar-panel-grid a { min-width: 0; }
 }
+
+.calendar-panel-followup { display: none; }
+@media (min-width: 1100px) and (min-height: 850px) {
+  .calendar-panel-followup { display: block; margin-top: 24px; }
+}

@@ -159,7 +159,7 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
  const hooks=`const read=c.getHomeAgenda;window.homeReads??=0;c.getHomeAgenda=async args=>{const p=await read.call(c,args);if(!args?.signal)return p;if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
  const {page,errors}=await open(t,{clientHooks:hooks});
- await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ await page.goto(origin+'/review-workflows', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
  const expected=await page.locator('#dealCounts').textContent();
  await online(page);await page.waitForFunction(()=>window.homeWaiting);
  await page.clock.runFor(150_000);await online(page);

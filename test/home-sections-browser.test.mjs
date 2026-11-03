@@ -29,6 +29,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   if (width === 390) { assert.equal(await today.getAttribute('aria-expanded'), 'false'); await calendar.click(); }
   await page.locator('#appSidebar').getByRole('heading', { name: 'Your calendar' }).waitFor();
   await page.locator('#appSidebar').getByText('Demo practice planning', { exact: true }).waitFor();
+  assert.equal(await page.locator('#appSidebar').getByRole('link', { name: 'Review call follow-ups ↗', exact: true }).isVisible(), width >= 1100);
   if (width === 390) { await page.keyboard.press('Escape'); assert.equal(await calendar.evaluate(n => n === document.activeElement), true); await today.click(); }
   assert.equal(await today.getAttribute('aria-expanded'), 'true');
   await page.getByText('A LITTLE LOOK AHEAD', { exact: true }).waitFor();

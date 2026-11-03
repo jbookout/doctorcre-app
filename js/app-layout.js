@@ -154,7 +154,7 @@ export function mountAppLayout(root, host, pathname) {
   });
   const boot = resolveDealroomBoot(globalThis.location);
   const calendarPanels = import('./ui-calendar-panels.js').then(module => module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot'))).catch(() => {
-    for (const id of ['#appCalendarSlot', '#appScheduleSlot']) layout.querySelector(id).textContent = 'Calendar unavailable. Open Calendar or reconnect to try again.';
+    for (const id of ['#appCalendarSlot', '#appScheduleSlot']) layout.querySelector(id).textContent = 'Calendar unavailable. Reload to try again.';
     return null;
   });
   let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
@@ -170,8 +170,8 @@ export function mountAppLayout(root, host, pathname) {
   const empty = '<span class="app-layout-empty">—</span>';
   const renderToday = () => {
     layout.querySelector('#appTodayNeeds').closest('section').hidden = homeOrInbox;
-    const next = todayItems && filterBriefOwners(todayItems, owners.current()).filter(i => i.subject_type === 'deal');
-    render('#appTodayNext', next ? (nextExpanded ? next : next.slice(0,3)).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
+    const next = todayItems && filterBriefOwners(todayItems, owners.current()).filter(i => i.subject_type === 'deal' && i.due_on).sort((a, b) => a.due_on.localeCompare(b.due_on));
+    render('#appTodayNext', next ? (nextExpanded ? next : next.slice(0,3)).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || '<span class="app-layout-empty">No dated reminders returned.</span>' : unavailable);
     const showAll = layout.querySelector('#appTodayShowAll');
     showAll.hidden = !next || next.length <= 3 || nextExpanded;
     showAll.textContent = `Show all ${next?.length || 0}`;
@@ -189,7 +189,7 @@ export function mountAppLayout(root, host, pathname) {
       const { name, action, by, age } = todayMove(move);
       const detail = `${by ? `${escape(by)} ${escape(action.charAt(0).toLowerCase() + action.slice(1))}` : escape(action)}${age ? `<span class="app-layout-move-age"><span class="sr-only"> · </span>${escape(age)}</span>` : ''}`;
       return `<button type="button" class="app-layout-item" data-layout-deal="${escape(move.deal_id)}"><strong>${escape(name)}</strong><span class="app-layout-move-detail">${detail}</span></button>`;
-    }).join('') || empty);
+    }).join('') || `<span class="app-layout-empty">${feed.caught_up ? 'No recent deal changes returned.' : 'Checking recent deal changes…'}</span>`);
   };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';
