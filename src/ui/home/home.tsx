@@ -9,11 +9,31 @@ type Pending = { request: Command; before: readonly InboxItem[]; undoing?: true 
 type Undo = { action: Action | 'reopen'; items: readonly InboxItem[]; until?: string; receipt?: TaskReceipt };
 const queryKey = ['home-inbox'];
 const visibleRow = (node: HTMLElement) => !node.closest('details:not([open])') && node.getClientRects().length > 0;
+export function inboxRefusal(code: unknown): string {
+  switch (code) {
+    case 'version_conflict': return 'This card changed on the server. Dismiss and refresh before another action.';
+    case 'invalid_completion': return 'This completion can no longer be undone. Refresh to review the task.';
+    case 'action_not_found': return 'This task is no longer available. Refresh to review current work.';
+    case 'action_not_open': return 'This task is no longer open. Refresh to review its current state.';
+    case 'partner_required':
+    case 'human_only_verb_requires_verified_partner':
+    case 'unattended_runner_authority_not_admitted': return 'Sign in as a verified partner before changing this task.';
+    case 'invalid_action_id':
+    case 'invalid_base_version': return 'This task could not be identified safely. Refresh before another action.';
+    case 'key_reuse': return 'This request does not match its original attempt. Dismiss and refresh before another action.';
+    default: return 'The server did not confirm this change. Retry the same request or dismiss and refresh.';
+  }
+}
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
 function Inbox({ client }: { client: InboxClient }) {
   const { item_id } = useParams();
   const cache = useQueryClient();
-  const query = useQuery({ queryKey, queryFn: ({ signal }) => client.read(signal) });
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  const query = useQuery({ queryKey, queryFn: ({ signal }) => client.read(signal),
+    // eslint-disable-next-line no-restricted-syntax -- One read per 60000ms while visible and online; paused during writes and cleared on unmount by Query.
+    refetchInterval: () => navigator.onLine && document.visibilityState === 'visible' && !inFlight.current ? 60_000 : false,
+  });
   const [selected, select] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,13 +44,23 @@ function Inbox({ client }: { client: InboxClient }) {
   const [online, setOnline] = useState(navigator.onLine);
   const root = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ x: number; y: number } | null>(null);
-  const inFlight = useRef(false);
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    // eslint-disable-next-line no-restricted-syntax -- Online callback updates React connectivity state once per event; 0 refetches.
+    mounted.current = true;
+    let lastRefresh = -Infinity;
+    const refresh = () => {
+      if (!navigator.onLine || document.visibilityState !== 'visible' || inFlight.current || cache.getQueryState(queryKey)?.fetchStatus === 'fetching' || Date.now() - lastRefresh < 1000) return;
+      lastRefresh = Date.now();
+      void query.refetch({ cancelRefetch: false });
+    };
+    const update = () => { setOnline(navigator.onLine); if (navigator.onLine) refresh(); };
+    // eslint-disable-next-line no-restricted-syntax -- At most one read per 1000ms only on focus; overlapping reads and writes suppress it.
+    addEventListener('focus', refresh);
+    // eslint-disable-next-line no-restricted-syntax -- At most one read per 1000ms only on visible return; hidden and offline views send none.
+    document.addEventListener('visibilitychange', refresh);
+    // eslint-disable-next-line no-restricted-syntax -- At most one read per 1000ms only on reconnect; never runs a mutation.
     addEventListener('online', update); addEventListener('offline', update);
-    return () => { removeEventListener('online', update); removeEventListener('offline', update); };
-  }, []);
+    return () => { mounted.current = false; removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); removeEventListener('online', update); removeEventListener('offline', update); };
+  }, [cache, query.refetch]);
   const snoozeOpener = useRef<HTMLElement | null>(null);
   const [snoozeCancelled, setSnoozeCancelled] = useState(0);
   function cancelSnooze() { setSnooze(null); setSnoozeCancelled(value => value + 1); }
@@ -53,7 +83,10 @@ function Inbox({ client }: { client: InboxClient }) {
     const neighbours = [...visible.slice(index + 1), ...visible.slice(0, index).reverse(), ...visible.slice(index, index + 1)];
     inFlight.current = true; setBusy(true); setNotice('Waiting for server confirmation…');
     try {
+      await cache.cancelQueries({ queryKey });
+      if (!mounted.current) return;
       const results = await client.run(operation.request);
+      if (!mounted.current) return;
       const successes = results.flatMap(result => result.ok ? [result.item] : []);
       const changed = results.flatMap(result => !result.ok && result.current_item ? [result.current_item] : []);
       const updates = [...successes, ...changed];
@@ -75,10 +108,11 @@ function Inbox({ client }: { client: InboxClient }) {
       if (!failed.length) setPending(null);
       focusRow(operation.undoing ? operation.before.map(item => item.item_id) : neighbours);
     } catch (error) {
+      if (!mounted.current) return;
       const code = error && typeof error === 'object' && 'payload' in error && error.payload && typeof error.payload === 'object' && 'error' in error.payload ? error.payload.error : null;
       if (typeof code === 'string' && ['version_conflict', 'invalid_completion', 'action_not_open', 'action_not_found'].includes(code)) {
-        setPending(null); setNotice(`This task changed. ${code}. Nothing was overwritten. Refresh before another action.`); void query.refetch(); focusRow(neighbours);
-      } else setNotice(`Result uncertain. ${message(error)} Retry the same request.`);
+        setPending(null); setNotice(`This task changed. ${inboxRefusal(code)} Nothing was overwritten.`); void query.refetch(); focusRow(neighbours);
+      } else setNotice(`Result uncertain. ${typeof code === 'string' ? inboxRefusal(code) : message(error)} Retry the same request.`);
     }
     finally { setBusy(false); inFlight.current = false; }
   }
@@ -120,11 +154,11 @@ function Inbox({ client }: { client: InboxClient }) {
   }}>
     <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p><h1>Inbox</h1><p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
-    {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {result.error === 'version_conflict' ? 'This card changed on the server. Dismiss and refresh before another action.' : result.error}</p>)}
+    {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {inboxRefusal(result.error)}</p>)}
       {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
       {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo(entries => entries.filter(entry => entry !== previous)); act(previous.action, previous.items, previous.until, true, previous.receipt); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
     </div>}
-    {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
+    {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError && !query.data ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
       {item_id && !placed.current && <p role="status">This card is not in your current inbox snapshot.</p>}
       {query.data?.truncated && <p role="status">Showing the first 1,000 cards. More work is available.</p>}
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Mark done finishes a task. Hide from inbox leaves the task open.</p></div>
@@ -137,7 +171,7 @@ function Inbox({ client }: { client: InboxClient }) {
   </div>;
 }
 export function mountInbox(host: HTMLElement, client: InboxClient) {
-  // eslint-disable-next-line no-restricted-syntax -- Queries and mutations only run explicit attempts: retry=false and focus/reconnect refetch disabled.
+  // eslint-disable-next-line no-restricted-syntax -- Single refresh lifecycle owns automatic reads; Query retries and built-in focus/reconnect reads are disabled.
   const query = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: 'always' }, mutations: { retry: false, networkMode: 'always' } } });
   const root = createRoot(host);
   const inbox: ReactNode = <Inbox client={client} />;

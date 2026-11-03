@@ -1,4 +1,4 @@
-import { mountInbox } from './home';
+import { mountInbox, inboxRefusal } from './home';
 import { createInboxClient } from './inbox';
 import { fixtureInboxRpc } from './fixture';
 
@@ -20,7 +20,10 @@ export async function bootInbox(host: HTMLElement) {
       rpc = async (name, args, signal) => {
         const result: McpResult = await request(name, args, { signal, timeoutMs: 10000 });
         if (result.kind !== 'payload') throw Error('Server confirmation unavailable.');
-        if (result.isError) throw Object.assign(Error('Inbox unavailable. The server refused this request.'), { payload: result.payload });
+        if (result.isError) {
+          const code = result.payload && typeof result.payload === 'object' && 'error' in result.payload ? result.payload.error : null;
+          throw Object.assign(Error(inboxRefusal(code)), { payload: result.payload });
+        }
         return result.payload;
       };
     }

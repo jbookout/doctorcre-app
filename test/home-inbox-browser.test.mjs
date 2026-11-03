@@ -172,6 +172,7 @@ test('date-only task holds keep the recorded day in the partner timezone', async
 test('a command receipt does not make an old inbox snapshot look fresh', async t => {
   const { page } = await open(t, { clock: true });
   await page.locator('[data-inbox-row="a"]').waitFor();
+  await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); });
   await page.clock.fastForward(91_000);
   await page.getByText('Snapshot may be stale', { exact: false }).waitFor();
   await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
