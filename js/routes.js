@@ -15,6 +15,7 @@ export const routeEntries = [
   ["/design-lab","design.html","/control-room"],
   ["/doc-activity","activity.html","/control-room"],
   ["/doc-chats","conversations.html","/conversations"],
+  ["/doc/conversations/:conversation_id/turns/:msg_id","conversations.html","/conversations"],
   ["/doc-chats/work","tasks.html","/tasks"],
   ["/ideas-events","ideas.html","/control-room"],
   ["/inbox","inbox.html","/"],
@@ -199,8 +200,14 @@ export const sectionForRoute = {
   "/system-work.html": "/work-requests"
 };
 
-/** The route-table key for a path: an inbox card URL maps to its pattern. */
+export function docRequestTarget(pathname) {
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+  const match = new RegExp(`^/doc/conversations/(${uuid})/turns/(${uuid})$`, 'i').exec(pathname);
+  return match ? { id: match[1].toLowerCase(), targetMsgId: match[2].toLowerCase() } : null;
+}
+
 export function routeKey(pathname) {
+  if (docRequestTarget(pathname)) return '/doc/conversations/:conversation_id/turns/:msg_id';
   const card = '/inbox/card/';
   return pathname.startsWith(card) && pathname.length > card.length && !pathname.slice(card.length).includes('/') ? '/inbox/card/:item_id' : pathname;
 }
