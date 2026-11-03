@@ -29,6 +29,7 @@ const UI_ENTRIES = {
   'ui-territory-evidence': 'territory-evidence',
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-inbox': 'inbox-entry',
+  'ui-home-prototype': 'home-prototype-entry',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',
   'ui-deal-reviews': 'home/deal-update-reviews',

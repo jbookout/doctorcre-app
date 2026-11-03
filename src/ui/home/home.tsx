@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { command, taskCommand, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot, type TaskReceipt } from './inbox';
 import { recordRoutes } from './routes';
+import { HomeWelcome, TodayPanel, HomeSections, type HomeVariant } from './home-prototypes';
 
 type Pending = { request: Command; before: readonly InboxItem[]; undoing?: true };
 type Undo = { action: Action | 'reopen'; items: readonly InboxItem[]; until?: string; receipt?: TaskReceipt };
@@ -25,7 +26,7 @@ export function inboxRefusal(code: unknown): string {
   }
 }
 const message = (error: unknown) => error instanceof Error ? error.message : 'Result uncertain. Retry the same request.';
-function Inbox({ client }: { client: InboxClient }) {
+function Inbox({ client, variant }: { client: InboxClient; variant?: HomeVariant | undefined }) {
   const { item_id } = useParams();
   const cache = useQueryClient();
   const inFlight = useRef(false);
@@ -138,12 +139,12 @@ function Inbox({ client }: { client: InboxClient }) {
       <label className="inbox-select"><input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.item_id)} disabled={busy || item.source_state === 'working'}
         onChange={event => select(previous => { const next = new Set(previous); if (event.target.checked) next.add(item.item_id); else next.delete(item.item_id); return next; })} /></label>
       <div className="inbox-copy"><p className="inbox-meta"><span>{item.kind_label}</span><span className={`inbox-badge inbox-${item.source_state}`}>{item.source_state.replaceAll('_', ' ')}</span></p>
-        <h3 className={item_id === item.item_id ? 'inbox-title-expanded' : undefined}><Link aria-current={item_id === item.item_id ? 'true' : undefined} to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
+        <h3 className={item_id === item.item_id ? 'inbox-title-expanded' : undefined}><Link aria-current={item_id === item.item_id ? 'true' : undefined} to={`${recordRoutes.card(item.item_id)}${variant ? `?home=${variant}` : ''}`}>{item.title}</Link></h3>
         <p className="inbox-context">{item.context_label || 'No linked deal'}{item.due_on && <> · Due <time dateTime={item.due_on}>{item.due_on}</time></>}</p>
         <p className="inbox-detail">{item.disposition === 'snoozed' && item.snoozed_until ? `Snoozed until ${new Date(item.snoozed_until).toLocaleString()}` : item.disposition === 'settled' ? 'Hidden from inbox by you' : item.source_state === 'working' ? 'Dr. CRE is working. You can come back to this.' : 'Ready for your attention'}{item.hold_until ? ` · On hold until ${item.hold_until}` : ''}</p>
         {item_id === item.item_id && recordRoutes.source(item) && <a className="inbox-source" href={recordRoutes.source(item) || undefined}>Open source record ↗</a>}
       </div>
-      <div className="inbox-actions">{completable && <button type="button" className="inbox-primary" disabled={busy} onClick={() => act('complete', [item])}>Mark done</button>}{item.source_state !== 'working' && <button type="button" disabled={busy} onClick={() => act(primary === 'Hide from inbox' ? 'settle' : 'unsettle', [item])}>{primary}</button>}<button type="button" disabled={busy} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze([item]); }}>Snooze</button></div>
+      <div className="inbox-actions">{completable && <button type="button" className="inbox-primary" disabled={busy} onClick={() => act('complete', [item])}>Mark done</button>}{item.source_state !== 'working' && <button type="button" disabled={busy} onClick={() => act(primary === 'Hide from inbox' ? 'settle' : 'unsettle', [item])}>{primary}</button>}<button type="button" disabled={busy} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze([item]); }}>{variant ? 'Not now' : 'Snooze'}</button></div>
     </article>;
   }
   return <div ref={root} onKeyDown={event => {
@@ -152,7 +153,10 @@ function Inbox({ client }: { client: InboxClient }) {
     const index = links.indexOf(event.target); const next = links[index + (event.key === 'ArrowDown' ? 1 : -1)];
     if (next) { event.preventDefault(); next.focus(); }
   }}>
-    <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p><h1>Inbox</h1><p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
+    <div className={variant ? `home-prototype home-prototype-${variant}` : undefined}>
+    {variant && <HomeWelcome variant={variant} items={items} />}
+    <div className="home-prototype-columns"><div className="home-prototype-main">
+    <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p>{variant ? <h2>Your inbox</h2> : <h1>Inbox</h1>}<p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {inboxRefusal(result.error)}</p>)}
       {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
@@ -161,20 +165,23 @@ function Inbox({ client }: { client: InboxClient }) {
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError && !query.data ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
       {item_id && !placed.current && <p role="status">This card is not in your current inbox snapshot.</p>}
       {query.data?.truncated && <p role="status">Showing the first 1,000 cards. More work is available.</p>}
+      {variant === 'c' ? <HomeSections items={items} row={row} /> : <>
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Mark done finishes a task. Hide from inbox leaves the task open.</p></div>
-        {placed.inbox.length ? placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
+        {placed.inbox.length ? variant ? <>{placed.inbox.slice(0, 1).map(row)}{placed.inbox.length > 1 && <details className="home-more"><summary>{placed.inbox.length - 1} more to review · See all</summary>{placed.inbox.slice(1).map(row)}</details>}</> : placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
       {(['working', 'held', 'done', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf} open={placed.current?.section === shelf || undefined}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'held' ? 'Held' : shelf === 'done' ? 'Done' : shelf === 'snoozed' ? 'Snoozed' : 'Hidden'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
+      </>}
     </>}
+    </div>{variant === 'b' && <TodayPanel items={items} />}</div></div>
     {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Hide selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Show selected</button><button disabled={busy || picked.length > 100} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze(picked); }}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
     {snooze && <dialog className="inbox-snooze" ref={node => { if (node && !node.open) node.showModal(); }} onCancel={() => { cancelSnooze(); }} aria-label="Snooze cards"><h2>Snooze {snooze.length === 1 ? 'card' : `${snooze.length} cards`}</h2><p>Choose when this returns to your inbox.</p>{[1, 24].map(hours => <button autoFocus={hours === 1} key={hours} onClick={() => { const rows = snooze; setSnooze(null); act('snooze', rows, new Date(Date.now() + hours * 3_600_000).toISOString()); }}>{hours === 1 ? '1 hour' : '24 hours'} · {new Date(Date.now() + hours * 3_600_000).toLocaleString()}</button>)}<button onClick={() => { cancelSnooze(); }}>Cancel</button></dialog>}
     <footer className="inbox-footer">Use ↑ ↓ to move between cards. On your phone, swipe right to hide or wake, left to snooze.</footer>
   </div>;
 }
-export function mountInbox(host: HTMLElement, client: InboxClient) {
+export function mountInbox(host: HTMLElement, client: InboxClient, variant?: HomeVariant) {
   // eslint-disable-next-line no-restricted-syntax -- Single refresh lifecycle owns automatic reads; Query retries and built-in focus/reconnect reads are disabled.
   const query = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: 'always' }, mutations: { retry: false, networkMode: 'always' } } });
   const root = createRoot(host);
-  const inbox: ReactNode = <Inbox client={client} />;
-  root.render(<QueryClientProvider client={query}><BrowserRouter><Routes><Route path="/inbox" element={inbox} /><Route path="/inbox.html" element={inbox} /><Route path="/inbox/card/:item_id" element={inbox} /></Routes></BrowserRouter></QueryClientProvider>);
+  const inbox: ReactNode = <Inbox client={client} variant={variant} />;
+  root.render(<QueryClientProvider client={query}><BrowserRouter><Routes>{variant && <Route path="/" element={inbox} />}<Route path="/inbox" element={inbox} /><Route path="/inbox.html" element={inbox} /><Route path="/inbox/card/:item_id" element={inbox} /></Routes></BrowserRouter></QueryClientProvider>);
   addEventListener('doctorcre-session-invalidated', () => { query.clear(); root.unmount(); }, { once: true });
 }
