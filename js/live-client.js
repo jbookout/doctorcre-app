@@ -16,7 +16,7 @@ import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
-import { requireEmailActionReceipt } from './email-action-receipt.js';
+import { requireEmailActionReceipt } from './email-action-receipt.mjs';
 import { createRetainedCommands } from './retained-commands.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks

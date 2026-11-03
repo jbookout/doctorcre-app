@@ -1,4 +1,4 @@
-import { requireEmailActionReceipt } from '../../js/email-action-receipt.js';
+import { requireEmailActionReceipt } from '../../js/email-action-receipt.mjs';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
