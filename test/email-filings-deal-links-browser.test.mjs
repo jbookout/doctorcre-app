@@ -10,7 +10,7 @@ import { chromium } from './browser-harness.mjs';
 
 let outDir, server, browser, origin;
 const deal = n => `20000000-0000-4000-8000-00000000000${n}`;
-const filing = n => ({ event_id: `40000000-0000-4000-8000-00000000000${n}`, deal: deal(n),
+const filing = n => ({ event_id: `40000000-0000-4000-8000-00000000000${n}`, deal: deal(n), current_deal_id: deal(n),
   activity_version: null, subject: n === 1 ? 'Demo lease terms and floor plan review for the expanded synthetic practice location' : 'Demo tour confirmation',
   sender_name: 'Demo Sender', occurred_at: '2026-10-27T14:00:00Z', summary: 'PRIVATE demo@example.test' });
 const fulfill = (route, result) => route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
@@ -45,7 +45,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       calls.push({ name, args });
       if (name === 'list-email-thread-filings') {
         if (holdRead) await new Promise(resolve => { releaseRead = resolve; });
-        return fulfill(route, { filings: empty ? [] : [filing(1), filing(2), { ...filing(3), deal: null }] });
+        return fulfill(route, { filings: empty ? [] : [filing(1), filing(2), { ...filing(3), deal: null, current_deal_id: undefined }] });
       }
       if (name === 'undo-email-thread-filing') return fulfill(route, refuse ? { error: 'email_thread_filing_changed' } : { ok: true });
       if (name === 'deal-room-board' || name === 'get-deal-room') {
@@ -64,7 +64,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await first.evaluate(node => node.scrollWidth <= node.clientWidth), true, 'long subject and sender fit in the card');
     assert.deepEqual(await panel.getByRole('link').evaluateAll(links => links.map(a => a.getAttribute('href'))), [`/deals?deal=${deal(1)}`, `/deals?deal=${deal(2)}`]);
     assert.doesNotMatch(await panel.innerText(), /PRIVATE|example\.test|20000000/);
-    await panel.getByText('Filed deal destination unavailable.', { exact: true }).waitFor();
+    await panel.getByText('Current filing destination unavailable.', { exact: true }).waitFor();
     await panel.scrollIntoViewIfNeeded();
     const controls = await first.evaluate(article => {
       const link = article.querySelector('a'), undo = article.querySelector('button');
@@ -89,7 +89,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.goBack();
     if (!await page.locator('#homeEmailActivity').evaluate(node => node.open)) await page.locator('#homeEmailActivity summary').click();
     await first.getByRole('button', { name: 'Undo', exact: true }).click();
-    await first.getByText(/left as is/).waitFor();
+    await first.getByText(/Undo was refused/).waitFor();
     assert.equal(await first.getByRole('link').count(), 1);
     refuse = false;
     await first.getByRole('button', { name: 'Undo', exact: true }).click();

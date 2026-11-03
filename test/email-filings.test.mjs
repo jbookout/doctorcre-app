@@ -7,7 +7,7 @@ import { carrInterface } from "./carr-contract.mjs";
 
 const filing = (n, extra = {}) => ({ event_id: `40000000-0000-4000-8000-00000000000${n}`, deal: '20000000-0000-4000-8000-000000000001',
   activity_id: `30000000-0000-4000-8000-00000000000${n}`, recorded_at: '2026-10-27T15:00:00Z', summary: `Private body text ${n}`,
-  subject: `Demo lease terms ${n}`, sender_name: `Demo Sender ${n}`, occurred_at: '2026-10-27T14:00:00Z', activity_version: 4, ...extra });
+  subject: `Demo lease terms ${n}`, sender_name: `Demo Sender ${n}`, occurred_at: '2026-10-27T14:00:00Z', activity_version: 4, current_deal_id: extra.deal === undefined ? '20000000-0000-4000-8000-000000000001' : extra.deal, ...extra });
 function setup(client) {
   const dom = new JSDOM('<section id="filings"></section>');
   const container = dom.window.document.querySelector('section');
@@ -72,7 +72,7 @@ test('live client forwards the exact read and undo arguments, and the contract p
   assert.deepEqual(calls, [{ name: 'list-email-thread-filings', arguments: {} }, { name: 'undo-email-thread-filing', arguments: { event_id: filing(1).event_id, idempotency_key: 'k' } }]);
   const contract = carrInterface;
   assert.ok(contract.mcp_operations.includes('list-email-thread-filings') && contract.mcp_operations.includes('undo-email-thread-filing'));
-  assert.deepEqual(Object.keys(contract.email_thread_filings.read_fields), ['event_id', 'deal', 'activity_id', 'recorded_at', 'summary', 'subject', 'sender_name', 'occurred_at', 'activity_version']);
+  assert.deepEqual(Object.keys(contract.email_thread_filings.read_fields), ['event_id', 'deal', 'current_deal_id', 'activity_id', 'recorded_at', 'summary', 'subject', 'sender_name', 'occurred_at', 'activity_version']);
 });
 
 
@@ -143,12 +143,12 @@ test('filed receipts link to their own exact deals without exposing ids or priva
   assert.doesNotMatch(container.textContent, /20000000|Private body/);
 });
 
-test('missing, null and unsafe deal identities never navigate and still allow Undo', async () => {
+test('missing, null and unsafe current deal identities never navigate and still allow Undo', async () => {
   for (const deal of [undefined, null, '', 'javascript:alert(1)', '../deal', 'uuid" onclick="alert(1)', {}, '20000000-0000-4000-8000-000000000001?x=y']) {
-    const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1, { deal })] }) });
+    const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1, { current_deal_id: deal })] }) });
     await view.refresh();
     assert.equal(container.querySelector('a'), null);
-    assert.match(container.textContent, /Filed deal destination unavailable/);
+    assert.match(container.textContent, deal === null ? /no longer currently filed/ : /Current filing destination unavailable/);
     assert.ok(container.querySelector('[data-filing-undo]'));
   }
 });
@@ -165,14 +165,14 @@ test('confirmed Undo removes the current-filing link, retains the receipt and fo
 });
 
 test('refusal retains the exact destination and refresh preserves focused navigation', async () => {
-  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }), undoEmailThreadFiling: async () => { throw Error('refused'); } });
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }), undoEmailThreadFiling: async () => { throw Object.assign(Error('refused'), { payload: { error: 'email_thread_filing_changed' } }); } });
   await view.refresh();
   container.querySelector('a').focus();
   await view.refresh();
   assert.equal(container.ownerDocument.activeElement, container.querySelector('a'));
   await undo(0);
   assert.equal(container.querySelector('a').getAttribute('href'), '/deals?deal=20000000-0000-4000-8000-000000000001');
-  assert.match(container.textContent, /left as is/);
+  assert.match(container.textContent, /Undo was refused/);
 });
 
 test('session invalidation discards filings and ignores a late read', async () => {
@@ -183,4 +183,255 @@ test('session invalidation discards filings and ignores a late read', async () =
   resolve({ filings: [filing(1)] }); await pending;
   assert.equal(container.querySelector('a'), null);
   assert.match(container.textContent, /Sign in/);
+});
+
+test('lost Undo receipt stays uncertain and replays the original request after a refresh', async () => {
+  const calls = [];
+  let committed = false;
+  const { container, view, undo } = setup({
+    listEmailThreadFilings: async () => ({ filings: committed ? [] : [filing(1, { activity_version: null })] }),
+    undoEmailThreadFiling: async args => {
+      calls.push(structuredClone(args));
+      if (!committed) { committed = true; throw Error('Synthetic lost response after commit'); }
+      return { ok: true, replayed: true };
+    },
+  });
+  await view.refresh();
+  await undo(0);
+  assert.match(container.textContent, /could not confirm/i);
+  assert.doesNotMatch(container.textContent, /left as is|Undone\./);
+  assert.equal(container.querySelector('button').textContent, 'Check outcome');
+  await view.refresh();
+  assert.match(container.textContent, /could not confirm/i);
+  await undo(0);
+  assert.deepEqual(calls[1], calls[0]);
+  assert.match(container.textContent, /Undone\./);
+  assert.equal(container.querySelector('a'), null);
+});
+
+for (const failure of [Error('Network failed before commit'), { payload: { error: 'unknown_server_failure' } }, { ok: false }]) {
+  test(`unsettled Undo retains its request for ${JSON.stringify(failure)}`, async () => {
+    const calls = [];
+    const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1), filing(2)] }),
+      undoEmailThreadFiling: async args => {
+        calls.push(structuredClone(args));
+        if (calls.length === 1) { if ('ok' in failure) return failure; throw failure; }
+        return { ok: true };
+      } });
+    await view.refresh();
+    await undo(0);
+    assert.match(container.textContent, /could not confirm/);
+    await undo(0);
+    assert.deepEqual(calls[0], calls[1]);
+    await undo(0);
+    assert.notEqual(calls[2].idempotency_key, calls[0].idempotency_key);
+    assert.equal(calls[2].event_id, filing(2).event_id);
+  });
+}
+
+for (const error of ['email_thread_filing_changed', 'email_thread_filing_not_found']) {
+  test(`explicit ${error} settles the request`, async () => {
+    const calls = [];
+    const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+      undoEmailThreadFiling: async args => { calls.push(args); throw { payload: { error } }; } });
+    await view.refresh(); await undo(0);
+    assert.match(container.textContent, error.endsWith('changed') ? /changed since it was filed/ : /no longer available/);
+    assert.doesNotMatch(container.textContent, /could not confirm/);
+    await undo(0);
+    assert.notEqual(calls[1].idempotency_key, calls[0].idempotency_key);
+  });
+}
+
+test('pending Undo blocks duplicate clicks and leaves outside focus alone on completion', async () => {
+  let finish, calls = 0;
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+    undoEmailThreadFiling: () => { calls++; return new Promise(resolve => { finish = resolve; }); } });
+  await view.refresh();
+  container.querySelector('button').focus();
+  const pending = undo(0);
+  assert.equal(container.querySelector('button').disabled, true);
+  await undo(0);
+  assert.equal(calls, 1);
+  const outside = container.ownerDocument.createElement('button');
+  container.ownerDocument.body.append(outside); outside.focus();
+  finish({ ok: true }); await pending;
+  assert.equal(container.ownerDocument.activeElement, outside);
+});
+
+for (const retire of ['sign-out', 'dispose']) for (const late of ['success', 'failure']) {
+  test(`${retire} ignores late Undo ${late}`, async () => {
+    let finish, fail;
+    const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+      undoEmailThreadFiling: () => new Promise((resolve, reject) => { finish = resolve; fail = reject; }) });
+    await view.refresh();
+    const pending = undo(0);
+    if (retire === 'dispose') { view.dispose(); container.replaceChildren(); }
+    else container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
+    const retired = container.innerHTML;
+    if (late === 'success') finish({ ok: true }); else fail(Error('Synthetic late failure'));
+    await pending;
+    assert.equal(container.innerHTML, retired);
+    assert.doesNotMatch(container.textContent, /Demo Sender|Undone/);
+    await view.click({ target: container });
+  });
+}
+
+for (const failure of ['network loss', 'timeout', 'email_thread_filing_changed', 'email_thread_filing_not_found', 'unknown_server_failure']) {
+  test(`${failure} reconciles the current filing before exposing its destination`, async t => {
+    if (failure === 'timeout') t.mock.timers.enable({ apis: ['setTimeout'] });
+    let reads = 0;
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => ({ filings: ++reads === 1 ? [filing(1)] : [] }),
+      undoEmailThreadFiling: async () => {
+        if (failure === 'timeout') return new Promise(() => {});
+        throw { payload: { error: failure } };
+      },
+    });
+    await view.refresh();
+    const pending = undo(0);
+    if (failure === 'timeout') t.mock.timers.tick(10_000);
+    await pending;
+    assert.equal(reads, 2, 'Undo failure triggers authoritative readback');
+    assert.equal(container.querySelector('a'), null);
+    assert.match(container.textContent, /no longer currently filed/i);
+    assert.doesNotMatch(container.textContent, /Undone\./);
+    if (failure.startsWith('email_thread')) assert.equal(container.querySelector('[data-filing-undo]'), null);
+    else assert.equal(container.querySelector('[data-filing-undo]').textContent, 'Check outcome');
+  });
+}
+
+test('readback replaces a historical destination with the currently filed deal', async () => {
+  let reads = 0;
+  const currentDeal = '20000000-0000-4000-8000-000000000002';
+  const { container, view, undo } = setup({
+    listEmailThreadFilings: async () => ({ filings: [filing(1, { current_deal_id: ++reads === 1 ? filing(1).deal : currentDeal })] }),
+    undoEmailThreadFiling: async () => { throw { payload: { error: 'email_thread_filing_changed' } }; },
+  });
+  await view.refresh(); await undo(0);
+  assert.equal(container.querySelector('a').getAttribute('href'), `/deals?deal=${currentDeal}`);
+  assert.match(container.textContent, /Undo was refused/);
+});
+
+for (const failure of ['network', 'invalid', 'timeout']) {
+  test(`unavailable ${failure} readback hides the historical destination and preserves the original request`, async t => {
+    if (failure === 'timeout') t.mock.timers.enable({ apis: ['setTimeout'] });
+    let reads = 0;
+    const calls = [];
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => {
+        if (++reads === 1) return { filings: [filing(1)] };
+        if (failure === 'invalid') return {};
+        if (failure === 'timeout') return new Promise(() => {});
+        throw Error('Synthetic read unavailable');
+      },
+      undoEmailThreadFiling: async args => {
+        calls.push(structuredClone(args));
+        if (calls.length === 1) throw { payload: { error: 'email_thread_filing_changed' } };
+        return { ok: true, replayed: true };
+      },
+    });
+    await view.refresh();
+    const pending = undo(0);
+    await new Promise(resolve => setImmediate(resolve));
+    if (failure === 'timeout') {
+      assert.equal(container.querySelector('a'), null, 'no stale link while readback is pending');
+      t.mock.timers.tick(10_000);
+    }
+    await pending;
+    assert.equal(container.querySelector('a'), null);
+    assert.match(container.textContent, /Current filing destination unavailable/);
+    const retry = container.querySelector('[data-filing-undo]');
+    assert.equal(retry.textContent, 'Check outcome');
+    await view.click({ target: retry });
+    assert.deepEqual(calls[1], calls[0]);
+    assert.match(container.textContent, /Undone\./);
+  });
+}
+
+for (const retirement of ['sign-out', 'dispose']) {
+  test(`${retirement} ignores late reconciliation`, async () => {
+    let reads = 0, finish;
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => ++reads === 1 ? { filings: [filing(1)] } : new Promise(resolve => { finish = resolve; }),
+      undoEmailThreadFiling: async () => { throw Error('Synthetic response loss'); },
+    });
+    await view.refresh();
+    const pending = undo(0);
+    await new Promise(resolve => setImmediate(resolve));
+    if (retirement === 'dispose') { view.dispose(); container.replaceChildren(); }
+    else container.ownerDocument.defaultView.dispatchEvent(new container.ownerDocument.defaultView.Event('doctorcre-session-invalidated'));
+    const retired = container.innerHTML;
+    finish({ filings: [filing(1)] });
+    await pending;
+    assert.equal(container.innerHTML, retired);
+  });
+}
+
+test('an unanswered Undo becomes uncertain and ignores a receipt arriving after its deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let finish;
+  const calls = [];
+  const { container, view, undo } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1)] }),
+    undoEmailThreadFiling: args => {
+      calls.push(structuredClone(args));
+      return calls.length === 1 ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({ ok: true });
+    } });
+  await view.refresh();
+  const pending = undo(0);
+  t.mock.timers.tick(10_000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(container.textContent, /could not confirm/);
+  await pending;
+  finish({ ok: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.doesNotMatch(container.textContent, /Undone\./);
+  await undo(0);
+  assert.deepEqual(calls[1], calls[0]);
+  assert.match(container.textContent, /Undone\./);
+});
+
+for (const state of ['filed now', 'manually unfiled', 'refiled', 'older producer']) {
+  test(`authoritative current_deal_id readback for ${state}`, async () => {
+    let reads = 0;
+    const calls = [];
+    const current = state === 'filed now' ? filing(1).deal : state === 'refiled' ? '20000000-0000-4000-8000-000000000002' : null;
+    const { container, view, undo } = setup({
+      listEmailThreadFilings: async () => {
+        const row = filing(1, { current_deal_id: ++reads === 1 ? filing(1).deal : current });
+        if (reads > 1 && state === 'older producer') delete row.current_deal_id;
+        return { filings: [row] };
+      },
+      undoEmailThreadFiling: async args => { calls.push(structuredClone(args)); throw Error('Synthetic lost response'); },
+    });
+    await view.refresh(); await undo(0);
+    assert.equal(reads, 2);
+    assert.equal(container.querySelector('a')?.getAttribute('href') ?? null,
+      current ? `/deals?deal=${current}` : null);
+    if (state === 'manually unfiled') assert.match(container.textContent, /no longer currently filed/i);
+    if (state === 'older producer') {
+      assert.match(container.textContent, /Current filing destination unavailable/);
+      assert.match(container.textContent, /could not confirm/i);
+      await undo(0);
+      assert.deepEqual(calls[1], calls[0]);
+    }
+    view.dispose();
+  });
+}
+
+test('never-filed emails omitted by the producer do not create a filing destination', async () => {
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [] }) });
+  await view.refresh();
+  assert.match(container.textContent, /No filed emails to review/);
+  assert.equal(container.querySelector('a'), null);
+  assert.equal(container.querySelector('[data-filing-undo]'), null);
+  view.dispose();
+});
+
+test('missing current_deal_id never exposes historical deal on an initial read', async () => {
+  const row = filing(1); delete row.current_deal_id;
+  const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [row] }) });
+  await view.refresh();
+  assert.equal(container.querySelector('a'), null);
+  assert.match(container.textContent, /Current filing destination unavailable/);
+  view.dispose();
 });
