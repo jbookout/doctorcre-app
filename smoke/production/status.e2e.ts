@@ -8,7 +8,7 @@ import { RELEASE_IDENTITY } from './release-identity.mjs';
 test('production status page renders signed out and reads the app release', async ({ app, browser, screen }) => {
   await app.open('/status');
 
-  await expect(screen.getByRole('heading', 'Status')).toBeVisible();
+  await expect(screen.getByRole('heading', 'Status', { level: 1 })).toBeVisible();
   await expect(browser.locator('#statusHeadline')).not.toHaveText('Updating…');
   await expect(browser.locator('#statusHeadline')).not.toHaveText(/The DoctorCRE app itself did not answer/);
   await expect(browser.locator('#statusIdentity')).toHaveText(RELEASE_IDENTITY);
