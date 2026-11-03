@@ -17,3 +17,5 @@ body{margin:0;min-height:100vh;background:var(--ground);color:var(--fg);font-fam
 .inbox-row[data-current="true"]{border-color:var(--accent);box-shadow:inset 3px 0 var(--accent)}
 .inbox-copy h3:not(.inbox-title-expanded){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .inbox-context{font-size:12px;color:var(--fg-muted);overflow-wrap:anywhere;margin:6px 0}
+
+@media(min-width:701px){.inbox-row{flex-wrap:wrap}.inbox-copy{flex-basis:calc(100% - 62px)}.inbox-actions{margin-left:62px}}
