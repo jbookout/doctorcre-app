@@ -17,14 +17,17 @@ export function createRetainedCommands({ newKey = uuidv4, scope = () => null } =
       return entry ? { method: entry.method, request: structuredClone(entry.request) } : null;
     },
     async send(operationKey, args, sendRequest, method) {
+      const observed = commands[operationKey];
+      const observedBinding = bindings.get(operationKey);
       let binding;
       try { binding = await scope(); } catch (error) {
         const prior = commands[operationKey];
         if (prior) Object.assign(error, { pendingRequest: prior.request, pendingMethod: prior.method });
         throw error;
       }
-      const prior = commands[operationKey];
-      if (prior && bindings.get(operationKey) !== binding) {
+      const prior = method && observed?.status === 'pending' ? observed : commands[operationKey];
+      const priorBinding = prior === observed ? observedBinding : bindings.get(operationKey);
+      if (prior && priorBinding !== binding) {
         throw Object.assign(new Error('Session changed. The original request must be reconciled in its original session.'), { code: 'session_changed' });
       }
       if (prior && method) {
