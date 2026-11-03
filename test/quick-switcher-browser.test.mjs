@@ -44,10 +44,14 @@ test('switcher matrix is accessible in both themes', async () => {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
       await page.goto(server.url);
+      await page.locator('#homeRoot[data-home-ready]').waitFor();
+      await page.addScriptTag({ path: 'node_modules/axe-core/axe.min.js' });
+      const homeViolations = await page.evaluate(async () => (await axe.run(document)).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })));
+      assert.deepEqual(homeViolations, [], `closed Home ${width} ${theme}`);
+      await page.screenshot({ path: `out/test-artifacts/quick-switcher/${width}-${theme}-closed.png`, fullPage: true });
       await page.getByRole('button', { name: 'Quick switcher' }).click();
       await page.getByRole('combobox', { name: 'Jump to' }).fill('demo');
       await page.getByRole('option').filter({ hasText: 'Contact' }).first().waitFor();
-      await page.addScriptTag({ path: 'node_modules/axe-core/axe.min.js' });
       const violations = await page.evaluate(async () => (await axe.run(document)).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })));
       assert.deepEqual(violations, [], `${width} ${theme}`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

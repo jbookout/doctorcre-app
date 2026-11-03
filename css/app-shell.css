@@ -17,7 +17,7 @@
 .quick-switcher small, .quick-switcher footer, .quick-switcher [role="status"] { color: var(--fg-muted); }
 .quick-switcher small { flex-shrink: 0; }
 .quick-switcher footer { font-size: var(--font-size-1); }
-@media (max-width: 767px) {
+@media (max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px) {
   .quick-switcher-toggle { position: fixed; bottom: calc(72px + env(safe-area-inset-bottom)); left: 12px; z-index: 30; background: var(--surface-1); box-shadow: var(--shadow-overlay); }
 }
 
