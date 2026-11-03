@@ -316,3 +316,61 @@ test('snooze Cancel restores its opener and Working cannot be hidden or complete
   assert.equal(await snooze.evaluate(node => node === document.activeElement), true);
   assert.equal(calls.some(call => call.name === 'complete-one-action' || call.name === 'settle-home-inbox'), false);
 });
+
+for (const action of ['Mark done', 'Hide from inbox']) test(`offline before ${action} Undo retains the frozen inverse through a lost response`, async t => {
+  const { page, calls } = await open(t, { taskLost: 'reopen-one-action' });
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: action, exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).waitFor();
+  await page.context().setOffline(true);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.getByText('Offline. No change was sent.', { exact: false }).waitFor();
+  const inverseName = action === 'Mark done' ? 'reopen-one-action' : 'unsettle-home-inbox';
+  assert.equal(calls.filter(call => call.name === inverseName).length, 0);
+  await page.context().setOffline(false);
+  const retry = page.getByRole('button', { name: 'Retry same request' });
+  await retry.waitFor();
+  await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(node => node.textContent === 'Retry same request')?.disabled);
+  assert.equal(calls.filter(call => call.name === inverseName).length, 0, 'reconnect does not replay without a gesture');
+  await retry.click();
+  if (action === 'Mark done') {
+    await page.getByText('Result uncertain.', { exact: false }).waitFor();
+    await retry.click();
+    const attempts = calls.filter(call => call.name === inverseName);
+    assert.equal(attempts.length, 2);
+    assert.deepEqual(attempts[0], attempts[1]);
+    assert.equal(attempts[0].args.base_version, 8);
+    assert.equal(attempts[0].args.completion_event_id, '00000000-0000-0000-0000-000000000009');
+  }
+  await page.getByText('Undone.', { exact: false }).waitFor();
+  await page.waitForFunction(() => document.activeElement.closest('[data-inbox-row]')?.dataset.inboxRow === 'a');
+  assert.equal(calls.filter(call => call.name === inverseName).length, action === 'Mark done' ? 2 : 1);
+});
+for (const target of ['extra10', 'extra9']) test(`scrolled completion of ${target} keeps receipt and Undo clear of mobile chrome`, async t => {
+  const extra = Array.from({ length: 14 }, (_, i) => row(`extra${i}`, { action_id: `00000000-0000-0000-0000-${String(100 + i).padStart(12, '0')}` }));
+  const { page } = await open(t, { width: 390, extra });
+  await page.locator(`[data-inbox-row="${target}"]`).getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByText(`Marked done: Synthetic ${target}.`, { exact: false }).waitFor();
+  await page.waitForFunction(id => document.activeElement.closest('[data-inbox-row]')?.dataset.inboxRow === id, target === 'extra10' ? 'extra11' : 'extra8');
+  const notice = await page.locator('.inbox-notice').boundingBox();
+  const undo = await page.getByRole('button', { name: 'Undo', exact: true }).boundingBox();
+  assert.ok(notice.y >= 70 && notice.y + notice.height <= 810, 'named receipt clears fixed mobile chrome');
+  assert.ok(undo.y >= 70 && undo.y + undo.height <= 810, 'Undo clears fixed mobile chrome');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: `/tmp/j62-${target}-receipt.png` });
+});
+test('collapsed Working and Done shelves do not intercept previous-card focus', async t => {
+  const { page } = await open(t);
+  await page.locator('[data-inbox-row="b"]').getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByText('Marked done: Synthetic b.', { exact: false }).waitFor();
+  await page.waitForFunction(() => document.activeElement.closest('[data-inbox-row]')?.dataset.inboxRow === 'a');
+  assert.equal(await page.locator('details[open]').count(), 0);
+});
+test('collapsed nonempty shelves do not intercept empty-list Refresh focus', async t => {
+  const { page } = await open(t);
+  await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByText('Marked done: Synthetic a.', { exact: false }).waitFor();
+  await page.locator('[data-inbox-row="b"]').getByRole('button', { name: 'Mark done', exact: true }).click();
+  await page.getByText('Marked done: Synthetic b.', { exact: false }).waitFor();
+  await page.waitForFunction(() => document.activeElement.textContent === 'Refresh inbox');
+  assert.equal(await page.locator('details[open]').count(), 0);
+});
