@@ -90,13 +90,16 @@
       <div class="state-block" id="turnsState" data-state="loading"><h3 id="turnsStateTitle">Reading this conversation…</h3></div>
       <ol class="turn-list" id="turnList"></ol>
       <p class="caption" id="composerAbsent">unknown</p>
-      <div id="askComposer"></div>
       <p class="caption" id="docReplyPending">unknown</p>
     </section>
 
     <section class="card glass" data-section="paging" id="pagingBlock" aria-labelledby="pagingTitle" hidden>
       <div class="card-heading"><div><h2 id="pagingTitle">More turns are held</h2></div></div>
       <div class="note-act"><button class="btn" type="button" id="showMore">Show more turns</button></div>
+    </section>
+
+    <section class="card glass" id="askComposerPanel" aria-label="Ask Dr. CRE" hidden>
+      <div id="askComposer"></div>
     </section>
 
     <section class="card glass" data-section="access" aria-labelledby="accessTitle">

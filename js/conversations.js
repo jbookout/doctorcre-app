@@ -39,6 +39,7 @@ let askConversation = null, disposeAsk = null, askMount = 0;
 function renderAskComposer() {
   const host = $('askComposer');
   const id = payloadOf()?.identity?.id || null;
+  $('askComposerPanel').hidden = !id;
   if (!host || id === askConversation) return;
   const ticket = ++askMount;
   disposeAsk?.(); disposeAsk = null; host.replaceChildren(); askConversation = id;
