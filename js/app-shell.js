@@ -12,6 +12,64 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
+  if (!base && pathname !== '/share') {
+    const history = () => import('./ui-switcher-history.js');
+    const track = () => root.defaultView.requestAnimationFrame(() => {
+      void Promise.all([history(), import('./doc-context.js')]).then(([{ rememberAddress, rememberDestination }, { pageDocContext }]) => {
+        if (retired) return;
+        rememberAddress(location.href);
+        pageDocContext?.subscribe(snapshot => {
+          if (!retired && snapshot.selected?.kind === 'deal') rememberDestination(`deal:${snapshot.selected.id}`);
+        });
+      });
+    });
+    const homeRoot = pathname === '/' && root.getElementById('homeRoot');
+    if (homeRoot && !homeRoot.dataset.homeReady) homeRoot.addEventListener('doctorcre:home-ready', track, { once: true });
+    else track();
+    root.defaultView.addEventListener('popstate', () => { if (!retired) void history().then(({ rememberAddress }) => rememberAddress(location.href)); });
+    const search = host.querySelector('.app-shell-search');
+    const toggle = root.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'app-shell-search quick-switcher-toggle';
+    toggle.setAttribute('aria-label', 'Quick switcher');
+    toggle.setAttribute('aria-haspopup', 'dialog');
+    toggle.title = 'Quick switcher (⌘/Ctrl+K)';
+    toggle.innerHTML = search.innerHTML;
+    search.after(toggle);
+    let opening = false, retired = false;
+    const open = async () => {
+      if (opening || retired || root.querySelector('dialog:modal')) return;
+      opening = true;
+      const opener = root.activeElement instanceof HTMLElement && root.activeElement !== root.body ? root.activeElement : toggle;
+      try {
+        const [{ openQuickSwitcher }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
+          import('./ui-quick-switcher.js'), import('./routes.js'), import('./client.js'),
+        ]);
+        if (retired) return;
+        const boot = resolveDealroomBoot(location);
+        const pages = [...navigationItems];
+        for (const [href] of routeEntries) {
+          if (href.includes(':') || pages.some(page => page.href === href)) continue;
+          pages.push({ href, label: href.slice(1).split(/[/-]/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') || 'Home' });
+        }
+        openQuickSwitcher({ opener, pages, read: async () => {
+          const client = await createClient(boot.mode, boot.options);
+          const [board, network] = await Promise.all([client.getBoard(), client.getRelationshipNetwork()]);
+          return { board, network };
+        } });
+      } catch {
+        if (!retired) location.assign('/search');
+      } finally { opening = false; }
+    };
+    toggle.addEventListener('click', open);
+    root.defaultView.addEventListener('keydown', event => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !event.altKey && !event.shiftKey && !event.isComposing) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (!event.repeat) void open();
+      }
+    }, true);
+    root.defaultView.addEventListener('doctorcre-session-invalidated', () => { retired = true; toggle.disabled = true; void history().then(({ clearRecents }) => clearRecents()); }, { once: true });
+  }
   let disposeDocPresence = () => {}, resolveAssistant;
   const assistantReady = new Promise(resolve => { resolveAssistant = resolve; });
   const reactWorkspace = new URLSearchParams(location?.search || "").get("ui") === "react";
