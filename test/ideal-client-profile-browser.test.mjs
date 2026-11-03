@@ -70,6 +70,12 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await region.getByRole('row').filter({ hasText: 'Dental' }).locator('summary').click();
     assert.equal(await region.evaluate(el => el.scrollWidth <= el.clientWidth), true);
     assert.deepEqual(await page.locator('#chartsCanvas > *').evaluateAll(cards => cards.filter(card => card.getBoundingClientRect().right > innerWidth).map(card => card.id)), []);
+    const documentScroll = await page.evaluate(() => {
+      window.scrollTo({ left: 100, behavior: 'instant' });
+      return { viewport: window.innerWidth, pageWidth: document.documentElement.scrollWidth, pageScrollX: window.scrollX };
+    });
+    assert.ok(documentScroll.pageWidth <= documentScroll.viewport, JSON.stringify(documentScroll));
+    assert.equal(documentScroll.pageScrollX, 0, 'Charts cannot scroll the document sideways');
     await mkdir('/tmp/WR647.S1.J42-ui', { recursive: true });
     await region.locator('.chart-scroll').evaluate(el => { el.scrollLeft = 0; });
     await region.scrollIntoViewIfNeeded();
