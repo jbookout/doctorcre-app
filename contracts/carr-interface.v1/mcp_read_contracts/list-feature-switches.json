@@ -3,7 +3,7 @@
   "write": false,
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "4dac1adcadce720d2b6e9709b36dd10bdc0e20f6",
+    "source_commit": "13303f551682ebba753aae7309ba5974375c4d15",
     "module": "mcp-server/src/feature-switches.js"
   },
   "inputSchema": {

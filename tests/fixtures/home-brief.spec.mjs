@@ -15,7 +15,8 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     id: 'synthetic-call-task', session_id: 'synthetic-call', kind: 'assigned_action',
     deal_id: agenda.deals[0].id, deal_name: agenda.deals[0].name,
     payload: { deal_id: agenda.deals[0].id, assignee: 'joe', action: 'Call Morgan Demo about the loan', due_on: '2026-10-02' },
-    evidence_quote: 'Follow up with the lender.', created_at: '2026-10-01T13:00:00Z',
+    evidence_quote: 'Follow up with the lender.', created_at: '2026-10-01T14:00:00Z',
+    source_call_started_at: '2026-10-01T13:00:00Z', source_call_label_key: 'synthetic-call',
   }] };
   const emails = await client.listEmailProposals({ limit: 50 });
   if (state === 'populated') emails.proposals.push({ ...emails.proposals[0], id: 'synthetic-extra-email' });
@@ -121,7 +122,7 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable', 'call-only'
     const previous = await panels[i - 1].boundingBox(), current = await panels[i].boundingBox();
     expect(current.y).toBeGreaterThanOrEqual(previous.y + previous.height);
   }
-  await expect(call.locator('.home-call-source')).toContainText('From your call with');
+  await expect(call.locator('.home-call-source')).toContainText('From the pipeline call · Oct 1, 8:00 AM CDT');
   await expect(call.locator('.home-call-source')).toContainText('2h ago');
   await expect(call.locator('.home-call-task-controls')).toContainText('Due Oct 2');
   await expect(call.locator('time[datetime="2026-10-01T13:00:00Z"]')).toHaveCount(1);

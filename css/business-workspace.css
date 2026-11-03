@@ -88,7 +88,7 @@ a.tab[aria-current="page"] { border-color: var(--hairline-strong); background: v
 :root[data-motion="reduced"] .chart-bar { transition: none; }
 [data-color-assist="on"] .chart-bar { background: repeating-linear-gradient(45deg, var(--data-1) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px var(--data-1); }
 
-.chart-scroll { overflow-x: auto; }
+.chart-scroll { position: relative; overflow-x: auto; }
 .chart-card details summary { min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .chart-card details summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform var(--duration-hover) var(--ease-out); }
 .chart-card details[open] > summary::after { transform: translateY(1px) rotate(225deg); }
