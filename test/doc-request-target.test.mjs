@@ -34,10 +34,10 @@ async function open(t, { total = 60, answerAt = 59, failure = false, hold = fals
         if (${failure}) throw new Error('synthetic read failure');
         const start = args.after_sequence || 0;
         return {...base, identity: {...base.identity, id: args.conversation_id},
-          turns: Array.from({length: Math.min(args.limit, Math.max(0, ${total}-start))}, (_, i) => ({
+          turns: Array.from({length: Math.min(args.limit, Math.max(0, (window.syntheticTotal ?? ${total})-start))}, (_, i) => ({
             sequence: start+i, msg_id: start+i === ${answerAt} ? '${ANSWER}' : '5b1c0a52-0000-4000-8000-'+String(start+i).padStart(12,'0'),
             role: start+i === ${answerAt} ? 'assistant' : 'human', body: 'Synthetic turn '+(start+i)+String.fromCharCode(39), at:'2026-11-01T00:00:00Z'
-          })), more: start+args.limit < ${total}};
+          })), more: start+args.limit < (window.syntheticTotal ?? ${total})};
       };
       return c;
     }`;
@@ -90,3 +90,43 @@ test('conversation navigation cancels a late target read and Back restores the t
   await page.evaluate(() => { const timer = setInterval(() => { if (window.releaseRead) window.releaseRead(); if (document.querySelector('[data-target=true]')) clearInterval(timer); }, 10); });
   await page.waitForFunction(id => document.activeElement?.dataset.msgId === id, ANSWER);
 });
+
+for (const [name, total, answerAt, continuations, appended] of [
+  ['target on page one', 40, 10, 0, 0],
+  ['reviewer budget continuation', 5051, 5050, 1, 0],
+  ['two budget continuations', 10051, 10050, 2, 0],
+  ['new turns after the target', 5051, 5050, 1, 3],
+]) {
+  test('background refresh retains the answer and viewport after ' + name, async t => {
+    const page = await open(t, {total, answerAt});
+    for (let batch = 0; batch < continuations; batch++) {
+      await page.getByText('The linked turn has not been reached. Show more to continue toward it.').waitFor();
+      await page.locator('#showMore').click();
+      await waitForAsync(page, async () => !(await import('/js/conversations.js')).view.conversation.refreshing);
+    }
+    await page.waitForFunction(id => document.activeElement?.dataset.msgId === id, ANSWER);
+    const before = await page.evaluate(() => ({y: scrollY, scrolls: window.scrolls, reads: window.reads.length}));
+    await page.evaluate(total => { window.syntheticTotal = total; window.dispatchEvent(new Event('online')); }, total + appended);
+    await waitForAsync(page, async reads => {
+      const {view} = await import('/js/conversations.js');
+      return window.reads.length > reads && !view.conversation.refreshing;
+    }, before.reads);
+    assert.equal(await page.locator('[data-target=true]').count(), 1, 'refresh must retain the reached target');
+    assert.equal(await page.locator('[data-msg-id]').count(), total, 'refresh must retain the displayed extent');
+    assert.equal(await page.evaluate(() => scrollY), before.y, 'refresh must preserve the viewport');
+    assert.equal(await page.evaluate(() => window.scrolls), before.scrolls, 'refresh must not scroll to the answer again');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    if (continuations) {
+      await page.getByText('Conversation refresh is incomplete. Show more to finish refreshing.').waitFor();
+      for (let batch = 0; batch < continuations; batch++) {
+        await page.locator('#showMore').click();
+        await waitForAsync(page, async () => !(await import('/js/conversations.js')).view.conversation.refreshing);
+      }
+      assert.equal(await page.locator('[data-target=true]').count(), 1);
+      assert.equal(await page.locator('[data-msg-id]').count(), total + appended);
+      assert.equal(await page.evaluate(() => scrollY), before.y);
+      assert.equal(await page.evaluate(() => window.scrolls), before.scrolls);
+      assert.equal(await page.locator('#pagingBlock').isHidden(), true);
+    }
+  });
+}
