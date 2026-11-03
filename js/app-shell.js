@@ -12,9 +12,10 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
-  let disposeDocPresence = () => {};
+  let disposeDocPresence = () => {}, resolveAssistant;
+  const assistantReady = new Promise(resolve => { resolveAssistant = resolve; });
   const reactWorkspace = new URLSearchParams(location?.search || "").get("ui") === "react";
-  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence(), reactWorkspace);
+  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence(), reactWorkspace, assistantReady);
   if (!base && pathname !== "/share") {
     const home = pathname === '/' && root.getElementById('homeRoot');
     const ready = home ? new Promise(resolve => {
@@ -64,7 +65,8 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     disposeDocPresence = () => { docRetired = true; docPresence?.dispose(); };
     void ready.then(() => import('./doc-presence.js')).then(({ mountDocPresence }) => {
       if (!docRetired && host.isConnected) docPresence = mountDocPresence({ document:root, window:root.defaultView });
-    }).catch(() => {});
+      resolveAssistant();
+    }).catch(() => resolveAssistant());
   }
 }
 
@@ -137,7 +139,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
   };
 }
 
-function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, reactWorkspaceRequested = false) {
+function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, reactWorkspaceRequested = false, assistantReady = Promise.resolve()) {
   const preferences = mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
@@ -208,7 +210,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       showPartner(identity);
       workspace?.setIdentity(identity);
       if (boot.mode === "live" && pathname === "/" && identity && help && !preferences.hasSeenWalkthrough(identity.slug)) {
-        void import("./app-walkthrough.js").then(({ openWalkthrough }) => {
+        void Promise.all([assistantReady, import("./app-walkthrough.js")]).then(([, { openWalkthrough }]) => {
           if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
           openWalkthrough(root);
           preferences.rememberWalkthrough(identity.slug);
