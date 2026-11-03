@@ -141,3 +141,26 @@ test('a session ending during the assistant download prevents a late mount', asy
   await page.waitForFunction(() => window.__assistantModuleReady);
   assert.equal(await page.locator('#docPresence').count(), 0);
 });
+
+test('late automatic Home walkthrough preserves an open account menu', async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  let release; const pending = new Promise(resolve => { release = resolve; }); t.after(() => release());
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/mcp', route => route.fulfill({ json: { result: { content: [{ type: 'text', text: '{}' }] } } }));
+  await page.route('**/js/doc-presence.js', async route => {
+    const response = await route.fetch();
+    await pending;
+    await route.fulfill({ response, body: `${await response.text()}\nwindow.__assistantModuleReady = true;` });
+  });
+  await page.goto(`${server.origin}/?mode=live`, { waitUntil: 'domcontentloaded' });
+  const account = page.getByRole('button', { name: 'Joe: account and settings', exact: true });
+  await account.click();
+  assert.equal(await page.locator('#accountMenu').isVisible(), true);
+  release();
+  await page.waitForFunction(() => window.__assistantModuleReady && document.getElementById('docOpen'));
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.locator('#accountMenu').isVisible(), true);
+  assert.equal(await page.locator('[data-walkthrough]').count(), 0);
+});
