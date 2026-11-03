@@ -241,8 +241,8 @@ for (const width of [1440, 390]) test(`Home mixed deal and contact reply cards e
   assert.equal(submitted.length, 0, 'leaving the page during the grace sends nothing');
   assert.equal(await card.getByText(/Sending in/).count(), 0, 'send intent never survives a reload');
   await card.getByRole('button', { name: 'Review reply', exact: true }).click();
-  assert.equal(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue(), row.reply_draft.subject);
-  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), row.reply_draft.body, 'a reload reopens the saved server draft');
+  assert.equal(await card.getByRole('textbox', { name: 'Subject', exact: true }).inputValue(), 'Re: Demo plan reviewed');
+  assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'I reviewed the plan.\nPlease send the dimensions.', 'a reload restores text without restoring send authorization');
   await card.getByRole('textbox', { name: 'Subject', exact: true }).fill('Re: Demo plan reviewed');
   await card.getByRole('textbox', { name: 'Message', exact: true }).fill('I reviewed the plan.\nPlease send the dimensions.');
   await card.getByRole('button', { name: 'Submit', exact: true }).click();

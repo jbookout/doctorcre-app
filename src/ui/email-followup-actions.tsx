@@ -235,3 +235,4 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   render();
   return { locked, pending, done: () => model.state.kind === 'done', update(next: Row, ready: boolean) { row = next; enabled = ready; host.inert = !ready; syncControls(); }, dispose() { disposed = true; flushSync(() => root.unmount()); host.removeEventListener('click', click); host.removeEventListener('input', input); host.removeEventListener('change', input); host.removeEventListener('submit', submit); } };
 }
+export { createReplyDeviceDrafts } from './reply-device-drafts';

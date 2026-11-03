@@ -1,0 +1,61 @@
+stateDiagram-v2
+    [*] --> PrivateSession: Open workspace
+    Reviewing --> SavedOnDevice: Type subject or message
+    SavedOnDevice --> SavedOnDevice: Keep typing, including offline
+    SavedOnDevice --> Restored: Reload and open same reply
+    SavedOnDevice --> ChangedElsewhere: Reload after saved version or recipients change
+    ChangedElsewhere --> Restored: Review updated draft, keeping recovered text
+    SavedOnDevice --> Reviewing: Discard device draft, announce saved text
+    Restored --> Reviewing: Discard device draft, announce saved text
+    ChangedElsewhere --> Reviewing: Discard device draft, announce saved text
+    SavedOnDevice --> Saving: Save draft
+    Restored --> Saving: Save draft
+    Saving --> Reviewing: Server confirms exact saved text, clear matching snapshot
+    Saving --> ChangedElsewhere: Version conflict
+    Saving --> SaveUnknown: Outcome unknown, editing locked
+    SaveUnknown --> Saving: Check outcome with original request
+    SavedOnDevice --> Grace: Submit
+    Restored --> Grace: Submit
+    Grace --> Restored: Undo or leave page, keep reviewed text
+    Grace --> Submitting: Grace expires
+    Submitting --> Queued: Server confirms queued reply, clear matching snapshot
+    Submitting --> SubmitUnknown: Outcome unknown, editing locked
+    SubmitUnknown --> Submitting: Check outcome with original request
+    Submitting --> Restored: Refused, keep edited text
+    SavedOnDevice --> MemoryOnly: Device storage fails
+    MemoryOnly --> SavedOnDevice: Next edit persists
+    state PrivateSession {
+        [*] --> Reviewing: Open reply
+        state Reviewing
+        state SavedOnDevice
+        state Restored
+        state ChangedElsewhere
+        state Saving
+        state SaveUnknown
+        state Grace
+        state Submitting
+        state SubmitUnknown
+        state Queued
+        state MemoryOnly
+    }
+    PrivateSession --> SignedOut: Session ends, clear private device storage
+    SignedOut --> Reviewing: Same partner signs in, open server draft
+    %% Recovery covers reload and page closure, but intentionally excludes sign-out and session revocation.
+    %% never Reload, reconnect or restore sends email or submits a reply.
+    %% never Another partner restores this partner's text.
+    %% never Restoring old text silently adopts a newer version or recipients.
+    %% never Session revocation retains private device drafts.
+    %% Transition tests (titles in test/email-draft-save-browser.test.mjs unless qualified):
+    %% Open/type/keep/reload: half-written reply survives reload without saving or submitting; offline typing restores after reconnect without replaying a command.
+    %% Changed version/review/save/clear: restored text never silently adopts changed server version or recipients.
+    %% All discard edges: discard announces saved text and retains keyboard focus at WIDTHpx conflict=CONFLICT.
+    %% Ordinary save/clear: partner saves draft without sending at WIDTHpx THEME.
+    %% Save conflict: draft version conflict preserves edits and requires reload without automatic retry.
+    %% Storage fail/recover: page-only draft becomes saved on device when storage recovers.
+    %% Session end/reopen: sign out clears device drafts even when the same partner signs in again; signed-out save refuses and clears private draft content.
+    %% Recovered submit/clear: confirmed submission clears recovered snapshot conflict=CONFLICT.
+    %% Grace undo/leave/expire: test/email-followups.test.mjs: Submit opens a 10 second send grace and Undo returns the edited draft without any server call; the send grace expiring submits exactly once with the key minted at Submit.
+    %% Save unknown/replay: test/email-followups.test.mjs: uncertain draft save locks edits and Check outcome replays only the original save.
+    %% Submit unknown/replay: test/email-followups.test.mjs: reply submission loss locks editing and Check outcome replays the exact request after removal from the list.
+    %% Submit refused: test/email-followups.test.mjs: a refusal after the send grace is shown plainly with the edits kept.
+    %% Cross-tab cleanup guard: reviewed recovery cleanup preserves newer typing from another tab.
