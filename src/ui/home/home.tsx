@@ -112,7 +112,7 @@ function Inbox({ client }: { client: InboxClient }) {
       const code = error && typeof error === 'object' && 'payload' in error && error.payload && typeof error.payload === 'object' && 'error' in error.payload ? error.payload.error : null;
       if (typeof code === 'string' && ['version_conflict', 'invalid_completion', 'action_not_open', 'action_not_found'].includes(code)) {
         setPending(null); setNotice(`This task changed. ${inboxRefusal(code)} Nothing was overwritten.`); void query.refetch(); focusRow(neighbours);
-      } else setNotice(`Result uncertain. ${message(error)} Retry the same request.`);
+      } else setNotice(`Result uncertain. ${typeof code === 'string' ? inboxRefusal(code) : message(error)} Retry the same request.`);
     }
     finally { setBusy(false); inFlight.current = false; }
   }

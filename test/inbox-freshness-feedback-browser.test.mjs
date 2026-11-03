@@ -159,9 +159,9 @@ test('focus and reconnect retain an uncertain inverse until the exact explicit r
   const attempts = calls.filter(call => call.name === 'reopen-one-action');
   assert.equal(attempts.length, 2); assert.deepEqual(attempts[0], attempts[1]);
 });
-for (const code of ['invalid_completion', 'version_conflict', 'internal_secret_do_not_show']) test(`bounded human refusal for ${code}`, async t => {
+for (const isError of [true, false]) for (const code of ['invalid_completion', 'version_conflict', 'internal_secret_do_not_show']) test(`bounded human refusal for ${code}, envelope error ${isError}`, async t => {
   const { page } = await open(t);
-  await page.route('**/mcp', route => route.request().postDataJSON().params.name === 'complete-one-action' ? route.fulfill({ json: { result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: code, detail: 'private raw diagnostic'.repeat(1000) }) }] } } }) : route.fallback());
+  await page.route('**/mcp', route => route.request().postDataJSON().params.name === 'complete-one-action' ? route.fulfill({ json: { result: { isError, content: [{ type: 'text', text: JSON.stringify({ error: code, detail: 'private raw diagnostic'.repeat(1000) }) }] } } }) : route.fallback());
   await page.locator('[data-inbox-row="a"]').getByRole('button', { name: 'Mark done', exact: true }).click();
   await page.getByText(code === 'invalid_completion' ? 'This completion can no longer be undone.' : code === 'version_conflict' ? 'This card changed on the server.' : 'The server did not confirm this change.', { exact: false }).waitFor();
   const text = await page.locator('.inbox-notice').textContent();
