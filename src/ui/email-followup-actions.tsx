@@ -15,7 +15,7 @@ type Client = {
 type Method = 'confirmEmailFiling' | 'snoozeEmailProposal' | 'handleEmailProposal';
 type Draft = { baseVersion: number; action: 'file' | 'handled' | 'new' | 'defer'; deal: string; dealName: string; note: string; reason: string; when: string; name: string; client: string };
 type State = { kind: 'idle' } | { kind: 'editing'; draft: Draft } | { kind: 'preview'; draft: Draft; request: Request }
-  | { kind: 'busy' } | { kind: 'unknown'; method: Method; request: Request; createdDraft?: Draft }
+  | { kind: 'busy' } | { kind: 'unknown'; method: Method; request: Request; createdDraft?: Draft; savedDraft?: Draft }
   | { kind: 'creation-unknown'; draft: Draft; request: { name: string; client: string; idempotency_key: string } }
   | { kind: 'created'; draft: Draft; message: string }
   | { kind: 'done'; message: string } | { kind: 'refused'; message: string };
@@ -41,6 +41,12 @@ export function centralInstant(value: string) {
   const chosen = candidates[0];
   if (!chosen) throw Error('Choose a valid return time.');
   return chosen.toISOString();
+}
+function isRequest(value: unknown): value is Request {
+  if (!value || typeof value !== 'object') return false;
+  const request = record(value);
+  return typeof request.proposal_id === 'string' && Number.isInteger(request.base_version) && typeof request.idempotency_key === 'string' && typeof request.note === 'string'
+    && ['deal', 'proposal_digest', 'correction_reason', 'disposition', 'deferred_until'].every(key => request[key] === undefined || typeof request[key] === 'string');
 }
 const returnTime = (value: string) => new Intl.DateTimeFormat('en-US', { timeZone: zone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) + ' America/Chicago';
 function record(value: unknown): Record<string, unknown> {
@@ -96,9 +102,11 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
       <p>{state.draft.note}</p><p>Confirm {state.draft.action === 'handled' ? 'handled and file' : 'filing'} to this selected deal.</p>
       {button('confirm', 'Confirm filing')}{button('cancel', 'Cancel')}
     </>;
-    else if (state.kind === 'created') content = <><p role="status">{state.message}</p><a href={`/deals?deal=${encodeURIComponent(state.draft.deal)}`}>Open created deal</a>{button('preview-created', 'Review created deal')}</>;
+    else if (state.kind === 'created') content = <div className="email-action-form"><p role="status">{state.message}</p><a href={`/deals?deal=${encodeURIComponent(state.draft.deal)}`}>Open created deal</a><label>Reason for changing the client or filed deal, if needed<input data-field="reason" maxLength={500} defaultValue={state.draft.reason}/></label>{button('preview-created', 'Review created deal')}</div>;
     else if (state.kind === 'busy') content = <p role="status">Saving…</p>;
-    else if (state.kind === 'unknown' || state.kind === 'creation-unknown') content = <><p role="status">Outcome unknown. Check outcome to recover the original request.</p>{button('replay', 'Check outcome')}</>;
+    else if (state.kind === 'unknown' || state.kind === 'creation-unknown') content = <><p role="status">Outcome unknown. Check outcome to recover the original request.</p>
+      {state.kind === 'unknown' && <><p>Original note: {state.request.note || 'No note'}</p>{state.request.deferred_until && <p>Original return time: {returnTime(state.request.deferred_until)}</p>}{state.savedDraft && <p>Current draft note: {state.savedDraft.note || 'No note'}. Check the original outcome before continuing.</p>}</>}
+      {button('replay', 'Check outcome')}</>;
     else content = <><p role="status">{state.message}</p>{state.kind === 'refused' && button('refresh', 'Refresh and review')}</>;
     flushSync(() => root.render(content));
     if (state.kind === 'editing') {
@@ -136,10 +144,13 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     const value = error && typeof error === 'object' ? record(error) : {};
     if ([401, 403].includes(Number(value.status)) || value.code === 'session_changed') { denied(); return; }
     const payload = value.payload && typeof value.payload === 'object' ? record(value.payload) : {};
+    if (fallback.kind === 'unknown' && isRequest(value.pendingRequest) && value.pendingRequest.proposal_id === row.id) {
+      model.state = { ...fallback, request: value.pendingRequest }; render(); return;
+    }
     model.state = typeof payload.error === 'string' && !value.pendingRequest && (fallback.kind !== 'creation-unknown' || value.creationRefused === true) ? createdDraft ? { kind: 'created', draft: createdDraft, message: `Deal created. Filing refused (${payload.error}). Review the created deal before continuing.` } : { kind: 'refused', message: `Action refused (${payload.error}). Refresh and review before trying again.` } : fallback;
     render();
   }
-  async function write(method: Method, request: Request, createdDraft?: Draft) {
+  async function write(method: Method, request: Request, createdDraft?: Draft, savedDraft?: Draft) {
     model.state = { kind: 'busy' }; render();
     try {
       const receipt = record(await client[method](request));
@@ -153,7 +164,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
         model.state = { kind: 'done', message: request.disposition === 'filed' ? 'Filed to the selected deal.' : 'Marked handled.' };
       }
       render(); changed(model.state.message);
-    } catch (error) { await failure(error, { kind: 'unknown', method, request, ...(createdDraft ? { createdDraft } : {}) }, createdDraft); }
+    } catch (error) { await failure(error, { kind: 'unknown', method, request, ...(createdDraft ? { createdDraft } : {}), ...(savedDraft ? { savedDraft } : {}) }, createdDraft); }
   }
   async function preview(draft: Draft) {
     const request = { proposal_id: row.id, base_version: draft.baseVersion, deal: draft.deal, note: draft.note, disposition: draft.action === 'handled' ? 'handled' : 'filed', ...(draft.reason.trim() ? { correction_reason: draft.reason.trim() } : {}), idempotency_key: crypto.randomUUID() };
@@ -185,8 +196,8 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     if (action === 'refresh') { model.state = { kind: 'idle' }; changed(); render(); }
     if (action === 'cancel') { model.state = state.kind === 'preview' && state.draft.action === 'new' ? { kind: 'created', draft: state.draft, message: 'Deal created. Filing cancelled. Review the created deal before continuing.' } : { kind: 'idle' }; render(); }
     if (action === 'preview-created' && state.kind === 'created') void preview({ ...state.draft, baseVersion: row.version });
-    if (action === 'confirm' && state.kind === 'preview') void write('confirmEmailFiling', state.request, state.draft.action === 'new' ? state.draft : undefined);
-    if (action === 'replay' && state.kind === 'unknown') void write(state.method, state.request, state.createdDraft);
+    if (action === 'confirm' && state.kind === 'preview') void write('confirmEmailFiling', state.request, state.draft.action === 'new' ? state.draft : undefined, state.draft);
+    if (action === 'replay' && state.kind === 'unknown') void write(state.method, state.request, state.createdDraft, state.savedDraft);
     if (action === 'replay' && state.kind === 'creation-unknown') void create(state.draft, state.request);
     if (state.kind === 'idle' && ['file', 'new', 'handled', 'defer'].includes(action || '')) {
       if (action !== 'file' && action !== 'new' && action !== 'handled' && action !== 'defer') return;
@@ -196,7 +207,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   };
   const input = (event: Event) => {
     const target = event.target;
-    if (!(target instanceof host.ownerDocument.defaultView!.HTMLElement) || model.state.kind !== 'editing') return;
+    if (!(target instanceof host.ownerDocument.defaultView!.HTMLElement) || (model.state.kind !== 'editing' && model.state.kind !== 'created')) return;
     if (!(target instanceof host.ownerDocument.defaultView!.HTMLInputElement || target instanceof host.ownerDocument.defaultView!.HTMLTextAreaElement || target instanceof host.ownerDocument.defaultView!.HTMLSelectElement)) return;
     const key = target.dataset.field, draft = model.state.draft;
     if (key === 'deal' || key === 'note' || key === 'reason' || key === 'when' || key === 'name' || key === 'client') draft[key] = target.value;
@@ -208,7 +219,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     const draft = model.state.draft;
     const request = { proposal_id: row.id, base_version: draft.baseVersion, note: draft.note, idempotency_key: crypto.randomUUID() };
     if (draft.action === 'defer') {
-      try { const until = centralInstant(draft.when); if (Date.parse(until) <= now().getTime()) throw Error('Choose a future return time.'); void write('snoozeEmailProposal', { ...request, deferred_until: until }); }
+      try { const until = centralInstant(draft.when); if (Date.parse(until) <= now().getTime()) throw Error('Choose a future return time.'); void write('snoozeEmailProposal', { ...request, deferred_until: until }, undefined, draft); }
       catch (error) { message(error instanceof Error ? error.message : 'Choose a valid return time.'); }
     } else if (draft.action === 'new') {
       if (!draft.name.trim() || !draft.client.trim()) { message('Enter a deal name and existing client.'); return; }
@@ -216,7 +227,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     } else if (['file_to_deal', 'possible_new_deal'].includes(row.kind)) {
       if (!draft.deal) { message('Choose the deal before continuing.'); return; }
       void preview(draft);
-    } else void write('handleEmailProposal', request);
+    } else void write('handleEmailProposal', request, undefined, draft);
   };
   host.addEventListener('click', click); host.addEventListener('input', input); host.addEventListener('change', input); host.addEventListener('submit', submit);
   render();

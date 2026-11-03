@@ -513,7 +513,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       const { name, arguments: args } = route.request().postDataJSON().params;
       let result;
       if (name === 'list-email-proposals' && !args.mode && !args.status) result = { schema_version: 'email-proposals.v1', proposals: filed || until && Date.parse('2026-10-31T18:00:00Z') < Date.parse(until) ? [] : [row], send: false, more: false, next_cursor: null };
-      else if (name === 'preview-email-filing') { calls.push({ name, args }); result = { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version }; }
+      else if (name === 'preview-email-filing') { calls.push({ name, args }); result = args.deal === 'created-demo' && !args.correction_reason ? { error: 'email_new_deal_client_mismatch' } : { ...row.preview, contract: 'email-followups.v2', deal: args.deal, base_version: row.version }; }
       else if (name === 'confirm-email-filing') {
         calls.push({ name, args });
         if (stale) result = { error: 'version_conflict' };
@@ -523,7 +523,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
         if (lose) { lose = false; await route.abort('failed'); return; }
         row.version = 2;
         result = { ok: true, proposal_id: row.id, status: 'pending', version: 2, disposition: 'deferred', deferred_until: until, note: args.note };
-      } else if (name === 'new-deal') assert.fail('Selecting an existing deal must not create');
+      } else if (name === 'new-deal') { calls.push({ name, args }); result = { deal_id: 'created-demo' }; }
+      else if (name === 'get-deal-room' && args.deal === 'created-demo') result = { deal_id: 'created-demo', base_version: 1 };
+      else if (name === 'set-lead' && args.deal === 'created-demo') result = { ok: true };
       else return route.continue();
       await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
     });
@@ -577,5 +579,23 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.match(await panel.innerText(), /Filed to the selected deal/);
     const confirmed = calls.filter(call => call.name === 'confirm-email-filing').at(-1).args;
     assert.equal(confirmed.deal, 'qa-deal-1'); assert.equal(confirmed.note, 'Lease reviewed'); assert.equal(confirmed.proposal_digest, digest);
+    assert.equal(calls.filter(call => call.name === 'new-deal').length, 0);
+    filed = false; row.version++;
+    await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+    await panel.getByRole('button', { name: 'New deal', exact: true }).click();
+    await panel.getByLabel('Deal name', { exact: true }).fill('Separate demo transaction');
+    await panel.getByLabel('Existing client reference or exact name').fill('Different demo client');
+    await panel.getByRole('button', { name: 'Create deal and review filing', exact: true }).click();
+    await panel.getByRole('link', { name: 'Open created deal' }).waitFor();
+    await panel.getByLabel('Reason for changing the client or filed deal, if needed').fill('Separate transaction for this client');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await panel.screenshot({ path: `out/test-artifacts/email-followups/created-correction-${width}-${theme}.png` });
+    await panel.getByRole('button', { name: 'Review created deal', exact: true }).click();
+    await panel.getByRole('button', { name: 'Confirm filing', exact: true }).click();
+    await panel.getByText('No email follow-ups.', { exact: true }).waitFor();
+    assert.equal(calls.filter(call => call.name === 'new-deal').length, 1);
+    const corrected = calls.filter(call => call.name === 'confirm-email-filing').at(-1).args;
+    assert.equal(corrected.deal, 'created-demo'); assert.equal(corrected.correction_reason, 'Separate transaction for this client');
+
   });
 }
