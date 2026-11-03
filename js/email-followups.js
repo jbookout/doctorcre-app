@@ -62,7 +62,9 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   try { storage = win.localStorage; } catch { /* The editor still works without device storage. */ }
   const deviceDrafts = () => actionModule.createReplyDeviceDrafts(storage, client.selfActor || '');
   const persistDraft = (id, state) => {
-    state.deviceMessage = deviceDrafts().save(id, state) ? 'Draft saved on this device. Nothing was sent.' : 'Draft is only in this page. Device storage is unavailable.';
+    const saved = deviceDrafts().save(id, state);
+    if (saved) state.deviceSnapshot = { baseVersion: state.baseVersion, subject: state.subject, body: state.body };
+    state.deviceMessage = saved ? 'Draft saved on this device. Nothing was sent.' : 'Draft is only in this page. Device storage is unavailable.';
   };
   let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], rejectedRows = false, loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
@@ -147,7 +149,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (graces.get(row.id) !== grace || state?.status !== 'grace') return;
       if (--state.remaining > 0) { render(); return; }
       clock.clearInterval(grace.timer);
-      submit(row, { method: 'submitEmailDraft', request }, grace);
+      submit(row, { method: 'submitEmailDraft', request, deviceSnapshot: draft.deviceSnapshot }, grace);
     }, 1000);
     graces.set(row.id, grace);
     render();
@@ -203,12 +205,12 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const decision = await submitEmailProposal(client, state);
       if (disposed || loadState === 'denied') return;
       const current = rows.find(item => item.id === row.id);
-      if (decision.saved || decision.status === 'done') deviceDrafts().remove(row.id, { baseVersion: state.request.base_version, subject: state.request.subject, body: state.request.body });
+      if (decision.saved || decision.status === 'done') deviceDrafts().remove(row.id, state.deviceSnapshot || { baseVersion: state.request.base_version, subject: state.request.subject, body: state.request.body });
       if (decision.saved && current && current.version <= decision.baseVersion) {
         current.version = decision.baseVersion;
         current.reply_draft = { ...current.reply_draft, subject: decision.subject, body: decision.body };
       }
-      decisions.set(row.id, decision);
+      decisions.set(row.id, { ...decision, ...(!decision.saved && decision.status !== 'done' ? { deviceSnapshot: state.deviceSnapshot } : {}) });
       if (decision.status === 'done') onChange();
     } catch (error) {
       if (disposed || loadState === 'denied' || grace?.cancelled) return;
@@ -241,12 +243,12 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     if (action === 'edit-draft' && row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
       const restored = deviceDrafts().restore(row);
       decisions.set(row.id, { status: 'editing', baseVersion: row.version, subject: row.reply_draft.subject, body: row.reply_draft.body, to: [...row.reply_draft.to], cc: [...row.reply_draft.cc], ...restored,
-        ...(restored ? { method: 'editEmailDraft', deviceMessage: restored.conflict ? 'Device draft restored. The saved reply changed. Reload draft to review it before saving or submitting.' : 'Device draft restored. Nothing was sent.' } : {}) }); render();
+        ...(restored ? { deviceSnapshot: restored, method: 'editEmailDraft', deviceMessage: restored.conflict ? 'Device draft restored. The saved reply changed. Reload draft to review it before saving or submitting.' : 'Device draft restored. Nothing was sent.' } : {}) }); render();
       [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === row.id)?.querySelector('input')?.focus();
     }
     if (action === 'discard-device-draft' && state.status === 'editing') {
       deviceDrafts().remove(row.id);
-      decisions.set(row.id, { status: 'editing', baseVersion: row.version, subject: row.reply_draft.subject, body: row.reply_draft.body, to: [...row.reply_draft.to], cc: [...row.reply_draft.cc] }); render(); return;
+      decisions.set(row.id, { status: 'editing', baseVersion: row.version, subject: row.reply_draft.subject, body: row.reply_draft.body, to: [...row.reply_draft.to], cc: [...row.reply_draft.cc], deviceMessage: 'Device draft discarded. Showing the saved draft.' }); render(); return;
     }
     if (action === 'review-updated' && state.status === 'editing' && state.conflict) {
       await refresh();
