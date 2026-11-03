@@ -92,7 +92,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
 });
 
 
-test('built Home keeps its data paint compact and preserves overdue deal navigation', async t => {
+test('built Review workflows keeps its data paint compact and preserves overdue deal navigation', async t => {
   const outDir = await temporaryDirectory('doctorcre-home-paint-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
@@ -111,7 +111,7 @@ test('built Home keeps its data paint compact and preserves overdue deal navigat
       return (await response.body()).length;
     })());
   });
-  const home = screens.find(screen => screen.id === 'home');
+  const home = { route: '/review-workflows', ready: '#dealFlags .home-flag', tap: '[data-scope="mine"]', complete: () => document.querySelectorAll('#dealFlags .home-flag').length === 2 };
   await page.goto(server.url + home.route, { waitUntil: 'networkidle' });
   await page.locator(home.ready).first().waitFor();
   await page.locator(home.tap).tap();
@@ -142,8 +142,10 @@ test('Home discovers its boot mode while the client bootstrap is downloading', a
   const bootstrap = new Promise(resolve => { release = resolve; });
   await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => { await bootstrap; await route.continue(); });
   const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: WAIT_MS });
-  await page.goto(server.url + '/', { waitUntil: 'commit' });
+  await page.goto(server.url + '/review-workflows', { waitUntil: 'commit' });
   try { await mode; } finally { release(); }
   await page.locator('#dealFlags .home-flag').first().waitFor();
   assert.ok(await page.locator('#dealFlags .home-flag').count() > 0);
 });
+
+test('Home timing covers root Home', () => { assert.equal(screens.find(screen => screen.id === 'home').route, '/'); });

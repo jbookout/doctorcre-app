@@ -59,7 +59,8 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await page.locator('[data-itinerary-stop]').nth(1).waitFor();
     await shot('itinerary');
     assert.equal(await page.locator('#appSidebarToggle').getAttribute('aria-expanded'), 'false', 'itinerary starts with the Tour library collapsed');
-    assert.equal(await page.locator('#appTodayToggle').getAttribute('aria-expanded'), 'false', 'itinerary starts with Today collapsed');
+    assert.equal(await page.locator('#appTodayToggle').getAttribute('aria-expanded'), width === 1280 ? 'true' : 'false', 'look-ahead defaults open on desktop and collapses on phone');
+    if (width === 1280) await page.locator('#appTodayToggle').click();
     if (width === 1280) assert.ok((await page.locator('#tour-detail').boundingBox()).width > 1000, 'itinerary owns the desktop workspace');
     assert.equal(await page.locator('#accepted-itinerary').getByText(route.stops[0].property_address, { exact: true }).count(), 1, 'each stop address appears once');
     assert.equal(await page.locator('[data-itinerary-stop][aria-current="step"] [data-itinerary-card]').count(), 1, 'selected facts live in the ordered stop');

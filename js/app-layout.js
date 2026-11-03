@@ -18,9 +18,9 @@ export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
   layout.className = 'app-layout';
-  layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></aside>
-    <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div></div>
-    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><div id="appTodayOwners"></div><p id="appTodayReadStatus" class="app-layout-empty" role="status" hidden></p><button type="button" id="appTodayRetry" class="app-layout-item" hidden>Retry Today</button><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div><button type="button" id="appTodayShowAll" class="app-layout-item app-layout-show-all" aria-controls="appTodayNext" hidden>Show all</button></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
+  layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appCalendarSlot"></div></aside>
+    <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div><details class="app-layout-page-tools"><summary>Page tools</summary><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></details></div>
+    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><p class="home-kicker app-look-ahead">A LITTLE LOOK AHEAD</p><div id="appScheduleSlot"></div><div id="appTodayOwners"></div><p id="appTodayReadStatus" class="app-layout-empty" role="status" hidden></p><button type="button" id="appTodayRetry" class="app-layout-item" hidden>Retry Today</button><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Dated reminders</h3><div id="appTodayNext">Updating…</div><button type="button" id="appTodayShowAll" class="app-layout-item app-layout-show-all" aria-controls="appTodayNext" hidden>Show all</button></section><section><h3>Deal pulse</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
     <button class="app-layout-scrim" id="appDrawerScrim" type="button" aria-label="Close sidebar" hidden></button>`;
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
@@ -30,20 +30,22 @@ export function createAppLayout(root, title = '') {
 
 // Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
 // lazy tab reads therefore retain their existing owner across layout changes.
-export function mountAppLayout(root, host, pathname) {
+export function mountAppLayout(root, host, pathname, { ready = Promise.resolve() } = {}) {
   if (root.getElementById('appLayout')) return;
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
   const vendorDirectory = pathname === '/vendors';
-  const homeOrInbox = pathname === '/' || pathname === '/inbox' || pathname === '/inbox.html' || pathname.startsWith('/inbox/card/');
+  const homeOrInbox = pathname === '/' || pathname === '/review-workflows' || pathname === '/inbox' || pathname === '/inbox.html' || pathname.startsWith('/inbox/card/');
   const progressPage = pathname === '/control-room/progress' || pathname.startsWith('/control-room/progress/board/');
-  const title = progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const title = pathname === '/' ? 'Home' : progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   if (vendorDirectory) layout.querySelector('.app-layout-working').remove();
   host.after(layout, status);
   if (homeOrInbox) layout.querySelector('.app-layout-working').hidden = true;
   const main = layout.querySelector('#appMainSlot');
+  main.append(layout.querySelector('.app-layout-page-tools'));
+  const pageTools = main.firstElementChild;
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
   // Lift declarative page slots before putting the remaining page into main.
@@ -56,8 +58,11 @@ export function mountAppLayout(root, host, pathname) {
   for (const node of [...root.body.children]) {
     if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.app-shell-account-menu, .skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
-    else main.append(node);
+    else main.insertBefore(node, pageTools);
   }
+  const hasPageTools = Boolean(layout.querySelector('#appSidebarSlot').childElementCount);
+  pageTools.open = !vendorDirectory && hasPageTools;
+  pageTools.hidden = !hasPageTools && !layout.querySelector('.app-layout-working:not([hidden])');
   root.body.classList.add('has-app-layout');
   // A page that brings its own freshness and refresh owns the band's one clock and one refresh.
   const pageRefresh = status.querySelector('#appStatusSlot [data-layout-refresh]');
@@ -66,7 +71,7 @@ export function mountAppLayout(root, host, pathname) {
   const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
-  let sidebar = !boardPage && !itineraryPage && !vendorDirectory, today = !dealBoard && !itineraryPage, drawer = null;
+  let sidebar = !boardPage && !itineraryPage && !vendorDirectory, today = true, drawer = null;
   let drawerOpener = null;
   const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}
@@ -78,6 +83,7 @@ export function mountAppLayout(root, host, pathname) {
     layout.querySelector('#appSidebar').inert = !leftOpen;
     layout.querySelector('#appToday').inert = !rightOpen;
     sidebarToggle.setAttribute('aria-expanded', String(leftOpen)); todayToggle.setAttribute('aria-expanded', String(rightOpen));
+    layout.querySelectorAll('[data-layout-close]').forEach(button => button.setAttribute('aria-expanded', String(button.dataset.layoutClose === 'sidebar' ? leftOpen : rightOpen)));
     layout.querySelector('#appDrawerScrim').hidden = !phone.matches || !drawer;
     if (phone.matches && drawer) {
       for (const node of [layout.querySelector('.app-layout-center'), ...root.body.children]) {
@@ -104,6 +110,8 @@ export function mountAppLayout(root, host, pathname) {
     else if (region === 'sidebar') { sidebar = !sidebar; try { win.localStorage.setItem(`doctorcre:sidebar:${pageKey}`, sidebar ? 'open' : 'closed'); } catch {} }
     else { today = !today; try { win.localStorage.setItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today', today ? 'open' : 'closed'); } catch {} }
     paint();
+    if (region === 'sidebar' && !sidebar) sidebarToggle.focus();
+    if (region === 'today' && !today) todayToggle.focus();
   };
   const closeDrawer = () => {
     const previous = drawer; drawer = null; paint();
@@ -150,6 +158,10 @@ export function mountAppLayout(root, host, pathname) {
     items[next]?.focus();
   });
   const boot = resolveDealroomBoot(globalThis.location);
+  const calendarPanels = ready.then(() => import('./ui-calendar-panels.js')).then(module => layout.isConnected ? module.mountCalendarPanels(layout.querySelector('#appCalendarSlot'), layout.querySelector('#appScheduleSlot')) : null).catch(() => {
+    for (const id of ['#appCalendarSlot', '#appScheduleSlot']) layout.querySelector(id).textContent = 'Calendar unavailable. Reload to try again.';
+    return null;
+  });
   let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
   const resetFeed = () => { feedActor = null; cursor = null; feed = createFeedProgress(); receipts = []; if (!pageOwnsMoves) renderMoves(); };
   let todayItems = null, todayNeeds = null, nextExpanded = false, failedReads = [];
@@ -162,26 +174,19 @@ export function mountAppLayout(root, host, pathname) {
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
   const renderToday = () => {
-    if (homeOrInbox) {
-      const day = businessDay();
-      render('#appTodayNext', `<a class="app-layout-item" href="/calendar?day=${day}&d=${day}"><time datetime="${day}">${escape(new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</time><span>Open Calendar</span></a>`);
-      layout.querySelector('#appTodayNext').previousElementSibling.textContent = 'Calendar day';
-      layout.querySelector('#appTodayNeeds').closest('section').hidden = true;
-      layout.querySelector('#appTodayOwners').hidden = true;
-      layout.querySelector('#appTodayShowAll').hidden = true;
-      return;
-    }
-    const next = todayItems && filterBriefOwners(todayItems, owners.current()).filter(i => i.subject_type === 'deal');
-    render('#appTodayNext', next ? (nextExpanded ? next : next.slice(0,6)).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
+    layout.querySelector('#appTodayNeeds').closest('section').hidden = homeOrInbox;
+    const next = todayItems && filterBriefOwners(todayItems, owners.current()).filter(i => i.subject_type === 'deal' && i.due_on).sort((a, b) => a.due_on.localeCompare(b.due_on));
+    render('#appTodayNext', next ? (nextExpanded ? next : next.slice(0,3)).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || '<span class="app-layout-empty">No dated reminders returned.</span>' : unavailable);
     const showAll = layout.querySelector('#appTodayShowAll');
-    showAll.hidden = !next || next.length <= 6 || nextExpanded;
+    showAll.hidden = !next || next.length <= 3 || nextExpanded;
     showAll.textContent = `Show all ${next?.length || 0}`;
     render('#appTodayNeeds', todayNeeds ? overdueRows(filterBriefOwners(todayNeeds, owners.current())).slice(0,6).join('') || empty : unavailable);
   };
   const owners = mountBriefOwnerFilter(root, layout.querySelector('#appTodayOwners'), () => { nextExpanded = false; renderToday(); });
+  for (const button of layout.querySelectorAll('#appTodayOwners button')) button.setAttribute('aria-label', `Reminders for ${button.textContent === 'All' ? 'everyone' : button.textContent}`);
   layout.querySelector('#appTodayShowAll').onclick = () => {
     nextExpanded = true; renderToday();
-    layout.querySelectorAll('#appTodayNext [data-layout-deal]')[6]?.focus();
+    layout.querySelectorAll('#appTodayNext [data-layout-deal]')[3]?.focus();
   };
   const renderMoves = () => {
     const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
@@ -189,7 +194,7 @@ export function mountAppLayout(root, host, pathname) {
       const { name, action, by, age } = todayMove(move);
       const detail = `${by ? `${escape(by)} ${escape(action.charAt(0).toLowerCase() + action.slice(1))}` : escape(action)}${age ? `<span class="app-layout-move-age"><span class="sr-only"> · </span>${escape(age)}</span>` : ''}`;
       return `<button type="button" class="app-layout-item" data-layout-deal="${escape(move.deal_id)}"><strong>${escape(name)}</strong><span class="app-layout-move-detail">${detail}</span></button>`;
-    }).join('') || empty);
+    }).join('') || `<span class="app-layout-empty">${feed.caught_up ? 'No recent deal changes returned.' : 'Checking recent deal changes…'}</span>`);
   };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';
@@ -214,12 +219,14 @@ export function mountAppLayout(root, host, pathname) {
     connection(!failedReads.length);
   };
   const failedRead = () => {
+    void calendarPanels.then(panel => panel?.clear());
     failedReads = ['Overdue', 'Next up'];
     if (!pageOwnsMoves) failedReads.push('Recent moves');
     renderToday();
     if (!pageOwnsMoves && !feed.caught_up) render('#appTodayMoves', unavailable);
     renderReadStatus();
   };
+  win.addEventListener('doctorcre-session-invalidated', () => { void calendarPanels.then(panel => panel?.clear()); });
   const unavailableRead = () => {
     todayItems = null; todayNeeds = null;
     resetFeed();
@@ -230,15 +237,17 @@ export function mountAppLayout(root, host, pathname) {
     if (win.navigator.onLine === false) { failedRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
     catch { failedRead(); return; }
-    const [board, triage] = await Promise.allSettled([
+    const [board, triage, meetings] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
         const brief = normalizeBrief(await client.morningBrief());
         if (brief) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
+      readWithDeadline(() => client.calendarMeetingPrep({ signal }), { signal }),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
+    (await calendarPanels)?.render(meetings.status === 'fulfilled' ? meetings.value : null);
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid && !failedReads.length);
@@ -319,7 +328,7 @@ export function mountAppLayout(root, host, pathname) {
     try { root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); } finally { fanOut = false; }
   };
   pageRefresh?.addEventListener('click', () => { if (!fanOut) auto.refresh(); });
-  auto.refresh();
+  void ready.then(() => auto.refresh());
   // Ages are relative to now, so the list repaints each minute; render() skips the DOM when the text is unchanged.
   const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
   win.addEventListener('pagehide', event => {

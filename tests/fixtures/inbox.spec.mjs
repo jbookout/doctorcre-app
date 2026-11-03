@@ -5,17 +5,15 @@ import { startFixtureServer } from '../../scripts/fixture-server.mjs';
 import { temporaryDirectory } from '../../scripts/temp-directory.mjs';
 import { buildArtifact } from '../../scripts/artifact.mjs';
 
-// Home stays the classic dashboard; the React inbox is an opt-in page at
-// /inbox. Every payload is synthetic.
 let server, outDir;
 test.beforeAll(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } }); });
 test.afterAll(async () => { await server?.stop(); if (outDir) await rm(outDir, { recursive: true, force: true }); });
 
-test('Home links to the opt-in inbox, which opens on its own page', async ({ page }) => {
+test('Sectioned Home opens a card in the full inbox', async ({ page }) => {
   await page.goto(`${server.url}/`);
-  await expect(page.locator('#dealAttention')).toBeVisible();
-  await page.getByRole('link', { name: 'Try the new inbox' }).click();
-  await expect(page).toHaveURL(/\/inbox$/);
+  await expect(page.getByRole('heading', { name: 'Welcome home.' })).toBeVisible();
+  await page.locator('[data-inbox-row] h3 a').first().click();
+  await expect(page).toHaveURL(/\/inbox\/card\//);
   await expect(page.getByRole('heading', { name: 'Inbox', level: 1 })).toBeVisible();
   await expect(page.locator('#dealAttention')).toHaveCount(0);
   await expect(page.locator('#homeMeetingReviews, #homeCallTasks, #homeEmailFilings')).toHaveCount(0);
@@ -50,8 +48,11 @@ test('Home meeting confirmation offers only open, active deals', async ({ page }
   seed.deals.push({ ...base, id: 'demo-closed', name: 'Demo closed purchase', phase: 'Closed', outcome: 'won', closed_on: '2026-09-01' },
     { ...base, id: 'demo-paused', name: 'Demo paused lease', operating_state: 'paused' });
   await page.route('**/data/board-seed.json', route => route.fulfill({ json: seed }));
-  await page.goto(`${server.url}/`);
+  // The brief loads independently of the agenda. Inject the review only after
+  // its initial calendar publication, so that read cannot overwrite our case.
+  await page.goto(`${server.url}/review-workflows`);
   await expect(page.locator('#observedAt')).not.toHaveText('Updating…');
+  await expect(page.locator('#morningUpdated')).toHaveAttribute('datetime', /.+/);
   await page.evaluate(() => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: {
     state: 'partial', items: [], notes: [], follow_up_reviews: [{ key: 'cccccccccccccccc', state: 'needs_review', title: 'Demo picker meeting', start: '2026-10-01T13:00:00Z', end: '2026-10-01T14:00:00Z' }],
   } })));

@@ -41,7 +41,6 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
     await page.locator('.account-card').first().click();
-    await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
     await page.locator('#search').fill('zz-no-synthetic-match');
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
@@ -67,7 +66,6 @@ test('Clearing an empty portfolio search returns focus to the account card', asy
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().waitFor();
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('#search').fill('zz-no-synthetic-match');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Escape');

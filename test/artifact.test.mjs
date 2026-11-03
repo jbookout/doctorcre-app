@@ -62,7 +62,10 @@ test("the static artifact rebuild is byte-for-byte reproducible", async (t) => {
   assert.equal(a.manifest.files.some((file) => file.path === "js/board-focus.mjs"), true);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
-  assert.deepEqual(await readFile(join(first, "site", "workspace.html")), await readFile(join(ROOT, "workspace.html")));
+  const home = await readFile(join(first, "site", "workspace.html"), 'utf8');
+  assert.match(home, /<link rel="modulepreload" href="\/js\/ui-shared-/);
+  for (const [, module] of home.matchAll(/<link rel="modulepreload" href="\/([^" ]+)"/g)) assert.ok(a.manifest.files.some(file => file.path === module));
+  assert.equal(home.replace(/<link rel="modulepreload"[^>]+>\n/g, ''), await readFile(join(ROOT, "workspace.html"), 'utf8'));
   assert.deepEqual(await readFile(join(first, "site", "control-room.html")), await readFile(join(ROOT, "control-room.html")));
   assert.equal(a.manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.equal((await verifyArtifact(a.archive, a.archiveSha256)).manifest.files.some((file) => file.path === "control-room.html"), true);
@@ -102,7 +105,8 @@ test("every contracted page including Doc activity is present in the deployment 
   for (const path of new Set(Object.values(routes.routes))) {
     assert.ok(verified.manifest.files.some(file => file.path === path), `missing deployed route: ${path}`);
     const source = await readFile(join(ROOT, path));
-    assert.deepEqual(await readFile(join(outDir, "site", path)), source);
+    const deployed = await readFile(join(outDir, "site", path), 'utf8');
+    assert.equal(path === 'workspace.html' ? deployed.replace(/<link rel="modulepreload"[^>]+>\n/g, '') : deployed, source.toString());
   }
 });
 
@@ -218,7 +222,7 @@ test('provider preparation replaces poisoned cache output with verified committe
   await writeFile(join(outDir,'site','workspace.html'), 'synthetic cache poison');
   await runCli(root,['prepare-deployment']);
   await assert.rejects(readFile(join(outDir,'site','marker.sh')), /ENOENT/);
-  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), await readFile(join(root,'workspace.html')));
+  assert.equal((await readFile(join(outDir,'site','workspace.html'), 'utf8')).replace(/<link rel="modulepreload"[^>]+>\n/g, ''), await readFile(join(root,'workspace.html'), 'utf8'));
 });
 
 test('provider preparation refuses missing, empty, fork and changed artifacts', async t => {

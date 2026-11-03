@@ -14,7 +14,7 @@ export async function applyPhoneProfile(context, page) {
 }
 
 export const screens = [
-  { id: 'home', route: '/', ready: '#dealFlags .home-flag', tap: '[data-scope="mine"]', complete: () => document.querySelectorAll('#dealFlags .home-flag').length === 2 },
+  { id: 'home', route: '/', ready: '.home-slice [data-inbox-row]', tap: '.home-slice[aria-label="Needs your attention"] header button', complete: () => document.querySelector('.home-slice[aria-label="Needs your attention"] header button')?.getAttribute('aria-expanded') === 'true' },
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailUpdateForm')?.getClientRects().length > 0 },
   { id: 'vendors', route: '/vendors', ready: '.record-row', tap: '.record-row', complete: () => document.querySelector('#recordPanel')?.getClientRects().length > 0 },
   { id: 'tours', route: '/tours', ready: '[data-market="Pensacola, FL"]', tap: '[data-market="Pensacola, FL"]', complete: () => document.querySelector('#space-area')?.value === 'Pensacola, FL' },
@@ -23,7 +23,7 @@ export const screens = [
 ];
 
 export const tasks = [
-  { id: 'task-agenda', route: '/', fixture: 'agenda', conditions: '40 active synthetic deals; agenda snapshot delayed 75ms',
+  { id: 'task-agenda', route: '/review-workflows', fixture: 'agenda', conditions: '40 active synthetic deals; agenda snapshot delayed 75ms',
     ready: '#homeBrief a',
     async verify(page) {
       await page.waitForFunction(() => document.querySelectorAll('#homeBrief a').length >= 40);
@@ -63,7 +63,6 @@ export const tasks = [
   { id: 'task-tour-library', route: '/tours', fixture: 'tours', conditions: '40 synthetic saved tours; client directory delayed 250ms',
     ready: '#appSidebarToggle',
     async verify(page) {
-      await page.locator('#appSidebarToggle').tap();
       await page.locator('#upcoming-tours .tour-button').first().tap();
       await page.waitForFunction(() => document.querySelector('#tour-dialog').open && document.querySelector('#detail-title').textContent === 'Synthetic tour');
       await page.locator('#detail-content').getByText('Demo waterfront office', { exact: false }).waitFor();

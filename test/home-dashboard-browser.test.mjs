@@ -103,7 +103,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
   return { page, errors, calls, resources, completionRequests, releaseInitialFeed, responses, blockUi(value) { blockUi = value; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
@@ -199,7 +199,7 @@ test('PR124 R1 generated Home flag and task links open the requested record thro
     assert.equal(detail.deal.id, id);
     assert.equal(await page.locator('#panelTitle').textContent(), detail.deal.name);
     await page.keyboard.press('Escape');
-    await page.goto('https://app.doctorcre.com/');
+    await page.goto('https://app.doctorcre.com/review-workflows');
   }
   assert.deepEqual(errors, []);
 });
@@ -246,7 +246,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'list-practice-origination':1, 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'read-deal-update-reviews': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'calendar-meeting-prep':1, 'list-practice-origination':1, 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'read-deal-update-reviews': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -861,7 +861,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Me
   const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
     { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
   ] } });
-  assert.equal(calls.includes('calendar-meeting-prep'), false, 'Home does not fetch preparation before it is requested');
+  await settles(async () => assert.equal(calls.includes('calendar-meeting-prep'), true, 'The shared schedule reads meetings before preparation is opened'));
   responses.set('calendar-meeting-prep', {
     state: 'partial', observed_at: '2026-10-01T14:00:00Z', notes: ['Check Outlook for cancellations.'],
     sources: { outlook_calendar: { state: 'stale' }, deal_suggestions: { state: 'ready' }, meeting_prep: { state: 'ready' } },

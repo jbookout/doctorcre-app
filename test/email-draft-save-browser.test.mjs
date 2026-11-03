@@ -54,7 +54,7 @@ async function openEditor(t, { width = 390, theme = 'light', refusal = null, sub
     else return route.continue();
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
   });
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   const card = page.locator('#homeEmailFollowups');
   await card.getByRole('button', { name: 'Review reply', exact: true }).click();
   await card.getByRole('textbox', { name: 'Subject', exact: true }).fill('Re: Demo plan reviewed');
@@ -206,7 +206,7 @@ test('sign out clears device drafts even when the same partner signs in again', 
   await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await deviceDraftCount(page), 0);
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'draft-reauth', viewer: 'joe', reset: true } });
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   await card.getByRole('button', { name: 'Review reply', exact: true }).click();
   assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), row.reply_draft.body);
   assert.equal(await card.locator('[data-device-draft-status]').innerText(), '');
@@ -237,7 +237,7 @@ test('reviewed recovery cleanup preserves newer typing from another tab', async 
   await card.getByRole('button', { name: 'Reload draft', exact: true }).click();
   const other = await page.context().newPage();
   t.after(() => other.close());
-  await other.goto(origin);
+  await other.goto(origin + '/review-workflows');
   await other.evaluate(() => {
     const key = Object.keys(localStorage).find(key => key.startsWith('doctorcre:reply-device:'));
     const draft = JSON.parse(localStorage.getItem(key));

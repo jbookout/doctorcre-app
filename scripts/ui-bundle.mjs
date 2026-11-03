@@ -28,6 +28,7 @@ const UI_ENTRIES = {
   'ui-ideal-client-profile': 'ideal-client-profile',
   'ui-territory-evidence': 'territory-evidence',
   'ui-quiet-vendors': 'quiet-vendors',
+  'ui-calendar-panels': 'calendar-panels',
   'ui-inbox': 'inbox-entry',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',

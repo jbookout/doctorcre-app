@@ -16,7 +16,7 @@ test("QA-002 Home takes text colour from the theme tokens, with no per-theme hex
 });
 
 test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", async () => {
-  const sheets = [...(await read("workspace.html")).matchAll(/<link rel="stylesheet" href="\/(css\/[^"]+)">/g)].map((match) => match[1]);
+  const sheets = [...(await read("review-workflows.html")).matchAll(/<link rel="stylesheet" href="\/(css\/[^"]+)">/g)].map((match) => match[1]);
   const css = (await Promise.all(sheets.map(read))).join("\n");
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   const page = await browser.newPage();

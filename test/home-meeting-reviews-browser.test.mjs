@@ -11,7 +11,7 @@ for (const theme of ['dark', 'light']) for (const action of ['dismiss', 'log']) 
   const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
-  await page.goto(server.origin);
+  await page.goto(server.origin + '/review-workflows');
   await page.evaluate(async () => {
     const { mountHomeMeetingReviews } = await import('/js/home-meeting-reviews.js');
     const pending = () => new Promise((resolve, reject) => { window.rejectMeeting = reject; });

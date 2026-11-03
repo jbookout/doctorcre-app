@@ -33,7 +33,7 @@ test('QA real Sign out redirects, revokes only its session, and ends the workspa
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+      await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
       await page.goto(`${origin}/?mode=live`);
       await page.getByRole('button', { name: 'Joe: account and settings', exact: true }).waitFor();
       assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
@@ -52,6 +52,7 @@ test('QA real Sign out redirects, revokes only its session, and ends the workspa
       });
       await button.press('Enter');
       await page.getByRole('heading', { name: 'Session ended', exact: true }).waitFor();
+      await page.waitForURL('**/public-shell/session-ended.html');
       assert.equal(new URL(page.url()).pathname, '/public-shell/session-ended.html');
       assert.ok(sessionStatuses.includes(401), 'the app verifies revocation before leaving');
       assert.deepEqual(signouts, ['POST']);

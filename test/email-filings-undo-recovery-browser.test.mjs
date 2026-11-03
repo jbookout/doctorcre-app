@@ -59,7 +59,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       await late;
       return fulfill(route, { ok: true });
     });
-    await page.goto(`${origin}/?mode=live`);
+    await page.goto(`${origin}/review-workflows?mode=live`);
     await page.locator('#homeEmailActivity summary').click();
     const panel = page.locator('#homeEmailFilings');
     const first = panel.locator(`[data-filing-id="${filing(1).event_id}"]`), second = panel.locator(`[data-filing-id="${filing(2).event_id}"]`), third = panel.locator(`[data-filing-id="${filing(3).event_id}"]`);

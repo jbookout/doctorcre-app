@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 test('Home scope switches and refreshes loaded deal attention', async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto('/');
+  await page.goto('/review-workflows');
   await expect(page.locator('#dealAttention')).toHaveAttribute('aria-busy', 'false', { timeout: 27_000 });
   await page.getByRole('button', { name: 'Just me', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Just me', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -25,13 +25,13 @@ test('V2-F03: Charts navigation opens, selects and returns to Overview', async (
   await expect(page.locator('.chart-pick[aria-pressed="true"]').first()).toBeVisible();
   await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome home.', exact: true })).toBeVisible();
 });
 
 test('Home deal attention opens the selected deal details', async ({ page }) => {
   test.setTimeout(420000);
   await withHomeFixture(async fixture => {
-    await page.goto('/');
+    await page.goto('/review-workflows');
     await page.locator(`#dealFlags a[data-home-key="deal:${fixture.deal.id}"]`).click();
     await expect(page).toHaveURL(new RegExp(`/deals\\?deal=${fixture.deal.id}`));
     await expect(page.locator('#recordPanel')).toBeVisible();

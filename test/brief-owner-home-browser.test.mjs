@@ -61,9 +61,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     if (width === 390) await page.getByRole('button', { name: 'Today sidebar', exact: true }).click();
     await animationsSettled(page);
     const rows = page.locator('#appTodayNext [data-layout-deal]');
-    assert.equal(await rows.count(), 6);
+    assert.equal(await rows.count(), 3);
     const showAll = page.getByRole('button', { name: 'Show all 8', exact: true });
-    assert.equal(await showAll.count(), 1, 'Next up offers access to the two remaining actions');
+    assert.equal(await showAll.count(), 1, 'Next up offers access to the five remaining actions');
     const target = await showAll.boundingBox();
     assert.ok(target.width >= 44 && target.height >= 44, `Show all 8: ${target.width}x${target.height}`);
     t.diagnostic(`Show all 8: ${target.width}x${target.height}`);
@@ -74,11 +74,11 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       'Demo Specialty Clinic', 'Demo Vision Center', 'Demo Family Clinic', 'Demo Dental North',
       'Demo Pediatrics East', 'Demo Therapy Group', 'Demo Osteopathic Office', 'Demo Surgical Practice',
     ]);
-    assert.equal(await rows.nth(6).evaluate(node => node === document.activeElement), true);
+    assert.equal(await rows.nth(3).evaluate(node => node === document.activeElement), true);
     await page.locator('#appTodayOwners [data-brief-owner="joe"]').click();
-    assert.equal(await rows.count(), 6, 'older fixture rows remain included after changing owner');
+    assert.equal(await rows.count(), 3, 'older fixture rows remain included after changing owner');
     await page.locator('#appTodayOwners [data-brief-owner="all"]').click();
-    assert.equal(await rows.count(), 6, 'changing owner restores the six-row preview');
+    assert.equal(await rows.count(), 3, 'changing owner restores the three-row preview');
     assert.equal(await showAll.count(), 1);
   });
 }

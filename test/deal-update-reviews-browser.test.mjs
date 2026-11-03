@@ -46,7 +46,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
       } else return route.continue();
       return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
     });
-    await page.goto(`${origin}/?mode=live`);
+    await page.goto(`${origin}/review-workflows?mode=live`);
     const panel = page.locator('#homeOverdueReviews');
     await panel.locator('article').first().waitFor();
     await panel.scrollIntoViewIfNeeded();
@@ -89,7 +89,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       else return route.continue();
       await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
     });
-    await page.goto(`${origin}/?mode=live`);
+    await page.goto(`${origin}/review-workflows?mode=live`);
     const panel = page.locator('#homeOverdueReviews');
     await panel.getByRole('button', { name: 'Undo' }).waitFor();
     await panel.scrollIntoViewIfNeeded();

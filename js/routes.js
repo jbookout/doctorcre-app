@@ -25,6 +25,7 @@ export const routeEntries = [
   ["/leads","leads.html","/leads"],
   ["/leases","lease-radar.html","/business"],
   ["/relationships","relationships.html","/business"],
+  ["/review-workflows","review-workflows.html","/"],
   ["/search","search.html","/business"],
   ["/share","reports/share.html","/share"],
   ["/status","status.html","/control-room"],
@@ -171,6 +172,7 @@ export const navigationItems = [
   }
 ];
 export const sectionForRoute = {
+  "/review-workflows": "/",
   "/doc/conversations/:conversation_id/turns/:msg_id": "/doc-chats",
   "/inbox": "/",
   "/inbox/card/:item_id": "/",

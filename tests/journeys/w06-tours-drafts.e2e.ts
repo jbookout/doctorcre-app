@@ -52,7 +52,6 @@ test('W6 Tours drafts prefill from a client, undo an edit and survive a reload',
   await expect(browser.locator('#plan-date')).toHaveValue('2026-10-08');
   await expect(browser.locator('#space-requirements')).toHaveValue('Ground floor · accessible entry');
 
-  if (await browser.locator('#appSidebar').isHidden()) await browser.locator('#appSidebarToggle').tap();
   await browser.locator('#upcoming-tours .tour-button').first().tap();
   await expect(browser.locator('#detail-title')).toContainText('Demo Gulf Coast Tour');
   await browser.locator('#tour-dialog #detail-close').tap();

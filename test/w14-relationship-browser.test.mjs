@@ -78,7 +78,7 @@ async function open(t, width = 1440) {
     if (url.pathname.startsWith("/api/")) return r.fulfill({ json: {} });
     const file =
       url.pathname === "/"
-        ? "workspace.html"
+        ? "review-workflows.html"
         : url.pathname === "/relationships"
           ? "relationships.html"
           : url.pathname.slice(1);
@@ -200,7 +200,6 @@ for (const width of [1440, 390])
       path: `out/test-artifacts/w14/referrals-${width}.png`,
       animations: "disabled",
     });
-    if (width === 390) await page.locator("#appSidebarToggle").click();
     await page.locator("#networkTerritory").selectOption("Demo Inland");
     assert.equal(await page.locator(".relationship-referral").count(), 0);
     await page.locator("#networkReset").click();
@@ -209,6 +208,7 @@ for (const width of [1440, 390])
     assert.ok(
       h.verbs.every((v) =>
         [
+          "calendar-meeting-prep",
           "deal-room-board",
           "morning-brief",
           "today-triage",

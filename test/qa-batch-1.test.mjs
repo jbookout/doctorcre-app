@@ -35,7 +35,7 @@ test("Search puts candidates and results ahead of Scope and Saved views", async 
 });
 
 test("no page or script points Home or sign-in at /business", async () => {
-  for (const file of ["workspace.html", "js/workspace-command-center-model.js", "js/app-shell.js"]) {
+  for (const file of ["review-workflows.html", "js/workspace-command-center-model.js", "js/app-shell.js"]) {
     const src = await read(file);
     assert.doesNotMatch(src, /href="\/business|return_to=\/business|"\/business"\s*,\s*href/, `${file} must not target /business`);
   }
@@ -48,7 +48,7 @@ test("no page or script points Home or sign-in at /business", async () => {
 });
 
 test("every Home page control resolves to a real route, never /business", async () => {
-  const html = await read("workspace.html");
+  const html = await read("review-workflows.html");
   const routes = (await import("../js/routes.js")).routeContract;
   const targets = [...html.matchAll(/<a [^>]*href="(\/[^"?#]*)/g)].map((m) => m[1]);
   for (const target of targets) assert.ok(target === "/" || routes.routes[target] || routes.redirects[target] || target.startsWith("/auth/"), `${target} is a routed path`);
