@@ -3,7 +3,7 @@ import { reproTest, textContrast } from './support.mjs';
 
 const test = reproTest();
 test('QA-002 light Home deal and invoice titles have readable contrast', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
-  await app.open('/');
+  await app.open('/review-workflows');
   await expect(browser.locator('#dealFlags h3 a').first()).toBeVisible();
   await screen.getByRole('button', /account and settings/i).tap();
   const theme = browser.locator('[data-pref="theme"]');

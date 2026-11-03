@@ -96,7 +96,6 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     assert.match(await page.locator("#detail-content").textContent(), /demo-report/);
     const box = await page.locator("#tour-dialog").boundingBox(); assert.ok(box.width >= Math.min(1000, width - 32));
     await page.getByLabel("Close tour details").click(); assert.equal(await page.locator("#review-packet").evaluate(el => document.activeElement === el), true);
-    if (width <= 760) await page.locator("#appSidebarToggle").click();
     await page.locator("#upcoming-tours .tour-button").first().click(); await page.waitForFunction(() => document.querySelector("#detail-title").textContent.includes("Demo Gulf"));
     assert.ok((await page.locator("#detail-content > p").first().textContent()).length <= 180);
     await page.locator("#detail-content details summary").click(); assert.equal(await page.locator("#detail-content details p").textContent(), original);
@@ -105,9 +104,8 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.keyboard.press("Escape");
     assert.equal(await page.locator("#tour-dialog").evaluate(n => n.open), false, "R5 one Escape closes the top modal");
     if (width <= 760) {
-      assert.equal(await page.locator("#appLayout").getAttribute("data-drawer"), "sidebar");
+      assert.equal(await page.locator("#appLayout").getAttribute("data-drawer"), "");
       assert.equal(await page.locator("#upcoming-tours").evaluate(n => n.contains(document.activeElement)), true);
-      await page.keyboard.press("Escape");
     }
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await page.locator(".planner-grid").evaluate(el => el.getAnimations({ subtree: true }).length), 0);

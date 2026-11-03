@@ -110,7 +110,8 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   assert.ok(columns[0].cards>0 || width>760,'the first phone stage contains active deals');
   if(width===1280){
    assert.equal(new Set(columns.map(n=>Math.round(n.top))).size,1,'desktop stages share one row');
-   assert.ok((await page.locator('#kanban').boundingBox()).width>1050,'board gets desktop width');
+   assert.equal(await page.locator('#appTodayToggle').getAttribute('aria-expanded'),'true','look-ahead defaults open on Deals');
+   assert.ok((await page.locator('#kanban').boundingBox()).width>790,'board retains desktop width beside look-ahead');
   }
   assert.equal(await page.locator('.app-section-tabs').isVisible(),true);
   assert.equal(await page.locator('.app-section-tabs [aria-current="page"]').textContent(),'Local Deals');

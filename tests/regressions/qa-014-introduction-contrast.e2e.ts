@@ -3,7 +3,7 @@ import { reproTest, textContrast } from './support.mjs';
 
 const test = reproTest();
 test('QA-014 dark suggested introduction description has readable contrast', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
-  await app.open('/');
+  await app.open('/review-workflows');
   await screen.getByRole('button', 'Just me', { exact: true }).tap();
   const reason = browser.locator('#homeIntroductions .relationship-card strong').first();
   await expect(reason).toBeVisible();

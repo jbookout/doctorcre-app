@@ -86,16 +86,12 @@ for (const width of [390, 1440]) test(`national board commands survive React ren
   await target.locator('[data-operating-state]').click();
   await page.locator('#dialogSubmit').click();
   await target.waitFor({ state: 'detached' });
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('[data-filter="parked"]').click();
-  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   await target.waitFor();
   assert.equal(await target.locator('[data-phase]').isDisabled(), true);
   await target.locator('[data-operating-state="active"]').click();
   await target.waitFor({ state: 'detached' });
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('[data-filter="active"]').click();
-  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   await target.waitFor();
   assert.equal(await target.locator('[data-phase]').inputValue(), next);
   assert.deepEqual(errors, []);

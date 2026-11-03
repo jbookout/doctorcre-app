@@ -15,9 +15,7 @@ test('W15 invoice tracker filters by age and status and records a payment', asyn
   await browser.locator('#allAges').tap();
   await expect(rows).toHaveCount(4);
 
-  if (await browser.locator('#appSidebar').isHidden()) await browser.locator('#appSidebarToggle').tap();
   await browser.locator('#clearInvoiceFilters').tap();
-  if (await browser.evaluate(() => innerWidth <= 760) && await browser.locator('#appSidebar').isVisible()) await browser.locator('[data-layout-close="sidebar"]').tap();
   await browser.locator('[data-status="awaiting"]').tap();
   await expect(rows).toHaveCount(1);
   await rows.tap();
@@ -35,7 +33,7 @@ test('W15 invoice tracker filters by age and status and records a payment', asyn
 });
 
 test('W15 Home invoice attention lists overdue invoices for the chosen scope', async ({ app, browser }) => {
-  await app.open('/');
+  await app.open('/review-workflows');
 
   const attention = browser.locator('#homeInvoices [data-home-key]');
   await expect(attention).toHaveCount(3);

@@ -1,6 +1,5 @@
 import { createMcpRequests } from './mcp-requests.mjs';
 import { privateSession } from './private-session.js';
-import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
@@ -13,11 +12,17 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
-  let disposeDocPresence = () => {};
+  let disposeDocPresence = () => {}, resolveAssistant;
+  const assistantReady = new Promise(resolve => { resolveAssistant = resolve; });
   const reactWorkspace = new URLSearchParams(location?.search || "").get("ui") === "react";
-  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence(), reactWorkspace);
+  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence(), reactWorkspace, assistantReady);
   if (!base && pathname !== "/share") {
-    mountAppLayout(root, host, pathname);
+    const home = pathname === '/' && root.getElementById('homeRoot');
+    const ready = home ? new Promise(resolve => {
+      if (home.dataset.homeReady) resolve();
+      else home.addEventListener('doctorcre:home-ready', resolve, { once: true });
+    }) : Promise.resolve();
+    mountAppLayout(root, host, pathname, { ready });
     const status = root.querySelector(".app-layout-status");
     const availability = host.querySelector(".app-shell-call-availability");
     status.append(availability);
@@ -56,8 +61,12 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     phone.addEventListener("change", arrangeNavigation);
     arrangeControls();
     arrangeNavigation();
-    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
-    disposeDocPresence = () => docPresence?.dispose();
+    let docPresence = null, docRetired = false;
+    disposeDocPresence = () => { docRetired = true; docPresence?.dispose(); };
+    void ready.then(() => import('./doc-presence.js')).then(({ mountDocPresence }) => {
+      if (!docRetired && host.isConnected) docPresence = mountDocPresence({ document:root, window:root.defaultView });
+      resolveAssistant();
+    }).catch(() => resolveAssistant());
   }
 }
 
@@ -130,7 +139,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
   };
 }
 
-function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, reactWorkspaceRequested = false) {
+function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, reactWorkspaceRequested = false, assistantReady = Promise.resolve()) {
   const preferences = mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
@@ -201,8 +210,8 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       showPartner(identity);
       workspace?.setIdentity(identity);
       if (boot.mode === "live" && pathname === "/" && identity && help && !preferences.hasSeenWalkthrough(identity.slug)) {
-        void import("./app-walkthrough.js").then(({ openWalkthrough }) => {
-          if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
+        void Promise.all([assistantReady, import("./app-walkthrough.js")]).then(([, { openWalkthrough }]) => {
+          if (boundary.revoked || !panel.hidden || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
           openWalkthrough(root);
           preferences.rememberWalkthrough(identity.slug);
         }).catch(() => {});

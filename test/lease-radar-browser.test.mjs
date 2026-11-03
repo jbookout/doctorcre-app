@@ -25,6 +25,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   if (long) payload.leases[0].client_name = `Demo${'Practice'.repeat(30)}`;
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
+    'calendar-meeting-prep': () => client.calendarMeetingPrep(),
     'morning-brief': async () => ({ state:'unavailable' }),
     'list-practice-origination': args => client.listPracticeOrigination(args),
     'read-home-agenda': () => client.getHomeAgenda(),
@@ -59,11 +60,11 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { changes: [], cursor: null } });
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
-    const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
+    const file = ['/', '/review-workflows'].includes(url.pathname) ? 'review-workflows.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto(`http://localhost/${home ? '' : 'leases'}?mode=live`);
+  await page.goto(`http://localhost/${home ? 'review-workflows' : 'leases'}?mode=live`);
   if (home) {
     await page.locator('#refreshHome[aria-busy="false"]').waitFor();
     await page.locator('.home-grid').scrollIntoViewIfNeeded();

@@ -107,7 +107,7 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')], comp
         });`,
     }));
   }
-  await page.goto(`${origin}/${holdCommands ? '' : '?mode=live'}`, { waitUntil: holdCommands ? 'commit' : 'load' });
+  await page.goto(`${origin}/review-workflows${holdCommands ? '' : '?mode=live'}`, { waitUntil: holdCommands ? 'commit' : 'load' });
   await page.locator('#refreshHome[aria-busy="false"]').waitFor();
   return { page, pending, actions, writes, reads, errors, gate, releaseCommands, companionRequests };
 }

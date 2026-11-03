@@ -36,13 +36,13 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto(`http://localhost/${home ? '' : 'invoices'}?mode=live${query}`);
+  await page.goto(`http://localhost/${home ? 'review-workflows' : 'invoices'}?mode=live${query}`);
   await page.waitForFunction(home ? () => document.querySelector('#homeInvoices a[data-home-key]') : () => document.querySelector('[data-invoice]'));
   return { page, errors, attempts, setReceipt(value) { receipt = value; }, get reads() { return reads; }, get writes() { return writes; }, setFailed(value) { failed = value; }, setDenied(value) { denied = value; }, update(fn) { fn(data); } };
 }
 for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${width}px`, async t => {
   const { page, errors } = await open(t, { width }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.equal(await page.locator('.app-layout-sidebar #invoiceSearch').count(), 1);
+  assert.equal(await page.locator('#appMainSlot .app-layout-page-tools #invoiceSearch').count(), 1);
   assert.equal(await page.locator('#invoiceAging strong').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().height<30)),true,'ordinary aging amounts stay on one line');
   await page.locator('[data-invoice]').first().click(); await page.waitForFunction(() => document.querySelector('#invoiceDetail').open);
   assert.equal(await page.getByRole('link', { name: 'Open deal', exact: true }).getAttribute('href'), '/deals?deal=demo-invoice-deal-4');

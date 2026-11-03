@@ -1,0 +1,41 @@
+stateDiagram-v2
+  state Desktop {
+    [*] --> Open: right default / left page default
+    Open --> Closed: toggle or close / persist preference / focus toggle
+    Closed --> Open: toggle / persist preference
+  }
+  state Phone {
+    [*] --> NoDrawer
+    NoDrawer --> Calendar: workspace toggle / focus close
+    NoDrawer --> LookAhead: Today toggle / focus close
+    Calendar --> NoDrawer: close, Escape, scrim / return focus
+    LookAhead --> NoDrawer: close, Escape, scrim / return focus
+  }
+  Desktop --> Phone: narrow viewport / preserve desktop preference
+  Phone --> Desktop: wide viewport / clear drawer, restore preference
+  state HomeSlice {
+    [*] --> Collapsed
+    Collapsed --> Expanded: See all
+    Expanded --> Collapsed: Show less
+  }
+  state HomeStartup {
+    [*] --> InboxLoading: shell frame appears
+    InboxLoading --> InboxVisible: ready, empty or unavailable inbox paints
+    InboxVisible --> PanelsLoading: start schedule and assistant reads
+    PanelsLoading --> HomeReady: panel reads settle
+    InboxLoading --> SessionEnded: session revoked
+    PanelsLoading --> SessionEnded: session revoked / reject late assistant mount
+  }
+  state AutomaticWalkthrough {
+    [*] --> AssistantLoading
+    AssistantLoading --> AccountOpen: partner opens account menu
+    AssistantLoading --> Walkthrough: assistant arrives / first visit and no active dialog
+    AccountOpen --> GuideDeferred: assistant arrives / preserve account menu
+    Walkthrough --> GuideDismissed: skip or finish
+  }
+  state CalendarPreviews {
+    [*] --> Fitted: schedule arrives / show complete previews that fit
+    Fitted --> Fitted: rail resizes or fonts settle / refit complete previews
+    Fitted --> Calendar: N more / open full calendar
+    %% never clip meeting text or require internal rail scrolling
+  }

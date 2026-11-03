@@ -59,7 +59,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
       envelope.result.content[0].text = JSON.stringify(agenda);
       await route.fulfill({ response, json: envelope });
     });
-    await page.goto(`${origin}/?mode=live`);
+    await page.goto(`${origin}/review-workflows?mode=live`);
     await page.locator('#refreshHome[aria-busy="false"]').waitFor();
     await page.locator('#homeCalendar').evaluate(node => node.scrollIntoView({ block: 'center' }));
     const panel = await page.locator('#homeCalendar').boundingBox();

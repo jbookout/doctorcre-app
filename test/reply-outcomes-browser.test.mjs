@@ -40,7 +40,7 @@ async function open(t, { width = 390, theme = 'dark', outcomes = () => pageOf([s
     catch { return route.fulfill({ status: 503, json: { error: 'synthetic_read_failure' } }); }
   });
   assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `reply-${width}`, viewer: 'joe', reset: true } })).status(), 200);
-  await page.goto(`${origin}/?mode=live`);
+  await page.goto(`${origin}/review-workflows?mode=live`);
   await page.locator('#dealAttention[aria-busy="false"]').waitFor();
   await page.getByText('Email activity', { exact: true }).scrollIntoViewIfNeeded();
   assert.match(await page.locator('#homeEmailActivity summary').innerText(), /Sent replies and filed emails/);

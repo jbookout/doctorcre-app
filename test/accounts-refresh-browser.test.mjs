@@ -18,7 +18,6 @@ async function accountPage(t, { width = 1280, seed } = {}) {
 
 test('Add national account labels resolve uniquely to their editable fields', async t => {
   const page = await accountPage(t);
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('#stickyAddButton').click();
   await page.locator('#formDialog').waitFor({ state: 'visible' });
   const duplicates = await page.evaluate(() => {
@@ -36,7 +35,6 @@ for (const recovery of [false, true]) for (const interval of [60_000]) {
     const page = await accountPage(t);
     await page.locator('.account-card').first().click();
     if (recovery) {
-      await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
       await page.locator('#search').fill('zz-no-synthetic-match');
       await page.keyboard.press('Tab');
       await page.keyboard.press('Escape');
@@ -54,7 +52,6 @@ test('Territory search hides the selected account context until the search is cl
   const page = await accountPage(t);
   await page.locator('.account-card').first().click();
   assert.equal(await page.locator('#accountContext').isVisible(), true);
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('#search').fill('Demo');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Escape');
@@ -82,7 +79,6 @@ for (const query of ['Demo', 'zz-no-synthetic-match']) {
     const card = page.locator('.account-card').first();
     const accountId = await card.getAttribute('data-account');
     await card.click();
-    await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
     await page.locator('#search').fill(query);
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');

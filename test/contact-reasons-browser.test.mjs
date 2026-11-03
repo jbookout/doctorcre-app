@@ -29,7 +29,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`cont
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.equal(reads.length,1);
   assert.deepEqual(writes,[]);
-  await page.goto('http://localhost/');
+  await page.goto('http://localhost/review-workflows');
   const home = page.locator('#homeContactReasons');
   await page.locator('.home-grid').scrollIntoViewIfNeeded();
   await home.locator('.work-card').first().waitFor();

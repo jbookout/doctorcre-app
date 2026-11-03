@@ -20,7 +20,6 @@ test('W14 Relationships opens a party with its evidence and filters by territory
   await browser.locator('#referralsTab').tap();
   await expect(browser.locator('.relationship-referral')).toHaveCount(2);
   await expect(browser.locator('#networkReferrals')).toContainText('100% win rate');
-  if (await browser.locator('#appSidebar').isHidden()) await browser.locator('#appSidebarToggle').tap();
   await browser.locator('#networkTerritory').selectOption('Demo Inland');
   await expect(browser.locator('.relationship-referral')).toHaveCount(0);
   await browser.locator('#networkReset').tap();
