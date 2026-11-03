@@ -1,0 +1,15 @@
+{
+  "contract": "carr-tour-operations-foundation",
+  "version": "1.9.0",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "12e0a9b08566a4bc18402907a1605ed96432653c",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2939",
+    "contract_path": "workspace/contracts/tour-operations-foundation.v1.json"
+  },
+  "migrations": [1139, 1142],
+  "create": {"path": "/api/tours/create", "subject_type": "deal", "subject_id": "canonical deal UUID"},
+  "library": {"path": "/api/tours/library", "fields": ["deal_id", "deal_name"], "scope": "accessible tours across deals"},
+  "detail": {"path": "/api/tours/detail", "query": "tour_id", "unavailable": "unknown and inaccessible tours return not-found"},
+  "binding": "Immutable; null for legacy client, work and unbound tours. Public projections omit deal context."
+}

@@ -90,7 +90,7 @@ function domain() {
     let result;
     if (path === "/api/tours/create") {
       assert.deepEqual(Object.keys(body).sort(), ["idempotency_key", "tour_name", "subject_type", "subject_id", "canonical_dataset_version", "start_point", "end_point"].sort());
-      const id = uuid(); tours.set(id, { id, name: body.tour_name, routes: [{ id: uuid(), route_version: 1, accepted: false, stops: [] }] }); result = { tour_id: id };
+      const id = uuid(); tours.set(id, { id, name: body.tour_name, deal_id: body.subject_type === 'deal' ? body.subject_id : null, routes: [{ id: uuid(), route_version: 1, accepted: false, stops: [] }] }); result = { tour_id: id };
     } else if (path === "/api/tours/route-draft") {
       const t = tours.get(body.tour_id), prior = t.routes.find(r => r.accepted);
       if (prior?.id !== body.base_route_version_id || prior.route_version !== body.expected_route_version || body.route_version !== t.routes[0].route_version + 1) return response(null, 409);
@@ -200,6 +200,27 @@ test("session invalidation retains an uncertain Tour write under its original se
   dom.window.close();
 });
 function fill(doc, selector, value) { const node = doc.querySelector(selector); assert.ok(node, selector); node.value = value; node.dispatchEvent(new doc.defaultView.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })); }
+test('deal workspace creation keeps the canonical deal subject through save and reload', async () => {
+  const store = domain(), deal = uuid(), {dom,doc} = await open(store, {}, `?deal=${deal}`);
+  assert.equal(doc.querySelector('#create-subject-type').value, 'deal');
+  assert.equal(doc.querySelector('#create-subject-type').disabled, true);
+  assert.equal(doc.querySelector('#create-subject-id').value, deal);
+  assert.equal(doc.querySelector('#create-subject-id').readOnly, true);
+  await create(doc);
+  const request = store.calls.find(call => call.path === '/api/tours/create');
+  assert.equal(request.body.subject_type, 'deal'); assert.equal(request.body.subject_id, deal);
+  assert.equal(doc.querySelector('#tour-name').textContent, 'Synthetic Tour');
+  assert.equal([...store.tours.values()][0].deal_id, deal);
+  dom.window.close();
+});
+test('a tour deep link outside its deal never opens or falls back to another saved tour', async () => {
+  const store = domain(), deal = uuid(), tour = uuid();
+  store.tours.set(tour, {id:tour,deal_id:uuid(),name:'Other deal tour',routes:[{id:uuid(),route_version:1,accepted:false,stops:[]}]});
+  const {dom,doc} = await open(store, {}, `?deal=${deal}&tour=${tour}`);
+  assert.doesNotMatch(doc.querySelector('#tour-name').textContent,/Other deal tour/);
+  assert.equal(doc.querySelector('#tour-panel').hidden,true);
+  assert.match(doc.querySelector('#status').textContent,/unavailable/i); dom.window.close();
+});
 function deferDetail(store) {
   const fetch = store.fetch; let release;
   store.fetch = async (path, options) => {

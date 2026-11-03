@@ -5,9 +5,10 @@ const recordId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const strings = (value, fields) => fields.every(field => value[field] == null || typeof value[field] === "string");
 const validRow = row => object(row) && recordId.test(row.id) && strings(row, ["name", "status"]);
+const validBinding = row => (row.deal_id == null || (typeof row.deal_id === 'string' && recordId.test(row.deal_id))) && strings(row, ['deal_name']);
 const validStop = stop => object(stop) && strings(stop, ["stop_state", "property_name", "name", "property_address", "address", "appointment_start"]);
 export function validateTourList(rows) {
-  if (!Array.isArray(rows) || !rows.every(validRow)) throw new Error("Invalid tour list");
+  if (!Array.isArray(rows) || !rows.every(row => validRow(row) && validBinding(row))) throw new Error("Invalid tour list");
   return rows;
 }
 export function validateClientRecord(record, id = record?.id) {
@@ -19,7 +20,7 @@ export function validateClientList(rows) {
   rows.forEach(row => validateClientRecord(row)); return rows;
 }
 export function validateTourDetail(tour, id = tour?.id) {
-  if (!validRow(tour) || tour.id !== id || !Array.isArray(tour.stops) || !tour.stops.every(validStop) ||
+  if (!validRow(tour) || !validBinding(tour) || tour.id !== id || !Array.isArray(tour.stops) || !tour.stops.every(validStop) ||
       (tour.routes != null && (!Array.isArray(tour.routes) || !tour.routes.every(route => object(route) && Array.isArray(route.stops) && route.stops.every(validStop))))) throw new Error("Invalid tour detail");
   return tour;
 }

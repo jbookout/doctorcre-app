@@ -16,6 +16,14 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
   const digest = (value) => /^sha256:[0-9a-f]{64}$/i.test(value);
   const id = (value) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  const requestedDeal = new URLSearchParams(window.location.search).get('deal');
+  const dealContext = id(requestedDeal) ? requestedDeal : null;
+  if (dealContext) {
+    $('#create-subject-type').value = 'deal'; $('#create-subject-id').value = dealContext;
+    $('#create-tour-panel').open = !new URLSearchParams(window.location.search).has('tour');
+    const back = document.createElement('a'); back.className = 'btn btn-quiet'; back.textContent = 'Back to deal tours';
+    back.href = `/deals?deal=${encodeURIComponent(dealContext)}&tab=tours`; $('#create-tour-panel').before(back);
+  }
   const base64url = (bytes) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
   async function sha256(value) { const bytes = new TextEncoder().encode(value); const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)); return `sha256:${[...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`; }
   function newShareToken() { const bytes = new Uint8Array(32); crypto.getRandomValues(bytes); return base64url(bytes); }
@@ -247,6 +255,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     $("#create-tour").textContent = createPending ? "Retry same creation request" : "Create Tour";
     $("#reconcile-create").hidden = createPhase !== "unknown";
     for (const control of document.querySelectorAll("#create-tour-form input, #create-tour-form select")) control.disabled = Boolean(createPending) || createBusy;
+    if (dealContext) { $('#create-subject-type').disabled = true; $('#create-subject-id').readOnly = true; }
   }
   function endpoint(role, prefix = "") {
     const latitude = $(`#${prefix}${role}-latitude`).value.trim(), longitude = $(`#${prefix}${role}-longitude`).value.trim(), source_ref = $(`#${prefix}${role}-source`).value.trim();
@@ -255,12 +264,15 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     return { latitude: Number(latitude), longitude: Number(longitude), position_role: role, precision_class: "approximate", source_ref };
   }
   async function createTour() {
+    if (dealContext && createPending && (createPending.subject_type !== 'deal' || createPending.subject_id !== dealContext)) {
+      $('#create-tour-state').textContent = 'A pending creation belongs to another workspace. Reconcile it in its original workspace.'; return;
+    }
     if (!libraryReady || restoredTourId || createBusy || navigationBusy || createPhase === "unknown") return;
     if (composer?.dirty || composer?.plan || composer?.busy) { $("#create-tour-state").textContent = "Save or reconcile the current route before starting another Tour."; return; }
     createBusy = true; renderCreate();
     try {
       if (!createPending) createPending = { idempotency_key: uuid(), tour_name: $("#create-tour-name").value.trim(),
-        subject_type: $("#create-subject-type").value, subject_id: $("#create-subject-id").value.trim(),
+        subject_type: dealContext ? 'deal' : $("#create-subject-type").value, subject_id: dealContext || $("#create-subject-id").value.trim(),
         canonical_dataset_version: $("#create-dataset").value.trim(), start_point: endpoint("start"), end_point: endpoint("end") };
       persistPending(); renderCreate();
       $("#create-tour-state").textContent = "Creating Tour…";
@@ -870,12 +882,12 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     if (!state.tour && !retained?.plan && !createPending && (sheetPending || tourAction)) await loadTour(sheetPending?.tourId || tourAction.tourId);
     if (!state.tour && !retained?.plan && !createPending) {
       const requestedTour = new URLSearchParams(window.location.search).get("tour");
-      if (id(requestedTour) && state.tours.some(tour => tour.id === requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
+      if (id(requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
       let saved = null;
       try {
         saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
       } catch { /* Invalid tab pointers do not select a Tour. */ }
-      if (!state.tour && saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
+      if (!requestedTour && !dealContext && !state.tour && saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
         try { await loadTour(saved.tour_id, { requireComposerDetail: true }); }
         catch { status("Saved Tour temporarily unavailable."); }
       }
@@ -902,6 +914,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       $("#empty-state").hidden = true;
       const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
       if (tour?.id !== tourId || !Array.isArray(tour.stops)) throw new Error("read_invalid");
+      if (dealContext && tour.deal_id !== dealContext) throw new Error('tour_not_available');
       if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
       const changed = composer && composer.snapshot !== routeSnapshot(tour);
