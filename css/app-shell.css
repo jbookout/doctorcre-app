@@ -2,7 +2,7 @@
    comes from css/tokens.css. Page navigation lives in app-layout slots. */
 @import url("/css/tokens.css");
 
-.quick-switcher { width: min(580px, calc(100vw - 24px)); max-height: min(680px, calc(100dvh - 48px)); padding: 0; color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-3); box-shadow: var(--shadow-overlay); }
+.has-app-layout dialog.quick-switcher { width: min(580px, calc(100vw - 24px)); max-height: min(680px, calc(100dvh - 48px)); padding: 0; color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-3); box-shadow: var(--shadow-overlay); }
 .quick-switcher::backdrop { background: rgb(0 0 0 / 45%); }
 .quick-switcher-content { padding: var(--space-4); font-family: var(--font-text); }
 .quick-switcher header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }

@@ -51,6 +51,7 @@ test('switcher matrix is accessible in both themes', async () => {
       const violations = await page.evaluate(async () => (await axe.run(document)).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })));
       assert.deepEqual(violations, [], `${width} ${theme}`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      assert.ok(await page.locator('[data-quick-switcher]').evaluate(dialog => dialog.getBoundingClientRect().width <= 580));
       await page.screenshot({ path: `out/test-artifacts/quick-switcher/${width}-${theme}.png`, fullPage: true });
       await page.close();
     }
