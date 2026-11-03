@@ -211,7 +211,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
       workspace?.setIdentity(identity);
       if (boot.mode === "live" && pathname === "/" && identity && help && !preferences.hasSeenWalkthrough(identity.slug)) {
         void Promise.all([assistantReady, import("./app-walkthrough.js")]).then(([, { openWalkthrough }]) => {
-          if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
+          if (boundary.revoked || !panel.hidden || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
           openWalkthrough(root);
           preferences.rememberWalkthrough(identity.slug);
         }).catch(() => {});

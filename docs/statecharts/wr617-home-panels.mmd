@@ -26,3 +26,10 @@ stateDiagram-v2
     InboxLoading --> SessionEnded: session revoked
     PanelsLoading --> SessionEnded: session revoked / reject late assistant mount
   }
+  state AutomaticWalkthrough {
+    [*] --> AssistantLoading
+    AssistantLoading --> AccountOpen: partner opens account menu
+    AssistantLoading --> Walkthrough: assistant arrives / first visit and no active dialog
+    AccountOpen --> GuideDeferred: assistant arrives / preserve account menu
+    Walkthrough --> GuideDismissed: skip or finish
+  }
