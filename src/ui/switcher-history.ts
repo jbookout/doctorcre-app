@@ -18,5 +18,5 @@ export function rememberAddress(address: string) {
   const node = url.searchParams.get('node');
   if (url.pathname === '/deals' && deal) rememberDestination(`deal:${deal}`);
   else if (url.pathname === '/relationships' && node) rememberDestination(node);
-  else rememberDestination(`page:${url.pathname}${url.search}`);
+  else rememberDestination(`page:${url.pathname}${url.pathname === '/ideas-events' ? `?tab=${url.searchParams.get('tab') === 'events' ? 'events' : 'ideas'}` : ''}`);
 }
