@@ -6,11 +6,11 @@ const REFUSALS = {
   email_thread_filing_changed: 'This filing changed since it was filed. Undo was refused.',
   email_thread_filing_not_found: 'This filing is no longer available to undo.',
 };
+const filingState = row => row.current_deal_id === null ? 'absent'
+  : typeof row.current_deal_id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.current_deal_id) ? 'current' : 'unknown';
 const denied = error => [401, 403].includes(error?.status) || error?.code === 'session_changed';
 const when = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
-// Filed automatically with Undo. Only the source subject and sender name
-// are shown; activity_version is the server's guard and may be null (legacy).
 export function mountEmailFilings({ container, client }) {
   const win = container.ownerDocument.defaultView;
   let rows = [], loadState = 'loading', epoch = 0, disposed = false;
@@ -27,11 +27,11 @@ export function mountEmailFilings({ container, client }) {
           : loadState === 'ready' && !rows.length ? '<p class="home-empty">No filed emails to review.</p>' : '';
     container.innerHTML = `<header class="home-panel-head"><h2>Filed automatically</h2></header>${notice}${rows.map(row => {
       const outcome = outcomes.get(row.event_id);
-      const deal = typeof row.deal === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.deal) ? row.deal : null;
-      const current = !outcome || (outcome.status !== 'submitting' && outcome.filingState === 'current');
-      const destination = deal && current ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(deal)}">Open filed deal</a>` : '';
-      const filingNotice = outcome?.filingState === 'absent' ? 'This email is no longer currently filed to this deal.'
-        : !current ? 'Current filing destination unavailable.' : !deal ? 'Filed deal destination unavailable.' : '';
+      const state = outcome?.filingState ?? filingState(row);
+      const current = outcome?.status !== 'submitting' && state === 'current';
+      const destination = current ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(row.current_deal_id)}">Open filed deal</a>` : '';
+      const filingNotice = state === 'absent' ? 'This email is no longer currently filed to this deal.'
+        : !current ? 'Current filing destination unavailable.' : '';
       return `<article class="email-proposal" data-filing-id="${E(row.event_id)}"><h3>${E(row.subject || 'Subject unavailable')}</h3><p>From ${E(row.sender_name || 'Sender unavailable')}${when(row.occurred_at) ? ` · ${E(when(row.occurred_at))}` : ''}</p>${
         outcome?.status === 'undone' ? '<p role="status" tabindex="-1">Undone. The email is no longer filed to this deal and will not be filed automatically again.</p>'
           : `${filingNotice ? `<p>${filingNotice}</p>` : ''}${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<div class="email-controls">${destination}${outcome?.status === 'refused' && outcome.filingState === 'absent' ? '' : `<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>${outcome?.status === 'uncertain' ? 'Check outcome' : 'Undo'}</button>`}</div>`}</article>`;
@@ -51,7 +51,10 @@ export function mountEmailFilings({ container, client }) {
       const result = await readWithDeadline(() => client.listEmailThreadFilings(), { timeoutMs: 10_000 });
       if (disposed || ticket !== epoch) return;
       if (!Array.isArray(result?.filings) || result.filings.some(row => !row?.event_id)) throw Error('Invalid email filings');
-      for (const [id, outcome] of outcomes) outcome.filingState = result.filings.some(item => item.event_id === id) ? 'current' : 'absent';
+      for (const [id, outcome] of outcomes) {
+        const receipt = result.filings.find(item => item.event_id === id);
+        outcome.filingState = receipt ? filingState(receipt) : 'absent';
+      }
       rows = [...result.filings, ...rows.filter(row => outcomes.has(row.event_id) && !result.filings.some(item => item.event_id === row.event_id))];
       loadState = 'ready';
     } catch (error) {

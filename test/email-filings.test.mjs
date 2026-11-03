@@ -143,12 +143,12 @@ test('filed receipts link to their own exact deals without exposing ids or priva
   assert.doesNotMatch(container.textContent, /20000000|Private body/);
 });
 
-test('missing, null and unsafe deal identities never navigate and still allow Undo', async () => {
+test('missing, null and unsafe current deal identities never navigate and still allow Undo', async () => {
   for (const deal of [undefined, null, '', 'javascript:alert(1)', '../deal', 'uuid" onclick="alert(1)', {}, '20000000-0000-4000-8000-000000000001?x=y']) {
-    const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1, { deal })] }) });
+    const { container, view } = setup({ listEmailThreadFilings: async () => ({ filings: [filing(1, { current_deal_id: deal })] }) });
     await view.refresh();
     assert.equal(container.querySelector('a'), null);
-    assert.match(container.textContent, /Filed deal destination unavailable/);
+    assert.match(container.textContent, deal === null ? /no longer currently filed/ : /Current filing destination unavailable/);
     assert.ok(container.querySelector('[data-filing-undo]'));
   }
 });

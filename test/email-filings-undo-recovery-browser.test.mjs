@@ -9,9 +9,9 @@ import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 
 let outDir, server, browser, origin;
-const evidence = '/tmp/WR634.S1.J29-evidence';
+const evidence = '/tmp/WR634.S1.J37-evidence';
 const filing = n => ({ event_id: `40000000-0000-4000-8000-00000000000${n}`,
-  deal: `20000000-0000-4000-8000-00000000000${n}`, activity_version: null,
+  deal: `20000000-0000-4000-8000-00000000000${n}`, current_deal_id: `20000000-0000-4000-8000-00000000000${n}`, activity_version: null,
   subject: `Synthetic lease ${n} ${'LongSubject'.repeat(30)}`, sender_name: 'LongSender'.repeat(30),
   summary: 'PRIVATE synthetic@example.test', occurred_at: '2026-10-27T14:00:00Z' });
 const fulfill = (route, result) => route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
@@ -46,7 +46,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       const { name, arguments: args } = route.request().postDataJSON().params;
       if (name === 'list-email-thread-filings') {
         reads++;
-        return fulfill(route, { filings: [...(committed ? [] : [filing(1)]), ...(changed ? [] : [filing(2)]), filing(3)] });
+        return fulfill(route, { filings: [...(committed ? [] : [filing(1)]), { ...filing(2), current_deal_id: changed ? filing(3).deal : filing(2).deal }, { ...filing(3), current_deal_id: null }, { ...filing(4), current_deal_id: undefined }] });
       }
       if (name !== 'undo-email-thread-filing') return route.continue();
       requests.push(JSON.stringify(args));
@@ -67,6 +67,11 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await undo.waitFor();
     assert.equal(await first.getByRole('link').getAttribute('href'), '/deals?deal=20000000-0000-4000-8000-000000000001');
     assert.doesNotMatch(await panel.innerText(), /PRIVATE|example\.test/);
+    assert.equal(await third.getByRole('link').count(), 0);
+    await third.getByText(/no longer currently filed/).waitFor();
+    const legacy = panel.locator(`[data-filing-id="${filing(4).event_id}"]`);
+    assert.equal(await legacy.getByRole('link').count(), 0);
+    await legacy.getByText('Current filing destination unavailable.', { exact: true }).waitFor();
     assert.equal(await first.evaluate(node => node.scrollWidth <= node.clientWidth), true);
     await undo.focus();
     await page.keyboard.press('Enter');
@@ -94,9 +99,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await second.getByRole('button', { name: 'Undo', exact: true }).click();
     await second.getByText(/changed since it was filed/).waitFor();
     assert.ok(reads >= 3);
-    assert.equal(await second.getByRole('link').count(), 0);
-    assert.equal(await second.getByRole('button').count(), 0);
-    await second.getByText(/no longer currently filed/).waitFor();
+    assert.equal(await second.getByRole('link').getAttribute('href'), `/deals?deal=${filing(3).deal}`);
+    assert.equal(await second.locator(`a[href="/deals?deal=${filing(2).deal}"]`).count(), 0);
+    assert.equal(await second.getByRole('button', { name: 'Undo', exact: true }).count(), 1);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await panel.screenshot({ path: join(evidence, `${width}-${theme}-refused.png`) });
     await third.getByRole('button', { name: 'Undo', exact: true }).click();
