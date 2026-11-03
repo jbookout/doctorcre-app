@@ -60,8 +60,9 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.insertBefore(node, pageTools);
   }
-  pageTools.open = !vendorDirectory && Boolean(layout.querySelector('#appSidebarSlot').childElementCount);
-  pageTools.hidden = !pageTools.open && !layout.querySelector('.app-layout-working:not([hidden])');
+  const hasPageTools = Boolean(layout.querySelector('#appSidebarSlot').childElementCount);
+  pageTools.open = !vendorDirectory && hasPageTools;
+  pageTools.hidden = !hasPageTools && !layout.querySelector('.app-layout-working:not([hidden])');
   root.body.classList.add('has-app-layout');
   // A page that brings its own freshness and refresh owns the band's one clock and one refresh.
   const pageRefresh = status.querySelector('#appStatusSlot [data-layout-refresh]');
