@@ -268,3 +268,21 @@ test('call review labels its source age, due date and empty/loading states', () 
   assert.ok(h.host.querySelector('.home-followup-skeleton'));
   h.close();
 });
+
+
+test('follow-ups name and age their own call despite a newer call for the same deal', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-02T14:00:00Z') });
+  const tasks = await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([
+    { ...wire, source_call_started_at: '2026-10-26T14:00:00Z', source_call_label_key: wire.session_id, created_at: '2026-10-31T14:00:00Z' },
+    { ...wire, id: 'newer-card', session_id: 'newer-call', source_call_started_at: '2026-10-31T14:00:00Z', source_call_label_key: 'newer-call' },
+  ]) });
+  const h = mount();
+  try {
+    h.controller.update({ ...ready, tasks });
+    const sources = [...h.host.querySelectorAll('.home-call-source')];
+    assert.match(sources[0].textContent, /pipeline call.*Oct 26.*9:00 AM CDT.*7d ago/);
+    assert.match(sources[1].textContent, /pipeline call.*Oct 31.*9:00 AM CDT.*2d ago/);
+    assert.doesNotMatch(sources[0].textContent, /with Demo deal/);
+    assert.equal(sources[0].querySelector('time').dateTime, '2026-10-26T14:00:00Z');
+  } finally { h.close(); }
+});

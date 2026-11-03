@@ -685,3 +685,17 @@ for (const scenario of [
     else assert.equal(await page.getByRole('button', { name: 'Approve or fix this item' }).isEnabled(), true);
   } finally { await page.close(); await browser.close(); await server.close(); }
 });
+
+
+test('same-day call reviews have distinct recorded Chicago times', () => {
+  const call = synthetic()[0];
+  const dom = new JSDOM(callOutcomesHtml([
+    { ...call, started_at: '2026-10-26T14:00:00Z' },
+    { ...call, session_id: 'session-2', started_at: '2026-10-26T20:00:00Z' },
+  ]));
+  const titles = [...dom.window.document.querySelectorAll('h4')].map(node => node.textContent);
+  assert.notEqual(titles[0], titles[1]);
+  assert.match(titles[0], /9:00 AM CDT/);
+  assert.match(titles[1], /3:00 PM CDT/);
+  dom.window.close();
+});
