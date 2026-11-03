@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { uiBundle } from '../scripts/ui-bundle.mjs';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -12,10 +14,11 @@ const other = '22222222-2222-4222-8222-222222222222';
 const created = '44444444-4444-4444-8444-444444444444';
 const routeId = '55555555-5555-4555-8555-555555555555';
 const row = {id:tour,deal_id:deal,deal_name:'Demo deal',name:'Demo deal tour',status:'draft'};
-const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url)), 'src/ui/deal-tours.tsx');
 
 test('deal Tours lists, opens, starts and recovers on the fixture server', async t => {
-  const server = await startFixtureServer(); t.after(() => server.stop());
+  const artifact = await temporaryDirectory('doctorcre-deal-tours-', t);
+  await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
+  const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}}); t.after(() => server.stop());
   const browser = await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS]}); t.after(() => browser.close());
   await mkdir(new URL('../out/test-artifacts/deal-tours/',import.meta.url),{recursive:true});
   for (const width of [390,1024,1440]) for (const theme of ['light','dark']) await t.test(`${width} ${theme}`, async () => {
@@ -26,8 +29,6 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
       await page.route(/^https:\/\//, route => route.abort());
       const seed = JSON.parse((await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8')).replaceAll('"d14"',JSON.stringify(deal)));
       await page.route('**/data/board-seed.json',route => route.fulfill({json:seed}));
-      // PR 642 owns bundle registration. Exercise this island without changing its files.
-      await page.route('**/js/ui-deal-tours.js',route => route.fulfill({body:bundle,contentType:'text/javascript'}));
       await page.route('**/auth/session',route => route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}}));
       let mode = 'populated', hidden = false, write;
       await page.route('**/api/tours/**',route => {
@@ -51,7 +52,7 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
       });
       await page.goto(`${server.url}/deals?deal=${deal}`);
       await page.getByRole('tab',{name:'Tours',exact:true}).click();
-      await page.locator('[data-open-tour]').waitFor();
+      await page.locator('[data-open-tour]').waitFor({timeout:10000});
       assert.equal(await page.locator('[data-open-tour]').count(),1);
       assert.doesNotMatch(await page.locator('#workspace-tours').textContent(),/Other deal tour/);
       await page.locator('[data-open-tour]').click();
@@ -67,7 +68,7 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
       mode = 'outage'; await page.locator('[data-refresh-tours]').click();
       await page.getByText('Tours unavailable.',{exact:false}).waitFor();
       assert.doesNotMatch(await page.locator('#workspace-tours').textContent(),/database private/);
-      mode = 'populated'; await page.locator('[data-refresh-tours]').click(); await page.locator('[data-open-tour]').waitFor();
+      mode = 'populated'; await page.locator('[data-refresh-tours]').click(); await page.locator('[data-open-tour]').waitFor({timeout:10000});
       await page.locator('[data-start-tour]').click();
       await page.waitForFunction(() => document.querySelector('#create-subject-type').disabled && !document.querySelector('#create-tour').disabled);
       assert.equal(await page.locator('#create-subject-type').inputValue(),'deal');
