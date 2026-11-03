@@ -36,7 +36,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto(`http://localhost/${home ? '' : 'invoices'}?mode=live${query}`);
+  await page.goto(`http://localhost/${home ? 'review-workflows' : 'invoices'}?mode=live${query}`);
   await page.waitForFunction(home ? () => document.querySelector('#homeInvoices a[data-home-key]') : () => document.querySelector('[data-invoice]'));
   return { page, errors, attempts, setReceipt(value) { receipt = value; }, get reads() { return reads; }, get writes() { return writes; }, setFailed(value) { failed = value; }, setDenied(value) { denied = value; }, update(fn) { fn(data); } };
 }

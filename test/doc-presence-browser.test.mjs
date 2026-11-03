@@ -25,7 +25,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value=name==='quiet-follow-ups'?emptyQuietFollowUps():{ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
-   const methods={'read-home-agenda':'getHomeAgenda','read-post-call-followups':'getPostCallFollowups','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
+   const methods={'calendar-meeting-prep':'calendarMeetingPrep','read-home-agenda':'getHomeAgenda','read-post-call-followups':'getPostCallFollowups','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
    else if(methods[name]) { value=await fixture[methods[name]](name==='get-deal-room'?args.deal||args.deal_id:name==='deal-room-changes'?args.cursor:args); if(name==='get-deal-room') value={...value.deal,deal_id:value.deal.id,thread:value.thread,critical_dates:value.critical_dates.map(row=>({...row,due_on:row.date})),next_actions:value.next_actions,activities:value.activities,events:[]}; }
@@ -490,7 +490,7 @@ for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11
   await page.screenshot({path:new URL(`out/test-artifacts/w11/${name}-${width}.png`,root).pathname,animations:'disabled'});
   await page.locator('#docCommandRefresh').click();assert.equal(await page.locator('#docCommandInput').inputValue(),'Demo');
   assert.deepEqual(errors,[]);
-  assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|morning-brief|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
+  assert.equal(calls.some(row=>! /^(calendar-meeting-prep$|find$|deal-room-|list-|read-|get-|morning-brief|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
  });
 });
 
@@ -592,7 +592,7 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  assert.equal(reconciled.key,firstDecision.key,'reconcile resends the retained request under its key');
  assert.equal(retried.name,'propose-doc-correction');
  assert.notEqual(retried.key,firstCorrection.key,'a settled refusal retries under a fresh key');
- assert.deepEqual(calls.filter(call=>!/^(list-|read-|get-|deal-room-|today-triage|loop-board|incident-board|current-work-|notification-feed|morning-brief|find)/.test(call.name)).map(call=>call.name),[]);
+ assert.deepEqual(calls.filter(call=>!/^(calendar-meeting-prep$|list-|read-|get-|deal-room-|today-triage|loop-board|incident-board|current-work-|notification-feed|morning-brief|find)/.test(call.name)).map(call=>call.name),[]);
  assert.deepEqual(errors,[]);
 });
 

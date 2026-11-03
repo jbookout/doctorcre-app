@@ -178,6 +178,7 @@ export function mountAppLayout(root, host, pathname) {
     render('#appTodayNeeds', todayNeeds ? overdueRows(filterBriefOwners(todayNeeds, owners.current())).slice(0,6).join('') || empty : unavailable);
   };
   const owners = mountBriefOwnerFilter(root, layout.querySelector('#appTodayOwners'), () => { nextExpanded = false; renderToday(); });
+  for (const button of layout.querySelectorAll('#appTodayOwners button')) button.setAttribute('aria-label', `Reminders for ${button.textContent === 'All' ? 'everyone' : button.textContent}`);
   layout.querySelector('#appTodayShowAll').onclick = () => {
     nextExpanded = true; renderToday();
     layout.querySelectorAll('#appTodayNext [data-layout-deal]')[3]?.focus();

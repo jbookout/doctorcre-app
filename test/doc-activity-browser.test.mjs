@@ -41,6 +41,8 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
         if(fail){fail=false;return route.fulfill({status:504,body:''});}
       }else if(params.name==='deal-room-board'){
         result={actor:'joe',deals:[]};
+      }else if(params.name==='calendar-meeting-prep'){
+        result={state:'empty',items:[]};
       }else if(params.name==='today-triage'){
         result={items:[]};
       }else if(params.name==='list-feature-switches'){

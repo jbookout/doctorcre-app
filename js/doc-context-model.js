@@ -32,7 +32,7 @@ export const DOC_PAGES = Object.freeze({
   share: { label: 'Tour report', reads: [], approvals: false },
 });
 
-const routes = { '/': 'home', '/workspace': 'home', '/workspace.html': 'home', '/business': 'home',
+const routes = { '/': 'home', '/review-workflows': 'home', '/workspace': 'home', '/workspace.html': 'home', '/business': 'home',
   '/deals': 'deals', '/index.html': 'deals', '/pipeline': 'deals', '/pipeline.html': 'deals',
   '/leads': 'leads', '/leads.html': 'leads', '/tours': 'tours', '/tours/index.html': 'tours', '/tours/route-editor.html':'tours',
   '/clients': 'clients', '/vendors': 'vendors', '/business.html': 'clients',

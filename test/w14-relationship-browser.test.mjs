@@ -78,7 +78,7 @@ async function open(t, width = 1440) {
     if (url.pathname.startsWith("/api/")) return r.fulfill({ json: {} });
     const file =
       url.pathname === "/"
-        ? "workspace.html"
+        ? "review-workflows.html"
         : url.pathname === "/relationships"
           ? "relationships.html"
           : url.pathname.slice(1);
