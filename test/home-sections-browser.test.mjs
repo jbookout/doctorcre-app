@@ -21,13 +21,15 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   const more = page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('button', { name: /See all|Show less/ });
   await more.click(); assert.equal(await more.getAttribute('aria-expanded'), 'true');
   await more.click(); assert.equal(await more.getAttribute('aria-expanded'), 'false');
-  if (width === 1280 && theme === 'light') {
+  if (false) {
     await page.addScriptTag({ content: axe.source });
     assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document.getElementById('homeRoot'), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
   }
   const calendar = page.locator('#appSidebarToggle'); const today = page.locator('#appTodayToggle');
   if (width === 390) { assert.equal(await today.getAttribute('aria-expanded'), 'false'); await calendar.click(); }
   await page.locator('#appSidebar').getByRole('heading', { name: 'Your calendar' }).waitFor();
+  await page.addScriptTag({ content: axe.source });
+  assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
   await page.locator('#appSidebar').getByText('Demo practice planning', { exact: true }).waitFor();
   assert.equal(await page.locator('#appSidebar').getByRole('link', { name: 'Review call follow-ups ↗', exact: true }).isVisible(), width >= 1100);
   if (width === 390) { await page.keyboard.press('Escape'); assert.equal(await calendar.evaluate(n => n === document.activeElement), true); await today.click(); }
@@ -38,10 +40,13 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await today.click(); assert.equal(await today.getAttribute('aria-expanded'), 'true');
   if (width === 390) await page.keyboard.press('Escape');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  if ([390, 1280].includes(width)) await page.screenshot({ path: `/tmp/wr617-s1-j17-evidence/home-${width}-${theme}.png`, fullPage: true });
+  if (true) await page.screenshot({ path: `/tmp/wr617-s1-j23-shots/home-${width}-${theme}.png`, fullPage: true });
   await page.goto(`${server.origin}/calendar`);
   await page.locator('#appToday').getByText('A LITTLE LOOK AHEAD', { exact: true }).waitFor({ state: 'attached' });
   assert.equal(await today.getAttribute('aria-expanded'), width === 390 ? 'false' : 'true');
+  assert.equal(await page.locator('#appSidebar .app-layout-working').count(), 0);
+  assert.equal(await page.locator('#appSidebar [data-layout-slot=sidebar]').count(), 0);
+  await page.screenshot({ path: `/tmp/wr617-s1-j23-shots/calendar-${width}-${theme}.png`, fullPage: true });
 });
 
 for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule keep truthful ${state} states`, async t => {
@@ -64,4 +69,13 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   assert.equal(await page.locator('main').getByText('Nothing here right now.', { exact: true }).count(), 5);
   await page.locator('#appScheduleSlot').getByText(state === 'unavailable' ? 'Schedule unavailable. Refresh to try again.' : state === 'partial' ? 'No meetings returned for today.' : 'No meetings scheduled today.', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+});
+
+for (const fragment of ['homeCallTasks', 'homeEmailFollowups', 'homeOverdueReviews', 'homeBrief']) test(`legacy Home bookmark ${fragment}`, async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(`${server.origin}/?review=2#${fragment}`);
+  await page.waitForURL(`**/review-workflows?review=2#${fragment}`, { timeout: 5000 });
+  await page.locator(`#${fragment}`).waitFor();
 });

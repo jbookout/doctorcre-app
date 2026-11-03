@@ -147,3 +147,5 @@ test('Home discovers its boot mode while the client bootstrap is downloading', a
   await page.locator('#dealFlags .home-flag').first().waitFor();
   assert.ok(await page.locator('#dealFlags .home-flag').count() > 0);
 });
+
+test('Home timing covers root Home', () => { assert.equal(screens.find(screen => screen.id === 'home').route, '/'); });
