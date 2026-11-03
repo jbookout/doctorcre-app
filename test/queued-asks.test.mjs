@@ -74,3 +74,19 @@ test('unknown stays unknown while offline and concurrent flush sends once in one
  const offline=setup(s.storage);await offline.box.flush();
  assert.equal(offline.box.entries()[0].kind,'unknown');assert.equal(offline.calls.length,0);
 });
+
+test('asks queued during a held submission drain without retrying unknown outcomes', async () => {
+ const storage=memory(), calls=[];
+ let finish, serial=0;
+ const box=createAskOutbox({storage,actor:'busy',conversation,online:()=>true,
+  uuid:()=>`22222222-2222-4222-8222-${String(++serial).padStart(12,'0')}`,
+  submit:request=>{calls.push(request);return calls.length===1?new Promise(resolve=>{finish=()=>resolve({});}):receipt(request);}});
+ box.saveDraft('First');box.enqueue();const pending=box.flush();
+ assert.equal(box.entries()[0].kind,'submitting');
+ box.saveDraft('Second');box.enqueue();await box.flush();
+ box.saveDraft('Third draft');
+ finish();await pending;
+ assert.deepEqual(box.entries().map(row=>row.kind),['unknown','accepted']);
+ assert.equal(calls.length,2);assert.equal(box.draft(),'Third draft');
+ assert.equal(calls[1].body,'Second');
+});
