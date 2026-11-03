@@ -111,6 +111,7 @@ for (const [name, total, answerAt, continuations, appended] of [
       const {view} = await import('/js/conversations.js');
       return window.reads.length > reads && !view.conversation.refreshing;
     }, before.reads);
+    assert.ok(await page.evaluate(reads => window.reads.length - reads <= 100, before.reads), 'each refresh batch must stay bounded');
     assert.equal(await page.locator('[data-target=true]').count(), 1, 'refresh must retain the reached target');
     assert.equal(await page.locator('[data-msg-id]').count(), total, 'refresh must retain the displayed extent');
     assert.equal(await page.evaluate(() => scrollY), before.y, 'refresh must preserve the viewport');

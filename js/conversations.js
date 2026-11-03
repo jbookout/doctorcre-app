@@ -197,7 +197,9 @@ function renderTurns() {
     renderedTurns = turnsHtml;
   }
   const paging = pagingState(payload);
-  $("pagingBlock").hidden = !paging.more;
+  $("pagingBlock").hidden = !paging.more && !view.conversation.catchup;
+  $("pagingTitle").textContent = view.conversation.catchup
+    ? 'Conversation refresh is incomplete. Show more to finish refreshing.' : 'More turns are held';
   if (view.route.targetMsgId && view.conversation.state === 'read'
       && !turnRows(payload).some(turn => turn.msgId === view.route.targetMsgId)) {
     block.hidden = false;
@@ -484,12 +486,14 @@ async function takeConversation({ after = null, background = false, signal } = {
   render();
   try {
     const args = { conversation_id: view.route.id, limit: LIMIT };
-    if (Number.isInteger(after)) args.after_sequence = after;
+    const catchup = background ? view.conversation.catchup : null;
+    const prefix = catchup?.payload || (Number.isInteger(after) ? held : null);
+    if (catchup) args.after_sequence = pagingState(catchup.payload).after;
+    else if (Number.isInteger(after)) args.after_sequence = after;
     let payload = await readClient("readDocConversation", args, signal);
     if (view.sequence !== sequence || signal?.aborted) return;
-    let pages = Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
-    payload = Number.isInteger(after) && held
-      ? { ...payload, turns: [...held.turns, ...payload.turns] } : payload;
+    let pages = catchup ? catchup.pages + 1 : Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
+    payload = prefix ? { ...payload, turns: [...prefix.turns, ...payload.turns] } : payload;
     const takePage = createPageBudget();
     takePage();
     // eslint-disable-next-line no-restricted-syntax -- Conversation target traversal has a max of 100 pages; takePage runs before each page read.
@@ -505,8 +509,12 @@ async function takeConversation({ after = null, background = false, signal } = {
       payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
       pages++;
     }
-    loadedPages.conversation = pages;
-    view.conversation = { state: "read", payload, observed_at: new Date().toISOString() };
+    if (background && pages < loadedPages.conversation && pagingState(payload).more) {
+      view.conversation = { ...view.conversation, refreshing: false, catchup: { payload, pages } };
+    } else {
+      loadedPages.conversation = pages;
+      view.conversation = { state: "read", payload, observed_at: new Date().toISOString() };
+    }
   } catch (error) {
     if (view.sequence !== sequence || signal?.aborted) return;
     if ([401,403].includes(error.status)) { invalidateConversations(); return; }
@@ -909,7 +917,8 @@ async function boot() {
   });
   $("showMore")?.addEventListener("click", () => {
     const paging = pagingState(payloadOf());
-    if (paging.more) takeConversation({ after: paging.after });
+    if (view.conversation.catchup) takeConversation({ background: true });
+    else if (paging.more) takeConversation({ after: paging.after });
   });
   // The toggle is not a filter over rows this page already holds: it is the
   // verb's `include_archived`, so pressing it costs a fresh read and the page
