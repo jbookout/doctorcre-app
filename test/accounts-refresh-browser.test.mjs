@@ -35,7 +35,7 @@ for (const recovery of [false, true]) for (const interval of [60_000]) {
     const page = await accountPage(t);
     await page.locator('.account-card').first().click();
     if (recovery) {
-          await page.locator('#search').fill('zz-no-synthetic-match');
+      await page.locator('#search').fill('zz-no-synthetic-match');
       await page.keyboard.press('Tab');
       await page.keyboard.press('Escape');
     }
@@ -79,7 +79,7 @@ for (const query of ['Demo', 'zz-no-synthetic-match']) {
     const card = page.locator('.account-card').first();
     const accountId = await card.getAttribute('data-account');
     await card.click();
-      await page.locator('#search').fill(query);
+    await page.locator('#search').fill(query);
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
     await page.locator('#accountBack').click();
