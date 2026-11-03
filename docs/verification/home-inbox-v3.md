@@ -7,7 +7,7 @@
 | Screen transition | Executed test |
 | --- | --- |
 | Work needs review | `Home refresh transition Work needs review` |
-| Processing completes into Done | `Home refresh transition Processing completes` |
+| Processing completes into Done, hide completed update | `Home refresh transition Processing completes` |
 | Hide from inbox, Undo hide, hide again | `automatic settlement reasons and lifecycle on Home` at all four widths and both themes |
 | Snooze, Wake, snooze again | `automatic settlement reasons and lifecycle on Home` at all four widths and both themes |
 | Canonical task, reply, fact review or tour feedback resolves | `v3 accepts canonical resolution of … outside the working list`; `automatic settlement reasons and lifecycle on Home` checks the visible reason and grouping |

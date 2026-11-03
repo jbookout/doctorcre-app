@@ -91,8 +91,12 @@ for (const [transition, before, after] of [
   const item = { item_id: 'transition', source_id: id, source_type: transition === 'Processing completes' ? 'capture_session' : 'next_action', source_version: 's1', title: 'Synthetic transition', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: transition === 'Processing completes' ? 'Call' : 'Task', merged_source_ids: [], action_id: transition === 'Processing completes' ? null : id, action_version: transition === 'Processing completes' ? null : 7, deal_id: null, auto_settled: false, ...before };
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/mcp', route => {
-    const { name } = route.request().postDataJSON().params;
-    const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [item] } : { items: [] };
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    let payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [item] } : { items: [] };
+    if (name === 'settle-home-inbox') {
+      Object.assign(item, { section: 'settled', disposition: 'settled', base_version: 'opaque:2' });
+      payload = { ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: args.items[0].item_id, ok: true, item }] };
+    }
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(`${server.origin}/?mode=live`);
@@ -103,4 +107,8 @@ for (const [transition, before, after] of [
   await page.getByRole('region', { name: section, exact: true }).locator('[data-inbox-row="transition"]').waitFor();
   if (after.auto_settled) await page.getByText('Task completed', { exact: true }).waitFor();
   else await page.locator('[data-inbox-row="transition"] .inbox-badge').filter({ hasText: after.source_state.replaceAll('_', ' ') }).waitFor();
+  if (transition === 'Processing completes') {
+    await page.locator('[data-inbox-row="transition"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
+    await page.getByRole('region', { name: 'Hidden from inbox', exact: true }).getByText('Hidden from inbox by you', { exact: true }).waitFor();
+  }
 });
