@@ -36,7 +36,7 @@ export function BulkControls({ client, picked, selected, locked, select, snapsho
       if (operation.kind === 'applying') select(new Set(result.results.filter(row => row.status !== 'applied').map(row => row.item_id)));
       const applied = result.results.filter(row => row.status === 'applied').length;
       announce(`${operation.kind === 'undoing' ? 'Batch undo confirmed' : 'Batch confirmed'}. ${applied} applied. ${result.results.length - applied} unchanged or refused.${result.snapshot ? '' : ' Inbox refresh unavailable. Refresh before another batch.'}`);
-      setSubset(new Set());
+      setSubset(new Set(operation.kind === 'undoing' ? result.results.filter(row => row.status === 'not_allowed' || row.status === 'not_found').map(row => row.item_id) : []));
     } catch (error) {
       if (!mounted.current) return;
       const message = error instanceof Error ? error.message : 'Server confirmation unavailable.';

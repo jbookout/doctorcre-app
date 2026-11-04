@@ -68,6 +68,7 @@ test('stale undo refuses plainly and retains remaining undo choices', async t =>
   await page.locator('[data-batch-state="undo_refused"]').waitFor();
   assert.equal(await page.getByText(/This card changed.*Nothing was overwritten/).count(), 4);
   assert.equal(fake.items.every(item => item.disposition === 'settled'), true);
+  assert.equal(await page.getByRole('checkbox', { name: 'Undo Synthetic a', exact: true }).isChecked(), true);
 });
 test('lost response retries identical request and never claims early success', async t => {
   const { page, fake } = await open(t, { mixed: false, lost: true });
