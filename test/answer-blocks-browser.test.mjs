@@ -87,6 +87,23 @@ test('bounded DOM, idempotent mounting, independent block reset and disposal',as
  assert.equal(await page.locator('#reader-test input').inputValue(),'');
  await page.evaluate(()=>{const {api,host}=window.reader;api.disposeAnswerBlocks(host);api.disposeAnswerBlocks(host);});
  assert.equal(await page.locator('#reader-test').textContent(),'');
+ await page.evaluate(()=>{const {api,host}=window.reader;api.mountAnswerBlocks(host,[{type:'html',id:'bad'}],'unavailable');});
+ await page.locator('#reader-test').getByText('Interactive answer unavailable',{exact:true}).waitFor();
+ await page.evaluate(()=>{const {api,host}=window.reader;api.disposeAnswerBlocks(host);});
+ assert.equal(await page.locator('#reader-test').textContent(),'');
+ await page.evaluate(()=>{
+  const {api,host,table}=window.reader;
+  const other=document.createElement('div');other.id='other-answer';document.body.append(other);
+  window.reader.other=other;
+  api.mountAnswerBlocks(host,[{...table,rows:[table.rows[0]]}],'first');
+  api.mountAnswerBlocks(other,[{...table,rows:[table.rows[0]]}],'other');
+ });
+ await page.locator('#reader-test input').waitFor();
+ await page.locator('#other-answer input').fill('kept');
+ await page.evaluate(()=>{const {api,host}=window.reader;api.disposeAnswerBlocks(host);host.remove();});
+ assert.equal(await page.locator('#reader-test').count(),0);
+ assert.equal(await page.locator('#other-answer input').inputValue(),'kept');
+ await page.evaluate(()=>{const {api,other}=window.reader;api.disposeAnswerBlocks(other);other.remove();});
 });
 
 test('long chart labels stay readable within a 390px page on focus and hover',async t=>{

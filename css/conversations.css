@@ -27,7 +27,7 @@
 .answer-scroll td { min-width: 7rem; }
 .answer-source { font-size: .8rem; }
 .answer-source span { display: block; max-width: 15rem; overflow-wrap: anywhere; }
-.answer-chart { margin: 1rem 0; }
+.answer-chart { margin: 1rem 0; overflow-wrap: anywhere; }
 .answer-chart svg { display: block; width: 100%; height: auto; }
 .answer-chart :focus { outline: 3px solid currentColor; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
