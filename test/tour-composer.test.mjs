@@ -1346,7 +1346,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
     if (!tour) return { ok: false, status: 404 };
     const routes = structuredClone(tour.routes);
     for (const route of routes) route.acceptance_digest = fixtureReviewDigest(route);
-    return { ok: true, data: projectTourDetail({ id: tour.id, tour_name: tour.name, tour_status: "draft", routes }) };
+    return { ok: true, data: projectTourDetail({ id: tour.id, deal_id: tour.deal_id, tour_name: tour.name, tour_status: "draft", routes }) };
   } });
   let displayedDigest;
   store.fetch = async (path, options) => {
@@ -1354,6 +1354,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
     const result = await handler.fetch(new Request(`https://app.doctorcre.com${path}`), { APP_HOST: "app.doctorcre.com" }, {}, actor, session);
     const payload = await result.clone().json();
     if (payload.data) {
+      assert.equal(payload.data.deal_id, fixtureDeal);
       displayedDigest = payload.data.routes[0].acceptance_digest;
       assert.equal(payload.data.route_acceptance_digest, displayedDigest);
     }
