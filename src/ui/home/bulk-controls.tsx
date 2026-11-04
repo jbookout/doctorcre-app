@@ -2,9 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { centralInstant, tomorrowCentral } from '../central-time';
 import { batchRequest, transition, undoRequest, type BatchState, type BatchEvent } from './batch';
 import { type InboxClient, type InboxItem, type Snapshot } from './inbox';
-type Props = { client: InboxClient; picked: readonly InboxItem[]; selected: ReadonlySet<string>; locked: boolean; select(ids: Set<string>): void; snapshot(value: Snapshot): void; prepare(): Promise<void>; lock(value: boolean): void };
+type Props = { client: InboxClient; picked: readonly InboxItem[]; selected: ReadonlySet<string>; locked: boolean; select(ids: Set<string>): void; snapshot(value: Snapshot): void; prepare(): Promise<void>; lock(value: boolean): void; finish(): void };
 const labels = { applied: 'Applied', already: 'Already', not_found: 'Not found', not_allowed: 'Not allowed' };
-export function BulkControls({ client, picked, selected, locked, select, snapshot, prepare, lock }: Props) {
+export function BulkControls({ client, picked, selected, locked, select, snapshot, prepare, lock, finish }: Props) {
   const [state, setState] = useState<BatchState>({ kind: 'selection' });
   const current = useRef(state);
   const mounted = useRef(true);
@@ -76,7 +76,7 @@ export function BulkControls({ client, picked, selected, locked, select, snapsho
           <button onClick={() => { const next = send({ kind: 'undo', request: undoRequest(batch) }); if (next.kind === 'undoing') void execute(next); }}>Undo whole batch</button>
           <button disabled={!subset.size} onClick={() => { const next = send({ kind: 'undo', request: undoRequest(batch, [...subset]) }); if (next.kind === 'undoing') void execute(next); }}>Undo selected results</button>
         </fieldset>}
-        {!busy && <button onClick={() => { send({ kind: 'reset' }); announce(''); }}>Finish reviewing batch</button>}
+        {!busy && <button onClick={() => { send({ kind: 'reset' }); announce('Batch review finished.'); finish(); }}>Finish reviewing batch</button>}
       </>}
     </section>}
     {!picker && error && <p role="alert">{error}</p>}
