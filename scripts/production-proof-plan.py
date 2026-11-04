@@ -77,6 +77,31 @@ def path_class(path):
                  if any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)), 'runtime')
 
 
+UNKNOWN_DEPENDENCY = '@unknown-executable-dependency'
+
+
+def executable_dependencies(path, text, resolve):
+    if not path.endswith(('.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.html')):
+        return set()
+    dependencies = set()
+
+    def dependency(reference):
+        if reference.startswith('node:'):
+            return
+        resolved = resolve(path, reference) if reference.startswith(('.', '/')) else set()
+        dependencies.update(resolved or {UNKNOWN_DEPENDENCY})
+
+    for match in re.finditer(r'\b(?:import|require)\s*\(', text):
+        literal = re.match(r"\s*(['\"`])([^'\"`\n]+)\1\s*\)", text[match.end():])
+        if literal and '${' not in literal[2]:
+            dependency(literal[2])
+        else:
+            dependencies.add(UNKNOWN_DEPENDENCY)
+    for match in re.finditer(r"\b(?:from|import)\s*(['\"`])([^'\"`\n]+)\1", text):
+        dependency(match[2])
+    return dependencies
+
+
 def non_product_paths(sources):
     files = dict(sources)
     scripts = {path for path in files if path_class(path) == 'tooling-candidate'}
@@ -103,6 +128,7 @@ def non_product_paths(sources):
         references += [name.replace('.', '/') for name in
                        re.findall(r'^\s*(?:from|import)\s+([\w.]+)', text, re.M)]
         edges[path] = set().union(*(resolve(path, ref) for ref in references))
+        edges[path].update(executable_dependencies(path, text, resolve))
         try:
             tokens = shlex.split(text, comments=True)
         except ValueError:
@@ -145,6 +171,8 @@ def non_product_paths(sources):
     certified = reachable(tools) & scripts
     # Unreferenced scripts are unknown, so their dependencies cannot be certified.
     excluded = reachable(runtime | (scripts - certified))
+    if UNKNOWN_DEPENDENCY in excluded:
+        return set()
     return (certified | {path for path in files if path_class(path) == 'non-product'}) - excluded
 
 
@@ -167,7 +195,7 @@ def source_tree(git, sha):
     scripts = [path for path in paths if path_class(path) == 'tooling-candidate']
     # Keep references through all file classes, including test intermediaries.
     matches = git('grep', '-I', '-z', '-o', '-E', '-e',
-                  r"['\"`](\.\.?/|scripts/)[^'\"`]*['\"`]|scripts/[^[:space:]'\"`;,)]*|npm[[:space:]][^'\"`;]{0,200}|(from|import) [[:alnum:]_.]+", sha, '--')
+                  r"['\"`](\.\.?/|scripts/)[^'\"`]*['\"`]|scripts/[^[:space:]'\"`;,)]*|npm[[:space:]][^'\"`;]{0,200}|(from|import) [[:alnum:]_.]+|(import|export|from|require)[[:space:](].{0,200}", sha, '--')
     sources = {path: '' for path in paths}
     sources.update({'src/unclassified/' + path: "'" + path + "'" for path in scripts
                     if modes[path] not in {'100644', '100755'}})

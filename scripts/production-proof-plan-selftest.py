@@ -55,6 +55,20 @@ class AdmissionTest(unittest.TestCase):
             self.assertEqual(self.adapter.admission(self.snapshot(paths=[path]), self.validator, self.contract).status, 'refused')
         self.assertEqual(self.adapter.admission(snap._replace(source_trees=(sources, sources + (('src/main.js', 'import "../scripts/helper.py"'),))), self.validator, self.contract).status, 'refused')
 
+    def test_unknown_dependency_only_blocks_when_runtime_reachable(self):
+        sources = (('.github/workflows/ci.yml', 'node scripts/collector.mjs'),
+                   ('scripts/collector.mjs', 'await import(moduleName)'),
+                   ('scripts/build.mjs', 'console.log("build")'),
+                   ('package.json', '{"scripts":{"build":"node scripts/build.mjs"}}'))
+        snap = self.snapshot(paths=['scripts/collector.mjs'])._replace(source_trees=(sources,))
+        self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'admitted')
+        for reference in ['await import(moduleName)', 'import "./missing.mjs"',
+                          'import "fixture-app/collector"']:
+            with self.subTest(reference=reference):
+                runtime = sources + (('scripts/build.mjs', reference),)
+                decision = self.adapter.admission(snap._replace(source_trees=(runtime,)), self.validator, self.contract)
+                self.assertEqual(decision.status, 'refused', decision)
+
     def test_build_commands_override_tooling_and_lifecycle(self):
         sources = (('.github/workflows/ci.yml', 'node scripts/collector.mjs'),
                    ('scripts/collector.mjs', 'pass'),
