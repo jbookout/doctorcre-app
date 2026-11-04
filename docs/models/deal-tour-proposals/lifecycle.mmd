@@ -1,0 +1,14 @@
+stateDiagram-v2
+  [*] --> none
+  none --> pending: Current deal read finds proposal
+  pending --> comparing: Compare
+  comparing --> choosing: Use theirs, Keep mine or property choice
+  choosing --> choosing: Revise local choices
+  choosing --> accepting: Accept
+  accepting --> accepted: Receipt and shortlist readback confirmed
+  accepting --> stale: Shortlist version refused
+  accepting --> refused: Refused or outcome unconfirmed
+  stale --> choosing: Refresh comparison, preserve choices
+  refused --> accepting: Replay same request
+  accepted --> pending: Next pending proposal
+  pending --> none: Session ends or no pending proposals

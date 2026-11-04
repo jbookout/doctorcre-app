@@ -342,3 +342,11 @@
 
 .has-app-layout .deal-tour-departure { width: min(480px, calc(100vw - 32px)); padding: var(--space-5); }
 .deal-tour-departure .btn { margin-inline-end: var(--space-2); }
+
+.deal-tour-proposals:has(h3) { border: 1px solid var(--hairline); border-radius: 12px; padding: 16px; margin-block: 16px; }
+.proposal-properties { list-style: none; padding: 0; display: grid; gap: 12px; }
+.proposal-properties li { display: grid; gap: 6px; border-bottom: 1px solid var(--hairline); padding-block: 10px; }
+.deal-tour-proposals code { overflow-wrap: anywhere; font-size: 0.8em; }
+.proposal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.proposal-properties input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; vertical-align: middle; }
+.deal-tour-proposals .badge, [data-tour-proposal-badge] { display: inline-block; font-size: var(--font-size-1); padding: 2px 6px; border: 1px solid var(--hairline); border-radius: 8px; }

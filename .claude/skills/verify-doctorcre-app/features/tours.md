@@ -17,3 +17,5 @@ Run npx playwright test --project=fixtures tests/fixtures/tours-client-drafts.sp
 ## Gotchas
 
 The editor is a same-origin frame with its own document. Use frameLocator with the title Tour shortlist, route and packet. The parent URL owns the selection. The frame cannot create without a matching deal workspace parent. Editor responses and recovered requests still use the authenticated CARR contract. Retained requests preserve their original session and tour binding. Reconcile an unresolved request in its original workspace. These tests prove synthetic persistence only.
+
+Client tour proposals appear above the workspace tabs' content. Compare added, removed and unchanged CARR property IDs, choose Use theirs, Keep mine or individual membership, then Accept. Unknown-tool producers hide this surface. Other outages and stale writes retain honest states. Run node --test test/deal-tour-proposals.test.mjs test/deal-tour-proposals-browser.test.mjs. Synthetic screenshots are under out/test-artifacts/deal-tour-proposals. These checks do not prove the unbuilt portal endpoint or production persistence.

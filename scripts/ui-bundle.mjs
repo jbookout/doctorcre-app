@@ -34,6 +34,7 @@ const UI_ENTRIES = {
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-tours': 'deal-tours',
+  'ui-deal-tour-proposals': 'deal-tour-proposals',
   'ui-inbox': 'inbox-entry',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',
