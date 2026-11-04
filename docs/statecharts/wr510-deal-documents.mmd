@@ -1,0 +1,21 @@
+stateDiagram-v2
+  [*] --> Loading
+  Loading --> Ready: Valid page with files
+  Loading --> Empty: Valid empty page
+  Loading --> Unavailable: Failed read or invalid metadata
+  Ready --> LoadingMore: Load more
+  LoadingMore --> Ready: Valid next page
+  LoadingMore --> Unavailable: Failed read or repeated cursor
+  Unavailable --> Loading: Retry first page
+  Unavailable --> LoadingMore: Retry next page
+  Ready --> Loading: Refresh
+  Empty --> Loading: Refresh
+  Loading --> Expired: Session refused
+  Ready --> Expired: Session invalidated
+  LoadingMore --> Expired: Session invalidated
+  Empty --> Expired: Session invalidated
+  Unavailable --> Expired: Session invalidated
+  Loading --> Disposed: Leave deal
+  LoadingMore --> Disposed: Leave deal
+  Ready --> Disposed: Leave deal
+  Disposed --> [*]

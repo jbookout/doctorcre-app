@@ -339,3 +339,9 @@
 .deal-tour-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block: var(--space-3); }
 .deal-tours .btn { min-height: 44px; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .deal-tours li, .deal-tours h3 { overflow-wrap: anywhere; }
+
+.deal-document-list { list-style: none; padding: 0; display: grid; gap: 1rem; }
+.deal-document-list li { padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-2); overflow-wrap: anywhere; }
+.deal-document-list h3 { margin: 0; }
+.deal-document-list dd { margin-inline-start: 0; overflow-wrap: anywhere; }
+.deal-document-list summary { cursor: pointer; }
