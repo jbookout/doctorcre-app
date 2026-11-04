@@ -29,7 +29,7 @@ def admission(validator, body, paths, root, contract):
     policy = dict(contract)
     policy['x-non-product-paths'] = contract['x-non-product-paths'] + [
         'scripts/production-proof-plan.py', 'scripts/production-proof-plan-selftest.py',
-        'scripts/vendor/production-proof-plan.v1.py',
+        'scripts/vendor/production-proof-plan.v1.py', 'scripts/check-action-pins.mjs',
     ]
     policy['x-required-targets'] = dict(contract['x-required-targets'], app=['*'])
     if validator.product_paths(paths, policy) and not any(
