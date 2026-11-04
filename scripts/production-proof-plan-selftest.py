@@ -44,6 +44,33 @@ class AdmissionTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Production proof', result.stdout)
 
+    def test_app_cannot_borrow_other_runtime_proofs(self):
+        path = self.root / 'proofs/requirements/app-proof-admission.json'
+        value = json.loads(path.read_text())
+        for target, runner in [('studio', 'studio-run-receipt.v1'),
+                               ('worker', 'worker-release-smoke.v1')]:
+            value['targets'] = [target]
+            value['assertions'][0]['runner'] = runner
+            path.write_text(json.dumps(value))
+            result = self.run_plan(BODY)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn('unsupported app production proof', result.stdout)
+
+    def test_app_declaration_names_unsupported_runner(self):
+        path = self.root / 'proofs/requirements/app-proof-admission.json'
+        value = json.loads(path.read_text())
+        value['targets'] = ['app']
+        value['assertions'][0]['runner'] = 'app-release-live-walk.v1'
+        path.write_text(json.dumps(value))
+        result = self.run_plan(BODY)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('unsupported app production proof', result.stdout)
+
+    def test_upstream_contract_bytes(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256((ROOT / 'contracts/production-proof-plan.v1.json').read_bytes()).hexdigest(),
+                         '36224e67292a2a834dc03b0021ba09379894b3e9207cf08d492fd5e8432d6a6f')
+
     def test_valid_declaration_passes(self):
         result = self.run_plan(BODY)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
