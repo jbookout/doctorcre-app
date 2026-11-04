@@ -345,3 +345,5 @@
 .deal-document-list h3 { margin: 0; }
 .deal-document-list dd { margin-inline-start: 0; overflow-wrap: anywhere; }
 .deal-document-list summary { cursor: pointer; }
+.has-app-layout .deal-tour-departure { width: min(480px, calc(100vw - 32px)); padding: var(--space-5); }
+.deal-tour-departure .btn { margin-inline-end: var(--space-2); }
