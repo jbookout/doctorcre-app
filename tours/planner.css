@@ -26,3 +26,6 @@
 .tour-library-page { max-width: 72rem; margin: auto; padding: var(--space-4); display: grid; gap: var(--space-4); }
 .tour-library-page .library-card { width: 100%; }
 .tour-library-page .tour-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .tour-library-page { padding-inline: var(--space-3); }
+}
