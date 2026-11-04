@@ -18,7 +18,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.goto(server.origin);
   await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
-  for (const name of ['Needs your attention', 'Today', 'In motion and waiting', 'Done today', 'Earlier and undated completions']) assert.equal(await page.locator('main').getByRole('heading', { name: new RegExp(`^${name}`) }).count(), 1);
+  for (const name of ['Needs your attention', 'Today', 'In motion and waiting', 'Done today', 'Earlier and undated completions']) await page.locator('main').getByRole('heading', { name: new RegExp(`^${name}`) }).waitFor();
   await page.getByText('Nothing here right now.', { exact: true }).first().waitFor();
   const more = page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('button', { name: /See all|Show less/ });
   await more.click(); assert.equal(await more.getAttribute('aria-expanded'), 'true');

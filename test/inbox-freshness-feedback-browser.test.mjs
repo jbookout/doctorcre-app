@@ -57,10 +57,14 @@ test('focus refreshes once; visible clock refreshes every minute; hidden offline
   const { page, calls } = await open(t, { clock: true });
   await page.locator('[data-inbox-row="a"]').waitFor();
   const initial = reads(calls);
+  const focused = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-inbox-v3');
   await focus(page);
+  await (await focused).finished();
   await page.waitForFunction(() => !document.querySelector('.inbox-health').textContent.includes('Updating'));
   assert.equal(reads(calls), initial + 1, 'one returning-focus read');
+  const interval = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-inbox-v3');
   await page.clock.runFor(60_000);
+  await (await interval).finished();
   await page.waitForFunction(() => !document.querySelector('.inbox-health').textContent.includes('Updating'));
   assert.equal(reads(calls), initial + 2, 'one visible interval read');
   await visible(page, 'hidden');
