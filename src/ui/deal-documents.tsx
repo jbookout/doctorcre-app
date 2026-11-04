@@ -1,8 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { documentRows, FILE_ACCEPT, draftStore, stageFiles } from './share-draft-store';
+import { documentRows, FILE_ACCEPT, draftStore, stageFiles, bindActor } from './share-draft-store';
 import type { UploadClient } from './share-draft-store';
-export function mountDealDocuments(element: Element, {dealId, client}: {dealId: string; client: Pick<UploadClient,'listDealDocuments'>}) {
+export function mountDealDocuments(element: Element, {dealId, actor, client}: {dealId: string; actor: string; client: Pick<UploadClient,'listDealDocuments'>}) {
   const root=createRoot(element), controller=new AbortController();
   let disposed=false, busy=false, rows: Record<string,unknown>[]=[], message='Loading documents…', cursor: string | null=null;
   function render() {
@@ -17,14 +17,15 @@ export function mountDealDocuments(element: Element, {dealId, client}: {dealId: 
     </section>));
   }
   async function stage(files: File[]) {
+    if(disposed || controller.signal.aborted)return;
     busy=true;render();
-    try {const draft=await stageFiles(files);draft.selected_deal_id=dealId;await draftStore().save(draft,true);if (!disposed) location.assign(`/share-to-deal?draft=${draft.draft_id}`);}
+    try {const draft=await stageFiles(files);if(disposed || controller.signal.aborted)return;bindActor(draft,actor);draft.selected_deal_id=dealId;await draftStore().save(draft,true);if(controller.signal.aborted){await draftStore().clear();return;}if (!disposed) location.assign(`/share-to-deal?draft=${draft.draft_id}`);}
     catch {if (!disposed) message='Files were not staged. Local storage may be full or a pending draft already exists. Open pending files or reselect.';}
     finally {busy=false;render();}
   }
   async function refresh(next?: string) {
-    if (busy || disposed) return;busy=true;render();
-    try {const value=await client.listDealDocuments({deal_id:dealId,limit:25,...(next ? {cursor:next} : {})},{signal:controller.signal});if(disposed)return;
+    if (busy || disposed || controller.signal.aborted) return;busy=true;render();
+    try {const value=await client.listDealDocuments({deal_id:dealId,limit:25,...(next ? {cursor:next} : {})},{signal:controller.signal});if(disposed || controller.signal.aborted)return;
       const documents=documentRows(value);rows=next ? [...rows,...documents] : documents;
       cursor=value && typeof value==='object' && 'next_cursor' in value && typeof value.next_cursor==='string' ? value.next_cursor : null;
       message=rows.length ? '' : 'No documents filed for this deal.';

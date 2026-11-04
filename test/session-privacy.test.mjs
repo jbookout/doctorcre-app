@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
 import { offlineTourSession } from '../js/offline-tour-session.js';
@@ -46,7 +47,9 @@ async function serviceWorker() {
   const context = { URL, Response, caches: { open: async () => cache, match: async request => stored.get(typeof request === 'string' ? request : new URL(request.url).pathname), keys: async () => [], delete: async () => true },
     fetch: async () => { if (!online) throw Error('offline'); return new Response('{"actor":"A"}', {headers:{'cache-control':'no-store'}}); },
     self: { location:{origin:'https://app.doctorcre.com'}, addEventListener:(name,fn) => {handlers[name]=fn;}, skipWaiting() {}, clients:{claim:async()=>{}} } };
-  vm.runInNewContext(await readFile(new URL('../public-shell/sw.js',import.meta.url),'utf8'),context);
+  const realm=vm.createContext(context);
+  context.importScripts=path=>vm.runInContext(readFileSync(new URL(`..${path}`,import.meta.url),'utf8'),realm);
+  vm.runInContext(await readFile(new URL('../public-shell/sw.js',import.meta.url),'utf8'),realm);
   return { stored, offline() {online=false;}, async fetch(path) { let result; handlers.fetch({request:{url:`https://app.doctorcre.com${path}`,method:'GET',mode:'cors'}, respondWith(value) {result=value;}}); return result; } };
 }
 

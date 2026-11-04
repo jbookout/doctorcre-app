@@ -1319,7 +1319,7 @@ function paintPanel(detail) {
       try {
         const { mountDealDocuments } = await import('./ui-deal-documents.js');
         if (documentsDisposed) return;
-        documentsMounted = mountDealDocuments(root, {dealId: detail.deal.id, client: state.client});
+        documentsMounted = mountDealDocuments(root, {dealId: detail.deal.id, actor: state.selfActor, client: state.client});
       } catch { if (!documentsDisposed) root.textContent = 'Documents unavailable. Reopen the deal to try again.'; }
       finally { documentsLoading = false; }
     },

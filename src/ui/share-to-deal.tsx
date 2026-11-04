@@ -7,7 +7,7 @@ type Client = UploadClient & {getBoard(options?: {signal:AbortSignal}):Promise<{
 export async function mountShareToDeal(element: Element, client: Client) {
   const root=createRoot(element), store=draftStore(), controller=new AbortController();
   let draft: IncomingDealShare | null=null, actor='', deals: Deal[]=[], message='Opening pending files…', busy=true, disposed=false, page=0;
-  const save=async () => {if(controller.signal.aborted || disposed || !draft) return;if(draft.state==='filed') await store.clear();else await store.save(draft);render();};
+  const save=async () => {if(controller.signal.aborted || disposed || !draft) return;if(draft.state==='filed' || draft.state==='expired' || draft.state==='cancelled') await store.clear();else await store.save(draft);render();};
   function render() {
     if(disposed)return;
     flushSync(() => root.render(<section aria-label="Share to deal"><h1>Share to deal</h1>
@@ -26,11 +26,11 @@ export async function mountShareToDeal(element: Element, client: Client) {
       <a href="/share-to-deal">Open pending draft or reselect</a>
     </section>));
   }
-  async function stage(files: File[]) {busy=true;render();try {const next=await stageFiles(files);bindActor(next,actor);await store.save(next,true);draft=next;message='Choose the deal for these files.';}catch {message='Files were not staged. Reselect files or cancel the existing draft. Local storage may be full.';}finally{busy=false;render();}}
+  async function stage(files: File[]) {if(disposed || controller.signal.aborted)return;busy=true;render();try {const next=await stageFiles(files);if(disposed || controller.signal.aborted)return;bindActor(next,actor);await store.save(next,true);if(controller.signal.aborted){await store.clear();return;}draft=next;message='Choose the deal for these files.';}catch {message='Files were not staged. Reselect files or cancel the existing draft. Local storage may be full.';}finally{busy=false;render();}}
   async function choose(deal:string) {if(!draft || !deal || busy)return;busy=true;render();try {await changeDeal(draft,deal,client,save,controller.signal);message='Ready to file into the selected deal.';}catch{message='Could not change deal. Existing reservations must be reconciled first.';}finally{busy=false;render();}}
   async function submit() {
     if(!draft || busy || document.visibilityState==='hidden')return;
-    if(draft.state==='unknown_outcome' && Date.now()-draft.last_reconcile<60_000){message='Wait one minute before checking the same receipt again.';render();return;}
+    if(draft.files.some(file=>file.attempted && !file.confirmed) && Date.now()-draft.last_reconcile<60_000){message='Wait one minute before checking the same receipt again.';render();return;}
     busy=true;draft.last_reconcile=Date.now();message='Checking selected deal and file receipts…';render();
     try {await fileBatch(draft,client,save,controller.signal);message=draft.state==='filed' ? 'Documents filed and confirmed by the deal document list.' : 'Some files remain unconfirmed. Bytes are retained. Check unresolved files after reconnecting.';}catch{message='Local storage unavailable. Keep this page open to retry, or reselect the original files.';if(draft)draft.state='quota_refused';}finally{busy=false;render();}
   }

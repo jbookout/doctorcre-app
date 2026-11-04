@@ -2,6 +2,7 @@ export const DRAFT_DB = 'doctorcre-incoming-deal-share-v1';
 export const MAX_BYTES = 25 * 1024 * 1024;
 export const EXPIRY = 86_400_000;
 export const FILE_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.heic,.heif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/heic,image/heif';
+const mimeByExtension: Record<string,string>={pdf:'application/pdf',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',heic:'image/heic',heif:'image/heif'};
 export type Phase = 'incoming' | 'locally_staged' | 'authenticating' | 'choosing_deal' | 'ready' | 'reserving' | 'uploading' | 'committing' | 'filed' | 'cancelled' | 'expired' | 'quota_refused' | 'unknown_outcome';
 export type Receipt = { upload_id: string; deal_id: string; sha256: string; state: 'reserved' | 'uploaded' | 'committed' | 'cancelled'; attachment_id?: string };
 export type SharedFile = { local_id: string; name: string; mime: string; bytes: number; sha256: string; blob: Blob; reserve_key: string; commit_key: string; cancel_key: string; attempted: boolean; receipt: Receipt | null; confirmed: boolean; error: string | null; retries: number };
@@ -43,16 +44,21 @@ export async function stageFiles(files: File[]): Promise<IncomingDealShare> {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const prefix = new TextDecoder('latin1').decode(bytes.slice(0,32));
     const ext = file.name.split('.').pop()?.toLowerCase();
+    const mime=ext ? mimeByExtension[ext] : undefined;
+    if(!mime || file.type && file.type!==mime && file.type!=='application/octet-stream')throw Error('File type does not match its extension.');
     const admitted = ext === 'pdf' ? prefix.startsWith('%PDF-') : ['jpg','jpeg'].includes(ext || '') ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 : ext === 'png' ? bytes.slice(0,8).join(',') === '137,80,78,71,13,10,26,10' : ['heic','heif'].includes(ext || '') ? prefix.slice(4,8) === 'ftyp' && /heic|heix|hevc|hevx|mif1/.test(prefix.slice(8)) : ['docx','xlsx','pptx'].includes(ext || '') ? prefix.startsWith('PK\u0003\u0004') : ['doc','xls','ppt'].includes(ext || '') && bytes.slice(0,8).join(',') === '208,207,17,224,161,177,26,225';
     if (!admitted || !bytes.length) throw Error('Unsupported or mismatched file bytes. Choose PDF, Office or photo files.');
     const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n => n.toString(16).padStart(2,'0')).join('');
-    staged.push({local_id:crypto.randomUUID(),name:file.name,mime:file.type,bytes:file.size,sha256,blob:file,reserve_key:crypto.randomUUID(),commit_key:crypto.randomUUID(),cancel_key:crypto.randomUUID(),attempted:false,receipt:null,confirmed:false,error:null,retries:0});
+    staged.push({local_id:crypto.randomUUID(),name:file.name,mime,bytes:file.size,sha256,blob:file,reserve_key:crypto.randomUUID(),commit_key:crypto.randomUUID(),cancel_key:crypto.randomUUID(),attempted:false,receipt:null,confirmed:false,error:null,retries:0});
   }
   return {version:1,draft_id:crypto.randomUUID(),created_at:Date.now(),actor_binding:null,files:staged,selected_deal_id:null,state:'locally_staged',last_reconcile:0};
 }
 export function bindActor(draft: IncomingDealShare, actor: string) {
+  if(!actor)throw Error('A verified actor is required.');
   if (draft.actor_binding && draft.actor_binding !== actor) throw Error('Account changed. Pending files must be removed.');
-  draft.actor_binding = actor; draft.state = draft.selected_deal_id ? 'ready' : 'choosing_deal'; return draft;
+  draft.actor_binding = actor;
+  draft.state=draft.files.some(file=>file.attempted && !file.confirmed) ? 'unknown_outcome' : draft.selected_deal_id ? 'ready' : 'choosing_deal';
+  return draft;
 }
 export function selectDeal(draft: IncomingDealShare, deal: string) {
   if (draft.files.some(file => file.attempted) && draft.selected_deal_id !== deal) throw Error('Cancel existing reservations before changing deals.');

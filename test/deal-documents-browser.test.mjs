@@ -42,7 +42,9 @@ test('installed_POST_stages_in_IDB_only_and_session_revocation_purges_bound_draf
  await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
  const result=await page.evaluate(async()=>{const form=new FormData();form.append('files',new File(['%PDF-synthetic'],'Demo share.pdf',{type:'application/pdf'}));const response=await fetch('/share-to-deal',{method:'POST',body:form});return {status:response.status,url:response.url};});
  assert.equal(result.status,200);assert.match(result.url,/share-to-deal\?draft=/);
+ const duplicate=await page.evaluate(async()=>{const form=new FormData();form.append('files',new File(['%PDF-synthetic'],'Demo second share.pdf',{type:'application/pdf'}));return (await fetch('/share-to-deal',{method:'POST',body:form})).status;});assert.equal(duplicate,422);
  await page.goto(result.url);await page.getByText('Demo share.pdf',{exact:false}).waitFor();
+ assert.equal(await page.getByText('Demo second share.pdf',{exact:false}).count(),0);
  assert.equal(await page.getByRole('combobox',{name:'Deal'}).inputValue(),'');
  const noPrivateCache=await page.evaluate(async()=>{for(const key of await caches.keys()){const cache=await caches.open(key);for(const request of await cache.keys())if(new URL(request.url).pathname==='/share-to-deal')return false;}return true;});assert.equal(noPrivateCache,true);
  await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));
@@ -132,4 +134,12 @@ test('action_and_resume_caps',async t=>{
  assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:0});
  await page.clock.fastForward(60001);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:0});
  await page.getByRole('button',{name:'Check unresolved files',exact:true}).click();await page.waitForFunction(()=>shareCalls.read===1);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:1});
+});
+
+test('revocation_blocks_late_document_reads',async t=>{
+ const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
+ await page.goto(`${server.url}/public-shell/offline.html`);
+ await page.evaluate(async()=>{const {mountDealDocuments}=await import('/js/ui-deal-documents.js');const host=document.createElement('div');document.body.replaceChildren(host);mountDealDocuments(host,{dealId:'demo',actor:'joe',client:{listDealDocuments:()=>new Promise(resolve=>globalThis.finishDocumentRead=resolve)}});});
+ await page.getByText('Loading documents…',{exact:true}).waitFor();await page.evaluate(()=>{window.dispatchEvent(new Event('doctorcre-session-invalidated'));finishDocumentRead({documents:[{id:'old',display_name:'Demo retired account document'}]});});
+ await page.getByText('Session ended.',{exact:true}).waitFor();assert.equal(await page.getByText('Demo retired account document',{exact:true}).count(),0);
 });
