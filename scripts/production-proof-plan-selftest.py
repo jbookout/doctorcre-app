@@ -1,3 +1,4 @@
+from contextlib import chdir
 import importlib.util
 import json
 import os
@@ -10,11 +11,10 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PROGRAM = ROOT / 'scripts/production-proof-plan.py'
+NON_PRODUCT = '## Production proof\nn/a: CI tooling and hosted workflow checks only'
 BODY = '## Production proof\nproofs/requirements/app-proof-admission.json\n'
-NON_PRODUCT = '## Production proof\nn/a: CI admission tooling and tests only'
-GATE_PATHS = ['scripts/production-proof-plan.py', 'scripts/production-proof-plan-selftest.py',
-              'scripts/vendor/production-proof-plan.v1.py', 'contracts/production-proof-plan.v1.json',
-              'proofs/requirements/app-proof-admission.json', '.github/workflows/ci.yml']
+CI_PATHS = ('.github/action-pins.json', '.github/workflows/conflict-notice.yml',
+            'scripts/check-action-pins.mjs')
 
 
 def module():
@@ -26,205 +26,176 @@ def module():
 
 class AdmissionTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        (self.root / 'proofs/requirements').mkdir(parents=True)
-        source = ROOT / 'proofs/requirements/app-proof-admission.json'
-        if source.exists():
-            (self.root / 'proofs/requirements/app-proof-admission.json').write_bytes(source.read_bytes())
-        self.body = self.root / 'body.md'
-        self.files = self.root / 'files.json'
+        self.adapter = module()
+        self.validator, self.contract = self.adapter.load_pinned(ROOT)
 
-    def run_plan(self, body, paths=None):
-        self.body.write_text(body)
-        self.files.write_text(json.dumps(paths or ['src/ui/example.tsx']))
-        return subprocess.run([sys.executable, str(PROGRAM), '--root', str(self.root),
-            '--body-file', str(self.body), '--files-file', str(self.files)],
-            capture_output=True, text=True, timeout=20)
+    def snapshot(self, body=NON_PRODUCT, paths=CI_PATHS, event='pull_request', requirement=None):
+        return self.adapter.Snapshot(event, 'a' * 40, 'b' * 40, body, tuple(paths), requirement)
 
-    def test_app_product_pr_without_proof_declaration_fails(self):
-        result = self.run_plan('## Summary\nProduct change')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Production proof', result.stdout)
+    def test_snapshot_decisions(self):
+        cases = [
+            ('CI', NON_PRODUCT, CI_PATHS, 'pull_request', 'admitted', 'non-product'),
+            ('docs', NON_PRODUCT, ['docs/a.md'], 'pull_request', 'admitted', 'non-product'),
+            ('app', BODY, ['src/ui/example.tsx'], 'pull_request', 'refused', 'unsupported app'),
+            ('mixed', NON_PRODUCT, [*CI_PATHS, 'src/ui/example.tsx'], 'pull_request', 'refused', 'unsupported app'),
+            ('build', NON_PRODUCT, ['scripts/prepare-offline-tour.mjs'], 'pull_request', 'refused', 'unsupported app'),
+            ('near match', NON_PRODUCT, ['scripts/check-action-pins.mjs.extra'], 'pull_request', 'refused', 'unsupported app'),
+            ('missing', '## Summary\nCI only', CI_PATHS, 'pull_request', 'refused', 'exactly one'),
+            ('malformed', '## Production proof\n{}', CI_PATHS, 'pull_request', 'refused', 'must name'),
+            ('placeholder', '## Production proof\nn/a: TODO', CI_PATHS, 'pull_request', 'refused', 'real reason'),
+            ('duplicate', NON_PRODUCT + '\n' + NON_PRODUCT, CI_PATHS, 'pull_request', 'refused', 'exactly one'),
+            ('comment', '<!--\n' + NON_PRODUCT + '\n-->', CI_PATHS, 'pull_request', 'refused', 'exactly one'),
+            ('escape', '## Production proof\n../escape.json', CI_PATHS, 'pull_request', 'refused', 'must name'),
+            ('push', '', [], 'push', 'skipped', 'not evaluated'),
+            ('queue', '', [], 'merge_group', 'skipped', 'not evaluated'),
+        ]
+        for name, body, paths, event, status, reason in cases:
+            with self.subTest(name=name):
+                decision = self.adapter.admission(self.snapshot(body, paths, event), self.validator, self.contract)
+                self.assertEqual(decision.status, status, decision)
+                self.assertIn(reason, decision.reason)
 
-    def test_app_cannot_borrow_other_runtime_proofs(self):
-        path = self.root / 'proofs/requirements/app-proof-admission.json'
-        value = json.loads(path.read_text())
-        for target, runner in [('studio', 'studio-run-receipt.v1'),
-                               ('worker', 'worker-release-smoke.v1')]:
+    def test_pure_core_never_reads_git_files_or_network(self):
+        with patch('subprocess.check_output', side_effect=AssertionError('subprocess')), \
+             patch.object(Path, 'read_text', side_effect=AssertionError('file read')):
+            self.assertEqual(self.adapter.admission(self.snapshot(), self.validator, self.contract).status, 'admitted')
+            requirement = (ROOT / 'proofs/requirements/app-proof-admission.json')
+            self.assertEqual(self.adapter.admission(self.snapshot(BODY, ['src/ui/a.tsx']), self.validator, self.contract).status, 'refused')
+
+    def test_requirement_validation_is_pure_and_cannot_borrow_proof(self):
+        value = json.loads((ROOT / 'proofs/requirements/app-proof-admission.json').read_text())
+        for target, runner in [('studio', 'studio-run-receipt.v1'), ('worker', 'worker-release-smoke.v1'),
+                               ('app', 'app-release-live-walk.v1')]:
             value['targets'] = [target]
             value['assertions'][0]['runner'] = runner
-            path.write_text(json.dumps(value))
-            result = self.run_plan(BODY)
-            self.assertNotEqual(result.returncode, 0, result.stdout)
-            self.assertIn('unsupported app production proof', result.stdout)
-
-    def test_app_declaration_names_unsupported_runner(self):
-        path = self.root / 'proofs/requirements/app-proof-admission.json'
-        value = json.loads(path.read_text())
-        value['targets'] = ['app']
-        value['assertions'][0]['runner'] = 'app-release-live-walk.v1'
-        path.write_text(json.dumps(value))
-        result = self.run_plan(BODY)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('unsupported app production proof', result.stdout)
-
-    def test_app_target_required_when_shared_runner_becomes_available(self):
-        adapter = module()
-        validator, contract = adapter.load_pinned(ROOT)
-        contract['x-runners']['app-release-live-walk.v1'] = {'targets': ['app']}
-        self.assertIn('accepted', adapter.admission(validator, BODY, ['src/ui/example.tsx'], self.root, contract))
-        path = self.root / 'proofs/requirements/app-proof-admission.json'
-        value = json.loads(path.read_text())
+            snap = self.snapshot(BODY, ['src/ui/a.tsx'], requirement=json.dumps(value))
+            self.assertIn('unsupported app', self.adapter.admission(snap, self.validator, self.contract).reason)
+        self.contract['x-runners']['app-release-live-walk.v1'] = {'targets': ['app']}
+        self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'admitted')
         value['targets'] = ['studio']
         value['assertions'][0]['runner'] = 'studio-run-receipt.v1'
-        path.write_text(json.dumps(value))
-        with self.assertRaisesRegex(ValueError, 'changed runtime target missing'):
-            adapter.admission(validator, BODY, ['src/ui/example.tsx'], self.root, contract)
-
-    def test_upstream_contract_bytes(self):
-        import hashlib
-        self.assertEqual(hashlib.sha256((ROOT / 'contracts/production-proof-plan.v1.json').read_bytes()).hexdigest(),
-                         '36224e67292a2a834dc03b0021ba09379894b3e9207cf08d492fd5e8432d6a6f')
-
-    def test_valid_declaration_passes(self):
-        result = self.run_plan(NON_PRODUCT, GATE_PATHS)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        print('Synthetic non-product declaration accepted:', result.stdout.strip())
-
-    def test_same_head_body_removal_fails(self):
-        self.assertEqual(self.run_plan(NON_PRODUCT, GATE_PATHS).returncode, 0)
-        result = self.run_plan('## Summary\nSame head, declaration removed', GATE_PATHS)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Production proof', result.stdout)
-        print('Synthetic same-head removal refused:', result.stdout.strip())
-
-    def test_p1_exemptions_and_mixed_paths(self):
-        body = '## Production proof\nn/a: documentation and tests only'
-        for paths in [['test/example.test.mjs'], ['.github/workflows/ci.yml'], ['docs/a.md']]:
-            self.assertEqual(self.run_plan(body, paths).returncode, 0)
-            self.assertNotEqual(self.run_plan(body, paths + ['src/ui/example.tsx']).returncode, 0)
-
-    def test_ci_action_pin_change_accepts_hosted_check_declaration(self):
-        paths = ['.github/action-pins.json', '.github/workflows/conflict-notice.yml',
-                 'scripts/check-action-pins.mjs']
-        body = ('## Production proof\nn/a: GitHub conflict-notice CI tooling and action pin '
-                'validation only; hosted workflow checks observe this behavior')
-        result = self.run_plan(body, paths)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('non-product', result.stdout)
-
-    def test_ci_action_pin_change_still_requires_declaration(self):
-        paths = ['.github/action-pins.json', '.github/workflows/conflict-notice.yml',
-                 'scripts/check-action-pins.mjs']
-        result = self.run_plan('## Summary\nCI tooling only', paths)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('exactly one Production proof section required', result.stdout)
-
-    def test_ci_tooling_exemption_does_not_cover_runtime_or_build_scripts(self):
-        paths = ['.github/action-pins.json', '.github/workflows/conflict-notice.yml',
-                 'scripts/check-action-pins.mjs']
-        for product in ['src/ui/example.tsx', 'scripts/prepare-offline-tour.mjs',
-                        'scripts/check-action-pins.mjs.extra']:
-            with self.subTest(product=product):
-                result = self.run_plan(NON_PRODUCT, paths + [product])
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn('unsupported app production proof', result.stdout)
-
-    def test_malformed_declarations(self):
-        for body in ['## Production proof\n{}', '## Production proof\nn/a: TODO',
-                     BODY + BODY, '## Production proof\n../escape.json',
-                     '## Production proof\n<!-- ' + BODY + ' -->']:
-            self.assertNotEqual(self.run_plan(body, ['test/example.test.mjs']).returncode, 0, body)
-
-    def test_missing_requirement_field_fails(self):
-        path = self.root / 'proofs/requirements/app-proof-admission.json'
-        value = json.loads(path.read_text())
+        decision = self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract)
+        self.assertIn('changed runtime target missing', decision.reason)
         del value['safety']
-        path.write_text(json.dumps(value))
-        self.assertNotEqual(self.run_plan(BODY, ['test/example.test.mjs']).returncode, 0)
+        self.assertIn('missing or unknown', self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract).reason)
 
-    def test_pin_and_contract_drift(self):
-        plan = module()
-        self.assertEqual(plan.load_pinned(ROOT)[1]['$id'], 'carr-production-proof-plan.v1')
+    def test_pin_drift(self):
         import shutil
-        for relative in ['contracts/production-proof-plan.v1.json', 'scripts/vendor/production-proof-plan.v1.py']:
-            with self.subTest(relative=relative):
-                copy = self.root / relative.replace('/', '_')
-                (copy / 'contracts').mkdir(parents=True)
-                shutil.copyfile(ROOT / 'contracts/production-proof-plan.v1.json', copy / 'contracts/production-proof-plan.v1.json')
-                (copy / 'scripts/vendor').mkdir(parents=True)
-                shutil.copyfile(ROOT / 'scripts/vendor/production-proof-plan.v1.py', copy / 'scripts/vendor/production-proof-plan.v1.py')
-                path = copy / relative
-                path.write_text(path.read_text() + ' ')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ['contracts/production-proof-plan.v1.json', 'scripts/vendor/production-proof-plan.v1.py']:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / relative, path)
+            self.adapter.load_pinned(root)
+            for relative in ['contracts/production-proof-plan.v1.json', 'scripts/vendor/production-proof-plan.v1.py']:
+                path = root / relative
+                original = path.read_bytes()
+                path.write_bytes(original + b' ')
                 with self.assertRaisesRegex(ValueError, 'drift'):
-                    plan.load_pinned(copy)
+                    self.adapter.load_pinned(root)
+                path.write_bytes(original)
 
-    def test_current_metadata_and_stale_body_or_head(self):
-        plan, _ = module().load_pinned(ROOT)
-        event = {'repository': {'full_name': 'jbookout/doctorcre-app'},
-                 'pull_request': {'number': 1, 'body': BODY, 'head': {'sha': 'b' * 40}}}
-        for body, head in [(BODY, 'b' * 40), ('removed', 'b' * 40), (BODY, 'c' * 40)]:
-            response = {'data': {'repository': {'pullRequest': {'body': body, 'headRefOid': head}}}}
-            with patch.object(plan, 'command', return_value=json.dumps(response)):
-                if body == BODY and head == 'b' * 40:
-                    plan.github_metadata(event)
-                else:
-                    with self.assertRaisesRegex(ValueError, 'stale'):
-                        plan.github_metadata(event)
-
-    def test_edited_event_and_api_failure_refuse(self):
-        adapter = module()
-        validator, contract = adapter.load_pinned(ROOT)
-        event = {'action': 'edited', 'repository': {'full_name': 'jbookout/doctorcre-app'},
-                 'pull_request': {'number': 1, 'body': '', 'base': {'sha': 'a' * 40}, 'head': {'sha': 'b' * 40}}}
-        event_path = self.root / 'event.json'
-        event_path.write_text(json.dumps(event))
-        with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(event_path)}), \
-             patch.object(sys, 'argv', [str(PROGRAM)]), \
-             patch.object(adapter, 'load_pinned', return_value=(validator, contract)), \
-             patch.object(validator, 'command', return_value='test/example.test.mjs\0'), \
-             patch.object(validator, 'github_metadata', return_value={}):
-            self.assertEqual(adapter.main(), 1)
-        with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(event_path)}), \
-             patch.object(sys, 'argv', [str(PROGRAM)]), \
-             patch.object(adapter, 'load_pinned', return_value=(validator, contract)), \
-             patch.object(validator, 'github_metadata', side_effect=OSError('offline')):
-            self.assertEqual(adapter.main(), 1)
-
-    def test_workflow_edited_and_aggregate_gate(self):
+    def test_real_aggregate(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn('ready_for_review, edited', workflow)
         self.assertIn('needs: [checks, shards, performance, live, production-proof]', workflow)
-        self.assertIn('test "$PRODUCTION_PROOF" = success', workflow)
-
-    def test_valid_edited_event_rechecks_metadata_after_admission(self):
-        adapter = module()
-        validator, contract = adapter.load_pinned(ROOT)
-        event = {'action': 'edited', 'repository': {'full_name': 'jbookout/doctorcre-app'},
-                 'pull_request': {'number': 1, 'body': NON_PRODUCT, 'base': {'sha': 'a' * 40}, 'head': {'sha': 'b' * 40}}}
-        event_path = self.root / 'event.json'
-        event_path.write_text(json.dumps(event))
-        for responses, expected in [([{}, {}], 0), ([{}, ValueError('stale PR event')], 1)]:
-            with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(event_path)}), \
-                 patch.object(sys, 'argv', [str(PROGRAM), '--root', str(self.root)]), \
-                 patch.object(adapter, 'load_pinned', return_value=(validator, contract)), \
-                 patch.object(validator, 'command', return_value='test/example.test.mjs\0'), \
-                 patch.object(validator, 'github_metadata', side_effect=responses) as metadata:
-                self.assertEqual(adapter.main(), expected)
-                self.assertEqual(metadata.call_count, 2)
-
-    def test_real_aggregate_refuses_failed_admission_and_allows_main_skip(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        script = workflow.split('          test "$CHECKS" = success', 1)[1].split('\n\n  preview:', 1)[0]
-        script = 'test "$CHECKS" = success' + script
-        for event, proof, expected in [('pull_request', 'failure', 1),
-                                       ('pull_request', 'success', 0), ('push', 'skipped', 0), ('merge_group', 'skipped', 0)]:
+        script = 'test "$CHECKS" = success' + workflow.split('          test "$CHECKS" = success', 1)[1].split('\n\n  preview:', 1)[0]
+        for event, proof, expected in [('pull_request', 'failure', 1), ('pull_request', 'success', 0),
+                                       ('push', 'skipped', 0), ('merge_group', 'skipped', 0)]:
             settings = dict(os.environ, CHECKS='success', LIVE='success', SHARDS='success',
                             PERFORMANCE='success', EVENT=event, PRODUCTION_PROOF=proof)
-            result = subprocess.run(['bash', '-e', '-c', script], env=settings, timeout=5)
-            self.assertEqual(result.returncode, expected)
+            self.assertEqual(subprocess.run(['bash', '-e', '-c', script], env=settings, timeout=5).returncode, expected)
+
+
+class GitHubAdapterTest(unittest.TestCase):
+    def setUp(self):
+        self.adapter = module()
+        self.validator, self.contract = self.adapter.load_pinned(ROOT)
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Synthetic test')
+        self.git('config', 'user.email', 'synthetic@example.invalid')
+        self.commit('docs/base.md', 'base')
+        self.base = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'pr')
+        self.commit('scripts/check-action-pins.mjs', 'ci only')
+        self.head = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-qb', 'new-main', self.base)
+        self.commit('src/ui/unrelated.tsx', 'unrelated main')
+        self.git('merge', '--no-edit', 'pr')
+        self.event = {'repository': {'full_name': 'jbookout/doctorcre-app'},
+                      'pull_request': {'number': 1, 'body': NON_PRODUCT,
+                                       'base': {'sha': self.base}, 'head': {'sha': self.head}}}
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.root), *args], text=True, stderr=subprocess.PIPE, timeout=10).strip()
+
+    def commit(self, path, text):
+        destination = self.root / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(text)
+        self.git('add', path)
+        self.git('commit', '-qm', 'synthetic fixture')
+
+    def collect(self):
+        return self.adapter.github_snapshot(self.event, self.validator, self.contract, self.root)
+
+    def test_merge_checkout_is_not_pr_source(self):
+        self.assertIn('src/ui/unrelated.tsx', self.git('diff', '--name-only', self.base + '...HEAD'))
+        self.assertEqual(self.git('diff', '--name-only', self.base + '...' + self.head), 'scripts/check-action-pins.mjs')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            snapshot = self.collect()
+        self.assertEqual(snapshot.paths, ('scripts/check-action-pins.mjs',))
+        self.assertEqual(snapshot.head_sha, self.head)
+        self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, 'admitted')
+        self.git('checkout', '-q', 'pr')
+        self.commit('src/ui/own.tsx', 'own product')
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            self.assertEqual(self.adapter.admission(self.collect(), self.validator, self.contract).status, 'refused')
+
+    def test_stale_metadata_and_api_failure(self):
+        for failure in [ValueError('stale PR event'), OSError('offline')]:
+            with patch.object(self.validator, 'github_metadata', side_effect=failure):
+                with self.assertRaises(type(failure)):
+                    self.collect()
+        for body, head in [('removed', self.head), (NON_PRODUCT, 'c' * 40)]:
+            response = {'data': {'repository': {'pullRequest': {'body': body, 'headRefOid': head}}}}
+            with patch.object(self.validator, 'command', return_value=json.dumps(response)):
+                with self.assertRaisesRegex(ValueError, 'stale'):
+                    self.collect()
+
+    def test_invalid_or_unavailable_sha_refuses(self):
+        for sha in ['HEAD', '--help', 'a' * 40]:
+            self.event['pull_request']['head']['sha'] = sha
+            with patch.object(self.validator, 'github_metadata', return_value={}):
+                with self.assertRaises((ValueError, subprocess.SubprocessError)):
+                    self.collect()
+
+    def test_cli_in_merge_checkout_and_metadata_recheck(self):
+        event_file = self.root / 'event.json'
+        event_file.write_text(json.dumps(self.event))
+        for responses, expected in [([{}, {}], 0), ([{}, ValueError('stale PR event')], 1)]:
+            with chdir(self.root), patch.dict(os.environ, GITHUB_EVENT_NAME='pull_request', GITHUB_EVENT_PATH=str(event_file)), \
+                 patch.object(sys, 'argv', [str(PROGRAM), '--root', str(self.root)]), \
+                 patch.object(self.adapter, 'load_pinned', return_value=(self.validator, self.contract)), \
+                 patch.object(self.validator, 'github_metadata', side_effect=responses) as metadata:
+                self.assertEqual(self.adapter.main(), expected)
+                self.assertEqual(metadata.call_count, 2)
+
+    def test_requirement_bytes_are_from_pr_head(self):
+        self.git('checkout', '-q', 'pr')
+        path = 'proofs/requirements/example.json'
+        requirement = (ROOT / 'proofs/requirements/app-proof-admission.json').read_text()
+        self.commit(path, requirement)
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        self.event['pull_request']['body'] = '## Production proof\n' + path
+        (self.root / path).write_text('uncommitted contamination')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            self.assertEqual(self.collect().requirement_json.strip(), requirement.strip())
 
 
 if __name__ == '__main__':
