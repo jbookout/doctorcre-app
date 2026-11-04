@@ -6,6 +6,7 @@ import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
+const NOW = new Date('2026-11-03T10:00:00-06:00');
 let outDir;
 before(async () => { outDir = temporaryDirectory('calendar-fit-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { await rm(outDir, { recursive: true, force: true }); });
@@ -14,12 +15,13 @@ for (const theme of ['light', 'dark']) for (const count of [0, 1, 2, 3, 6]) test
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ timezoneId: 'America/Chicago' });
+  await page.clock.setFixedTime(NOW);
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
-    const value = name === 'calendar-meeting-prep' ? { state: count ? 'ready' : 'empty', items: Array.from({ length: count }, (_, i) => ({ title: `Synthetic meeting ${i + 1} with the practice team to review the upcoming office requirements`, start: new Date(Date.now() + 3600000 * (i + 1)).toISOString(), end: new Date(Date.now() + 3600000 * (i + 2)).toISOString() })) }
+    const value = name === 'calendar-meeting-prep' ? { state: count ? 'ready' : 'empty', items: Array.from({ length: count }, (_, i) => ({ title: `Synthetic meeting ${i + 1} with the practice team to review the upcoming office requirements`, start: new Date(NOW.getTime() + 3600000 * (i + 1)).toISOString(), end: new Date(NOW.getTime() + 3600000 * (i + 2)).toISOString() })) }
       : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
   });

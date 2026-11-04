@@ -3,7 +3,7 @@
   "command_schema_version": "home-inbox-command.v1",
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "0c1ce49d8ce20a57100d6766b113630309492b44"
+    "source_commit": "e1d8e589652519cd8b70cd06d79b520032ed425b"
   },
   "read": "read-home-inbox-v4",
   "commands": [

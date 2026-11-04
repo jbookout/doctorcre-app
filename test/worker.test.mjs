@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { carrContractIdentity } from "./carr-contract.mjs";
 
+test('only the tour editor allows same-origin workspace framing', async () => {
+  for (const path of ['/tours/route-editor.html','/tours','/deals']) {
+    const response = await handleDoctorcreRequest(request(path,{headers:{cookie:'__Host-dealroom_session=opaque'}}),environment({
+      carr:{fetch:async () => new Response('ok')},assets:{fetch:async () => new Response('asset')},
+    }));
+    assert.equal(response.headers.get('x-frame-options'),path === '/tours/route-editor.html' ? 'SAMEORIGIN' : 'DENY');
+    assert.ok(response.headers.get('content-security-policy').includes(`frame-ancestors '${path === '/tours/route-editor.html' ? 'self' : 'none'}'`));
+  }
+});
+
 test('blocking 1: shared map modules, CSS and derived worker URLs pass through deployed asset routing',async()=>{
  const css='/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css';
  const module=new URL('/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs','https://example.test');
