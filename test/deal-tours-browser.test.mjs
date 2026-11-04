@@ -269,3 +269,119 @@ test('tour departure and pending Open preserve the active editor', async t => {
     });
   }
 });
+
+
+test('creation and pending-write departures preserve history and saved notes', async t => {
+  const artifact = await temporaryDirectory('doctorcre-tour-history-', t);
+  await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
+  const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}}); t.after(() => server.stop());
+  const browser = await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS]}); t.after(() => browser.close());
+  for (const width of [390,1440]) for (const scenario of ['back 1','back 2','back 3','forward 1','forward 2','forward 3','pending keep','pending leave']) await t.test(`${width} ${scenario}`, async () => {
+    const page = await browser.newPage({viewport:{width,height:1000}});
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let writes = 0, notes = '', revision = 0, settled;
+    const saved = new Promise(resolve => { settled = resolve; });
+    try {
+      await page.route(/^https:\/\//,route => route.abort());
+      const seed = JSON.parse((await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8')).replaceAll('"d14"',JSON.stringify(deal)).replaceAll('"d23"',JSON.stringify(other)));
+      await page.route('**/data/board-seed.json',route => route.fulfill({json:seed}));
+      await page.route('**/auth/session',route => route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}}));
+      await page.route('**/api/tours/**',async route => {
+        const path = new URL(route.request().url()).pathname;
+        if(path === '/api/tours/library') return route.fulfill({json:{data:{tours:[row]},csrf_token:'synthetic-session'}});
+        if(path === '/api/tours/cheat-sheet/autosave') {
+          ++writes;
+          const body = route.request().postDataJSON();
+          assert.equal(body.expected_revision_number,revision);
+          assert.ok(body.idempotency_key);
+          await gate;
+          notes = body.content.notes; ++revision; settled();
+          return route.fulfill({json:{data:{cheat_sheet_revision_id:created,revision_number:revision},csrf_token:'synthetic-session'}});
+        }
+        if(path === '/api/tours/detail') return route.fulfill({json:{data:{...row,cheat_sheet:revision ? {revision_number:revision,content:{notes}} : {},stops:[],routes:[{id:routeId,route_version:1,accepted:false,stops:[]}],route_version_id:routeId,route_version_state:'draft',accepted_route_version:0},csrf_token:'synthetic-session'}});
+        return route.fulfill({status:404,json:{error:'not_found'}});
+      });
+      const pending = scenario.startsWith('pending');
+      const forward = scenario.startsWith('forward');
+      const steps = pending ? 1 : Number(scenario.at(-1));
+      await page.goto(`${server.url}/deals${steps === 1 ? `?deal=${deal}&tab=tours` : ''}`);
+      if(steps === 3) {
+        await page.locator(`.card-open[data-open="${other}"]:visible`).click();
+        await page.locator('#panelTitle').filter({hasText:/./}).waitFor();
+        await page.locator(`.card-open[data-open="${deal}"]`).first().evaluate(button => button.click());
+        await page.getByRole('tab',{name:'Tours',exact:true}).click();
+      } else if(steps === 2) {
+        await page.locator(`.card-open[data-open="${deal}"]:visible`).click();
+        await page.getByRole('tab',{name:'Tours',exact:true}).click();
+      }
+      await page.locator(pending ? '[data-open-tour]' : '[data-start-tour]').click();
+      const editor = page.frameLocator('iframe[title="Tour shortlist, route and packet"]');
+      let destinationUrl;
+      if(pending) {
+        await editor.locator('#tour-name').filter({hasText:row.name}).waitFor();
+        await editor.locator('#cheat-content').fill('Pending departure notes');
+        const request = page.waitForRequest(request => request.url().includes('/api/tours/cheat-sheet/autosave'));
+        await editor.locator('#save-sheet').click(); await request;
+      } else {
+        if(forward) {
+          await editor.locator('#create-tour:enabled').waitFor();
+          const source = page.url();
+          for(let entry = 0; entry < steps; ++entry) {
+            const destination = entry % 2 ? deal : other;
+            await page.locator(`.card-open[data-open="${destination}"]`).first().evaluate(button => button.click());
+            await page.waitForURL(url => url.searchParams.get('deal') === destination);
+            await page.locator('#panelBody').getByText('Updating…',{exact:true}).waitFor({state:'hidden'});
+          }
+          destinationUrl = page.url();
+          await page.evaluate(steps => history.go(-steps),steps);
+          await page.waitForURL(source);
+        }
+        await editor.locator('#create-tour-name').fill('Unsaved creation departure');
+      }
+      if(!pending && steps === 1) {
+        const dialogEvent = page.waitForEvent('dialog',{timeout:3000});
+        const reload = page.reload({timeout:1000}).catch(error => { assert.match(error.message,/ERR_ABORTED|Timeout/); });
+        const dialog = await dialogEvent;
+        assert.equal(dialog.type(),'beforeunload');
+        await dialog.dismiss(); await reload;
+        assert.equal(await editor.locator('#create-tour-name').inputValue(),'Unsaved creation departure');
+      }
+      const before = await page.evaluate(() => ({url:location.href,state:history.state}));
+      const frame = page.frames().find(frame => frame.url().includes('route-editor.html'));
+      assert.equal(await frame.evaluate(() => window.dispatchEvent(new Event('beforeunload',{cancelable:true}))),false);
+      await page.evaluate(distance => history.go(distance),forward ? steps : -steps);
+      const prompt = page.getByRole('dialog',{name:'Leave this tour?'});
+      await prompt.waitFor({timeout:3000});
+      await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
+      assert.deepEqual(await page.evaluate(() => ({url:location.href,state:history.state})),before);
+      assert.equal(await editor.locator(pending ? '#cheat-content' : '#create-tour-name').inputValue(),pending ? 'Pending departure notes' : 'Unsaved creation departure');
+      if(pending) {
+        if(scenario === 'pending leave') {
+          await page.goBack();
+          await prompt.getByRole('button',{name:'Leave tour',exact:true}).click();
+          await page.locator('[data-open-tour]').waitFor();
+        }
+        release(); await saved;
+        if(scenario === 'pending keep') {
+          await editor.locator('#sheet-state').filter({hasText:/save confirmed/}).waitFor();
+          await page.goBack(); await page.locator('[data-open-tour]').waitFor();
+        }
+        await page.locator('[data-open-tour]').click();
+        await editor.locator('#cheat-content').waitFor();
+        assert.equal(await editor.locator('#cheat-content').inputValue(),'Pending departure notes');
+        assert.equal(writes,1); assert.equal(revision,1);
+      } else {
+        await page.evaluate(distance => history.go(distance),forward ? steps : -steps);
+        await prompt.getByRole('button',{name:'Leave tour',exact:true}).click();
+        if(forward) {
+          await page.waitForURL(destinationUrl);
+          assert.equal(await editor.locator('#create-tour-name').inputValue(),'');
+        } else {
+          await page.waitForURL(url => !url.searchParams.has('tour'));
+          assert.equal(await page.locator('iframe[title="Tour shortlist, route and packet"]').count(),0);
+        }
+      }
+    } finally { release(); await page.close(); }
+  });
+});
