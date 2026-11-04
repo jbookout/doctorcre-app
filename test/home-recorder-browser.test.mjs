@@ -23,9 +23,9 @@ after(async () => {
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
-for (const path of ['/', '/review-workflows']) {
-  for (const recorder of ['absent', 'reachable', 'slow']) {
-    test(`Home ${path} with ${recorder} recorder renders quietly before opt-in`, async t => {
+for (const deployment of ['fixture', 'deployed-origin']) for (const path of ['/', '/review-workflows']) {
+  for (const recorder of ['absent', 'reachable', 'recording', 'slow']) {
+    test(`Home ${path} on ${deployment} with ${recorder} recorder renders quietly before opt-in`, async t => {
       const page = await browser.newPage({ reducedMotion: 'reduce' });
       t.after(() => page.close());
       assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `recorder-${path === '/' ? 'home' : 'review'}-${recorder}`, viewer: 'joe', reset: true } })).status(), 200);
@@ -34,6 +34,15 @@ for (const path of ['/', '/review-workflows']) {
       page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
       page.on('pageerror', error => errors.push(error.message));
       await page.route(/fonts\.(googleapis|gstatic)\.com/, route => route.fulfill({ status: 200, body: '' }));
+      if (deployment === 'deployed-origin') await page.route('https://app.doctorcre.com/**', async route => {
+        const request = route.request();
+        const url = new URL(request.url());
+        const response = await page.request.fetch(`${origin}${url.pathname}${url.search}`, {
+          method: request.method(), data: request.postDataBuffer() ?? undefined,
+          headers: { 'content-type': request.headers()['content-type'] || 'application/json' },
+        });
+        await route.fulfill({ response });
+      });
       let release;
       const held = new Promise(resolve => { release = resolve; });
       t.after(() => release());
@@ -41,17 +50,21 @@ for (const path of ['/', '/review-workflows']) {
         requests.push(route.request().url());
         if (recorder === 'absent') return route.abort('connectionrefused');
         if (recorder === 'slow') await held;
-        await route.fulfill({ json: { state: 'idle' } }).catch(() => {});
+        await route.fulfill({ json: recorder === 'recording'
+          ? { state: 'recording', started_at: new Date().toISOString() }
+          : { state: 'idle' } }).catch(() => {});
       });
-      await page.goto(`${origin}${path}`);
+      await page.goto(`${deployment === 'fixture' ? origin : 'https://app.doctorcre.com'}${path}`);
       await page.locator(path === '/' ? '#homeRoot[data-home-ready]' : '#refreshHome[aria-busy="false"]').waitFor();
+      if (path === '/') await page.evaluate(async () => (await import('/js/global-call-mode.js')).mountGlobalCallMode(document));
       await page.locator('#callModeRetry').waitFor({ state: 'visible' });
       assert.deepEqual(errors, [], 'Home emits zero console or page errors');
       assert.deepEqual(requests, [], 'Home does not contact an optional recorder');
-      if (recorder === 'reachable') {
+      if (recorder === 'reachable' || recorder === 'recording') {
         await page.locator('#callModeRetry').click();
         await page.locator('#callModeButton').waitFor({ state: 'visible' });
         assert.ok(requests.length > 0, 'explicit connection reads the recorder');
+        if (recorder === 'recording') await page.locator('#callModeButton.recording').waitFor({ state: 'visible' });
         assert.deepEqual(errors, []);
       }
       if (recorder === 'slow') {

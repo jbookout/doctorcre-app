@@ -181,8 +181,8 @@ export function createCallMode(deps) {
     const availability = $('#callModeAvailability');
     if (availability) {
       availability.hidden = eligible;
-      availability.textContent = state.eligibility === 'checking' || state.eligibility === 'unknown'
-        ? 'Checking the call recorder…' : 'Call recorder offline';
+      availability.textContent = state.eligibility === 'unknown' ? 'Call recorder not connected'
+        : state.eligibility === 'checking' ? 'Checking the call recorder…' : 'Call recorder offline';
     }
     for (const id of ['callModeButton', 'callModeStandalone']) {
       const element = $(`#${id}`);
@@ -190,7 +190,7 @@ export function createCallMode(deps) {
     }
     const recheck = $('#callModeRetry');
     if (recheck) {
-      recheck.hidden = eligible || state.eligibility === 'unknown';
+      recheck.hidden = eligible;
       recheck.disabled = state.eligibility === 'checking';
     }
     if (!eligible) {
