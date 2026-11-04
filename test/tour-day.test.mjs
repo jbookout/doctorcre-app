@@ -1,4 +1,5 @@
 import test from "node:test";
+import { init, parse } from 'es-module-lexer';
 import { isUiAsset } from "../scripts/ui-bundle.mjs";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
@@ -93,21 +94,27 @@ test("offline tour shell caches required local modules without the optional base
   runInNewContext(source + '\nthis.files = FILES;', sandbox);
   const files = new Set(sandbox.files), checked = new Set();
   assert.equal([...files].some(path => path.includes('/maplibre-gl-')), false, 'Tour day has no basemap style and must not install its engine');
-  assert.equal([...files].some(path => isUiAsset(path.slice(1))), false, 'Tour day mounts no React islands');
+  await init;
+  const optionalUi = new Set(), required = new Set();
   async function check(path) {
     if (checked.has(path) || !/\.m?js$/.test(path)) return;
     checked.add(path);
     const source = await readFile(new URL(path.slice(1), root), 'utf8');
-    for (const match of source.matchAll(/(?:from\s*|import\s*\(\s*)["']([^"']+)["']/g)) {
-      const relative = match[1];
+    for (const { n: relative, d: dynamic } of parse(source)[0]) {
+      if (!relative) continue;
       if (!relative.startsWith('.') && !relative.startsWith('/')) continue;
       const dependency = new URL(relative, 'https://synthetic.test' + path).pathname;
-      if (dependency.startsWith('/tours/vendor/maplibre-gl-') || isUiAsset(dependency.slice(1))) continue;
+      if (dependency.startsWith('/tours/vendor/maplibre-gl-')) continue;
+      if (dynamic >= 0 && isUiAsset(dependency.slice(1))) { optionalUi.add(dependency); continue; }
+      required.add(dependency);
       assert.ok(files.has(dependency), `${path} needs ${dependency} on offline reload`);
       await check(dependency);
     }
   }
   for (const path of files) await check(path);
+  for (const path of optionalUi) {
+    if (!required.has(path)) assert.equal(files.has(path), false, `${path} is optional and must stay online-only`);
+  }
 });
 
 test('recorder honors caller duration and byte limits and persists why it stopped', async () => {

@@ -2,6 +2,25 @@
    comes from css/tokens.css. Page navigation lives in app-layout slots. */
 @import url("/css/tokens.css");
 
+.has-app-layout dialog.quick-switcher { width: min(580px, calc(100vw - 24px)); max-height: min(680px, calc(100dvh - 48px)); padding: 0; color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-3); box-shadow: var(--shadow-overlay); }
+.quick-switcher::backdrop { background: rgb(0 0 0 / 45%); }
+.quick-switcher-content { padding: var(--space-4); font-family: var(--font-text); }
+.quick-switcher header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.quick-switcher h2 { margin: 0; font-size: var(--font-size-3); }
+.quick-switcher input { box-sizing: border-box; width: 100%; margin-top: var(--space-3); min-height: 48px; padding: var(--space-3); font: inherit; color: var(--fg); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
+.quick-switcher button { min-height: 44px; padding: var(--space-2) var(--space-3); font: inherit; color: var(--fg); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
+.quick-switcher :focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.quick-switcher ul { list-style: none; padding: 0; margin: var(--space-2) 0; max-height: 42dvh; overflow: auto; }
+.quick-switcher [role="option"] { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3); min-height: 44px; box-sizing: border-box; cursor: pointer; border-radius: var(--radius-2); }
+.quick-switcher [role="option"] span { overflow-wrap: anywhere; }
+.quick-switcher [aria-selected="true"] { background: var(--surface-3); outline: 1px solid var(--hairline-strong); outline-offset: -1px; }
+.quick-switcher small, .quick-switcher footer, .quick-switcher [role="status"] { color: var(--fg-muted); }
+.quick-switcher small { flex-shrink: 0; }
+.quick-switcher footer { font-size: var(--font-size-1); }
+@media (max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px) {
+  .quick-switcher-toggle { position: fixed; bottom: calc(72px + env(safe-area-inset-bottom)); left: 12px; z-index: 30; background: var(--surface-1); box-shadow: var(--shadow-overlay); }
+}
+
 /* ------------------------------------------------------------- chips and filters */
 .chip-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .chip { display: inline-flex; align-items: center; gap: var(--space-2); min-width: var(--touch); min-height: var(--touch); padding: var(--space-1) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); background: var(--surface-1); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out); }

@@ -15,9 +15,9 @@ function setup(t, options={}) {
  t.after(()=>{bar.dispose();win.close();});return{bar,win,dialog,context,input:win.document.querySelector('#docCommandInput')};
 }
 const settle=()=>new Promise(r=>setTimeout(r,20));
-test('D and K chords cancel default, open once and focus; bare right Command, IME, repeats and modified chords pass through',t=>{
+test('D chord cancels default, open once and focus; bare right Command, IME, repeats and modified chords pass through',t=>{
  const {win,dialog,input}=setup(t);
- for(const mods of [{metaKey:true},{ctrlKey:true}])for(const key of ['d','k']) {dialog.close();const event=new win.KeyboardEvent('keydown',{key,...mods,cancelable:true,bubbles:true});win.document.dispatchEvent(event);assert.equal(event.defaultPrevented,true);assert.equal(dialog.open,true);assert.equal(win.document.activeElement,input);}
+ for(const mods of [{metaKey:true},{ctrlKey:true}])for(const key of ['d']) {dialog.close();const event=new win.KeyboardEvent('keydown',{key,...mods,cancelable:true,bubbles:true});win.document.dispatchEvent(event);assert.equal(event.defaultPrevented,true);assert.equal(dialog.open,true);assert.equal(win.document.activeElement,input);}
  dialog.close();const repeat=new win.KeyboardEvent('keydown',{key:'d',metaKey:true,repeat:true,cancelable:true});win.document.dispatchEvent(repeat);assert.equal(repeat.defaultPrevented,true);assert.equal(dialog.open,false);
  for(const args of [{key:'Meta',code:'MetaRight',metaKey:true},{key:'d',metaKey:true,isComposing:true},{key:'d',metaKey:true,shiftKey:true},{key:'d',metaKey:true,altKey:true}]) {dialog.close();const event=new win.KeyboardEvent('keydown',{...args,cancelable:true});win.document.dispatchEvent(event);assert.equal(event.defaultPrevented,false);assert.equal(dialog.open,false);}
 });
