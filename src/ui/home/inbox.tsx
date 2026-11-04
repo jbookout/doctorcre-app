@@ -1,4 +1,8 @@
 import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
+export type WaitingIdentity = Readonly<{ kind: 'party' | 'actor'; id: string; available: boolean; display_name: string | null }>;
+export type Waiting = Readonly<{ identity: WaitingIdentity; reason: string; evidence: string[]; version: number }>;
+type WaitingArgs = Readonly<{ idempotency_key: string; item_id: string; item_version: string; base_version: number; reason: string; evidence: string[] }>;
+export type WaitingCommand = Readonly<{ action: 'set'; args: WaitingArgs & { target: Pick<WaitingIdentity, 'kind' | 'id'> } }> | Readonly<{ action: 'clear'; args: WaitingArgs }>;
 type BaseItem = Readonly<{
   item_id: string; source_type: string; source_id: string; source_version: string;
   source_state: 'working' | 'needs_attention' | 'done' | 'failed'; title: string;
@@ -7,12 +11,13 @@ type BaseItem = Readonly<{
   explicit_unsettle: boolean; section: 'inbox' | 'working' | 'held' | 'done' | 'snoozed' | 'settled'; base_version: string;
 }>;
 export type InboxItem = BaseItem & Readonly<{
+  waiting_version?: number; waiting_on?: Waiting | null;
   auto_settled: boolean; context_label: string | null; due_on: string | null; open_url: string | null;
   kind_label: 'Task' | 'Call follow-up' | 'Call' | 'Reply draft' | 'Update' | 'Fact review' | 'Tour feedback';
   merged_source_ids: string[];
 }> & (Readonly<{ source_type: 'next_action' | 'capture_post_call_action'; action_id: string; action_version: number; deal_id: string | null }> |
   Readonly<{ source_type: 'capture_session' | 'email_proposal' | 'notification' | 'fact_review' | 'tour_feedback'; action_id: null; action_version: null; deal_id: string | null }>);
-export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3'; auto_settle_enabled: true }>);
+export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3' | 'home-inbox.v4'; auto_settle_enabled: true }>);
 export type Action = 'snooze' | 'settle' | 'unsettle';
 type CommandArgs = Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>> }>;
 type DispositionCommand = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
@@ -29,6 +34,16 @@ export type ItemResult = { item_id: string; ok: true; item: InboxItem; receipt?:
 export function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const timestamp = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
+export function waitingLabel(item: Pick<InboxItem, 'waiting_version' | 'waiting_on' | 'section' | 'source_state'>): string | null {
+  if (item.waiting_version === undefined || ['done', 'settled'].includes(item.section) || item.source_state === 'done') return null;
+  if (!item.waiting_on && (item.section !== 'inbox' || item.source_state === 'working')) return null;
+  return item.waiting_on ? item.waiting_on.identity.available ? `Waiting on ${item.waiting_on.identity.display_name}` : 'Waiting on someone · Identity unavailable' : 'Waiting on someone · Not recorded';
+}
+function parseWaiting(value: unknown, version: number): Waiting | null {
+  if (value === null) return null;
+  if (!object(value) || !object(value.identity) || !['party', 'actor'].includes(String(value.identity.kind)) || !uuid(value.identity.id) || typeof value.identity.available !== 'boolean' || (value.identity.available ? !text(value.identity.display_name) : value.identity.display_name !== null) || !text(value.reason) || !Array.isArray(value.evidence) || !value.evidence.length || value.evidence.length > 20 || !value.evidence.every(text) || value.version !== version) throw Error('Waiting identity unavailable. Refresh to try again.');
+  return value as Waiting;
+}
 function parseBaseItem(value: unknown): BaseItem {
   if (!object(value) || !['item_id', 'source_type', 'source_id', 'source_version', 'title', 'section', 'base_version'].every(key => text(value[key])) ||
     !(typeof value.source_state === 'string' && ['working', 'needs_attention', 'done', 'failed'].includes(value.source_state)) ||
@@ -55,12 +70,17 @@ export function parseItem(value: unknown, v3 = false): InboxItem {
   return { ...value, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
 }
 export function parseSnapshot(value: unknown): Snapshot {
-  if (!object(value) || value.ok !== true || (value.schema_version !== 'home-inbox.v2' && value.schema_version !== 'home-inbox.v3') || !Array.isArray(value.items) || value.items.length > 1000 ||
-    typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== (value.schema_version === 'home-inbox.v3')) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
-  const items = value.items.map(item => parseItem(item, value.schema_version === 'home-inbox.v3'));
+  if (!object(value) || value.ok !== true || !['home-inbox.v2', 'home-inbox.v3', 'home-inbox.v4'].includes(String(value.schema_version)) || !Array.isArray(value.items) || value.items.length > 1000 ||
+    typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== (value.schema_version !== 'home-inbox.v2')) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
+  const items = value.items.map(item => {
+    const parsed = parseItem(item, value.schema_version !== 'home-inbox.v2');
+    if (value.schema_version !== 'home-inbox.v4') { const { waiting_version, waiting_on, ...legacy } = parsed; return legacy; }
+    if (!object(item) || typeof item.waiting_version !== 'number' || !Number.isSafeInteger(item.waiting_version) || item.waiting_version < 0) throw Error('Waiting version unavailable.');
+    return { ...parsed, waiting_version: item.waiting_version, waiting_on: parseWaiting(item.waiting_on, item.waiting_version) };
+  });
   if (new Set(items.map(item => item.item_id)).size !== items.length) throw Error('Inbox returned duplicate items. Refresh to try again.');
   const shared = { ok: true, truncated: value.truncated, limit: 1000, items, working_collapsed: true } as const;
-  return value.schema_version === 'home-inbox.v3' ? { ...shared, schema_version: 'home-inbox.v3', auto_settle_enabled: true } : { ...shared, schema_version: 'home-inbox.v2', auto_settle_enabled: false };
+  return value.schema_version !== 'home-inbox.v2' ? { ...shared, schema_version: value.schema_version === 'home-inbox.v4' ? 'home-inbox.v4' : 'home-inbox.v3', auto_settle_enabled: true } : { ...shared, schema_version: 'home-inbox.v2', auto_settle_enabled: false };
 }
 export function shelves(items: readonly InboxItem[], currentId?: string) {
   const result: { inbox: InboxItem[]; working: InboxItem[]; held: InboxItem[]; done: InboxItem[]; snoozed: InboxItem[]; settled: InboxItem[]; current: InboxItem | undefined } = { inbox: [], working: [], held: [], done: [], snoozed: [], settled: [], current: undefined };
@@ -93,25 +113,42 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
     return { item_id, ok: false, error: object(row) && text(row.error) ? row.error : 'Result uncertain. Retry the same request.', ...(object(row) && text(row.current_version) ? { current_version: row.current_version } : {}) };
   });
 }
-export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
+export type WaitingChoice = Pick<WaitingIdentity, 'kind' | 'id'> & { name: string };
+export type InboxClient = { choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
-    let value: unknown;
-    try { value = await rpc('read-home-inbox-v3', {}, signal); }
-    catch (error) {
-      if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error;
-      value = { error: 'unknown_tool' };
+    async function available(name: string): Promise<unknown> {
+      try { return await rpc(name, {}, signal); }
+      catch (error) { if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error; return { error: 'unknown_tool' }; }
     }
+    let value = await available('read-home-inbox-v4');
+    if (object(value) && value.error === 'unknown_tool') value = await available('read-home-inbox-v3');
     if (object(value) && value.error === 'unknown_tool') {
       const legacy = await rpc('read-home-inbox-v2', {}, signal);
       if (!object(legacy) || legacy.schema_version !== 'home-inbox.v2') throw Error('Inbox unavailable. The earlier inbox could not be verified.');
       return parseSnapshot(legacy);
     }
-    if (!object(value) || value.schema_version !== 'home-inbox.v3') throw Error('Inbox unavailable. Automatic settlement could not be verified.');
+    if (!object(value) || !['home-inbox.v3', 'home-inbox.v4'].includes(String(value.schema_version))) throw Error('Inbox unavailable. Automatic settlement could not be verified.');
     return parseSnapshot(value);
   }
   return {
     read,
+    async choices() {
+      const value = await rpc('email-match-contacts', {});
+      if (!object(value) || value.schema_version !== 'email-match-contacts.v1' || !Array.isArray(value.contacts)) throw Error('People unavailable. Try loading again.');
+      const choices = new Map<string, WaitingChoice>();
+      for (const row of value.contacts) if (object(row) && row.exact === true && text(row.name) && object(row.contact_snapshot) && uuid(row.contact_snapshot.party_id)) choices.set(row.contact_snapshot.party_id, { kind: 'party', id: row.contact_snapshot.party_id, name: row.name });
+      return [...choices.values()];
+    },
+    async wait(request) {
+      if (navigator.onLine === false) throw Error('Offline. No change was sent.');
+      const result = await rpc(`${request.action}-home-waiting`, request.args);
+      if (!object(result) || result.ok !== true || result.schema_version !== 'home-waiting.v1' || result.item_id !== request.args.item_id || result.waiting_version !== request.args.base_version + 1) throw Error('Result uncertain. Retry the same request.');
+      const snapshot = await read();
+      const item = snapshot.items.find(item => item.item_id === request.args.item_id);
+      if (!item || item.waiting_version === undefined || item.waiting_version < result.waiting_version) throw Error('Waiting change recorded. Readback unavailable. Retry the same request.');
+      return item;
+    },
     async run(request) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
       if (request.action === 'complete' || request.action === 'reopen') {

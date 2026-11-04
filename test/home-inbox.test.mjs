@@ -21,7 +21,8 @@ test('Done is not Settled and current Working card remains reachable', () => {
 });
 
 test('commands retain exact retry identity and inspect mixed and missing results', async () => {
-  const { createInboxClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { createInboxClient: originalClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
   const calls = []; let attempt = 0;
   const client = createInboxClient(async (name, args) => {
     if (name === 'read-home-inbox-v3') return snapshot([item('a', { disposition: 'settled', base_version: 'opaque:2' })]);
@@ -70,7 +71,8 @@ test('v2 preserves producer context, completion identity and opaque versions', (
 });
 
 test('v1 command receipts recover v2 metadata through one authoritative read', async () => {
-  const { command, createInboxClient } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { command, createInboxClient: originalClient } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
   const calls = [];
   const request = command('settle', [item('a', { base_version: 'do-not-parse:007' })]);
   const client = createInboxClient(async (name, args) => {
@@ -98,10 +100,11 @@ test('source links use only supported producer destinations', async () => {
 });
 
 for (const change of ['snooze', 'source edit']) for (const retry of [false, true]) test(`newer ${change} readback cannot authorize Undo${retry ? ' after exact-key retry' : ''}`, async () => {
-  const { createInboxClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { createInboxClient: originalClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const receipt = item('a', { disposition: 'settled', section: 'settled', base_version: 'receipt:2' });
   const current = item('a', { ...receipt, base_version: 'later:3', ...(change === 'snooze' ? { disposition: 'snoozed', section: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' } : { title: 'Edited elsewhere', source_version: 'source:2', action_version: 8, context_label: 'New deal', due_on: '2026-11-06' }) });
   const writes = [];
+  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
   const client = createInboxClient(async (name, args) => {
     if (name === 'read-home-inbox-v3') return snapshot([current]);
     writes.push(structuredClone(args));
@@ -118,7 +121,8 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
 });
 
  test('completion receipt authorizes only its exact task version and event', async () => {
-  const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { createInboxClient: originalClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
   const calls = [];
   const event = '00000000-0000-0000-0000-000000000009';
   const client = createInboxClient(async (name, args) => {
@@ -138,8 +142,9 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
  });
 
 for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`completion cannot authorize a newer version ${laterVersion}, lost response ${lost}`, async () => {
-  const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { createInboxClient: originalClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const writes = [];
+  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
   const client = createInboxClient(async (name, args) => {
     if (name === 'read-home-inbox-v3') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: laterVersion })]);
     writes.push(structuredClone(args));
@@ -154,7 +159,8 @@ for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`comp
   if (lost) assert.deepEqual(writes[0], writes[1]);
 });
 test('legacy and wrong-identity receipts cannot manufacture Undo', async () => {
-  const { createInboxClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { createInboxClient: originalClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
   const client = createInboxClient(async name => name === 'read-home-inbox-v3' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
   const [result] = await client.run(taskCommand('complete', item('a')));
   assert.equal(result.ok, true);

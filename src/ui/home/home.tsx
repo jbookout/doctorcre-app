@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { command, taskCommand, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot, type TaskReceipt } from './inbox';
 import { recordRoutes } from './routes';
+import { WaitingEditor } from './waiting-editor';
 import { HomeWelcome, HomeSections } from './sections';
 
 type Pending = { request: Command; before: readonly InboxItem[]; undoing?: true };
@@ -152,6 +153,7 @@ function Inbox({ client }: { client: InboxClient }) {
         <h3 className={item_id === item.item_id ? 'inbox-title-expanded' : undefined}><Link aria-current={item_id === item.item_id ? 'true' : undefined} to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
         <p className="inbox-context">{item.context_label || 'No linked deal'}{item.due_on && <> · Due <time dateTime={item.due_on}>{item.due_on}</time></>}</p>
         <p className="inbox-detail">{item.disposition === 'snoozed' && item.snoozed_until ? `Snoozed until ${new Date(item.snoozed_until).toLocaleString()}` : item.auto_settled ? item.source_type === 'email_proposal' ? 'Answered' : item.source_type === 'fact_review' ? 'Review resolved' : item.source_type === 'tour_feedback' ? 'Feedback received' : 'Task completed' : item.disposition === 'settled' ? 'Hidden from inbox by you' : item.source_state === 'working' ? 'Dr. CRE is working. You can come back to this.' : item.source_state === 'done' ? 'Completed' : 'Ready for your attention'}{item.hold_until ? ` · On hold until ${item.hold_until}` : ''}</p>
+        <WaitingEditor activity={active => { inFlight.current = active; setBusy(active); if (active) void cache.cancelQueries({ queryKey }); }} item={item} client={client} disabled={busy || !!pending} update={next => cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(row => row.item_id === next.item_id ? next : row) } : snapshot)} />
         {item_id === item.item_id && recordRoutes.source(item) && <a className="inbox-source" href={recordRoutes.source(item) || undefined}>Open source record ↗</a>}
       </div>
       <div className="inbox-actions">{completable && <button type="button" className="inbox-primary" disabled={busy} onClick={() => act('complete', [item])}>Mark done</button>}{item.source_state !== 'working' && <button type="button" disabled={busy} onClick={() => act(primary === 'Hide from inbox' ? 'settle' : 'unsettle', [item])}>{primary}</button>}<button type="button" disabled={busy} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze([item]); }}>Snooze</button></div>

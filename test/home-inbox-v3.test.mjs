@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
-const { parseSnapshot, createInboxClient, command, shelves } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const { parseSnapshot, createInboxClient: originalClient, command, shelves } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
 const item = fields => ({ item_id: 'task', source_type: 'next_action', source_id: 'task', source_version: 'source:1', source_state: 'done', title: 'Synthetic task', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'settled', snoozed_until: null, explicit_unsettle: false, section: 'settled', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000001', action_version: 7, deal_id: null, auto_settled: true, ...fields });
 const snapshot = items => ({ ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, limit: 1000, truncated: false, items });
 for (const source_type of ['next_action', 'capture_post_call_action', 'email_proposal', 'fact_review', 'tour_feedback']) test(`v3 accepts canonical resolution of ${source_type} outside the working list`, () => {
