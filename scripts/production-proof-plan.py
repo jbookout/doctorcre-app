@@ -127,10 +127,15 @@ def source_tree(git, sha):
         return ()
     # Only reference-bearing lines are needed by the pure classifier. Git ignores
     # binary contents and never runs a checkout's filters or executable code.
-    pattern = '|'.join(re.escape(Path(path).name) for path in scripts)
-    pattern += ''.join('|' + r'\b' + re.escape(Path(path).stem) + r'\b' for path in scripts)
-    pattern += r'|npm[[:space:]]+(run|test|start|stop|restart)'
-    matches = git('grep', '-I', '-z', '-E', '-e', pattern, sha, '--')
+    needles = {'npm '}
+    for path in scripts:
+        name, stem = Path(path).name, Path(path).stem
+        needles.add(name)
+        needles.update('/' + stem + quote for quote in ("'", '"', '`'))
+        if path.endswith('.py'):
+            needles.update(('import ' + stem, 'from ' + stem))
+    arguments = [value for needle in sorted(needles) for value in ('-e', needle)]
+    matches = git('grep', '-I', '-z', '-F', *arguments, sha, '--')
     sources = {path: '' for path in scripts}
     sources.update({'src/unclassified/' + path: path for path in scripts
                     if modes[path] not in {'100644', '100755'}})
