@@ -1,12 +1,11 @@
 {
-  "schema_version": "home-inbox.v3",
+  "schema_version": "home-inbox.v4",
   "command_schema_version": "home-inbox-command.v1",
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "pull_request": 2940,
-    "source_commit": "da7e942d8517bca780bb5591b946d289ae11c0c3"
+    "source_commit": "0c1ce49d8ce20a57100d6766b113630309492b44"
   },
-  "read": "read-home-inbox-v3",
+  "read": "read-home-inbox-v4",
   "commands": [
     "snooze-home-inbox",
     "settle-home-inbox",
@@ -20,8 +19,8 @@
   "retry": "same idempotency key and exact arguments",
   "merge_dependency": "Server contract must be deployed before this application is merged.",
   "projection": {
-    "schema_version": "home-inbox.v3",
-    "read_verb": "read-home-inbox-v3",
+    "schema_version": "home-inbox.v4",
+    "read_verb": "read-home-inbox-v4",
     "item_fields": {
       "context_label": "string|null; deal or notification subject name",
       "due_on": "YYYY-MM-DD|null; canonical action due date",
@@ -31,7 +30,9 @@
       "action_id": "UUID|null; next_action or capture_post_call_action ID for complete-one-action",
       "action_version": "integer|null; canonical action version, sent as complete-one-action base_version",
       "deal_id": "UUID|null; owning deal for completion readback, null for non-deal work",
-      "auto_settled": "boolean; canonical resolution placed this item in Settled without a disposition write"
+      "auto_settled": "boolean; canonical resolution placed this item in Settled without a disposition write",
+      "review_reference": "home-review.v1 reference|null; exact item and source version with candidate domain operations; load read-home-review for current detail and available operations",
+      "completed_at": "UTC ISO-8601 instant|null; proven canonical completion, never activity or ingestion time"
     },
     "sections": [
       "inbox",
@@ -60,12 +61,19 @@
       "fact_review",
       "tour_feedback"
     ],
-    "settlement": "Canonical done tasks, sent replies, resolved fact reviews and received tour feedback settle automatically. A future snooze and explicit un-settle take precedence. Notification completion and call-processing completion do not prove all underlying work resolved. Tour feedback resolves only for the exact share grant that received a client shortlist or comment. Versions remain the existing disposition-command authority; retry exact requests and hydrate receipts through this read."
+    "settlement": "Canonical done tasks, sent replies, resolved fact reviews and received tour feedback settle automatically. A future snooze and explicit un-settle take precedence. Notification completion and call-processing completion do not prove all underlying work resolved. Tour feedback resolves only for the exact share grant that received a client shortlist or comment. Versions remain the existing disposition-command authority; retry exact requests and hydrate receipts through this read.",
+    "completion_time": "Done ordinary tasks use the exact complete-one-action, complete-action or complete-deal-item event, superseded by reopen-one-action. Done call actions use completed_at. Sent replies use send_result.sent_at. Open work, unsupported sources and unproven legacy completions return null. Later notifications never move completion. Clients group by America/Chicago."
   },
   "fallback": {
-    "read": "read-home-inbox-v2",
-    "schema_version": "home-inbox.v2",
+    "read": "read-home-inbox-v3",
+    "schema_version": "home-inbox.v3",
     "condition": "unknown_tool only",
-    "notice": "Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review."
+    "notice": "Completion times unavailable. Showing completed work without claiming a completion date.",
+    "fallback": {
+      "read": "read-home-inbox-v2",
+      "schema_version": "home-inbox.v2",
+      "condition": "unknown_tool only",
+      "notice": "Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review."
+    }
   }
 }

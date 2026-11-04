@@ -30,6 +30,7 @@ test('Open source record links each inbox source type to a page that opens it, o
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, working_collapsed: true, auto_settle_enabled: true, items } : { ok: true };
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });

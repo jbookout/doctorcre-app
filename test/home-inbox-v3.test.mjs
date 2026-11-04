@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+const createLegacyInboxClient = rpc => createInboxClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
 const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
 const { parseSnapshot, createInboxClient, command, shelves } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 const item = fields => ({ item_id: 'task', source_type: 'next_action', source_id: 'task', source_version: 'source:1', source_state: 'done', title: 'Synthetic task', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'settled', snoozed_until: null, explicit_unsettle: false, section: 'settled', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000001', action_version: 7, deal_id: null, auto_settled: true, ...fields });
@@ -18,7 +19,7 @@ test('v3 cannot manufacture an automatic resolution from malformed data', () => 
 });
 test('v3 read and disposition readback preserve opaque command authority', async () => {
   const calls = [];
-  const client = createInboxClient(async (name, args) => {
+  const client = createLegacyInboxClient(async (name, args) => {
     calls.push(name);
     if (name === 'read-home-inbox-v3') return snapshot([item({ auto_settled: false, explicit_unsettle: true, section: 'inbox', base_version: 'opaque:2' })]);
     return { ok: true, schema_version: 'home-inbox-command.v1', results: [{ item_id: 'task', ok: true, item: item({ section: 'inbox', explicit_unsettle: true, auto_settled: false, base_version: 'opaque:2' }) }] };
@@ -30,7 +31,7 @@ test('v3 read and disposition readback preserve opaque command authority', async
 });
 test('unsupported v3 falls back to explicit v2 without claiming automatic settlement', async () => {
   const calls = [];
-  const client = createInboxClient(async name => {
+  const client = createLegacyInboxClient(async name => {
     calls.push(name);
     if (name === 'read-home-inbox-v3') throw Object.assign(Error('Unsupported'), { payload: { error: 'unknown_tool' } });
     return { ...snapshot([item({ auto_settled: undefined, section: 'done' })]), schema_version: 'home-inbox.v2', auto_settle_enabled: false };
@@ -41,14 +42,14 @@ test('unsupported v3 falls back to explicit v2 without claiming automatic settle
 });
 for (const code of ['partner_required', 'network_error', 'invalid_projection']) test(`v3 ${code} cannot be concealed by a legacy fallback`, async () => {
   const calls = [];
-  const client = createInboxClient(async name => { calls.push(name); throw Object.assign(Error(code), { payload: { error: code } }); });
+  const client = createLegacyInboxClient(async name => { calls.push(name); throw Object.assign(Error(code), { payload: { error: code } }); });
   await assert.rejects(client.read(), new RegExp(code));
   assert.deepEqual(calls, ['read-home-inbox-v3']);
 });
 test('a failed legacy fallback is attempted once and cannot change schema', async () => {
   for (const payload of [{ error: 'unknown_tool' }, snapshot([])]) {
     const calls = [];
-    const client = createInboxClient(async name => {
+    const client = createLegacyInboxClient(async name => {
       calls.push(name);
       if (name === 'read-home-inbox-v3' || payload.error) throw Object.assign(Error('Unsupported'), { payload: { error: 'unknown_tool' } });
       return payload;
