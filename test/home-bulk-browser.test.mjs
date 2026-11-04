@@ -1,0 +1,129 @@
+import test, { before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { chromium, fixtureServer } from './browser-harness.mjs';
+let outDir;
+before(async () => { outDir = await temporaryDirectory('home-bulk-'); await buildArtifact({ root: process.cwd(), outDir }); });
+after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
+async function open(t, { width = 390, theme = 'light', mixed = true, stale = false, lost = false, missing = false, hold = false, undoLost = false } = {}) {
+  const { createBatchFake, makeItem } = await import('./fixtures/home-bulk-fake.mjs');
+  const items = ['a', 'b', 'c', 'd'].map(makeItem);
+  const fake = createBatchFake(items, { mixed, stale, lost, missing, hold, undoLost });
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'Asia/Tokyo' });
+  page.setDefaultTimeout(5000);
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/mcp', async route => {
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    try { const payload = await fake.rpc(name, args); await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } }); }
+    catch { await route.abort(); }
+  });
+  await page.goto(`${server.origin}/?mode=live`);
+  await page.getByRole('checkbox', { name: 'Select Synthetic a', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'See all 4', exact: true }).click();
+  for (const id of ['a', 'b', 'c', 'd']) await page.getByRole('checkbox', { name: `Select Synthetic ${id}`, exact: true }).check();
+  return { page, fake };
+}
+test('mixed_batch_shows_each_receipt_and_undo_restores_only_applied', async t => {
+  const { page, fake } = await open(t);
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  const results = page.getByRole('region', { name: 'Batch results' });
+  await results.getByText('Synthetic a · Applied', { exact: true }).waitFor();
+  for (const [id, status] of [['b', 'Already'], ['c', 'Not found'], ['d', 'Not allowed']]) {
+    await results.getByText(`Synthetic ${id} · ${status}`, { exact: false }).waitFor();
+    assert.equal(await page.getByRole('checkbox', { name: `Select Synthetic ${id}`, exact: true }).isChecked(), true);
+  }
+  await page.getByRole('button', { name: 'Undo whole batch', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Batch undo confirmed' }).waitFor();
+  assert.equal(fake.items[0].disposition, 'inbox');
+  assert.equal(fake.calls.filter(x => x.args.undo_of).length, 1);
+  assert.equal('items' in fake.calls.find(x => x.args.undo_of).args, false);
+});
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`snooze default and subset undo fit ${width} ${theme}`, async t => {
+  const { page, fake } = await open(t, { width, theme, mixed: false });
+  await page.getByRole('button', { name: 'Snooze selected', exact: true }).click();
+  await page.getByRole('button', { name: 'Not now · Tomorrow 9:00 AM Central', exact: true }).click();
+  await page.locator('[data-batch-state="results"]').waitFor();
+  const write = fake.calls[0];
+  assert.equal(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(write.args.until)), '9:00 AM');
+  assert.equal(write.name, 'snooze-home-inbox');
+  await page.getByRole('checkbox', { name: 'Undo Synthetic a', exact: true }).check();
+  await page.getByRole('button', { name: 'Undo selected results', exact: true }).click();
+  await page.locator('[data-batch-state="undone"]').waitFor();
+  assert.deepEqual(fake.calls[1].args.items, [{ item_id: 'a' }]);
+  assert.deepEqual(fake.items.map(item => item.disposition), ['inbox', 'snoozed', 'snoozed', 'snoozed']);
+  assert.equal(await page.getByRole('checkbox', { name: 'Undo Synthetic b', exact: true }).count(), 1);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.getByRole('region', { name: 'Batch results' }).screenshot({ path: `/tmp/wr617-s12-j4-${width}-${theme}.png` });
+});
+test('stale undo refuses plainly and retains remaining undo choices', async t => {
+  const { page, fake } = await open(t, { mixed: false, stale: true });
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo whole batch', exact: true }).click();
+  await page.locator('[data-batch-state="undo_refused"]').waitFor();
+  assert.equal(await page.getByText(/This card changed.*Nothing was overwritten/).count(), 4);
+  assert.equal(fake.items.every(item => item.disposition === 'settled'), true);
+});
+test('lost response retries identical request and never claims early success', async t => {
+  const { page, fake } = await open(t, { mixed: false, lost: true });
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.locator('[data-batch-state="uncertain"]').waitFor();
+  assert.equal(await page.getByText('Synthetic a · Applied', { exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Retry same batch', exact: true }).click();
+  await page.locator('[data-batch-state="results"]').waitFor();
+  assert.deepEqual(fake.calls[0], fake.calls[1]);
+});
+test('picker cancel restores keyboard focus and chosen Central time is sent', async t => {
+  const { page, fake } = await open(t, { mixed: false });
+  const snooze = page.getByRole('button', { name: 'Snooze selected', exact: true });
+  await snooze.focus(); await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await snooze.evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('Enter');
+  await page.getByLabel('Return time · Central', { exact: true }).fill('2099-07-01T14:15');
+  await page.getByRole('button', { name: 'Snooze until chosen time', exact: true }).click();
+  await page.locator('[data-batch-state="results"]').waitFor();
+  assert.equal(fake.calls[0].args.until, '2099-07-01T19:15:00.000Z');
+});
+test('not found card remains selected for review after canonical read removes it', async t => {
+  const { page } = await open(t, { missing: true });
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.locator('[data-batch-state="results"]').waitFor();
+  assert.equal(await page.getByRole('checkbox', { name: 'Select missing card Synthetic c', exact: true }).isChecked(), true);
+});
+test('in flight batch makes no success claim and announces its receipt once', async t => {
+  const { page, fake } = await open(t, { mixed: false, hold: true });
+  await page.evaluate(() => {
+    window.batchAnnouncements = [];
+    new MutationObserver(() => { const text = document.querySelector('.inbox-batch-announcement').textContent; if (text) window.batchAnnouncements.push(text); }).observe(document.querySelector('.inbox-batch-announcement'), { subtree: true, childList: true, characterData: true });
+  });
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.locator('[data-batch-state="applying"]').waitFor();
+  assert.equal(await page.getByText('Synthetic a · Applied', { exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Settle selected', exact: true }).isDisabled(), true);
+  fake.release();
+  await page.locator('[data-batch-state="results"]').waitFor();
+  assert.equal(await page.evaluate(() => window.batchAnnouncements.length), 1);
+});
+test('selection checkboxes support Space and uncertain undo retries exact batch authority', async t => {
+  const { page, fake } = await open(t, { mixed: false, undoLost: true });
+  const checkbox = page.getByRole('checkbox', { name: 'Select Synthetic a', exact: true });
+  await checkbox.focus(); await page.keyboard.press('Space');
+  assert.equal(await checkbox.isChecked(), false);
+  await page.keyboard.press('Space'); assert.equal(await checkbox.isChecked(), true);
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
+  await page.locator('[data-batch-state="results"]').waitFor();
+  await page.getByRole('button', { name: 'Undo whole batch', exact: true }).click();
+  await page.locator('[data-batch-state="uncertain"]').waitFor();
+  assert.equal(fake.calls.length, 2);
+  await page.getByRole('button', { name: 'Retry same batch', exact: true }).click();
+  await page.locator('[data-batch-state="undone"]').waitFor();
+  assert.equal(fake.calls[1].args.undo_of, fake.calls[0].args.idempotency_key);
+  assert.deepEqual(fake.calls[1], fake.calls[2]);
+  await page.getByText('Synthetic a · Restored', { exact: true }).waitFor();
+});
