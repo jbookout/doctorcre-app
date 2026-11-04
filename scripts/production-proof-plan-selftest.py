@@ -59,7 +59,6 @@ class AdmissionTest(unittest.TestCase):
         with patch('subprocess.check_output', side_effect=AssertionError('subprocess')), \
              patch.object(Path, 'read_text', side_effect=AssertionError('file read')):
             self.assertEqual(self.adapter.admission(self.snapshot(), self.validator, self.contract).status, 'admitted')
-            requirement = (ROOT / 'proofs/requirements/app-proof-admission.json')
             self.assertEqual(self.adapter.admission(self.snapshot(BODY, ['src/ui/a.tsx']), self.validator, self.contract).status, 'refused')
 
     def test_requirement_validation_is_pure_and_cannot_borrow_proof(self):
@@ -78,6 +77,29 @@ class AdmissionTest(unittest.TestCase):
         self.assertIn('changed runtime target missing', decision.reason)
         del value['safety']
         self.assertIn('missing or unknown', self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract).reason)
+
+
+    def test_edited_body_removal(self):
+        snapshot = self.snapshot()
+        self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, 'admitted')
+        self.assertEqual(self.adapter.admission(snapshot._replace(body='removed'), self.validator, self.contract).status, 'refused')
+
+    def test_requirement_edge_cases(self):
+        value = json.loads((ROOT / 'proofs/requirements/app-proof-admission.json').read_text())
+        value['targets'] = ['studio']
+        value['assertions'][0]['runner'] = 'studio-run-receipt.v1'
+        snapshot = self.snapshot(BODY, ['test/a.test.mjs'], requirement=json.dumps(value))
+        self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, 'admitted')
+        with patch('subprocess.check_output', side_effect=AssertionError('subprocess')), \
+             patch.object(Path, 'read_text', side_effect=AssertionError('file read')):
+            self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, 'admitted')
+        for malformed, reason in [(None, 'missing'), ('{', 'Expecting')]:
+            self.assertIn(reason, self.adapter.admission(snapshot._replace(requirement_json=malformed), self.validator, self.contract).reason)
+        value['assertions'].append(value['assertions'][0])
+        self.assertIn('duplicate assertion', self.adapter.admission(snapshot._replace(requirement_json=json.dumps(value)), self.validator, self.contract).reason)
+        value['assertions'].pop()
+        value['assertions'][0]['runner'] = 'unknown.v1'
+        self.assertIn('unregistered runner', self.adapter.admission(snapshot._replace(requirement_json=json.dumps(value)), self.validator, self.contract).reason)
 
     def test_pin_drift(self):
         import shutil
@@ -185,6 +207,39 @@ class GitHubAdapterTest(unittest.TestCase):
                  patch.object(self.validator, 'github_metadata', side_effect=responses) as metadata:
                 self.assertEqual(self.adapter.main(), expected)
                 self.assertEqual(metadata.call_count, 2)
+
+
+    def test_whitespace_in_git_paths_is_preserved(self):
+        self.git('checkout', '-q', 'pr')
+        self.commit(' docs/a.md', 'product path with leading space')
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            snapshot = self.collect()
+        self.assertIn(' docs/a.md', snapshot.paths)
+        self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, 'refused')
+
+    def test_symlink_requirement_and_missing_requirement_refuse(self):
+        self.git('checkout', '-q', 'pr')
+        path = self.root / 'proofs/requirements/example.json'
+        path.parent.mkdir(parents=True)
+        path.symlink_to('../../docs/base.md')
+        self.git('add', 'proofs/requirements/example.json')
+        self.git('commit', '-qm', 'symlink fixture')
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        for name in ['example.json', 'missing.json']:
+            self.event['pull_request']['body'] = '## Production proof\nproofs/requirements/' + name
+            with patch.object(self.validator, 'github_metadata', return_value={}):
+                with self.assertRaisesRegex(ValueError, 'missing or symlink'):
+                    self.collect()
+
+    def test_git_timeout_and_input_bounds(self):
+        with patch.object(self.validator, 'github_metadata', return_value={}), \
+             patch('subprocess.check_output', side_effect=subprocess.TimeoutExpired('git', 15)):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.collect()
+        self.event['pull_request']['body'] = 'x' * 1048577
+        with self.assertRaisesRegex(ValueError, '1 MiB'):
+            self.collect()
 
     def test_requirement_bytes_are_from_pr_head(self):
         self.git('checkout', '-q', 'pr')
