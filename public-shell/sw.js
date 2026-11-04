@@ -35,3 +35,36 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || !staticAsset(url.pathname)) event.respondWith(networkOnly(event.request));
   else event.respondWith(shell(event.request));
 });
+
+function pushTarget(value) {
+  if (!value || value.schema_version !== 'web-push.v1' || typeof value.event_id !== 'string' || !value.event_id || value.event_id.length > 512 || /[\u0000-\u001f\u007f]/.test(value.event_id)) return null;
+  const path = `/inbox/card/${encodeURIComponent(value.event_id)}`;
+  if (value.path !== path) return null;
+  const url = new URL(path, self.location.origin);
+  if (url.origin !== self.location.origin || url.pathname !== path || url.search || url.hash) return null;
+  return { event_id: value.event_id, path };
+}
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let target;
+    try { target = pushTarget(event.data?.json()); } catch { return; }
+    if (!target) return;
+    await self.registration.showNotification('DoctorCRE needs your attention', {
+      body: 'Open your Inbox to review the current card.',
+      tag: `doctorcre:${target.event_id}`, data: target,
+    });
+  })());
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const target = pushTarget({ ...event.notification.data, schema_version: 'web-push.v1' });
+    if (!target) return;
+    const url = new URL(target.path, self.location.origin).href;
+    const windows = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .filter(client => new URL(client.url).origin === self.location.origin);
+    const window = windows.find(client => client.url === url) || windows.find(client => /^\/inbox(?:\/|$)/.test(new URL(client.url).pathname));
+    if (window) { if (window.url !== url) await window.navigate(url); await window.focus(); }
+    else await self.clients.openWindow(url);
+  })());
+});

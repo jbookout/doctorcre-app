@@ -1,0 +1,27 @@
+---
+title: "Web push setup"
+---
+stateDiagram-v2
+  s0: permission_default
+  s1: not_installed
+  s2: unsupported
+  s3: registering
+  s4: permission_denied
+  s5: unavailable
+  s6: preference_disabled
+  s7: subscribed
+  s8: revoked
+  [*] --> s0
+  s0 --> s1: Capability check
+  s0 --> s2: Capability check
+  s0 --> s3: You tap Enable
+  s3 --> s4: Browser refuses permission
+  s3 --> s5: Registration is uncertain
+  s4 --> s0: You change browser settings
+  s5 --> s3: You tap Enable
+  s3 --> s6: Preference is not confirmed
+  s3 --> s7: Preference is confirmed
+  s6 --> s3: You tap Enable
+  s7 --> s6: You tap Disable
+  s7 --> s8: Endpoint rotates
+  s8 --> s3: You tap Enable

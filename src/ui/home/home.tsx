@@ -132,7 +132,12 @@ function Inbox({ client }: { client: InboxClient }) {
     try { void run({ request: action === 'complete' || action === 'reopen' ? taskCommand(action, items[0]!, receipt) : command(action, items, until), before: items, ...(undoing ? { undoing: true as const } : {}) }); }
     catch (error) { setNotice(message(error)); }
   }
-  const items = query.data?.items || [];
+  const target = useQuery({ queryKey: ['push-card', item_id, query.dataUpdatedAt],
+    enabled: !!item_id && !!query.data && !query.isFetching && !query.isError && !query.data.items.some(item => item.item_id === item_id),
+    queryFn: ({ signal }) => item_id && client.readCard ? client.readCard(item_id, signal) : Promise.resolve(null),
+  });
+  const snapshotItems = query.data?.items || [];
+  const items = target.data && !snapshotItems.some(item => item.item_id === target.data?.item_id) ? [...snapshotItems, target.data] : snapshotItems;
   const placed = shelves(items, item_id);
   const picked = items.filter(item => selected.has(item.item_id));
   function row(item: InboxItem) {
@@ -172,7 +177,7 @@ function Inbox({ client }: { client: InboxClient }) {
       {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo(entries => entries.filter(entry => entry !== previous)); act(previous.action, previous.items, previous.until, true, previous.receipt); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
     </div>}
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError && !query.data ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
-      {item_id && !placed.current && <p role="status">This card is not in your current inbox snapshot.</p>}
+      {item_id && !placed.current && <p role="status">{target.isFetching ? 'Reading the exact card…' : target.isError ? 'This card is unavailable. Refresh to try again.' : 'This card has expired or is no longer available to you.'}</p>}
       {query.data?.truncated && <p role="status">Showing the first 1,000 cards. More work is available.</p>}
       {home ? <HomeSections items={items} current={item_id} row={row} /> : <>
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Mark done finishes a task. Hide from inbox leaves the task open.</p></div>

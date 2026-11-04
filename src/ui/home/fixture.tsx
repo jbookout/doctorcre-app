@@ -5,6 +5,10 @@ export function fixtureInboxRpc() {
   items.forEach((item, index) => Object.assign(item, { action_id: `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}` }));
   const receipts = new Map<string, unknown>();
   return async (name: string, args: unknown) => {
+    if (name === 'read-partner-needed-card') {
+      const event_id = object(args) ? args.event_id : null;
+      return { ok: true, item: event_id === 'synthetic:outside/card' ? make(event_id, 'Synthetic out-of-page review', 'needs_attention') : null };
+    }
     if (name === 'read-home-inbox-v3') return { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: structuredClone(items).map(item => {
       const auto_settled = item.source_state === 'done' && item.disposition === 'inbox' && !item.explicit_unsettle;
       return { ...item, auto_settled, ...(auto_settled ? { disposition: 'settled', section: 'settled' } : {}) };

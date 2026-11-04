@@ -93,8 +93,8 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
     return { item_id, ok: false, error: object(row) && text(row.error) ? row.error : 'Result uncertain. Retry the same request.', ...(object(row) && text(row.current_version) ? { current_version: row.current_version } : {}) };
   });
 }
-export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
-export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
+export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; readCard?(event_id: string, signal?: AbortSignal): Promise<InboxItem | null>; run(request: Command): Promise<ItemResult[]> };
+export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>, cardRead?: (event_id: string, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
     let value: unknown;
     try { value = await rpc('read-home-inbox-v3', {}, signal); }
@@ -112,6 +112,15 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
   }
   return {
     read,
+    async readCard(event_id, signal) {
+      if (!cardRead) throw Error('This card is unavailable until the notification service is connected.');
+      const value = await cardRead(event_id, signal);
+      if (!object(value) || value.ok !== true) throw Error('This card is unavailable. Refresh to try again.');
+      if (value.item === null) return null;
+      const item = parseItem(value.item, true);
+      if (item.item_id !== event_id) throw Error('Card identity is unavailable. Refresh to try again.');
+      return item;
+    },
     async run(request) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
       if (request.action === 'complete' || request.action === 'reopen') {

@@ -31,6 +31,7 @@ const UI_ENTRIES = {
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-tours': 'deal-tours',
   'ui-inbox': 'inbox-entry',
+  'ui-web-push': 'web-push-settings',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',
   'ui-deal-reviews': 'home/deal-update-reviews',

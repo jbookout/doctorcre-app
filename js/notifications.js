@@ -182,7 +182,7 @@ function renderPreference() {
   const retained = commandState[PREFERENCE_OPERATION_KEY];
   for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
     const field = $(id);
-    if (field) field.disabled = saving || !model || (Boolean(retained) && id !== "prefSave");
+    if (field) field.disabled = id === "deviceOptIn" || saving || !model || (Boolean(retained) && id !== "prefSave");
   }
   $("prefSave").textContent = retained ? "Check outcome" : "Save preferences";
   if (!model || dirty) return;
@@ -450,9 +450,8 @@ async function savePreference(form) {
   return result;
 }
 
-/** What the four controls currently say, read once, at submit time. */
+/** Quiet-hours fields, read once at submit time. */
 const formValues = () => ({
-  device_opt_in: $("deviceOptIn").checked,
   quiet_hours_start: $("quietStart").value,
   quiet_hours_end: $("quietEnd").value,
   timezone: $("quietTimezone").value,
@@ -536,6 +535,11 @@ async function boot() {
   client = boot_.mode === "live"
     ? createLiveClient()
     : await (await import("./fixture-client.js")).createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+  if (boot_.mode !== "live") {
+    const { mountSyntheticWebPush } = await import("./ui-web-push.js");
+    mountSyntheticWebPush($("webPushSettings"), client);
+  }
+  window.addEventListener("doctorcre:push-preference-changed", () => load());
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: load });
   await load();

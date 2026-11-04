@@ -53,6 +53,12 @@
       <ul class="work-list" id="feedList"></ul>
     </section>
 
+    <section class="card glass" aria-labelledby="webPushTitle">
+      <h2 id="webPushTitle">Notifications on this browser</h2>
+      <p class="caption">Enable connects this browser. Disable stops device pushes for your account.</p>
+      <div id="webPushSettings"><p role="status">Browser push setup is unavailable until the notification service is connected.</p></div>
+    </section>
+
     <section class="card glass" data-section="quiet_hours" id="quietHoursBlock" aria-labelledby="quietHoursTitle">
       <div class="card-heading">
         <div><h2 id="quietHoursTitle">Your notification preferences</h2><p class="page-sub">Quiet hours hold device pushes until they end</p></div>
@@ -62,8 +68,8 @@
       <div class="state-block" id="prefState" data-state="loading"><h3 id="prefStateTitle">Reading your preferences…</h3></div>
       <form class="pref-form" id="prefForm" novalidate hidden>
         <div class="switch-field">
-          <input id="deviceOptIn" type="checkbox">
-          <label for="deviceOptIn">Send a device push when something is addressed to me</label>
+          <input id="deviceOptIn" type="checkbox" disabled>
+          <label for="deviceOptIn">Device push send preference</label>
         </div>
         <div class="pref-grid">
           <div class="field"><label for="quietStart">Quiet hours start</label><input id="quietStart" type="text" autocomplete="off" placeholder="10:00 PM"></div>

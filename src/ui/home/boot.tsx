@@ -18,7 +18,9 @@ export async function bootInbox(host: HTMLElement) {
   try {
     const { resolveDealroomBoot } = await sibling('./boot-mode.js');
     let rpc: Rpc = fixtureInboxRpc();
+    let cardRead: ((event_id: string, signal?: AbortSignal) => Promise<unknown>) | undefined = (event_id, signal) => rpc('read-partner-needed-card', { event_id }, signal);
     if (resolveDealroomBoot(location).mode === 'live') {
+      cardRead = undefined;
       const [{ privateSession }, { createMcpRequests }] = await Promise.all([sibling('./private-session.js'), sibling('./mcp-requests.mjs')]);
       await privateSession().verify();
       const request = createMcpRequests();
@@ -33,7 +35,7 @@ export async function bootInbox(host: HTMLElement) {
       };
     }
     if (location.pathname === '/') await sibling('./app-shell.js');
-    mountInbox(host, createInboxClient(rpc));
+    mountInbox(host, createInboxClient(rpc, cardRead));
   } catch {
     host.replaceChildren();
     const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = 'Inbox unavailable. Sign in or refresh to try again.';
