@@ -1,3 +1,4 @@
+import { ReviewCard } from './review-card';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
@@ -45,6 +46,9 @@ function Inbox({ client }: { client: InboxClient }) {
     const host = document.getElementById('homeRoot');
     if (home && !query.isPending && host) markHomeReady(host);
   }, [home, query.isPending]);
+  const [reviewing, setReviewing] = useState<InboxItem | null>(null);
+  const reviewOpener = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => { if (!reviewing && reviewOpener.current) { if (reviewOpener.current.isConnected) reviewOpener.current.focus(); else root.current?.querySelector<HTMLElement>('[data-inbox-row] h3 a')?.focus(); } }, [reviewing]);
   const [selected, select] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,11 +146,11 @@ function Inbox({ client }: { client: InboxClient }) {
       onTouchStart={event => { const touch = event.touches[0]; if (touch) gesture.current = { x: touch.clientX, y: touch.clientY }; }}
       onTouchEnd={event => {
         const touch = event.changedTouches[0], start = gesture.current; gesture.current = null;
-        if (!touch || !start || Math.abs(touch.clientY - start.y) > 45 || Math.abs(touch.clientX - start.x) < 90 || busy) return;
+        if (!touch || !start || Math.abs(touch.clientY - start.y) > 45 || Math.abs(touch.clientX - start.x) < 90 || busy || reviewing) return;
         if (touch.clientX > start.x && item.source_state !== 'working') act(primary === 'Hide from inbox' ? 'settle' : 'unsettle', [item]);
         else if (touch.clientX < start.x) { snoozeOpener.current = event.currentTarget.querySelector('h3 a'); setSnooze([item]); }
       }}>
-      <label className="inbox-select"><input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.item_id)} disabled={busy || item.source_state === 'working'}
+      <label className="inbox-select"><input type="checkbox" aria-label={`Select ${item.title}`} checked={selected.has(item.item_id)} disabled={busy || !!reviewing || item.source_state === 'working'}
         onChange={event => select(previous => { const next = new Set(previous); if (event.target.checked) next.add(item.item_id); else next.delete(item.item_id); return next; })} /></label>
       <div className="inbox-copy"><p className="inbox-meta"><span>{item.kind_label}</span><span className={`inbox-badge inbox-${item.source_state}`}>{item.source_state.replaceAll('_', ' ')}</span></p>
         <h3 className={item_id === item.item_id ? 'inbox-title-expanded' : undefined}><Link aria-current={item_id === item.item_id ? 'true' : undefined} to={recordRoutes.card(item.item_id)}>{item.title}</Link></h3>
@@ -154,7 +158,14 @@ function Inbox({ client }: { client: InboxClient }) {
         <p className="inbox-detail">{item.disposition === 'snoozed' && item.snoozed_until ? `Snoozed until ${new Date(item.snoozed_until).toLocaleString()}` : item.auto_settled ? item.source_type === 'email_proposal' ? 'Answered' : item.source_type === 'fact_review' ? 'Review resolved' : item.source_type === 'tour_feedback' ? 'Feedback received' : 'Task completed' : item.disposition === 'settled' ? 'Hidden from inbox by you' : item.source_state === 'working' ? 'Dr. CRE is working. You can come back to this.' : item.source_state === 'done' ? 'Completed' : 'Ready for your attention'}{item.hold_until ? ` · On hold until ${item.hold_until}` : ''}</p>
         {item_id === item.item_id && recordRoutes.source(item) && <a className="inbox-source" href={recordRoutes.source(item) || undefined}>Open source record ↗</a>}
       </div>
-      <div className="inbox-actions">{completable && <button type="button" className="inbox-primary" disabled={busy} onClick={() => act('complete', [item])}>Mark done</button>}{item.source_state !== 'working' && <button type="button" disabled={busy} onClick={() => act(primary === 'Hide from inbox' ? 'settle' : 'unsettle', [item])}>{primary}</button>}<button type="button" disabled={busy} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze([item]); }}>Snooze</button></div>
+      <div className="inbox-actions">{home && item.review_reference && client.review && <button type="button" disabled={busy || !!pending || !!reviewing} onClick={event => { reviewOpener.current = event.currentTarget; setReviewing(item); }}>Review card</button>}{completable && <button type="button" className="inbox-primary" disabled={busy || !!reviewing} onClick={() => act('complete', [item])}>Mark done</button>}{item.source_state !== 'working' && <button type="button" disabled={busy || !!reviewing} onClick={() => act(primary === 'Hide from inbox' ? 'settle' : 'unsettle', [item])}>{primary}</button>}<button type="button" disabled={busy || !!reviewing} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze([item]); }}>Snooze</button></div>
+      {reviewing?.item_id === item.item_id && client.review && <ReviewCard item={item} client={client.review} close={() => { setReviewing(null); }} busy={value => { inFlight.current = value; setBusy(value); if (value) void cache.cancelQueries({ queryKey }); }} confirmed={(current, receipt) => {
+        cache.setQueryData<Snapshot>(queryKey, snapshot => snapshot ? { ...snapshot, items: snapshot.items.map(row => row.item_id === current.item_id ? current : row) } : snapshot);
+        if (receipt?.completion_event_id) {
+          setUndo(entries => [...entries.filter(entry => entry.items[0]?.item_id !== current.item_id), { action: 'reopen', items: [current], receipt }]);
+          setNotice(`Marked done: ${current.title}. You can undo this change.`);
+        }
+      }} />}
     </article>;
   }
   return <div className={home ? 'home-inbox' : undefined} ref={root} onKeyDown={event => {
@@ -168,19 +179,19 @@ function Inbox({ client }: { client: InboxClient }) {
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {query.data && !query.data.auto_settle_enabled && <p role="status">Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review.</p>}
     {notice && <div className="inbox-notice" role="status"><p>{notice}</p>{failures.map(result => !result.ok && <p key={result.item_id}>{items.find(item => item.item_id === result.item_id)?.title || result.item_id} · {inboxRefusal(result.error)}</p>)}
-      {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
-      {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy} onClick={() => { setUndo(entries => entries.filter(entry => entry !== previous)); act(previous.action, previous.items, previous.until, true, previous.receipt); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
+      {pending && <><button disabled={busy || !online} onClick={() => void run(pending)}>Retry same request</button><button disabled={busy || !!reviewing} onClick={() => { setPending(null); setFailures([]); setNotice('Request dismissed. Refresh to check canonical state before another action.'); void query.refetch(); }}>Dismiss and refresh</button></>}
+      {!pending && undo.map(previous => <button key={previous.items[0]?.item_id} disabled={busy || !!reviewing} onClick={() => { setUndo(entries => entries.filter(entry => entry !== previous)); act(previous.action, previous.items, previous.until, true, previous.receipt); }}>{undo.length === 1 ? 'Undo' : `Undo ${previous.items[0]?.title}`}</button>)}
     </div>}
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError && !query.data ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
       {item_id && !placed.current && <p role="status">This card is not in your current inbox snapshot.</p>}
       {query.data?.truncated && <p role="status">Showing the first 1,000 cards. More work is available.</p>}
-      {home ? <HomeSections items={items} current={item_id} row={row} /> : <>
+      {home ? <HomeSections items={items} pinned={reviewing} current={reviewing?.item_id || item_id} row={row} /> : <>
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Mark done finishes a task. Hide from inbox leaves the task open.</p></div>
         {placed.inbox.length ? placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
       {(['working', 'held', 'done', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf} open={placed.current?.section === shelf || undefined}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'held' ? 'Held' : shelf === 'done' ? 'Done' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
       </>}
     </>}
-    {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Hide selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Show selected</button><button disabled={busy || picked.length > 100} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze(picked); }}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
+    {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || !!reviewing || picked.length > 100} onClick={() => act('settle', picked)}>Hide selected</button><button disabled={busy || !!reviewing || picked.length > 100} onClick={() => act('unsettle', picked)}>Show selected</button><button disabled={busy || !!reviewing || picked.length > 100} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze(picked); }}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
     {snooze && <dialog className="inbox-snooze" ref={node => { if (node && !node.open) node.showModal(); }} onCancel={() => { cancelSnooze(); }} aria-label="Snooze cards"><h2>Snooze {snooze.length === 1 ? 'card' : `${snooze.length} cards`}</h2><p>Choose when this returns to your inbox.</p>{[1, 24].map(hours => <button autoFocus={hours === 1} key={hours} onClick={() => { const rows = snooze; setSnooze(null); act('snooze', rows, new Date(Date.now() + hours * 3_600_000).toISOString()); }}>{hours === 1 ? '1 hour' : '24 hours'} · {new Date(Date.now() + hours * 3_600_000).toLocaleString()}</button>)}<button onClick={() => { cancelSnooze(); }}>Cancel</button></dialog>}
     <footer className="inbox-footer">Use ↑ ↓ to move between cards. On your phone, swipe right to hide or wake, left to snooze.</footer>
   </div>;
