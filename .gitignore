@@ -27,6 +27,7 @@ test-artifacts/
 /js/ui-territory-evidence.js
 /js/ui-quiet-vendors.js
 /js/ui-inbox.js
+/js/ui-web-push.js
 /js/ui-next-step.js
 /js/ui-task-done.js
 /js/ui-deal-reviews.js
