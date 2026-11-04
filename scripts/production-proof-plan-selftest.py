@@ -79,6 +79,24 @@ class AdmissionTest(unittest.TestCase):
         self.assertIn('missing or unknown', self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract).reason)
 
 
+    def test_public_release_example_and_target_isolation(self):
+        value = json.loads((ROOT / 'proofs/requirements/app-public-release-example.json').read_text())
+        self.validator.validate(value, self.contract)
+        self.assertIn('Human step pending:', value['assertions'][0]['predicate'])
+        body = '## Production proof\nproofs/requirements/app-public-release-example.json'
+        snapshot = self.snapshot(body, ['src/ui/example.tsx'], requirement=json.dumps(value))
+        registered = dict(self.contract, **{'x-runners': dict(self.contract['x-runners'])})
+        registered['x-runners']['app-release-public.v1'] = {'targets': ['app']}
+        decision = self.adapter.admission(snapshot, self.validator, registered)
+        self.assertEqual(decision.status, 'admitted', decision)
+        print('App public declaration ACCEPTED with registered contract:', decision.reason)
+        for target, runner in [('studio', 'studio-run-receipt.v1'), ('worker', 'worker-release-smoke.v1')]:
+            for targets in [[target], ['app']]:
+                value['targets'] = targets
+                value['assertions'][0]['runner'] = runner
+                decision = self.adapter.admission(snapshot._replace(requirement_json=json.dumps(value)), self.validator, registered)
+                self.assertEqual(decision.status, 'refused', decision)
+
     def test_edited_body_removal(self):
         snapshot = self.snapshot()
         self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, 'admitted')

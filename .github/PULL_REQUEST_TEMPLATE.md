@@ -13,7 +13,9 @@ Bot-authored PRs are exempt from the Card requirement; docs PRs still need a Car
 
 ## Production proof
 <!-- Name one runnable declaration under proofs/requirements/.
-The current pin has no app runner. App product declarations refuse as unsupported until P1 registers an app /release and live-walk runner.
+Use app-release-public.v1 after its registration is in the pinned contract. It observes /app-release ancestry and declared public route or bundle markers.
+Name signed-in checks as human steps in the predicate. Public bundle presence does not prove signed-in behavior.
+See proofs/requirements/app-public-release-example.json. Never borrow a worker or Studio runner for app changes.
 Use the pinned contracts/production-proof-plan.v1.json runner registry and safety budgets.
 For non-product paths, including the admission adapter and its tests, write n/a: followed by a concrete reason instead. -->
 proofs/requirements/<change>.json

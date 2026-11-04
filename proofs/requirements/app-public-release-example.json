@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "app-public-release-example",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "release-and-public-documents",
+      "predicate": "Using ops/app-proof-observe.py, prove the merge SHA is an ancestor of /app-release source_commit and /js/ui-deal-documents.js contains mountDealDocuments. Human step pending: sign in and open the deal Documents tab to check the displayed document UUID and SHA-256.",
+      "runner": "app-release-public.v1",
+      "expected_result": "Automated ancestry and public marker pass; signed-in document identity remains a named human step.",
+      "input_class": "Public deployed app identity and bundle; no credentials or production writes",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 20,
+    "max_records": 1,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 1048576
+  }
+}
