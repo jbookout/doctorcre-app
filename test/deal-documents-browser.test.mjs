@@ -143,3 +143,10 @@ test('revocation_blocks_late_document_reads',async t=>{
  await page.getByText('Loading documents…',{exact:true}).waitFor();await page.evaluate(()=>{window.dispatchEvent(new Event('doctorcre-session-invalidated'));finishDocumentRead({documents:[{id:'old',display_name:'Demo retired account document'}]});});
  await page.getByText('Session ended.',{exact:true}).waitFor();assert.equal(await page.getByText('Demo retired account document',{exact:true}).count(),0);
 });
+
+test('unverified_session_never_renders_bound_draft_names',async t=>{
+ const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
+ await page.goto(`${server.url}/public-shell/offline.html`);
+ await page.evaluate(async()=>{const {draftStore,stageFiles,bindActor}=await import('/js/ui-share-store.js');await draftStore().save(bindActor(await stageFiles([new File(['%PDF-synthetic'],'Demo bound private filename.pdf')]),'joe'),true);const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);await mountShareToDeal(host,{getBoard:async()=>{throw Error('session unavailable');}});});
+ await page.getByText('Sign in again or refresh to continue. No files were sent.',{exact:true}).waitFor();assert.equal(await page.getByText('Demo bound private filename.pdf',{exact:false}).count(),0);
+});

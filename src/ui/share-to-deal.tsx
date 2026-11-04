@@ -16,7 +16,7 @@ export async function mountShareToDeal(element: Element, client: Client) {
       <p>Cancel removes pending local files. Documents already filed remain in their deals.</p>
       <p role="status">{navigator.onLine===false ? 'Offline. Pending files remain on this device. Reconnect to continue.' : message}</p>
       {!draft && <label className="btn">Choose files<input type="file" aria-label="Choose files" accept={FILE_ACCEPT} multiple disabled={busy || !actor} onChange={event=>{const files=Array.from(event.currentTarget.files || []);event.currentTarget.value='';if(files.length)void stage(files);}} /></label>}
-      {draft && <><ul>{draft.files.map(file=><li key={file.local_id}>{file.name} <span>{file.confirmed ? 'Filed and confirmed' : file.error || 'Pending on this device'}</span></li>)}</ul>
+      {draft && actor && <><ul>{draft.files.map(file=><li key={file.local_id}>{file.name} <span>{file.confirmed ? 'Filed and confirmed' : file.error || 'Pending on this device'}</span></li>)}</ul>
       <label>Deal<select aria-label="Deal" value={draft.selected_deal_id || ''} disabled={busy || draft.state==='filed'} onChange={event=>void choose(event.currentTarget.value)}><option value="">Choose a deal</option>{deals.slice(page*25,page*25+25).map(deal=><option key={deal.id} value={deal.id}>{deal.name}</option>)}</select></label>
       <button type="button" disabled={busy || page===0} onClick={()=>{page--;render();}}>Previous deals</button><button type="button" disabled={busy || (page+1)*25>=deals.length} onClick={()=>{page++;render();}}>More deals</button>
       <p>{draft.state.replaceAll('_',' ')}</p>

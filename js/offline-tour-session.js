@@ -15,10 +15,16 @@ export async function clearPrivateStorage(window, {preserveUnboundShare = false}
     } catch { /* Revocation remains fail-closed when browser storage is denied. */ }
   }
   const tasks = [];
-  tasks.push(import('./ui-share-store.js').then(async ({draftStore}) => {
-    if (!window.indexedDB) return;
-    const store=draftStore(window.indexedDB), draft=await store.read();
-    if (!preserveUnboundShare || draft?.actor_binding) await store.clear();
+  if (window.indexedDB) tasks.push(new Promise(resolve => {
+    const request=window.indexedDB.open('doctorcre-incoming-deal-share-v1',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('draft');
+    request.onerror=request.onblocked=()=>resolve();
+    request.onsuccess=()=>{
+      const db=request.result, tx=db.transaction('draft','readwrite'), store=tx.objectStore('draft');
+      if (!preserveUnboundShare) store.clear();
+      else {const read=store.get('pending');read.onsuccess=()=>{if(read.result?.actor_binding)store.clear();};}
+      tx.oncomplete=tx.onerror=tx.onabort=()=>{db.close();resolve();};
+    };
   }));
   if (window.caches) tasks.push(window.caches.keys().then(names => Promise.all(names.map(name => window.caches.delete(name)))));
   if (window.indexedDB) tasks.push(new Promise(resolve => {
