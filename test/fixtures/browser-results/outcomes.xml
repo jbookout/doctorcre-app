@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testcase name="passed" classname="test" file="/home/runner/work/app/test/demo-browser.test.mjs"/>
+  <testcase name="skipped" classname="test" file="test/demo-browser.test.mjs"><skipped type="skipped" message="fixture"/></testcase>
+  <testcase name="failed" classname="test" file="test/demo-browser.test.mjs"><failure type="testCodeFailure" message="seeded failure"/></testcase>
+  <testsuite name="parent"><testcase name="cancelled" classname="parent" file="test/demo-browser.test.mjs"><failure type="cancelledByParent" message="parent cancelled"/></testcase></testsuite>
+</testsuites>
