@@ -53,7 +53,7 @@ class AdmissionTest(unittest.TestCase):
         for path in ['js/main.js', 'src/main.ts', 'new-top-level/file.py',
                      'scripts/unreferenced.py', 'public/asset.svg', 'worker/index.js']:
             self.assertEqual(self.adapter.admission(self.snapshot(paths=[path]), self.validator, self.contract).status, 'refused')
-        self.assertEqual(self.adapter.admission(snap._replace(source_trees=(sources, sources + (('src/main.js', 'helper.py'),))), self.validator, self.contract).status, 'refused')
+        self.assertEqual(self.adapter.admission(snap._replace(source_trees=(sources, sources + (('src/main.js', 'import "../scripts/helper.py"'),))), self.validator, self.contract).status, 'refused')
 
     def test_build_commands_override_tooling_and_lifecycle(self):
         sources = (('.github/workflows/ci.yml', 'node scripts/collector.mjs'),
@@ -244,6 +244,10 @@ class GitHubAdapterTest(unittest.TestCase):
              {'build': 'node scripts/build.mjs'}, 'refused'),
             ('npm-alias-with-option', {},
              {'build': 'npm --silent run check', 'check': 'node scripts/check-action-pins.mjs'}, 'refused'),
+            ('npm-option-value', {},
+             {'build': 'npm --cache .cache --silent run check', 'check': 'node scripts/check-action-pins.mjs'}, 'refused'),
+            ('npm-unknown-option', {},
+             {'build': 'npm --unknown value run check', 'check': 'node scripts/check-action-pins.mjs'}, 'refused'),
             ('own-snapshot', {'contracts/production-proof-plan.v1.json':
                               (ROOT / 'contracts/production-proof-plan.v1.json').read_text(),
                               'test/production-proof-plan.test.mjs':
@@ -270,6 +274,17 @@ class GitHubAdapterTest(unittest.TestCase):
                     snapshot = self.collect()
                 self.assertEqual(set(snapshot.paths), set(paths))
                 self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, expected)
+
+    def test_build_reached_test_file_is_product(self):
+        self.git('checkout', '-q', 'pr')
+        self.commit('scripts/build.mjs', 'import "../test/bridge.mjs";')
+        self.commit('test/bridge.mjs', 'console.log("base")')
+        self.commit('package.json', '{"scripts":{"build":"node scripts/build.mjs"}}')
+        self.event['pull_request']['base']['sha'] = self.git('rev-parse', 'HEAD')
+        self.commit('test/bridge.mjs', 'console.log("head product")')
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            self.assertEqual(self.adapter.admission(self.collect(), self.validator, self.contract).status, 'refused')
 
     def test_stale_metadata_and_api_failure(self):
         for failure in [ValueError('stale PR event'), OSError('offline')]:

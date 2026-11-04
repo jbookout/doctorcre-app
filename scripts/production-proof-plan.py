@@ -5,6 +5,8 @@ import json
 import os
 import fnmatch
 import re
+import posixpath
+import shlex
 from typing import NamedTuple
 from pathlib import Path
 import subprocess
@@ -75,17 +77,53 @@ def path_class(path):
                  if any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)), 'runtime')
 
 
-def tooling_paths(sources):
+def non_product_paths(sources):
     files = dict(sources)
     scripts = {path for path in files if path_class(path) == 'tooling-candidate'}
     commands = json.loads(files.get('package.json', '{}')).get('scripts', {})
     nodes = {**files, **{'npm:' + name: text for name, text in commands.items()}}
     nodes.pop('package.json', None)
+
+    def resolve(path, reference):
+        reference = reference.split('?', 1)[0].split('#', 1)[0]
+        parent = '' if path.startswith('npm:') else posixpath.dirname(path)
+        roots = [posixpath.join(parent, reference)]
+        if not reference.startswith('.'):
+            roots.append(reference)
+        candidates = {posixpath.normpath(root + suffix) for root in roots
+                      for suffix in ('', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.py',
+                                     '/index.js', '/index.mjs', '/index.ts')}
+        return candidates & files.keys()
+
     edges = {}
     for path, text in nodes.items():
-        edges[path] = {script for script in scripts if Path(script).name in text or
-                       re.search(r'\b' + re.escape(Path(script).stem) + r'\b', text)}
-        edges[path].update('npm:' + name for groups in re.findall(r'\bnpm\s+(?:run\s+([\w:.-]+)|(test|start|stop|restart))', text) for name in groups if name)
+        # Resolve path strings, never basenames or stems found in prose.
+        references = re.findall(r"['\"`]([^'\"`\n]+)['\"`]", text)
+        references += re.findall(r"(?<![\w/.-])((?:\.?\.?/)?scripts/[^\s'\"`;,)]+)", text)
+        references += [name.replace('.', '/') for name in
+                       re.findall(r'^\s*(?:from|import)\s+([\w.]+)', text, re.M)]
+        edges[path] = set().union(*(resolve(path, ref) for ref in references))
+        try:
+            tokens = shlex.split(text, comments=True)
+        except ValueError:
+            if re.search(r'\bnpm\s', text) and not path.endswith('.json'):
+                edges[path].update(scripts)
+            tokens = []
+        for i, token in enumerate(tokens):
+            if token != 'npm' or (not path.startswith('npm:') and path.endswith('.json')):
+                continue
+            invocation = tokens[i + 1:]
+            while invocation and invocation[0].startswith('-'):
+                option = invocation.pop(0)
+                if option in {'--prefix', '--workspace', '-w', '--userconfig', '--cache', '--registry'}:
+                    if invocation:
+                        invocation.pop(0)
+            command = invocation[0] if invocation else ''
+            name = (invocation[1] if len(invocation) > 1 else '') if command in {'run', 'run-script'} else command
+            if name in commands:
+                edges[path].add('npm:' + name)
+            elif command not in {'ci', 'install', 'audit', 'exec', '--version'}:
+                edges[path].update(scripts)
         if path.startswith('npm:'):
             name = path[4:]
             edges[path].update('npm:' + prefix + name for prefix in ('pre', 'post')
@@ -106,12 +144,16 @@ def tooling_paths(sources):
 
     certified = reachable(tools) & scripts
     # Unreferenced scripts are unknown, so their dependencies cannot be certified.
-    return certified - reachable(runtime | (scripts - certified))
+    excluded = reachable(runtime | (scripts - certified))
+    return (certified | {path for path in files if path_class(path) == 'non-product'}) - excluded
 
 
 def product_paths(snapshot):
-    tool_sets = [tooling_paths(tree) for tree in snapshot.source_trees]
-    return [path for path in snapshot.paths if path_class(path) != 'non-product' and
+    tool_sets = [non_product_paths(tree) for tree in snapshot.source_trees]
+    return [path for path in snapshot.paths if
+            not (path_class(path) == 'non-product' and
+                 all(path not in dict(tree) or path in tools
+                     for tree, tools in zip(snapshot.source_trees, tool_sets))) and
             not (path_class(path) == 'tooling-candidate' and tool_sets and
                  any(path in tools for tools in tool_sets) and
                  all(path in tools for tree, tools in zip(snapshot.source_trees, tool_sets)
@@ -123,21 +165,11 @@ def source_tree(git, sha):
     modes = {entry.partition('\t')[2]: entry.split(' ', 1)[0] for entry in entries if entry}
     paths = list(modes)
     scripts = [path for path in paths if path_class(path) == 'tooling-candidate']
-    if not scripts:
-        return ()
-    # Only reference-bearing lines are needed by the pure classifier. Git ignores
-    # binary contents and never runs a checkout's filters or executable code.
-    needles = {'npm '}
-    for path in scripts:
-        name, stem = Path(path).name, Path(path).stem
-        needles.add(name)
-        needles.update('/' + stem + quote for quote in ("'", '"', '`'))
-        if path.endswith('.py'):
-            needles.update(('import ' + stem, 'from ' + stem))
-    arguments = [value for needle in sorted(needles) for value in ('-e', needle)]
-    matches = git('grep', '-I', '-z', '-F', *arguments, sha, '--')
-    sources = {path: '' for path in scripts}
-    sources.update({'src/unclassified/' + path: path for path in scripts
+    # Keep references through all file classes, including test intermediaries.
+    matches = git('grep', '-I', '-z', '-o', '-E', '-e',
+                  r"['\"`](\.\.?/|scripts/)[^'\"`]*['\"`]|scripts/[^[:space:]'\"`;,)]*|npm[[:space:]][^'\"`;]{0,200}|(from|import) [[:alnum:]_.]+", sha, '--')
+    sources = {path: '' for path in paths}
+    sources.update({'src/unclassified/' + path: "'" + path + "'" for path in scripts
                     if modes[path] not in {'100644', '100755'}})
     for line in matches.splitlines():
         name, _, text = line.partition('\0')
@@ -225,7 +257,7 @@ def github_snapshot(event, validator, contract, root):
         if not entry.startswith(('100644 blob ', '100755 blob ')):
             raise ValueError('requirement missing or symlink at PR head')
         requirement = git('show', head + ':' + path)
-    trees = tuple(source_tree(git, sha) for sha in (base, head)) if any(path.startswith('scripts/') for path in paths) else ()
+    trees = tuple(source_tree(git, sha) for sha in (base, head)) if any(path_class(path) != 'runtime' for path in paths) else ()
     return Snapshot('pull_request', base, head, body, paths, requirement, trees)
 
 
