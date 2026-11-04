@@ -163,3 +163,80 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
     } finally { await baseline.stop(); }
   });
 });
+
+test('tour departure and pending Open preserve the active editor', async t => {
+  const artifact = await temporaryDirectory('doctorcre-tour-departure-', t);
+  await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
+  const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}}); t.after(() => server.stop());
+  const browser = await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS]}); t.after(() => browser.close());
+  for (const width of [390,1440]) for (const theme of ['light','dark']) {
+    for (const scenario of ['dirty departure','late success','late rejection']) await t.test(`${width} ${theme} ${scenario}`, async () => {
+      const page = await browser.newPage({viewport:{width,height:1000}});
+      try {
+        await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
+        await page.route(/^https:\/\//,route => route.abort());
+        const seed = JSON.parse((await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8')).replaceAll('"d14"',JSON.stringify(deal)));
+        await page.route('**/data/board-seed.json',route => route.fulfill({json:seed}));
+        await page.route('**/auth/session',route => route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}}));
+        let release, held = false;
+        const gate = new Promise(resolve => { release = resolve; });
+        const properties = [created,other].map((property_id,index) => ({property_id,name:`Synthetic property ${index+1}`,address:`${index+1} Clinic Way`,county:'Escambia'}));
+        await page.route('**/api/tours/**',async route => {
+          const path = new URL(route.request().url()).pathname;
+          if(path === '/api/tours/library') return route.fulfill({json:{data:{tours:[row]},csrf_token:'synthetic-session'}});
+          if(path === '/api/tours/properties/search') return route.fulfill({json:{data:{search:{items:properties,count:2,has_more:false}},csrf_token:'synthetic-session'}});
+          if(path === '/api/tours/detail') {
+            if(scenario !== 'dirty departure' && !held) {
+              held = true; await gate;
+              if(scenario === 'late rejection') return route.fulfill({status:503,json:{error:'unavailable'}});
+            }
+            return route.fulfill({json:{data:{...row,stops:[],routes:[{id:routeId,route_version:1,accepted:false,stops:[]}],route_version_id:routeId,route_version_state:'draft',accepted_route_version:0},csrf_token:'synthetic-session'}});
+          }
+          return route.fulfill({status:404,json:{error:'not_found'}});
+        });
+        await page.goto(`${server.url}/deals?deal=${deal}&tab=tours`);
+        await page.locator('[data-open-tour]').click();
+        const editor = page.frameLocator('iframe[title="Tour shortlist, route and packet"]');
+        if(scenario !== 'dirty departure') {
+          await page.getByText('Opening tour…',{exact:true}).waitFor();
+          await page.locator('[data-start-tour]').click();
+          await editor.locator('#create-tour:enabled').waitFor();
+          await editor.locator('#create-tour-name').fill('New draft while prior tour opens');
+          const response = page.waitForResponse(response => response.url().includes('/api/tours/detail'));
+          release(); await response;
+          await page.waitForLoadState('networkidle');
+          assert.equal(await editor.locator('#create-tour-name').inputValue(),'New draft while prior tour opens');
+          assert.equal(new URL(page.url()).searchParams.get('tour'),'new');
+          assert.equal(await page.locator('iframe').count(),1);
+        } else {
+          await editor.locator('#tour-name').filter({hasText:row.name}).waitFor();
+          await editor.locator('#property-search-form').evaluate(form => form.requestSubmit());
+          await editor.getByRole('button',{name:'Add to selection',exact:true}).first().click();
+          await editor.getByRole('button',{name:'Add to selection',exact:true}).click();
+          await editor.locator('#add-cart-stops').click();
+          await editor.locator('#route-stops li').nth(1).getByRole('button',{name:'Up',exact:true}).click();
+          const order = () => editor.locator('#route-stops > li').evaluateAll(rows => rows.map(row => row.dataset.propertyId));
+          assert.deepEqual(await order(),[other,created]);
+          const editorUrl = page.url();
+          await page.goBack();
+          const prompt = page.getByRole('dialog',{name:'Leave this tour?'});
+          await prompt.waitFor({timeout:3000});
+          await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
+          await page.waitForURL(editorUrl);
+          assert.deepEqual(await order(),[other,created]);
+          assert.match(await editor.locator('#selection-list').textContent(),/Synthetic property 1.*Synthetic property 2/s);
+          await page.locator('#panelClose').click();
+          await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
+          assert.deepEqual(await order(),[other,created]);
+          await page.locator('[data-back-tours]').click();
+          await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
+          assert.deepEqual(await order(),[other,created]);
+          await page.goBack();
+          await prompt.getByRole('button',{name:'Leave tour',exact:true}).click();
+          await page.locator('[data-open-tour]').waitFor();
+          assert.equal(new URL(page.url()).searchParams.has('tour'),false);
+        }
+      } finally { await page.close(); }
+    });
+  }
+});
