@@ -237,6 +237,40 @@ class GitHubAdapterTest(unittest.TestCase):
         with patch.object(self.validator, 'github_metadata', return_value={}):
             self.assertEqual(self.adapter.admission(self.collect(), self.validator, self.contract).status, 'refused')
 
+    def test_reviewer_immutable_snapshot_regressions(self):
+        cases = [
+            ('bridge-in-test', {'scripts/build.mjs': 'import "../test/bridge.mjs";',
+                                'test/bridge.mjs': 'import "../scripts/check-action-pins.mjs";'},
+             {'build': 'node scripts/build.mjs'}, 'refused'),
+            ('npm-alias-with-option', {},
+             {'build': 'npm --silent run check', 'check': 'node scripts/check-action-pins.mjs'}, 'refused'),
+            ('own-snapshot', {'contracts/production-proof-plan.v1.json':
+                              (ROOT / 'contracts/production-proof-plan.v1.json').read_text(),
+                              'test/production-proof-plan.test.mjs':
+                              "execFileSync('python3', ['scripts/production-proof-plan-selftest.py']);",
+                              'scripts/production-proof-plan-selftest.py':
+                              "PROGRAM = ROOT / 'scripts/production-proof-plan.py'",
+                              'scripts/production-proof-plan.py': 'print("base")'}, {}, 'admitted'),
+        ]
+        for name, files, commands, expected in cases:
+            with self.subTest(name=name):
+                self.git('checkout', '-q', 'pr')
+                for path, text in files.items():
+                    self.commit(path, text)
+                self.commit('package.json', json.dumps({'type': 'module', 'scripts': commands}))
+                base = self.git('rev-parse', 'HEAD')
+                paths = (['scripts/production-proof-plan.py', 'scripts/production-proof-plan-selftest.py',
+                          'test/production-proof-plan.test.mjs'] if name == 'own-snapshot'
+                         else ['scripts/check-action-pins.mjs'])
+                for path in paths:
+                    self.commit(path, (self.root / path).read_text() + '\n# changed')
+                self.event['pull_request']['base']['sha'] = base
+                self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+                with patch.object(self.validator, 'github_metadata', return_value={}):
+                    snapshot = self.collect()
+                self.assertEqual(set(snapshot.paths), set(paths))
+                self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, expected)
+
     def test_stale_metadata_and_api_failure(self):
         for failure in [ValueError('stale PR event'), OSError('offline')]:
             with patch.object(self.validator, 'github_metadata', side_effect=failure):
