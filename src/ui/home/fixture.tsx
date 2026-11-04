@@ -3,16 +3,20 @@ export function fixtureInboxRpc() {
   const make = (item_id: string, title: string, state: InboxItem['source_state'], disposition: InboxItem['disposition'] = 'inbox'): InboxItem => ({ waiting_version: 0, waiting_on: null, auto_settled: false, context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', item_id, title, source_type: 'next_action', source_id: item_id, source_version: 'synthetic:1', source_state: state, activity_at: new Date().toISOString(), hold_until: null, unseen: state === 'done', disposition, snoozed_until: disposition === 'snoozed' ? new Date(Date.now() + 3_600_000).toISOString() : null, explicit_unsettle: false, section: disposition !== 'inbox' ? disposition : state === 'done' ? 'done' : state === 'working' ? 'working' : 'inbox', base_version: 'synthetic:1' });
   const items = [make('demo-review', 'Review the practice tour follow-up', 'needs_attention'), make('demo-call', 'Confirm next steps from the pipeline call', 'needs_attention'), make('demo-complete', 'Tour itinerary is ready to review', 'done'), make('demo-working', 'Preparing your market comparison', 'working'), make('demo-snooze', 'Check in with the demo practice', 'needs_attention', 'snoozed'), make('demo-settled', 'Demo call summary reviewed', 'done', 'settled')];
   items.forEach((item, index) => Object.assign(item, { action_id: `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}` }));
+  const people = [{ id: '00000000-0000-0000-0000-000000000099', name: 'Demo reviewer' }, { id: '00000000-0000-0000-0000-000000000098', name: 'Demo coordinator' }];
   const receipts = new Map<string, unknown>();
   return async (name: string, args: unknown) => {
-    if (name === 'email-match-contacts') return { schema_version: 'email-match-contacts.v1', contacts: [{ exact: true, name: 'Demo reviewer', contact_snapshot: { party_id: '00000000-0000-0000-0000-000000000099' } }] };
+    if (name === 'email-match-contacts') return { schema_version: 'email-match-contacts.v1', contacts: people.map(person => ({ exact: true, name: person.name, contact_snapshot: { party_id: person.id } })) };
     if (name === 'set-home-waiting' || name === 'clear-home-waiting') {
       if (!object(args)) throw Error('Invalid waiting request');
       const prior = receipts.get(String(args.idempotency_key)); if (prior) return prior;
       const item = items.find(row => row.item_id === args.item_id);
       if (!item || item.waiting_version !== args.base_version || item.base_version !== args.item_version || item.source_state === 'done') throw Object.assign(Error('This card changed.'), { payload: { error: 'version_conflict' } });
+      const target = args.target;
+      const person = object(target) ? people.find(person => person.id === target.id) : undefined;
+      if (name === 'set-home-waiting' && !person) throw Object.assign(Error('Person unavailable'), { payload: { error: 'invalid_waiting_identity' } });
       const version = (item.waiting_version || 0) + 1;
-      const waiting_on = name === 'clear-home-waiting' ? null : { identity: { kind: 'party', id: '00000000-0000-0000-0000-000000000099', available: true, display_name: 'Demo reviewer' }, reason: args.reason, evidence: args.evidence, version };
+      const waiting_on = name === 'clear-home-waiting' ? null : { identity: { kind: 'party', id: person?.id, available: true, display_name: person?.name }, reason: args.reason, evidence: args.evidence, version };
       Object.assign(item, { waiting_version: version, waiting_on });
       const result = { ok: true, schema_version: 'home-waiting.v1', item_id: item.item_id, waiting_version: version, waiting_on };
       receipts.set(String(args.idempotency_key), result); return result;

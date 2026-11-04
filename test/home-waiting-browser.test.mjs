@@ -60,10 +60,17 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`wa
   await page.screenshot({ path: `/tmp/WR617.S15.J3-evidence/recorded-${width}-${theme}.png`, fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await row.getByRole('button', { name: 'Correct waiting person', exact: true }).click();
+  await row.getByRole('button', { name: 'Load people', exact: true }).click();
+  await row.getByLabel('Person', { exact: true }).selectOption('00000000-0000-0000-0000-000000000098');
+  await row.getByLabel('Reason', { exact: true }).fill('Coordinator has the next move');
+  await row.getByRole('button', { name: 'Save waiting person', exact: true }).click();
+  await row.getByText('Waiting on Demo coordinator', { exact: true }).waitFor();
+  assert.equal(writes[3].args.target.id, '00000000-0000-0000-0000-000000000098');
+  await row.getByRole('button', { name: 'Correct waiting person', exact: true }).click();
   await row.getByLabel('Reason', { exact: true }).fill('Response received');
   await row.getByRole('button', { name: 'Clear waiting person', exact: true }).click();
   await row.getByText('Waiting on someone · Not recorded', { exact: true }).waitFor();
-  assert.equal(writes[3].name, 'clear-home-waiting'); assert.equal(writes[3].args.base_version, 1);
+  assert.equal(writes[4].name, 'clear-home-waiting'); assert.equal(writes[4].args.base_version, 2);
   await row.getByRole('button', { name: 'Mark done', exact: true }).click();
   await page.getByRole('status').filter({ hasText: /Marked done/ }).waitFor();
   assert.equal(await row.getByText(/Waiting on/).count(), 0);
