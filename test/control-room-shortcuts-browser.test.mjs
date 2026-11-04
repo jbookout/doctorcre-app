@@ -39,6 +39,23 @@ async function open(t, { width = 1440, theme = 'dark', touch = false } = {}) {
   return { page, calls, errors };
 }
 
+for (const modifier of ['Meta', 'Control']) test(`${modifier}-Alt-K opens the switcher without stealing Control Room commands`, async t => {
+  const { page } = await open(t);
+  await page.keyboard.press(`${modifier}+k`);
+  const commands = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
+  assert.equal(await commands.isVisible(), true);
+  assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
+  await page.keyboard.press('Escape');
+  await page.locator('#crQueueList').focus();
+  await page.keyboard.press(`${modifier}+Alt+k`);
+  await page.getByRole('combobox', { name: 'Jump to' }).waitFor();
+  assert.equal(await commands.isVisible(), false);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press(`${modifier}+Shift+k`);
+  assert.equal(await page.getByRole('combobox', { name: 'Jump to' }).count(), 0);
+  assert.equal(await commands.isVisible(), false);
+});
+
 for (const modifier of ['Meta', 'Control']) test(`${modifier}-K opens, filters, jumps and closes the command menu`, async t => {
   const { page, errors } = await open(t);
   await page.locator('#crQueueList').focus();

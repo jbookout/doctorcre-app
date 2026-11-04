@@ -21,7 +21,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
   const briefStyle = root.createElement('link'); briefStyle.rel = 'stylesheet'; briefStyle.href = '/css/morning-brief.css'; root.head.append(briefStyle);
   const strip = root.createElement('section'); strip.id = 'docPresence'; strip.className = 'doc-presence'; strip.setAttribute('aria-label', 'Doc');
-  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-label="Open Doc" title="Doc · ⌘D / Ctrl+D · ⌘K / Ctrl+K" aria-keyshortcuts="Meta+D Control+D Meta+K Control+K" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span></button>';
+  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-label="Open Doc" title="Doc · ⌘D / Ctrl+D" aria-keyshortcuts="Meta+D Control+D" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span></button>';
   root.body.append(strip);
   const dialog = root.createElement('dialog'); dialog.id = 'docDetail'; dialog.className = 'doc-detail'; dialog.setAttribute('aria-labelledby','docTitle');
   dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><button id="docMorning" type="button">Morning brief</button><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a><a href="/doc-activity" class="doc-chats-link" data-doc-activity-link>Doc Activity ↗</a></section></div>';
@@ -43,7 +43,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   // Keep the same presence reachable in a native record popup. DOM state
   // controls placement only; record identity still comes from the page read.
   function placePresence() {
-    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden]), main.deal-workspace:not([hidden])')];
+    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief):not([data-quick-switcher]), aside#recordPanel:not([hidden]), main.deal-workspace:not([hidden])')];
     const workspace = root.getElementById('accountWorkspaceControls');
     const popup = hosts.at(-1);
     const host = popup?.querySelector('[data-doc-presence-slot]') || popup || (workspace && !workspace.hidden ? workspace : root.body);
