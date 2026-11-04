@@ -30,7 +30,43 @@ class AdmissionTest(unittest.TestCase):
         self.validator, self.contract = self.adapter.load_pinned(ROOT)
 
     def snapshot(self, body=NON_PRODUCT, paths=CI_PATHS, event='pull_request', requirement=None):
-        return self.adapter.Snapshot(event, 'a' * 40, 'b' * 40, body, tuple(paths), requirement)
+        return self.adapter.Snapshot(event, 'a' * 40, 'b' * 40, body, tuple(paths), requirement,
+                                     (((".github/workflows/ci.yml", "node scripts/check-action-pins.mjs"),
+                                       ("scripts/check-action-pins.mjs", "ci only")),))
+
+    def test_ci_script_classification(self):
+        sources = (
+            ('.github/workflows/ci.yml', 'python3 scripts/new-collector.py'),
+            ('scripts/new-collector.py', 'import helper'),
+            ('scripts/helper.py', 'pass'),
+            ('package.json', '{"scripts":{"build":"node scripts/build.mjs"}}'),
+            ('scripts/build.mjs', 'console.log("build")'),
+        )
+        snap = self.snapshot(paths=['scripts/new-collector.py', 'scripts/helper.py'])
+        snap = snap._replace(source_trees=(sources,))
+        self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'admitted')
+        for path, text in [('src/main.js', 'import "../scripts/helper.py"'),
+                           ('scripts/build.mjs', 'import "./helper.py"')]:
+            contaminated = sources + ((path, text),)
+            decision = self.adapter.admission(snap._replace(source_trees=(contaminated,)), self.validator, self.contract)
+            self.assertEqual(decision.status, 'refused', decision)
+        for path in ['js/main.js', 'src/main.ts', 'new-top-level/file.py',
+                     'scripts/unreferenced.py', 'public/asset.svg', 'worker/index.js']:
+            self.assertEqual(self.adapter.admission(self.snapshot(paths=[path]), self.validator, self.contract).status, 'refused')
+        self.assertEqual(self.adapter.admission(snap._replace(source_trees=(sources, sources + (('src/main.js', 'helper.py'),))), self.validator, self.contract).status, 'refused')
+
+    def test_build_commands_override_tooling_and_lifecycle(self):
+        sources = (('.github/workflows/ci.yml', 'node scripts/collector.mjs'),
+                   ('scripts/collector.mjs', 'pass'),
+                   ('scripts/hook.mjs', 'import "./collector"'),
+                   ('package.json', json.dumps({'scripts': {
+                       'check': 'node scripts/collector.mjs',
+                       'prebuild': 'node scripts/hook.mjs', 'build': 'npm run check'}})))
+        snap = self.snapshot(paths=['scripts/collector.mjs'])._replace(source_trees=(sources,))
+        self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'refused')
+        with patch('subprocess.check_output', side_effect=AssertionError('subprocess')), \
+             patch.object(Path, 'read_text', side_effect=AssertionError('file read')):
+            self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'refused')
 
     def test_snapshot_decisions(self):
         cases = [
@@ -143,6 +179,8 @@ class GitHubAdapterTest(unittest.TestCase):
         self.commit('docs/base.md', 'base')
         self.base = self.git('rev-parse', 'HEAD')
         self.git('checkout', '-qb', 'pr')
+        self.commit('.github/workflows/check.yml', 'node scripts/check-action-pins.mjs')
+        self.base = self.git('rev-parse', 'HEAD')
         self.commit('scripts/check-action-pins.mjs', 'ci only')
         self.head = self.git('rev-parse', 'HEAD')
         self.git('checkout', '-qb', 'new-main', self.base)
@@ -176,6 +214,26 @@ class GitHubAdapterTest(unittest.TestCase):
         self.git('checkout', '-q', 'pr')
         self.commit('src/ui/own.tsx', 'own product')
         self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            self.assertEqual(self.adapter.admission(self.collect(), self.validator, self.contract).status, 'refused')
+
+    def test_symlink_tooling_is_not_certified(self):
+        self.git('checkout', '-q', 'pr')
+        path = self.root / 'scripts/check-action-pins.mjs'
+        path.unlink()
+        path.symlink_to('../docs/base.md')
+        self.git('add', 'scripts/check-action-pins.mjs')
+        self.git('commit', '-qm', 'synthetic link')
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        with patch.object(self.validator, 'github_metadata', return_value={}):
+            self.assertEqual(self.adapter.admission(self.collect(), self.validator, self.contract).status, 'refused')
+
+    def test_build_import_is_read_from_pr_snapshot(self):
+        self.git('checkout', '-q', 'pr')
+        self.commit('scripts/build.mjs', 'import "./check-action-pins.mjs"')
+        self.commit('package.json', '{"scripts":{"build":"node scripts/build.mjs"}}')
+        self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+        (self.root / 'scripts/build.mjs').write_text('working tree hides import')
         with patch.object(self.validator, 'github_metadata', return_value={}):
             self.assertEqual(self.adapter.admission(self.collect(), self.validator, self.contract).status, 'refused')
 

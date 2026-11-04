@@ -35,6 +35,7 @@ class Snapshot(NamedTuple):
     body: str
     paths: tuple[str, ...]
     requirement_json: str | None = None
+    source_trees: tuple[tuple[tuple[str, str], ...], ...] = ()
 
 
 class Decision(NamedTuple):
@@ -59,17 +60,97 @@ def requirement_path(section):
     return match[1]
 
 
+# First match owns the class. Unlisted paths remain runtime.
+PATH_CLASSES = (
+    ('runtime', ('src/**', 'js/**', 'css/**', 'public/**', 'public-shell/**',
+                 'worker/**', 'dist/**', 'bundles/**')),
+    ('non-product', ('.github/**', 'test/**', 'tests/fixtures/**', 'docs/**',
+                     'README.md', '.claude/skills/**/*.md', 'proofs/requirements/**')),
+    ('tooling-candidate', ('scripts/**',)),
+)
+
+
+def path_class(path):
+    return next((kind for kind, patterns in PATH_CLASSES
+                 if any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)), 'runtime')
+
+
+def tooling_paths(sources):
+    files = dict(sources)
+    scripts = {path for path in files if path_class(path) == 'tooling-candidate'}
+    commands = json.loads(files.get('package.json', '{}')).get('scripts', {})
+    nodes = {**files, **{'npm:' + name: text for name, text in commands.items()}}
+    nodes.pop('package.json', None)
+    edges = {}
+    for path, text in nodes.items():
+        edges[path] = {script for script in scripts if Path(script).name in text or
+                       re.search(r'\b' + re.escape(Path(script).stem) + r'\b', text)}
+        edges[path].update('npm:' + name for groups in re.findall(r'\bnpm\s+(?:run\s+([\w:.-]+)|(test|start|stop|restart))', text) for name in groups if name)
+        if path.startswith('npm:'):
+            name = path[4:]
+            edges[path].update('npm:' + prefix + name for prefix in ('pre', 'post')
+                               if prefix + name in commands)
+    tools = {path for path in nodes if path.startswith(('.github/', 'test/', 'tests/fixtures/')) or
+             (path.startswith('npm:') and re.search(r'^(?:pre|post)?test(?::|$)|(?:^|:)check(?::|$)|^typecheck$|^ci:', path[4:]))}
+    runtime = {path for path in nodes if path not in tools and
+               (path.startswith('npm:') or path_class(path) == 'runtime')}
+
+    def reachable(roots):
+        seen, pending = set(), list(roots)
+        while pending:
+            path = pending.pop()
+            if path not in seen:
+                seen.add(path)
+                pending.extend(edges.get(path, ()))
+        return seen
+
+    certified = reachable(tools) & scripts
+    # Unreferenced scripts are unknown, so their dependencies cannot be certified.
+    return certified - reachable(runtime | (scripts - certified))
+
+
+def product_paths(snapshot):
+    tool_sets = [tooling_paths(tree) for tree in snapshot.source_trees]
+    return [path for path in snapshot.paths if path_class(path) != 'non-product' and
+            not (path_class(path) == 'tooling-candidate' and tool_sets and
+                 any(path in tools for tools in tool_sets) and
+                 all(path in tools for tree, tools in zip(snapshot.source_trees, tool_sets)
+                     if path in dict(tree)))]
+
+
+def source_tree(git, sha):
+    entries = git('ls-tree', '-r', '-z', sha).rstrip('\0').split('\0')
+    modes = {entry.partition('\t')[2]: entry.split(' ', 1)[0] for entry in entries if entry}
+    paths = list(modes)
+    scripts = [path for path in paths if path_class(path) == 'tooling-candidate']
+    if not scripts:
+        return ()
+    # Only reference-bearing lines are needed by the pure classifier. Git ignores
+    # binary contents and never runs a checkout's filters or executable code.
+    pattern = '|'.join(re.escape(Path(path).name) for path in scripts)
+    pattern += ''.join('|' + r'\b' + re.escape(Path(path).stem) + r'\b' for path in scripts)
+    pattern += r'|npm[[:space:]]+(run|test|start|stop|restart)'
+    matches = git('grep', '-I', '-z', '-E', '-e', pattern, sha, '--')
+    sources = {path: '' for path in scripts}
+    sources.update({'src/unclassified/' + path: path for path in scripts
+                    if modes[path] not in {'100644', '100755'}})
+    for line in matches.splitlines():
+        name, _, text = line.partition('\0')
+        path = name.removeprefix(sha + ':')
+        sources[path] = sources.get(path, '') + text + '\n'
+    if 'package.json' in paths:
+        sources['package.json'] = git('show', sha + ':package.json')
+    return tuple(sorted(sources.items()))
+
+
 def admission(snapshot, validator, contract):
     if snapshot.event_name != 'pull_request':
         return Decision('skipped', 'PR admission not evaluated')
     try:
         policy = dict(contract)
-        policy['x-non-product-paths'] = contract['x-non-product-paths'] + [
-            'scripts/production-proof-plan.py', 'scripts/production-proof-plan-selftest.py',
-            'scripts/vendor/production-proof-plan.v1.py', 'scripts/check-action-pins.mjs',
-        ]
         policy['x-required-targets'] = dict(contract['x-required-targets'], app=['*'])
-        product = validator.product_paths(list(snapshot.paths), policy)
+        validator.product_paths(list(snapshot.paths), dict(contract, **{'x-non-product-paths': []}))
+        product = product_paths(snapshot)
         if product and not any('app' in runner['targets'] for runner in contract['x-runners'].values()):
             raise ValueError('unsupported app production proof: pinned P1 contract has no app runner '
                              'observing deployed app /release and a live walk')
@@ -114,8 +195,13 @@ def github_snapshot(event, validator, contract, root):
     validator.github_metadata(event)
 
     def git(*args):
-        result = subprocess.check_output(
-            ['git', '-C', str(root), *args], text=True, stderr=subprocess.PIPE, timeout=15)
+        try:
+            result = subprocess.check_output(
+                ['git', '-C', str(root), *args], text=True, stderr=subprocess.PIPE, timeout=15)
+        except subprocess.CalledProcessError as error:
+            if args[0] == 'grep' and error.returncode == 1:
+                return ''
+            raise
         if len(result.encode()) > 1048576:
             raise ValueError('git snapshot input exceeds 1 MiB')
         return result
@@ -134,7 +220,8 @@ def github_snapshot(event, validator, contract, root):
         if not entry.startswith(('100644 blob ', '100755 blob ')):
             raise ValueError('requirement missing or symlink at PR head')
         requirement = git('show', head + ':' + path)
-    return Snapshot('pull_request', base, head, body, paths, requirement)
+    trees = tuple(source_tree(git, sha) for sha in (base, head)) if any(path.startswith('scripts/') for path in paths) else ()
+    return Snapshot('pull_request', base, head, body, paths, requirement, trees)
 
 
 def main():
