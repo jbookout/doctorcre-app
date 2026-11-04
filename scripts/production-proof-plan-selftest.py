@@ -11,6 +11,10 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 PROGRAM = ROOT / 'scripts/production-proof-plan.py'
 BODY = '## Production proof\nproofs/requirements/app-proof-admission.json\n'
+NON_PRODUCT = '## Production proof\nn/a: CI admission tooling and tests only'
+GATE_PATHS = ['scripts/production-proof-plan.py', 'scripts/production-proof-plan-selftest.py',
+              'scripts/vendor/production-proof-plan.v1.py', 'contracts/production-proof-plan.v1.json',
+              'proofs/requirements/app-proof-admission.json', '.github/workflows/ci.yml']
 
 
 def module():
@@ -66,19 +70,32 @@ class AdmissionTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('unsupported app production proof', result.stdout)
 
+    def test_app_target_required_when_shared_runner_becomes_available(self):
+        adapter = module()
+        validator, contract = adapter.load_pinned(ROOT)
+        contract['x-runners']['app-release-live-walk.v1'] = {'targets': ['app']}
+        self.assertIn('accepted', adapter.admission(validator, BODY, ['src/ui/example.tsx'], self.root, contract))
+        path = self.root / 'proofs/requirements/app-proof-admission.json'
+        value = json.loads(path.read_text())
+        value['targets'] = ['studio']
+        value['assertions'][0]['runner'] = 'studio-run-receipt.v1'
+        path.write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, 'changed runtime target missing'):
+            adapter.admission(validator, BODY, ['src/ui/example.tsx'], self.root, contract)
+
     def test_upstream_contract_bytes(self):
         import hashlib
         self.assertEqual(hashlib.sha256((ROOT / 'contracts/production-proof-plan.v1.json').read_bytes()).hexdigest(),
                          '36224e67292a2a834dc03b0021ba09379894b3e9207cf08d492fd5e8432d6a6f')
 
     def test_valid_declaration_passes(self):
-        result = self.run_plan(BODY)
+        result = self.run_plan(NON_PRODUCT, GATE_PATHS)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        print('Synthetic product declaration accepted:', result.stdout.strip())
+        print('Synthetic non-product declaration accepted:', result.stdout.strip())
 
     def test_same_head_body_removal_fails(self):
-        self.assertEqual(self.run_plan(BODY).returncode, 0)
-        result = self.run_plan('## Summary\nSame head, declaration removed')
+        self.assertEqual(self.run_plan(NON_PRODUCT, GATE_PATHS).returncode, 0)
+        result = self.run_plan('## Summary\nSame head, declaration removed', GATE_PATHS)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Production proof', result.stdout)
         print('Synthetic same-head removal refused:', result.stdout.strip())
@@ -93,14 +110,14 @@ class AdmissionTest(unittest.TestCase):
         for body in ['## Production proof\n{}', '## Production proof\nn/a: TODO',
                      BODY + BODY, '## Production proof\n../escape.json',
                      '## Production proof\n<!-- ' + BODY + ' -->']:
-            self.assertNotEqual(self.run_plan(body).returncode, 0, body)
+            self.assertNotEqual(self.run_plan(body, ['test/example.test.mjs']).returncode, 0, body)
 
     def test_missing_requirement_field_fails(self):
         path = self.root / 'proofs/requirements/app-proof-admission.json'
         value = json.loads(path.read_text())
         del value['safety']
         path.write_text(json.dumps(value))
-        self.assertNotEqual(self.run_plan(BODY).returncode, 0)
+        self.assertNotEqual(self.run_plan(BODY, ['test/example.test.mjs']).returncode, 0)
 
     def test_pin_and_contract_drift(self):
         plan = module()
@@ -141,7 +158,7 @@ class AdmissionTest(unittest.TestCase):
         with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(event_path)}), \
              patch.object(sys, 'argv', [str(PROGRAM)]), \
              patch.object(adapter, 'load_pinned', return_value=(validator, contract)), \
-             patch.object(validator, 'command', return_value='src/ui/example.tsx\0'), \
+             patch.object(validator, 'command', return_value='test/example.test.mjs\0'), \
              patch.object(validator, 'github_metadata', return_value={}):
             self.assertEqual(adapter.main(), 1)
         with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(event_path)}), \
@@ -160,14 +177,14 @@ class AdmissionTest(unittest.TestCase):
         adapter = module()
         validator, contract = adapter.load_pinned(ROOT)
         event = {'action': 'edited', 'repository': {'full_name': 'jbookout/doctorcre-app'},
-                 'pull_request': {'number': 1, 'body': BODY, 'base': {'sha': 'a' * 40}, 'head': {'sha': 'b' * 40}}}
+                 'pull_request': {'number': 1, 'body': NON_PRODUCT, 'base': {'sha': 'a' * 40}, 'head': {'sha': 'b' * 40}}}
         event_path = self.root / 'event.json'
         event_path.write_text(json.dumps(event))
         for responses, expected in [([{}, {}], 0), ([{}, ValueError('stale PR event')], 1)]:
             with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(event_path)}), \
                  patch.object(sys, 'argv', [str(PROGRAM), '--root', str(self.root)]), \
                  patch.object(adapter, 'load_pinned', return_value=(validator, contract)), \
-                 patch.object(validator, 'command', return_value='src/ui/example.tsx\0'), \
+                 patch.object(validator, 'command', return_value='test/example.test.mjs\0'), \
                  patch.object(validator, 'github_metadata', side_effect=responses) as metadata:
                 self.assertEqual(adapter.main(), expected)
                 self.assertEqual(metadata.call_count, 2)
@@ -177,7 +194,7 @@ class AdmissionTest(unittest.TestCase):
         script = workflow.split('          test "$CHECKS" = success', 1)[1].split('\n\n  preview:', 1)[0]
         script = 'test "$CHECKS" = success' + script
         for event, proof, expected in [('pull_request', 'failure', 1),
-                                       ('pull_request', 'success', 0), ('push', 'skipped', 0)]:
+                                       ('pull_request', 'success', 0), ('push', 'skipped', 0), ('merge_group', 'skipped', 0)]:
             settings = dict(os.environ, CHECKS='success', LIVE='success', SHARDS='success',
                             PERFORMANCE='success', EVENT=event, PRODUCTION_PROOF=proof)
             result = subprocess.run(['bash', '-e', '-c', script], env=settings, timeout=5)

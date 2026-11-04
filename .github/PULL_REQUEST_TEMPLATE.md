@@ -12,7 +12,8 @@ Bot-authored PRs are exempt from the Card requirement; docs PRs still need a Car
 <!-- Name the checks and any remaining limits. -->
 
 ## Production proof
-<!-- Name one runnable declaration, for example proofs/requirements/app-proof-admission.json.
+<!-- Name one runnable declaration under proofs/requirements/.
+The current pin has no app runner. App product declarations refuse as unsupported until P1 registers an app /release and live-walk runner.
 Use the pinned contracts/production-proof-plan.v1.json runner registry and safety budgets.
-For paths exempted by that contract, write n/a: followed by a concrete reason instead. -->
+For non-product paths, including the admission adapter and its tests, write n/a: followed by a concrete reason instead. -->
 proofs/requirements/<change>.json

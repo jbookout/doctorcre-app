@@ -1,15 +1,19 @@
 {
   "schema": "carr-production-proof-plan.v1",
   "requirement_id": "app-proof-admission",
-  "targets": ["studio"],
-  "assertions": [{
-    "id": "hosted-admission",
-    "predicate": "The hosted app production-proof job refuses missing synthetic product declarations and accepts the declared PR",
-    "runner": "studio-run-receipt.v1",
-    "expected_result": "Hosted CI receipt records successful invalid-case refusal and valid-case acceptance on the reviewed head",
-    "input_class": "read-only hosted CI receipt with synthetic cases",
-    "deadline_seconds": 300
-  }],
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "app-release-live-walk",
+      "predicate": "The deployed app /release matches the merged revision and a read-only live walk observes the changed app behavior",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "A release-bound live app observation passes the declared behavior predicate",
+      "input_class": "read-only deployed app release and live walk",
+      "deadline_seconds": 300
+    }
+  ],
   "safety": {
     "read_only": true,
     "no_sends": true,

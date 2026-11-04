@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_SHA256 = 'd9b68787b36f7481398567eac878b98b8c766213bdf136e3c7c4c4ab4fdfd359'
+SOURCE_REVISION = '2b65380ebcbb9f4d9db0f1cc2034c550b2c1b024'
+CONTRACT_SHA256 = '36224e67292a2a834dc03b0021ba09379894b3e9207cf08d492fd5e8432d6a6f'
 VALIDATOR_SHA256 = 'dec2b482c0e63eb6eacefa9f5268d8e6c193ce754ca93809ed9fca3e0b851112'
 
 
@@ -22,6 +23,20 @@ def load_pinned(root):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module, json.loads(contract.read_text())
+
+
+def admission(validator, body, paths, root, contract):
+    policy = dict(contract)
+    policy['x-non-product-paths'] = contract['x-non-product-paths'] + [
+        'scripts/production-proof-plan.py', 'scripts/production-proof-plan-selftest.py',
+        'scripts/vendor/production-proof-plan.v1.py',
+    ]
+    policy['x-required-targets'] = dict(contract['x-required-targets'], app=['*'])
+    if validator.product_paths(paths, policy) and not any(
+            'app' in runner['targets'] for runner in contract['x-runners'].values()):
+        raise ValueError('unsupported app production proof: pinned P1 contract has no app runner '
+                         'observing deployed app /release and a live walk')
+    return validator.admission(body, paths, root, policy)
 
 
 def main():
@@ -47,7 +62,7 @@ def main():
             return 0
         paths = json.loads(validator.read(args.files_file)) if args.files_file else validator.command(
             'git', 'diff', '--name-only', '--no-renames', '-z', base + '...HEAD').rstrip('\0').split('\0')
-        result = validator.admission(body, paths, args.root, contract)
+        result = admission(validator, body, paths, args.root, contract)
         if event:
             validator.github_metadata(event)
         print('Production proof: ' + result)

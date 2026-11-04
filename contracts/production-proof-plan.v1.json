@@ -59,6 +59,5 @@
     "ops/ci-migration.py", "ops/ci-migration-gates.py", "ops/ci-node-file.mjs",
     "ops/ci-apt.py", "ops/ci-postgres.sh", "ops/ci-zsh.sh", "ops/production-proof-plan.py",
     "contracts/production-proof-plan.v1.json", "proofs/requirements/**"
-  ],
-  "x-source": {"repository": "DoctorCRE/carr-system", "commit": "f699e1859dc87e4122501bbaba35a312607452a7", "path": "contracts/production-proof-plan.v1.json", "sha256": "36224e67292a2a834dc03b0021ba09379894b3e9207cf08d492fd5e8432d6a6f", "validator_path": "ops/production-proof-plan.py", "validator_sha256": "dec2b482c0e63eb6eacefa9f5268d8e6c193ce754ca93809ed9fca3e0b851112"}
+  ]
 }
