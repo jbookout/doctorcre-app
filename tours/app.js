@@ -8,6 +8,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
 
 (() => {
   "use strict";
+  if (window.parent === window) void import('../js/app-shell.js');
   const $ = (selector) => document.querySelector(selector);
   const state = { csrf: "", sessionGeneration: 0, sessionInvalidated: false, tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
@@ -18,11 +19,26 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   const id = (value) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   const requestedDeal = new URLSearchParams(window.location.search).get('deal');
   const dealContext = id(requestedDeal) ? requestedDeal : null;
+  const workspaceUrl = (deal, tour) => `/deals?deal=${encodeURIComponent(deal)}&tab=tours${tour ? `&tour=${encodeURIComponent(tour)}` : ''}`;
+  const embedded = window.parent !== window && window.parent.location.origin === window.location.origin &&
+    window.parent.location.pathname === '/deals' && new URLSearchParams(window.parent.location.search).get('deal') === dealContext;
+  const notify = data => { if (embedded) window.parent.postMessage({ ...data, generation: Number(new URLSearchParams(window.location.search).get('generation')) }, window.location.origin); };
+  if (dealContext && !embedded) {
+    window.location.replace(workspaceUrl(dealContext, new URLSearchParams(window.location.search).get('tour') || 'new')); return;
+  }
+  $('#create-tour-panel').hidden = !embedded;
+  if (embedded) {
+    document.body.classList.add('tour-embedded');
+    document.querySelector('.discovery').hidden = false;
+    document.querySelector('.library').hidden = true;
+    document.querySelector('.tours-heading').querySelector('h1').textContent = 'Tour planner';
+    const observer = new ResizeObserver(() => notify({ type: 'deal-tour-size', height: document.body.scrollHeight }));
+    observer.observe(document.body);
+    window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
+  }
   if (dealContext) {
     $('#create-subject-type').value = 'deal'; $('#create-subject-id').value = dealContext;
     $('#create-tour-panel').open = !new URLSearchParams(window.location.search).has('tour');
-    const back = document.createElement('a'); back.className = 'btn btn-quiet'; back.textContent = 'Back to deal tours';
-    back.href = `/deals?deal=${encodeURIComponent(dealContext)}&tab=tours`; $('#create-tour-panel').before(back);
   }
   const base64url = (bytes) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
   async function sha256(value) { const bytes = new TextEncoder().encode(value); const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)); return `sha256:${[...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`; }
@@ -205,6 +221,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   function invalidateTourSession() {
     if (state.sessionInvalidated) return;
     state.sessionInvalidated = true; state.sessionGeneration++; sessionBinding = ""; state.csrf = "";
+    notify({ type: 'deal-tour-invalidated' });
     ++tourLoadSeq; ++state.feedbackSeq; ++state.hydrationSeq; ++state.searchSeq;
     cancelSheetAutosave(); sheetComposing = false; createPending = null; createPhase = "ready"; restoredTourId = "";
     composer = null; sheetPending = null; sheetConflict = null; tourAction = null; tourActionPreparing = false;
@@ -264,6 +281,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     return { latitude: Number(latitude), longitude: Number(longitude), position_role: role, precision_class: "approximate", source_ref };
   }
   async function createTour() {
+    if (!embedded || !dealContext) { status('Open a deal workspace to create a tour.'); return; }
     if (dealContext && createPending && (createPending.subject_type !== 'deal' || createPending.subject_id !== dealContext)) {
       $('#create-tour-state').textContent = 'A pending creation belongs to another workspace. Reconcile it in its original workspace.'; return;
     }
@@ -272,7 +290,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     createBusy = true; renderCreate();
     try {
       if (!createPending) createPending = { idempotency_key: uuid(), tour_name: $("#create-tour-name").value.trim(),
-        subject_type: dealContext ? 'deal' : $("#create-subject-type").value, subject_id: dealContext || $("#create-subject-id").value.trim(),
+        subject_type: 'deal', subject_id: dealContext,
         canonical_dataset_version: $("#create-dataset").value.trim(), start_point: endpoint("start"), end_point: endpoint("end") };
       persistPending(); renderCreate();
       $("#create-tour-state").textContent = "Creating Tour…";
@@ -349,7 +367,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       remove.addEventListener("click", () => toggleProperty(propertyId)); row.append(label, remove);
       list.append(row);
     });
-    if (!state.selectedIds.length) list.textContent = "No properties selected.";
+    if (!state.selectedIds.length) { const empty = document.createElement('li'); empty.textContent = 'No properties selected.'; list.append(empty); }
     $("#selection-tour").textContent = state.tour ? `For ${text(state.tour.name, "this Tour")}` : "Select a Tour from the library to save a selection.";
     $("#selection-version").textContent = state.cart?.selection_version ? `Saved version ${state.cart.selection_version}` : "No saved version";
     $("#save-selection").disabled = !state.tour || !state.selectionDirty || Boolean(state.selectionSave);
@@ -394,7 +412,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       caution.textContent = `Candidate facts need review before a route or client use. ${text(item.caveat)}`.trim();
       row.append(header, address, facts, provenance, caution); list.append(row);
     }
-    if (!list.children.length) list.textContent = state.searchCompleted ? "No properties match these filters." : "Find properties to see candidates.";
+    if (!list.children.length) { const empty = document.createElement('li'); empty.textContent = state.searchCompleted ? "No properties match these filters." : "Find properties to see candidates."; list.append(empty); }
     $("#search-count").textContent = `${state.searchItems.length} loaded`;
     $("#more-properties").hidden = !state.searchCursor;
     updateTerritory(); renderSelection();
@@ -873,7 +891,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     restoreOtherWrites(); renderTourAction();
     $("#retry-library").hidden = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
-    state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); if ($("#tour-recovery").hidden) status("Tour library ready.");
+    state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id) && (!dealContext || tour.deal_id === dealContext)) : []; renderLibrary(); if ($("#tour-recovery").hidden) status("Tour library ready.");
     const retained = readPending()?.composer;
     if (!composer && retained?.plan && id(retained.tourId)) {
       restoredTourId = retained.tourId; renderCreate(); status("An unresolved route request must be reconciled before another Tour can be edited.");
@@ -914,6 +932,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       $("#empty-state").hidden = true;
       const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
       if (tour?.id !== tourId || !Array.isArray(tour.stops)) throw new Error("read_invalid");
+      if (!embedded && id(tour.deal_id)) { window.location.replace(workspaceUrl(tour.deal_id, tour.id)); return; }
       if (dealContext && tour.deal_id !== dealContext) throw new Error('tour_not_available');
       if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
@@ -921,6 +940,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       if (changed && (composer.dirty || composer.plan || composer.busy)) { $("#tour-panel").hidden = false; status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
       if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; if (state.cheatDraftTourId !== tourId) state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
       state.tour = tour;
+      notify({ type: 'deal-tour-opened', id: tour.id });
       selectDocRecord("tour", tour.id);
       if (!composer || composer.tourId !== tourId || changed) initComposer(tour);
       restoredTourId = "";
@@ -1157,7 +1177,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   $("#save-selection").addEventListener("click", () => void saveSelection());
   $("#undo-selection").addEventListener("click", () => { if (!state.undoSelectionIds) return; state.selectedIds = state.undoSelectionIds; state.undoSelectionIds = null; state.selectionDirty = true; state.pendingSelection = null; renderSearchResults(); $("#selection-state").textContent = "Selection change undone. Save to keep this version."; });
   for (const node of document.querySelectorAll("#territory-visual .county")) {
-    node.setAttribute("tabindex", "0"); node.setAttribute("role", "button"); node.setAttribute("aria-label", `Filter ${node.dataset.county} county`);
+    node.setAttribute("tabindex", "0"); node.setAttribute("role", "button");
     const activate = () => { $("#property-county").value = node.dataset.county; void searchProperties(); };
     node.addEventListener("click", activate);
     node.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } });
@@ -1282,6 +1302,13 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }, "PDF review",
     latest => latest.pdf_render_job_id === job && latest.pdf_qc_run_digest === qc);
   }));
+  window.addEventListener('beforeunload', event => {
+    if (state.selectionDirty || state.cheatDirty || sheetBusy || sheetPending || sheetConflict || tourAction ||
+        composer?.dirty || composer?.plan || composer?.busy || createBusy || createPending || state.shareBusy ||
+        (embedded && !state.tour && [...$('#create-tour-form').querySelectorAll('input')].some(input => input.value && !['create-subject-id', 'create-subject-type'].includes(input.id)))) {
+      event.preventDefault(); event.returnValue = '';
+    }
+  });
   $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
   mountAutoRefresh({ document, window, refresh: async () => {
     await loadLibrary();

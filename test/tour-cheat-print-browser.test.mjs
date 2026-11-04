@@ -12,14 +12,16 @@ const artifactDir = await temporaryDirectory('doctorcre-print-');
 before(() => buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir: artifactDir }));
 after(() => rm(artifactDir, { recursive: true, force: true }));
 
-test('the shared stylesheet keeps the Tour planner printable', async t => {
+test('the shared stylesheet keeps the Tours library printable', async t => {
   const server = await fixtureServer({ root: join(artifactDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
   await page.goto(`${server.origin}/tours/index.html`);
-  await page.getByRole('heading', { name: 'Plan a tour', exact: true }).waitFor();
+  const heading = page.getByRole('heading', { name: 'Your tours', exact: true });
+  await heading.waitFor();
   await page.emulateMedia({ media: 'print' });
-  assert.equal(await page.getByRole('heading', { name: 'Plan a tour', exact: true }).isVisible(), true);
+  assert.equal(await heading.isVisible(), true);
+  assert.equal(await page.getByText('Open a deal workspace to start a tour. Tours stay with their deal.', { exact: true }).isVisible(), true);
 });
 
 test('broker can print complete saved notes and the current draft without changing the tour', async t => {

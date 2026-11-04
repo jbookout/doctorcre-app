@@ -47,215 +47,23 @@ async function open(t, width, site = root) {
       return route.fulfill({ body: content, contentType: /\.m?js$/.test(file || "") ? "text/javascript" : file?.endsWith(".css") ? "text/css" : "text/html" });
     } catch { return route.fulfill({ status: 404 }); }
   });
-  await page.goto("http://localhost/tours"); await page.waitForFunction(() => document.querySelector("#plan-client").options.length === 2);
+  await page.goto("http://localhost/tours"); await page.waitForFunction(() => document.querySelector("#planner-updated").textContent.startsWith("Updated"));
   return { page, calls, errors, outage(value) { unavailable = value; }, revise() { revision += 1; }, accept() { accepted = true; } };
 }
 
-test("Next tour opens an eligible Tour day from the Tours page without the library drawer", async t => {
-  for (const width of [320, 390]) await t.test(String(width), async t => {
-    const app = await open(t, width), { page } = app, link = page.getByRole("link", { name: /^Next tour/ });
-    assert.equal(await page.locator("#next-tour").isVisible(), false, "a tour without an accepted route offers no Tour day");
-    app.accept(); await page.locator("#planner-refresh").click();
-    await link.waitFor();
-    assert.match(await link.textContent(), /Demo Gulf Coast Tour/);
-    assert.equal(await link.getAttribute("href"), "/tours/day.html?tour=22222222-2222-4222-8222-222222222222");
-    assert.equal(await link.evaluate(node => !node.closest("[data-layout-slot=sidebar], .library-card, #appSidebar")), true, "the entry is in the page, not the sidebar drawer");
-    const box = await link.boundingBox(); assert.ok(box.height >= 44 && box.x >= 0 && box.x + box.width <= width);
-    await page.keyboard.press("Tab"); await link.focus(); assert.equal(await link.evaluate(node => node === document.activeElement), true);
-    assert.deepEqual(app.errors, []);
-  });
-});
-
-test("W6 desktop and phone render, client prefill/undo, private files, wide popup and measured reduced motion", async t => {
-  await mkdir(new URL("out/test-artifacts/w6/", root), { recursive: true });
-  for (const width of [1440, 390]) await t.test(String(width), async t => {
-    const app = await open(t, width), { page } = app; const name = width === 1440 ? "desktop" : "phone";
-    await page.locator("#plan-client").selectOption(clientId);
-    await page.waitForFunction(() => document.querySelector("#plan-name").value.includes("Demo Harbor"));
-    await page.locator("#plan-area").fill("Typed tour area"); await page.getByLabel("Undo tour edit", { exact: true }).click();
-    assert.equal(await page.locator("#plan-area").inputValue(), "Pensacola, FL");
-    await page.locator("#plan-date").fill("2026-10-08"); await page.locator("#plan-dwell").fill("25");
-    assert.equal(await page.locator("#file-count").textContent(), "0 files");
-    await page.locator("#packet-upload").setInputFiles({ name: "demo-report.txt", mimeType: "text/plain", buffer: Buffer.from("Synthetic private report bytes") });
-    assert.equal(await page.locator("#file-count").textContent(), "1 file");
-    await page.locator("#packet-upload").setInputFiles({ name: "demo-second.txt", mimeType: "text/plain", buffer: Buffer.from("Synthetic second private report") });
-    assert.equal(await page.locator("#file-count").textContent(), "2 files");
-    await page.getByRole("button", { name: "Remove demo-second.txt", exact: true }).click();
-    assert.equal(await page.locator("#file-count").textContent(), "1 file");
-    assert.match(await page.locator("#packet-files").textContent(), /demo-report/);
-    assert.equal(await page.evaluate(() => sessionStorage.getItem("doctorcre-tour-planning-drafts-v1").includes("demo-report")), false);
-    await page.locator('[data-market="Pensacola, FL"]').click(); assert.equal(await page.locator("#space-area").inputValue(), "Pensacola, FL");
-    await page.locator("#space-minSize").fill("1800"); await page.locator("#space-maxSize").fill("3000");
-    await page.locator("#space-requirements").fill("Ground floor · accessible entry");
-    await page.locator("#save-search").click(); assert.match(await page.locator("#space-message").textContent(), /saved/);
-    assert.equal(await page.locator("#property-search-form").count(), 0);
-    assert.equal(await page.locator(".territory-map").evaluate(el => el.getAnimations({ subtree: true }).length), 0, "V2: the territory map has no decorative motion");
-    await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
-    await page.screenshot({ path: new URL(`out/test-artifacts/w6/${name}.png`, root).pathname, fullPage: true, animations: "disabled" });
-    await page.locator("#review-packet").click(); await page.locator("#tour-dialog").waitFor({ state: "visible" });
-    assert.match(await page.locator("#detail-content").textContent(), /demo-report/);
-    const box = await page.locator("#tour-dialog").boundingBox(); assert.ok(box.width >= Math.min(1000, width - 32));
-    await page.getByLabel("Close tour details").click(); assert.equal(await page.locator("#review-packet").evaluate(el => document.activeElement === el), true);
-    await page.locator("#upcoming-tours .tour-button").first().click(); await page.waitForFunction(() => document.querySelector("#detail-title").textContent.includes("Demo Gulf"));
-    assert.ok((await page.locator("#detail-content > p").first().textContent()).length <= 180);
-    await page.locator("#detail-content details summary").click(); assert.equal(await page.locator("#detail-content details p").textContent(), original);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: new URL(`out/test-artifacts/w6/${name}-detail.png`, root).pathname, fullPage: false, animations: "disabled" });
-    await page.keyboard.press("Escape");
-    assert.equal(await page.locator("#tour-dialog").evaluate(n => n.open), false, "R5 one Escape closes the top modal");
-    if (width <= 760) {
-      assert.equal(await page.locator("#appLayout").getAttribute("data-drawer"), "");
-      assert.equal(await page.locator("#upcoming-tours").evaluate(n => n.contains(document.activeElement)), true);
-    }
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    assert.equal(await page.locator(".planner-grid").evaluate(el => el.getAnimations({ subtree: true }).length), 0);
-    await page.locator(".plan-card").hover(); assert.equal(await page.locator(".plan-card").evaluate(el => getComputedStyle(el).transform), "none");
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    const small = await page.locator(".planner-grid").evaluate(el => [...el.querySelectorAll("button,input,select")].filter(node => node.getClientRects().length).filter(node => { const b = node.getBoundingClientRect(); return b.width < 44 || b.height < 44; }).map(node => node.id));
-    assert.deepEqual(small, []); assert.deepEqual(app.errors, []);
-    assert.ok(app.calls.every(call => call.method === "GET" || call.path === "/mcp")); assert.ok(app.calls.every(call => !call.body || call.path === "/mcp"));
-    assert.ok(app.calls.filter(call=>call.path.startsWith("/api/")).every(call => !/search|upload|render|share/.test(call.path)));
-  });
-});
-
-test("W6 polling recovers from outage without retry controls and refreshes open detail without losing drafts", async t => {
-  const app = await open(t, 1440), { page } = app;
-  await page.locator("#plan-name").fill("Typed draft");
-  await page.locator("#upcoming-tours .tour-button").first().click(); await page.waitForFunction(() => document.querySelector("#detail-title").textContent.includes("Demo Gulf"));
-  await page.locator("#detail-content details summary").click();
-  app.revise(); app.outage(true); await page.clock.runFor(30_500);
-  await page.waitForFunction(() => document.querySelector("#tour-library-state").textContent.includes("temporarily"));
-  assert.match(await page.locator("#tour-library-state").textContent(), /temporarily/);
-  app.outage(false); await page.clock.runFor(30_500);
-  await page.waitForFunction(() => document.querySelector("#detail-title").textContent === "Demo refreshed tour");
-  assert.equal(await page.locator("#plan-name").inputValue(), "Typed draft"); await page.waitForFunction(() => document.querySelector("#tour-library-state").textContent === "");
-  assert.equal(await page.locator("#detail-content details").evaluate(el => el.open), true);
-  assert.equal(await page.locator("#detail-content summary").evaluate(el => document.activeElement === el), true);
-  await page.keyboard.press("Escape");
-  assert.equal(await page.locator("#upcoming-tours .tour-button").first().evaluate(el => document.activeElement === el), true);
-  await page.locator("#tour-filter").fill("Tour 10"); assert.equal(await page.locator("#history-tours button").count(), 1); assert.equal(await page.locator("#upcoming-tours button").count(), 0);
-});
-
-
-for (const status of [401,403]) test(`PR182 Tours ${status} settles freshness at boot and retry`, async t => {
-  const { page, errors } = await open(t,1440);
-  await page.route('**/api/**', route => route.fulfill({status,json:{}}));
-  await page.reload();
-  await page.getByText('Sign in to continue.',{exact:true}).first().waitFor();
-  assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
-  await page.locator('#planner-refresh').click();
-  await page.getByText('Sign in to continue.',{exact:true}).first().waitFor();
-  assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
-  assert.equal(await page.locator('.freshness').evaluate(n=>n.classList.contains('current')), false);
-  assert.deepEqual(errors,[]);
-});
-
-test('planner reveals reviewed territory on demand and keeps editable market controls when geometry fails', async t => {
-  const { page, calls, errors } = await open(t, 390);
-  assert.equal(await page.locator('svg.territory-map').count(), 0);
-  assert.equal(calls.some(call => /maplibre|leads-territory|leads-market-locations/.test(call.path)), false);
-  await page.route('**/data/leads-territory.geojson', route => route.fulfill({ status: 503 }));
-  const reveal = page.getByRole('button', { name: 'Show territory', exact: true });
-  await reveal.focus(); await page.keyboard.press('Enter');
-  await page.getByRole('status').filter({ hasText: 'Territory unavailable. Choose an area above' }).waitFor();
-  assert.equal(await page.locator('#planner-territory').isVisible(), false, 'a failed map leaves no empty box');
-  await page.locator('[data-market="Pensacola, FL"]').click();
-  assert.equal(await page.locator('#space-area').inputValue(), 'Pensacola, FL');
-  await page.getByLabel('Undo search edit', { exact: true }).click();
-  assert.equal(await page.locator('#space-area').inputValue(), '');
-  assert.deepEqual(errors, []);
-});
-
-for (const width of [1440, 390]) test(`planner renders Census geography after reveal and reuses its canvas at ${width}px`, async t => {
-  const outDir = await temporaryDirectory('m01-planner-');
-  t.after(() => rm(outDir, { recursive: true, force: true }));
-  await buildArtifact({ root: fileURLToPath(root), outDir, commit: '1'.repeat(40) });
-  const { page, calls, errors } = await open(t, width, pathToFileURL(`${outDir}/site/`));
-  await page.route('**/maplibre-gl.mjs', route => route.fulfill({ contentType: 'text/javascript', body: `
-    export * from './maplibre-gl.mjs?provider';
-    import { Map as ProviderMap } from './maplibre-gl.mjs?provider';
-    export class Map extends ProviderMap {
-      constructor(options) { super(options); globalThis.plannerRenderer = this; }
-      fitBounds(bounds, options) { globalThis.plannerBounds = bounds.toArray(); return super.fitBounds(bounds, options); }
-    }
-  ` }));
-  const buttonsTop = await page.locator('.market-buttons').evaluate(node => node.getBoundingClientRect().top);
-  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
-  await page.locator('#planner-territory canvas').waitFor();
-  await page.waitForFunction(() => globalThis.plannerRenderer?.loaded());
-  assert.ok(await page.evaluate(() => plannerRenderer.queryRenderedFeatures({ layers: ['land'] }).length) > 0);
-  // The extent is the five area points, so the markets fill the map.
-  assert.deepEqual(await page.evaluate(() => plannerBounds), [[-88.107853, 30.239496], [-84.252272, 30.668246]]);
-  const canvas = await page.locator('#planner-territory canvas').elementHandle();
-  await page.getByRole('button', { name: 'Hide territory', exact: true }).click();
-  assert.equal(await page.locator('#planner-territory').isVisible(), false);
-  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
-  // Every area button has one labelled Census market point; there are no lead or property pins.
-  const points = page.locator('#planner-territory .area-marker');
-  assert.deepEqual(await points.allTextContents(), ['Mobile', 'Pensacola', 'Fort Walton / Destin', 'Panama City', 'Tallahassee']);
-  assert.deepEqual(await points.evaluateAll(nodes => nodes.map(node => node.dataset.market)),
-    await page.locator('.market-buttons [data-market]').evaluateAll(nodes => nodes.map(node => node.dataset.market)));
-  assert.equal(await page.locator('#planner-territory .market-marker').count(), 0);
-  const pressed = () => page.evaluate(() => ({ button: document.querySelector('.market-buttons [aria-pressed="true"]')?.dataset.market ?? null,
-    point: document.querySelector('#planner-territory .area-marker[aria-pressed="true"]')?.dataset.market ?? null }));
-  await page.locator('.market-buttons [data-market="Pensacola, FL"]').click();
-  assert.deepEqual(await pressed(), { button: 'Pensacola, FL', point: 'Pensacola, FL' });
-  await page.getByRole('button', { name: 'Choose Tallahassee on the map', exact: true }).click();
-  assert.deepEqual(await pressed(), { button: 'Tallahassee, FL', point: 'Tallahassee, FL' });
-  assert.equal(await page.locator('#space-area').inputValue(), 'Tallahassee, FL');
-  await page.locator('.market-buttons [data-market="Pensacola, FL"]').click();
-  assert.equal(await page.locator('.market-buttons').evaluate(node => node.getBoundingClientRect().top), buttonsTop, 'the status line and map never move the area buttons');
-  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
-  assert.equal(await page.locator('#space-area').inputValue(), 'Pensacola, FL');
-  assert.equal(await canvas.evaluate(node => node.isConnected), true);
-  assert.equal(calls.filter(call => call.path.endsWith('leads-territory.geojson')).length, 1);
-  // Water and land stay distinct in the painted theme.
-  const paints = () => page.evaluate(() => Object.fromEntries([['ground', 'background-color'], ['context', 'fill-color'], ['land', 'fill-color']]
-    .map(([layer, property]) => [layer, String(plannerRenderer.getPaintProperty(layer, property))])));
-  const before = await paints();
-  assert.equal(new Set(Object.values(before)).size, 3, 'water, context land and territory land are distinct');
-  // Every label stays inside the map and clear of every other label and dot.
-  const layout = await page.evaluate(() => {
-    const frame = document.querySelector('#planner-territory').getBoundingClientRect();
-    const labels = [...document.querySelectorAll('#planner-territory .area-marker span')].map(node => node.getBoundingClientRect());
-    const dots = [...document.querySelectorAll('#planner-territory .area-marker')].map(node => node.getBoundingClientRect());
-    const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-    return { inside: labels.every(r => r.left >= frame.left && r.right <= frame.right && r.top >= frame.top && r.bottom <= frame.bottom),
-      overlaps: labels.flatMap((a, i) => [...labels.map((b, j) => j > i && hits(a, b)), ...dots.map((b, j) => j !== i && hits(a, b))]).filter(Boolean).length };
-  });
-  assert.deepEqual(layout, { inside: true, overlaps: 0 });
-  // A theme switch repaints the open map in place.
-  await page.evaluate(() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; });
-  await page.waitForFunction(previous => String(plannerRenderer.getPaintProperty('ground', 'background-color')) !== previous, before.ground);
-  const after = await paints();
-  assert.notEqual(after.land, before.land); assert.notEqual(after.context, before.context);
-  await mkdir(new URL('out/test-artifacts/w6/', root), { recursive: true });
-  await page.screenshot({ path: new URL(`out/test-artifacts/w6/territory-${width}.png`, root).pathname, fullPage: true, animations: 'disabled' });
-  assert.deepEqual(errors, []);
-});
-
-test("client lookup finds a later directory client without walking pages or reloading choices on refresh", async t => {
-  const { page, errors } = await open(t, 390);
-  const id = "44444444-4444-4444-8444-444444444444";
-  const laterClient = { ...client, id, name: "Demo Later Practice" };
-  const lookups = [];
-  await page.route("**/api/v1/business/clients?*", route => {
-    const query = new URL(route.request().url()); lookups.push(query);
-    return route.fulfill({ json: { page: 1, page_count: 200, rows: [laterClient] } });
-  });
-  await page.route(`**/api/v1/business/clients/${id}`, route => route.fulfill({ json: { record: laterClient } }));
-  await page.getByLabel("Find clients", { exact: true }).first().fill("Later & Practice");
-  await page.locator("#plan-client-find").click();
-  await page.locator(`#plan-client option[value="${id}"]`).waitFor({ state: "attached" });
-  assert.equal(lookups.length, 1); assert.equal(lookups[0].searchParams.get("q"), "Later & Practice");
-  assert.equal(lookups[0].searchParams.get("page"), "1");
-  await page.locator("#plan-client").selectOption(id);
-  await page.waitForFunction(() => document.querySelector("#plan-name").value === "Demo Later Practice · Tour");
-  await page.locator("#plan-name").fill("Typed later tour");
-  await page.locator("#planner-refresh").click();
-  await page.waitForFunction(() => document.querySelector("#planner-updated").textContent.startsWith("Updated"));
-  assert.equal(lookups.length, 1);
-  assert.equal(await page.locator("#plan-client").inputValue(), id);
-  assert.equal(await page.locator("#plan-name").inputValue(), "Typed later tour");
-  assert.deepEqual(errors, []);
+for (const width of [390,1440]) test(`cross-deal Tours filters, reads legacy detail and recovers at ${width}px`, async t => {
+  const app = await open(t,width), {page} = app;
+  assert.equal(await page.locator('#plan-form, #create-tour-form').count(),0);
+  await page.locator('.tour-button').first().click();
+  await page.locator('#detail-title').filter({hasText:'Demo Gulf Coast Tour'}).waitFor();
+  assert.equal(await page.getByRole('link',{name:'Open legacy itinerary'}).getAttribute('href'),`/tours/route-editor.html?tour=${tourId}`);
+  await page.getByRole('button',{name:'Close tour details'}).click();
+  await page.locator('#tour-filter').fill('no matching fixture');
+  assert.equal(await page.locator('.tour-button').count(),0);
+  await page.locator('#tour-filter').fill('');
+  app.outage(true); await page.locator('#planner-refresh').click();
+  await page.getByText('Tours unavailable. Refresh to try again.').waitFor();
+  app.outage(false); await page.locator('#planner-refresh').click();
+  await page.locator('.tour-button').first().waitFor();
+  assert.deepEqual(app.errors,[]);
 });

@@ -149,3 +149,31 @@ test('Home discovers its boot mode while the client bootstrap is downloading', a
 });
 
 test('Home timing covers root Home', () => { assert.equal(screens.find(screen => screen.id === 'home').route, '/'); });
+test('Tours guidance keeps its phone width while the shared shell loads', async t => {
+  const outDir = await temporaryDirectory('doctorcre-tour-paint-');
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
+  t.after(() => server.stop());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  t.after(() => browser.close());
+  for (const width of [390, 820]) await t.test(`${width}px touch viewport`, async () => {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true });
+    try {
+      const page = await context.newPage();
+      await page.route('**/*', route => new URL(route.request().url()).origin === server.url ? route.continue() : route.abort());
+      let release;
+      const shell = new Promise(resolve => { release = resolve; });
+      await page.route('**/js/app-shell.js', async route => { await shell; await route.continue(); });
+      await page.goto(server.url + '/tours', { waitUntil: 'commit' });
+      const guidance = page.locator('.tour-library-page > p');
+      await guidance.waitFor({ state: 'visible' });
+      const before = await guidance.boundingBox();
+      release();
+      await page.locator('#appSidebarToggle').waitFor({ state: 'visible' });
+      const after = await guidance.boundingBox();
+      assert.equal(after.width, before.width, 'Shell mounting must not grow the guidance into a later LCP candidate');
+      assert.equal(after.height, before.height, 'Guidance must retain its line wrapping');
+    } finally { await context.close(); }
+  });
+});

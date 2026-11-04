@@ -296,11 +296,11 @@ test('R6/R14 Tour background failure clears eligibility; search constrains origi
  await escapeRecord(page,'#tour-dialog');await page.locator('#tour-filter').fill('no match');
  const c=await readContext(page);assert.equal(c.records.length,0);assert.equal(c.filters.query,'no match');assert.equal(c.ready,true);
 });
-for(const path of ['/api/tours/library','/api/v1/business/clients','/api/tours/detail'])test(`R6 Tour authorization loss from ${path} clears global context`,async t=>{
+for(const path of ['/api/tours/library','/api/tours/detail'])test(`R6 Tour authorization loss from ${path} clears global context`,async t=>{
  let denied=false;const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
   if(denied && env.url.pathname===path){await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await goto('/tours');await page.locator('.tour-button').first().click();await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='Sample Tour');
- denied=true;if(path==='/api/v1/business/clients'){await escapeRecord(page,'#tour-dialog');assert.equal((await readContext(page)).ready,true);await page.locator('#plan-client-find').click();}else await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
+ denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
  const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
 });
 test('R8 delayed approval receipt cannot appear under a different record',async t=>{
@@ -460,14 +460,6 @@ test('R18 a held Search response cannot publish under a later query scope',async
  const c=await readContext(page);assert.equal(c.filters.query,'');assert.deepEqual(c.records,[]);assert.equal(c.ready,false);
 });
 
-for(const prefix of ['plan','space'])test(`R6 ${prefix} client record authorization loss clears Tour context`,async t=>{
- const client={id:'11111111-1111-4111-8111-111111111111',name:'Sample Practice'};
- const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
-  if(env.url.pathname==='/api/v1/business/clients'){await route.fulfill({json:{data:{rows:[client],page:1,page_count:1},csrf_token:'synthetic'}});return true;}
-  if(env.url.pathname===`/api/v1/business/clients/${client.id}`){await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
- }});await goto('/tours');await page.locator('.tour-button').first().waitFor();assert.equal((await readContext(page)).ready,true);await page.locator(`#${prefix}-client`).selectOption(client.id);
- await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
-});
 
 for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11 ${name} command bar shortcuts, keyboard results, refresh and responsive motion`,{skip:engine.skip},async t=>{
  for(const width of [1440,390,320]) await t.test(String(width),async t=>{
