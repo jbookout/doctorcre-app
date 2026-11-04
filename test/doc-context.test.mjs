@@ -132,7 +132,7 @@ test('a newer row revision outranks older detailed activity; stale auth refusals
  const old=c.begin('getBoard');c.filter({owner:'demo-new-partner'});c.finish(c.begin('getBoard'),{deals:[deal()]});c.fail(old,{status:401});assert.equal(c.snapshot().ready,false);
 });
 
-for (const change of [latest => ({...latest,ok:false}), latest => ({...latest,suggestions:latest.suggestions.map(row=>({...row,original_text:'Changed original'}))})]) test('approval rejects failed or changed preflight material without a write', async () => {
+for (const [label, change] of [['failed', latest => ({...latest,ok:false})], ['changed', latest => ({...latest,suggestions:latest.suggestions.map(row=>({...row,original_text:'Changed original'}))})]]) test(`approval rejects ${label} preflight material without a write`, async () => {
  const c=context(), suggestion=row({original_text:'Shown original'}), shown={ok:true,suggestions:[suggestion]}; let writes=0;
  const approval=createDocApproval({context:c,evaluatedPages:DOC_EVALUATED_PAGES,uuid:()=> 'synthetic-key',available:()=>true,client:{listDocSuggestions:async()=>change(shown),decideDocSuggestion:async()=>{writes++;}}});
  assert.equal((await approval.approve(suggestion,shown)).state,'changed'); assert.equal(writes,0);

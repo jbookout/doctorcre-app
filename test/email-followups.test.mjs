@@ -504,10 +504,11 @@ test('a reply receipt for different text is uncertain rather than claiming succe
   assert.doesNotMatch(container.textContent, /Submitted for sending/);
 });
 
-for (const malformed of [
-  { to: ['different@example.test'] }, { cc: ['different@example.test'] }, { cc: [] }, { to: ['missing-at.example.test'] }, { cc: ['bad address@example.test'] },
-  { version: 99 }, { proposal_id: 'different-proposal' }, { sha256: 'invalid' },
-]) test(`reply submission never claims success for a malformed ${Object.keys(malformed)[0]} receipt`, async () => {
+for (const [label, malformed] of [
+  ['different to', { to: ['different@example.test'] }], ['different cc', { cc: ['different@example.test'] }],
+  ['empty cc', { cc: [] }], ['invalid to', { to: ['missing-at.example.test'] }], ['invalid cc', { cc: ['bad address@example.test'] }],
+  ['version', { version: 99 }], ['proposal_id', { proposal_id: 'different-proposal' }], ['sha256', { sha256: 'invalid' }],
+]) test(`reply submission never claims success for a malformed ${label} receipt`, async () => {
   const { container, view, action, send } = setup({ listEmailProposals: async () => response([replyDraft()]),
     submitEmailDraft: async args => ({ ...draftReceipt(args), ...malformed }) });
   await view.refresh(); await action('Review reply'); await send();
