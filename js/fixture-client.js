@@ -1280,7 +1280,7 @@ export async function createFixtureClient(opts = {}) {
       return structuredClone(documentUploads.get(args.idempotency_key));
     },
     async readDealDocumentUpload(args) {
-      const receipt = documentUploads.get(args.upload_id || args.idempotency_key);
+      const receipt = documentUploads.get(args.upload_id);
       if (!receipt) throw Error('Synthetic reservation not found');
       return structuredClone(receipt);
     },
@@ -1288,19 +1288,19 @@ export async function createFixtureClient(opts = {}) {
       const current = documentUploads.get(receipt.upload_id);
       const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
       if (!current || current.sha256 !== hash || current.bytes !== blob.size) throw Error('Synthetic byte mismatch');
-      current.state='uploaded';
+      current.state='staged';return structuredClone(current);
     },
     async cancelDealDocumentUpload(args) {
       const receipt = documentUploads.get(args.upload_id);
-      if (!receipt || receipt.state==='committed') throw Error('Synthetic cancellation refused');
+      if (!receipt || receipt.state==='filed') throw Error('Synthetic cancellation refused');
       receipt.state='cancelled';return structuredClone(receipt);
     },
     async commitDealDocumentUpload(args) {
       const receipt = documentUploads.get(args.upload_id);
-      if (!receipt || receipt.deal_id !== args.deal_id || !['uploaded','committed'].includes(receipt.state)) throw Error('Synthetic commit refused');
-      if (receipt.state!=='committed') {
-        receipt.state='committed';receipt.attachment_id=uuidv4();
-        filedDocuments.push({id:receipt.attachment_id,attachment_id:receipt.attachment_id,deal_id:receipt.deal_id,sha256:receipt.sha256,display_name:receipt.name,stored_at:nowIso()});
+      if (!receipt || !['staged','filed'].includes(receipt.state)) throw Error('Synthetic commit refused');
+      if (receipt.state!=='filed') {
+        receipt.state='filed';receipt.attachment_id=uuidv4();
+        filedDocuments.push({id:receipt.attachment_id,attachment_id:receipt.attachment_id,deal_id:receipt.deal_id,content_hash:receipt.sha256,display_name:receipt.filename,stored_at:nowIso()});
       }
       return structuredClone(receipt);
     },

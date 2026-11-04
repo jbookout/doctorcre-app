@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { bindActor, changeDeal, draftStore, fileBatch, stageFiles, FILE_ACCEPT, EXPIRY, parseReceipt } from './share-draft-store';
+import { bindActor, changeDeal, draftStore, fileBatch, stageFiles, FILE_ACCEPT, EXPIRY, parseReceipt, recoverReceipt } from './share-draft-store';
 import type { IncomingDealShare, UploadClient } from './share-draft-store';
 type Deal = {id:string;name:string};
 type Client = UploadClient & {getBoard(options?: {signal:AbortSignal}):Promise<{actor:string;deals:Deal[]}>};
@@ -11,7 +11,7 @@ export async function mountShareToDeal(element: Element, client: Client) {
   function render() {
     if(disposed)return;
     flushSync(() => root.render(<section aria-label="Share to deal"><h1>Share to deal</h1>
-      <p>Choose up to three PDF, Office or photo files, up to 25 MiB total. Files stay on this device until you choose a deal and press File documents.</p>
+      <p>Choose up to three PDF or photo files, up to 25 MiB total. Files stay on this device until you choose a deal and press File documents.</p>
       <p>On iPhone and Safari, use the file picker. Receiving files from the system share sheet is unsupported.</p>
       <p>Cancel removes pending local files. Documents already filed remain in their deals.</p>
       <p role="status">{navigator.onLine===false ? 'Offline. Pending files remain on this device. Reconnect to continue.' : message}</p>
@@ -35,7 +35,7 @@ export async function mountShareToDeal(element: Element, client: Client) {
     try {await fileBatch(draft,client,save,controller.signal);message=draft.state==='filed' ? 'Documents filed and confirmed by the deal document list.' : 'Some files remain unconfirmed. Bytes are retained. Check unresolved files after reconnecting.';}catch{message='Local storage unavailable. Keep this page open to retry, or reselect the original files.';if(draft)draft.state='quota_refused';}finally{busy=false;render();}
   }
   // eslint-disable-next-line no-restricted-syntax -- Cancellation visits at most three persisted reservations once per user action.
-  async function cancel() {if(!draft)return;busy=true;render();try {for(const file of draft.files) if(file.attempted && !file.confirmed) {const receipt=parseReceipt(await client.readDealDocumentUpload({idempotency_key:file.reserve_key,upload_id:file.receipt?.upload_id || null},{signal:controller.signal}),file,draft.selected_deal_id || '');if(receipt.state!=='committed' && receipt.state!=='cancelled'){const cancelled=parseReceipt(await client.cancelDealDocumentUpload({upload_id:receipt.upload_id,idempotency_key:file.cancel_key},{signal:controller.signal}),file,draft.selected_deal_id || '');if(cancelled.state!=='cancelled')throw Error('Cancellation unconfirmed');}}draft.state='cancelled';await store.clear();draft=null;message='Pending files cancelled.';}catch{message='Cancellation unconfirmed. Files remain on this device.';}finally{busy=false;render();}}
+  async function cancel() {if(!draft)return;busy=true;render();try {for(const file of draft.files) if(file.attempted && !file.confirmed) {const receipt=await recoverReceipt(draft,file,client,controller.signal);file.receipt=receipt;await save();if(receipt.state!=='filed' && receipt.state!=='cancelled'){const cancelled=parseReceipt(await client.cancelDealDocumentUpload({upload_id:receipt.upload_id,idempotency_key:file.cancel_key},{signal:controller.signal}),file,draft.selected_deal_id || '');if(cancelled.state!=='cancelled')throw Error('Cancellation unconfirmed');}}draft.state='cancelled';await store.clear();draft=null;message='Pending files cancelled.';}catch{message='Cancellation unconfirmed. Files remain on this device.';}finally{busy=false;render();}}
   const revoke=()=>{controller.abort();draft=null;actor='';deals=[];message='Session ended. Pending files removed.';void store.clear();render();};
   const offline=()=>{message=navigator.onLine===false ? 'Offline. Pending files remain on this device. Reconnect to continue.' : 'Reconnected. Press File documents or Check unresolved files to continue.';render();};
   // eslint-disable-next-line no-restricted-syntax -- Reconnect events only update local copy and never issue network requests.

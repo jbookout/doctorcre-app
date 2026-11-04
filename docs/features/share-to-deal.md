@@ -1,6 +1,6 @@
 # Share into a deal from the phone
 
-The installed PWA receives PDF, Office and photo files at `POST /share-to-deal`.
+The installed PWA receives PDF and photo files at `POST /share-to-deal`.
 Safari and iPhone users use **Upload documents** in the deal workspace.
 The existing `/share` client-report route retains its meaning.
 
@@ -22,28 +22,42 @@ and presses **File documents**. A workspace file-picker entry carries that deal
 selection. Filenames never select a deal. Deal changes reconcile and cancel old
 reservations before discarding their action keys; original bytes remain.
 
-Uploads run sequentially. An interrupted action reads its original reservation
-before retrying. Each file has at most three attempts. Explicit refusals stop
+Uploads run sequentially. An interrupted action reads its known reservation or replays begin with its
+original key before retrying. Each file has at most three attempts. Explicit refusals stop
 attempts. The visible page permits at most one reconciliation action per minute,
 which also exceeds the transient retry backoff. Confirmed files are skipped.
 One canonical document-list refresh follows a batch. Success requires the exact
 attachment identifier, hash and selected deal. An absent confirmation retains bytes.
-RPC deadlines are 10 seconds; byte uploads have a 30-second deadline.
+RPC deadlines are 10 seconds; upload HTTP calls have a 30-second deadline.
 Navigation aborts the active lifetime and ignores late callbacks.
 
-## Synthetic contract pin
+## P6 contract pin
 
-`contracts/carr-interface.v1/deal_document_upload.json` is an explicitly synthetic
-contract, pending P6a/P6b. `js/fixture-client.js` implements the fake. Its reservation
-is keyed by the original begin action UUID, with reserved, uploaded, committed and
-cancelled states. The fake verifies byte count and SHA-256 and makes commit idempotent.
-The synthetic fixture is in memory and is not a durable server simulation.
+The upload contract is pinned to CARR P6b revision
+`7d3d1407678fef98eab3fe8ac7ea513f3d5b9779` and P6a revision
+`6fbb43493922577b4878f6db48c37f3974b3c7fe` in
+`contracts/carr-interface.v1/deal_document_upload.json`.
+The original schema is `mcp-server/contracts/deal-document-upload.v1.json`.
 
-The planned byte route is
-`PUT /api/v1/deal-document-uploads/:upload_id/bytes`. The app forwards it through
-its existing authenticated CARR binding. The app has no R2 or database access.
-The synthetic receipt must be replaced by the exact merged producer revision and
-schemas before production activation. No live CARR calls were used for this build.
+Begin sends filename, declared_mime and the draft UUID as action_id.
+The reservation binds the deal. Commit sends only upload_id and its retained key.
+A lost begin response replays begin with identical metadata and key.
+Known reservations reconcile through the authenticated HTTP read endpoint.
+That endpoint can verify uncertain stored bytes and return staged.
+Bytes use POST `/api/v1/deal-documents/uploads/{upload_id}/bytes`.
+Cancellation uses the authenticated `/cancel` endpoint with Idempotency-Key,
+so CARR confirms deletion of staged bytes before refunding quota.
+All HTTP writes verify the current session and send x-carr-csrf.
+
+Receipts use reserved, receiving, staged, retryable_unknown, rejected,
+cancelled, expired and filed. Each non-success state has partner-facing copy.
+Only staged bytes proceed to commit. The selected-deal canonical list must
+contain the filed attachment id and matching content_hash before local removal.
+Office formats are refused in the picker, receiver and both manifests.
+The fixture adapter follows these wire shapes and states using synthetic data.
+
+The PR remains held until P6a/P6b merge and wr617-s3-j6 push opt-in integration.
+This change does not modify public-shell/sw.js. No production calls were used.
 
 The existing board contract returns the visible deal snapshot. The picker displays
 25 at a time. The Documents panel uses the existing cursor contract with 25 rows.
@@ -76,3 +90,12 @@ Native iOS share-sheet receipt, real installed Android receipt, WebKit, live log
 production persistence
 remain unverified. The source build is intentionally held for the overlapping app
 changes and final CARR contracts.
+
+The P6 receipt model is [Upload.tla](../verification/Upload.tla), with
+[configuration](../verification/Upload.cfg), [view](../verification/share-upload-view.mjs),
+[chart](../verification/share-upload.mmd) and
+[report](../verification/share-upload-model-report.md).
+TLC explored 10 states and 29 steps. All three invariants and the deadlock check
+passed. The chart hides unchanged receipt checks. The model covers one file and
+leaves out authorization, streams, quota and concurrent tabs. The earlier Share
+model covers actor binding, selection and local expiration separately.

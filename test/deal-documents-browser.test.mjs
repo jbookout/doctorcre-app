@@ -133,7 +133,7 @@ test('action_and_resume_caps',async t=>{
  await page.getByRole('button',{name:'Check unresolved files',exact:true}).click();await page.getByText('Wait one minute before checking the same receipt again.',{exact:true}).waitFor();
  assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:0});
  await page.clock.fastForward(60001);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:0});
- await page.getByRole('button',{name:'Check unresolved files',exact:true}).click();await page.waitForFunction(()=>shareCalls.read===1);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:1});
+ await page.getByRole('button',{name:'Check unresolved files',exact:true}).click();await page.waitForFunction(()=>shareCalls.begin===2);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:2,read:0});
 });
 
 test('revocation_blocks_late_document_reads',async t=>{
@@ -149,4 +149,15 @@ test('unverified_session_never_renders_bound_draft_names',async t=>{
  await page.goto(`${server.url}/public-shell/offline.html`);
  await page.evaluate(async()=>{const {draftStore,stageFiles,bindActor}=await import('/js/ui-share-store.js');await draftStore().save(bindActor(await stageFiles([new File(['%PDF-synthetic'],'Demo bound private filename.pdf')]),'joe'),true);const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);await mountShareToDeal(host,{getBoard:async()=>{throw Error('session unavailable');}});});
  await page.getByText('Sign in again or refresh to continue. No files were sent.',{exact:true}).waitFor();assert.equal(await page.getByText('Demo bound private filename.pdf',{exact:false}).count(),0);
+});
+
+test('producer_failure_states_render_specific_partner_messages',async t=>{
+ const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());
+ for(const [state,copy] of [['receiving','still receiving'],['retryable_unknown','Storage is uncertain'],['rejected','server rejected'],['cancelled','upload was cancelled'],['expired','upload expired']])await t.test(state,async()=>{
+ const page=await browser.newPage();try{
+ await page.goto(`${server.url}/share-to-deal`);
+ await page.evaluate(async state=>{const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);await mountShareToDeal(host,{getBoard:async()=>({actor:'joe',deals:[{id:'demo',name:'Demo deal'}]}),beginDealDocumentUpload:async args=>({upload_id:'upload',deal_id:args.deal_id,sha256:args.sha256,state}),listDealDocuments:async()=>({documents:[]})});},state);
+ await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic\n%%EOF')});await page.getByRole('combobox',{name:'Deal'}).selectOption('demo');await page.getByRole('button',{name:'File documents',exact:true}).click();await page.getByText(copy,{exact:false}).waitFor();
+ }finally{await page.close();}
+ });
 });

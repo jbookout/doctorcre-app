@@ -1,0 +1,33 @@
+---
+title: "File a phone document into the reserved deal"
+---
+stateDiagram-v2
+  s0: Pending on device
+  s1: Pending upload cancelled
+  s2: Upload expired
+  s3: Reserved for selected deal
+  s4: Server receiving bytes
+  s5: File rejected
+  s6: Storage uncertain
+  s7: Verified bytes staged
+  s8: Filed, awaiting document list
+  s9: Confirmed in deal Documents
+  [*] --> s0
+  s0 --> s1: cancel pending upload
+  s0 --> s2: reservation expires
+  s0 --> s3: reserve selected deal
+  s3 --> s1: cancel pending upload
+  s3 --> s2: reservation expires
+  s3 --> s4: send original bytes
+  s4 --> s2: reservation expires
+  s4 --> s5: bytes refused
+  s4 --> s6: storage response lost
+  s4 --> s7: storage verifies bytes
+  s5 --> s1: cancel pending upload
+  s5 --> s2: reservation expires
+  s6 --> s2: reservation expires
+  s6 --> s7: storage verifies bytes
+  s7 --> s1: cancel pending upload
+  s7 --> s2: reservation expires
+  s7 --> s8: commit upload and retained key
+  s8 --> s9: attachment id and hash match selected deal list

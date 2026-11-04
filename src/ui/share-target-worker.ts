@@ -18,7 +18,7 @@ self.addEventListener('fetch', event => {
       await draftStore().save(draft,true);
       return new Response(null,{status:303,headers:{location:`/share-to-deal?draft=${draft.draft_id}`,'cache-control':'no-store'}});
     } catch {
-      return new Response('<!doctype html><title>Files need attention</title><h1>Files were not staged</h1><p>Choose up to three PDF, Office or photo files, up to 25 MiB. Local storage may be full, or a pending draft needs attention. The source files remain in the sending app.</p><a href="/share-to-deal">Open pending draft or reselect files</a>',{status:422,headers:{'content-type':'text/html','cache-control':'no-store'}});
+      return new Response('<!doctype html><title>Files need attention</title><h1>Files were not staged</h1><p>Choose up to three PDF or photo files, up to 25 MiB. Local storage may be full, or a pending draft needs attention. The source files remain in the sending app.</p><a href="/share-to-deal">Open pending draft or reselect files</a>',{status:422,headers:{'content-type':'text/html','cache-control':'no-store'}});
     }
   })());
 });

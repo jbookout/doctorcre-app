@@ -138,6 +138,22 @@ export function createLiveClient(opts = {}) {
     if (signal?.aborted) throw Object.assign(new Error('Write cancelled before dispatch'), { code: 'not_sent' });
   }
 
+  async function uploadHttp(path, { method = 'GET', body, headers = {}, signal } = {}) {
+    if (!online()) throw Object.assign(new Error('Offline'), { payload: { error: 'offline' } });
+    const deadline=AbortSignal.any([...(signal ? [signal] : []),AbortSignal.timeout(30_000)]);
+    if(method!=='GET') {
+      const sessionResponse=await fetchReadImpl('/auth/session',{credentials:'same-origin',cache:'no-store',signal:deadline});
+      const session=await sessionResponse.json();
+      if(!sessionResponse.ok || !session?.csrf_token || !session?.actor?.slug || selfActor && session.actor.slug!==selfActor)
+        throw Object.assign(new Error('Upload session ended'),{payload:{error:'upload_denied'}});
+      headers={...headers,'x-carr-csrf':session.csrf_token};
+    }
+    const response=await fetchImpl(`/api/v1/deal-documents/uploads${path}`,{method,body,headers,signal:deadline,credentials:'same-origin',cache:'no-store'});
+    const payload=await response.json();
+    if(!response.ok) throw Object.assign(new Error('Upload refused'),{payload,status:response.status});
+    return payload;
+  }
+
   async function write(verb, args, timeoutMs, signal) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
@@ -150,7 +166,7 @@ export function createLiveClient(opts = {}) {
     // Keep those domain receipt contracts intact; cover the unretained paths
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
-    const target = ['assessment_id', 'proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+    const target = ['upload_id', 'assessment_id', 'proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
       'section_id', 'entity_ref', 'fact_key', 'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
@@ -249,17 +265,12 @@ export function createLiveClient(opts = {}) {
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
-    async beginDealDocumentUpload(args, { signal } = {}) { return write('begin-deal-document-upload', args, undefined, signal); },
-    async readDealDocumentUpload(args, { signal } = {}) { return rpc('read-deal-document-upload', args, signal); },
-    async cancelDealDocumentUpload(args, { signal } = {}) { return write('cancel-deal-document-upload', args, undefined, signal); },
+    async beginDealDocumentUpload(args, { signal } = {}) { return uploadHttp('',{method:'POST',body:JSON.stringify(args),headers:{'content-type':'application/json'},signal}); },
+    async readDealDocumentUpload(args, { signal } = {}) { return uploadHttp(`/${encodeURIComponent(args.upload_id)}`,{signal}); },
+    async cancelDealDocumentUpload(args, { signal } = {}) { return uploadHttp(`/${encodeURIComponent(args.upload_id)}/cancel`,{method:'POST',headers:{'Idempotency-Key':args.idempotency_key},signal}); },
     async commitDealDocumentUpload(args, { signal } = {}) { return write('commit-deal-document-upload', args, undefined, signal); },
     async uploadDealDocumentBytes(receipt, blob, { signal } = {}) {
-      if (!online()) throw Error('Offline. File bytes remain on this device.');
-      const response = await fetchImpl(`/api/v1/deal-document-uploads/${encodeURIComponent(receipt.upload_id)}/bytes`, {
-        method: 'PUT', body: blob, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]),
-        headers: {'content-type': 'application/octet-stream'}, credentials: 'same-origin', cache: 'no-store',
-      });
-      if (!response.ok) throw Error('Upload outcome unconfirmed.');
+      return uploadHttp(`/${encodeURIComponent(receipt.upload_id)}/bytes`,{method:'POST',body:blob,headers:{'content-type':'application/octet-stream'},signal});
     },
     async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
     async prepareTermsComparison(args, { signal } = {}) {
