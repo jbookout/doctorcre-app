@@ -88,3 +88,47 @@ test('bounded DOM, idempotent mounting, independent block reset and disposal',as
  await page.evaluate(()=>{const {api,host}=window.reader;api.disposeAnswerBlocks(host);api.disposeAnswerBlocks(host);});
  assert.equal(await page.locator('#reader-test').textContent(),'');
 });
+
+test('long chart labels stay readable within a 390px page on focus and hover',async t=>{
+ const server=await fixtureServer();t.after(()=>server.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ for(const kind of ['bar','line']) for(const longCaption of [false,true]) await t.test(`${kind} long ${longCaption?'caption':'value'}`,async()=>{
+  const page=await browser.newPage({viewport:{width:390,height:1000}});
+  try {
+   await page.goto(server.origin+'/doc-chats');
+   const label='x'.repeat(2000),columnLabel=longCaption?'y'.repeat(200):'Rent';
+   await page.evaluate(async({kind,label,columnLabel})=>{
+    const api=await import('/js/ui-answers.js');
+    const turn=document.createElement('li');turn.className='turn';
+    const host=document.createElement('div');host.className='turn-answer';host.id='long-answer';
+    turn.append(host);document.querySelector('#turnList').append(turn);
+    api.mountAnswerBlocks(host,[{type:'table.v1',id:'long_labels',columns:[{key:'name',label:'Deal',type:'text'},{key:'rent',label:columnLabel,type:'number'}],rows:[{name:{value:label},rent:{value:24,source:{record_id:'11111111-1111-4111-8111-111111111111'}}}]},{type:'chart.v1',id:'long_chart',table_id:'long_labels',kind,x:'name',y:'rent'}],'long-label');
+   },{kind,label,columnLabel});
+   const host=page.locator('#long-answer');
+   const point=host.locator(kind==='bar'?'rect':'circle');
+   await point.waitFor();
+   const withinPage=async interaction=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),390,`${kind} ${longCaption?'caption':'value'} ${interaction}`);
+   await withinPage('before focus');
+   await point.focus();
+   const status=host.locator('.answer-chart [role="status"]');
+   await status.filter({hasText:label+': 24'}).waitFor();
+   assert.equal(await point.getAttribute('aria-label'),label+': 24');
+   assert.equal(await status.textContent(),label+': 24');
+   await withinPage('after focus');
+   await host.getByRole('button',{name:'Reset table'}).focus();
+   await point.hover();
+   await status.filter({hasText:label+': 24'}).waitFor();
+   await withinPage('after hover');
+   await host.getByRole('button',{name:columnLabel,exact:true}).click();
+   await withinPage('after sort');
+   await host.getByRole('searchbox').fill('xxxx');
+   await withinPage('after filter');
+   await host.getByRole('button',{name:'Reset table'}).click();
+   await host.locator('.answer-source summary').click();
+   await withinPage('after source expansion');
+   await host.getByRole('region',{name:'Scrollable answer table'}).focus();
+   await withinPage('after table focus');
+   await page.screenshot({path:`out/test-artifacts/interactive-answers/long-${kind}-${longCaption}.png`,fullPage:true});
+  } finally {await page.close();}
+ });
+});
