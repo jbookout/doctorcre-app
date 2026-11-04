@@ -14,7 +14,7 @@ function open(client) {
   const dom = new JSDOM('<div id="view"></div>');
   globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = document.querySelector('#view');
-  const panel = ui.mountDealTours(root, {dealId:deal, client});
+  const panel = ui.mountDealTours(root, {dealId:deal, client, navigate() {}});
   return {root,panel,dom};
 }
 test('TOURS-IN-DEAL lists only the current deal and opens its shortlist, route and packet editor', async () => {

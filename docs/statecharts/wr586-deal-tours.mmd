@@ -21,10 +21,12 @@ stateDiagram-v2
   Saving --> Dirty: Save refused
   Saved --> Dirty: Edit again
   Saved --> List: Browser Back or Back to deal tours
-  Dirty --> Leaving: Browser Back or workspace departure
+  Dirty --> Leaving: Browser Back or Forward by one or more entries, or workspace departure
   Creating --> Leaving: Leave an edited creation form
   Saving --> Leaving: Leave with a write pending
   Leaving --> Dirty: Keep editing and restore history entry
+  Leaving --> Creating: Keep editing and restore edited creation
+  Leaving --> Saving: Keep editing while the write finishes
   Leaving --> List: Leave tour and discard edits
   Leaving --> Closed: Leave workspace and discard edits
   Error --> Saving: Reconcile retained request

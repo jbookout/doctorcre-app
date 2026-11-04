@@ -164,7 +164,7 @@ async function submitDeal(event) {
     if (result?.status !== 'ok') throw new Error('Creation receipt unavailable');
     dealCreation = null;
     state.filter = request.owner; state.personalScope = false; state.scopeFilter = 'all';
-    const url = new URL(location.href); url.searchParams.set('owner',request.owner); url.searchParams.delete('filter'); history.replaceState({},'',url);
+    const url = new URL(location.href); url.searchParams.set('owner',request.owner); url.searchParams.delete('filter'); writeWorkspaceHistory({},url);
     await loadBoard();
     $('boardView').click();
     $('addDealDialog').close();
@@ -1021,6 +1021,12 @@ let workspaceTab = 'overview';
 let boardScroll = 0;
 let timelineType = '';
 history.scrollRestoration = 'manual';
+let workspaceHistoryIndex = history.state?.doctorcreWorkspaceIndex ?? 0;
+function writeWorkspaceHistory(data, url, push = false) {
+  if (push) ++workspaceHistoryIndex;
+  history[push ? 'pushState' : 'replaceState']({...data, doctorcreWorkspaceIndex:workspaceHistoryIndex}, '', url);
+}
+writeWorkspaceHistory(history.state, location.href);
 function renderWorkspaceFacts(detail) {
   const d = detail.deal;
   const dates = dealTimeline(detail).dates;
@@ -1293,7 +1299,7 @@ function paintPanel(detail) {
         ]);
         if (toursDisposed) return;
         root.replaceChildren();
-        toursMounted = mountDealTours(root, { dealId: detail.deal.id, client: createPlannerClient(), initialTourId: new URLSearchParams(location.search).get('tour') });
+        toursMounted = mountDealTours(root, { dealId: detail.deal.id, client: createPlannerClient(), initialTourId: new URLSearchParams(location.search).get('tour'), navigate: (url, push) => writeWorkspaceHistory({...history.state, ...(push ? {doctorcreTourWorkspace:detail.deal.id} : {})}, url, push) });
       } catch {
         if (!toursDisposed) {
           root.textContent = 'Tours unavailable. ';
@@ -1328,8 +1334,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   const url = new URL(location.href);
   if (!fromHistory && url.searchParams.get('deal') !== dealId) {
     url.searchParams.set('deal',dealId);
-    history.replaceState({...history.state, boardScroll:scrollY}, '', location.href);
-    history.pushState({doctorcreDealWorkspace:true},'',url);
+    writeWorkspaceHistory({...history.state, boardScroll:scrollY}, location.href);
+    writeWorkspaceHistory({doctorcreDealWorkspace:true},url,true);
   }
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
@@ -1359,7 +1365,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
     }
     const current = new URL(location.href);
     current.searchParams.delete('focus');
-    history.replaceState(history.state, '', current);
+    writeWorkspaceHistory(history.state, current);
   }
 }
 async function closeWorkspace({ fromHistory = false } = {}) {
@@ -1377,7 +1383,7 @@ async function closeWorkspace({ fromHistory = false } = {}) {
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   disposePanelEmailFollowups();
-  if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url); }
+  if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); writeWorkspaceHistory({},url); }
   $('recordPanel').hidden = true; $('main').hidden = false;
   document.body.classList.remove('workspace-open');
   state.panelDeal = null; state.panelDetail = null;
@@ -1591,7 +1597,7 @@ function wire() {
     state.personalScope = false; state.filter = chip.dataset.filter;
     const url = new URL(location.href);
     if (state.filter === 'all') url.searchParams.delete('owner'); else url.searchParams.set('owner',state.filter);
-    history.replaceState({},'',url);
+    writeWorkspaceHistory({},url);
     renderChips();
     renderBoard();
   });
@@ -1624,19 +1630,26 @@ function wire() {
   $('addDealDialog').addEventListener('close', () => $('addDealOpen').focus());
 
   let restoreTourHistory = null, departurePending = false;
-  addEventListener('popstate', async () => {
-    if (restoreTourHistory) { const restored = restoreTourHistory; restoreTourHistory = null; restored(); return; }
+  addEventListener('popstate', async event => {
+    const destinationIndex = event.state?.doctorcreWorkspaceIndex ?? 0;
+    if (restoreTourHistory) {
+      if (destinationIndex !== workspaceHistoryIndex) { history.go(workspaceHistoryIndex - destinationIndex); return; }
+      const restored = restoreTourHistory; restoreTourHistory = null; restored(); return;
+    }
     if (dealToursPanel?.hasUnsavedChanges()) {
+      const distance = destinationIndex - workspaceHistoryIndex;
+      if (!distance) return;
       const restored = new Promise(resolve => { restoreTourHistory = resolve; });
-      history.forward();
+      history.go(-distance);
       if (departurePending) return;
       departurePending = true;
       await restored;
       const leave = await dealToursPanel?.confirmLeave();
       departurePending = false;
-      if (leave) history.back();
+      if (leave) history.go(distance);
       return;
     }
+    workspaceHistoryIndex = destinationIndex;
     const deal = new URL(location.href).searchParams.get('deal');
     if (deal) void openWorkspace(deal, null, {fromHistory:true});
     else closeWorkspace({fromHistory:true});
@@ -1704,7 +1717,7 @@ function wire() {
   $('retryRead')?.addEventListener('click', () => loadBoard());
   const changeView = view => {
     state.view = view;
-    const url = new URL(location.href); url.searchParams.set('view',view); history.replaceState({},'',url);
+    const url = new URL(location.href); url.searchParams.set('view',view); writeWorkspaceHistory({},url);
     $('boardView').setAttribute('aria-pressed', String(view === 'board'));
     $('listView').setAttribute('aria-pressed', String(view === 'list'));
     $('lostView').setAttribute('aria-pressed', String(view === 'lost'));

@@ -20,7 +20,7 @@ function parseTour(value: unknown): Tour {
     status: typeof value.status === 'string' ? value.status.replaceAll('_', ' ') : 'draft' };
 }
 
-export function mountDealTours(element: Element, { dealId, client, initialTourId }: { dealId: string; client: Client; initialTourId?: string | null }) {
+export function mountDealTours(element: Element, { dealId, client, initialTourId, navigate }: { dealId: string; client: Client; initialTourId?: string | null; navigate(url: URL, push: boolean): void }) {
   if (!uuid.test(dealId)) throw Error('Invalid deal');
   const root = createRoot(element);
   let library: Library = { kind: 'loading' }, selection: Selection = { kind: 'none' };
@@ -47,12 +47,12 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     const url = new URL(view.location.href);
     url.searchParams.set('tab', 'tours');
     if (push && !url.searchParams.has('tour')) {
-      view.history.replaceState(view.history.state, '', url);
+      navigate(url,false);
       url.searchParams.set('tour', id || 'new');
-      view.history.pushState({...view.history.state,doctorcreTourWorkspace:dealId}, '', url); return;
+      navigate(url,true); return;
     }
     if (id) url.searchParams.set('tour', id); else url.searchParams.delete('tour');
-    view.history.replaceState(view.history.state, '', url);
+    navigate(url,false);
   }
   let departureApproved = false;
   function hasUnsavedChanges() {
