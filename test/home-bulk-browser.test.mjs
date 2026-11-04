@@ -29,8 +29,8 @@ async function open(t, { width = 390, theme = 'light', mixed = true, stale = fal
   for (const id of ['a', 'b', 'c', 'd']) await page.getByRole('checkbox', { name: `Select Synthetic ${id}`, exact: true }).check();
   return { page, fake };
 }
-test('mixed_batch_shows_each_receipt_and_undo_restores_only_applied', async t => {
-  const { page, fake } = await open(t);
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`mixed_batch_shows_each_receipt_and_undo_restores_only_applied ${width} ${theme}`, async t => {
+  const { page, fake } = await open(t, { width, theme });
   await page.getByRole('button', { name: 'Settle selected', exact: true }).click();
   const results = page.getByRole('region', { name: 'Batch results' });
   await results.getByText('Synthetic a · Applied', { exact: true }).waitFor();
