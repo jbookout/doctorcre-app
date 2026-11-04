@@ -107,6 +107,7 @@ test('bounded DOM, idempotent mounting, independent block reset and disposal',as
 });
 
 test('long chart labels stay readable within a 390px page on focus and hover',async t=>{
+ await mkdir('out/test-artifacts/interactive-answers',{recursive:true});
  const server=await fixtureServer();t.after(()=>server.close());
  const browser=await chromium.launch();t.after(()=>browser.close());
  for(const kind of ['bar','line']) for(const longCaption of [false,true]) await t.test(`${kind} long ${longCaption?'caption':'value'}`,async()=>{
