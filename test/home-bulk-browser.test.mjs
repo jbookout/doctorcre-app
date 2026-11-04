@@ -1,5 +1,6 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import axe from 'axe-core';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -127,4 +128,27 @@ test('selection checkboxes support Space and uncertain undo retries exact batch 
   assert.equal(fake.calls[1].args.undo_of, fake.calls[0].args.idempotency_key);
   assert.deepEqual(fake.calls[1], fake.calls[2]);
   await page.getByText('Synthetic a · Restored', { exact: true }).waitFor();
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (const outcome of ['restored', 'next', 'empty']) test(`finish batch returns keyboard focus ${outcome} ${width} ${theme}`, async t => {
+  const { page, fake } = await open(t, { width, theme, mixed: false });
+  if (outcome !== 'empty') for (const id of ['c', 'd']) await page.getByRole('checkbox', { name: `Select Synthetic ${id}`, exact: true }).uncheck();
+  await page.getByRole('button', { name: 'Settle selected', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.locator('[data-batch-state="results"]').waitFor();
+  assert.deepEqual(fake.items.map(item => item.disposition), outcome === 'empty' ? ['settled', 'settled', 'settled', 'settled'] : ['settled', 'settled', 'inbox', 'inbox']);
+  if (outcome === 'restored') {
+    await page.getByRole('button', { name: 'Undo whole batch', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await page.locator('[data-batch-state="undone"]').waitFor();
+    assert.equal(fake.items.every(item => item.disposition === 'inbox'), true);
+  }
+  const finish = page.getByRole('button', { name: 'Finish reviewing batch', exact: true });
+  await finish.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('region', { name: 'Batch results' }).waitFor({ state: 'detached' });
+  const target = outcome === 'empty' ? page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('heading') : page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('link', { name: `Synthetic ${outcome === 'restored' ? 'a' : 'c'}`, exact: true });
+  assert.equal(await target.evaluate(node => node === document.activeElement), true, 'Finishing batch review must focus the next Home card or the inbox heading');
+  await page.addScriptTag({ content: axe.source });
+  assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
 });
