@@ -13,6 +13,7 @@ __pycache__/
 test-artifacts/
 /tours/day-shell.generated.js
 /js/ui-host.js
+/js/ui-answers.js
 /js/ui-zoom.js
 /js/ui-facts.js
 /js/ui-market.js
