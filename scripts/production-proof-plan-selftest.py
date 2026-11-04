@@ -275,6 +275,35 @@ class GitHubAdapterTest(unittest.TestCase):
                 self.assertEqual(set(snapshot.paths), set(paths))
                 self.assertEqual(self.adapter.admission(snapshot, self.validator, self.contract).status, expected)
 
+    def test_unknown_executable_dependencies_refuse_immutable_exemption(self):
+        cases = [
+            ('package-imports', 'import "#collector";',
+             {'imports': {'#collector': './scripts/check-action-pins.mjs'}}),
+            ('package-self-reference', 'import "fixture-app/collector";',
+             {'name': 'fixture-app', 'exports': {'./collector': './scripts/check-action-pins.mjs'}}),
+            ('computed-template', 'const name="check-action-pins"; await import(`./${name}.mjs`);', {}),
+            ('computed-concatenation', 'const name="check-action-pins.mjs"; await import("./" + name);', {}),
+        ]
+        for name, source, metadata in cases:
+            with self.subTest(name=name):
+                self.git('checkout', '-q', 'pr')
+                self.commit('scripts/build.mjs', source)
+                self.commit('scripts/check-action-pins.mjs', 'console.log("BASE")')
+                self.commit('package.json', json.dumps(dict(metadata, type='module', scripts={
+                    'build': 'node scripts/build.mjs'}, fixture=name)))
+                self.event['pull_request']['base']['sha'] = self.git('rev-parse', 'HEAD')
+                self.commit('scripts/check-action-pins.mjs', 'console.log("HEAD PRODUCT CHANGE")')
+                self.event['pull_request']['head']['sha'] = self.git('rev-parse', 'HEAD')
+                output = subprocess.check_output(['npm', 'run', 'build', '--silent'],
+                                                 cwd=self.root, text=True, timeout=15)
+                self.assertEqual(output.strip(), 'HEAD PRODUCT CHANGE')
+                (self.root / 'scripts/build.mjs').write_text('working tree hides dependency')
+                with patch.object(self.validator, 'github_metadata', return_value={}):
+                    snapshot = self.collect()
+                self.assertEqual(snapshot.paths, ('scripts/check-action-pins.mjs',))
+                decision = self.adapter.admission(snapshot, self.validator, self.contract)
+                self.assertEqual(decision.status, 'refused', (name, decision))
+
     def test_build_reached_test_file_is_product(self):
         self.git('checkout', '-q', 'pr')
         self.commit('scripts/build.mjs', 'import "../test/bridge.mjs";')
