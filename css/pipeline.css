@@ -339,3 +339,6 @@
 .deal-tour-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block: var(--space-3); }
 .deal-tours .btn { min-height: 44px; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .deal-tours li, .deal-tours h3 { overflow-wrap: anywhere; }
+
+.has-app-layout .deal-tour-departure { width: min(480px, calc(100vw - 32px)); padding: var(--space-5); }
+.deal-tour-departure .btn { margin-inline-end: var(--space-2); }

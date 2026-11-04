@@ -1303,12 +1303,15 @@ function paintPanel(detail) {
       } finally { toursLoading = false; }
     },
     refresh() { return toursMounted?.refresh(); },
+    hasUnsavedChanges() { return toursMounted?.hasUnsavedChanges() || false; },
+    confirmLeave() { return toursMounted?.confirmLeave() ?? Promise.resolve(true); },
     dispose() { toursDisposed = true; toursMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
+  if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
@@ -1359,7 +1362,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
     history.replaceState(history.state, '', current);
   }
 }
-function closeWorkspace({ fromHistory = false } = {}) {
+async function closeWorkspace({ fromHistory = false } = {}) {
+  if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
@@ -1619,7 +1623,20 @@ function wire() {
   $('addDealDialog').addEventListener('cancel', event => { if (creatingDeal) event.preventDefault(); });
   $('addDealDialog').addEventListener('close', () => $('addDealOpen').focus());
 
-  addEventListener('popstate', () => {
+  let restoreTourHistory = null, departurePending = false;
+  addEventListener('popstate', async () => {
+    if (restoreTourHistory) { const restored = restoreTourHistory; restoreTourHistory = null; restored(); return; }
+    if (dealToursPanel?.hasUnsavedChanges()) {
+      const restored = new Promise(resolve => { restoreTourHistory = resolve; });
+      history.forward();
+      if (departurePending) return;
+      departurePending = true;
+      await restored;
+      const leave = await dealToursPanel?.confirmLeave();
+      departurePending = false;
+      if (leave) history.back();
+      return;
+    }
     const deal = new URL(location.href).searchParams.get('deal');
     if (deal) void openWorkspace(deal, null, {fromHistory:true});
     else closeWorkspace({fromHistory:true});

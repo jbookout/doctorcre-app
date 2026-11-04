@@ -8,13 +8,25 @@ stateDiagram-v2
   Opening --> NotAvailable: Missing, inaccessible or wrong deal
   NotAvailable --> Opening: Retry tour
   Opening --> Opening: Choose another tour
+  Opening --> Creating: Start a tour and invalidate earlier request
+  Creating --> Creating: Ignore stale Open success or rejection
   Open --> List: Back to deal tours
   List --> Creating: Start a tour
   Creating --> Saving: Submit creation
   Saving --> Open: Creation receipt and detail arrive
   Saving --> Error: Creation refused or outcome unknown
-  Open --> Saving: Save shortlist, route or packet
-  Saving --> Open: Saved receipt and detail arrive
+  Open --> Dirty: Edit shortlist, route or packet
+  Dirty --> Saving: Save shortlist, route or packet
+  Saving --> Saved: Saved receipt and detail arrive
+  Saving --> Dirty: Save refused
+  Saved --> Dirty: Edit again
+  Saved --> List: Browser Back or Back to deal tours
+  Dirty --> Leaving: Browser Back or workspace departure
+  Creating --> Leaving: Leave an edited creation form
+  Saving --> Leaving: Leave with a write pending
+  Leaving --> Dirty: Keep editing and restore history entry
+  Leaving --> List: Leave tour and discard edits
+  Leaving --> Closed: Leave workspace and discard edits
   Error --> Saving: Reconcile retained request
   Open --> Unavailable: Session changes
   Opening --> Unavailable: Session changes
@@ -27,3 +39,5 @@ stateDiagram-v2
   %% never Show another deal's detail
   %% never Let a late read repaint a closed workspace
   %% never Show server errors as tour content
+  %% never Discard dirty edits without an in-app departure decision
+  %% never Let an older Open or creation response replace a newer editor

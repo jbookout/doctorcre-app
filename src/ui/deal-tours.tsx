@@ -29,6 +29,7 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
   let requested = initialTourId;
   let scope = client.scope;
   function invalidate() {
+    departure?.finish(false);
     ++generation; ++detailGeneration; controller.abort();
     library = { kind: 'unavailable' }; selection = { kind: 'none' }; render();
   }
@@ -53,19 +54,48 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     if (id) url.searchParams.set('tour', id); else url.searchParams.delete('tour');
     view.history.replaceState(view.history.state, '', url);
   }
-  function back() {
+  let departureApproved = false;
+  function hasUnsavedChanges() {
+    if (departureApproved) return false;
     const frame = element.querySelector('iframe');
     if (frame?.contentWindow) {
       const leaving = element.ownerDocument.createEvent('Event');
       leaving.initEvent('beforeunload', false, true);
-      if (!frame.contentWindow.dispatchEvent(leaving) && !view?.confirm('Leave this tour? Unsaved changes stay in this tab only.')) return;
+      return !frame.contentWindow.dispatchEvent(leaving);
     }
+    return false;
+  }
+  let departure: { promise: Promise<boolean>; finish(leave: boolean): void } | null = null;
+  function confirmLeave(): Promise<boolean> {
+    if (departure) return departure.promise;
+    if (!hasUnsavedChanges()) return Promise.resolve(true);
+    const dialog = element.ownerDocument.createElement('dialog');
+    dialog.setAttribute('aria-label', 'Leave this tour?');
+    dialog.className = 'dialog deal-tour-departure';
+    const title = element.ownerDocument.createElement('h2'); title.textContent = 'Leave this tour?';
+    const copy = element.ownerDocument.createElement('p'); copy.textContent = 'Your shortlist, route or form has unsaved changes. Keep editing to save them, or leave and discard these edits.';
+    let resolve!: (leave: boolean) => void;
+    const promise = new Promise<boolean>(done => { resolve = done; });
+    function finish(leave: boolean) { departureApproved = leave; dialog.close(); dialog.remove(); departure = null; resolve(leave); }
+    departure = { promise, finish };
+    for (const [label, leave] of [['Keep editing', false], ['Leave tour', true]] as const) {
+      const button = element.ownerDocument.createElement('button');
+      button.type = 'button'; button.className = 'btn'; button.textContent = label;
+      button.addEventListener('click', () => finish(leave)); dialog.append(button);
+    }
+    dialog.prepend(title, copy);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); finish(false); });
+    element.ownerDocument.body.append(dialog); dialog.showModal();
+    return promise;
+  }
+  async function back() {
+    if (!await confirmLeave() || disposed) return;
     if (view?.history.state?.doctorcreTourWorkspace === dealId) { view.history.back(); return; }
-    ++detailGeneration; selection = { kind: 'none' }; setUrl(); render(); void refresh();
+    departureApproved = false; ++detailGeneration; selection = { kind: 'none' }; setUrl(); render(); void refresh();
   }
   function receive(event: MessageEvent) {
     const frame = element.querySelector('iframe');
-    if (!view || event.origin !== view.location.origin || !frame || event.source !== frame.contentWindow || !record(event.data)) return;
+    if (!view || event.origin !== view.location.origin || !frame || event.source !== frame.contentWindow || !record(event.data) || event.data.generation !== detailGeneration) return;
     if (event.data.type === 'deal-tour-size' && typeof event.data.height === 'number' && Number.isFinite(event.data.height)) {
       frame.style.height = `${Math.max(700, Math.min(30000, event.data.height))}px`;
     }
@@ -80,9 +110,9 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
       <p>Plan and review the shortlist, route and packet for this deal.</p>
       {(selection.kind === 'ready' || selection.kind === 'creating') ? <>
         <button type="button" className="btn btn-quiet" data-back-tours onClick={back}>Back to deal tours</button>
-        <iframe title="Tour shortlist, route and packet" src={`/tours/route-editor.html?embedded=1&deal=${encodeURIComponent(dealId)}${selection.kind === 'ready' ? `&tour=${encodeURIComponent(selection.tour.id)}` : ''}`}
+        <iframe title="Tour shortlist, route and packet" src={`/tours/route-editor.html?embedded=1&deal=${encodeURIComponent(dealId)}&generation=${detailGeneration}${selection.kind === 'ready' ? `&tour=${encodeURIComponent(selection.tour.id)}` : ''}`}
           style={{ width: '100%', minHeight: 700, border: 0, display: 'block' }} />
-      </> : <><div className="deal-tour-actions"><button type="button" className="btn" data-start-tour onClick={() => { selection = { kind: 'creating' }; setUrl('new',true); render(); }}>Start a tour</button>
+      </> : <><div className="deal-tour-actions"><button type="button" className="btn" data-start-tour onClick={startCreation}>Start a tour</button>
         <button type="button" className="btn btn-quiet" data-refresh-tours onClick={() => void refresh()}>Refresh tours</button></div>
       <div aria-live="polite">
         {library.kind === 'loading' && <p>Loading tours…</p>}
@@ -94,6 +124,9 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
         {selection.kind === 'unavailable' && <p>Tour not available. <button type="button" className="btn btn-quiet" onClick={() => { if (selection.kind === 'unavailable') void open(selection.id); }}>Retry tour</button></p>}
       </div></>}
     </section>));
+  }
+  function startCreation() {
+    departureApproved = false; ++detailGeneration; requested = null; selection = { kind: 'creating' }; setUrl('new',true); render();
   }
   async function refresh() {
     if (selection.kind === 'ready' || selection.kind === 'creating') return;
@@ -109,7 +142,7 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     if (library.kind === 'ready' && requested) {
       const id = requested; requested = null;
       if (!id) return;
-      if (id === 'new') { selection = { kind: 'creating' }; render(); }
+      if (id === 'new') startCreation();
       else if (uuid.test(id)) await open(id);
     }
   }
@@ -126,5 +159,5 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     render();
   }
   void refresh();
-  return { refresh, dispose() { disposed = true; ++generation; ++detailGeneration; controller.abort(); unsubscribe?.(); view?.removeEventListener('message', receive); view?.removeEventListener('doctorcre-session-invalidated', invalidate); root.unmount(); } };
+  return { refresh, hasUnsavedChanges, confirmLeave, dispose() { departure?.finish(false); disposed = true; ++generation; ++detailGeneration; controller.abort(); unsubscribe?.(); view?.removeEventListener('message', receive); view?.removeEventListener('doctorcre-session-invalidated', invalidate); root.unmount(); } };
 }

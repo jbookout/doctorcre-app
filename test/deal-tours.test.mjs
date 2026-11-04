@@ -22,11 +22,12 @@ test('TOURS-IN-DEAL lists only the current deal and opens its shortlist, route a
   await settle();
   assert.match(root.textContent,/Demo tour/); assert.doesNotMatch(root.textContent,/Other deal|Legacy/);
   root.querySelector('[data-open-tour]').click(); await settle();
-  assert.equal(root.querySelector('iframe').getAttribute('src'),`/tours/route-editor.html?embedded=1&deal=${deal}&tour=${tour}`);
+  assert.equal(new URL(root.querySelector('iframe').getAttribute('src'),'https://fixture.test').searchParams.get('tour'),tour);
   root.querySelector('[data-back-tours]').click(); await settle();
   assert.equal(root.querySelector('iframe'),null);
   root.querySelector('[data-start-tour]').click(); await settle();
-  assert.equal(root.querySelector('iframe').getAttribute('src'),`/tours/route-editor.html?embedded=1&deal=${deal}`);
+  assert.equal(new URL(root.querySelector('iframe').getAttribute('src'),'https://fixture.test').searchParams.get('deal'),deal);
+  assert.equal(new URL(root.querySelector('iframe').getAttribute('src'),'https://fixture.test').searchParams.has('tour'),false);
   panel.dispose();
 });
 test('empty, unavailable and retry are truthful without error dumps', async () => {

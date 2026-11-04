@@ -22,7 +22,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   const workspaceUrl = (deal, tour) => `/deals?deal=${encodeURIComponent(deal)}&tab=tours${tour ? `&tour=${encodeURIComponent(tour)}` : ''}`;
   const embedded = window.parent !== window && window.parent.location.origin === window.location.origin &&
     window.parent.location.pathname === '/deals' && new URLSearchParams(window.parent.location.search).get('deal') === dealContext;
-  const notify = data => { if (embedded) window.parent.postMessage(data, window.location.origin); };
+  const notify = data => { if (embedded) window.parent.postMessage({ ...data, generation: Number(new URLSearchParams(window.location.search).get('generation')) }, window.location.origin); };
   if (dealContext && !embedded) {
     window.location.replace(workspaceUrl(dealContext, new URLSearchParams(window.location.search).get('tour') || 'new')); return;
   }
@@ -1304,7 +1304,8 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }));
   window.addEventListener('beforeunload', event => {
     if (state.selectionDirty || state.cheatDirty || sheetBusy || sheetPending || sheetConflict || tourAction ||
-        composer?.dirty || composer?.plan || composer?.busy || createBusy || createPending || state.shareBusy) {
+        composer?.dirty || composer?.plan || composer?.busy || createBusy || createPending || state.shareBusy ||
+        (embedded && !state.tour && [...$('#create-tour-form').querySelectorAll('input')].some(input => input.value && !['create-subject-id', 'create-subject-type'].includes(input.id)))) {
       event.preventDefault(); event.returnValue = '';
     }
   });

@@ -178,13 +178,21 @@ test('tour departure and pending Open preserve the active editor', async t => {
         const seed = JSON.parse((await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8')).replaceAll('"d14"',JSON.stringify(deal)));
         await page.route('**/data/board-seed.json',route => route.fulfill({json:seed}));
         await page.route('**/auth/session',route => route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}}));
-        let release, held = false;
+        let release, held = false, cart = null;
         const gate = new Promise(resolve => { release = resolve; });
         const properties = [created,other].map((property_id,index) => ({property_id,name:`Synthetic property ${index+1}`,address:`${index+1} Clinic Way`,county:'Escambia'}));
         await page.route('**/api/tours/**',async route => {
           const path = new URL(route.request().url()).pathname;
           if(path === '/api/tours/library') return route.fulfill({json:{data:{tours:[row]},csrf_token:'synthetic-session'}});
           if(path === '/api/tours/properties/search') return route.fulfill({json:{data:{search:{items:properties,count:2,has_more:false}},csrf_token:'synthetic-session'}});
+          if(path === '/api/tours/selection-cart') {
+            if(route.request().method() === 'POST') {
+              const body = route.request().postDataJSON();
+              cart = {tour_id:tour,property_ids:body.property_ids,selection_version:body.expected_selection_version+1,selection_version_id:created};
+              return route.fulfill({json:{data:{selection_version_id:created},csrf_token:'synthetic-session'}});
+            }
+            return cart ? route.fulfill({json:{data:{cart},csrf_token:'synthetic-session'}}) : route.fulfill({status:404,json:{error:'not_found'}});
+          }
           if(path === '/api/tours/detail') {
             if(scenario !== 'dirty departure' && !held) {
               held = true; await gate;
@@ -221,6 +229,7 @@ test('tour departure and pending Open preserve the active editor', async t => {
           await page.goBack();
           const prompt = page.getByRole('dialog',{name:'Leave this tour?'});
           await prompt.waitFor({timeout:3000});
+          await page.screenshot({path:new URL(`../out/test-artifacts/deal-tours/${width}-${theme}-departure.png`,import.meta.url).pathname});
           await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
           await page.waitForURL(editorUrl);
           assert.deepEqual(await order(),[other,created]);
@@ -235,6 +244,26 @@ test('tour departure and pending Open preserve the active editor', async t => {
           await prompt.getByRole('button',{name:'Leave tour',exact:true}).click();
           await page.locator('[data-open-tour]').waitFor();
           assert.equal(new URL(page.url()).searchParams.has('tour'),false);
+          await page.locator('[data-open-tour]').click();
+          await editor.locator('#tour-name').filter({hasText:row.name}).waitFor();
+          await editor.locator('#property-search-form').evaluate(form => form.requestSubmit());
+          await editor.getByRole('button',{name:'Add to selection',exact:true}).first().click();
+          await page.locator('[data-back-tours]').click();
+          await prompt.getByRole('button',{name:'Leave tour',exact:true}).click();
+          await page.locator('[data-open-tour]').waitFor();
+          await page.locator('[data-open-tour]').click();
+          await editor.locator('#tour-name').filter({hasText:row.name}).waitFor();
+          await editor.locator('#property-search-form').evaluate(form => form.requestSubmit());
+          await editor.getByRole('button',{name:'Add to selection',exact:true}).first().click();
+          await editor.locator('#save-selection').click();
+          await editor.locator('#selection-state').filter({hasText:'saved with this Tour.'}).waitFor();
+          await editor.locator('#add-cart-stops').click();
+          await page.goBack();
+          await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
+          assert.equal(await editor.locator('#route-stops > li').count(),1);
+          await page.locator('#panelClose').click();
+          await prompt.getByRole('button',{name:'Leave tour',exact:true}).click();
+          await page.locator('#recordPanel').waitFor({state:'hidden'});
         }
       } finally { await page.close(); }
     });
