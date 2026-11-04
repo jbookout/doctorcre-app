@@ -106,6 +106,32 @@ class AdmissionTest(unittest.TestCase):
             self.assertEqual(self.run_plan(body, paths).returncode, 0)
             self.assertNotEqual(self.run_plan(body, paths + ['src/ui/example.tsx']).returncode, 0)
 
+    def test_ci_action_pin_change_accepts_hosted_check_declaration(self):
+        paths = ['.github/action-pins.json', '.github/workflows/conflict-notice.yml',
+                 'scripts/check-action-pins.mjs']
+        body = ('## Production proof\nn/a: GitHub conflict-notice CI tooling and action pin '
+                'validation only; hosted workflow checks observe this behavior')
+        result = self.run_plan(body, paths)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('non-product', result.stdout)
+
+    def test_ci_action_pin_change_still_requires_declaration(self):
+        paths = ['.github/action-pins.json', '.github/workflows/conflict-notice.yml',
+                 'scripts/check-action-pins.mjs']
+        result = self.run_plan('## Summary\nCI tooling only', paths)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('exactly one Production proof section required', result.stdout)
+
+    def test_ci_tooling_exemption_does_not_cover_runtime_or_build_scripts(self):
+        paths = ['.github/action-pins.json', '.github/workflows/conflict-notice.yml',
+                 'scripts/check-action-pins.mjs']
+        for product in ['src/ui/example.tsx', 'scripts/prepare-offline-tour.mjs',
+                        'scripts/check-action-pins.mjs.extra']:
+            with self.subTest(product=product):
+                result = self.run_plan(NON_PRODUCT, paths + [product])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('unsupported app production proof', result.stdout)
+
     def test_malformed_declarations(self):
         for body in ['## Production proof\n{}', '## Production proof\nn/a: TODO',
                      BODY + BODY, '## Production proof\n../escape.json',
