@@ -3,10 +3,27 @@
   "status": "synthetic_contract_only_pending_P6",
   "producer_revision": null,
   "spec": "WR-000617 P7 / P6 integration pending",
-  "verbs": ["begin-deal-document-upload", "read-deal-document-upload", "cancel-deal-document-upload", "commit-deal-document-upload"],
+  "verbs": [
+    "begin-deal-document-upload",
+    "read-deal-document-upload",
+    "cancel-deal-document-upload",
+    "commit-deal-document-upload"
+  ],
   "byte_route": "PUT /api/v1/deal-document-uploads/:upload_id/bytes",
-  "receipt_fields": ["upload_id", "deal_id", "sha256", "state", "attachment_id when committed"],
+  "receipt_fields": [
+    "upload_id",
+    "deal_id",
+    "sha256",
+    "state",
+    "attachment_id when committed"
+  ],
   "reconcile_by": "upload_id or original begin idempotency_key",
-  "canonical_readback": ["attachment_id or id", "sha256", "deal_id"],
-  "integration_gate": "Replace synthetic pin with exact P6 producer revision and schemas before production activation."
+  "canonical_readback": [
+    "attachment_id or id",
+    "sha256",
+    "deal_id"
+  ],
+  "integration_gate": "Replace synthetic pin with exact P6 producer revision and schemas before production activation.",
+  "synthetic_fake_path": "js/fixture-client.js",
+  "synthetic_fake_sha256": "7f623c20c4fb176bb63767c3ed1978509ed37e30a9dc80753e843bbb80ec6d8d"
 }

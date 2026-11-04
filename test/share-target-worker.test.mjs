@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {handleDoctorcreRequest} from '../src/worker.js';
 import {routeContract} from '../js/routes.js';
+import {createHash} from 'node:crypto';
+test('synthetic_upload_contract_is_pinned_to_the_fixture_bytes',async()=>{
+ const pin=JSON.parse(await readFile('contracts/carr-interface.v1/deal_document_upload.json','utf8'));
+ assert.equal(pin.schema,'deal-document-upload.synthetic.v1');assert.equal(pin.producer_revision,null);
+ assert.equal(createHash('sha256').update(await readFile(pin.synthetic_fake_path)).digest('hex'),pin.synthetic_fake_sha256);
+});
 test('missing_controller_receiver_never_reads_multipart', async () => {
  const request=new Request('https://app.example/share-to-deal',{method:'POST',body:'synthetic multipart'});
  request.formData=()=>{throw Error('must never parse');};
