@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium, fixtureServer } from './browser-harness.mjs';
+const NOW = new Date('2026-11-03T10:00:00-06:00');
 let outDir;
 before(async () => { outDir = temporaryDirectory('home-sections-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { await rm(outDir, { recursive: true, force: true }); });
@@ -13,6 +14,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
+  await page.clock.setFixedTime(NOW);
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.goto(server.origin);
   await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
@@ -49,10 +51,25 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await page.screenshot({ path: `/tmp/wr617-s1-j23-shots/calendar-${width}-${theme}.png`, fullPage: true });
 });
 
+test('at 23:30 Central tomorrow meetings stay upcoming and out of Today', async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, timezoneId: 'America/Chicago' });
+  await page.clock.setFixedTime(new Date('2026-11-03T23:30:00-06:00'));
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true } })));
+  await page.goto(server.origin);
+  const meeting = page.locator('#appSidebar .calendar-panel-meeting').filter({ hasText: 'Demo practice planning' });
+  await meeting.waitFor();
+  assert.equal(await meeting.locator('time').getAttribute('datetime'), '2026-11-04T06:30:00.000Z');
+  await page.locator('#appScheduleSlot').getByText('No meetings returned for today.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#appToday').getByText('Demo practice planning', { exact: true }).count(), 0);
+});
+
 for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule keep truthful ${state} states`, async t => {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.clock.setFixedTime(NOW);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
@@ -75,6 +92,7 @@ for (const fragment of ['homeCallTasks', 'homeEmailFollowups', 'homeOverdueRevie
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.clock.setFixedTime(NOW);
   await page.goto(`${server.origin}/?review=2#${fragment}`);
   await page.waitForURL(`**/review-workflows?review=2#${fragment}`, { timeout: 5000 });
   await page.locator(`#${fragment}`).waitFor({ state: 'attached' });
@@ -84,6 +102,7 @@ test('Calendar rail leaves page tools in the center at narrow desktop sizes', as
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.clock.setFixedTime(NOW);
   for (const width of [1024, 1280, 1440]) {
     await page.setViewportSize({ width, height: 700 });
     await page.goto(`${server.origin}/calendar`);
@@ -98,6 +117,7 @@ for (const outcome of ['empty', 'unavailable']) test(`Home reserves its frame an
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.clock.setFixedTime(NOW);
   let release; const pending = new Promise(resolve => { release = resolve; }); t.after(() => release());
   const panelReads = [];
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
@@ -127,6 +147,7 @@ test('a session ending during the assistant download prevents a late mount', asy
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.clock.setFixedTime(NOW);
   let release; const pending = new Promise(resolve => { release = resolve; }); t.after(() => release());
   await page.route('**/js/doc-presence.js', async route => {
     const response = await route.fetch();
@@ -146,6 +167,7 @@ test('late automatic Home walkthrough preserves an open account menu', async t =
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.clock.setFixedTime(NOW);
   let release; const pending = new Promise(resolve => { release = resolve; }); t.after(() => release());
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/mcp', route => route.fulfill({ json: { result: { content: [{ type: 'text', text: '{}' }] } } }));

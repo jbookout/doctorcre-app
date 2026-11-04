@@ -1,3 +1,4 @@
+import { isTextEntry } from './ui-keyboard-input.js';
 const allSteps = [
   { target: '[data-app-nav-item][href="/"]', text: 'Start with your agenda. Home brings together upcoming work and deals that need attention.' },
   { target: '[data-app-nav-item][href="/deals"]', text: 'Follow each deal through its phase, next step, and next date. Open a deal to review its details.' },
@@ -79,6 +80,7 @@ export function openWalkthrough(root) {
     if (reason === 'dismiss') avatar.focus();
   };
   const keydown = event => {
+    if (isTextEntry(event)) return;
     if (root.querySelector('dialog:modal')) { close('retire'); return; }
     if ((event.ctrlKey || event.metaKey) && ['k', 'd'].includes(event.key.toLowerCase())) { close(); return; }
     if (event.key !== 'Escape') return;

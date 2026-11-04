@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> TextOnly
+  TextOnly --> Interactive: Valid answer arrives
+  TextOnly --> Unavailable: Invalid answer arrives
+  Interactive --> Interactive: Sort, filter, reset, unchanged refresh
+  Interactive --> Interactive: Changed block resets its controls
+  Interactive --> TextOnly: Blocks removed
+  Unavailable --> Interactive: Valid replacement arrives
+  Interactive --> [*]: Conversation switched or turn removed
+  Unavailable --> [*]: Conversation switched or turn removed
+  %% never: Polling must not reset unchanged table controls.
+  %% never: Invalid blocks must not hide the prose.
+  %% never: A chart must not refer to another snapshot.

@@ -44,7 +44,7 @@ test('mixed_batch_shows_each_receipt_and_undo_restores_only_applied', async t =>
   assert.equal(fake.calls.filter(x => x.args.undo_of).length, 1);
   assert.equal('items' in fake.calls.find(x => x.args.undo_of).args, false);
 });
-for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`snooze default and subset undo fit ${width} ${theme}`, async t => {
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`snooze default and subset undo fit ${width} ${theme}`, async t => {
   const { page, fake } = await open(t, { width, theme, mixed: false });
   await page.getByRole('button', { name: 'Snooze selected', exact: true }).click();
   await page.getByRole('button', { name: 'Not now · Tomorrow 9:00 AM Central', exact: true }).click();

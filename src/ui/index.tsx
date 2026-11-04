@@ -1,6 +1,7 @@
 // Aggregate exports for self-contained Node test bundles. Browser entries are
 // selected separately in scripts/ui-bundle.mjs.
 export { hostNode } from "./host-node";
+export { mountAnswerBlocks, disposeAnswerBlocks } from './answer-blocks';
 export { mountWorkspace } from "./workspace-shell";
 export { mountZoomableWorkspace } from "./workspace-zoom";
 
@@ -31,3 +32,4 @@ export { mountTerritoryEvidence } from './territory-evidence';
 
 export { mountIdealClientProfile } from './ideal-client-profile';
 export { mountDealTours } from './deal-tours';
+export { mountDealDocuments } from './deal-documents';

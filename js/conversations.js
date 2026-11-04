@@ -1,5 +1,6 @@
 import { createPageBudget } from './read-budget.mjs';
 import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
+import { mountAnswerBlocks, disposeAnswerBlocks } from './ui-answers.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // Conversation reads and record controls stay here; the lazy React composer owns queued asks.
@@ -34,7 +35,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** The page of turns this page asks for. */
 const LIMIT = 50;
 let focusedRoute = null;
-let renderedTurns = null;
+const renderedTurns = new Map();
 let askConversation = null, disposeAsk = null, askMount = 0;
 function renderAskComposer() {
   const host = $('askComposer');
@@ -176,13 +177,36 @@ function renderTurns() {
     state.state === "ready" || state.state === "empty" ? "healthy"
       : ["refused", "unavailable", "not_found", "malformed"].includes(state.state) ? "urgent" : "still",
   );
-  const turnsHtml = turnRows(payload).map((turn) => `<li class="turn" data-role="${escapeHtml(turn.role)}" data-sequence="${turn.sequence}" data-msg-id="${escapeHtml(turn.msgId)}" tabindex="-1" data-target="${turn.msgId === view.route.targetMsgId}">
-    <div class="turn-top"><span class="turn-role">${escapeHtml(turn.role)}</span><span>${escapeHtml(turn.clock)}</span></div>
-    <p class="turn-body">${escapeHtml(turn.body)}</p>
-  </li>`).join("");
-  if (renderedTurns !== turnsHtml) {
-    $("turnList").innerHTML = turnsHtml;
-    renderedTurns = turnsHtml;
+  const turns = turnRows(payload);
+  const keep = new Set();
+  for (const [index, turn] of turns.entries()) {
+    const identity = JSON.stringify([view.route.id, turn.msgId ?? turn.sequence]);
+    keep.add(identity);
+    let item = renderedTurns.get(identity);
+    if (!item) {
+      const element = document.createElement('li');
+      element.className = 'turn';
+      element.tabIndex = -1;
+      element.innerHTML = '<div class="turn-top"><span class="turn-role"></span><span class="turn-clock"></span></div><p class="turn-body"></p><div class="turn-answer"></div>';
+      item = {element, host:element.querySelector('.turn-answer')};
+      renderedTurns.set(identity, item);
+    }
+    const {element, host} = item;
+    element.dataset.role = turn.role;
+    element.dataset.sequence = String(turn.sequence);
+    element.dataset.msgId = turn.msgId ?? '';
+    element.dataset.target = String(turn.msgId === view.route.targetMsgId);
+    for (const [selector, text] of [['.turn-role',turn.role],['.turn-clock',turn.clock],['.turn-body',turn.body]]) {
+      const node = element.querySelector(selector);
+      if (node.textContent !== text) node.textContent = text;
+    }
+    if ($('turnList').children[index] !== element) $('turnList').insertBefore(element, $('turnList').children[index] ?? null);
+    mountAnswerBlocks(host, turn.answerBlocks, identity);
+  }
+  for (const [identity, item] of renderedTurns) if (!keep.has(identity)) {
+    disposeAnswerBlocks(item.host);
+    item.element.remove();
+    renderedTurns.delete(identity);
   }
   const paging = pagingState(payload);
   $("pagingBlock").hidden = !paging.more && !view.conversation.catchup;

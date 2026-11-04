@@ -164,7 +164,7 @@ async function submitDeal(event) {
     if (result?.status !== 'ok') throw new Error('Creation receipt unavailable');
     dealCreation = null;
     state.filter = request.owner; state.personalScope = false; state.scopeFilter = 'all';
-    const url = new URL(location.href); url.searchParams.set('owner',request.owner); url.searchParams.delete('filter'); history.replaceState({},'',url);
+    const url = new URL(location.href); url.searchParams.set('owner',request.owner); url.searchParams.delete('filter'); writeWorkspaceHistory({},url);
     await loadBoard();
     $('boardView').click();
     $('addDealDialog').close();
@@ -861,6 +861,7 @@ function refusePanelDetail(error) {
   ++contextReadSequence;
   clearMarketTermsViews();
   state.panelDetail = null;
+  dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
@@ -1016,11 +1017,18 @@ const workspaceTabs = [
   {id:'timeline', label:'Timeline'},
   {id:'correspondence', label:'Correspondence & notes'},
   {id:'tours', label:'Tours'},
+  {id:'documents', label:'Documents'},
 ];
 let workspaceTab = 'overview';
 let boardScroll = 0;
 let timelineType = '';
 history.scrollRestoration = 'manual';
+let workspaceHistoryIndex = history.state?.doctorcreWorkspaceIndex ?? 0;
+function writeWorkspaceHistory(data, url, push = false) {
+  if (push) ++workspaceHistoryIndex;
+  history[push ? 'pushState' : 'replaceState']({...data, doctorcreWorkspaceIndex:workspaceHistoryIndex}, '', url);
+}
+writeWorkspaceHistory(history.state, location.href);
 function renderWorkspaceFacts(detail) {
   const d = detail.deal;
   const dates = dealTimeline(detail).dates;
@@ -1037,6 +1045,7 @@ function selectWorkspaceTab(id) {
     if ($(`workspace-${tab.id}`)) $(`workspace-${tab.id}`).hidden = !selected;
   }
   if (id === 'market-terms') void marketTermsPanel?.load();
+  if (id === 'documents') void dealDocumentsPanel?.load();
   if (id === 'tours') void dealToursPanel?.load();
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
@@ -1060,7 +1069,7 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
-let factReviewPanel, marketTermsPanel, dealToursPanel;
+let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel;
 // Each deal's comparison is kept for the session and reattached when its tab reopens; an access change discards them all.
 const marketTermsViews = new Map();
 function clearMarketTermsViews() {
@@ -1096,6 +1105,7 @@ function workspaceHtml(detail) {
     <h2>Critical dates</h2>${renderCriticalDates(detail)}
     <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
     <section id="workspace-market-terms" role="tabpanel" aria-labelledby="tab-market-terms" hidden></section>
+    <section id="workspace-documents" role="tabpanel" aria-labelledby="tab-documents" hidden></section>
     <section id="workspace-tours" role="tabpanel" aria-labelledby="tab-tours" hidden></section>
     <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
@@ -1190,6 +1200,7 @@ async function readPanel(id) {
       void factReviewPanel?.refresh();
       void marketTermsPanel?.refresh();
       void dealToursPanel?.refresh();
+      void dealDocumentsPanel?.refresh();
       if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
     if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
@@ -1227,6 +1238,7 @@ function paintPanel(detail) {
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
   marketTermsPanel?.dispose();
+  dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
   const terms = $('panelTerms');
@@ -1293,7 +1305,7 @@ function paintPanel(detail) {
         ]);
         if (toursDisposed) return;
         root.replaceChildren();
-        toursMounted = mountDealTours(root, { dealId: detail.deal.id, client: createPlannerClient(), initialTourId: new URLSearchParams(location.search).get('tour') });
+        toursMounted = mountDealTours(root, { dealId: detail.deal.id, client: createPlannerClient(), initialTourId: new URLSearchParams(location.search).get('tour'), navigate: (url, push) => writeWorkspaceHistory({...history.state, ...(push ? {doctorcreTourWorkspace:detail.deal.id} : {})}, url, push) });
       } catch {
         if (!toursDisposed) {
           root.textContent = 'Tours unavailable. ';
@@ -1303,12 +1315,39 @@ function paintPanel(detail) {
       } finally { toursLoading = false; }
     },
     refresh() { return toursMounted?.refresh(); },
+    hasUnsavedChanges() { return toursMounted?.hasUnsavedChanges() || false; },
+    confirmLeave() { return toursMounted?.confirmLeave() ?? Promise.resolve(true); },
     dispose() { toursDisposed = true; toursMounted?.dispose(); },
+  };
+  let documentsDisposed = false, documentsLoading = false, documentsMounted;
+  dealDocumentsPanel = {
+    async load() {
+      if (documentsDisposed || documentsLoading || documentsMounted) return;
+      documentsLoading = true;
+      const root = $('workspace-documents');
+      root.textContent = 'Loading documents…';
+      try {
+        const { mountDealDocuments } = await import('./ui-deal-documents.js');
+        if (documentsDisposed) return;
+        root.replaceChildren();
+        documentsMounted = mountDealDocuments(root, { dealId: detail.deal.id, client: state.client });
+      } catch {
+        if (!documentsDisposed) {
+          root.textContent = 'Documents unavailable. ';
+          const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn'; retry.textContent = 'Retry documents';
+          retry.addEventListener('click', () => void dealDocumentsPanel?.load()); root.append(retry);
+        }
+      } finally { documentsLoading = false; }
+    },
+    refresh() { return documentsMounted?.refresh(); },
+    dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
+  if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
+  dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
@@ -1325,8 +1364,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   const url = new URL(location.href);
   if (!fromHistory && url.searchParams.get('deal') !== dealId) {
     url.searchParams.set('deal',dealId);
-    history.replaceState({...history.state, boardScroll:scrollY}, '', location.href);
-    history.pushState({doctorcreDealWorkspace:true},'',url);
+    writeWorkspaceHistory({...history.state, boardScroll:scrollY}, location.href);
+    writeWorkspaceHistory({doctorcreDealWorkspace:true},url,true);
   }
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
@@ -1356,10 +1395,12 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
     }
     const current = new URL(location.href);
     current.searchParams.delete('focus');
-    history.replaceState(history.state, '', current);
+    writeWorkspaceHistory(history.state, current);
   }
 }
-function closeWorkspace({ fromHistory = false } = {}) {
+async function closeWorkspace({ fromHistory = false } = {}) {
+  if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
+  dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
@@ -1373,7 +1414,7 @@ function closeWorkspace({ fromHistory = false } = {}) {
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   disposePanelEmailFollowups();
-  if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url); }
+  if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); writeWorkspaceHistory({},url); }
   $('recordPanel').hidden = true; $('main').hidden = false;
   document.body.classList.remove('workspace-open');
   state.panelDeal = null; state.panelDetail = null;
@@ -1587,7 +1628,7 @@ function wire() {
     state.personalScope = false; state.filter = chip.dataset.filter;
     const url = new URL(location.href);
     if (state.filter === 'all') url.searchParams.delete('owner'); else url.searchParams.set('owner',state.filter);
-    history.replaceState({},'',url);
+    writeWorkspaceHistory({},url);
     renderChips();
     renderBoard();
   });
@@ -1619,7 +1660,27 @@ function wire() {
   $('addDealDialog').addEventListener('cancel', event => { if (creatingDeal) event.preventDefault(); });
   $('addDealDialog').addEventListener('close', () => $('addDealOpen').focus());
 
-  addEventListener('popstate', () => {
+  let restoreTourHistory = null, departurePending = false;
+  addEventListener('popstate', async event => {
+    const destinationIndex = event.state?.doctorcreWorkspaceIndex ?? 0;
+    if (restoreTourHistory) {
+      if (destinationIndex !== workspaceHistoryIndex) { history.go(workspaceHistoryIndex - destinationIndex); return; }
+      const restored = restoreTourHistory; restoreTourHistory = null; restored(); return;
+    }
+    if (dealToursPanel?.hasUnsavedChanges()) {
+      const distance = destinationIndex - workspaceHistoryIndex;
+      if (!distance) return;
+      const restored = new Promise(resolve => { restoreTourHistory = resolve; });
+      history.go(-distance);
+      if (departurePending) return;
+      departurePending = true;
+      await restored;
+      const leave = await dealToursPanel?.confirmLeave();
+      departurePending = false;
+      if (leave) history.go(distance);
+      return;
+    }
+    workspaceHistoryIndex = destinationIndex;
     const deal = new URL(location.href).searchParams.get('deal');
     if (deal) void openWorkspace(deal, null, {fromHistory:true});
     else closeWorkspace({fromHistory:true});
@@ -1687,7 +1748,7 @@ function wire() {
   $('retryRead')?.addEventListener('click', () => loadBoard());
   const changeView = view => {
     state.view = view;
-    const url = new URL(location.href); url.searchParams.set('view',view); history.replaceState({},'',url);
+    const url = new URL(location.href); url.searchParams.set('view',view); writeWorkspaceHistory({},url);
     $('boardView').setAttribute('aria-pressed', String(view === 'board'));
     $('listView').setAttribute('aria-pressed', String(view === 'list'));
     $('lostView').setAttribute('aria-pressed', String(view === 'lost'));
