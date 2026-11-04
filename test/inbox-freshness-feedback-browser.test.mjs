@@ -178,7 +178,7 @@ test('authentication loss during a refresh retires all private cards', async t =
     await denial;
     await route.fulfill({ status: 401, json: { error: 'authentication_required' } });
   });
-  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v3');
+  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v4');
   await focus(page);
   await refresh;
   refuse();
