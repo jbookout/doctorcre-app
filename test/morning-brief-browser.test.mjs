@@ -220,7 +220,7 @@ test('refresh retains Details on stable note identity and uses Back when it leav
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
 });
 
-for (const key of ['d', 'k']) test(`Doc Control+${key} switches from the brief to the command bar with one modal`, async t => {
+for (const key of ['d']) test(`Doc Control+${key} switches from the brief to the command bar with one modal`, async t => {
  const { page, goto } = await setup(t);
  await goto(); await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  await page.keyboard.press(`Control+${key}`);

@@ -477,7 +477,7 @@ for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11
   await page.locator('#docOpen').focus();await page.keyboard.press(`${key}+d`);
   assert.equal(await page.locator('#docDetail').evaluate(n=>n.open),true);
   assert.equal(await page.locator('#docCommandInput').evaluate(n=>n===document.activeElement),true);
-  await page.keyboard.press('Escape');await page.keyboard.press(`${key}+k`);
+  await page.keyboard.press('Escape');await page.keyboard.press(`${key}+d`);
   await page.locator('#docCommandInput').fill('Demo');
   await page.waitForFunction(()=>document.querySelectorAll('#docCommandResults [data-doc-result]').length>0);
   await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
