@@ -1,0 +1,18 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "da7e942d8517bca780bb5591b946d289ae11c0c3",
+    "introduced_by": "3eee0e7c6eaf89d15dcf3e0db56a314b62176b19"
+  },
+  "response": {
+    "turns": "Canonical ordered turns with optional answer_blocks matching answer_blocks schema. Omitted or empty means prose only. Numeric cells require record_id or fact_id and version.",
+    "limits": {
+      "blocks": 8,
+      "rows": 200,
+      "columns": 20,
+      "encoded_bytes": 131072
+    }
+  },
+  "validation": "Reject duplicate IDs, column mismatch, invalid dates and dangling chart references. No numeric coercion, arbitrary HTML, inferred source links or source fetches."
+}
