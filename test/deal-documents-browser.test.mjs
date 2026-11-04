@@ -40,7 +40,12 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
         if (mode === 'outage' || mode === 'expired') return route.fulfill({status:mode === 'expired' ? 401 : 503,json:{error:'private diagnostic'}});
         if (mode === 'malformed') return route.fulfill({json:result([{...document,content_hash:'bad'}])});
         if (mode === 'empty' || args.deal_id === other) return route.fulfill({json:result([])});
-        return route.fulfill({json:result([{...document,...(args.cursor ? {id:other,display_name:'Demo site plan.pdf'} : {})}],true,args.cursor ? 'page-3' : 'page-2')});
+        const row = !args.cursor ? document : {
+          ...document,
+          id:args.cursor === 'page-2' ? other : '44444444-4444-4444-8444-444444444444',
+          display_name:args.cursor === 'page-2' ? 'Demo site plan.pdf' : 'Demo rejected page.pdf',
+        };
+        return route.fulfill({json:result([row],true,args.cursor ? 'page-3' : 'page-2')});
       });
       await page.goto(`${server.url}/deals?deal=${deal}`);
       await page.getByRole('tab',{name:'Documents',exact:true}).click({timeout:3000});
@@ -56,6 +61,8 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
       assert.equal(requests.at(-1).cursor,'page-2');
       await panel.getByRole('button',{name:'Load more documents'}).click();
       await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
+      assert.equal(await panel.locator('[data-document-id]').count(),2);
+      assert.equal(await panel.getByText('Demo rejected page.pdf',{exact:true}).count(),0);
       mode = 'empty'; await panel.getByRole('button',{name:'Refresh documents'}).click();
       await panel.getByText('No documents filed for this deal.',{exact:true}).waitFor();
       mode = 'outage'; await panel.getByRole('button',{name:'Refresh documents'}).click();
@@ -108,4 +115,95 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
       assert.deepEqual(errors,[]);
     } finally { await page.close(); }
   });
+});
+
+test('Documents retries next pages and clears or disposes every in-flight state', async t => {
+  const artifact = await temporaryDirectory('doctorcre-documents-lifecycle-', t);
+  await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
+  const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}}); t.after(() => server.stop());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  for (const width of [390,1440]) for (const theme of ['light','dark']) {
+    for (const scenario of ['retry next page','expire ready','expire loading','expire loading more','expire unavailable','dispose loading more']) {
+      await t.test(`${scenario} ${width} ${theme}`, async () => {
+        const page = await browser.newPage({viewport:{width,height:1000}});
+        try {
+          const errors = []; page.on('pageerror', error => errors.push(error.message));
+          await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
+          await page.route('**/documents-harness',route => route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'}));
+          await page.goto(`${server.url}/documents-harness`);
+          await page.evaluate(async ({deal,document}) => {
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            const target = window.document.createElement('div');
+            window.document.body.replaceChildren(target);
+            const pending = [], requests = [];
+            const panel = mountDealDocuments(target,{dealId:deal,client:{
+              listDealDocuments(args,{signal}) {
+                requests.push(args);
+                return new Promise((resolve,reject) => pending.push({resolve,reject,signal}));
+              },
+            }});
+            window.documentsTest = {
+              requests, panel,
+              resolve(next = 'page-2') {
+                pending.shift().resolve({ok:true,schema_version:'deal-documents.v1',documents:[{...document,id:requests.length === 1 ? document.id : '44444444-4444-4444-8444-444444444444'}],has_more:next !== null,next_cursor:next});
+              },
+              reject() { pending.shift().reject(new Error('Synthetic outage')); },
+              aborted() { return pending[0].signal.aborted; },
+            };
+          },{deal,document});
+          const panel = page.getByRole('region',{name:'Deal documents',exact:true});
+          const rows = panel.locator('[data-document-id]');
+          await panel.getByText('Loading documents…',{exact:true}).waitFor();
+          if (scenario !== 'expire loading') {
+            await page.evaluate(() => window.documentsTest.resolve());
+            await rows.first().waitFor();
+            assert.equal(await rows.count(),1);
+          }
+          if (!['expire ready','expire loading'].includes(scenario)) {
+            await panel.getByRole('button',{name:'Load more documents'}).click();
+            await panel.getByText('Loading documents…',{exact:true}).waitFor();
+            assert.equal(await rows.count(),1);
+          }
+          if (['retry next page','expire unavailable'].includes(scenario)) {
+            await page.evaluate(() => window.documentsTest.reject());
+            await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
+            assert.equal(await rows.count(),1);
+          }
+          if (scenario === 'retry next page') {
+            await panel.getByRole('button',{name:'Retry documents'}).click();
+            await panel.getByText('Loading documents…',{exact:true}).waitFor();
+            assert.equal(await rows.count(),1);
+            assert.deepEqual(await page.evaluate(() => window.documentsTest.requests),[
+              {deal_id:deal,limit:50},{deal_id:deal,limit:50,cursor:'page-2'},{deal_id:deal,limit:50,cursor:'page-2'},
+            ]);
+            await page.evaluate(() => window.documentsTest.resolve(null));
+            await page.waitForFunction(() => document.querySelectorAll('[data-document-id]').length === 2);
+            assert.equal(await panel.getByRole('button',{name:'Load more documents'}).count(),0);
+          } else {
+            if (scenario === 'dispose loading more') {
+              await page.evaluate(() => window.documentsTest.panel.dispose());
+              assert.equal(await page.getByRole('region',{name:'Deal documents',exact:true}).count(),0);
+            } else {
+              await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+              await panel.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
+              assert.equal(await rows.count(),0);
+              assert.equal(await panel.getByRole('button').count(),0);
+            }
+            if (['expire loading','expire loading more','dispose loading more'].includes(scenario)) {
+              assert.equal(await page.evaluate(() => window.documentsTest.aborted()),true);
+              await page.evaluate(async () => {
+                window.documentsTest.resolve(null);
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              });
+              assert.equal(await page.locator('[data-document-id]').count(),0);
+              if (scenario !== 'dispose loading more') await panel.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
+              else assert.equal(await page.getByRole('region',{name:'Deal documents',exact:true}).count(),0);
+            }
+          }
+          await page.evaluate(() => window.documentsTest.panel.dispose());
+          assert.deepEqual(errors,[]);
+        } finally { await page.close(); }
+      });
+    }
+  }
 });
