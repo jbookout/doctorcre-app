@@ -129,6 +129,15 @@
     "verb": "list-deal-documents",
     "schema_version": "deal-documents.v1",
     "producer_pr": "https://github.com/DoctorCRE/carr-system/pull/2762",
-    "source_commit": "35dd8142e831a582b532da401e10f34c78df4040"
+    "source_commit": "35dd8142e831a582b532da401e10f34c78df4040",
+    "fields": [
+      "id",
+      "display_name",
+      "document_type",
+      "page_count",
+      "content_hash",
+      "stored_at"
+    ],
+    "authority": "Metadata only. No source provenance, bytes, object keys or download URLs."
   }
 }
