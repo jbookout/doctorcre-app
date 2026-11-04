@@ -114,7 +114,9 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
   });
 }
 export type WaitingChoice = Pick<WaitingIdentity, 'kind' | 'id'> & { name: string };
-export type InboxClient = { choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
+export type PartyCursor = Readonly<{ query: string; name: string; id: string }>;
+export type PeoplePage = Readonly<{ choices: WaitingChoice[]; next_cursor: PartyCursor | null }>;
+export type InboxClient = { actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
     async function available(name: string): Promise<unknown> {
@@ -131,8 +133,44 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
     if (!object(value) || !['home-inbox.v3', 'home-inbox.v4'].includes(String(value.schema_version))) throw Error('Inbox unavailable. Automatic settlement could not be verified.');
     return parseSnapshot(value);
   }
+  const unavailable = Symbol('unknown_tool');
+  async function directory(name: string, args: unknown): Promise<unknown> {
+    try {
+      const value = await rpc(name, args);
+      return object(value) && value.error === 'unknown_tool' ? unavailable : value;
+    } catch (error) {
+      if (object(error) && object(error.payload) && error.payload.error === 'unknown_tool') return unavailable;
+      throw error;
+    }
+  }
   return {
     read,
+    async actors() {
+      const value = await directory('read-actor-roster-v1', {});
+      if (value === unavailable) return null;
+      if (!object(value) || value.ok !== true || value.schema_version !== 'actor-roster.v1' || !Array.isArray(value.actors) || value.actors.length > 1000) throw Error('Actor roster unavailable.');
+      const choices = new Map<string, WaitingChoice>();
+      for (const row of value.actors) {
+        if (!object(row) || !uuid(row.id) || typeof row.slug !== 'string' || !text(row.display_name) || !['human', 'automation', 'system'].includes(String(row.kind))) throw Error('Actor roster unreadable.');
+        if (row.kind === 'human') choices.set(row.id, { kind: 'actor', id: row.id, name: row.display_name });
+      }
+      return [...choices.values()];
+    },
+    async search(input, cursor) {
+      const query = input.trim();
+      if (!query || query.length > 100 || cursor && cursor.query.toLowerCase() !== query.toLowerCase()) throw Error('Enter a name prefix of 1 to 100 characters.');
+      const value = await directory('search-parties-v1', { query, limit: 25, ...(cursor ? { cursor } : {}) });
+      if (value === unavailable) return null;
+      if (!object(value) || value.ok !== true || value.schema_version !== 'party-search.v1' || !Array.isArray(value.parties) || value.parties.length > 25) throw Error('People search unavailable.');
+      const choices = new Map<string, WaitingChoice>();
+      for (const row of value.parties) {
+        if (!object(row) || !uuid(row.id) || !text(row.display_name) || !['person', 'org'].includes(String(row.kind))) throw Error('People search unreadable.');
+        if (row.kind === 'person') choices.set(row.id, { kind: 'party', id: row.id, name: row.display_name });
+      }
+      const next = value.next_cursor;
+      if (next !== null && (!object(next) || typeof next.query !== 'string' || next.query.toLowerCase() !== query.toLowerCase() || typeof next.name !== 'string' || next.name.length > 10000 || !uuid(next.id))) throw Error('People search cursor unreadable.');
+      return { choices: [...choices.values()], next_cursor: next === null ? null : { query: String(next.query), name: String(next.name), id: String(next.id) } };
+    },
     async choices() {
       const value = await rpc('email-match-contacts', {});
       if (!object(value) || value.schema_version !== 'email-match-contacts.v1' || !Array.isArray(value.contacts)) throw Error('People unavailable. Try loading again.');

@@ -1,3 +1,5 @@
 Waiting editor lifecycle model. TLC reached 8 states and 17 steps. DraftKept, SameKey, VerifiedDisplay and NoDeadlock hold. The chart hides 8 same-state steps. Identity resolution, canonical database concurrency and transport deadlines are outside this model and covered by client and browser tests.
 
 The model was executed after the first implementation rather than before code.
+
+Picker search model. Before implementation, the statechart in the worker design note defined Closed, Idle, Debouncing, Loading, Results, Empty, Failed and Fallback transitions. `Picker.tla` subsequently checks the concurrent request core. TLC reached 11 states and 26 steps. Type, Fresh and NoDeadlock hold. `picker-chart.mmd` hides 11 same-state steps. The finite model covers two query generations and a single active request; roster failures, debounce timing, pagination, close and writes remain browser-test responsibilities. Run the pstack statechart script with `Picker.tla --config Picker.cfg --out /tmp/home-waiting-picker-check`.

@@ -4,8 +4,16 @@ export function fixtureInboxRpc() {
   const items = [make('demo-review', 'Review the practice tour follow-up', 'needs_attention'), make('demo-call', 'Confirm next steps from the pipeline call', 'needs_attention'), make('demo-complete', 'Tour itinerary is ready to review', 'done'), make('demo-working', 'Preparing your market comparison', 'working'), make('demo-snooze', 'Check in with the demo practice', 'needs_attention', 'snoozed'), make('demo-settled', 'Demo call summary reviewed', 'done', 'settled')];
   items.forEach((item, index) => Object.assign(item, { action_id: `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}` }));
   const people = [{ id: '00000000-0000-0000-0000-000000000099', name: 'Demo reviewer' }, { id: '00000000-0000-0000-0000-000000000098', name: 'Demo coordinator' }];
+  const actors = [{ id: '00000000-0000-0000-0000-000000000097', slug: 'demo-partner', display_name: 'Demo partner', kind: 'human' }];
   const receipts = new Map<string, unknown>();
   return async (name: string, args: unknown) => {
+    if (name === 'read-actor-roster-v1') return { ok: true, schema_version: 'actor-roster.v1', actors };
+    if (name === 'search-parties-v1') {
+      if (!object(args) || typeof args.query !== 'string') throw Error('Invalid people query');
+      const query = args.query.trim().toLowerCase();
+      const matches = people.filter(person => person.name.toLowerCase().startsWith(query));
+      return { ok: true, schema_version: 'party-search.v1', parties: matches.map(person => ({ id: person.id, display_name: person.name, kind: 'person' })), next_cursor: null };
+    }
     if (name === 'email-match-contacts') return { schema_version: 'email-match-contacts.v1', contacts: people.map(person => ({ exact: true, name: person.name, contact_snapshot: { party_id: person.id } })) };
     if (name === 'set-home-waiting' || name === 'clear-home-waiting') {
       if (!object(args)) throw Error('Invalid waiting request');
@@ -13,10 +21,10 @@ export function fixtureInboxRpc() {
       const item = items.find(row => row.item_id === args.item_id);
       if (!item || item.waiting_version !== args.base_version || item.base_version !== args.item_version || item.source_state === 'done') throw Object.assign(Error('This card changed.'), { payload: { error: 'version_conflict' } });
       const target = args.target;
-      const person = object(target) ? people.find(person => person.id === target.id) : undefined;
+      const person = object(target) ? target.kind === 'actor' ? actors.map(actor => ({ id: actor.id, name: actor.display_name })).find(actor => actor.id === target.id) : people.find(person => person.id === target.id) : undefined;
       if (name === 'set-home-waiting' && !person) throw Object.assign(Error('Person unavailable'), { payload: { error: 'invalid_waiting_identity' } });
       const version = (item.waiting_version || 0) + 1;
-      const waiting_on = name === 'clear-home-waiting' ? null : { identity: { kind: 'party', id: person?.id, available: true, display_name: person?.name }, reason: args.reason, evidence: args.evidence, version };
+      const waiting_on = name === 'clear-home-waiting' ? null : { identity: { kind: object(target) && target.kind === 'actor' ? 'actor' : 'party', id: person?.id, available: true, display_name: person?.name }, reason: args.reason, evidence: args.evidence, version };
       Object.assign(item, { waiting_version: version, waiting_on });
       const result = { ok: true, schema_version: 'home-waiting.v1', item_id: item.item_id, waiting_version: version, waiting_on };
       receipts.set(String(args.idempotency_key), result); return result;

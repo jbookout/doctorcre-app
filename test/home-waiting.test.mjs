@@ -42,3 +42,49 @@ for (const code of ['network_error', 'partner_required']) test(`v4 ${code} never
   const client = api.createInboxClient(async name => { calls.push(name); throw Object.assign(Error(code), { payload: { error: code } }); });
   await assert.rejects(client.read()); assert.deepEqual(calls, ['read-home-inbox-v4']);
 });
+
+test('waiting_picker_offers_actors_and_searched_parties', async () => {
+  const calls = [];
+  const id = '00000000-0000-0000-0000-000000000071';
+  const cursor = { query: 'alex', name: 'Alex A', id };
+  const client = api.createInboxClient(async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'read-actor-roster-v1') return { ok: true, schema_version: 'actor-roster.v1', actors: [
+      { id, slug: 'demo-human', display_name: 'Demo human', kind: 'human' },
+      { id: '00000000-0000-0000-0000-000000000072', slug: 'bot', display_name: 'Demo bot', kind: 'automation' }
+    ] };
+    return { ok: true, schema_version: 'party-search.v1', parties: [{ id, display_name: 'Alex A', kind: 'person' }], next_cursor: args.cursor ? null : cursor };
+  });
+  assert.deepEqual(await client.actors(), [{ kind: 'actor', id, name: 'Demo human' }]);
+  assert.deepEqual(await client.search('  Alex  '), { choices: [{ kind: 'party', id, name: 'Alex A' }], next_cursor: cursor });
+  assert.equal((await client.search('Alex', cursor)).next_cursor, null);
+  assert.deepEqual(calls[1], { name: 'search-parties-v1', args: { query: 'Alex', limit: 25 } });
+  assert.deepEqual(calls[2].args.cursor, cursor);
+});
+for (const thrown of [false, true]) test(`directory unknown_tool supports contact fallback (${thrown})`, async () => {
+  const rpc = fixtureInboxRpc();
+  const client = api.createInboxClient(async (name, args) => {
+    if (['read-actor-roster-v1', 'search-parties-v1'].includes(name)) {
+      if (thrown) throw Object.assign(Error('unavailable'), { payload: { error: 'unknown_tool' } });
+      return { error: 'unknown_tool' };
+    }
+    return rpc(name, args);
+  });
+  assert.equal(await client.actors(), null);
+  assert.equal(await client.search('Demo'), null);
+  assert.equal((await client.choices()).length, 2);
+});
+test('directory refuses malformed identities, cursors and non-capability failures', async () => {
+  for (const response of [
+    null,
+    { ok: true, schema_version: 'party-search.v1', parties: [{ id: 'invented', display_name: 'Invented', kind: 'person' }], next_cursor: null },
+    { ok: true, schema_version: 'party-search.v1', parties: [], next_cursor: { query: 'other', name: 'Other', id: '00000000-0000-0000-0000-000000000071' } }
+  ]) await assert.rejects(api.createInboxClient(async () => response).search('Demo'));
+  let calls = 0;
+  const client = api.createInboxClient(async () => { calls++; throw Object.assign(Error('network'), { payload: { error: 'network_error' } }); });
+  await assert.rejects(client.actors());
+  await assert.rejects(client.search('Demo'));
+  await assert.rejects(client.search('   '));
+  await assert.rejects(client.search('x'.repeat(101)));
+  assert.equal(calls, 2);
+});
