@@ -18,11 +18,11 @@ function isSource(x: unknown): x is Source {
 function isCell(x: unknown): x is Cell {
   if (!object(x) || !keys(x, ['value', 'source']) || !('value' in x) || ('source' in x && !isSource(x.source))) return false;
   return typeof x.value === 'number' ? Number.isFinite(x.value) && isSource(x.source)
-    : x.value === null || typeof x.value === 'boolean' || typeof x.value === 'string' && x.value.length <= 2000;
+    : x.value === null || typeof x.value === 'boolean' || typeof x.value === 'string' && [...x.value].length <= 2000;
 }
 function isColumn(x: unknown): x is Column {
   return object(x) && keys(x, ['key', 'label', 'type']) && id(x.key) && typeof x.label === 'string'
-    && x.label.length > 0 && x.label.length <= 200 && ['text', 'number', 'boolean', 'date'].includes(String(x.type));
+    && x.label.length > 0 && [...x.label].length <= 200 && ['text', 'number', 'boolean', 'date'].includes(String(x.type));
 }
 function isRow(x: unknown): x is Record<string, Cell> {
   return object(x) && Object.values(x).every(isCell);

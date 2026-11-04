@@ -30,6 +30,7 @@ test('eight blocks, boolean/date cells, versioned facts and payload byte ceiling
  assert.equal(parseAnswerBlocks(Array.from({length:8},(_,i)=>({...table,id:`table${i}`}))).kind,'valid');
  const typed={type:'table.v1',id:'typed',columns:[{key:'day',label:'Day',type:'date'},{key:'flag',label:'Flag',type:'boolean'},{key:'rate',label:'Rate',type:'number'}],rows:[{day:{value:'2026-11-03'},flag:{value:false},rate:{value:0,source:{fact_id:source.record_id,version:2}}}]};
  assert.equal(parseAnswerBlocks([typed]).kind,'valid');
+ assert.equal(parseAnswerBlocks([{...table,rows:[{name:{value:'😀'.repeat(2000)},rent:{value:0,source}}]}]).kind,'valid');
  assert.equal(parseAnswerBlocks([{...typed,rows:[{...typed.rows[0],rate:{value:0,source:{fact_id:source.record_id,version:0}}}]}]).kind,'invalid');
  const large={...table,rows:Array.from({length:200},()=>({name:{value:'a'.repeat(2000)},rent:{value:1,source}}))};
  assert.equal(parseAnswerBlocks([large]).kind,'invalid');
