@@ -1,3 +1,4 @@
+importScripts('/js/ui-share-worker.js');
 const SHELL_CACHE = 'dealroom-shell-v6';
 const SHELL = ['/offline.html','/public-shell/session-ended.html','/public-shell/shell.css','/manifest.webmanifest','/icons/dealroom-192.png','/icons/dealroom-512.png'];
 const staticAsset = path => SHELL.includes(path) || /^\/(?:js|css)\/.+\.(?:m?js|css)$/.test(path);
@@ -30,6 +31,7 @@ async function shell(request) {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname === '/share-to-deal' && event.request.method === 'POST') return;
   // Auth, APIs, MCP and unknown paths never consult CacheStorage. Only the
   // explicit static shell may be cached, regardless of HTTP success.
   if (event.request.method !== 'GET' || !staticAsset(url.pathname)) event.respondWith(networkOnly(event.request));

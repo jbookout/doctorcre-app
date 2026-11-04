@@ -28,6 +28,7 @@ export const routeEntries = [
   ["/review-workflows","review-workflows.html","/"],
   ["/search","search.html","/business"],
   ["/share","reports/share.html","/share"],
+  ["/share-to-deal","share-to-deal.html","/deals"],
   ["/status","status.html","/control-room"],
   ["/tours","tours/index.html","/tours"],
   ["/updates","notifications.html","/notifications"],

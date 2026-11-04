@@ -56,6 +56,8 @@ export function createFixtureDealStore(seed) {
 const VERSION_CONFLICT = 'version_conflict';
 
 export async function createFixtureClient(opts = {}) {
+  const documentUploads = new Map();
+  const filedDocuments = [];
   let factReview;
   const factReviews = () => factReview ||= import('../data/fixtures/fact-review.mjs').then(module => module.createFactReviewFixture());
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
@@ -1273,7 +1275,39 @@ export async function createFixtureClient(opts = {}) {
       })) };
     },
 
-    async listDealDocuments(args) { return (await factReviews()).listDealDocuments(args); },
+    async beginDealDocumentUpload(args) {
+      if (!documentUploads.has(args.idempotency_key)) documentUploads.set(args.idempotency_key, {...args,upload_id:args.idempotency_key,state:'reserved'});
+      return structuredClone(documentUploads.get(args.idempotency_key));
+    },
+    async readDealDocumentUpload(args) {
+      const receipt = documentUploads.get(args.upload_id || args.idempotency_key);
+      if (!receipt) throw Error('Synthetic reservation not found');
+      return structuredClone(receipt);
+    },
+    async uploadDealDocumentBytes(receipt, blob) {
+      const current = documentUploads.get(receipt.upload_id);
+      const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
+      if (!current || current.sha256 !== hash || current.bytes !== blob.size) throw Error('Synthetic byte mismatch');
+      current.state='uploaded';
+    },
+    async cancelDealDocumentUpload(args) {
+      const receipt = documentUploads.get(args.upload_id);
+      if (!receipt || receipt.state==='committed') throw Error('Synthetic cancellation refused');
+      receipt.state='cancelled';return structuredClone(receipt);
+    },
+    async commitDealDocumentUpload(args) {
+      const receipt = documentUploads.get(args.upload_id);
+      if (!receipt || receipt.deal_id !== args.deal_id || !['uploaded','committed'].includes(receipt.state)) throw Error('Synthetic commit refused');
+      if (receipt.state!=='committed') {
+        receipt.state='committed';receipt.attachment_id=uuidv4();
+        filedDocuments.push({id:receipt.attachment_id,attachment_id:receipt.attachment_id,deal_id:receipt.deal_id,sha256:receipt.sha256,display_name:receipt.name,stored_at:nowIso()});
+      }
+      return structuredClone(receipt);
+    },
+    async listDealDocuments(args) {
+      const original=await (await factReviews()).listDealDocuments(args);
+      return {...original,documents:[...filedDocuments.filter(row=>row.deal_id===args.deal_id),...original.documents]};
+    },
     async prepareTermsComparison(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.prepareTermsComparison(args); },
     async listFactReview(args) { return (await factReviews()).listFactReview(args); },
     async recordHumanFact(args, { signal } = {}) { const fixture = await factReviews(); signal?.throwIfAborted(); return fixture.recordHumanFact(args); },

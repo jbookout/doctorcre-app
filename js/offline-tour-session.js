@@ -3,7 +3,7 @@ export const SESSION_EPOCH_KEY = 'doctorcre-session-epoch-v1';
 export function sessionEpoch(window) {
   try { return window.localStorage.getItem(SESSION_EPOCH_KEY) || 'initial'; } catch { return null; }
 }
-export async function clearPrivateStorage(window) {
+export async function clearPrivateStorage(window, {preserveUnboundShare = false} = {}) {
   for (const name of ['localStorage','sessionStorage']) {
     try {
       const storage = window[name];
@@ -15,6 +15,11 @@ export async function clearPrivateStorage(window) {
     } catch { /* Revocation remains fail-closed when browser storage is denied. */ }
   }
   const tasks = [];
+  tasks.push(import('./ui-share-store.js').then(async ({draftStore}) => {
+    if (!window.indexedDB) return;
+    const store=draftStore(window.indexedDB), draft=await store.read();
+    if (!preserveUnboundShare || draft?.actor_binding) await store.clear();
+  }));
   if (window.caches) tasks.push(window.caches.keys().then(names => Promise.all(names.map(name => window.caches.delete(name)))));
   if (window.indexedDB) tasks.push(new Promise(resolve => {
     const request = window.indexedDB.open('doctorcre-tour-day-drafts-v1',1);
@@ -26,7 +31,7 @@ export async function clearPrivateStorage(window) {
       tx.oncomplete = tx.onerror = tx.onabort = () => { db.close(); resolve(); };
     };
   }));
-  window.navigator?.serviceWorker?.controller?.postMessage({type:'doctorcre-session-revoked'});
+  window.navigator?.serviceWorker?.controller?.postMessage({type:'doctorcre-session-revoked',preserveUnboundShare});
   await Promise.allSettled(tasks);
 }
 export function offlineTourSession(window) {

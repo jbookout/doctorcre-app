@@ -61,7 +61,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'review-deal-update', 'confirm-email-filing', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'snooze-email-proposal', 'handle-email-proposal', 'edit-email-draft', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
+    'undo-call-change', 'review-call-outcome', 'review-deal-update', 'confirm-email-filing', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'snooze-email-proposal', 'handle-email-proposal', 'edit-email-draft', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review', 'begin-deal-document-upload', 'cancel-deal-document-upload', 'commit-deal-document-upload']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -249,6 +249,18 @@ export function createLiveClient(opts = {}) {
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
+    async beginDealDocumentUpload(args, { signal } = {}) { return write('begin-deal-document-upload', args, undefined, signal); },
+    async readDealDocumentUpload(args, { signal } = {}) { return rpc('read-deal-document-upload', args, signal); },
+    async cancelDealDocumentUpload(args, { signal } = {}) { return write('cancel-deal-document-upload', args, undefined, signal); },
+    async commitDealDocumentUpload(args, { signal } = {}) { return write('commit-deal-document-upload', args, undefined, signal); },
+    async uploadDealDocumentBytes(receipt, blob, { signal } = {}) {
+      if (!online()) throw Error('Offline. File bytes remain on this device.');
+      const response = await fetchImpl(`/api/v1/deal-document-uploads/${encodeURIComponent(receipt.upload_id)}/bytes`, {
+        method: 'PUT', body: blob, signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]),
+        headers: {'content-type': 'application/octet-stream'}, credentials: 'same-origin', cache: 'no-store',
+      });
+      if (!response.ok) throw Error('Upload outcome unconfirmed.');
+    },
     async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
     async prepareTermsComparison(args, { signal } = {}) {
       if (!online()) throw Object.assign(new Error('Offline'), { payload: { error: 'offline' } });

@@ -30,13 +30,16 @@ const UI_ENTRIES = {
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-tours': 'deal-tours',
+  'ui-deal-documents': 'deal-documents',
+  'ui-share-to-deal': 'share-to-deal',
+  'ui-share-store': 'share-draft-store',
   'ui-inbox': 'inbox-entry',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',
   'ui-deal-reviews': 'home/deal-update-reviews',
   'deal-room-forms.generated': 'deal-room-forms',
 };
-export const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-shared-*.generated.js'];
+export const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-share-worker.js', 'js/ui-shared-*.generated.js'];
 const UI_OUTPUTS = new Set(UI_ASSET_PATTERNS.slice(0, -1));
 export const isUiAsset = path => UI_OUTPUTS.has(path) || /^js\/ui-shared-[A-Z0-9]+\.generated\.js$/.test(path);
 
@@ -52,7 +55,10 @@ export async function uiAssets(readSource) {
     ])),
     splitting: true, outdir: 'js', chunkNames: 'ui-shared-[hash].generated',
   });
-  return new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
+  const assets = new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
+  const worker = await buildUi(readSource, { entryPoints: [`${UI_SOURCE}/share-target-worker.ts`], format: 'iife' });
+  assets.set('js/ui-share-worker.js', Buffer.from(worker.outputFiles[0].contents));
+  return assets;
 }
 
 async function buildUi(readSource, options) {

@@ -92,6 +92,11 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args:Object, options?:{signal?:AbortSignal}) => Promise<Object>} beginDealDocumentUpload
+ * @property {(args:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDealDocumentUpload
+ * @property {(args:Object, options?:{signal?:AbortSignal}) => Promise<Object>} cancelDealDocumentUpload
+ * @property {(args:Object, options?:{signal?:AbortSignal}) => Promise<Object>} commitDealDocumentUpload
+ * @property {(receipt:Object, blob:Blob, options?:{signal?:AbortSignal}) => Promise<void>} uploadDealDocumentBytes
  * @property {(args:{deal_id:string,limit?:number,cursor?:string}, options?:{signal?:AbortSignal}) => Promise<{ok:true,schema_version:'deal-documents.v1',documents:{id:string,display_name:string,stored_at:string}[],has_more:boolean,next_cursor:string|null}>} listDealDocuments
  * @property {(args:{entity_ref?:string,limit?:number,cursor?:string,include_resolved?:boolean}, options?:{signal?:AbortSignal}) => Promise<FactReviewList>} listFactReview
  * @property {(args:{idempotency_key:string,entity_ref:string,observation:HumanFact}) => Promise<Object>} recordHumanFact

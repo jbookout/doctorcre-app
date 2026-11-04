@@ -100,7 +100,7 @@ export function privateSession() {
         if (previous && previous !== digest) return false;
         // Unbound data from older app versions must never be adopted by the
         // first principal to bootstrap this browser.
-        if (!previous) await clearPrivateStorage(win);
+        if (!previous) await clearPrivateStorage(win, {preserveUnboundShare:true});
         win.localStorage.setItem('doctorcre-session-binding-v1',digest);
       } catch { /* Storage-denied browsers cannot restore private offline state. */ }
       return true;

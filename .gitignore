@@ -47,3 +47,8 @@ mobile-a11y-evidence/
 /js/ui-calendar-panels.js
 
 /js/ui-deal-tours.js
+/js/ui-deal-documents.js
+/js/ui-share-to-deal.js
+/js/ui-share-worker.js
+
+/js/ui-share-store.js

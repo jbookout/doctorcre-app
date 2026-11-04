@@ -159,6 +159,7 @@ async function handleRequest(request, env) {
   }
   if (staging && STAGING_REPORT_ASSETS.has(pathname)) return assetResponse(request, env, `/reports${pathname}`);
   if (staging && pathname.startsWith('/api/share/')) return carrResponse(request, env);
+  if (pathname === '/share-to-deal' && request.method === 'POST') return secure(new Response('<!doctype html><title>Install DoctorCRE to receive shares</title><h1>Files were not received</h1><p>Open DoctorCRE online, install it and retry sharing after it controls this page. On iPhone or Safari, use Upload documents in the deal workspace.</p><a href="/share-to-deal">Open file picker</a>', {status:409,headers:{'content-type':'text/html','cache-control':'no-store'}}), pathname);
   if (pathname === "/share") return Response.redirect(`https://reports.doctorcre.com/share${url.search}`, 302);
   if (REDIRECTS.has(pathname)) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);

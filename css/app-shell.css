@@ -525,3 +525,5 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .app-layout-page-tools { padding: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--hairline); }
 .app-layout-page-tools > summary { cursor: pointer; min-height: var(--touch); align-content: center; }
 .workspace-open .app-layout-page-tools { display: none; }
+.share-to-deal-shell, .deal-documents { min-width: 0; overflow-wrap: anywhere; }
+.share-to-deal-shell :is(input, select), .deal-documents input { max-width: 100%; box-sizing: border-box; }
