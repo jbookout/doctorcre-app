@@ -1,3 +1,4 @@
+import { createMcpRequests } from './mcp-requests.mjs';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
@@ -861,6 +862,7 @@ function refusePanelDetail(error) {
   ++contextReadSequence;
   clearMarketTermsViews();
   state.panelDetail = null;
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
@@ -1016,6 +1018,7 @@ const workspaceTabs = [
   {id:'timeline', label:'Timeline'},
   {id:'correspondence', label:'Correspondence & notes'},
   {id:'tours', label:'Tours'},
+  {id:'client-view', label:'Client view'},
 ];
 let workspaceTab = 'overview';
 let boardScroll = 0;
@@ -1038,6 +1041,7 @@ function selectWorkspaceTab(id) {
   }
   if (id === 'market-terms') void marketTermsPanel?.load();
   if (id === 'tours') void dealToursPanel?.load();
+  if (id === 'client-view') void clientPublicationsPanel?.load();
   $('panelContextOpenWrap').hidden = id !== 'overview' || !state.panelDetail;
   if (id === 'correspondence' && state.panelDetail) {
     $('panelEvidenceSection').open = true;
@@ -1060,7 +1064,7 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
-let factReviewPanel, marketTermsPanel, dealToursPanel;
+let factReviewPanel, marketTermsPanel, dealToursPanel, clientPublicationsPanel;
 // Each deal's comparison is kept for the session and reattached when its tab reopens; an access change discards them all.
 const marketTermsViews = new Map();
 function clearMarketTermsViews() {
@@ -1096,6 +1100,7 @@ function workspaceHtml(detail) {
     <h2>Critical dates</h2>${renderCriticalDates(detail)}
     <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
     <section id="workspace-market-terms" role="tabpanel" aria-labelledby="tab-market-terms" hidden></section>
+    <section id="workspace-client-view" role="tabpanel" aria-labelledby="tab-client-view" hidden></section>
     <section id="workspace-tours" role="tabpanel" aria-labelledby="tab-tours" hidden></section>
     <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
@@ -1227,6 +1232,7 @@ function paintPanel(detail) {
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
   marketTermsPanel?.dispose();
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
   const terms = $('panelTerms');
@@ -1305,10 +1311,39 @@ function paintPanel(detail) {
     refresh() { return toursMounted?.refresh(); },
     dispose() { toursDisposed = true; toursMounted?.dispose(); },
   };
+  let clientDisposed = false, clientLoading = false, clientMounted;
+  clientPublicationsPanel = {
+    async load() {
+      if (clientDisposed || clientLoading || clientMounted) return;
+      clientLoading = true;
+      const element = $('workspace-client-view');
+      element.textContent = 'Loading client view…';
+      try {
+        const { mountClientPublications, createPublicationFixture } = await import('./ui-client-publications.js');
+        if (clientDisposed) return;
+        const mcp = createMcpRequests();
+        const request = resolveDealroomBoot(location).mode === 'fixture' ? createPublicationFixture() : async (name, args, { signal }) => {
+          const result = await mcp(name, args, { signal, timeoutMs: 10000 });
+          if (result.kind !== 'payload' || result.isError) throw Error('Client view unavailable');
+          return result.payload;
+        };
+        element.replaceChildren();
+        clientMounted = mountClientPublications(element, { dealId: detail.deal.id, request });
+      } catch {
+        if (!clientDisposed) {
+          element.textContent = 'Client view unavailable. ';
+          const retry = document.createElement('button'); retry.className = 'btn'; retry.textContent = 'Retry client view';
+          retry.addEventListener('click', () => void clientPublicationsPanel?.load()); element.append(retry);
+        }
+      } finally { clientLoading = false; }
+    },
+    dispose() { clientDisposed = true; clientMounted?.dispose(); },
+  };
   selectWorkspaceTab(workspaceTab);
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
@@ -1320,7 +1355,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
   if (!state.panelDeal) boardScroll = history.state?.boardScroll ?? scrollY;
-  workspaceTab = new URLSearchParams(location.search).get('tab') === 'tours' ? 'tours' : 'overview'; timelineType = '';
+  workspaceTab = ['tours','client-view'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'overview'; timelineType = '';
   state.panelDeal = dealId; state.panelDetail = null; updateDraft = null;
   const url = new URL(location.href);
   if (!fromHistory && url.searchParams.get('deal') !== dealId) {
@@ -1360,6 +1395,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   }
 }
 function closeWorkspace({ fromHistory = false } = {}) {
+  clientPublicationsPanel?.dispose(); clientPublicationsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
