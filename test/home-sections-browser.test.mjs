@@ -178,10 +178,8 @@ test('late automatic Home walkthrough preserves an open account menu', async t =
 });
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Done today evidence ${width} ${theme}`, async t => {
-  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
-  const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'America/Chicago' });
-  await page.clock.install({ time: new Date('2026-11-04T16:00:17Z') });
+  const run = await scenario(t, { root: join(outDir, 'site'), now: new Date('2026-11-04T16:00:17Z'), page: { viewport: { width, height: 900 }, timezoneId: 'America/Chicago' } });
+  const { page } = run;
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   const item = (item_id, completed_at, fields = {}) => ({ item_id, completed_at, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'done', title: item_id, activity_at: '2026-11-04T16:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'done', base_version: 'v1', context_label: 'Demo practice', due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000001', action_version: 7, deal_id: null, auto_settled: false, ...fields });
   const items = [item('Finished after midnight', '2026-11-04T06:10:00Z', { section: 'settled', disposition: 'settled', auto_settled: true }), item('Yesterday with a new notification', '2026-11-04T05:30:00Z'), item('Legacy completed task', null), item('Manually hidden task', null, { source_state: 'needs_attention', disposition: 'settled', section: 'settled' })];
@@ -192,7 +190,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
     const value = name === 'read-home-inbox-v4' ? { ok: true, schema_version: 'home-inbox.v4', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true } : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
   });
-  await page.goto(`${server.origin}/?mode=live`);
+  await run.open('/?mode=live');
   const today = page.getByRole('region', { name: 'Done today', exact: true });
   await today.getByText('Finished after midnight', { exact: true }).waitFor();
   assert.equal(await today.locator('[data-inbox-row]').count(), 1);
@@ -206,7 +204,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
   await hidden.getByText('Hidden from inbox by you', { exact: true }).waitFor();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: `/tmp/WR617.S14.J8-shots/done-today-${width}-${theme}.png`, fullPage: true });
+  await page.screenshot({ path: `${run.outputDir}/done-today-${width}-${theme}.png`, fullPage: true });
   await page.clock.fastForward(14 * 60 * 60 * 1000 - 18_000);
   assert.equal(await today.locator('[data-inbox-row]').count(), 1);
   await page.clock.fastForward(1000);
