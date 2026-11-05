@@ -1,0 +1,164 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import type { Asset, CarrMarketStudyV1, Development, Rich } from './package';
+
+import { HomeMap } from './home-map';
+import type { ContextMarker } from './home-map';
+
+export type MarketStudy = CarrMarketStudyV1;
+export type PortalRoute = 'home' | 'purchases' | 'demographics' | 'tour-list' | 'ownership' | 'sources';
+export type PortalModule = {
+  route: Exclude<PortalRoute, 'home' | 'sources'>;
+  label: string;
+  available: (publication: MarketStudy) => boolean;
+  render: (publication: MarketStudy) => ReactNode;
+};
+export type PortalOptions = { package: MarketStudy; modules?: readonly PortalModule[] };
+
+export function ExternalLink({ url, children }: { url: string; children: ReactNode }) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:' && !parsed.username && !parsed.password)
+      return <a href={parsed.href} target="_blank" rel="noopener noreferrer">{children}</a>;
+  } catch {}
+  return <span>{children}</span>;
+}
+export function RichText({ runs }: { runs: Rich }) {
+  return <>{runs.map((run, index) => 'text' in run ? <span key={index}>{run.text}</span>
+    : <ExternalLink key={index} url={run.link.url}>{run.link.label}</ExternalLink>)}</>;
+}
+export function portalAsset(asset: Asset) {
+  return /^[a-f0-9]{64}$/.test(asset.sha256) ? `files/${asset.sha256}` : undefined;
+}
+function Wordmark({ publication }: { publication: MarketStudy }) {
+  const [failed, setFailed] = useState(false);
+  return publication.client.logo && !failed
+    ? <img className="portal-logo" src={portalAsset(publication.client.logo)} alt={publication.client.display_name} onError={() => setFailed(true)} />
+    : <span className="portal-wordmark">{publication.client.wordmark.line1}<small>{publication.client.wordmark.line2}</small></span>;
+}
+function Sources({ publication }: { publication: MarketStudy }) {
+  return <>{publication.sources.sections.map((section, index) => <section key={index}>
+    <h2>{section.heading}</h2><p><RichText runs={section.body} /></p>
+  </section>)}<section><h2>Listing sources</h2>{publication.properties.map(property => <article key={property.id}>
+    <h3>{property.address}</h3><ul>{property.sources.map((source, index) => <li key={index}><ExternalLink url={source.url}>{source.label}</ExternalLink></li>)}</ul>
+  </article>)}</section><section><h2>Demographic sources</h2><p><RichText runs={publication.demographics.methodology} /></p>
+    <p><RichText runs={publication.demographics.growth.source} /></p>
+    <ul>{publication.demographics.growth.geographies.map((area, index) => <li key={index}><ExternalLink url={area.source_url}>{area.name}</ExternalLink></li>)}</ul>
+  </section></>;
+}
+function DevelopmentDetails({ item }: { item: Development }) {
+  return <><figure><img src={portalAsset(item.image.asset)} alt={item.image.alt} style={{ objectFit: item.image.fit ?? 'cover' }} /><figcaption>{item.image.credit}</figcaption></figure>
+    <p>{item.place} · {item.status} · {item.stage}</p><p>{item.copy ?? item.summary}</p>
+    {item.concept_note && <p>{item.concept_note}</p>}{item.locator && <p>{item.locator.precision}</p>}
+    {item.latest_update && <p>{item.latest_update}</p>}{item.scale && <p>{item.scale}</p>}
+    <h3>Market relevance</h3><p>{item.relevance}</p>
+    <ul>{item.sources.map((source, index) => <li key={index}><ExternalLink url={source.url}>{source.label}</ExternalLink>{source.date && ` · ${source.date}`}</li>)}</ul>
+    <a href="#sources">View primary source</a></>;
+}
+type Detail = { title: string; body: ReactNode };
+function Home({ publication, open, available }: { publication: MarketStudy; open: (detail: Detail) => void; available: (route: PortalRoute) => boolean }) {
+  const practice = publication.client.current_practice;
+  const markers = useMemo(() => publication.developments.flatMap((item, index): ContextMarker[] => item.locator ? [{ id: item.id, label: `${index + 1}. ${item.title}`, lon: item.locator.lon, lat: item.locator.lat, open: () => open({ title: item.title, body: <DevelopmentDetails item={item} /> }) }] : []), [publication, open]);
+  return <><section className="portal-hero"><Wordmark publication={publication} />
+    <p>Prepared for {publication.prepared.for} · {publication.prepared.on}</p>
+    <h2>{publication.market.headline}</h2><p>{publication.market.intro}</p>
+    <a href={available('demographics') ? '#demographics' : '#sources'}>Explore demographics and sources</a>
+  </section><section aria-label="Market snapshot" data-snapshot className="portal-snapshot">
+    {publication.market.snapshot.filter(figure => !/candidate|propert|listing|rent|asking|sites/i.test(figure.label)).map((figure, index) => <article key={index}><strong>{figure.value}</strong><p>{figure.label}</p>
+      {available('demographics') && <a href="#demographics">Explore demographic context</a>}</article>)}
+  </section>{publication.developments.length > 0 && <section><h2>Major development activity</h2>
+    <HomeMap publication={publication} markers={markers} /><div className="portal-directory">{publication.developments.map(item => <article key={item.id}>
+      <p>{item.place} · {item.stage}</p><h3>{item.title}</h3><p>{item.summary}</p>
+      <button type="button" onClick={() => open({ title: item.title, body: <DevelopmentDetails item={item} /> })}>Explore {item.title}</button>
+    </article>)}</div></section>}
+    {publication.context_anchors && <section><h2>Regional context</h2><div className="portal-directory">{publication.context_anchors.map((anchor, index) => <article key={index}>
+      <h3>{anchor.name}</h3><p>{anchor.category}</p><button type="button" onClick={() => open({ title: anchor.name, body: <><p>{anchor.address}</p><p>{anchor.category}</p><p>{anchor.locator.precision}</p><p>{anchor.source_note}</p><p><ExternalLink url={anchor.address_source_url}>Address source</ExternalLink></p><p><ExternalLink url={anchor.locator_source_url}>Locator source</ExternalLink></p></> })}>Explore {anchor.name}</button>
+    </article>)}</div></section>}
+    {practice && <section><h2>Current practice</h2><button type="button" onClick={() => open({ title: publication.client.display_name, body: <><p>{practice.address}</p><p>{practice.size_note}</p><p>{practice.locator.precision}</p><p><RichText runs={practice.source_note} /></p>{publication.client.website && <ExternalLink url={publication.client.website}>Practice website</ExternalLink>}</> })}>Explore current practice</button></section>}
+    {available('purchases') && <a className="portal-cta" href="#purchases">Explore purchase opportunities</a>}</>;
+}
+function DetailDialog({ detail, close }: { detail: Detail; close: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    ref.current?.showModal();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, []);
+  return <dialog ref={ref} aria-labelledby="portal-detail-title" onCancel={close} onClick={event => { if (event.target === event.currentTarget) close(); }}>
+    <button type="button" onClick={close} autoFocus>Close</button><h2 id="portal-detail-title">{detail.title}</h2>{detail.body}
+  </dialog>;
+}
+function Shell({ options }: { options: PortalOptions }) {
+  const publication = options.package;
+  const modules = (options.modules ?? []).filter(module => module.available(publication));
+  const [hash, setHash] = useState(window.location.hash);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const route = hash.replace(/^#/, '') || 'home';
+  const module = modules.find(module => module.route === route);
+  const title = route === 'home' ? publication.market.home_title : route === 'sources' ? 'Sources' : module?.label ?? 'Page unavailable';
+  const available = (route: PortalRoute) => ['home', 'sources'].includes(route) || modules.some(module => module.route === route);
+  useEffect(() => {
+    const change = () => { setDetail(null); setHash(window.location.hash); };
+    window.addEventListener('hashchange', change);
+    return () => window.removeEventListener('hashchange', change);
+  }, []);
+  useLayoutEffect(() => { heading.current?.focus(); heading.current?.scrollIntoView?.({ block: 'start' }); }, [hash]);
+  return <div className="market-study"><a className="portal-skip" href="#portal-main" onClick={event => { event.preventDefault(); heading.current?.focus(); }}>Skip to content</a>
+    <header className="portal-header"><ExternalLink url="https://www.carr.us/">CARR</ExternalLink><a href="#home" aria-label={`${publication.client.display_name} Home`}><Wordmark publication={publication} /></a>
+      <nav aria-label="Market study">{[{ route: 'home', label: 'Home' }, ...modules, { route: 'sources', label: 'Sources' }].map(item => <a key={item.route} href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined}>{item.label}</a>)}</nav>
+    </header><main id="portal-main"><h1 ref={heading} tabIndex={-1}>{title}</h1>
+      {route === 'home' ? <Home publication={publication} open={setDetail} available={available} /> : route === 'sources' ? <Sources publication={publication} /> : module ? module.render(publication) : <p>This page is unavailable in this publication. <a href="#home">Return Home</a></p>}
+    </main><footer><p>CARR · {publication.client.display_name} · {publication.prepared.on}</p><p>{publication.market.footer_note}</p><a href="#sources">Sources</a></footer>
+    {detail && <DetailDialog detail={detail} close={() => setDetail(null)} />}</div>;
+}
+export function mountMarketStudy(container: HTMLElement, options: PortalOptions) {
+  const root = createRoot(container);
+  let active = true;
+  const dispose = () => {
+    if (!active) return;
+    active = false;
+    window.removeEventListener('doctorcre-session-invalidated', expire);
+    window.removeEventListener('pagehide', expire);
+    flushSync(() => root.unmount());
+  };
+  const expire = () => { dispose(); container.textContent = 'Your session expired. Sign in again to continue.'; };
+  window.addEventListener('doctorcre-session-invalidated', expire);
+  window.addEventListener('pagehide', expire);
+  flushSync(() => root.render(<Shell options={options} />));
+  return { dispose };
+}
+
+export function mountPortal(container: HTMLElement, options: {
+  load: (options: { signal: AbortSignal }) => Promise<MarketStudy>;
+  modules?: readonly PortalModule[];
+}) {
+  const controller = new AbortController();
+  let phase: 'loading' | 'ready' | 'unavailable' | 'expired' | 'disposed' = 'loading';
+  let panel: ReturnType<typeof mountMarketStudy> | undefined;
+  const clear = () => { controller.abort(); panel?.dispose(); panel = undefined; };
+  const expire = () => { if (phase === 'disposed') return; phase = 'expired'; clear(); container.textContent = 'Your session expired. Sign in again to continue.'; };
+  window.addEventListener('doctorcre-session-invalidated', expire);
+  window.addEventListener('pagehide', expire);
+  container.textContent = 'Opening your market study…';
+  const load = async () => {
+    try {
+      const publication = await options.load({ signal: controller.signal });
+      if (phase !== 'loading') return;
+      phase = 'ready'; container.textContent = '';
+      panel = mountMarketStudy(container, { package: publication, ...(options.modules ? { modules: options.modules } : {}) });
+    } catch {
+      if (phase !== 'loading') return;
+      phase = 'unavailable'; container.textContent = 'Market study unavailable. Try opening the portal again.';
+    }
+  };
+  void load();
+  return { dispose() {
+    phase = 'disposed'; clear();
+    window.removeEventListener('doctorcre-session-invalidated', expire);
+    window.removeEventListener('pagehide', expire);
+    container.textContent = '';
+  } };
+}
