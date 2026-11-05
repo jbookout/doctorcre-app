@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr622-s1-j339-inbox-paint",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "home-inbox-formatters",
+    "predicate": "The deployed app release contains this change and Home displays its inbox heading, card titles and Chicago completion labels without a page error.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release identifies the merged source revision; a read-only Home walk preserves inbox card content and completion labels.",
+    "input_class": "authorized signed-in Home read only",
+    "deadline_seconds": 120
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 100, "max_records": 1000, "max_runtime_seconds": 180, "max_artifact_bytes": 1048576}
+}

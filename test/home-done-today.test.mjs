@@ -70,3 +70,20 @@ test('reopen then recomplete uses latest source completion, with exact retry ide
   assert.equal(completionGroups([first], new Date(second.completed_at)).today.length, 0);
   assert.deepEqual(completionGroups([second], new Date(second.completed_at)).today.map(x => x.item_id), [item.item_id]);
 });
+
+test('completion grouping has a fixed formatter setup cost across repeated 1000-card snapshots', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const compiled = await build({ entryPoints: ['src/ui/home/sections.tsx'], bundle: true, write: false, platform: 'node', format: 'cjs' });
+  let constructors = 0;
+  const DateTimeFormat = new Proxy(Intl.DateTimeFormat, { construct(target, args) { constructors++; return Reflect.construct(target, args); } });
+  const sandbox = { exports: {}, Intl: { DateTimeFormat }, Date, process: { env: { NODE_ENV: 'production' } } };
+  sandbox.module = { exports: sandbox.exports };
+  runInNewContext(compiled.outputFiles[0].text, sandbox);
+  const items = Array.from({ length: 1000 }, (_, index) => done(String(index), index % 2 ? '2026-11-04T06:10:00Z' : '2026-11-03T06:10:00Z'));
+  for (let index = 0; index < 3; index++) {
+    const grouped = sandbox.module.exports.completionGroups(items, new Date('2026-11-04T18:00:00Z'));
+    assert.equal(grouped.today.length, 500);
+    assert.equal(grouped.earlier.length, 500);
+  }
+  assert.ok(constructors <= 3, `formatter setup must be bounded independently of snapshot size, got ${constructors}`);
+});
