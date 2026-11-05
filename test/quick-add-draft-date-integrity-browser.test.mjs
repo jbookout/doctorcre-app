@@ -20,6 +20,11 @@ for (const theme of ['light', 'dark']) for (const width of [390, 1440]) {
     await page.locator('#quickAddForm').evaluate(form => form.requestSubmit());
     assert.match(await page.locator('#quickAddQuestion').textContent(), /2026-02-31.*review|review.*2026-02-31/i);
     assert.equal(await page.locator('#quickAddInput').inputValue(), 'Call lender');
+    await page.locator('#quickAddInput').fill('Call lender after review');
+    await page.locator('#quickAddDate').dispatchEvent('change');
+    await page.locator('#quickAddForm').evaluate(form => form.requestSubmit());
+    assert.equal(await page.locator('#quickAddInput').inputValue(), 'Call lender after review');
+    await page.locator('#quickAddInput').fill('Call lender');
     await page.locator('#quickAddDraft').click();
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:quick-add-drafts:v1:joe')).length), 1);
     await mkdir('/tmp/WR617.S18.J1-evidence', { recursive: true });
@@ -29,5 +34,6 @@ for (const theme of ['light', 'dark']) for (const width of [390, 1440]) {
     await page.locator('#quickAddForm').evaluate(form => form.requestSubmit());
     await page.waitForFunction(() => document.getElementById('quickAddInput').value === '');
     assert.equal(await page.locator('#quickAddDate').inputValue(), '');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:quick-add-drafts:v1:joe')).length), 0);
   });
 }

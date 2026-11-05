@@ -89,6 +89,9 @@ test('stored invalid dates preserve exact text and raw date with a review dispos
   storage.setItem('doctorcre:quick-add-drafts:v1:joe', JSON.stringify(values.map((dueDate, i) => ({ id: String(i), sentence: '  Call lender  ', dueDate, savedAt: 17 }))));
   const drafts = createLocalDrafts({ storage, viewer: 'joe' });
   assert.deepEqual(drafts.list().map(d => [d.sentence, d.dueDate, d.dateReviewRequired]), values.map(d => ['  Call lender  ', d, true]));
+  assert.equal(matchingDraftId(drafts.list(), '0', '  Call lender  ', ''), null);
+  assert.equal(matchingDraftId(drafts.list(), '0', '  Call lender  ', '2028-02-29'), '0');
+  assert.equal(matchingDraftId(drafts.list(), '0', 'Changed text', '2028-02-29'), null);
   assert.equal(drafts.remove('0'), true);
   assert.equal(drafts.remove('0'), false);
   for (let i = 0; i < 40; i++) drafts.save('Next call');
