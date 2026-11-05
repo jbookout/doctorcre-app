@@ -1,0 +1,30 @@
+stateDiagram-v2
+    [*] --> Ready
+    Ready --> Pending: Open filing editor
+    Pending --> Editing: Deal read succeeds
+    Pending --> Unavailable: Network failure
+    Unavailable --> Ready: Cancel
+    Editing --> Ready: Cancel
+    Editing --> Previewing: Review selected deal
+    Previewing --> Preview: Exact target accepted
+    Previewing --> Recovery: Preview refused
+    Preview --> Saving: Confirm
+    Saving --> Recovery: Outcome unknown
+    Recovery --> Saving: Check outcome with original request
+    Saving --> Done: Matching receipt
+    Ready --> NewEditing: Open new deal
+    NewEditing --> Creating: Submit new deal
+    Creating --> Previewing: Deal created
+    Creating --> Recovery: Creation outcome unknown
+    Preview --> Created: Cancel created filing
+    Previewing --> Created: Created filing preview fails
+    Created --> Previewing: Review created deal
+    Pending --> Retired: Authorization lost
+    Previewing --> Retired: Authorization lost
+    Saving --> Retired: Authorization lost
+    Creating --> Retired: Authorization lost
+    Retired --> Retired: Late result or retained event
+    Pending --> Disposed: Parent removes editor
+    Disposed --> Disposed: Late result or retained event
+    %% never Retired exposes edit controls or accepts a write.
+    %% never Disposed accepts a late result.

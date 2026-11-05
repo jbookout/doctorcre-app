@@ -42,8 +42,8 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   const retained = client.getPendingEmailAction?.(row.id);
   if (retained) model.state = { kind: 'unknown', ...retained };
   const root = createRoot(host);
-  let disposed = false, enabled = true;
-  const current = () => !disposed;
+  let disposed = false, retired = false, enabled = true;
+  const current = () => !disposed && !retired;
   const button = (action: string, label: string) => <button type="button" className="btn home-outline" data-followup={action}>{label}</button>;
   const locked = () => !['idle', 'refused'].includes(model.state.kind);
   const pending = () => ['busy', 'unknown', 'creation-unknown', 'created'].includes(model.state.kind);
@@ -124,12 +124,25 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
       select.addEventListener('change', () => { draft.dealName = choices.find(item => item.id === select.value)?.name || ''; });
       const reasons = host.querySelector('[data-deal-reasons]');
       if (reasons) reasons.innerHTML = suggested.map(item => `<p><a href="/deals?deal=${encodeURIComponent(item.deal)}">${escape(item.name)}</a> · ${escape(item.reasons.join('; '))}</p>`).join('') || '<p>No suggested deals. Search all accessible deals.</p>';
-    } catch { if (current()) message('Could not load deals. Cancel and try again.'); }
+    } catch (error) {
+      if (!current() || model.state.kind !== 'editing' || model.state.draft !== draft) return;
+      if (!retireIfDenied(error)) message('Could not load deals. Cancel and try again.');
+    }
+  }
+  function retireIfDenied(error: unknown) {
+    const value = error && typeof error === 'object' ? record(error) : {};
+    if (![401, 403].includes(Number(value.status)) && value.code !== 'session_changed') return false;
+    retired = true; enabled = false;
+    model.state = { kind: 'refused', message: 'Sign in to review email follow-ups.' };
+    host.inert = true;
+    flushSync(() => root.render(null));
+    denied();
+    return true;
   }
   async function failure(error: unknown, fallback: State, createdDraft?: Draft) {
     if (!current()) return;
     const value = error && typeof error === 'object' ? record(error) : {};
-    if ([401, 403].includes(Number(value.status)) || value.code === 'session_changed') { denied(); return; }
+    if (retireIfDenied(error)) return;
     const payload = value.payload && typeof value.payload === 'object' ? record(value.payload) : {};
     if (fallback.kind === 'unknown' && isRequest(value.pendingRequest) && value.pendingRequest.proposal_id === row.id) {
       model.state = { ...fallback, method: value.pendingMethod === 'confirmEmailFiling' || value.pendingMethod === 'snoozeEmailProposal' || value.pendingMethod === 'handleEmailProposal' ? value.pendingMethod : fallback.method, request: value.pendingRequest }; render(); return;
@@ -138,6 +151,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     render();
   }
   async function write(method: Method, request: Request, createdDraft?: Draft, savedDraft?: Draft) {
+    if (!current()) return;
     model.state = { kind: 'busy' }; render();
     try {
       const result = method === 'confirmEmailFiling' ? await client.confirmEmailFiling(request, { activityId: row.source.activity_id }) : await client[method](request);
@@ -152,6 +166,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     } catch (error) { await failure(error, { kind: 'unknown', method, request, ...(createdDraft ? { createdDraft } : {}), ...(savedDraft ? { savedDraft } : {}) }, createdDraft); }
   }
   async function preview(draft: Draft) {
+    if (!current()) return;
     const request = { proposal_id: row.id, base_version: draft.baseVersion, deal: draft.deal, note: draft.note, disposition: draft.action === 'handled' ? 'handled' : 'filed', ...(draft.reason.trim() ? { correction_reason: draft.reason.trim() } : {}), idempotency_key: crypto.randomUUID() };
     model.state = { kind: 'busy' }; render();
     try {
@@ -160,11 +175,13 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
       if (shown.contract !== 'email-followups.v2' || shown.proposal_id !== row.id || shown.deal !== draft.deal || shown.base_version !== draft.baseVersion || shown.activity_id !== row.source.activity_id || shown.evidence_quote !== row.source.evidence_quote || shown.requires_confirmation !== true || typeof shown.proposal_digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(shown.proposal_digest)) throw Error('Invalid exact-target preview');
       model.state = { kind: 'preview', draft, request: { ...request, proposal_digest: shown.proposal_digest } }; render();
     } catch (error) {
+      if (!current() || retireIfDenied(error)) return;
       if (draft.action === 'new' && current()) { model.state = { kind: 'created', draft, message: 'Deal created. Filing was not confirmed. Review the created deal before continuing.' }; render(); }
       else await failure(error, { kind: 'refused', message: 'Could not preview the selected deal. Refresh and review again.' });
     }
   }
   async function create(draft: Draft, request: { name: string; client: string; idempotency_key: string }) {
+    if (!current()) return;
     model.state = { kind: 'busy' }; render();
     try {
       const result = await client.createDeal(request);
@@ -176,7 +193,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   const click = (event: Event) => {
     if (!(event.target instanceof host.ownerDocument.defaultView!.Element)) return;
     const action = event.target.closest<HTMLElement>('[data-followup]')?.dataset.followup;
-    if (!enabled) return;
+    if (!current() || !enabled) return;
     const state = model.state;
     if (action === 'refresh') { model.state = { kind: 'idle' }; changed(); render(); }
     if (action === 'cancel') { model.state = state.kind === 'preview' && state.draft.action === 'new' ? { kind: 'created', draft: state.draft, message: 'Deal created. Filing cancelled. Review the created deal before continuing.' } : { kind: 'idle' }; render(); }
@@ -191,6 +208,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
     }
   };
   const input = (event: Event) => {
+    if (!current()) return;
     const target = event.target;
     if (!(target instanceof host.ownerDocument.defaultView!.HTMLElement) || (model.state.kind !== 'editing' && model.state.kind !== 'created')) return;
     if (!(target instanceof host.ownerDocument.defaultView!.HTMLInputElement || target instanceof host.ownerDocument.defaultView!.HTMLTextAreaElement || target instanceof host.ownerDocument.defaultView!.HTMLSelectElement)) return;
@@ -200,7 +218,7 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   };
   const submit = (event: Event) => {
     event.preventDefault();
-    if (!enabled || model.state.kind !== 'editing') return;
+    if (!current() || !enabled || model.state.kind !== 'editing') return;
     const draft = model.state.draft;
     const request = { proposal_id: row.id, base_version: draft.baseVersion, note: draft.note, idempotency_key: crypto.randomUUID() };
     if (draft.action === 'defer') {
@@ -216,6 +234,6 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
   };
   host.addEventListener('click', click); host.addEventListener('input', input); host.addEventListener('change', input); host.addEventListener('submit', submit);
   render();
-  return { locked, pending, done: () => model.state.kind === 'done', update(next: Row, ready: boolean) { row = next; enabled = ready; host.inert = !ready; syncControls(); }, dispose() { disposed = true; flushSync(() => root.unmount()); host.removeEventListener('click', click); host.removeEventListener('input', input); host.removeEventListener('change', input); host.removeEventListener('submit', submit); } };
+  return { locked, pending, done: () => model.state.kind === 'done', update(next: Row, ready: boolean) { if (!current()) return; row = next; enabled = ready; host.inert = !ready; syncControls(); }, dispose() { disposed = true; flushSync(() => root.unmount()); host.removeEventListener('click', click); host.removeEventListener('input', input); host.removeEventListener('change', input); host.removeEventListener('submit', submit); } };
 }
 export { createReplyDeviceDrafts } from './reply-device-drafts';
