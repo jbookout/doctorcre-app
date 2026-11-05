@@ -12,6 +12,11 @@
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; background: var(--ground); color: var(--fg); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
+body.tour-embedded { min-width: 0; padding: 0; }
+body.tour-embedded .layout { display: block; min-height: 0; }
+body.tour-embedded .tours-heading { padding: var(--space-3) 0; }
+body.tour-embedded .workspace { min-width: 0; }
+body.tour-embedded #create-subject-type, body.tour-embedded #create-subject-id { pointer-events: none; }
 h1, h2, h3, h4 { margin: 0; font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); color: var(--fg); }
 p { margin: 0; }
 a { color: var(--fg); }

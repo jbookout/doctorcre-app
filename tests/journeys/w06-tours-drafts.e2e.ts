@@ -14,46 +14,12 @@ function tourData(url: URL) {
   return {};
 }
 
-// W6: the tour planner prefills from a client, undoes an edit, and keeps its
-// drafts in this tab across a reload.
-test('W6 Tours drafts prefill from a client, undo an edit and survive a reload', async ({ app, browser, screen }) => {
+test('W6 Tours lists saved tours and keeps planning inside deal workspaces', async ({ app, browser }) => {
   await browser.route(/\/api\/(tours|v1\/business)\//, route =>
     route.fulfill({ json: { data: tourData(new URL(route.request.url)), csrf_token: 'synthetic-e2e-token' } }));
   await app.open('/tours');
-
-  // S6: the page title stays in the workspace at the top on every target,
-  // including 390px phones; only the freshness control rides the status band.
-  const title = await browser.evaluate(() => {
-    const heading = document.querySelector('.planner-header h1');
-    const box = heading?.getBoundingClientRect();
-    return { inStatus: Boolean(heading?.closest('.app-layout-status')), top: box ? box.top + scrollY : -1 };
-  });
-  expect(title.inStatus).toBe(false);
-  expect(title.top).toBeGreaterThanOrEqual(0);
-  expect(title.top).toBeLessThan(160);
-
-  await browser.locator('#plan-client').selectOption('Demo Harbor Practice');
-  await expect(browser.locator('#plan-name')).toHaveValue(/Demo Harbor/);
-  await expect(browser.locator('#plan-area')).toHaveValue('Pensacola, FL');
-  await browser.locator('#plan-area').fill('Typed tour area');
-  await screen.getByLabel('Undo tour edit', { exact: true }).tap();
-  await expect(browser.locator('#plan-area')).toHaveValue('Pensacola, FL');
-  await browser.locator('#plan-date').fill('2026-10-08');
-
-  await browser.locator('[data-market="Pensacola, FL"]').tap();
-  await expect(browser.locator('#space-area')).toHaveValue('Pensacola, FL');
-  await browser.locator('#space-minSize').fill('1800');
-  await browser.locator('#space-requirements').fill('Ground floor · accessible entry');
-  await browser.locator('#save-search').tap();
-  await expect(browser.locator('#space-message')).toContainText('saved');
-
-  await browser.reload();
-  await expect(browser.locator('#plan-name')).toHaveValue(/Demo Harbor/);
-  await expect(browser.locator('#plan-date')).toHaveValue('2026-10-08');
-  await expect(browser.locator('#space-requirements')).toHaveValue('Ground floor · accessible entry');
-
+  await expect(browser.locator('#plan-form, #create-tour-form')).toHaveCount(0);
   await browser.locator('#upcoming-tours .tour-button').first().tap();
   await expect(browser.locator('#detail-title')).toContainText('Demo Gulf Coast Tour');
-  await browser.locator('#tour-dialog #detail-close').tap();
-  await expect(browser.locator('#tour-dialog')).toBeHidden();
+  await expect(browser.locator('#detail-content a')).toHaveAttribute('href', /route-editor\.html\?tour=/);
 });

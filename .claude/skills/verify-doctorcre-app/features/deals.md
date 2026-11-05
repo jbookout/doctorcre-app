@@ -39,6 +39,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Terms in Overview loads its React island on first visibility or Show sourced terms. Scroll the region into view before expecting its content. It shows canonical values and cited observations. `node --test test/fact-review-client.test.mjs` covers both adapters. `npx playwright test --project=fixtures tests/fixtures/fact-review.spec.mjs --trace=on` resolves the three-document conflict at 390px and 1440px in both themes and writes captures and traces under `.e2e/fixture-playwright/`. It also covers stale evidence, draft retention, uncertain saves, unit preservation and unavailable stored-document metadata. The synthetic `d14` fixture has three stored attachments. Citations and dated source choices use list-deal-documents, pinned to producer #2762. Unavailable document metadata keeps review usable and disables recording and corrections.
 
+- Documents lists canonical deal files through `listDealDocuments` and `deal-documents.v1`. Open a deal, then select Documents. Rows show stored metadata and canonical UUID/hash identity, with no download or sharing controls. `node --test test/deal-documents-browser.test.mjs` verifies 390px and 1440px in both themes, loading, empty and unavailable states, retry, session expiry, bounded pagination and a late response after leaving the deal. Synthetic captures are under `out/test-artifacts/deal-documents/`.
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.

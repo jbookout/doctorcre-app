@@ -111,7 +111,7 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
   };
   input.addEventListener('input',inputChanged);
   const shortcut=event=>{
-    if(event.isComposing||event.keyCode===229||event.altKey||event.shiftKey||!(event.metaKey||event.ctrlKey)||!['d','k'].includes(event.key.toLowerCase()))return;
+    if(event.isComposing||event.keyCode===229||event.altKey||event.shiftKey||!(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='d')return;
     event.preventDefault(); // cancel bookmarks/search even when the chord repeats
     if(!event.repeat)open();
   };

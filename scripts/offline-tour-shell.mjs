@@ -13,22 +13,22 @@ export async function offlineTourShell(readSource) {
     const source = String(bytes);
     sources.set(path, source);
     const references = path.endsWith('.html')
-      ? [...source.matchAll(/<(?:script|link)\b[^>]*(?:src|href)=["']([^"']+)["']/g)].map(match => match[1])
+      ? [...source.matchAll(/<(?:script|link)\b[^>]*(?:src|href)=["']([^"']+)["']/g)].map(match => ({ reference: match[1], dynamic: false }))
       : /\.m?js$/.test(path)
-        ? [...source.matchAll(/\b(?:from\s*|import\s*\(\s*|import\s+)["']([^"']+)["']|new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url/g)].map(match => match[1] || match[2])
+        ? [...source.matchAll(/\b(?:from\s*|import\s*\(\s*|import\s*)["']([^"']+)["']|new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url/g)].map(match => ({ reference: match[1] || match[2], dynamic: /^import\s*\(/.test(match[0]) }))
         : path.endsWith('.css')
-          ? [...source.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/g)].map(match => match[1])
+          ? [...source.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/g)].map(match => ({ reference: match[1], dynamic: false }))
           : [];
-    for (const reference of references) {
+    for (const { reference, dynamic } of references) {
       if (!reference.startsWith('.') && !reference.startsWith('/')) continue;
       const url = new URL(reference, `https://offline.invalid${path}`);
       if (url.origin !== 'https://offline.invalid') continue;
       // Tour day supplies no basemap style. Its ordered itinerary works
       // without the optional engine, worker and provider styling.
       if (url.pathname.startsWith('/tours/vendor/maplibre-gl-')) continue;
-      // Tour day has no React islands. Its shared shell imports optional UI
-      // for other pages, which does not belong in the saved itinerary cache.
-      if (isUiAsset(url.pathname.slice(1))) continue;
+      // Optional UI islands stay online-only. Static imports and their shared
+      // chunks must be cached so the shell can mount without a connection.
+      if (dynamic && isUiAsset(url.pathname.slice(1))) continue;
       if (!/\.(?:html|css|m?js)$/.test(url.pathname)) continue;
       assert.ok(['/data/fixtures/fact-review.mjs', '/data/fixtures/practice-origination.mjs'].includes(url.pathname) || /^\/(?:js|css|tours)\/.+\.(?:html|css|m?js)$/.test(url.pathname), `unsupported offline code dependency: ${reference}`);
       await visit(url.pathname);

@@ -1,5 +1,5 @@
 import { expect } from 'e2e';
-import { reproTest } from './support.mjs';
+import { reproTest, proveVisibleFailure } from './support.mjs';
 
 const test = reproTest();
 const surfaces = [
@@ -12,12 +12,10 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await browser.setViewport(viewport);
     const origin = new URL(app.baseUrl).origin;
     const refresh = viewport.width < 760 ? '#appSyncRefresh' : surface.refresh;
-    // The phone shows planner feedback while its library lives in the sidebar.
-    const failure = viewport.width < 760 && surface.name === 'Tours' ? '#plan-message' : surface.failure;
-    let refusedReads = 0, refusedClientReads = 0;
+    const failure = surface.failure;
+    let refusedReads = 0;
     let retryGate = null;
     const reject = async route => {
-      if (route.request.url.includes('/api/v1/business/clients?')) refusedClientReads += 1;
       if (surface.name === 'Tours' ? route.request.url.includes('/api/tours/library')
         : surface.name === 'Leads' ? route.request.url.includes('/api/system-work/session')
         : JSON.parse(route.request.postData || '{}').params?.name === 'deal-room-board') refusedReads += 1;
@@ -53,12 +51,8 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
       }).toBe(true);
       failedBeforeRetry = (await boardRead()).failed;
     }
-    if (surface.name === 'Tours') await browser.evaluate(() => {
-      window.qa008TerminalPaints = 0;
-      const observer = new MutationObserver(records => { window.qa008TerminalPaints += records.length; });
-      observer.observe(document.querySelector('#planner-updated'), { childList: true });
-    });
-    const beforeRetry = refusedReads, beforeClients = refusedClientReads;
+    if (surface.name === 'Tours') await proveVisibleFailure(browser, failure);
+    const beforeRetry = refusedReads;
     let releaseRetry;
     retryGate = new Promise(resolve => { releaseRetry = resolve; });
     if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
@@ -71,18 +65,12 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     if (surface.name === 'Leads') await expect(browser.locator('#leadBoard')).toHaveAttribute('aria-busy', 'true');
     if (surface.name === 'Deals') await expect.poll(async () => (await boardRead()).board_read_in_flight).toBe(true);
     if (surface.name === 'Tours') {
-      await expect.poll(() => refusedClientReads).toBeGreaterThan(beforeClients);
-      expect(await browser.evaluate(() => window.qa008TerminalPaints)).toBe(0);
-      const responses = [
-        browser.waitForResponse('**/api/tours/library'),
-        browser.waitForResponse('**/api/v1/business/clients?**'),
-      ];
+      await expect(browser.locator(surface.freshness)).toHaveText('Updating…');
+      const response = browser.waitForResponse('**/api/tours/library');
       releaseRetry();
-      for (const response of await Promise.all(responses)) {
-        expect(response.status).toBe(status);
-        await response.json(); // The supported response API waits for the body.
-      }
-      await expect.poll(() => browser.evaluate(() => window.qa008TerminalPaints)).toBeGreaterThan(0);
+      const refused = await response;
+      expect(refused.status).toBe(status);
+      await refused.json();
     } else {
       releaseRetry();
       if (surface.name === 'Leads') await expect(browser.locator('#leadBoard')).toHaveAttribute('aria-busy', 'false');
@@ -94,6 +82,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     retryGate = null;
     await expect(browser.locator(failure)).toContainText(surface.settled);
     await expect(browser.locator(surface.freshness)).toContainText(/unavailable/i);
+    if (surface.name === 'Tours') await proveVisibleFailure(browser, failure);
     // These local interactions repaint the settled failed read.
     if (surface.name === 'Leads') {
       await browser.locator('#appSidebarToggle').tap();
