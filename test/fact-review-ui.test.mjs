@@ -38,6 +38,24 @@ for (const expiry of ['invalid', undefined, null, '2026-01-01T00:00:00Z', '2026-
   });
 }
 
+test('disposing a loading panel ignores its delayed response', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture();
+  const response = await client.listFactReview({ entity_ref: 'd14', include_resolved: true });
+  let finish, started;
+  const loading = new Promise(resolve => { started = resolve; });
+  client.listFactReview = () => new Promise(resolve => { finish = resolve; started(); });
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await loading;
+  panel.dispose();
+  finish(response);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(root.textContent, '');
+  dom.window.close();
+});
+
 test('terms show how values were read and retain the review reason after a conflict', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
   globalThis.FormData = dom.window.FormData;
