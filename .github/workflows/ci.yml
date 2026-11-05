@@ -90,7 +90,6 @@ jobs:
           retention-days: 14
 
   performance:
-    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -117,10 +116,9 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run build
       - run: npm run performance:check
-        if: ${{ github.event_name == 'pull_request' }}
         env:
           PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+      - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: performance-${{ github.sha }}-${{ github.run_attempt }}
@@ -131,7 +129,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Publish performance summary
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() }}
         run: cat test-artifacts/performance/summary.md >> "$GITHUB_STEP_SUMMARY"
 
   live:
@@ -239,9 +237,9 @@ jobs:
           test "$CHECKS" = success
           test "$LIVE" = success
           test "$SHARDS" = success
+          test "$PERFORMANCE" = success
           if [ "$EVENT" = pull_request ]; then
             test "$PRODUCTION_PROOF" = success
-            test "$PERFORMANCE" = success
           fi
 
   preview:
