@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { JSDOM } from 'jsdom';
@@ -151,12 +152,11 @@ test('Home keeps its context map without development projects', async () => {
   } finally { panel.dispose(); dom.window.close(); }
 });
 
-test('public module consumers can register planned and publication-specific routes', async () => {
+test('public module consumers can register planned and publication-specific routes', async t => {
   await mkdir('out', { recursive: true });
-  const dir = await mkdtemp(resolve('out/portal-consumer-'));
-  try {
-    const file = resolve(dir, 'consumer.tsx');
-    await writeFile(file, `import type { PortalModule } from '../../src/ui/portal/shell-home-sources';
+  const dir = temporaryDirectory(resolve('out/portal-consumer-'), t);
+  const file = resolve(dir, 'consumer.tsx');
+  await writeFile(file, `import type { PortalModule } from '../../src/ui/portal/shell-home-sources';
 const modules = [
   { route: 'documents', label: 'Documents', available: () => true, render: () => null },
   { route: 'roadmap', label: 'Roadmap', available: () => true, render: () => null },
@@ -164,7 +164,6 @@ const modules = [
 ] satisfies PortalModule[];
 void modules;
 `);
-    const result = spawnSync(resolve('node_modules/.bin/tsc'), ['--ignoreConfig', '--noEmit', '--strict', '--jsx', 'react-jsx', '--target', 'ES2022', '--moduleResolution', 'bundler', '--module', 'ESNext', file], { encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-  } finally { await rm(dir, { recursive: true, force: true }); }
+  const result = spawnSync(resolve('node_modules/.bin/tsc'), ['--ignoreConfig', '--noEmit', '--strict', '--jsx', 'react-jsx', '--target', 'ES2022', '--moduleResolution', 'bundler', '--module', 'ESNext', file], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
