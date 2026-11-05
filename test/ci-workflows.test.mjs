@@ -6,7 +6,6 @@ import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
 import { checkActionPins } from "../scripts/check-action-pins.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
