@@ -417,7 +417,7 @@ test('CI metadata edits queue fresh validation without cancelling the active run
 test('CI isolates PRs, workflows, main pushes and merge-group runs', () => {
   const active = validationPolicy();
   assert.notEqual(validationPolicy({ number: 8 }).group, active.group);
-  assert.notEqual(validationPolicy({ workflow: 'Review gate' }).group, active.group);
+  assert.notEqual(validationPolicy({ workflow: 'Another workflow' }).group, active.group);
   for (const eventName of ['push', 'merge_group']) {
     const policy = validationPolicy({ eventName });
     assert.equal(policy.triggers, eventName === 'push');

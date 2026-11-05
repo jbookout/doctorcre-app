@@ -83,3 +83,10 @@ The five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`,
 ### Domain docs
 
 Single-context; the glossary and decisions live in the CARR doctrine store and decision log, not repo files. See `docs/agents/domain.md`.
+
+## Pull request approval
+
+Approval is GitHub required review by the CARR review App
+(`doctorcre-carr-review[bot]`), separate from required source CI. GitHub dismisses
+stale approvals after pushes and requires approval of the latest push. The
+coordinator submits the independent reviewer's verdict as a native App review.
