@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
-import { chromium } from './browser-harness.mjs';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const evidence = join(root, 'out/test-artifacts/deal-checklist');
 const focusEvidence = join(root, '.github/pr-evidence/WR39.S1.J15');
@@ -25,6 +25,51 @@ after(async () => {
   await browser?.close();
   if (server) await new Promise(resolve => server.close(resolve));
   if (outDir) await rm(outDir, { recursive: true, force: true });
+});
+
+async function refreshChecklist(page, trigger, visible) {
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    window.checklistPreviousDetail = state.panelDetail;
+  });
+  await trigger();
+  await waitForAsync(page, async () => {
+    const { state } = await import('/js/pipeline.js');
+    return state.panelDetail !== window.checklistPreviousDetail;
+  });
+  await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, visible);
+}
+
+test('Checklist refresh waits for a held detail read even when checklist visibility is unchanged', async t => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'held-checklist-refresh', viewer: 'joe', reset: true } });
+  await page.goto(`${origin}/deals?mode=live`);
+  await page.locator('.card-open').first().click();
+  await page.locator('.deal-opening-snapshot').waitFor();
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const get = state.client.getDeal.bind(state.client);
+    window.heldChecklistReads = 0;
+    state.client.getDeal = async (...args) => {
+      window.heldChecklistReads++;
+      await new Promise(resolve => { window.releaseChecklistRead = resolve; });
+      return get(...args);
+    };
+  });
+  const visible = await page.locator('.deal-checklist').count() > 0;
+  let settled = false;
+  const refresh = refreshChecklist(page, () => page.locator('.deal-freshness [data-refresh-detail]').click(), visible)
+    .then(() => { settled = true; });
+  try {
+    await page.waitForFunction(() => !!window.releaseChecklistRead);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(settled, false, 'refresh remains pending until the held detail read finishes');
+  } finally {
+    await page.evaluate(() => window.releaseChecklistRead());
+    await refresh;
+  }
+  assert.equal(await page.evaluate(() => window.heldChecklistReads), 1, 'refresh uses exactly one detail read');
 });
 
 for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`signed-in checklist preserves drafts through unavailable and recovered refreshes at ${width}px in ${theme}`, async t => {
@@ -134,13 +179,14 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
     const reads = await page.evaluate(() => window.checklistReads);
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
     const recovering = await checklist.getByText('Requirements could not be read.', { exact: true }).count() > 0;
-    if (recovering) {
-      const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
-      await retry.focus();
-      await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
-    }
-    else await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
-    await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, !['empty', 'absent'].includes(mode));
+    await refreshChecklist(page, async () => {
+      if (recovering) {
+        const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
+        await retry.focus();
+        await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
+      }
+      else await page.locator('.deal-freshness [data-refresh-detail]').click();
+    }, !['empty', 'absent'].includes(mode));
     if (mode === 'empty' && recovering) {
       const refresh = page.locator('.deal-freshness [data-refresh-detail]');
       assert.equal(await refresh.evaluate(element => document.activeElement === element), true, 'empty recovery returns focus to the header refresh control');
