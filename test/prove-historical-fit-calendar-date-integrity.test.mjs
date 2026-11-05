@@ -15,6 +15,21 @@ function cli(args) {
     child.on('error', reject); child.on('exit', code => resolve({ code, stdout, stderr }));
   });
 }
+test('CLI help documents every flag without contacting the origin', async t => {
+  let requests = 0;
+  const server = createServer((req, res) => { requests++; res.writeHead(500); res.end(); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  for (const args of [['--help'], ['--help', '--origin', origin]]) {
+    const result = await cli(args);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    for (const flag of ['--help', '--origin', '--timeout-ms', '--expected-revision']) assert.ok(result.stdout.includes(flag), flag);
+    assert.match(result.stdout, /30000/);
+    assert.equal(requests, 0, 'help must not run the proof');
+  }
+});
 test('CLI refuses unsafe origin and invalid arguments', () => {
   for (const args of [[], ['--origin', 'http://example.com'], ['--origin', 'https://example.com/path'], ['--origin', 'https://example.com', '--timeout-ms', 'NaN'], ['--origin', 'https://example.com', '--expected-revision', 'main']]) {
     assert.throws(() => options(args));
