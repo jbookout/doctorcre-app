@@ -37,3 +37,23 @@ for (const theme of ['light', 'dark']) for (const width of [390, 1440]) {
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:quick-add-drafts:v1:joe')).length), 0);
   });
 }
+
+test('account replacement drops the prior date review and sentence', async t => {
+  const { openTasks, waitForTasks } = await import('./task-page-fixture.mjs');
+  const { page } = await openTasks(t, `
+    localStorage.setItem('doctorcre:quick-add-drafts:v1:joe', JSON.stringify([{ id: 'bad-date', sentence: 'Call lender', dueDate: '2026-02-31', savedAt: 17 }]));
+    const getBoard = c.getBoard;
+    c.getBoard = async args => ({ ...await getBoard(args), actor: window.dateActor || 'joe' });
+  `);
+  await waitForTasks(page);
+  await page.locator('[data-restore-draft="bad-date"]').click();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await waitForTasks(page);
+  await page.locator('#quickAddForm').evaluate(form => form.requestSubmit());
+  assert.match(await page.locator('#quickAddQuestion').textContent(), /Review the saved date/);
+  await page.evaluate(() => { window.dateActor = 'dell'; window.dispatchEvent(new Event('online')); });
+  await page.waitForFunction(() => document.getElementById('quickAddInput').value === '');
+  await waitForTasks(page);
+  assert.equal(await page.locator('[data-restore-draft="bad-date"]').count(), 0);
+  assert.doesNotMatch(await page.locator('#quickAddQuestion').textContent(), /Review the saved date/);
+});
