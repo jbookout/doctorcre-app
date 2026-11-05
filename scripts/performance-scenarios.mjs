@@ -4,6 +4,8 @@ export const profile = Object.freeze({ viewport: { width: 390, height: 844 }, de
   samples: 3, aggregation: 'median', interaction: 'pointerdown timestamp to verified state plus two animation frames' });
 
 export async function applyPhoneProfile(context, page) {
+  // Home's dated fixture tasks must stay outside Today; keep timers and performance.now real.
+  await page.clock.setFixedTime(new Date('2026-11-04T18:00:00Z'));
   const cdp = await context.newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuSlowdown });
   await cdp.send('Network.enable');

@@ -1,0 +1,12 @@
+stateDiagram-v2
+  Unknown: Waiting person not recorded
+  Recorded: Recorded person and reason visible
+  Review: Inline evidence open with recorded person visible
+  Confirmed: Completed receipt visible, waiting person hidden
+  Done: Card in Done today
+  [*] --> Unknown
+  Unknown --> Recorded: Save person and receive canonical readback
+  Recorded --> Review: Open Review card
+  Review --> Confirmed: Mark done and receive exact receipt and readback
+  Confirmed --> Done: Close review
+  Done --> Unknown: Undo using the completion event and receive reopened card

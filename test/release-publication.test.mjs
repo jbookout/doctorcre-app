@@ -42,6 +42,8 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify({args, deploy: !!process.env.CLOUDFLARE_API_TOKEN, unrelated: !!process.env.NEW_SECRET, color: process.env.NO_COLOR})+'\\n');
 if (args.includes('status') && fs.existsSync(${JSON.stringify(join(parent, 'bootstrap'))})) { fs.unlinkSync(${JSON.stringify(join(parent, 'bootstrap'))}); console.error('code: 10007'); process.exit(1); }
+if (args[0] === 'deployments' && args.includes('status')) console.log(JSON.stringify({ versions: [{ version_id: '${versionId}', percentage: 100 }] }));
+if (args[0] === 'versions' && args[1] === 'view') console.log(JSON.stringify({ id: args[2], resources: { bindings: [{ name: 'GIT_SHA', type: 'plain_text', text: '0'.repeat(40) }] } }));
 if (args.includes('upload')) console.log('Worker Version ID: ${versionId}');
 `;
   if (installation === 'missing') {
@@ -101,7 +103,7 @@ test('provider runner owns credential routing across status, upload, promotion a
     assert.equal(f.run('prepare-release').status, 0);
     const result = f.run(`release-${lane}`);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(f.rows().length, 4);
+    assert.equal(f.rows().length, lane === 'production' ? 5 : 4);
     assert.ok(f.rows().every(row => row.deploy && !row.unrelated && row.color === '1'));
     if (lane === 'staging') {
       writeFileSync(join(f.parent, 'bootstrap'), 'synthetic missing Worker');

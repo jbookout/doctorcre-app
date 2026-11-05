@@ -12,13 +12,14 @@ before(async () => { outDir = temporaryDirectory('inline-review-'); await buildA
 after(async () => { await rm(outDir, { recursive: true, force: true }); });
 const id = '00000000-0000-0000-0000-000000000001';
 const eventId = '00000000-0000-0000-0000-000000000002';
-async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', refusal = null, reference = true, missingRecipients = false, initialBody = 'Synthetic body', writeRefusal = null } = {}) {
+async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', refusal = null, reference = true, missingRecipients = false, initialBody = 'Synthetic body', writeRefusal = null, waitingPerson = false } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
-  const row = { item_id: 'one', source_type: kind === 'action' ? 'next_action' : kind === 'reply_draft' ? 'email_proposal' : 'fact_review', source_id: kind === 'fact_review' ? JSON.stringify([id, 'term_months']) : id, source_version: 'v1', source_state: 'needs_attention', title: 'Synthetic review', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: kind === 'action' ? 'Task' : kind === 'reply_draft' ? 'Reply draft' : 'Fact review', merged_source_ids: [], action_id: kind === 'action' ? id : null, action_version: kind === 'action' ? 1 : null, deal_id: null, auto_settled: false, completed_at: null };
+  const row = { waiting_version: 0, waiting_on: null, item_id: 'one', source_type: kind === 'action' ? 'next_action' : kind === 'reply_draft' ? 'email_proposal' : 'fact_review', source_id: kind === 'fact_review' ? JSON.stringify([id, 'term_months']) : id, source_version: 'v1', source_state: 'needs_attention', title: 'Synthetic review', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: kind === 'action' ? 'Task' : kind === 'reply_draft' ? 'Reply draft' : 'Fact review', merged_source_ids: [], action_id: kind === 'action' ? id : null, action_version: kind === 'action' ? 1 : null, deal_id: null, auto_settled: false, completed_at: null };
+  if (waitingPerson) Object.assign(row, { waiting_version: 1, waiting_on: { identity: { kind: 'party', id, available: true, display_name: 'Demo reviewer' }, reason: 'Review the lease terms', evidence: ['call:synthetic'], version: 1 } });
   if (reference) row.review_reference = { kind, item_id: row.item_id, source_version: row.source_version, operations: kind === 'action' ? ['complete-one-action'] : kind === 'reply_draft' ? ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'] : ['resolve-fact-review'] };
   let version = 1, subject = 'Synthetic subject', body = initialBody, fail = refusal;
   const calls = [];
@@ -44,8 +45,8 @@ async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', r
       else {
         version++; row.source_version = `v${version}`; row.review_reference.source_version = row.source_version;
         if (name === 'edit-email-draft') { subject = args.subject; body = args.body; }
-        else if (name === 'reopen-one-action') Object.assign(row, { action_version: version, source_state: 'needs_attention', disposition: 'inbox', section: 'inbox', auto_settled: false });
-        else Object.assign(row, { action_version: kind === 'action' ? version : null, source_state: 'done', disposition: 'settled', section: 'settled', auto_settled: true });
+        else if (name === 'reopen-one-action') Object.assign(row, { completed_at: null, action_version: version, source_state: 'needs_attention', disposition: 'inbox', section: 'inbox', auto_settled: false });
+        else Object.assign(row, { completed_at: new Date().toISOString(), waiting_on: null, waiting_version: row.waiting_version + 1, action_version: kind === 'action' ? version : null, source_state: 'done', disposition: 'settled', section: 'settled', auto_settled: true });
         payload = kind === 'action' ? { ok: true, action_id: id, status: name === 'reopen-one-action' ? 'open' : 'done', version, completion_event_id: eventId } : kind === 'fact_review' ? { ok: true, schema_version: 'fact-review.v1', review_receipt: { entity_ref: id, fact_key: 'term_months' } } : { ok: true, proposal_id: id, version };
         if (fail === 'after_save_change' && name === 'edit-email-draft') { version++; row.source_version = `v${version}`; row.review_reference.source_version = row.source_version; subject = 'Updated elsewhere'; fail = null; }
       }
@@ -245,4 +246,28 @@ test('decline requires a nonblank reason even when content is empty', async t =>
   await panel.getByRole('button', { name: 'Decline draft', exact: true }).click();
   await panel.getByText('Give a reason before declining this draft.', { exact: true }).waitFor();
   assert.equal(calls.filter(c => c.name === 'dismiss-email-proposal').length, 0);
+});
+
+for (const width of [390, 1440]) test(`recorded waiting person clears on inline completion and Undo stays unknown ${width}`, async t => {
+  const { page, panel, calls } = await setup(t, { width, kind: 'action', waitingPerson: true });
+  const row = page.locator('[data-inbox-row="one"]');
+  await row.getByText('Waiting on Demo reviewer', { exact: true }).waitFor();
+  await row.getByText('Review the lease terms', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  assert.equal(await row.getByRole('button', { name: 'Correct waiting person' }).isDisabled(), true);
+  await panel.getByRole('button', { name: 'Mark done', exact: true }).click();
+  await panel.getByText('This card is confirmed. Its current state is shown in your inbox.', { exact: true }).waitFor();
+  assert.equal(await row.getByText(/Waiting on/).count(), 0);
+  await panel.getByRole('button', { name: 'Close review', exact: true }).click();
+  const done = page.getByRole('region', { name: 'Done today', exact: true });
+  await done.locator('[data-inbox-row="one"]').waitFor();
+  await page.screenshot({ path: `test-artifacts/inline-review/waiting-done-${width}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await row.getByText('Waiting on someone · Not recorded', { exact: true }).waitFor();
+  assert.equal(await row.getByText('Waiting on Demo reviewer', { exact: true }).count(), 0);
+  assert.equal(calls.filter(c => c.name === 'complete-one-action').length, 1);
+  assert.equal(calls.find(c => c.name === 'reopen-one-action').args.completion_event_id, eventId);
+  assert.equal(calls.filter(c => ['set-home-waiting', 'clear-home-waiting'].includes(c.name)).length, 0);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: `test-artifacts/inline-review/waiting-undo-${width}.png`, fullPage: true });
 });

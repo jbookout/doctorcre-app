@@ -1,0 +1,28 @@
+stateDiagram-v2
+  s0: request=0 generation=0 shown=0 active=FALSE
+  s1: request=0 generation=1 shown=0 active=FALSE
+  s2: request=0 generation=2 shown=0 active=FALSE
+  s3: request=1 generation=1 shown=0 active=TRUE
+  s4: request=1 generation=1 shown=1 active=FALSE
+  s5: request=1 generation=2 shown=0 active=TRUE
+  s6: request=2 generation=2 shown=0 active=TRUE
+  s7: request=1 generation=1 shown=1 active=TRUE
+  s8: request=1 generation=2 shown=0 active=FALSE
+  s9: request=2 generation=2 shown=2 active=FALSE
+  s10: request=2 generation=2 shown=2 active=TRUE
+  [*] --> s0
+  s0 --> s1: Input
+  s1 --> s2: Input
+  s1 --> s3: Start
+  s2 --> s6: Start
+  s3 --> s4: Finish
+  s3 --> s5: Input
+  s4 --> s7: Start
+  s4 --> s8: Input
+  s5 --> s8: Finish
+  s6 --> s9: Finish
+  s7 --> s4: Finish
+  s7 --> s5: Input
+  s8 --> s6: Start
+  s9 --> s10: Start
+  s10 --> s9: Finish
