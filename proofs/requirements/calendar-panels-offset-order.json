@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "calendar-panels-offset-order",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "calendar-instant-order",
+    "predicate": "Deployed calendar panels order mixed UTC and offset starts by instant and filter elapsed ends numerically while retaining Chicago day links and all-day dates",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "The release-bound runner node scripts/prove-calendar-panels-offset-order.mjs --origin https://app.doctorcre.com --timeout-ms 30000 exits zero with six assertions and deployed asset hashes",
+    "input_class": "read-only deployed app bytes; isolated synthetic meeting rows",
+    "deadline_seconds": 30
+  }],
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 64, "max_records": 7, "max_runtime_seconds": 30, "max_artifact_bytes": 65536 }
+}
