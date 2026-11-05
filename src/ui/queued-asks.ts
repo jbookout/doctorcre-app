@@ -6,9 +6,12 @@ type Options = {
   submit(request: AskRequest): Promise<unknown>; changed?(): void;
 };
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+function json(value: string): unknown {
+  try { return JSON.parse(value); } catch { return null; }
+}
 function parse(value: string | null): QueuedAsk | null {
   if (!value) return null;
-  const v: unknown = JSON.parse(value);
+  const v = json(value);
   if (!v || typeof v !== 'object' || !('kind' in v) || !('request' in v)) return null;
   const r = v.request;
   if (!r || typeof r !== 'object' || !('body' in r) || !('conversation_id' in r) || !('idempotency_key' in r)
@@ -34,29 +37,36 @@ export function createAskOutbox(o: Options) {
   const draftKey = prefix + 'draft';
   let busy = false, stopped = false;
   const retries = new Set<string>();
-  function savedDraft(): { text: string; version: number } {
+  function savedDraft(): { text: string; version: number } | null {
     const raw = o.storage.getItem(draftKey);
-    if (!raw) return { text:'', version:0 };
-    const value: unknown = JSON.parse(raw);
+    if (raw === null) return { text:'', version:0 };
+    const value = json(raw);
     if (!value || typeof value !== 'object' || !('text' in value) || typeof value.text !== 'string'
-      || !('version' in value) || typeof value.version !== 'number') throw Error('Device draft could not be read.');
+      || !('version' in value) || typeof value.version !== 'number' || !Number.isSafeInteger(value.version) || value.version < 0) return null;
     return { text:value.text, version:value.version };
   }
-  const draft = () => savedDraft().text;
-  const entries = (): QueuedAsk[] => {
+  const draft = () => savedDraft()?.text ?? '';
+  const snapshot = () => {
     const rows: QueuedAsk[] = [];
+    const held: string[] = [];
+    const length = o.storage.length;
     // eslint-disable-next-line no-restricted-syntax -- Single finite scan of this device's storage; no network reads.
-    for (let i=0; i<o.storage.length; i++) {
+    for (let i=0; i<length; i++) {
       const key = o.storage.key(i);
-      if (!key?.startsWith(prefix) || key === draftKey) continue;
+      if (!key?.startsWith(prefix)) continue;
+      if (key === draftKey) { if (!savedDraft()) held.push(key); continue; }
       const row = parse(o.storage.getItem(key));
       if (row && row.request.conversation_id === o.conversation && key === prefix + row.request.idempotency_key) rows.push(row);
+      else held.push(key);
     }
-    return rows;
+    return { rows, held };
   };
+  const entries = () => snapshot().rows;
   const put = (row: QueuedAsk) => {
     const key = prefix + row.request.idempotency_key;
-    const current = parse(o.storage.getItem(key));
+    const raw = o.storage.getItem(key);
+    const current = parse(raw);
+    if (raw !== null && !current) throw Error('Saved ask needs recovery. Its original bytes are kept on this device.');
     if (current?.kind === 'accepted') return;
     o.storage.setItem(key, JSON.stringify(row));
     o.changed?.();
@@ -88,8 +98,12 @@ export function createAskOutbox(o: Options) {
     } finally { busy = false; retries.clear(); }
   }
   return {
-    draft, entries,
-    saveDraft(text: string) { o.storage.setItem(draftKey, JSON.stringify({ text, version:savedDraft().version + 1 })); },
+    draft, entries, recovery: () => snapshot().held,
+    saveDraft(text: string) {
+      const current = savedDraft();
+      if (!current) throw Error('Saved draft needs recovery. Its original bytes are kept on this device.');
+      o.storage.setItem(draftKey, JSON.stringify({ text, version:current.version + 1 }));
+    },
     enqueue(text = draft()) {
       if (!text.trim() || text.length > 20000) throw Error('Write an ask of up to 20,000 characters.');
       if (draft() !== text) throw Error('The draft changed in another tab. Reopen it before sending.');

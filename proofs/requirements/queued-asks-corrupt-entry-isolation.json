@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "queued-asks-corrupt-entry-isolation",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "valid-ask-beside-held-corruption",
+    "predicate": "Deployed mountAskComposer renders and accepts only a valid frozen synthetic ask beside corrupt same-scope bytes, preserves the draft and raw bytes, and shows recovery notice at phone and desktop widths in light and dark.",
+    "runner": "node scripts/prove-queued-asks-corrupt-entry-isolation.mjs --origin https://app.doctorcre.com --timeout-ms 30000",
+    "expected_result": "Exit zero with origin, release containing the merged proof revision, deployed module URLs and four assertion receipts.",
+    "input_class": "isolated synthetic storage and submit ports; deployed JavaScript GETs only",
+    "deadline_seconds": 60
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 100, "max_records": 4, "max_runtime_seconds": 60, "max_artifact_bytes": 65536}
+}

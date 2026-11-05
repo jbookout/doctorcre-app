@@ -10,7 +10,7 @@ const labels: Record<QueuedAsk['kind'], string> = {
   accepted:'Received by Dr. CRE. An answer is still pending.',
 };
 export async function mountAskComposer(host: HTMLElement, client: Client, conversation: string) {
-  let closed = false, started = false, starting = false;
+  let closed = false, started = false, starting = false, sessionVerified = false;
   const root = createRoot(host);
   let stop = () => {};
   const dispose = () => { closed = true; window.removeEventListener('online', restart); stop(); root.unmount(); };
@@ -20,8 +20,10 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
     starting = true;
     flushSync(() => root.render(<p role="status">Verifying your session to open saved asks…</p>));
     try {
+      sessionVerified = false;
       const { actor } = await client.askSession();
       if (closed) return;
+      sessionVerified = true;
       let redraw = () => {};
       const box = createAskOutbox({ storage:window.localStorage, actor, conversation,
         online:() => navigator.onLine, uuid:() => crypto.randomUUID(),
@@ -32,6 +34,8 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
         const [notice, setNotice] = useState('');
         const [, update] = useState(0);
         redraw = () => update(n => n+1);
+        let rows: QueuedAsk[] = [], held: string[] = [], storageUnavailable = false;
+        try { rows = box.entries(); held = box.recovery(); } catch { storageUnavailable = true; }
         const run = (action: () => void | Promise<void>) => {
           try { Promise.resolve(action()).catch(() => setNotice('Device storage is unavailable. Your ask has not been confirmed.')); }
           catch (error) { setNotice(error instanceof Error ? error.message : 'Your ask could not be saved.'); }
@@ -49,7 +53,9 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
           <p id="askHelp" className="caption">Saved asks send when you reconnect. You can keep working while an answer is pending.</p>
           <button type="submit" className="btn" disabled={!text.trim()}>Send ask</button>
           <p id="askNotice" role="status">{notice}</p>
-          <ul className="work-list" aria-label="Your asks" aria-live="polite">{box.entries().map(row => <li key={row.request.idempotency_key}>
+          {storageUnavailable && <p role="status">Device storage is unavailable. Saved asks cannot be read or confirmed.</p>}
+          {held.length > 0 && <p role="status">Some saved asks or the saved draft need recovery. Their original bytes are kept on this device and will not be sent. Valid saved asks can still send.</p>}
+          <ul className="work-list" aria-label="Your asks" aria-live="polite">{rows.map(row => <li key={row.request.idempotency_key}>
             <p style={{ whiteSpace:'pre-wrap', overflowWrap:'anywhere' }}>{row.request.body}</p>
             <p>{labels[row.kind]}</p>
             {(row.kind === 'unknown' || row.kind === 'refused') && <button type="button" className="btn"
@@ -61,7 +67,7 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
       flushSync(() => root.render(<Composer />));
       started = true;
       window.removeEventListener('online', restart);
-      const reconnect = () => { box.flush().catch(() => {}); };
+      const reconnect = () => { box.flush().catch(() => redraw()); };
       const storage = () => redraw();
       // eslint-disable-next-line no-restricted-syntax -- Reconnect attempts each saved ask once, with no timer or recursive retry.
       window.addEventListener('online', reconnect);
@@ -69,7 +75,10 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
       stop = () => { box.stop(); window.removeEventListener('online', reconnect); window.removeEventListener('storage', storage); };
       // eslint-disable-next-line no-restricted-syntax -- Single initial mount attempts one finite snapshot of saved asks.
       reconnect();
-    } catch { if (!closed) unavailable(); }
+    } catch { if (!closed) {
+      if (sessionVerified) flushSync(() => root.render(<p role="status">Device storage is unavailable. Saved asks cannot be read or confirmed.</p>));
+      else unavailable();
+    } }
     finally { starting = false; }
   }
   const restart = () => { if (!closed) void start(); };

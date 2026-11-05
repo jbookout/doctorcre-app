@@ -3,6 +3,48 @@ import assert from 'node:assert/strict';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { readFile } from 'node:fs/promises';
 const conversation='0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01';
+for (const width of [390,1280]) for (const theme of ['light','dark']) test(`corrupt neighbors survive reload at ${width} ${theme}`,async t=>{
+ const server=await fixtureServer();t.after(()=>server.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width,height:900},colorScheme:theme});
+ await page.goto(server.origin+'/conversations');
+ const mount=async seed=>page.evaluate(async({conversation,seed,theme})=>{
+  document.documentElement.dataset.theme=theme;
+  const {mountAskComposer}=await import('/js/ui-host.js');
+  const prefix=`doctorcre:asks:v1:isolated-browser:${conversation}:`,key='22222222-2222-4222-8222-222222222222';
+  if(seed){
+   localStorage.setItem(prefix+'before','{');
+   localStorage.setItem(prefix+key,JSON.stringify({kind:'queued',request:{body:'Valid beside corruption',idempotency_key:key,conversation_id:conversation}}));
+   localStorage.setItem(prefix+'after','{');
+   localStorage.setItem(prefix+'draft',JSON.stringify({text:'Preserved current draft',version:1}));
+   localStorage.setItem('doctorcre:asks:v1:other-actor:'+conversation+':bad','{');
+  }
+  const host=document.createElement('section');host.id='isolation';document.querySelector('main').append(host);
+  window.isolation={prefix,calls:[]};
+  await mountAskComposer(host,{askSession:async()=>({actor:'isolated-browser'}),submitDocRequest:async request=>{
+   window.isolation.calls.push(request);
+   return {ok:true,contract:'doc-request.v1',status:'accepted',...request,request_msg_id:request.idempotency_key};
+  }},conversation);
+ },{conversation,seed,theme});
+ await mount(true);
+ const host=page.locator('#isolation');
+ await host.getByText('Received by Dr. CRE. An answer is still pending.',{exact:true}).waitFor();
+ await host.getByText(/Some saved asks or the saved draft need recovery/).waitFor();
+ assert.equal(await host.locator('textarea').inputValue(),'Preserved current draft');
+ assert.equal(await page.evaluate(()=>window.isolation.calls.length),1);
+ await page.reload();await mount(false);
+ await host.getByText('Received by Dr. CRE. An answer is still pending.',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.isolation.calls.length),0);
+ assert.deepEqual(await page.evaluate(()=>['before','after'].map(k=>localStorage.getItem(window.isolation.prefix+k))),['{','{']);
+ await host.locator('textarea').fill('Text kept during access failure');
+ await page.evaluate(()=>{window.originalGetItem=Storage.prototype.getItem;Storage.prototype.getItem=()=>{throw Error('unavailable');};window.dispatchEvent(new Event('storage'));});
+ await host.getByText('Device storage is unavailable. Saved asks cannot be read or confirmed.',{exact:true}).waitFor();
+ assert.equal(await host.locator('textarea').inputValue(),'Text kept during access failure');
+ await page.evaluate(()=>{Storage.prototype.getItem=window.originalGetItem;window.dispatchEvent(new Event('storage'));});
+ await host.getByText(/Some saved asks or the saved draft need recovery/).waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await host.screenshot({path:`/tmp/WR617.S19.J1-${width}-${theme}.png`});
+});
 for (const width of [390,1280]) for (const theme of ['light','dark']) {
   test(`queued ask keyboard flow at ${width} ${theme}`, async t => {
     const server=await fixtureServer();t.after(()=>server.close());

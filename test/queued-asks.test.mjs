@@ -21,14 +21,23 @@ for (const corruptFirst of [true,false]) test(`corrupt entry isolation, corrupt 
  assert.equal(reopened.calls[0].body,'Valid frozen ask');assert.equal(reopened.box.draft(),'Current draft');
  assert.equal(storage.getItem(bad),'{');assert.equal(setup(storage).box.entries()[0].kind,'accepted');
 });
-test('malformed draft is isolated and retained without overwrite',async()=>{
+for (const raw of ['{','','{}']) test(`malformed draft is isolated and retained without overwrite ${JSON.stringify(raw)}`,async()=>{
  const s=setup(),draftKey=`doctorcre:asks:v1:joe:${conversation}:draft`;
- s.box.saveDraft('Valid');s.box.enqueue();s.storage.setItem(draftKey,'{');
+ s.box.saveDraft('Valid');s.box.enqueue();s.storage.setItem(draftKey,raw);
  const reopened=setup(s.storage);assert.equal(reopened.box.draft(),'');
  assert.throws(()=>reopened.box.saveDraft('Replacement'),/recovery/);
  assert.throws(()=>reopened.box.enqueue('Replacement'));
  reopened.connect();await reopened.box.flush();assert.equal(reopened.box.entries()[0].kind,'accepted');
- assert.equal(s.storage.getItem(draftKey),'{');assert.deepEqual(reopened.box.recovery(),[draftKey]);
+ assert.equal(s.storage.getItem(draftKey),raw);assert.deepEqual(reopened.box.recovery(),[draftKey]);
+});
+test('recovery scan captures storage length once and stops despite new producers',()=>{
+ const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ s.storage.setItem(prefix+'broken','{');
+ let reads=0,keys=0;
+ Object.defineProperty(s.storage,'length',{get(){reads++;return 1;}});
+ const original=s.storage.key;
+ s.storage.key=i=>{keys++;s.storage.setItem(prefix+'new-'+i,'{');return original(i);};
+ assert.deepEqual(s.box.recovery(),[prefix+'broken']);assert.equal(reads,1);assert.equal(keys,1);
 });
 test('invalid shapes stay held, other scopes excluded, access failures throw',()=>{
  const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
