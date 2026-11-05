@@ -11,6 +11,8 @@ for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
     const page = await browser.newPage({viewport:{width,height:1000},colorScheme});
     await routeLeads(page);
     await page.goto('http://localhost/leads');
+    await page.locator('.lead-card').first().waitFor();
+    await page.waitForFunction(() => typeof document.getElementById('docOpen')?.onclick === 'function');
     await page.evaluate(() => {
       window.taxonomyTransitions = [];
       document.addEventListener('click', event => {

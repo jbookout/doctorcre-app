@@ -1,14 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium, fixtureServer, WAIT_MS } from './browser-harness.mjs';
+
+function drainFixture(t, page, browser, server) {
+  t.after(async () => {
+    let timer;
+    try {
+      await Promise.race([(async () => {
+        await page.waitForLoadState('networkidle');
+        await page.unrouteAll({ behavior: 'wait' });
+      })(), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Accounts fixture routes did not drain')), WAIT_MS);
+      })]);
+    } finally {
+      clearTimeout(timer);
+      await browser.close();
+      await server.close();
+    }
+  });
+}
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Account opens with the oldest overdue action at ${width}px ${theme}`, async t => {
     const server = await fixtureServer();
-    t.after(() => server.close());
     const browser = await chromium.launch();
-    t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    drainFixture(t, page, browser, server);
     await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
@@ -33,10 +50,9 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Empty account search keeps the query and recovery in the workspace at ${width}px ${theme}`, async t => {
     const server = await fixtureServer();
-    t.after(() => server.close());
     const browser = await chromium.launch();
-    t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    drainFixture(t, page, browser, server);
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
@@ -59,10 +75,9 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 
 test('Clearing an empty portfolio search returns focus to the account card', async t => {
   const server = await fixtureServer();
-  t.after(() => server.close());
   const browser = await chromium.launch();
-  t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 900 }, reducedMotion: 'reduce' });
+  drainFixture(t, page, browser, server);
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().waitFor();
@@ -77,10 +92,9 @@ test('Clearing an empty portfolio search returns focus to the account card', asy
 for (const reverse of [false, true]) {
   test(`Account fallback agrees with the portfolio regardless of input order (reversed=${reverse})`, async t => {
     const server = await fixtureServer();
-    t.after(() => server.close());
     const browser = await chromium.launch();
-    t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+    drainFixture(t, page, browser, server);
     await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await page.route('**/data/board-seed.json', async route => {
@@ -110,10 +124,9 @@ for (const reverse of [false, true]) {
 
 test('national account deals show the next action and latest activity', async t => {
   const server = await fixtureServer();
-  t.after(() => server.close());
   const browser = await chromium.launch();
-  t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  drainFixture(t, page, browser, server);
   await page.clock.setFixedTime(new Date('2026-10-29T15:00:00Z'));
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.route('**/data/board-seed.json', async route => {

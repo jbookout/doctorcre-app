@@ -139,7 +139,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
       await retry.focus();
       await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
     }
-    else await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
+    else await page.locator('.deal-freshness [data-refresh-detail]').click();
     await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, !['empty', 'absent'].includes(mode));
     if (mode === 'empty' && recovering) {
       const refresh = page.locator('.deal-freshness [data-refresh-detail]');
