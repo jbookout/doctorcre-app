@@ -44,7 +44,7 @@ export async function prove({ origin, timeoutMs }) {
   await read(assetUrl);
   const timer = setTimeout(() => { failure = new Error('Entire proof timed out'); void browser?.close(); }, remaining());
   try {
-    browser = await chromium.launch({ headless: true, timeout: remaining(), args: [...CHROMIUM_SAFETY_ARGS] });
+    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], headless: true, timeout: remaining() });
     const context = await browser.newContext({ timezoneId: 'America/Chicago', serviceWorkers: 'block' });
     const page = await context.newPage();
     page.setDefaultTimeout(remaining());
