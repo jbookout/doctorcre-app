@@ -1,5 +1,7 @@
 import { test, expect, type Locator, type Page, type Response } from '@playwright/test';
 
+import { admitItems, clearAdmission, inboxItems } from './privacy';
+
 type Completion = { action: string; event: string };
 const completions = new WeakMap<Page, Completion>();
 const rpc = (name: string) => (response: Response) => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === name;
@@ -28,10 +30,33 @@ export async function home(page: Page): Promise<void> {
   for (let n = 0; n < 6 && await expand.count(); n++) await expand.first().click();
 }
 export async function card(page: Page, number?: number): Promise<Locator> {
+  clearAdmission(page.context());
   await home(page);
   const row = page.locator('[data-inbox-row]').filter({ has: page.locator('h3 a').filter({ hasText: number ? marker(number) : designated }) }).first();
   needs(await row.count() === 0, number ? `Home card named TEST WALK ${number}` : 'Home card marked TEST or QA');
   await visible(row);
+  if (number !== undefined) {
+    const candidates = page.locator('[data-inbox-row]').filter({ has: page.locator('h3 a').filter({ hasText: marker(number) }) });
+    const ids = await candidates.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-inbox-row')));
+    const snapshot = await inboxItems(page.context());
+    const items = snapshot.filter(item => ids.includes(item.item_id) && marker(number).test(item.title));
+    needs(items.length !== ids.length || items.some(item => !item.deal_id) || new Set(items.map(item => item.deal_id)).size !== 1, `TEST WALK ${number} cards with canonical owning deal IDs`);
+    const check = await page.context().newPage();
+    try {
+      await check.goto('/deals');
+      await visible(check.locator('#listView'));
+      await check.locator('#listView').click();
+      await expect.poll(() => check.locator('#boardStatusLabel').innerText().then(text => !/updating/i.test(text))).toBe(true);
+      expect(await check.locator('#boardAsOf').innerText()).not.toMatch(/unavailable/i);
+      const deals = await check.locator('[data-open-deal].deal-link').filter({ hasText: marker(number) }).evaluateAll(nodes => nodes.map(node => node.getAttribute('data-open-deal')));
+      needs(items.some(item => !deals.includes(item.deal_id)), `owning deal ID matching designated TEST WALK ${number} deal`);
+    } finally { await check.close(); }
+    const completion = ['complete-one-action', 'reopen-one-action'];
+    const disposition = ['settle-home-inbox', 'unsettle-home-inbox', 'snooze-home-inbox'];
+    const verbs = number === 3 ? [...completion, ...disposition] : number === 10 || number === 33 ? disposition : number === 15 ? [...completion, 'set-home-waiting', 'clear-home-waiting'] : [1, 12, 13, 14].includes(number) ? completion : [];
+    needs(verbs.length === 0, `TEST WALK ${number} mutation with proven canonical record ownership`);
+    admitItems(page.context(), items, verbs);
+  }
   return row;
 }
 export async function deal(page: Page, number?: number): Promise<string> {
@@ -39,16 +64,23 @@ export async function deal(page: Page, number?: number): Promise<string> {
   await visible(page.locator('#listView'));
   await page.locator('#listView').click();
   await expect.poll(() => page.locator('#boardStatusLabel').innerText().then(text => !/updating/i.test(text))).toBe(true);
+  expect(await page.locator('#boardAsOf').innerText()).not.toMatch(/unavailable/i);
   const opener = page.locator('[data-open-deal].deal-link').filter({ hasText: number ? marker(number) : designated }).first();
   needs(await opener.count() === 0, number ? `deal named TEST WALK ${number}` : 'deal marked TEST or QA');
   const id = await opener.getAttribute('data-open-deal');
   expect(Boolean(id)).toBe(true);
   await opener.click();
   await visible(page.locator('#recordPanel'));
+  await visible(page.locator('.deal-opening-snapshot'));
   return id!;
 }
 export async function tab(page: Page, name: RegExp): Promise<void> {
   await page.getByRole('tab', { name }).click();
+  if (name.test('Tours')) {
+    const tours = page.locator('#workspace-tours');
+    await expect(tours.locator('.deal-tour-list').or(tours.getByText(/^No tours for this deal\./)).or(tours.getByText(/^Tours unavailable\./))).toBeVisible();
+    await expect(tours).not.toContainText('Tours unavailable.');
+  }
 }
 export async function undo(page: Page): Promise<void> {
   const button = page.locator('.inbox-notice').getByRole('button', { name: /^Undo/ }).last();

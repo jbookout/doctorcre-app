@@ -15,6 +15,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: 'https://app.doctorcre.com', browserName: 'chromium',
+    serviceWorkers: 'block',
     timezoneId: 'America/Chicago', screenshot: 'off', trace: 'off', video: 'off',
     actionTimeout: 8_000, navigationTimeout: 20_000,
   },
