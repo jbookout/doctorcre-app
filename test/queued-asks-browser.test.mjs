@@ -146,3 +146,49 @@ test('session verification stays single-flight and closing prevents later startu
  assert.equal(await page.locator('#unavailableProbe').textContent(),'');
  assert.equal(await page.evaluate(()=>window.unavailableProbe.calls),1);
 });
+
+test('malformed draft reports recovery while typing and sending',async t=>{
+ const server=await fixtureServer();t.after(()=>server.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto(server.origin+'/conversations');
+ await page.evaluate(async conversation=>{
+  const {mountAskComposer}=await import('/js/ui-host.js');
+  const host=document.createElement('section');host.id='draftProbe';document.querySelector('main').append(host);
+  window.draftProbe={key:`doctorcre:asks:v1:draft-probe:${conversation}:draft`,calls:0};
+  localStorage.setItem(window.draftProbe.key,'{');
+  await mountAskComposer(host,{askSession:async()=>({actor:'draft-probe'}),submitDocRequest:async()=>{window.draftProbe.calls++;return {};}},conversation);
+ },conversation);
+ const host=page.locator('#draftProbe');await host.locator('textarea').fill('New current draft.');
+ assert.match(await host.locator('#askNotice').textContent(),/Saved draft needs recovery/);
+ assert.doesNotMatch(await host.textContent(),/storage is unavailable|changed in another tab/);
+ await host.getByRole('button',{name:'Send ask',exact:true}).click();
+ assert.match(await host.locator('#askNotice').textContent(),/Saved draft needs recovery/);
+ assert.equal(await host.locator('textarea').inputValue(),'New current draft.');
+ assert.deepEqual(await page.evaluate(()=>{localStorage.setItem('probe','ok');return [localStorage.getItem(window.draftProbe.key),localStorage.getItem('probe'),window.draftProbe.calls];}),['{','ok',0]);
+});
+test('session invalidation during submission ignores held receipt and stops queued neighbor',async t=>{
+ const server=await fixtureServer();t.after(()=>server.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto(server.origin+'/conversations');
+ await page.evaluate(async conversation=>{
+  const {mountAskComposer}=await import('/js/ui-host.js');
+  const prefix=`doctorcre:asks:v1:retirement-probe:${conversation}:`;
+  for(const key of ['22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'])localStorage.setItem(prefix+key,JSON.stringify({kind:'queued',request:{body:'Saved '+key,idempotency_key:key,conversation_id:conversation}}));
+  const host=document.createElement('section');host.id='retirementProbe';document.querySelector('main').append(host);
+  window.retirementProbe={prefix,calls:0};
+  await mountAskComposer(host,{askSession:async()=>({actor:'retirement-probe'}),submitDocRequest:request=>{
+   window.retirementProbe.calls++;return new Promise(resolve=>{window.retirementProbe.release=()=>resolve({ok:true,contract:'doc-request.v1',status:'accepted',...request,request_msg_id:request.idempotency_key});});
+  }},conversation);
+ },conversation);
+ await page.locator('#retirementProbe').getByText('Sending your ask…',{exact:true}).waitFor();
+ const result=await page.evaluate(async()=>{
+  const saved=()=>Object.keys(localStorage).filter(k=>k.startsWith(window.retirementProbe.prefix)).map(k=>[k,localStorage.getItem(k)]);
+  const before=saved();window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+  window.retirementProbe.release();await new Promise(resolve=>setTimeout(resolve,0));
+  window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('storage'));
+  await new Promise(resolve=>setTimeout(resolve,0));
+  return {before,after:saved(),calls:window.retirementProbe.calls};
+ });
+ assert.equal(await page.locator('#retirementProbe').textContent(),'');
+ assert.deepEqual(result.after,result.before);assert.equal(result.calls,1);
+});

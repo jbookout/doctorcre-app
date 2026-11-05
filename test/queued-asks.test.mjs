@@ -130,3 +130,41 @@ test('asks queued during a held submission drain without retrying unknown outcom
  assert.equal(calls.length,2);assert.equal(box.draft(),'Third draft');
  assert.equal(calls[1].body,'Second');
 });
+
+for (const failure of ['corrupt', 'storage']) test(`receipt update isolates ${failure} during submission`, async () => {
+ const storage=memory(),calls=[],prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ let serial=0,finish;
+ const box=createAskOutbox({storage,actor:'joe',conversation,online:()=>true,
+  uuid:()=>`22222222-2222-4222-8222-${String(++serial).padStart(12,'0')}`,
+  submit:request=>{calls.push(request);return calls.length===1?new Promise(resolve=>{finish=()=>resolve(receipt(request));}):receipt(request);}});
+ box.saveDraft('First');const first=box.enqueue();box.saveDraft('Second');box.enqueue();box.saveDraft('Current draft');
+ const pending=box.flush();
+ if(failure==='corrupt') storage.setItem(prefix+first.idempotency_key,'{');
+ else storage.setItem=()=>{throw Error('access denied');};
+ finish();
+ if(failure==='storage') {await assert.rejects(pending,/access denied/);assert.equal(calls.length,1);return;}
+ await pending;
+ assert.deepEqual(calls.map(r=>r.body),['First','Second']);
+ assert.equal(box.entries()[0].kind,'accepted');assert.equal(box.draft(),'Current draft');
+ assert.equal(storage.getItem(prefix+first.idempotency_key),'{');
+ assert.deepEqual(box.recovery(),[prefix+first.idempotency_key]);
+});
+for (const kind of ['queued','unknown','refused','accepted','corrupt']) test(`stop retires ${kind} without changing saved bytes`,async()=>{
+ const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ s.box.saveDraft('Saved');const request=s.box.enqueue();s.box.saveDraft('Current draft');
+ s.storage.setItem(prefix+key,kind==='corrupt'?'{':JSON.stringify({kind,request}));
+ const before=[...Array(s.storage.length)].map((_,i)=>[s.storage.key(i),s.storage.getItem(s.storage.key(i))]);
+ s.box.stop();s.connect();await s.box.flush();await s.box.retry(key);
+ assert.equal(s.calls.length,0);
+ assert.deepEqual([...Array(s.storage.length)].map((_,i)=>[s.storage.key(i),s.storage.getItem(s.storage.key(i))]),before);
+});
+test('stop during submission ignores late acceptance and leaves neighbors saved',async()=>{
+ const s=setup();s.box.saveDraft('First');s.box.enqueue();s.connect();
+ let release;s.sender(request=>new Promise(resolve=>{release=()=>resolve(receipt(request));}));
+ const pending=s.box.flush();s.box.saveDraft('Current draft');
+ const before=s.storage.getItem(`doctorcre:asks:v1:joe:${conversation}:`+key);
+ s.box.stop();release();await pending;await s.box.flush();
+ assert.equal(s.calls.length,1);assert.equal(s.box.entries()[0].kind,'submitting');
+ assert.equal(s.storage.getItem(`doctorcre:asks:v1:joe:${conversation}:`+key),before);
+ assert.equal(s.box.draft(),'Current draft');
+});
