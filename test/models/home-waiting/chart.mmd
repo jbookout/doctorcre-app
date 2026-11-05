@@ -1,0 +1,19 @@
+stateDiagram-v2
+  s0: draft=FALSE shown=FALSE key=0 phase="Closed" sentKey=0
+  s1: draft=TRUE shown=FALSE key=0 phase="Editing" sentKey=0
+  s2: draft=TRUE shown=FALSE key=1 phase="Sending" sentKey=1
+  s3: draft=TRUE shown=FALSE key=1 phase="Conflict" sentKey=1
+  s4: draft=TRUE shown=FALSE key=1 phase="Uncertain" sentKey=1
+  s5: draft=TRUE shown=TRUE key=1 phase="Confirmed" sentKey=1
+  s6: draft=TRUE shown=FALSE key=1 phase="Editing" sentKey=1
+  s7: draft=TRUE shown=FALSE key=1 phase="Settled" sentKey=1
+  [*] --> s0
+  s0 --> s1: Edit
+  s1 --> s2: Send
+  s2 --> s3: Conflict
+  s2 --> s4: Uncertain
+  s2 --> s5: Readback
+  s3 --> s6: Refresh
+  s4 --> s2: Retry
+  s5 --> s7: Finish
+  s6 --> s2: Send

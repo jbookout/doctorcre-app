@@ -1,0 +1,14 @@
+.portal-tour-list { --tour-bg: var(--ground); --tour-card: var(--surface-1); --tour-text: var(--fg); --tour-line: var(--hairline-strong); color: var(--tour-text); background: var(--tour-bg); padding: clamp(16px, 3vw, 40px); font: var(--font-size-2)/1.5 var(--font-text); overflow-wrap: anywhere; }
+.portal-tour-list header, .tour-actions { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.tour-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.tour-panels > section { min-width: 0; border: 1px solid var(--tour-line); padding: 16px; border-radius: 8px; }
+.portal-tour-list article { background: var(--tour-card); border: 1px solid var(--tour-line); padding: 16px; margin-block: 16px; border-radius: 8px; }
+.portal-tour-list button { min-height: 44px; padding: 8px 14px; background: var(--tour-card); color: var(--tour-text); border: 1px solid var(--tour-line); border-radius: 5px; cursor: pointer; font: inherit; }
+.portal-tour-list button:disabled { opacity: .6; cursor: default; }
+.portal-tour-list :focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+.portal-tour-list label, .portal-tour-list small { display: block; margin-top: 10px; }
+.portal-tour-list textarea { box-sizing: border-box; width: 100%; min-height: 100px; padding: 10px; font: inherit; background: var(--tour-card); color: var(--tour-text); border: 1px solid var(--tour-line); }
+.portal-tour-list [role="alertdialog"] { position: fixed; inset: 15% max(16px, calc((100vw - 540px)/2)) auto; background: var(--tour-card); color: var(--tour-text); border: 3px solid var(--tour-line); padding: 24px; z-index: 50; }
+.portal-tour-list dialog::backdrop { background: var(--scrim); }
+.tour-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 700px) { .tour-panels { grid-template-columns: 1fr; } }
