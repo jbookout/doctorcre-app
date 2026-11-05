@@ -18,10 +18,11 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
     if (mode === 'timeout') return;
     if (mode === 'protected') { res.writeHead(403); return res.end(); }
     if (req.url === '/release') {
+      if (mode === 'fallback') { res.writeHead(404); return res.end(); }
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40) }));
     }
-    if (req.url === '/app-release') return res.end('{}');
+    if (req.url === '/app-release') return res.end(JSON.stringify(mode === 'fallback' ? { service: 'doctorcre-app', source_commit: '1'.repeat(40) } : {}));
     try {
       if (!/^\/js\/[\w/.-]+\.js$/.test(req.url)) throw Error('bad path');
       let bytes = await readFile(`${artifact}/site${req.url}`);
@@ -33,7 +34,7 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  for (const [scenario, expected] of [['success', 0], ['broken', 1], ['protected', 78], ['identity', 78], ['asset-protected', 78], ['timeout', 1]]) {
+  for (const [scenario, expected] of [['success', 0], ['fallback', 0], ['broken', 1], ['protected', 78], ['identity', 78], ['asset-protected', 78], ['timeout', 1]]) {
     await t.test(scenario, async () => {
       mode = scenario;
       const result = await new Promise((resolve, reject) => {

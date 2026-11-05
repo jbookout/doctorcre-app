@@ -20,7 +20,7 @@ try {
     if (++requests > 64) throw Error('Request limit exceeded');
     const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(Math.min(timeout, 10000))]) });
     if ([401, 403].includes(response.status) || response.status >= 300 && response.status < 400) throw new ProtectedAsset('Protected asset or sign-in');
-    if (!response.ok) throw Error(`HTTP ${response.status}`);
+    if (!response.ok) throw Object.assign(Error(`HTTP ${response.status}`), { status: response.status });
     const reader = response.body.getReader(), chunks = [];
     for (;;) {
       const { value, done } = await reader.read();
@@ -35,7 +35,8 @@ try {
     let release, releaseUrl;
     for (const path of ['/release', '/app-release']) {
       releaseUrl = new URL(path, origin).href;
-      const response = await request(releaseUrl);
+      let response;
+      try { response = await request(releaseUrl); } catch (error) { if (error.status === 404) continue; throw error; }
       try { release = JSON.parse(response.body.toString()); } catch { release = null; }
       if (release?.service === 'doctorcre-app' && /^[0-9a-f]{40}$/.test(release.source_commit || '') && !/^0+$/.test(release.source_commit)) break;
       release = null;

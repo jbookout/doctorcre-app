@@ -13,7 +13,7 @@ test('Documents cap preserves validation, final pages and refresh', async t => {
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: `${artifact}/site` } });
   t.after(() => server.stop());
   const browser = await chromium.launch(); t.after(() => browser.close());
-  for (const scenario of ['exactly 500', 'short final', 'cross final', 'duplicate discarded row', 'cursor cycle']) {
+  for (const scenario of ['exactly 500', 'short final', 'cross final', 'duplicate discarded row', 'cursor cycle', 'expire at cap', 'dispose at cap']) {
     await t.test(scenario, async () => {
       const page = await browser.newPage(); t.after(() => page.close());
       await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main></main></body></html>' }));
@@ -48,6 +48,18 @@ test('Documents cap preserves validation, final pages and refresh', async t => {
       const rejected = ['duplicate discarded row', 'cursor cycle'].includes(scenario);
       assert.equal(await panel.locator('[data-document-id]').count(), rejected ? 490 : scenario === 'short final' ? 52 : 500);
       assert.equal(await panel.getByRole('button', { name: 'Load more documents', exact: true }).count(), 0);
+      if (scenario === 'expire at cap' || scenario === 'dispose at cap') {
+        await page.evaluate(scenario => {
+          if (scenario === 'expire at cap') window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+          else window.panel.dispose();
+        }, scenario);
+        assert.equal(await page.locator('[data-document-id]').count(), 0);
+        if (scenario === 'expire at cap') {
+          await panel.getByText('Session expired. Sign in again to view documents.', { exact: true }).waitFor();
+          await page.evaluate(() => window.panel.dispose());
+        }
+        return;
+      }
       if (rejected) {
         await panel.getByRole('button', { name: 'Retry documents' }).click();
         await page.waitForFunction(() => window.requests.length === 12);
