@@ -14,7 +14,7 @@ function open(client) {
   const dom = new JSDOM('<div id="view"></div>');
   globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = document.querySelector('#view');
-  const panel = ui.mountDealTours(root, {dealId:deal, client});
+  const panel = ui.mountDealTours(root, {dealId:deal, client, navigate() {}});
   return {root,panel,dom};
 }
 test('TOURS-IN-DEAL lists only the current deal and opens its shortlist, route and packet editor', async () => {
@@ -22,9 +22,12 @@ test('TOURS-IN-DEAL lists only the current deal and opens its shortlist, route a
   await settle();
   assert.match(root.textContent,/Demo tour/); assert.doesNotMatch(root.textContent,/Other deal|Legacy/);
   root.querySelector('[data-open-tour]').click(); await settle();
-  assert.match(root.textContent,/No properties selected/);
-  assert.equal(root.querySelector('[data-edit-tour]').getAttribute('href'),`/tours/route-editor.html?tour=${tour}&deal=${deal}`);
-  assert.equal(root.querySelector('[data-start-tour]').getAttribute('href'),`/tours/route-editor.html?deal=${deal}`);
+  assert.equal(new URL(root.querySelector('iframe').getAttribute('src'),'https://fixture.test').searchParams.get('tour'),tour);
+  root.querySelector('[data-back-tours]').click(); await settle();
+  assert.equal(root.querySelector('iframe'),null);
+  root.querySelector('[data-start-tour]').click(); await settle();
+  assert.equal(new URL(root.querySelector('iframe').getAttribute('src'),'https://fixture.test').searchParams.get('deal'),deal);
+  assert.equal(new URL(root.querySelector('iframe').getAttribute('src'),'https://fixture.test').searchParams.has('tour'),false);
   panel.dispose();
 });
 test('empty, unavailable and retry are truthful without error dumps', async () => {
@@ -60,4 +63,39 @@ test('session invalidation clears visible names and discards an in-flight read',
   dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
   finish({...row,stops:[]}); await settle();
   assert.match(root.textContent,/Tours unavailable/); assert.doesNotMatch(root.textContent,/Demo tour/); panel.dispose();
+});
+
+test('Opening to Open ignores an earlier tour reply and Open to List returns without leaving the workspace', async () => {
+  const replies = new Map();
+  const {root,panel} = open({library:async () => [row,{...row,id:other}],tour:id => new Promise(resolve => replies.set(id,resolve))});
+  await settle();
+  root.querySelectorAll('[data-open-tour]')[0].click();
+  root.querySelectorAll('[data-open-tour]')[1].click();
+  replies.get(other)({...row,id:other,stops:[]}); await settle();
+  replies.get(tour)({...row,stops:[]}); await settle();
+  assert.ok(root.querySelector('iframe').src.includes(other));
+  await panel.refresh();
+  assert.ok(root.querySelector('iframe').src.includes(other));
+  root.querySelector('[data-back-tours]').click(); await settle();
+  assert.equal(Boolean(root.querySelector('iframe')),false); panel.dispose();
+});
+
+test('NotAvailable to Opening retries the same tour and ignores frame messages after disposal', async () => {
+  let failed = true;
+  const {root,panel,dom} = open({library:async () => [row],tour:async () => {if(failed) throw Error('not_found'); return {...row,stops:[]};}});
+  await settle(); root.querySelector('[data-open-tour]').click(); await settle();
+  failed = false; [...root.querySelectorAll('button')].find(button => button.textContent === 'Retry tour').click(); await settle();
+  const source = root.querySelector('iframe').contentWindow;
+  panel.dispose();
+  dom.window.dispatchEvent(new dom.window.MessageEvent('message',{source,data:{type:'deal-tour-opened',id:tour}}));
+  assert.equal(root.textContent,'');
+});
+
+test('Creating to Unavailable clears the frame when the session changes', async () => {
+  const {root,panel,dom} = open({library:async () => []});
+  await settle(); root.querySelector('[data-start-tour]').click(); await settle();
+  assert.ok(root.querySelector('iframe'));
+  dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  assert.equal(Boolean(root.querySelector('iframe')),false);
+  assert.match(root.textContent,/Tours unavailable/); panel.dispose();
 });

@@ -202,7 +202,7 @@
  *
  * @typedef {Object} DocConversation
  * @property {{id:string,title:string,visibility:'private'|'shared',pinned_at:string|null,archived_at:string|null,version:number,created_by:string}} identity
- * @property {{sequence:number,role:'human'|'assistant'|'system',body:string,msg_id:string|null,origin_channel:string|null,origin_actor:string|null,at:string}[]} turns
+ * @property {{sequence:number,role:'human'|'assistant'|'system',body:string,msg_id:string|null,origin_channel:string|null,origin_actor:string|null,at:string,answer_blocks?:unknown}[]} turns
  * @property {number} latest_sequence
  * @property {boolean} more
  * @property {{grantee_actor:string,granted_at:string,granted_by_actor:string}[]} effective_grants

@@ -13,6 +13,7 @@ __pycache__/
 test-artifacts/
 /tours/day-shell.generated.js
 /js/ui-host.js
+/js/ui-answers.js
 /js/ui-zoom.js
 /js/ui-facts.js
 /js/ui-market.js
@@ -45,7 +46,11 @@ mobile-a11y-evidence/
 /js/ui-email-actions.js
 
 /js/ui-calendar-panels.js
-
+/js/ui-quick-switcher.js
+/js/ui-switcher-history.js
 /js/ui-deal-tours.js
+/js/ui-keyboard-input.js
+
+/js/ui-deal-documents.js
 
 /js/ui-client-publications.js
