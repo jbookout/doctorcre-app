@@ -11,7 +11,8 @@ test("a recorder probe that settles after the toolbar is removed leaves the page
   const saved = globalThis.fetch;
   globalThis.fetch = () => new Promise(resolve => { answer = resolve; });
   try {
-    const mounting = mountGlobalCallMode(root);
+    const call = await mountGlobalCallMode(root);
+    const mounting = call.checkEligibility();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(typeof answer, "function", "the probe is in flight");
     elements.clear();

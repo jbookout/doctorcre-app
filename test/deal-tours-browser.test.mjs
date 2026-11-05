@@ -16,6 +16,29 @@ const created = '44444444-4444-4444-8444-444444444444';
 const routeId = '55555555-5555-4555-8555-555555555555';
 const row = {id:tour,deal_id:deal,deal_name:'Demo deal',name:'Demo deal tour',status:'draft'};
 
+async function traceSheet(page) {
+  await page.addInitScript(() => {
+    const trace = [];
+    window.__sheetTrace = trace;
+    const record = (kind, value) => {
+      trace.push({kind,value,at:performance.now(),url:location.href});
+      if(trace.length > 100) trace.shift();
+    };
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');
+    Object.defineProperty(HTMLTextAreaElement.prototype,'value',{...descriptor,set(value) {
+      if(this.id === 'cheat-content') record('set', {value,stack:new Error().stack});
+      descriptor.set.call(this,value);
+    }});
+    document.addEventListener('input',event => {
+      if(event.target.id === 'cheat-content') record('input',{value:event.target.value,trusted:event.isTrusted});
+    },true);
+    for(const type of ['popstate','pageshow','beforeunload']) addEventListener(type,() => record(type,document.querySelector('#cheat-content')?.value));
+  });
+}
+async function reportSheet(page) {
+  console.error('J52 sheet failure',JSON.stringify(await Promise.all(page.frames().map(frame => frame.evaluate(() => ({url:location.href,value:document.querySelector('#cheat-content')?.value,trace:window.__sheetTrace})).catch(error => ({error:error.message}))))));
+}
+
 test('deal Tours lists, opens, starts and recovers on the fixture server', async t => {
   const artifact = await temporaryDirectory('doctorcre-deal-tours-', t);
   await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
@@ -24,6 +47,7 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
   await mkdir(new URL('../out/test-artifacts/deal-tours/',import.meta.url),{recursive:true});
   for (const width of [390,1024,1440]) for (const theme of ['light','dark']) await t.test(`${width} ${theme}`, async () => {
     const page = await browser.newPage({viewport:{width,height:1000}});
+    await traceSheet(page);
     const errors = [];
     try { page.on('pageerror',error => errors.push(error.message));
       await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -80,6 +104,7 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
       await editor.locator('#cheat-content').fill('Synthetic workspace edit');
       await editor.locator('#save-sheet').click();
       await editor.locator('#sheet-state').filter({hasText:/save confirmed/}).waitFor();
+      if(notes !== 'Synthetic workspace edit') await reportSheet(page);
       assert.equal(notes,'Synthetic workspace edit');
       const axeSource = await readFile(new URL('../node_modules/axe-core/axe.min.js',import.meta.url),'utf8');
       const scans = [];
@@ -278,6 +303,7 @@ test('creation and pending-write departures preserve history and saved notes', a
   const browser = await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS]}); t.after(() => browser.close());
   for (const width of [390,1440]) for (const scenario of ['back 1','back 2','back 3','forward 1','forward 2','forward 3','pending keep','pending leave']) await t.test(`${width} ${scenario}`, async () => {
     const page = await browser.newPage({viewport:{width,height:1000}});
+    await traceSheet(page);
     let release;
     const gate = new Promise(resolve => { release = resolve; });
     let writes = 0, notes = '', revision = 0, settled;
@@ -355,7 +381,9 @@ test('creation and pending-write departures preserve history and saved notes', a
       await prompt.waitFor({timeout:3000});
       await prompt.getByRole('button',{name:'Keep editing',exact:true}).click();
       assert.deepEqual(await page.evaluate(() => ({url:location.href,state:history.state})),before);
-      assert.equal(await editor.locator(pending ? '#cheat-content' : '#create-tour-name').inputValue(),pending ? 'Pending departure notes' : 'Unsaved creation departure');
+      try {
+        assert.equal(await editor.locator(pending ? '#cheat-content' : '#create-tour-name').inputValue(),pending ? 'Pending departure notes' : 'Unsaved creation departure');
+      } catch(error) { await reportSheet(page); throw error; }
       if(pending) {
         if(scenario === 'pending leave') {
           await page.goBack();

@@ -556,7 +556,7 @@ function installCallMode() {
     startAgenda,
     onConfirmed: loadHome,
   });
-  state.callModeUi.checkEligibility();
+  state.callModeUi.render();
   return state.callModeUi;
 }
 

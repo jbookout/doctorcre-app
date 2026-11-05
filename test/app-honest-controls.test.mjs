@@ -260,7 +260,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       if (width <= 760) await page.locator('#selfAvatar').click();
       await page.locator('#callModeRetry:enabled').waitFor({ state:'visible' });
       assert.equal(await page.locator('#callModeButton').isVisible(), false);
-      assert.match(await page.locator('#callModeAvailability').textContent(), /^Call recorder offline$/);
+      assert.match(await page.locator('#callModeAvailability').textContent(), /^Call recorder not connected$/);
       const notice = await page.locator('#callModeAvailability').boundingBox();
       assert.ok(notice.x >= 0 && notice.x + notice.width <= width, `${width}: notice fits`);
       const retryBox = await page.locator('#callModeRetry').boundingBox();
@@ -311,10 +311,11 @@ for (const reachable of [true, false]) test(`shared Call Mode tolerates shell re
   globalThis.fetch = () => new Promise((resolve, reject) => { finish = () => reachable
     ? resolve({ ok: true, json: async () => ({ state: 'idle' }) }) : reject(new Error('unreachable')); });
   try {
-    const mounting = mountGlobalCallMode(doc);
+    const call = await mountGlobalCallMode(doc);
+    const checking = call.checkEligibility();
     doc.body.replaceChildren(doc.createElement('main'));
     finish();
-    const call = await mounting;
+    await checking;
     call.dispose();
     assert.equal(doc.querySelector('#callModeButton'), null);
   } finally { globalThis.fetch = previousFetch; dom.window.close(); }
@@ -331,6 +332,7 @@ test('shared Call Mode does not add a dialog after the shell disappears during a
   let call;
   try {
     call = await mountGlobalCallMode(doc);
+    await call.checkEligibility();
     assert.equal(doc.getElementById('callModeDialog'), null);
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
 });
@@ -352,9 +354,12 @@ test('shared Call Mode builds its dialog on first open, not at page load', async
     call = await mountGlobalCallMode(doc);
     assert.equal(doc.getElementById('callModeDialog'), null, 'no dialog markup at page load');
     assert.equal(doc.getElementById('callModeButton').hidden, true);
-    assert.match(doc.getElementById('callModeAvailability').textContent, /^Call recorder offline$/);
+    assert.match(doc.getElementById('callModeAvailability').textContent, /^Call recorder not connected$/);
     const retry = doc.getElementById('callModeRetry');
     assert.ok(retry && !retry.hidden);
+    assert.deepEqual(requests, [], 'mounting never contacts the optional recorder');
+    assert.equal(await call.handleClick(retry), true);
+    assert.equal(doc.getElementById('callModeAvailability').textContent, 'Call recorder offline');
     reachable = true;
     assert.equal(await call.handleClick(retry), true);
     assert.equal(doc.getElementById('callModeButton').hidden, false);
@@ -369,13 +374,16 @@ test('shared Call Mode builds its dialog on first open, not at page load', async
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
 });
 
-test('shared Call Mode builds at load only when a call is already recording', async () => {
+test('shared Call Mode connects explicitly before showing an existing recording', async () => {
   const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
   const doc = dom.window.document, previousFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ state: 'recording', started_at: new Date().toISOString() }) });
   let call;
   try {
     call = await mountGlobalCallMode(doc);
+    assert.equal(doc.querySelectorAll('#callModeDialog').length, 0);
+    assert.equal(doc.getElementById('callModeButton').hidden, true);
+    assert.equal(await call.checkEligibility(), true);
     assert.equal(doc.querySelectorAll('#callModeDialog').length, 1);
     assert.ok(doc.getElementById('callModeButton').classList.contains('recording'));
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }

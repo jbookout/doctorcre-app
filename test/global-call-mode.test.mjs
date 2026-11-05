@@ -8,11 +8,12 @@ for (const state of ['idle', 'recording']) test(`session revocation retires a pe
   t.after(() => dom.window.close());
   let finish;
   t.mock.method(globalThis, 'fetch', () => new Promise(resolve => { finish = resolve; }));
-  const mounting = mountGlobalCallMode(dom.window.document);
+  const call = await mountGlobalCallMode(dom.window.document);
+  const mounting = call.checkEligibility();
   dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
   dom.window.document.body.replaceChildren();
   finish(new Response(JSON.stringify({ state }), { headers: { 'content-type': 'application/json' } }));
-  const call = await mounting;
+  await mounting;
   assert.equal(dom.window.document.body.childElementCount, 0);
   assert.equal(await call.checkEligibility(), false);
   assert.equal(await call.open(), false);
@@ -20,17 +21,18 @@ for (const state of ['idle', 'recording']) test(`session revocation retires a pe
 });
 
 for (const result of ['idle', 'recording', 'unavailable']) {
-  test(`session invalidation retires an initial Call Mode probe returning ${result}`, async t => {
+  test(`session invalidation retires an explicit Call Mode probe returning ${result}`, async t => {
     const dom = new JSDOM('<button id="callModeButton"></button><span id="callModeAvailability"></span><button id="callModeRetry"></button>');
     t.after(() => dom.window.close());
     let release;
     const response = new Promise(resolve => { release = resolve; });
     t.mock.method(globalThis, 'fetch', () => response);
-    const pending = mountGlobalCallMode(dom.window.document);
+    const call = await mountGlobalCallMode(dom.window.document);
+    const pending = call.checkEligibility();
     dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
     dom.window.document.body.innerHTML = '<main>Session ended</main>';
     release(result === 'unavailable' ? Response.error() : Response.json({ state: result }));
-    const call = await pending;
+    await pending;
     assert.equal(dom.window.document.body.innerHTML, '<main>Session ended</main>');
     assert.equal(await call.checkEligibility(), false);
     assert.equal(await call.open(), false);
@@ -54,7 +56,7 @@ test('explicit disposal retires a pending Call Mode retry', async t => {
   assert.equal(dom.window.document.body.innerHTML, '<main>Session ended</main>');
   assert.equal(await call.checkEligibility(), false);
   assert.equal(await call.open(), false);
-  assert.equal(globalThis.fetch.mock.calls.length, 2);
+  assert.equal(globalThis.fetch.mock.calls.length, 1);
 });
 
 test('session invalidation cancels a pending Call Mode open before it starts a timer', async t => {
@@ -74,7 +76,7 @@ test('session invalidation cancels a pending Call Mode open before it starts a t
   t.mock.method(globalThis, 'clearInterval', () => {});
   t.mock.method(globalThis, 'fetch', async url => {
     if (String(url).endsWith('/api/state')) {
-      if (++reads === 3) { reached(); return held; }
+      if (++reads === 2) { reached(); return held; }
       return Response.json({ state: 'idle' });
     }
     return Response.json({ status: 'filed' });

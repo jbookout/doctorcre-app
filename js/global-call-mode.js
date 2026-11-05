@@ -4,8 +4,8 @@ const mounted = new WeakMap();
 const DIALOG = '<dialog id="callModeDialog" class="dialog call-mode-dialog" aria-labelledby="callModeTitle">\n    <article>\n      <header>\n        <div><p class="eyebrow">Calls</p><h2 id="callModeTitle">Call Mode</h2></div>\n        <button type="button" class="icon-button" id="callModeClose" aria-label="Close Call Mode">×</button>\n      </header>\n      <div class="call-mode-stage" id="callModeStage">\n        <div class="recording-orb" aria-hidden="true">●</div>\n        <p class="call-mode-state" id="callModeState">Ready to record</p>\n        <time class="call-mode-timer" id="callModeTimer" aria-live="polite">Ready</time>\n        \n        <p class="call-mode-speakers" id="callModeSpeakers" hidden></p>\n      </div>\n      <div class="call-mode-actions">\n        <label class="call-mode-consent" id="callModeConsentRow">\n          <input type="checkbox" id="callModeConsent">\n          <span>I have told everyone on this call that it will be recorded.</span>\n        </label>\n        <div class="call-mode-starts" id="callModeStarts">\n          <button type="button" class="primary" data-call-mode-start="weekly_deal_call">Start weekly deal call</button>\n          <button type="button" class="secondary" data-call-mode-start="other_call">Start another call</button>\n        </div>\n        <button type="button" class="danger" id="callModeStop" hidden>Stop and process</button>\n        \n      </div>\n      <p class="call-mode-permission" id="callModePermission" hidden></p>\n      <section class="post-call" id="postCallPanel" aria-labelledby="postCallTitle" hidden>\n        <header class="post-call-heading">\n          <div><p class="eyebrow">Weekly call follow-through</p><h3 id="postCallTitle">Post-call report</h3></div>\n          <button type="button" class="text-button post-call-refresh" id="postCallRefresh" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>\n        </header>\n        <div class="post-call-status" id="postCallStatus" role="status" aria-live="polite"></div>\n        <div class="call-outcomes" id="postCallOutcomes" hidden></div><div class="post-call-report" id="postCallReport"></div>\n      </section>\n      <footer class="call-mode-footer"><a href="http://127.0.0.1:4682/" target="_blank" rel="noopener" id="callModeStandalone">Open standalone local controller</a></footer>\n    </article>\n  </dialog>';
 
 /**
- * Page load only asks whether the recorder is reachable. The dialog, its
- * controller and their code are built when a partner first opens Call Mode.
+ * The optional recorder is contacted only after a partner asks to connect.
+ * The dialog and controller are built when a partner first opens Call Mode.
  */
 export async function mountGlobalCallMode(root = document) {
   if (mounted.has(root)) return mounted.get(root);
@@ -20,7 +20,7 @@ export async function mountGlobalCallMode(root = document) {
     const eligible = state === "available";
     button.hidden = !eligible;
     availability.hidden = eligible;
-    availability.textContent = state === "checking" ? "Checking the call recorder…" : "Call recorder offline";
+    availability.textContent = state === "unknown" ? "Call recorder not connected" : state === "checking" ? "Checking the call recorder…" : "Call recorder offline";
     retry.hidden = eligible || state === "checking";
     retry.disabled = state === "checking";
     return true;
@@ -96,6 +96,6 @@ export async function mountGlobalCallMode(root = document) {
     } };
   mounted.set(root, mountedCall);
   root.defaultView?.addEventListener("doctorcre-session-invalidated", mountedCall.dispose, { once: true });
-  await probe();
+  show("unknown");
   return mountedCall;
 }
