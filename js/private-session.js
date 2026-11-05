@@ -143,7 +143,7 @@ export function privateSession() {
     }
   };
   const restore = mountVisibilityPoll({ document: win.document, window: win, periodic: false, poll: async () => {
-    const session = await browserBoundary.verify();
+    const session = await browserBoundary.verify({ fresh: true });
     renderRestore(false);
     return session;
   } });
