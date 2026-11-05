@@ -1,0 +1,18 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "3ea487f1c8944af6dc8bb7337c9ae3aac1d214bd",
+    "branch": "t3/wr617-s4-watch-contract",
+    "fixture": "mcp-server/contracts/subject-watch.v1.fixture.json"
+  },
+  "schema_version": "subject-watch.v1",
+  "fixture_file": "subject-watch.fixture.json",
+  "verbs": [
+    "read-subject-watch-v1",
+    "watch-subject-v1",
+    "unwatch-subject-v1"
+  ],
+  "identity": "Server-derived active human actor. Canonical deal or lease UUID. Listings refused.",
+  "recovery": "Replay identical verb, subject and idempotency_key, then read current state. No polling.",
+  "notification": "Watching captures a baseline and sends no notification. Watches notify only on record changes."
+}

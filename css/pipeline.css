@@ -347,3 +347,8 @@
 .deal-document-list summary { cursor: pointer; }
 .has-app-layout .deal-tour-departure { width: min(480px, calc(100vw - 32px)); padding: var(--space-5); }
 .deal-tour-departure .btn { margin-inline-end: var(--space-2); }
+
+.subject-watch { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; margin-block: 1rem; }
+.subject-watch p { margin: 0; }
+.subject-watch-explanation { flex-basis: 100%; color: var(--fg-muted); font-size: var(--font-size-1); }
+.subject-watch button:focus-visible { outline: 3px solid var(--accent, currentColor); outline-offset: 3px; }

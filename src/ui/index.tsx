@@ -33,3 +33,4 @@ export { mountTerritoryEvidence } from './territory-evidence';
 export { mountIdealClientProfile } from './ideal-client-profile';
 export { mountDealTours } from './deal-tours';
 export { mountDealDocuments } from './deal-documents';
+export { mountSubjectWatch } from './subject-watch';

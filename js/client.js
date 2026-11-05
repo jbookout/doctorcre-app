@@ -92,6 +92,9 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args:{subject_type:'deal'|'lease',subject_id:string}, options?:{signal?:AbortSignal}) => Promise<unknown>} readSubjectWatch
+ * @property {(args:{subject_type:'deal'|'lease',subject_id:string,idempotency_key:string}, options?:{signal?:AbortSignal}) => Promise<unknown>} watchSubject
+ * @property {(args:{subject_type:'deal'|'lease',subject_id:string,idempotency_key:string}, options?:{signal?:AbortSignal}) => Promise<unknown>} unwatchSubject
  * @property {(args:{deal_id:string,limit?:number,cursor?:string}, options?:{signal?:AbortSignal}) => Promise<{ok:true,schema_version:'deal-documents.v1',documents:{id:string,display_name:string,stored_at:string}[],has_more:boolean,next_cursor:string|null}>} listDealDocuments
  * @property {(args:{entity_ref?:string,limit?:number,cursor?:string,include_resolved?:boolean}, options?:{signal?:AbortSignal}) => Promise<FactReviewList>} listFactReview
  * @property {(args:{idempotency_key:string,entity_ref:string,observation:HumanFact}) => Promise<Object>} recordHumanFact

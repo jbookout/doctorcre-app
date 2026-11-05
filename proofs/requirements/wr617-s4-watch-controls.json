@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s4-watch-controls",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "workspace-watch-live-walk",
+    "predicate": "The deployed app release matches the merged revision. Joe watches a deal, reloads and sees Watching, then unwatches and reloads. Read-only canonical subscription observations match both states and Dell's subscription is unchanged.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release-bound app observations and canonical readback prove Joe's explicit watch and unwatch without changing Dell's state",
+    "input_class": "Read-only observations of the deployed release and human-performed watch workflow",
+    "deadline_seconds": 300
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 10,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

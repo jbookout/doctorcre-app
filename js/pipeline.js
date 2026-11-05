@@ -862,6 +862,7 @@ function refusePanelDetail(error) {
   clearMarketTermsViews();
   state.panelDetail = null;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
+  subjectWatchPanel?.dispose(); subjectWatchPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
@@ -1069,7 +1070,7 @@ function workspaceEventsHtml(detail) {
   if (!events.some(event => event.type === timelineType)) timelineType = '';
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
-let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel;
+let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel, subjectWatchPanel;
 // Each deal's comparison is kept for the session and reattached when its tab reopens; an access change discards them all.
 const marketTermsViews = new Map();
 function clearMarketTermsViews() {
@@ -1087,6 +1088,7 @@ function workspaceHtml(detail) {
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
+    <div id="subjectWatch"></div>
     <section id="workspace-overview" role="tabpanel" aria-labelledby="tab-overview"><section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
       <div class="deal-alert">${renderDealItems({...d,items:detail.items || d.items},{today:todayIso(),buttons:true})}</div>
       ${showNextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span>: <strong>${esc(nextStep)}</strong>${d.next_date ? ` · <span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
@@ -1239,8 +1241,20 @@ function paintPanel(detail) {
   factReviewPanel?.dispose();
   marketTermsPanel?.dispose();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
+  subjectWatchPanel?.dispose(); subjectWatchPanel = null;
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(detail.deal.id)) {
+    const target = $('subjectWatch');
+    let cancelled = false, mounted;
+    subjectWatchPanel = { dispose() { cancelled = true; mounted?.dispose(); } };
+    target.textContent = 'Checking watch status…';
+    void import('./ui-subject-watch.js').then(({ mountSubjectWatch }) => {
+      if (cancelled) return;
+      mounted = mountSubjectWatch(target, { subject: { subject_type: 'deal', subject_id: detail.deal.id }, actor: state.selfActor, client: state.client });
+    }).catch(() => { if (!cancelled) target.textContent = 'Watch status unavailable.'; });
+  }
+
   const terms = $('panelTerms');
   let disposed = false, loading = false, mounted;
   const observer = new IntersectionObserver(entries => {
@@ -1348,6 +1362,7 @@ function paintPanel(detail) {
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
+  subjectWatchPanel?.dispose(); subjectWatchPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;
@@ -1401,6 +1416,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
 async function closeWorkspace({ fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
+  subjectWatchPanel?.dispose(); subjectWatchPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
   factReviewPanel = null;

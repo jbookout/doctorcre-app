@@ -43,6 +43,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 ## Gotchas
 
+Watch appears in the existing workspace for canonical deal UUIDs. `node --test test/subject-watch-browser.test.mjs test/subject-watch-client.test.mjs` covers watch, unwatch, reload, unavailable reads, retained-request replay, stale responses, sign-out and keyboard focus at 390px and 1440px in both themes. The browser test injects the pinned CARR fixture. Captures are under `out/test-artifacts/subject-watch/`. No canonical lease identity is available in this workspace, and the contract refuses listings.
+
 Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.
 
 ## Call Mode consent and review
