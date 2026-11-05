@@ -23,6 +23,9 @@ stateDiagram-v2
   [*] --> Absent
   Absent --> Selected: optional package arrives
   Selected --> Selected: select zone or populated market
+  Selected --> RepeatedCategories: select Age profile with repeated labels
+  RepeatedCategories --> FreshCategories: select another zone
+  FreshCategories --> RepeatedCategories: return to the original zone
   Selected --> Empty: select empty market
   Empty --> Selected: select all markets
   Selected --> MapUnavailable: map throws
@@ -32,6 +35,8 @@ stateDiagram-v2
   Empty --> Absent: remove optional sections
   MapUnavailable --> Absent: remove optional sections
 ```
+
+The repeated-category transition preserves the selected Age topic. Both age tables and the profile must contain exactly the selected zone's ordered categories, including duplicates, while source links follow that zone. The browser transition test replays the forward and reverse path with counts 111, 222 and 333.
 
 Browser transition tests exercise reverse zone switching, package replacement, empty filters and map recovery. Pins are analytical locators and never generate navigation. The model leaves provider behavior to S10's adapter.
 

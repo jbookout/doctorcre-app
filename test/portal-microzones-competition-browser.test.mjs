@@ -118,6 +118,29 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
   await page.screenshot({path:`out/test-artifacts/microzones-competition/${width}-${theme}.png`,fullPage:true});
   await page.addScriptTag({path:'node_modules/axe-core/axe.min.js'});
   assert.deepEqual(await page.evaluate(async()=>(await window.axe.run(document.querySelector('.microzones-competition'))).violations.map(item=>item.id)),[]);
+  const repeated = structuredClone(data);
+  for (const [index, selected] of repeated.micro_zones.zones.entries()) {
+   const categories = index === 0
+    ? [{label:'Repeated',count:111},{label:'Repeated',count:222}]
+    : [{label:'New category',count:333}];
+   selected.age.bins = structuredClone(categories);
+   selected.age.groups = structuredClone(categories);
+  }
+  await page.evaluate(value=>window.renderData(value), repeated);
+  await page.getByRole('button',{name:'One-mile zone',exact:true}).click();
+  await page.getByRole('button',{name:'Age profile',exact:true}).click();
+  for (const name of ['One-mile zone','Three-mile zone','One-mile zone']) {
+   await page.getByRole('button',{name,exact:true}).click();
+   const expected = name === 'One-mile zone'
+    ? [['Repeated','111'],['Repeated','222']]
+    : [['New category','333']];
+   const profileRows = await page.locator('#micro-zone-profile .zone-profile-row').evaluateAll(rows=>rows.map(row=>[row.querySelector('span').textContent,row.querySelector('strong').textContent]));
+   const ageTables = zone.getByRole('region',{name:/^Age (bins|groups), denominator/});
+   const tableRows = await ageTables.locator('tbody').evaluateAll(tables=>tables.map(table=>Array.from(table.rows,row=>[row.cells[0].textContent,row.cells[1].textContent])));
+   assert.deepEqual({tableRows,profileRows},{tableRows:[expected,expected],profileRows:expected},`${name} age tables and profile replace every category`);
+   assert.equal(await page.locator('#micro-zone-profile .zone-source').textContent(),`${name} report, page ${repeated.micro_zones.zones.find(row=>row.name===name).age.source_page}`);
+   assert.equal(await page.getByRole('button',{name:'Age profile',exact:true}).getAttribute('aria-pressed'),'true');
+  }
   assert.deepEqual(errors,[]);
   assert.ok(requests.every(url=>url==='http://127.0.0.1/optional'||url.startsWith('http://127.0.0.1/files/')));
  });
