@@ -1,10 +1,10 @@
 export type ActionArgs = { action_id: string; base_version: number; idempotency_key: string };
-export type TaskReceipt = Readonly<{ action_id: string; version: number; status: 'done' | 'open'; completion_event_id: string | null }>;
+export type TaskReceipt = Readonly<{ action_id: string; version: number; status: 'done' | 'open'; completion_event_id: string }>;
 export function parseActionReceipt(value: unknown, args: ActionArgs & { completion_event_id?: string }, status: TaskReceipt['status']): TaskReceipt {
   if (value && typeof value === 'object' && 'error' in value && typeof value.error === 'string') throw Object.assign(Error(value.error), { payload: value });
   if (!value || typeof value !== 'object' || !('ok' in value) || value.ok !== true || !('action_id' in value) || value.action_id !== args.action_id || !('status' in value) || value.status !== status || !('version' in value) || typeof value.version !== 'number' || !Number.isSafeInteger(value.version) || value.version <= args.base_version) throw Error('Completion receipt unreadable. Retry the same request.');
   const event = 'completion_event_id' in value ? value.completion_event_id : null;
-  if (event !== null && (typeof event !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event)) || status === 'open' && event !== args.completion_event_id) throw Error('Completion event unreadable. Retry the same request.');
+  if (typeof event !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event) || status === 'open' && event !== args.completion_event_id) throw Error('Completion event unreadable. Retry the same request.');
   return { action_id: args.action_id, version: value.version, status, completion_event_id: event };
 }
 export async function completeAction(client: { completeOneAction(args: ActionArgs): Promise<unknown> }, args: ActionArgs) {
