@@ -181,6 +181,7 @@ export function turnRows(payload) {
       role: isText(row.role) ? row.role : "unattributed",
       body: isText(row.body) ? row.body : "",
       msgId: isText(row.msg_id) ? row.msg_id : null,
+      answerBlocks: row.answer_blocks,
       channel: isText(row.origin_channel) ? row.origin_channel : null,
       actor: isText(row.origin_actor) ? row.origin_actor : null,
       clock: formatClock(row.at) || "unknown",

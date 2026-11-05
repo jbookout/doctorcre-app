@@ -1,54 +1,14 @@
-/* Tours planner (V2): plan a tour, search for space, the tour library and the
-   territory picker. Builds on tours/app.css and reads only token roles.
-   The territory map leads the page, then the plan form, then search. */
-
 .planner-page { background: var(--ground); }
-
-/* The page title lives in the workspace, not the shared status band. Only the
-   freshness control (time + refresh) travels to the status slot. */
 .planner-header { padding: var(--space-5) var(--space-5) var(--space-4); }
 .freshness { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .freshness button { border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-2); }
 .freshness button:hover:not(:disabled) { border-color: transparent; background: var(--surface-2); color: var(--fg); }
 .freshness.current::before { content: ""; width: 6px; height: 6px; margin-right: var(--space-1); border-radius: 50%; background: var(--status-ok); }
-
-.planner-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--panel-gap); align-items: start; width: 100%; padding: 0 var(--space-5) var(--space-7); }
-.planner-grid > .card { position: relative; }
-
 .widget-heading { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 .widget-heading h2 { flex: 1; font-size: var(--font-size-3); }
 .widget-heading > button { border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); }
 .widget-heading > button:hover:not(:disabled) { border-color: transparent; background: var(--surface-2); color: var(--fg); }
-
-.form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.planner-page textarea { min-height: 72px; }
-
-.drop-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-5) 0 var(--space-2); padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); }
-.drop-heading h3, .library-card h3 { font-size: var(--font-size-2); }
-.pill { display: inline-flex; align-items: center; padding: 2px var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
-
-.planner-page .packet-drop { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); margin: 0; padding: var(--space-5) var(--space-3); border: var(--hairline-width) dashed var(--hairline-strong); border-radius: var(--radius-3); color: var(--fg-muted); cursor: pointer; }
-.packet-drop:hover, .packet-drop:focus-within, .packet-drop.dragging { border-color: var(--fg-muted); background: var(--surface-2); }
-.packet-drop:focus-within { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
-.packet-drop .upload-icon { color: var(--fg-muted); font-size: var(--font-size-3); }
-.packet-drop strong { color: var(--fg); font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
-.packet-drop input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.packet-drop #file-count { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-.packet-files { display: grid; gap: 0; margin: var(--space-2) 0; padding: 0; list-style: none; }
-.packet-files li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); font-size: var(--font-size-1); }
-.packet-files span { min-width: 0; overflow-wrap: anywhere; }
-.packet-files button { border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-2); }
-
-.widget-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-5); }
-.widget-actions button { flex: 1; min-width: 140px; }
 .form-message { color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); overflow-wrap: anywhere; }
-.form-message:not(:empty) { margin-top: var(--space-3); }
-.capability-state { color: var(--fg-muted); font-size: var(--font-size-1); }
-.capability-state::before { content: "◌ "; }
-/* A control that cannot run says why in words beside it, not in a tooltip. */
-.capability-note { margin: var(--space-3) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
-
-/* Library: a quiet list; the open tour is the one accent marker. */
 .library-filter { margin: var(--space-3) 0 var(--space-5); }
 .library-card h3 { margin-top: var(--space-4); }
 .library-scroll { max-height: 275px; margin: var(--space-2) 0 var(--space-4); padding: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
@@ -56,108 +16,16 @@
 .tour-button strong { font-size: var(--font-size-2); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
 .tour-button span { color: var(--fg-muted); font-size: var(--font-size-1); }
 .tour-button span::first-letter { text-transform: uppercase; }
-.empty-library { padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
-
-/* Territory: area buttons first, then an on-demand Census map whose labelled
-   market points mirror them. Revealing the map or its status never moves the
-   buttons. Points are data marks; the chosen market is pressed in both places. */
-.planner-grid .territory-card { grid-column: 1 / -1; }
-.territory-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); }
-.territory-heading h2 { font-size: var(--font-size-3); }
-.territory-caption { margin-right: auto; color: var(--fg-muted); font-size: var(--font-size-1); }
-.territory-map { display: block; width: 100%; aspect-ratio: 3 / 1; max-height: 420px; margin: var(--space-4) 0 0; overflow: hidden; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
-.territory-map[hidden], .territory-map[data-state="failed"] { display: none; }
-#planner-territory .area-marker { min-width: 0; min-height: 0; width: 14px; height: 14px; padding: 0; border: 2px solid var(--surface-1); border-radius: 50%; background: var(--data-1); }
-/* The visible dot stays small; an invisible ring keeps a 44px touch target. */
-.area-marker::after { content: ""; position: absolute; inset: -15px; border-radius: 50%; }
-.area-marker span { position: absolute; left: 50%; padding: 1px var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); background: var(--surface-1); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); white-space: nowrap; transform: translateX(-50%); }
-/* js/leads-territory-map.js picks each label's side so it stays inside the map. */
-.area-marker[data-placement="top"] span { bottom: calc(100% + var(--space-1)); }
-.area-marker[data-placement="bottom"] span { top: calc(100% + var(--space-1)); }
-.area-marker[data-placement="right"] span, .area-marker[data-placement="left"] span { top: 50%; transform: translateY(-50%); }
-.area-marker[data-placement="right"] span { left: calc(100% + var(--space-1)); }
-.area-marker[data-placement="left"] span { right: calc(100% + var(--space-1)); left: auto; }
-.area-marker[data-placement*="-"] span { transform: none; }
-.area-marker[data-placement^="top-"] span { bottom: calc(100% - 2px); }
-.area-marker[data-placement^="bottom-"] span { top: calc(100% - 2px); }
-.area-marker[data-placement$="-right"] span { left: calc(100% - 2px); }
-.area-marker[data-placement$="-left"] span { right: calc(100% - 2px); left: auto; }
-.area-marker:hover span { border-color: var(--hairline-strong); }
-#planner-territory .area-marker[aria-pressed="true"] { width: 18px; height: 18px; background: var(--fg); box-shadow: 0 0 0 2px var(--fg); }
-.area-marker[aria-pressed="true"] span { border-color: var(--fg); font-weight: var(--font-weight-strong); }
-.market-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
-.market-buttons button { font-weight: var(--font-weight-regular); }
-.market-buttons button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); font-weight: var(--font-weight-strong); }
-.market-buttons button[aria-pressed="true"]::before { content: "✓"; }
-
-/* Tour detail dialog. */
 .tour-dialog { width: min(1100px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 40px); padding: var(--space-5); overflow: auto; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); box-shadow: var(--shadow-overlay); }
 .tour-dialog::backdrop { background: var(--scrim); }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
 .dialog-heading h2 { font-size: var(--font-size-4); }
 .dialog-heading button { border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); }
-.detail-summary { display: flex; gap: var(--space-2); margin-bottom: var(--space-5); }
-.detail-stops { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-5); padding: 0; list-style: none; counter-reset: stops; }
-.detail-stops li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-1) var(--space-3); padding: var(--space-3) 0; border-top: var(--hairline-width) solid var(--hairline); counter-increment: stops; }
-.detail-stops li::before { content: counter(stops, upper-alpha); grid-row: span 3; display: grid; place-items: center; width: 32px; height: 32px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: 50%; color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
-.detail-stops span, .detail-stops time { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-#detail-content { overflow-wrap: anywhere; }
 #detail-content p { color: var(--fg-muted); font-size: var(--font-size-2); line-height: var(--line-height-body); }
-#detail-content details { margin: var(--space-4) 0 var(--space-5); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
-#detail-content summary { display: flex; align-items: center; min-height: var(--touch); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 #detail-content a { display: inline-flex; align-items: center; min-height: var(--touch); }
-.draft-facts { display: grid; grid-template-columns: 150px 1fr 150px 1fr; gap: var(--space-3); margin: var(--space-5) 0; font-size: var(--font-size-2); }
-.draft-facts dt { color: var(--fg-muted); font-size: var(--font-size-1); }
-.draft-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
-
-/* Responsive: the shared regions set the workspace width, so container
-   queries follow the main slot, not the viewport. */
-.planner-page .app-layout-main { container-type: inline-size; }
-@container (max-width: 1100px) {
-  .planner-grid > .library-card { grid-column: 1 / -1; }
-  .draft-facts { grid-template-columns: 150px 1fr; }
+.tour-library-page { max-width: 72rem; margin: auto; padding: var(--space-4); display: grid; gap: var(--space-4); }
+.tour-library-page .library-card { width: 100%; }
+.tour-library-page .tour-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .tour-library-page { padding-inline: var(--space-3); }
 }
-@container (max-width: 640px) {
-  .planner-grid { grid-template-columns: minmax(0, 1fr); }
-  .space-card .widget-actions { flex-direction: column; }
-}
-@media (max-width: 1100px) {
-  .library-card { grid-column: 1 / -1; }
-  .library-scroll { max-height: 210px; }
-  .draft-facts { grid-template-columns: 150px 1fr; }
-}
-@media (max-width: 640px) {
-  .planner-header { padding: var(--space-4) var(--space-4) var(--space-3); }
-  .planner-grid { grid-template-columns: minmax(0, 1fr); padding: 0 var(--space-4) var(--space-6); }
-  .planner-grid > .card { padding: var(--space-4); }
-  .form-pair:has(#plan-area, #space-area, #space-transaction) { grid-template-columns: minmax(0, 1fr); }
-  #plan-area, #space-area { text-overflow: ellipsis; }
-  .drop-heading { flex-wrap: wrap; }
-  .territory-map { aspect-ratio: 2 / 1; }
-  /* Phone: tighter pills, and a long market name may wrap to two lines. */
-  .area-marker span { width: max-content; max-width: 6.5em; padding: 0 var(--space-1); line-height: 1.2; white-space: normal; text-align: center; }
-  .market-buttons button { flex: 1 1 42%; }
-  .tour-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); }
-  .detail-stops { grid-template-columns: minmax(0, 1fr); }
-  .draft-facts { grid-template-columns: 100px 1fr; }
-  .dialog-heading h2 { font-size: var(--font-size-3); }
-}
-@media print {
-  .planner-page .library-card, .planner-page .widget-actions, .planner-page .market-buttons { display: none; }
-  .planner-grid { display: block; }
-}
-
-.client-updates { margin-block: var(--space-3); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); font-size: var(--font-size-1); overflow-wrap: anywhere; }
-.client-updates[hidden] { display: none; }
-.client-updates p { margin: 0 0 var(--space-2); color: var(--fg-muted); }
-.client-updates summary { min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
-.client-update-facts { margin: 0; }
-.client-update-facts dt { margin-top: var(--space-3); font-weight: var(--font-weight-strong); }
-.client-update-facts dd { margin: var(--space-1) 0; }
-.client-name-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-.client-name-actions button { flex: 1 1 auto; }
-
-.client-updates summary::before { content: "▸"; margin-right: var(--space-2); }
-.client-updates details[open] > summary::before { content: "▾"; }
-.client-update-row + .client-update-row { border-top: var(--hairline-width) solid var(--hairline); margin-top: var(--space-3); padding-top: var(--space-3); }
-.client-update-row h4 { margin: var(--space-2) 0; }

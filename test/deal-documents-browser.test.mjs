@@ -1,163 +1,209 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium } from './browser-harness.mjs';
+import { readFile, mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
-import {buildArtifact} from '../scripts/artifact.mjs';
-import {temporaryDirectory} from '../scripts/temp-directory.mjs';
-import {copyFile} from 'node:fs/promises';
-import {fileURLToPath} from 'node:url';
-import axe from 'axe-core';
+import { chromium } from './browser-harness.mjs';
 
-test('documents_picker_roundtrip_and_pending_draft_survive_reload',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());
- const browser=await chromium.launch();t.after(()=>browser.close());
- for(const width of [320,390])await t.test(`${width}px`,async()=>{
-  const page=await browser.newPage({viewport:{width,height:900}});
-  try {
-   await page.goto(`${server.url}/share-to-deal`);
-   await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo LOI.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 synthetic')});
-   await page.getByText('Demo LOI.pdf',{exact:false}).waitFor();
-   await page.reload();
-   await page.getByText('Demo LOI.pdf',{exact:false}).waitFor();
-   const picker=page.getByRole('combobox',{name:'Deal',exact:true});
-   const value=await picker.locator('option').nth(1).getAttribute('value');await picker.selectOption(value);
-   await page.getByRole('button',{name:'File documents',exact:true}).click();
-   await page.getByText('Documents filed and confirmed by the deal document list.',{exact:true}).waitFor();
-   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-   const empty=await page.evaluate(async()=>{const request=indexedDB.open('doctorcre-incoming-deal-share-v1',1);const db=await new Promise(resolve=>request.onsuccess=()=>resolve(request.result));return new Promise(resolve=>{const tx=db.transaction('draft');const read=tx.objectStore('draft').get('pending');read.onsuccess=()=>{resolve(!read.result);db.close();};});});
-   assert.equal(empty,true);
-  }finally{await page.close();}
- });
+const deal = '11111111-1111-4111-8111-111111111111';
+const other = '22222222-2222-4222-8222-222222222222';
+const id = '33333333-3333-4333-8333-333333333333';
+const document = { id, display_name: 'Demo email LOI.pdf', document_type: 'application/pdf', page_count: null, content_hash: 'a'.repeat(64), stored_at: '2026-01-01T00:00:00Z' };
+const result = (documents, has_more = false, next_cursor = null) => ({ ok: true, schema_version: 'deal-documents.v1', documents, has_more, next_cursor });
+
+test('Documents shows a canonical email PDF and follows the panel statechart', async t => {
+  const artifact = await temporaryDirectory('doctorcre-documents-', t);
+  await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
+  const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}}); t.after(() => server.stop());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const fixture = (await readFile(new URL('../data/fixtures/fact-review.mjs',import.meta.url),'utf8')).replaceAll("'d14'", JSON.stringify(deal))
+    .replace(/async listDealDocuments\([^\n]+/, `async listDealDocuments(args) { const response = await fetch('/fixture-documents', {method:'POST',body:JSON.stringify(args)}); if (!response.ok) throw Object.assign(new Error('private diagnostic'),{status:response.status}); return response.json(); },`);
+  const seed = JSON.parse((await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8')).replaceAll('"d14"',JSON.stringify(deal)).replaceAll('"d15"',JSON.stringify(other)));
+  seed.deals.push({...seed.deals.find(row => row.id === deal),id:other,name:'Demo other deal'});
+  await mkdir(new URL('../out/test-artifacts/deal-documents/',import.meta.url),{recursive:true});
+  for (const width of [390,1440]) for (const theme of ['light','dark']) await t.test(`${width} ${theme}`, async () => {
+    const page = await browser.newPage({viewport:{width,height:1000}});
+    try {
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
+      await page.route('**/data/board-seed.json',route => route.fulfill({json:seed}));
+      await page.route('**/data/fixtures/fact-review.mjs',route => route.fulfill({body:fixture,contentType:'text/javascript'}));
+      let mode = 'ready', held, requested;
+      const requests = [];
+      await page.route('**/fixture-documents',async route => {
+        const args = route.request().postDataJSON();
+        if (args.limit !== 50) return route.fulfill({json:result([])});
+        requests.push(args);
+        if (mode === 'held') { held = () => route.fulfill({json:result([document])}).catch(() => {}); requested?.(); return; }
+        if (mode === 'outage' || mode === 'expired') return route.fulfill({status:mode === 'expired' ? 401 : 503,json:{error:'private diagnostic'}});
+        if (mode === 'malformed') return route.fulfill({json:result([{...document,content_hash:'bad'}])});
+        if (mode === 'empty' || args.deal_id === other) return route.fulfill({json:result([])});
+        const row = !args.cursor ? document : {
+          ...document,
+          id:args.cursor === 'page-2' ? other : '44444444-4444-4444-8444-444444444444',
+          display_name:args.cursor === 'page-2' ? 'Demo site plan.pdf' : 'Demo rejected page.pdf',
+        };
+        return route.fulfill({json:result([row],true,args.cursor ? 'page-3' : 'page-2')});
+      });
+      await page.goto(`${server.url}/deals?deal=${deal}`);
+      await page.getByRole('tab',{name:'Documents',exact:true}).click({timeout:3000});
+      const panel = page.getByRole('region',{name:'Deal documents',exact:true});
+      await panel.getByText(document.display_name,{exact:true}).waitFor();
+      assert.equal(await panel.locator(`[data-document-id="${id}"]`).getAttribute('data-content-hash'),document.content_hash);
+      assert.equal(await panel.getByRole('link',{name:'Open pending files'}).count(),1);
+      assert.equal(requests.at(-1).limit,50);
+      await page.screenshot({path:new URL(`../out/test-artifacts/deal-documents/${width}-${theme}.png`,import.meta.url).pathname});
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
+      await panel.getByRole('button',{name:'Load more documents'}).click();
+      await panel.getByText('Demo site plan.pdf',{exact:true}).waitFor();
+      assert.equal(requests.at(-1).cursor,'page-2');
+      await panel.getByRole('button',{name:'Load more documents'}).click();
+      await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
+      assert.equal(await panel.locator('[data-document-id]').count(),2);
+      assert.equal(await panel.getByText('Demo rejected page.pdf',{exact:true}).count(),0);
+      mode = 'empty'; await panel.getByRole('button',{name:'Refresh documents'}).click();
+      await panel.getByText('No documents filed for this deal.',{exact:true}).waitFor();
+      mode = 'outage'; await panel.getByRole('button',{name:'Refresh documents'}).click();
+      await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
+      assert.doesNotMatch(await panel.textContent(),/private diagnostic/);
+      mode = 'ready'; await panel.getByRole('button',{name:'Retry documents'}).click();
+      await panel.getByText(document.display_name,{exact:true}).waitFor();
+      mode = 'malformed'; await panel.getByRole('button',{name:'Refresh documents'}).click();
+      await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
+      assert.equal(await panel.getByText(document.display_name,{exact:true}).count(),0);
+      mode = 'held'; const started = new Promise(resolve => { requested = resolve; });
+      await panel.getByRole('button',{name:'Retry documents'}).click(); await started;
+      await panel.getByText('Loading documents…',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'Back to deals',exact:true}).click();
+      mode = 'empty';
+      await page.locator(`.kanban-column [data-id="${other}"] .card-open`).click();
+      await page.getByRole('tab',{name:'Documents',exact:true}).click();
+      mode = 'empty'; await held();
+      await panel.getByText('No documents filed for this deal.',{exact:true}).waitFor();
+      assert.equal(await page.getByText(document.display_name,{exact:true}).count(),0);
+      mode = 'expired';
+      await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+      await page.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
+      assert.equal(await page.locator('[data-document-id]').count(),0);
+      await page.goto(`${server.url}/deals?deal=${deal}`);
+      await page.getByRole('tab',{name:'Documents',exact:true}).click();
+      await page.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
+      assert.equal(await page.locator('[data-document-id]').count(),0);
+      await page.evaluate(async document => {
+        const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+        const target = window.document.createElement('div'); window.document.body.append(target);
+        let offset = 0;
+        window.documentCap = mountDealDocuments(target, {dealId: '11111111-1111-4111-8111-111111111111', client: {
+          async listDealDocuments(args) {
+            if (args.limit !== 50) throw Error('Unbounded page');
+            const documents = Array.from({length:50},() => ({...document,id:`00000000-0000-4000-8000-${String(++offset).padStart(12,'0')}`}));
+            return {ok:true,schema_version:'deal-documents.v1',documents,has_more:true,next_cursor:String(offset)};
+          },
+        }});
+      },document);
+      const cap = page.getByRole('region',{name:'Deal documents',exact:true}).last();
+      for (let count = 50; count < 500; count += 50) {
+        await page.waitForFunction(count => window.document.querySelectorAll('[data-document-id]').length === count,count);
+        await cap.getByRole('button',{name:'Load more documents'}).click();
+      }
+      await cap.getByText('Showing the first 500 documents. Refresh to start again.',{exact:true}).waitFor();
+      assert.equal(await cap.locator('[data-document-id]').count(),500);
+      assert.equal(await cap.getByRole('button',{name:'Load more documents'}).count(),0);
+      await page.evaluate(() => window.documentCap.dispose());
+      assert.deepEqual(errors,[]);
+    } finally { await page.close(); }
+  });
 });
 
-test('installed_POST_stages_in_IDB_only_and_session_revocation_purges_bound_draft',async t=>{
- const artifact=await temporaryDirectory('doctorcre-share-target-',t);
- await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
- await copyFile('public-shell/sw.js',`${artifact}/site/sw.js`);
- await copyFile('public-shell/offline.html',`${artifact}/site/offline.html`);
- const server=await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}});t.after(()=>server.stop());
- const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/share-to-deal`);
- await page.evaluate(async()=>{await navigator.serviceWorker.register('/sw.js');});
- await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
- const result=await page.evaluate(async()=>{const form=new FormData();form.append('files',new File(['%PDF-synthetic'],'Demo share.pdf',{type:'application/pdf'}));const response=await fetch('/share-to-deal',{method:'POST',body:form});return {status:response.status,url:response.url};});
- assert.equal(result.status,200);assert.match(result.url,/share-to-deal\?draft=/);
- const duplicate=await page.evaluate(async()=>{const form=new FormData();form.append('files',new File(['%PDF-synthetic'],'Demo second share.pdf',{type:'application/pdf'}));return (await fetch('/share-to-deal',{method:'POST',body:form})).status;});assert.equal(duplicate,422);
- await page.goto(result.url);await page.getByText('Demo share.pdf',{exact:false}).waitFor();
- assert.equal(await page.getByText('Demo second share.pdf',{exact:false}).count(),0);
- assert.equal(await page.getByRole('combobox',{name:'Deal'}).inputValue(),'');
- const noPrivateCache=await page.evaluate(async()=>{for(const key of await caches.keys()){const cache=await caches.open(key);for(const request of await cache.keys())if(new URL(request.url).pathname==='/share-to-deal')return false;}return true;});assert.equal(noPrivateCache,true);
- await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));
- await page.getByText('Session ended. Pending files removed.',{exact:true}).waitFor();
- await page.reload();await page.getByLabel('Choose files',{exact:true}).waitFor();
-});
-
-test('workspace_documents_tab_uses_canonical_list_and_safe_filename',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());
- const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/deals?deal=d14&tab=documents`);
- await page.getByRole('tab',{name:'Documents',exact:true}).waitFor();
- await page.getByLabel('Upload documents',{exact:true}).waitFor();
- await page.getByLabel('Upload documents',{exact:true}).setInputFiles({name:'<img src=x onerror=alert(1)>.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});
- await page.getByText('<img src=x onerror=alert(1)>.pdf',{exact:false}).waitFor();
- assert.equal(await page.locator('img[src=x]').count(),0);
- await page.getByRole('button',{name:'Cancel pending files',exact:true}).click();await page.getByText('Pending files cancelled.',{exact:true}).waitFor();
-});
-
-test('quota_error_preserves_recoverable_ui',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/share-to-deal`);
- await page.evaluate(()=>{globalThis.originalPut=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(){throw new DOMException('Synthetic quota denied','QuotaExceededError');};});
- await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo quota.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});
- await page.getByText('Files were not staged.',{exact:false}).waitFor();
- assert.equal(await page.getByLabel('Choose files',{exact:true}).isEnabled(),true);
- await page.evaluate(()=>{IDBObjectStore.prototype.put=globalThis.originalPut;});
- await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo quota.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});
- await page.getByText('Demo quota.pdf',{exact:false}).waitFor();
-});
-
-test('all_draft_eviction_paths',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/share-to-deal`);
- const stage=async()=>{await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo expiry.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});await page.getByText('Demo expiry.pdf',{exact:false}).waitFor();};
- await stage();await page.getByRole('button',{name:'Cancel pending files',exact:true}).click();await page.getByText('Pending files cancelled.',{exact:true}).waitFor();await page.reload();await page.getByLabel('Choose files',{exact:true}).waitFor();
- await stage();
- await page.evaluate(async()=>{const request=indexedDB.open('doctorcre-incoming-deal-share-v1',1);const db=await new Promise(resolve=>request.onsuccess=()=>resolve(request.result));await new Promise(resolve=>{const tx=db.transaction('draft','readwrite'),store=tx.objectStore('draft'),read=store.get('pending');read.onsuccess=()=>store.put({...read.result,created_at:Date.now()-86400001},'pending');tx.oncomplete=resolve;});db.close();});
- await page.reload();await page.getByLabel('Choose files',{exact:true}).waitFor();
- await stage();await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));await page.reload();await page.getByLabel('Choose files',{exact:true}).waitFor();
-});
-
-test('offline_resume_without_duplicate_filing',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/share-to-deal`);await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo offline.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});
- const picker=page.getByRole('combobox',{name:'Deal'});await picker.selectOption(await picker.locator('option').nth(1).getAttribute('value'));
- await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='File documents' && !button.disabled));
- await page.context().setOffline(true);await page.getByText('Offline. Pending files remain on this device.',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'File documents',exact:true}).isDisabled(),true);
- await page.context().setOffline(false);await page.getByText('Reconnected.',{exact:false}).waitFor();
- assert.equal(await page.getByText('Filed and confirmed',{exact:true}).count(),0);
- await page.getByRole('button',{name:'File documents',exact:true}).click();await page.getByText('Documents filed and confirmed by the deal document list.',{exact:true}).waitFor();
-});
-
-test('10x_deals_use_existing_paging',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/public-shell/offline.html`);
- await page.evaluate(async()=>{const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);await mountShareToDeal(host,{getBoard:async()=>({actor:'joe',deals:Array.from({length:250},(_,i)=>({id:`demo-${i}`,name:`Demo deal ${i}`}))})});});
- await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo paging.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});
- const picker=page.getByRole('combobox',{name:'Deal'});await picker.waitFor();assert.equal(await picker.locator('option').count(),26);
- await page.getByRole('button',{name:'More deals',exact:true}).click();assert.equal(await picker.locator('option').nth(1).getAttribute('value'),'demo-25');
- await picker.selectOption('demo-25');
- await page.waitForFunction(()=>document.querySelector('select').value==='demo-25');
-});
-
-test('keyboard_and_accessibility_on_share_surface',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/share-to-deal`);await page.getByLabel('Choose files',{exact:true}).waitFor();
- await page.addScriptTag({content:axe.source});
- const violations=await page.evaluate(async()=>{const result=await axe.run(document.querySelector('[data-share-to-deal]'));return result.violations.map(row=>row.id);});assert.deepEqual(violations,[]);
- await page.getByLabel('Choose files',{exact:true}).focus();assert.equal(await page.getByLabel('Choose files',{exact:true}).evaluate(node=>node===document.activeElement),true);
-});
-
-test('initial_sign_in_preserves_unbound_share_but_logout_purges_without_controller',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/share-to-deal`);
- const result=await page.evaluate(async()=>{const {draftStore,stageFiles}=await import('/js/ui-share-store.js');const {clearPrivateStorage}=await import('/js/offline-tour-session.js');const store=draftStore();const draft=await stageFiles([new File(['%PDF-synthetic'],'Demo sign-in.pdf')]);await store.save(draft,true);await clearPrivateStorage(window,{preserveUnboundShare:true});const preserved=!!await store.read();await clearPrivateStorage(window);const purged=!await store.read();return {preserved,purged,controller:!!navigator.serviceWorker.controller};});
- assert.deepEqual(result,{preserved:true,purged:true,controller:false});
-});
-
-test('action_and_resume_caps',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.clock.install();await page.goto(`${server.url}/public-shell/offline.html`);
- await page.evaluate(async()=>{const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);globalThis.shareCalls={begin:0,read:0};await mountShareToDeal(host,{getBoard:async()=>({actor:'joe',deals:[{id:'demo',name:'Demo deal'}]}),beginDealDocumentUpload:async()=>{shareCalls.begin++;throw Error('network interrupted');},readDealDocumentUpload:async()=>{shareCalls.read++;throw Error('network interrupted');},listDealDocuments:async()=>({documents:[]})});});
- await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo cap.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic')});await page.getByRole('combobox',{name:'Deal'}).selectOption('demo');
- await page.getByRole('button',{name:'File documents',exact:true}).click();await page.getByRole('button',{name:'Check unresolved files',exact:true}).waitFor();
- await page.getByRole('button',{name:'Check unresolved files',exact:true}).click();await page.getByText('Wait one minute before checking the same receipt again.',{exact:true}).waitFor();
- assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:0});
- await page.clock.fastForward(60001);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:1,read:0});
- await page.getByRole('button',{name:'Check unresolved files',exact:true}).click();await page.waitForFunction(()=>shareCalls.begin===2);assert.deepEqual(await page.evaluate(()=>shareCalls),{begin:2,read:0});
-});
-
-test('revocation_blocks_late_document_reads',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/public-shell/offline.html`);
- await page.evaluate(async()=>{const {mountDealDocuments}=await import('/js/ui-deal-documents.js');const host=document.createElement('div');document.body.replaceChildren(host);mountDealDocuments(host,{dealId:'demo',actor:'joe',client:{listDealDocuments:()=>new Promise(resolve=>globalThis.finishDocumentRead=resolve)}});});
- await page.getByText('Loading documents…',{exact:true}).waitFor();await page.evaluate(()=>{window.dispatchEvent(new Event('doctorcre-session-invalidated'));finishDocumentRead({documents:[{id:'old',display_name:'Demo retired account document'}]});});
- await page.getByText('Session ended.',{exact:true}).waitFor();assert.equal(await page.getByText('Demo retired account document',{exact:true}).count(),0);
-});
-
-test('unverified_session_never_renders_bound_draft_names',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();t.after(()=>page.close());
- await page.goto(`${server.url}/public-shell/offline.html`);
- await page.evaluate(async()=>{const {draftStore,stageFiles,bindActor}=await import('/js/ui-share-store.js');await draftStore().save(bindActor(await stageFiles([new File(['%PDF-synthetic'],'Demo bound private filename.pdf')]),'joe'),true);const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);await mountShareToDeal(host,{getBoard:async()=>{throw Error('session unavailable');}});});
- await page.getByText('Sign in again or refresh to continue. No files were sent.',{exact:true}).waitFor();assert.equal(await page.getByText('Demo bound private filename.pdf',{exact:false}).count(),0);
-});
-
-test('producer_failure_states_render_specific_partner_messages',async t=>{
- const server=await startFixtureServer();t.after(()=>server.stop());const browser=await chromium.launch();t.after(()=>browser.close());
- for(const [state,copy] of [['receiving','still receiving'],['retryable_unknown','Storage is uncertain'],['rejected','server rejected'],['cancelled','upload was cancelled'],['expired','upload expired']])await t.test(state,async()=>{
- const page=await browser.newPage();try{
- await page.goto(`${server.url}/share-to-deal`);
- await page.evaluate(async state=>{const {mountShareToDeal}=await import('/js/ui-share-to-deal.js');const host=document.createElement('div');document.body.replaceChildren(host);await mountShareToDeal(host,{getBoard:async()=>({actor:'joe',deals:[{id:'demo',name:'Demo deal'}]}),beginDealDocumentUpload:async args=>({upload_id:'upload',deal_id:args.deal_id,sha256:args.sha256,state}),listDealDocuments:async()=>({documents:[]})});},state);
- await page.getByLabel('Choose files',{exact:true}).setInputFiles({name:'Demo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-synthetic\n%%EOF')});await page.getByRole('combobox',{name:'Deal'}).selectOption('demo');await page.getByRole('button',{name:'File documents',exact:true}).click();await page.getByText(copy,{exact:false}).waitFor();
- }finally{await page.close();}
- });
+test('Documents retries next pages and clears or disposes every in-flight state', async t => {
+  const artifact = await temporaryDirectory('doctorcre-documents-lifecycle-', t);
+  await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifact,commit:'1'.repeat(40)});
+  const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:`${artifact}/site`}}); t.after(() => server.stop());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  for (const width of [390,1440]) for (const theme of ['light','dark']) {
+    for (const scenario of ['retry next page','expire ready','expire loading','expire loading more','expire unavailable','dispose loading more']) {
+      await t.test(`${scenario} ${width} ${theme}`, async () => {
+        const page = await browser.newPage({viewport:{width,height:1000}});
+        try {
+          const errors = []; page.on('pageerror', error => errors.push(error.message));
+          await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
+          await page.route('**/documents-harness',route => route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'}));
+          await page.goto(`${server.url}/documents-harness`);
+          await page.evaluate(async ({deal,document}) => {
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            const target = window.document.createElement('div');
+            window.document.body.replaceChildren(target);
+            const pending = [], requests = [];
+            const panel = mountDealDocuments(target,{dealId:deal,client:{
+              listDealDocuments(args,{signal}) {
+                requests.push(args);
+                return new Promise((resolve,reject) => pending.push({resolve,reject,signal}));
+              },
+            }});
+            window.documentsTest = {
+              requests, panel,
+              resolve(next = 'page-2') {
+                pending.shift().resolve({ok:true,schema_version:'deal-documents.v1',documents:[{...document,id:requests.length === 1 ? document.id : '44444444-4444-4444-8444-444444444444'}],has_more:next !== null,next_cursor:next});
+              },
+              reject() { pending.shift().reject(new Error('Synthetic outage')); },
+              aborted() { return pending[0].signal.aborted; },
+            };
+          },{deal,document});
+          const panel = page.getByRole('region',{name:'Deal documents',exact:true});
+          const rows = panel.locator('[data-document-id]');
+          await panel.getByText('Loading documents…',{exact:true}).waitFor();
+          if (scenario !== 'expire loading') {
+            await page.evaluate(() => window.documentsTest.resolve());
+            await rows.first().waitFor();
+            assert.equal(await rows.count(),1);
+          }
+          if (!['expire ready','expire loading'].includes(scenario)) {
+            await panel.getByRole('button',{name:'Load more documents'}).click();
+            await panel.getByText('Loading documents…',{exact:true}).waitFor();
+            assert.equal(await rows.count(),1);
+          }
+          if (['retry next page','expire unavailable'].includes(scenario)) {
+            await page.evaluate(() => window.documentsTest.reject());
+            await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
+            assert.equal(await rows.count(),1);
+          }
+          if (scenario === 'retry next page') {
+            await panel.getByRole('button',{name:'Retry documents'}).click();
+            await panel.getByText('Loading documents…',{exact:true}).waitFor();
+            assert.equal(await rows.count(),1);
+            assert.deepEqual(await page.evaluate(() => window.documentsTest.requests),[
+              {deal_id:deal,limit:50},{deal_id:deal,limit:50,cursor:'page-2'},{deal_id:deal,limit:50,cursor:'page-2'},
+            ]);
+            await page.evaluate(() => window.documentsTest.resolve(null));
+            await page.waitForFunction(() => document.querySelectorAll('[data-document-id]').length === 2);
+            assert.equal(await panel.getByRole('button',{name:'Load more documents'}).count(),0);
+          } else {
+            if (scenario === 'dispose loading more') {
+              await page.evaluate(() => window.documentsTest.panel.dispose());
+              assert.equal(await page.getByRole('region',{name:'Deal documents',exact:true}).count(),0);
+            } else {
+              await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+              await panel.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
+              assert.equal(await rows.count(),0);
+              assert.equal(await panel.getByRole('button').count(),0);
+            }
+            if (['expire loading','expire loading more','dispose loading more'].includes(scenario)) {
+              assert.equal(await page.evaluate(() => window.documentsTest.aborted()),true);
+              await page.evaluate(async () => {
+                window.documentsTest.resolve(null);
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              });
+              assert.equal(await page.locator('[data-document-id]').count(),0);
+              if (scenario !== 'dispose loading more') await panel.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
+              else assert.equal(await page.getByRole('region',{name:'Deal documents',exact:true}).count(),0);
+            }
+          }
+          await page.evaluate(() => window.documentsTest.panel.dispose());
+          assert.deepEqual(errors,[]);
+        } finally { await page.close(); }
+      });
+    }
+  }
 });

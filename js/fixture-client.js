@@ -816,7 +816,7 @@ export async function createFixtureClient(opts = {}) {
       visibility: 'private',
       turns: [
         docTurn(0, 'human', 'Demo: what is still open on the Gulf Breeze letter of intent?', '2026-09-10T13:05:00.000Z'),
-        docTurn(1, 'assistant', 'Demo: the survey window and the demo tenant improvement allowance are both unresolved.', '2026-09-10T13:05:30.000Z'),
+        {...docTurn(1, 'assistant', 'Demo: the survey window and the demo tenant improvement allowance are both unresolved.', '2026-09-10T13:05:30.000Z'), answer_blocks: [{type:'table.v1',id:'comps',columns:[{key:'deal',label:'Deal',type:'text'},{key:'rent',label:'Proposed rent ($/SF/year)',type:'number'}],rows:[{deal:{value:'Demo Gulf Breeze'},rent:{value:24,source:{record_id:'11111111-1111-4111-8111-111111111111'}}},{deal:{value:'Demo Crestview'},rent:{value:0,source:{fact_id:'22222222-2222-4222-8222-222222222222',version:1}}}]}]},
         docTurn(2, 'human', 'Demo: when does the survey window close?', '2026-09-10T13:07:00.000Z'),
         docTurn(3, 'assistant', 'Demo: the demo window closes thirty days after the demo effective date.', '2026-09-10T13:07:20.000Z'),
         docTurn(4, 'human', 'Demo: the counterparty pasted <script>alert(1)</script> into the demo portal.', '2026-09-10T13:09:00.000Z'),
