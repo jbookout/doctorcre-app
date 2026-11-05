@@ -369,7 +369,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   document.addEventListener('doctorcre:brief-calendar', updateCalendar);
   document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
   window.addEventListener('doctorcre-session-invalidated', clearCalendar);
-  $('refreshHome').addEventListener('click', () => { auto.refresh(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
+  $('refreshHome').addEventListener('click', () => { nextRead = readHomeDashboard; void auto.revalidate(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
   function loadSecondaryPanels() {
     if (secondaryRequested) return;
     secondaryRequested = true;
