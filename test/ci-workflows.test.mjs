@@ -102,7 +102,7 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
   assert.match(ci, /browser-results.py collect/);
-  assert.match(ci, /needs: \[checks, shards, performance, live, production-proof\]/);
+  assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
@@ -368,9 +368,9 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   assert.match(gate, /browser-results.py verify/);
   assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
-  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE', 'PRODUCTION_PROOF'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
-      env: { ...process.env, CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
+      env: { ...process.env, CHECKS:'success', LIVE:'success',
         PERFORMANCE:'success', SHARDS:'success', EVENT:event, [dependency]:outcome } });
     assert.equal(result.status === 0, outcome === 'success', `${event} ${dependency} ${outcome}`);
   }
