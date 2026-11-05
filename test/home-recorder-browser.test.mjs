@@ -114,7 +114,11 @@ for (const width of [390, 1440]) for (const transition of ['idle', 'stop', 'stop
       await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
     } else {
       response = transition === 'error' ? 'state_unknown' : transition;
-      await page.evaluate(() => window.recorder.checkEligibility());
+      const eligible = await page.evaluate(() => window.recorder.checkEligibility());
+      if (transition === 'disconnect' || transition === 'cors') {
+        assert.equal(eligible, false);
+        assert.equal(await page.locator('#callModeAvailability').textContent(), 'Call recorder offline');
+      }
     }
     await page.waitForFunction(() => !document.querySelector('#callModeButton.recording'));
     assert.doesNotMatch(await page.locator('#callModeButton').getAttribute('aria-label'), /recording/);
