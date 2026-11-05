@@ -72,7 +72,7 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       if (result?.schema_version !== 'deal-update-reviews.v1' || !Array.isArray(result.proposals) || result.proposals.length > 200) throw Error('Invalid overdue reviews');
       const next: Row[] = result.proposals.filter(row => {
         const valid = text(row?.assessment_id) && !ids.has(row.assessment_id) && text(row.deal_id) && text(row.deal_name)
-          && row.confirm_verb === 'review-deal-update' && row.assessment?.review_required === true
+          && (row.automatic == null || row.automatic === false) && row.confirm_verb === 'review-deal-update' && row.assessment?.review_required === true
           && text(row.assessment.action?.id) && (row.assessment.reason == null || typeof row.assessment.reason === 'string') && typeof row.assessment.action.description === 'string'
           && typeof row.assessment.update === 'string' && (row.assessment.quote == null || typeof row.assessment.quote === 'string');
         if (valid) ids.add(row.assessment_id);

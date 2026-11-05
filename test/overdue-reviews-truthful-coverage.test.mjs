@@ -15,6 +15,7 @@ function setup(t, client) {
 for (const [name, value, visible] of [
   ['all rejected', result([null]), false], ['mixed', result([row(), null]), true],
   ['automatic rejected', result([], [null]), false], ['automatic mixed', result([], [auto(), null]), true],
+  ['spoofed automatic', result([{ ...row(), automatic: true, action_title: {} }]), false],
   ['object name', result([{ ...row(), deal_name: {} }]), false],
   ['object identity', result([{ ...row(), deal_id: {} }]), false],
   ['object reason', result([{ ...row(), assessment: { ...row().assessment, reason: {} } }]), false],
