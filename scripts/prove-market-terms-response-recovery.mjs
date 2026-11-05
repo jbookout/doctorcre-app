@@ -22,7 +22,7 @@ export function parseArgs(args) {
 export async function prove({ origin, timeoutMs = 30000 }) {
   let browser, timer, context, stopped = false;
   const work = async () => {
-    browser = await chromium.launch({ args: CHROMIUM_SAFETY_ARGS, timeout: timeoutMs });
+    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
     if (stopped) { await browser.close(); throw new Error('Proof timeout'); }
     context = await browser.newContext({ serviceWorkers: 'block' });
     context.setDefaultTimeout(timeoutMs);
