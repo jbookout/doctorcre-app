@@ -32,21 +32,28 @@ async function fixture(t) {
   const bin = join(root, 'bin');
   await mkdir(bin);
   const gh = join(bin, 'gh');
-  await writeFile(gh, `#!${process.execPath}\nprocess.stdout.write(process.env.TEST_CI);\n`);
+  await writeFile(gh, `#!${process.execPath}\nif (process.env.TEST_GH_FAILURE) process.exit(1); process.stdout.write(process.env.TEST_CI);\n`);
   await chmod(gh, 0o755);
   let live = commits[0];
+  let fault = '';
+  let environment = 'production';
   const server = createServer(async (req, res) => {
     const response = await worker.fetch(new Request(new URL(req.url, 'https://app.doctorcre.com')), {
-      GIT_SHA: live, APP_ENV: 'production', CF_VERSION_METADATA: { id: 'fixture-version' },
+      GIT_SHA: live, APP_ENV: environment, CF_VERSION_METADATA: { id: 'fixture-version' },
     });
-    res.writeHead(response.status, Object.fromEntries(response.headers));
-    res.end(await response.text());
+    const headers = Object.fromEntries(response.headers);
+    if (fault === 'html') headers['content-type'] = 'text/html';
+    res.writeHead(fault === 'unavailable' ? 503 : response.status, headers);
+    res.end(fault === 'oversized' ? 'x'.repeat(65537) : await response.text());
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const url = `http://127.0.0.1:${server.address().port}/app-release`;
-  async function run({ source = commits[1], liveSource = commits[0], ci = {}, checkoutSource = source } = {}) {
+  async function run({ source = commits[1], liveSource = commits[0], ci = {}, checkoutSource = source, httpFault = '', liveEnvironment = 'production', gitFailure = false, ghFailure = false } = {}) {
     live = liveSource;
+    fault = httpFault;
+    environment = liveEnvironment;
+    if (gitFailure) git(checkout, 'remote', 'set-url', 'origin', join(root, 'missing'));
     git(checkout, 'checkout', '--detach', checkoutSource);
     const output = join(root, 'output');
     const summary = join(root, 'summary');
@@ -58,7 +65,7 @@ async function fixture(t) {
     const result = await new Promise((resolve, reject) => {
       const child = spawn('python3', [program, '--release-url', url], { cwd: checkout,
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_SHA: source,
-          SOURCE_COMMIT: source, CI_RUN_ID: '123', TEST_CI: JSON.stringify(run),
+          SOURCE_COMMIT: source, CI_RUN_ID: '123', TEST_GH_FAILURE: ghFailure ? '1' : '', TEST_CI: JSON.stringify(run),
           GITHUB_REPOSITORY: 'jbookout/doctorcre-app', GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary } });
       let stdout = '', stderr = '';
       child.stdout.on('data', data => { stdout += data; });
@@ -68,7 +75,7 @@ async function fixture(t) {
     });
     return { ...result, output: await readFile(output, 'utf8'), summary: await readFile(summary, 'utf8') };
   }
-  return { run, commits, divergent };
+  return { run, commits, divergent, url };
 }
 
 function selected(result) {
@@ -138,4 +145,35 @@ test('invalid live identity and divergent live history fail closed visibly', asy
     assert.match(result.stdout, /::error::/);
     assert.match(result.summary, /refused/);
   }
+});
+
+test('dependency failures and invalid HTTP contracts refuse publication visibly', async t => {
+  const f = await fixture(t);
+  for (const options of [{ ghFailure: true }, { httpFault: 'html' }, { httpFault: 'oversized' },
+    { httpFault: 'unavailable' }, { liveEnvironment: 'staging' }, { gitFailure: true }]) {
+    const result = await f.run(options);
+    assert.notEqual(result.code, 0);
+    assert.match(result.stdout, /::error::/);
+    assert.match(result.summary, /refused/);
+    assert.doesNotMatch(result.output, /ready=true/);
+  }
+});
+
+test('production proof readback CLI passes real Worker identity and refuses a wrong release', async t => {
+  const f = await fixture(t);
+  const cli = new URL('../scripts/verify-app-release.mjs', import.meta.url).pathname;
+  const invoke = source => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [cli, f.url, source, 'production']);
+    let stdout = '', stderr = '';
+    child.stdout.on('data', data => { stdout += data; });
+    child.stderr.on('data', data => { stderr += data; });
+    child.on('error', reject);
+    child.on('close', code => resolve({ code, stdout, stderr }));
+  });
+  const pass = await invoke(f.commits[0]);
+  assert.equal(pass.code, 0, pass.stderr);
+  assert.equal(JSON.parse(pass.stdout).source_commit, f.commits[0]);
+  const fail = await invoke(f.commits[1]);
+  assert.notEqual(fail.code, 0);
+  assert.match(fail.stderr, /after 12 reads/);
 });

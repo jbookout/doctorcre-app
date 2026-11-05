@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -12,12 +12,12 @@ const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e'
   input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
 }));
 
-test('one main push owns one immutable deployment run', () => {
+test('one completed main CI run owns one immutable deployment source', () => {
   const document = workflow();
   const events = document.on ?? document.true;
-  assert.deepEqual(events, { push: { branches: ['main'] } });
+  assert.deepEqual(events, { workflow_run: { workflows: ['CI'], branches: ['main'], types: ['completed'] } });
   const job = document.jobs.production;
-  assert.equal(job.if, undefined);
+  assert.equal(job.if, "github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository");
   assert.equal(job.environment, 'production');
   assert.equal(job.concurrency['cancel-in-progress'], false);
   assert.equal(document.permissions.contents, 'read');
@@ -25,7 +25,7 @@ test('one main push owns one immutable deployment run', () => {
   assert.equal(document.env?.CLOUDFLARE_API_TOKEN, undefined);
   assert.equal(job.env?.CLOUDFLARE_API_TOKEN, undefined);
   const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with.ref, '${{ github.sha }}');
+  assert.equal(checkout.with.ref, '${{ github.event.workflow_run.head_sha }}');
   assert.equal(checkout.with['fetch-depth'], 0);
   assert.equal(checkout.with['persist-credentials'], false);
 });
@@ -83,9 +83,9 @@ test('production waits for successful CI on that source and uses the existing pu
   }
 });
 
-test('production refreshes main before publication and refuses a staged source after main advances', t => {
+test('publication requires the admitted source while allowing main to advance', t => {
   const steps = workflow().jobs.production.steps;
-  const gate = steps.findIndex(step => step.name === 'Require current main source');
+  const gate = steps.findIndex(step => step.name === 'Require exact admitted source');
   const deploy = steps.findIndex(step => step.name === 'Deploy production');
   const verify = steps.findIndex(step => step.run === 'npm run artifact:verify');
   assert.ok(gate > verify && gate + 1 === deploy, 'refresh main immediately before publication');
@@ -109,153 +109,32 @@ test('production refreshes main before publication and refuses a staged source a
   assert.notEqual(run('0'.repeat(40)).status, 0, 'refuse a different staged source');
   commit();
   assert.equal(git(checkout, ['rev-parse', 'origin/main']), source, 'checkout still has the old remote reference');
-  assert.notEqual(run(source).status, 0, 'refuse stale source after fetching the advanced main');
-  git(checkout, ['remote', 'set-url', 'origin', join(root, 'missing')]);
-  assert.notEqual(run(source).status, 0, 'fail closed when main cannot be fetched');
+  assert.equal(run(source).status, 0, 'main movement does not discard the admitted source');
 });
 
 
-test('one deployment waits for its exact green source and refuses supersession or failed CI', t => {
+test('GitHub serializes all production candidates without replacing pending runs', () => {
   const job = workflow().jobs.production;
-  assert.equal(job.concurrency.group, 'doctorcre-app-production');
-  assert.equal(job.concurrency['cancel-in-progress'], false);
+  assert.deepEqual(job.concurrency, { group: 'doctorcre-app-production', 'cancel-in-progress': false, queue: 'max' });
   const candidate = job.steps.find(step => step.id === 'candidate');
-  const root = temporaryDirectory('production-candidate-');
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const gh = join(root, 'gh');
-  const git = join(root, 'git');
-  const sha = 'a'.repeat(40);
-  writeFileSync(git, `#!/usr/bin/env python3
-import os, sys
-if sys.argv[1] == 'rev-parse': print(os.environ['FIXTURE_MAIN'] if sys.argv[-1] == 'origin/main' else os.environ['FIXTURE_SHA'])
-`);
-  writeFileSync(gh, `#!/usr/bin/env python3
-import os, sys
-if sys.argv[1:3] == ['run','watch']:
-    assert sys.argv[3] == '123'
-    sys.exit(int(os.environ['FIXTURE_WATCH']))
-assert '--commit' in sys.argv and sys.argv[sys.argv.index('--commit')+1] == os.environ['FIXTURE_SHA']
-print(os.environ['FIXTURE_RUNS'])
-`);
-  chmodSync(gh, 0o755);
-  chmodSync(git, 0o755);
-  const run = (runs, main = sha, watch = 0) => {
-    const output = join(root, 'output');
-    writeFileSync(output, '');
-    const result = spawnSync('python3', [new URL('../scripts/production-candidate.py', import.meta.url).pathname], {
-      cwd: root, encoding: 'utf8', env: {
-        PATH: `${root}:${process.env.PATH}`, GITHUB_SHA: sha,
-        GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'jbookout/doctorcre-app',
-        FIXTURE_SHA: sha, FIXTURE_MAIN: main, FIXTURE_WATCH: String(watch), FIXTURE_RUNS: JSON.stringify(runs),
-      },
-    });
-    return { ...result, output: readFileSync(output, 'utf8') };
-  };
-  const green = { databaseId: 123, headSha: sha, status: 'completed', conclusion: 'success' };
-  for (const ci of [green, { ...green, status: 'in_progress', conclusion: '' }]) {
-    const result = run([ci]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.output, /ready=true/);
-    assert.ok(result.output.includes(`source_commit=${sha}`));
-  }
-  for (const [ci, main] of [[green, 'b'.repeat(40)], [{ ...green, conclusion: 'failure' }, sha]]) {
-    const result = run([ci], main);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.output, /ready=false/);
-  }
-  assert.notEqual(run([{ ...green, status: 'in_progress' }], sha, 1).status, 0, 'failed CI watch refuses publication');
-  assert.notEqual(run([{ ...green, headSha: 'b'.repeat(40) }]).status, 0, 'wrong CI source fails closed');
-  writeFileSync(gh, '#!/bin/sh\nexit 1\n');
-  assert.notEqual(run([green]).status, 0, 'GitHub failure refuses publication without retry');
+  assert.equal(candidate.env.SOURCE_COMMIT, '${{ github.event.workflow_run.head_sha }}');
+  assert.equal(candidate.env.CI_RUN_ID, '${{ github.event.workflow_run.id }}');
   for (const step of job.steps.slice(job.steps.indexOf(candidate) + 1)) {
     if (step.if === 'failure()') continue;
-    assert.match(step.if, /steps.candidate.outputs.ready == 'true'/, step.name || step.run || step.uses);
+    assert.match(step.if, /steps.candidate.outputs.ready == 'true'/);
   }
 });
 
-test('candidate bounds discovery and CI waiting, and rechecks main after CI', () => {
-  const script = new URL('../scripts/production-candidate.py', import.meta.url).pathname;
-  const result = spawnSync('python3', ['-c', `
-import importlib.util, json, os, subprocess
-from unittest.mock import patch
-spec = importlib.util.spec_from_file_location('candidate', ${JSON.stringify(script)})
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-os.environ['GITHUB_REPOSITORY'] = 'synthetic/app'
-sha = 'a' * 40
-green = {'databaseId': 123, 'headSha': sha, 'status': 'completed', 'conclusion': 'success'}
-with patch.object(m, 'current', return_value=True), patch.object(m.time, 'sleep') as sleep:
-    with patch.object(m.subprocess, 'check_output', return_value='[]') as lookup:
-        try: m.ready(sha)
-        except RuntimeError: pass
-        else: raise AssertionError('missing CI must refuse')
-        assert lookup.call_count == 6
-        assert sleep.call_count == 5
-    with patch.object(m.subprocess, 'check_output', side_effect=['[]', json.dumps([green])]):
-        assert m.ready(sha)
-with patch.object(m, 'current', side_effect=[True, False]), patch.object(m.subprocess, 'check_output', return_value=json.dumps([green])):
-    assert not m.ready(sha), 'main advanced while CI finished'
-running = dict(green, status='in_progress', conclusion=None)
-with patch.object(m, 'current', return_value=True), patch.object(m.subprocess, 'check_output', return_value=json.dumps([running])):
-    with patch.object(m.subprocess, 'run', side_effect=subprocess.TimeoutExpired('gh', 1800)) as watch:
-        try: m.ready(sha)
-        except subprocess.TimeoutExpired: pass
-        else: raise AssertionError('timed out CI must refuse')
-        assert watch.call_count == 1
-        assert watch.call_args.kwargs['timeout'] == 1800
-        assert watch.call_args.args[0][-2:] == ['--interval', '30']
-`], { encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stderr);
-});
-
-test('delayed older admission preserves the newest green main deployment opportunity', t => {
-  const root = temporaryDirectory('production-admission-');
+test('workflow visibly reports completed publication and failed publication', async t => {
+  const root = temporaryDirectory('production-outcomes-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const origin = join(root, 'origin');
-  const checkout = join(root, 'checkout');
-  const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
-  git(root, ['init', '--initial-branch=main', origin]);
-  const sources = Array.from({ length: 30 }, () => {
-    git(origin, ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
-      'commit', '--allow-empty', '-m', 'Synthetic main push']);
-    return git(origin, ['rev-parse', 'HEAD']);
-  });
-  git(origin, ['update-ref', 'refs/heads/main', sources[2]]);
-  git(root, ['clone', origin, checkout]);
-  const script = new URL('../scripts/production-candidate.py', import.meta.url).pathname;
-  const concurrency = workflow().jobs.production.concurrency;
-  const result = spawnSync('python3', ['-c', `
-import importlib.util, itertools, json, os, subprocess
-from unittest.mock import patch
-spec = importlib.util.spec_from_file_location('candidate', ${JSON.stringify(script)})
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-os.environ['GITHUB_REPOSITORY'] = 'synthetic/app'
-sources = ${JSON.stringify(sources)}
-config = json.loads(${JSON.stringify(JSON.stringify(concurrency))})
-real_output = subprocess.check_output
-def output(args, **kwargs):
-    if args[0] != 'gh': return real_output(args, **kwargs)
-    sha = args[args.index('--commit') + 1]
-    return json.dumps([dict(databaseId=123, headSha=sha, status='completed', conclusion='success')])
-def replay(admissions):
-    running, *arrivals = admissions
-    pending = []
-    for sha in arrivals:
-        if config.get('queue') == 'max':
-            if len(pending) < 100: pending.append(sha)
-        else: pending = [sha]
-    with patch.object(m.subprocess, 'check_output', side_effect=output):
-        return [sha for sha in [running, *pending] if m.ready(sha)]
-abc = sources[:3]
-selected = replay([abc[0], abc[2], abc[1]])
-assert selected == [abc[-1]], f'A running, C pending, delayed B admitted: expected C, got {selected}'
-for order in itertools.permutations(abc):
-    assert replay(order) == [abc[-1]], 'admission order must not lose or repeat the newest opportunity'
-subprocess.run(['git', '-C', ${JSON.stringify(origin)}, 'update-ref', 'refs/heads/main', sources[-1]], check=True)
-assert replay([sources[0], *reversed(sources[1:])]) == [sources[-1]], '10x burst must retain newest'
-print('A running -> C pending -> delayed B retained; C ready exactly once; all 6 orders and 30-push burst passed')
-`], { cwd: checkout, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /C ready exactly once/);
+  const summary = join(root, 'summary');
+  for (const name of ['Record publication outcome', 'Record failed publication outcome']) {
+    const step = workflow().jobs.production.steps.find(step => step.name === name);
+    const result = spawnSync('bash', ['-e', '-c', step.run], { encoding: 'utf8',
+      env: { PATH: process.env.PATH, GITHUB_STEP_SUMMARY: summary, SOURCE_COMMIT: 'a'.repeat(40) } });
+    assert.equal(result.status, 0, result.stderr);
+    if (name.includes('failed')) assert.match(result.stdout, /::error::/);
+    else assert.match(readFileSync(summary, 'utf8'), /Published and verified source a{40}/);
+  }
 });

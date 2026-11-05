@@ -1,8 +1,10 @@
 name: Deploy production
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
     branches: [main]
+    types: [completed]
 
 permissions:
   contents: read
@@ -10,6 +12,7 @@ permissions:
 
 jobs:
   production:
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -20,13 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Wait for exact main push CI
+      - name: Admit exact CI source against live release
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
         run: python3 scripts/production-candidate.py
       - if: steps.candidate.outputs.ready == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -44,14 +49,12 @@ jobs:
       - if: steps.candidate.outputs.ready == 'true'
         run: npm run artifact:verify
       - if: steps.candidate.outputs.ready == 'true'
-        name: Require current main source
+        name: Require exact admitted source
         env:
           SOURCE_COMMIT: ${{ steps.candidate.outputs.source_commit }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
-          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
-          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
       - if: steps.candidate.outputs.ready == 'true'
         name: Deploy production
         env:
@@ -101,6 +104,16 @@ jobs:
         env:
           E2E_TELEMETRY_DISABLED: '1'
           DOCTORCRE_SMOKE_URL: https://app.doctorcre.com
+      - if: success() && steps.candidate.outputs.ready == 'true'
+        name: Record publication outcome
+        run: echo "Published and verified source $SOURCE_COMMIT" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          SOURCE_COMMIT: ${{ steps.candidate.outputs.source_commit }}
+      - if: failure()
+        name: Record failed publication outcome
+        run: echo '::error::Production run failed; publication and verification did not both complete'
+      - if: failure()
+        run: echo 'Production run failed; inspect publication and release verification steps.' >> "$GITHUB_STEP_SUMMARY"
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
