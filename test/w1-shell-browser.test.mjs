@@ -61,6 +61,13 @@ async function open(t, { width = 1440, height = 960, actor = 'joe', live = false
   await page.waitForFunction(() => ['J','D'].includes(document.querySelector('#selfAvatar')?.textContent));
   return { page, errors, pageErrors, calls, docSuggestionsStarted, releaseDocSuggestions };
 }
+async function connectRecorder(page) {
+  await page.locator('#callModeRetry').waitFor({ state: 'attached' });
+  assert.equal(await page.locator('#callModeButton').evaluate(node => node.hidden), true);
+  assert.equal(await page.locator('#callModeAvailability').textContent(), 'Call recorder not connected');
+  await page.evaluate(async () => (await (await import('/js/global-call-mode.js')).mountGlobalCallMode(document)).checkEligibility());
+  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+}
 for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, account, persisted controls and sign-out`, async t => {
   const { page, errors, calls } = await open(t, { actor, live: true, minimal: true });
   const name = actor === 'joe' ? 'Joe' : 'Dell';
@@ -136,6 +143,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.keyboard.press('Escape');
     if (width <= 760) await page.locator('#selfAvatar').click();
+    await connectRecorder(page);
     await page.getByLabel('Call mode', {exact:true}).click(); await page.waitForFunction(() => document.querySelector('#callModeDialog')?.open);
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
     assert.equal(calls.some(call => call.method === 'POST' && !['calendar-meeting-prep','deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
@@ -324,7 +332,7 @@ for (const [width, height] of [[390, 960], [1440, 960], [390, 600], [390, 700]])
   const { page, errors, calls } = await open(t, { width, height });
   const entry = page.getByRole('button', { name: 'How DoctorCRE works', exact: true });
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
-  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  await connectRecorder(page);
   await page.locator('#selfAvatar').click();
   await entry.click();
   await guide.waitFor();
@@ -394,7 +402,7 @@ test('walkthrough skips unavailable Call Mode', async t => {
 
 test('walkthrough removes a Call mode target that becomes unavailable', async t => {
   const { page } = await open(t);
-  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  await connectRecorder(page);
   await page.locator('#selfAvatar').click();
   await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
@@ -415,6 +423,7 @@ test('walkthrough stays static with reduced motion and follows Doc across phone 
     const scroll = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = function(options) { window.walkthroughScrollBehaviors.push(options?.behavior); return scroll.call(this, options); };
   });
+  await connectRecorder(page);
   assert.equal(await guide.count(), 0, 'walkthrough starts only from help');
   await page.locator('#selfAvatar').click();
   await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
@@ -475,7 +484,7 @@ for (const actor of ['joe', 'dell']) test(`first verified ${actor} sign-in opens
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
   await guide.waitFor();
   await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
-  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  await connectRecorder(page);
   await page.waitForFunction(() => document.querySelector('[data-walkthrough] [data-progress]')?.textContent === '1 of 6');
   await mkdir(new URL('out/test-artifacts/walkthrough/', root), { recursive: true });
   await page.screenshot({ path: fileURLToPath(new URL(`out/test-artifacts/walkthrough/first-signin-${actor}.png`, root)) });
@@ -501,7 +510,7 @@ test('a returning partner does not suppress another partner’s first Home walkt
   await page.goto('http://localhost/?mode=live');
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
   await guide.waitFor();
-  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  await connectRecorder(page);
   for (let index = 0; index < 5; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
   assert.equal(await guide.locator('[data-progress]').textContent(), '6 of 6');
   await guide.getByRole('button', { name: 'Done', exact: true }).click();

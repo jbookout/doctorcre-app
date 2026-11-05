@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> Quiet
+  Quiet: No recording indicator
+  Recording: Recording timer and phone dot
+  Quiet --> Recording: Recorder confirms recording
+  Recording --> Quiet: Recorder confirms idle or processing
+  Recording --> Quiet: Stop succeeds
+  Recording --> Quiet: Recorder error or unknown outcome
+  Recording --> Quiet: Connection lost or CORS refuses read
+  Recording --> Quiet: Sign out
+  Quiet --> Quiet: Late response after sign out
+  %% never Show recording without an available confirmed recording snapshot.
+  %% never Restore recording after the session ends.
