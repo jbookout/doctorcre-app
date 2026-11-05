@@ -8,6 +8,54 @@ const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta
 const { mountFactReview } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
 import { createFactReviewFixture } from '../data/fixtures/fact-review.mjs';
 
+for (const expiry of ['invalid', undefined, null, '2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z', '2099-01-01T00:00:00Z']) {
+  test(`excerpt visibility requires a finite future expiry (${expiry})`, async t => {
+    const originalNow = Date.now;
+    Date.now = () => Date.parse('2026-02-01T00:00:00Z');
+    t.after(() => { Date.now = originalNow; });
+    const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+    globalThis.window = dom.window; globalThis.document = dom.window.document;
+    const root = dom.window.document.querySelector('#terms');
+    const client = createFactReviewFixture({ canonicalHistory: true });
+    const list = client.listFactReview.bind(client);
+    client.listFactReview = async args => {
+      const page = await list(args);
+      for (const item of page.items) for (const observation of item.observations) {
+        observation.source.cited_text = 'Synthetic clause';
+        observation.source.cited_text_expires_at = expiry;
+      }
+      return page;
+    };
+    const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+    t.after(() => { panel.dispose(); dom.window.close(); });
+    await panel.refresh();
+    const visible = expiry === '2099-01-01T00:00:00Z';
+    assert.equal(root.querySelectorAll('blockquote').length > 0, visible);
+    assert.equal(root.querySelectorAll('.fact-observation .fact-excerpt-unavailable').length === 0, visible);
+    assert.match(root.textContent, /Demo Amendment.pdf · Page 3/);
+    const currentHistory = [...root.querySelectorAll('[data-canonical-history] li')].at(-1);
+    assert.equal(currentHistory.textContent.includes('Excerpt no longer available'), !visible);
+  });
+}
+
+test('disposing a loading panel ignores its delayed response', async () => {
+  const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const root = dom.window.document.querySelector('#terms');
+  const client = createFactReviewFixture();
+  const response = await client.listFactReview({ entity_ref: 'd14', include_resolved: true });
+  let finish, started;
+  const loading = new Promise(resolve => { started = resolve; });
+  client.listFactReview = () => new Promise(resolve => { finish = resolve; started(); });
+  const panel = mountFactReview(root, { terms: FACT_TERMS, client, entityRef: 'd14' });
+  await loading;
+  panel.dispose();
+  finish(response);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(root.textContent, '');
+  dom.window.close();
+});
+
 test('terms show how values were read and retain the review reason after a conflict', async () => {
   const dom = new JSDOM('<div id="terms"></div>', { url: 'http://localhost' });
   globalThis.FormData = dom.window.FormData;
