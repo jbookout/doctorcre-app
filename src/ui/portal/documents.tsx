@@ -11,7 +11,9 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 function text(value: unknown, limit: number): value is string {
-  return typeof value === 'string' && value.trim().length > 0 && [...value].length <= limit;
+  if (typeof value !== 'string') return false;
+  const length = [...value.replace(/^ +| +$/g, '')].length;
+  return length > 0 && length <= limit;
 }
 
 export function parseDocuments(payload: unknown, slug: string): State {

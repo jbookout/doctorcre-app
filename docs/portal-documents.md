@@ -29,7 +29,9 @@ S9 owns that adapter and S10 owns mounting, routing, styling and bundling.
   The injected transport owns auth, same-origin no-store requests and HTTP mapping.
   Tests prove only explicitly returned material is rendered.
 - Capacity. One request per mount or refresh, at most 100 materials, 200 title
-  characters and 10,000 content characters each, matching v1. Bounds are tested.
+  characters and 10,000 content characters each after trimming ASCII spaces,
+  matching PostgreSQL btrim in v1. Original text is preserved. Bounds and padding
+  are tested. Tabs and other non-space code points count toward the limit.
   At 10x sessions upstream authorization breaks first, not per-item fan-out.
 - Load spread and scaling. No polling, retries, per-item reads or fan-out.
   Refresh is disabled while loading. A held-request test checks call count.
@@ -87,3 +89,23 @@ fetch from a second portal session. This worker makes no production calls.
 Throughput checkpoint. Contract inspection blocks implementation. There are no
 independent workstreams or shared mutable files. One reader and its tests are
 the smallest safe decomposition. No subagents, merges or sibling edits.
+
+## Round-two parser correction
+
+Card: WR227.S17.J4
+
+Small parser-only fix. The existing received-envelope and material union remain
+the data shape. No transport, caching, concurrency or storage behavior changes.
+
+The pinned producer filters publication and portal ownership before returning
+materials. Every returned item must satisfy its kind and btrim length constraints.
+An item violating those constraints makes the response inconsistent with that
+producer, so the reader refuses the whole response rather than presenting a
+partial trusted list. Valid padded entries preserve all unrelated entries.
+Unknown fields remain discarded by projection. URL-shaped text stays literal;
+unknown download fields never grant file authority. The reader cannot independently
+verify publication or deal ownership beyond the matching portal slug.
+
+Throughput checkpoint. Run the parser and DOM regressions before the one-function
+fix, then local checks and the four width/theme combinations. Hosted validation
+runs after the final push. No independent work or subagents are needed.
