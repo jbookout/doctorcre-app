@@ -32,6 +32,15 @@ class AdmissionTest(unittest.TestCase):
     def snapshot(self, body=NON_PRODUCT, paths=CI_PATHS, event='pull_request', requirement=None):
         return self.adapter.Snapshot(event, 'a' * 40, 'b' * 40, body, tuple(paths), requirement)
 
+    def test_bulk_settle_app_declaration_is_admitted_without_attesting_execution(self):
+        # PR 654 declaration at 3d1e0cf98b8a9768800a447c48f4ed2ab7df9b1c.
+        requirement = (ROOT / 'test/fixtures/wr617-s12-production-proof.json').read_text()
+        decision = self.adapter.admission(
+            self.snapshot(BODY, ['src/ui/home/bulk-controls.tsx'], requirement=requirement),
+            self.validator, self.contract)
+        self.assertEqual(decision.status, 'admitted', decision)
+        self.assertIn('execution unproven', decision.reason)
+
     def test_snapshot_decisions(self):
         cases = [
             ('CI', NON_PRODUCT, CI_PATHS, 'pull_request', 'admitted', 'non-product'),
