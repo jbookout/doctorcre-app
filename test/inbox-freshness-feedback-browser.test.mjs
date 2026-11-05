@@ -23,7 +23,9 @@ async function open(t, { width = 1440, theme = 'light', clock = false, extra = [
   const calls = [];
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
-    const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    calls.push({ name, args });
     let payload;
     if (name === 'read-home-inbox-v3') payload = { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true };
     else if (['complete-one-action', 'reopen-one-action'].includes(name)) {
@@ -55,10 +57,14 @@ test('focus refreshes once; visible clock refreshes every minute; hidden offline
   const { page, calls } = await open(t, { clock: true });
   await page.locator('[data-inbox-row="a"]').waitFor();
   const initial = reads(calls);
+  const focused = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-inbox-v3');
   await focus(page);
+  await (await focused).finished();
   await page.waitForFunction(() => !document.querySelector('.inbox-health').textContent.includes('Updating'));
   assert.equal(reads(calls), initial + 1, 'one returning-focus read');
+  const interval = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-inbox-v3');
   await page.clock.runFor(60_000);
+  await (await interval).finished();
   await page.waitForFunction(() => !document.querySelector('.inbox-health').textContent.includes('Updating'));
   assert.equal(reads(calls), initial + 2, 'one visible interval read');
   await visible(page, 'hidden');
@@ -176,7 +182,7 @@ test('authentication loss during a refresh retires all private cards', async t =
     await denial;
     await route.fulfill({ status: 401, json: { error: 'authentication_required' } });
   });
-  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v3');
+  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v4');
   await focus(page);
   await refresh;
   refuse();

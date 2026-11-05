@@ -8,12 +8,12 @@ type BaseItem = Readonly<{
   explicit_unsettle: boolean; section: 'inbox' | 'working' | 'held' | 'done' | 'snoozed' | 'settled'; base_version: string;
 }>;
 export type InboxItem = BaseItem & Readonly<{
-  auto_settled: boolean; context_label: string | null; due_on: string | null; open_url: string | null;
+  completed_at: string | null; auto_settled: boolean; context_label: string | null; due_on: string | null; open_url: string | null;
   kind_label: 'Task' | 'Call follow-up' | 'Call' | 'Reply draft' | 'Update' | 'Fact review' | 'Tour feedback';
   merged_source_ids: string[];
 }> & (Readonly<{ source_type: 'next_action' | 'capture_post_call_action'; action_id: string; action_version: number; deal_id: string | null }> |
   Readonly<{ source_type: 'capture_session' | 'email_proposal' | 'notification' | 'fact_review' | 'tour_feedback'; action_id: null; action_version: null; deal_id: string | null }>);
-export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3'; auto_settle_enabled: true }>);
+export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3' | 'home-inbox.v4'; auto_settle_enabled: true }>);
 export type Action = 'snooze' | 'settle' | 'unsettle';
 type CommandArgs = Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>> }>;
 type DispositionCommand = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
@@ -41,7 +41,7 @@ function parseBaseItem(value: unknown): BaseItem {
 }
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const day = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-export function parseItem(value: unknown, v3 = false): InboxItem {
+export function parseItem(value: unknown, v3 = false, v4 = false): InboxItem {
   const legacy = parseBaseItem(value);
   if (!object(value) || !(value.context_label === null || text(value.context_label)) ||
     !(value.due_on === null || day(value.due_on)) || !(value.open_url === null || text(value.open_url)) ||
@@ -53,15 +53,16 @@ export function parseItem(value: unknown, v3 = false): InboxItem {
   if (task ? !uuid(value.action_id) || !Number.isSafeInteger(value.action_version) || typeof value.action_version !== 'number' || value.action_version < 1 || value.action_version > 2147483647 :
     !['capture_session', 'email_proposal', 'notification', ...(v3 ? ['fact_review', 'tour_feedback'] : [])].includes(legacy.source_type) || value.action_id !== null || value.action_version !== null) throw Error('Inbox returned unreadable completion identity. Refresh to try again.');
   if (v3 && (typeof value.auto_settled !== 'boolean' || value.auto_settled && (legacy.section !== 'settled' || legacy.disposition !== 'settled' || legacy.source_state !== 'done' || legacy.explicit_unsettle || !['next_action', 'capture_post_call_action', 'email_proposal', 'fact_review', 'tour_feedback'].includes(legacy.source_type)))) throw Error('Inbox returned unreadable settlement context. Refresh to try again.');
-  return { ...value, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
+  if (v4 && !(value.completed_at === null || typeof value.completed_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value.completed_at) && timestamp(value.completed_at) && new Date(value.completed_at).toISOString().slice(0, 19) === value.completed_at.slice(0, 19)) || v4 && legacy.source_state !== 'done' && value.completed_at !== null) throw Error('Inbox returned unreadable completion time. Refresh to try again.');
+  return { ...value, completed_at: v4 ? value.completed_at : null, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
 }
 export function parseSnapshot(value: unknown): Snapshot {
-  if (!object(value) || value.ok !== true || (value.schema_version !== 'home-inbox.v2' && value.schema_version !== 'home-inbox.v3') || !Array.isArray(value.items) || value.items.length > 1000 ||
-    typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== (value.schema_version === 'home-inbox.v3')) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
-  const items = value.items.map(item => parseItem(item, value.schema_version === 'home-inbox.v3'));
+  if (!object(value) || value.ok !== true || (value.schema_version !== 'home-inbox.v2' && value.schema_version !== 'home-inbox.v3' && value.schema_version !== 'home-inbox.v4') || !Array.isArray(value.items) || value.items.length > 1000 ||
+    typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== (value.schema_version !== 'home-inbox.v2')) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
+  const items = value.items.map(item => parseItem(item, value.schema_version !== 'home-inbox.v2', value.schema_version === 'home-inbox.v4'));
   if (new Set(items.map(item => item.item_id)).size !== items.length) throw Error('Inbox returned duplicate items. Refresh to try again.');
   const shared = { ok: true, truncated: value.truncated, limit: 1000, items, working_collapsed: true } as const;
-  return value.schema_version === 'home-inbox.v3' ? { ...shared, schema_version: 'home-inbox.v3', auto_settle_enabled: true } : { ...shared, schema_version: 'home-inbox.v2', auto_settle_enabled: false };
+  return value.schema_version !== 'home-inbox.v2' ? { ...shared, schema_version: value.schema_version, auto_settle_enabled: true } : { ...shared, schema_version: 'home-inbox.v2', auto_settle_enabled: false };
 }
 export function shelves(items: readonly InboxItem[], currentId?: string) {
   const result: { inbox: InboxItem[]; working: InboxItem[]; held: InboxItem[]; done: InboxItem[]; snoozed: InboxItem[]; settled: InboxItem[]; current: InboxItem | undefined } = { inbox: [], working: [], held: [], done: [], snoozed: [], settled: [], current: undefined };
@@ -97,19 +98,19 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
 export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
-    let value: unknown;
-    try { value = await rpc('read-home-inbox-v3', {}, signal); }
-    catch (error) {
-      if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error;
-      value = { error: 'unknown_tool' };
+    // eslint-disable-next-line no-restricted-syntax -- At most three version reads; only unknown_tool advances to the next version.
+    for (const version of ['v4', 'v3', 'v2'] as const) {
+      let value: unknown;
+      try { value = await rpc(`read-home-inbox-${version}`, {}, signal); }
+      catch (error) {
+        if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error;
+        value = { error: 'unknown_tool' };
+      }
+      if (object(value) && value.error === 'unknown_tool') continue;
+      if (!object(value) || value.schema_version !== `home-inbox.${version}`) throw Error('Inbox unavailable. The server inbox could not be verified.');
+      return parseSnapshot(value);
     }
-    if (object(value) && value.error === 'unknown_tool') {
-      const legacy = await rpc('read-home-inbox-v2', {}, signal);
-      if (!object(legacy) || legacy.schema_version !== 'home-inbox.v2') throw Error('Inbox unavailable. The earlier inbox could not be verified.');
-      return parseSnapshot(legacy);
-    }
-    if (!object(value) || value.schema_version !== 'home-inbox.v3') throw Error('Inbox unavailable. Automatic settlement could not be verified.');
-    return parseSnapshot(value);
+    throw Error('Inbox unavailable. No supported inbox could be verified.');
   }
   return {
     read,
