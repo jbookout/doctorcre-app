@@ -37,11 +37,17 @@ function AnswerChart({chart, table}: {chart: Chart; table: Table}) {
   const y = (value: number) => 180 - (value / scale - min) / (max - min || 1) * 160;
   const x = (index: number) => 30 + index * 540 / Math.max(1, table.rows.length);
   const width = Math.max(1, 440 / Math.max(1, table.rows.length));
+  const segments: typeof points[] = [];
+  for (const point of points) {
+    const segment = segments.at(-1);
+    if (segment?.at(-1)?.index === point.index - 1) segment.push(point);
+    else segments.push([point]);
+  }
   const label = `${table.columns.find(c => c.key === chart.y)?.label ?? chart.y} by ${table.columns.find(c => c.key === chart.x)?.label ?? chart.x}`;
   return <figure className="answer-chart"><figcaption>{label}. Full values and sources are in table {table.id}.</figcaption>
     <svg viewBox="0 0 600 210" role="group" aria-label={label}>
       <line x1="20" x2="580" y1={y(0)} y2={y(0)} stroke="currentColor" />
-      {chart.kind === 'line' && <polyline fill="none" stroke="currentColor" points={points.map(p => `${x(p.index)},${y(p.value)}`).join(' ')} />}
+      {chart.kind === 'line' && segments.map((segment, index) => <polyline key={index} fill="none" stroke="currentColor" points={segment.map(p => `${x(p.index)},${y(p.value)}`).join(' ')} />)}
       {points.map(p => {
         const text = `${p.label}: ${p.value}`;
         const handlers = {tabIndex:0,role:'img','aria-label':text,onFocus:() => setActive(text),onBlur:() => setActive(null),onMouseEnter:() => setActive(text),onMouseLeave:() => setActive(null)};
