@@ -28,7 +28,15 @@ after(async () => {
 });
 
 async function refreshChecklist(page, trigger, visible) {
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    window.checklistPreviousDetail = state.panelDetail;
+  });
   await trigger();
+  await waitForAsync(page, async () => {
+    const { state } = await import('/js/pipeline.js');
+    return state.panelDetail !== window.checklistPreviousDetail;
+  });
   await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, visible);
 }
 
@@ -172,12 +180,12 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
     const recovering = await checklist.getByText('Requirements could not be read.', { exact: true }).count() > 0;
     await refreshChecklist(page, async () => {
-    if (recovering) {
-      const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
-      await retry.focus();
-      await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
-    }
-    else await page.locator('.deal-freshness [data-refresh-detail]').click();
+      if (recovering) {
+        const retry = checklist.getByRole('button', { name: 'Refresh deal', exact: true });
+        await retry.focus();
+        await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
+      }
+      else await page.locator('.deal-freshness [data-refresh-detail]').click();
     }, !['empty', 'absent'].includes(mode));
     if (mode === 'empty' && recovering) {
       const refresh = page.locator('.deal-freshness [data-refresh-detail]');

@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, fixtureServer, WAIT_MS } from './browser-harness.mjs';
 
-function drainFixture(t, page, browser, server) {
+async function accountFixture(t, options, engine = chromium, serve = fixtureServer) {
+  const server = await serve();
+  let browser, page;
   t.after(async () => {
     let timer;
     try {
-      await Promise.race([(async () => {
+      if (page) await Promise.race([(async () => {
         await page.waitForLoadState('networkidle');
         await page.unrouteAll({ behavior: 'wait' });
       })(), new Promise((_, reject) => {
@@ -14,18 +16,13 @@ function drainFixture(t, page, browser, server) {
       })]);
     } finally {
       clearTimeout(timer);
-      await browser.close();
-      await server.close();
+      try { await browser?.close(); }
+      finally { await server.close(); }
     }
   });
-}
-
-async function accountFixture(t, options, engine = chromium, serve = fixtureServer) {
-  const server = await serve();
-  const browser = await engine.launch();
-  const page = await browser.newPage(options);
-  drainFixture(t, page, browser, server);
-  return { server, browser, page };
+  browser = await engine.launch();
+  page = await browser.newPage(options);
+  return { server, page };
 }
 
 for (const failure of ['launch', 'newPage']) {
