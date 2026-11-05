@@ -10,7 +10,7 @@ const result = await build({ entryPoints: ['src/ui/portal/demographics-core.tsx'
 const { createRequire } = await import('node:module');
 const module = { exports: {} };
 new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-const { DemographicsCore } = module.exports;
+const { DemographicsCore, projectDemographics } = module.exports;
 const fixture = JSON.parse(await readFile('test/fixtures/portal-demographics-core.market-study.json', 'utf8'));
 const render = demographics => new JSDOM(renderToStaticMarkup(createElement(DemographicsCore, { demographics }))).window.document;
 
@@ -59,4 +59,45 @@ test('source rendering refuses unsafe and malformed URLs without hiding values',
     assert.match(doc.querySelector('#regional-growth-chart').textContent, /60,000/);
     assert.equal(doc.querySelector('#regional-growth-chart a'), null);
   }
+});
+
+test('positional projection is stable within a package and cannot share keys with another package', () => {
+  const data = structuredClone(fixture.demographics);
+  data.growth.geographies.push({ ...data.growth.geographies[0] });
+  data.age.geographies.push({ ...data.age.geographies[0] });
+  data.median_income.geographies.push({ ...data.median_income.geographies[0], value: 99000 });
+  const first = projectDemographics(data);
+  const again = projectDemographics(data);
+  for (const section of ['growth', 'household']) {
+    assert.deepEqual(first[section].map(row => row.key), again[section].map(row => row.key));
+    assert.equal(first[section][1].key, again[section][1].key);
+    assert.notEqual(first[section][0].key, first[section][1].key);
+    assert.equal(first[section][1].key.position, 1);
+    assert.equal(first[section][1].key.publication, data);
+  }
+  const replacement = projectDemographics(structuredClone(data));
+  assert.notEqual(first.growth[1].key.namespace, replacement.growth[1].key.namespace);
+  assert.notEqual(first.growth[1].key, replacement.growth[1].key);
+  assert.notEqual(first.household[1].key, replacement.household[1].key);
+  assert.notEqual(first.growth[1].key.section, first.household[1].key.section);
+  assert.equal(first.household[1].income.value, 99000);
+});
+
+test('mismatched positions remain separate instead of borrowing another row by name', () => {
+  const data = structuredClone(fixture.demographics);
+  data.median_income.geographies = [{ name: 'Income only', value: 90000 }, ...data.median_income.geographies];
+  const doc = render(data);
+  const rows = [...doc.querySelectorAll('[data-median] tbody tr')];
+  assert.equal(rows.length, 3);
+  assert.match(rows[0].textContent, /Sample County.*Unknown/);
+  assert.match(rows[1].textContent, /Income only.*\$90,000/);
+  assert.match(rows[2].textContent, /Sample County.*\$70,000/);
+});
+
+test('ordinal labels cannot collide with another published label', () => {
+  const data = structuredClone(fixture.demographics);
+  data.growth.geographies.push({ ...data.growth.geographies[0] }, { ...data.growth.geographies[0], name: 'Sample County (1)' });
+  const doc = render(data);
+  const labels = [...doc.querySelectorAll('[aria-label="Growth geography"] button')].map(button => button.textContent);
+  assert.equal(new Set(labels).size, labels.length);
 });

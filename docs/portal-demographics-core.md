@@ -18,12 +18,15 @@ portal/demographics-core.css with the shell stylesheet, and render
 `<DemographicsCore demographics={publication.demographics} />`.
 No common router, loader, package validator or bundle is added here.
 
-Capacity and scaling. Rendering is linear in package rows at current and 10x
-package sizes. Large publications first increase DOM size. No repeated remote
-reads or N+1 queries occur. Tests exercise a 10x synthetic geography set.
+Capacity and scaling. Projection compares labels for disambiguation in quadratic
+time. Subsequent rendering is linear in package rows. Tests exercise current
+and 10x synthetic row counts. No repeated remote reads or N+1 queries occur.
 Load spread and storage. n/a, injected immutable data only.
-Caching. No independent cache. Each render derives values from the current
-publication and selections, so replacement cannot retain old publication data.
+Caching. A WeakMap retains one projection per immutable publication object.
+It releases
+the projection when the publication is unreachable. A new publication object
+gets a fresh key namespace and falls back to its first geography, even if its
+labels and row positions match the previous publication.
 Availability and consistency. Absent data hides the module. Unmatched geography
 rows and missing threshold counts display Unknown. No interpolation or zero fill.
 Async, queues, circuit breakers, rate limits and write idempotency. n/a, no
@@ -43,21 +46,41 @@ stateDiagram-v2
   [*] --> Visible: demographics present
   Hidden --> Visible: publication provides data
   Visible --> Hidden: publication removes data
-  Visible --> Visible: select growth geography
-  Visible --> Visible: select household geography
+  Visible --> Visible: select growth geography by position
+  Visible --> Visible: select household geography by position
+  Visible --> Visible: select second same-named geography and its own sources
   Visible --> Visible: select income threshold
-  Visible --> Visible: replace publication and resolve valid selections
+  Visible --> Visible: replace publication and select its first geography
 ```
 
-State contains selected growth name, household name and threshold. Resolved
-selections belong to the current publication or fall back to its first entry.
-Values and sources derive synchronously from those selections. DOM tests cover
-each transition. Transport and persistence belong to the shell.
+State contains package-owned growth and household keys and a threshold.
+A key contains the publication object, its session namespace, section and row
+position. Repeated projection of the same immutable object returns the same
+keys. A separately parsed object gets new keys, even for identical content.
+Keys identify rows within this publication, not persistent geographic entities.
+Values and sources stay on the projected row selected by that key.
 
-The committed TLA+ model passed TLC with 26 states and 165 steps.
-SelectionBelongsToPublication and NoDeadlock hold. Reproduce with the pstack
-statechart runner against test/models/demographics-core/Selection.tla and its
-Selection.cfg. This proves the bounded selection model, not the React code.
+Age and median rows pair only at the same position with agreeing published
+names. Name equality is a consistency guard, never a lookup key. When positions
+disagree, both rows remain separately selectable with Unknown for the missing
+measure. Reordered lists are not joined by name. Same-named rows retain separate
+positions and ordinal labels. The explicit geography-ID schema is a queued
+follow-up, outside this component and S10's unchanged loader.
+
+Considered two shapes. Independent age and median selectors would eliminate
+pairing but change the household interaction. The chosen projection retains
+one household selector while keeping keys, values and sources together.
+The Model the Domain principle removed name-based state and the income Map.
+Type System Discipline uses a structured GeographyKey instead of a string name.
+
+The bounded TLA+ model checks package-owned position membership and replacement
+with the same display names. It abstracts stored selection into its resolved
+value. It does not prove React rendering or cross-section correspondence.
+The browser tests exercise all chart transitions, including duplicate selection
+and publication replacement at the same selected position in all four layouts.
+Projection tests cover stable keys, package isolation, mismatched positions and
+labels that already contain ordinals. The Prove It Works principle requires the
+browser regression, not the bounded membership model, as defect evidence.
 
 The pinned schema has no explicit core age year, age population count,
 median-income source URL or income year. Preserve household notes, income
