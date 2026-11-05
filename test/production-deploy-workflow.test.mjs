@@ -207,3 +207,55 @@ with patch.object(m, 'current', return_value=True), patch.object(m.subprocess, '
 `], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
 });
+
+test('delayed older admission preserves the newest green main deployment opportunity', t => {
+  const root = temporaryDirectory('production-admission-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const origin = join(root, 'origin');
+  const checkout = join(root, 'checkout');
+  const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  git(root, ['init', '--initial-branch=main', origin]);
+  const sources = Array.from({ length: 30 }, () => {
+    git(origin, ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      'commit', '--allow-empty', '-m', 'Synthetic main push']);
+    return git(origin, ['rev-parse', 'HEAD']);
+  });
+  git(origin, ['update-ref', 'refs/heads/main', sources[2]]);
+  git(root, ['clone', origin, checkout]);
+  const script = new URL('../scripts/production-candidate.py', import.meta.url).pathname;
+  const concurrency = workflow().jobs.production.concurrency;
+  const result = spawnSync('python3', ['-c', `
+import importlib.util, itertools, json, os, subprocess
+from unittest.mock import patch
+spec = importlib.util.spec_from_file_location('candidate', ${JSON.stringify(script)})
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+os.environ['GITHUB_REPOSITORY'] = 'synthetic/app'
+sources = ${JSON.stringify(sources)}
+config = json.loads(${JSON.stringify(JSON.stringify(concurrency))})
+real_output = subprocess.check_output
+def output(args, **kwargs):
+    if args[0] != 'gh': return real_output(args, **kwargs)
+    sha = args[args.index('--commit') + 1]
+    return json.dumps([dict(databaseId=123, headSha=sha, status='completed', conclusion='success')])
+def replay(admissions):
+    running, *arrivals = admissions
+    pending = []
+    for sha in arrivals:
+        if config.get('queue') == 'max':
+            if len(pending) < 100: pending.append(sha)
+        else: pending = [sha]
+    with patch.object(m.subprocess, 'check_output', side_effect=output):
+        return [sha for sha in [running, *pending] if m.ready(sha)]
+abc = sources[:3]
+selected = replay([abc[0], abc[2], abc[1]])
+assert selected == [abc[-1]], f'A running, C pending, delayed B admitted: expected C, got {selected}'
+for order in itertools.permutations(abc):
+    assert replay(order) == [abc[-1]], 'admission order must not lose or repeat the newest opportunity'
+subprocess.run(['git', '-C', ${JSON.stringify(origin)}, 'update-ref', 'refs/heads/main', sources[-1]], check=True)
+assert replay([sources[0], *reversed(sources[1:])]) == [sources[-1]], '10x burst must retain newest'
+print('A running -> C pending -> delayed B retained; C ready exactly once; all 6 orders and 30-push burst passed')
+`], { cwd: checkout, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /C ready exactly once/);
+});
