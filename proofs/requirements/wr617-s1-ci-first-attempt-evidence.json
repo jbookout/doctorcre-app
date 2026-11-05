@@ -1,0 +1,31 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s1-ci-first-attempt-evidence",
+  "targets": ["app"],
+  "assertions": [
+    {
+      "id": "release-includes-ci-evidence-change",
+      "predicate": "After merge and deployment, the registered app observer verifies that the production app release source commit contains this PR's merge commit. Release ancestry alone does not prove CI evidence retention.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "The observer records verified production app release ancestry. This assertion remains unproven until that observation runs.",
+      "input_class": "read-only public app release identity and immutable app Git history",
+      "deadline_seconds": 300
+    },
+    {
+      "id": "main-first-attempt-evidence-retained",
+      "predicate": "As an explicit pending observation step of the app runner, a reviewer reads a later CI push run on main containing this PR's merge commit, at run_attempt 1. The run retains four browser-results artifacts and one browser-coverage artifact for 14 days. Each artifact identity binds the same tested SHA, run ID and attempt 1. The shard artifacts retain planned manifests, native per-file JUnit and start/exit evidence. The coverage decision reports no errors and one passing observation for every required critical scenario. Missing, duplicate, unsuccessful or rerun-only evidence fails this observation. Read metadata and bounded receipt summaries only; if the budget cannot establish every condition, leave the observation pending.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "A read-only reviewer records the main run URL, tested SHA, run ID, attempt 1, artifact IDs, retention metadata and coverage summary. The app runner's automatic release check cannot establish this condition; its explicit observation step stays pending until that evidence is inspected. No existing PR run or synthetic receipt is claimed as main execution proof.",
+      "input_class": "read-only GitHub CI metadata and retained first-attempt receipt summaries; explicit pending observation step",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 20,
+    "max_records": 1000,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 1048576
+  }
+}
