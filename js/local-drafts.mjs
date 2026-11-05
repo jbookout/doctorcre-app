@@ -4,10 +4,18 @@ import { validBoardPayload } from './charts-model.js';
 const PREFIX = 'doctorcre:quick-add-drafts:v1:';
 const LIMIT = 30;
 
+export function validDraftDate(value) {
+  if (value === '') return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+}
+
 function validDraft(value) {
   return value && typeof value.id === 'string' && typeof value.sentence === 'string'
     && value.sentence.trim() && typeof value.dueDate === 'string'
-    && (!value.dueDate || /^\d{4}-\d{2}-\d{2}$/.test(value.dueDate))
     && Number.isFinite(value.savedAt);
 }
 
@@ -21,7 +29,7 @@ export function createLocalDrafts({ storage, viewer, now = Date.now, newId = () 
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) throw new Error('Invalid draft data');
       drafts = parsed.filter(validDraft).slice(-LIMIT)
-        .map(({ id, sentence, dueDate, savedAt }) => ({ id, sentence, dueDate, savedAt }));
+        .map(({ id, sentence, dueDate, savedAt }) => ({ id, sentence, dueDate, savedAt, ...(!validDraftDate(dueDate) ? { dateReviewRequired: true } : {}) }));
     }
     if (!storage) persisted = false;
   } catch {
@@ -44,7 +52,7 @@ export function createLocalDrafts({ storage, viewer, now = Date.now, newId = () 
     save(sentence, dueDate = '') {
       const text = String(sentence ?? '');
       const date = String(dueDate ?? '');
-      if (!text.trim() || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) return null;
+      if (!text.trim() || !validDraftDate(date)) return null;
       const draft = { id: newId(), sentence: text, dueDate: date, savedAt: now() };
       drafts = [...drafts, draft].slice(-LIMIT);
       persist();
@@ -66,7 +74,8 @@ export function browserDraftStorage() {
 
 export function matchingDraftId(drafts, id, sentence, dueDate) {
   const draft = drafts.find((item) => item.id === id);
-  return draft?.sentence === sentence && draft.dueDate === dueDate ? draft.id : null;
+  return draft?.sentence === sentence && (draft.dueDate === dueDate
+    || (draft.dateReviewRequired && dueDate && validDraftDate(dueDate))) ? draft.id : null;
 }
 
 export function createDraftBoardReadiness() {
