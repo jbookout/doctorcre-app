@@ -122,6 +122,8 @@ test('missing style, unsupported assets, overlay errors and late loads keep the 
   let current = controller();
   await current.vector('https://example.com/style');
   assert.equal(state.kind, 'fallback');
+  current.dispose();
+  mode = 'capacity'; current = controller();
   current.overlays(Array.from({ length: 33 }, (_, i) => ({ id: `plan-${i}`, title: 'Synthetic', overlay: { type: 'FeatureCollection', features: [{}] } })));
   assert.match(state.notice, /capacity/);
   for (const style of [
@@ -135,6 +137,7 @@ test('missing style, unsupported assets, overlay errors and late loads keep the 
   }
   current.dispose();
   mode = 'unsupported'; current = controller();
+  suppliedStyle = { version: 8, sources: {}, layers: [], sprite: 'https://example.com/sprite' };
   await current.vector('https://example.com/style');
   assert.equal(state.kind, 'fallback');
   mode = 'bad-overlay';
@@ -142,6 +145,11 @@ test('missing style, unsupported assets, overlay errors and late loads keep the 
   assert.match(state.notice, /Master plan unavailable/);
   assert.equal(sources.size, 0);
   current.dispose();
+  mode = 'valid'; suppliedStyle = { version: 8, sources: {}, layers: [] }; current = controller();
+  await current.vector('https://example.com/style');
+  assert.equal(state.kind, 'vector');
+  current.dispose();
+  assert.equal(state.kind, 'disposed');
   mode = 'pending'; current = controller();
   const waiting = current.vector('https://example.com/style');
   assert.equal(state.kind, 'loading');
