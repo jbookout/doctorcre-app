@@ -1,3 +1,4 @@
+import { handleDoctorcreRequest } from '../src/worker.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, get } from 'node:http';
@@ -22,8 +23,9 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
       if (mode === 'timeout') return;
       if (mode === 'protected') { res.writeHead(403).end(); return; }
       if (mode === 'signin') { res.writeHead(302, { location: '/sign-in' }).end(); return; }
-      if (req.url === '/release') {
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(mode === 'identity' ? {} : { source_revision: '1'.repeat(40) })); return;
+      if (req.url === '/app-release') {
+        const response = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'identity' ? undefined : '1'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
+        res.writeHead(response.status, Object.fromEntries(response.headers)).end(await response.text()); return;
       }
       if (mode === 'chunk-protected' && req.url !== '/js/ui-calendar-panels.js') { res.writeHead(401).end(); return; }
       try {
@@ -79,7 +81,7 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
     assert.ok(requests.length <= 64);
     if (mode === 'success') {
       assert.equal(receipt.origin, origin);
-      assert.equal(receipt.release.source_revision, '1'.repeat(40));
+      assert.equal(receipt.release.source_commit, '1'.repeat(40));
       assert.equal(receipt.assertion_count, 6);
       assert.match(receipt.asset_sha256, /^[0-9a-f]{64}$/);
       assert.ok(receipt.loaded_assets.length > 1, 'real imported chunks loaded');

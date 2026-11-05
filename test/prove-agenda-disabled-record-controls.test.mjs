@@ -1,3 +1,4 @@
+import { handleDoctorcreRequest } from '../src/worker.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -16,14 +17,15 @@ const broken = await uiAssets(async path => {
 
 async function fixture(t, mode = 'success') {
   const requests = [];
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     requests.push({ url: req.url, method: req.method });
     if (mode === 'timeout') return;
-    if (req.url === '/release') {
+    if (req.url === '/app-release') {
       if (mode === 'protected-release') { res.writeHead(302, { location: '/auth/login' }); res.end(); return; }
       res.setHeader('content-type', 'application/json');
       if (mode === 'invalid-identity') { res.end('null'); return; }
-      res.end(JSON.stringify({ git_sha: mode === 'missing-identity' ? null : 'a'.repeat(40) }));
+      const response = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'missing-identity' ? undefined : 'a'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
+      res.end(await response.text());
       return;
     }
     if (mode === 'protected-asset' || (mode === 'protected-chunk' && req.url.includes('ui-shared'))) { res.writeHead(403); res.end(); return; }
@@ -58,7 +60,7 @@ test('CLI imports the real fixture bundle and chunks with production flags', asy
   assert.equal(code, 0);
   assert.equal(receipt.ok, true);
   assert.equal(receipt.origin, origin);
-  assert.equal(receipt.release.git_sha, 'a'.repeat(40));
+  assert.equal(receipt.release.source_commit, 'a'.repeat(40));
   assert.deepEqual(receipt.activations, { open: 6, step: 6 });
   assert.ok(receipt.assertions > 40);
   assert.ok(receipt.assets.some(asset => asset.url.includes('ui-shared')));
