@@ -32,14 +32,23 @@ class AdmissionTest(unittest.TestCase):
     def snapshot(self, body=NON_PRODUCT, paths=CI_PATHS, event='pull_request', requirement=None):
         return self.adapter.Snapshot(event, 'a' * 40, 'b' * 40, body, tuple(paths), requirement)
 
+    def test_bulk_settle_app_declaration_is_admitted_without_attesting_execution(self):
+        # PR 654 declaration at 3d1e0cf98b8a9768800a447c48f4ed2ab7df9b1c.
+        requirement = (ROOT / 'test/fixtures/wr617-s12-production-proof.json').read_text()
+        decision = self.adapter.admission(
+            self.snapshot(BODY, ['src/ui/home/bulk-controls.tsx'], requirement=requirement),
+            self.validator, self.contract)
+        self.assertEqual(decision.status, 'admitted', decision)
+        self.assertIn('execution unproven', decision.reason)
+
     def test_snapshot_decisions(self):
         cases = [
             ('CI', NON_PRODUCT, CI_PATHS, 'pull_request', 'admitted', 'non-product'),
             ('docs', NON_PRODUCT, ['docs/a.md'], 'pull_request', 'admitted', 'non-product'),
-            ('app', BODY, ['src/ui/example.tsx'], 'pull_request', 'refused', 'unsupported app'),
-            ('mixed', NON_PRODUCT, [*CI_PATHS, 'src/ui/example.tsx'], 'pull_request', 'refused', 'unsupported app'),
-            ('build', NON_PRODUCT, ['scripts/prepare-offline-tour.mjs'], 'pull_request', 'refused', 'unsupported app'),
-            ('near match', NON_PRODUCT, ['scripts/check-action-pins.mjs.extra'], 'pull_request', 'refused', 'unsupported app'),
+            ('app', BODY, ['src/ui/example.tsx'], 'pull_request', 'refused', 'requirement missing'),
+            ('mixed', NON_PRODUCT, [*CI_PATHS, 'src/ui/example.tsx'], 'pull_request', 'refused', 'n/a requires'),
+            ('build', NON_PRODUCT, ['scripts/prepare-offline-tour.mjs'], 'pull_request', 'refused', 'n/a requires'),
+            ('near match', NON_PRODUCT, ['scripts/check-action-pins.mjs.extra'], 'pull_request', 'refused', 'n/a requires'),
             ('missing', '## Summary\nCI only', CI_PATHS, 'pull_request', 'refused', 'exactly one'),
             ('malformed', '## Production proof\n{}', CI_PATHS, 'pull_request', 'refused', 'must name'),
             ('placeholder', '## Production proof\nn/a: TODO', CI_PATHS, 'pull_request', 'refused', 'real reason'),
@@ -63,21 +72,47 @@ class AdmissionTest(unittest.TestCase):
 
     def test_requirement_validation_is_pure_and_cannot_borrow_proof(self):
         value = json.loads((ROOT / 'proofs/requirements/app-proof-admission.json').read_text())
-        for target, runner in [('studio', 'studio-run-receipt.v1'), ('worker', 'worker-release-smoke.v1'),
-                               ('app', 'app-release-live-walk.v1')]:
-            value['targets'] = [target]
-            value['assertions'][0]['runner'] = runner
-            snap = self.snapshot(BODY, ['src/ui/a.tsx'], requirement=json.dumps(value))
-            self.assertIn('unsupported app', self.adapter.admission(snap, self.validator, self.contract).reason)
-        self.contract['x-runners']['app-release-live-walk.v1'] = {'targets': ['app']}
-        self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'admitted')
-        value['targets'] = ['studio']
-        value['assertions'][0]['runner'] = 'studio-run-receipt.v1'
-        decision = self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract)
-        self.assertIn('changed runtime target missing', decision.reason)
+        for target, runner in [('studio', 'studio-run-receipt.v1'),
+                               ('worker', 'worker-release-smoke.v1')]:
+            with self.subTest(target=target):
+                for declared_target, reason in [(target, 'changed runtime target missing'),
+                                                ('app', 'target has no registered runner')]:
+                    value['targets'] = [declared_target]
+                    value['assertions'][0]['runner'] = runner
+                    snap = self.snapshot(BODY, ['src/ui/a.tsx'], requirement=json.dumps(value))
+                    decision = self.adapter.admission(snap, self.validator, self.contract)
+                    self.assertEqual(decision.status, 'refused', decision)
+                    self.assertIn(reason, decision.reason)
+        value['targets'] = ['app']
+        value['assertions'][0]['runner'] = 'app-release-live-walk.v1'
+        snap = self.snapshot(BODY, ['src/ui/a.tsx'], requirement=json.dumps(value))
+        with patch('subprocess.check_output', side_effect=AssertionError('subprocess')), \
+             patch.object(Path, 'read_text', side_effect=AssertionError('file read')):
+            self.assertEqual(self.adapter.admission(snap, self.validator, self.contract).status, 'admitted')
         del value['safety']
-        self.assertIn('missing or unknown', self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract).reason)
+        decision = self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract)
+        self.assertEqual(decision.status, 'refused', decision)
+        self.assertIn('missing or unknown', decision.reason)
 
+    def test_app_requirement_refuses_missing_invalid_and_unsafe_declarations(self):
+        value = json.loads((ROOT / 'test/fixtures/wr617-s12-production-proof.json').read_text())
+        snap = self.snapshot(BODY, ['src/ui/home/bulk-controls.tsx'])
+        for requirement, reason in [(None, 'requirement missing'), ('{', 'Expecting'),
+                                    ('{}', 'missing or unknown')]:
+            with self.subTest(requirement=requirement):
+                decision = self.adapter.admission(snap._replace(requirement_json=requirement), self.validator, self.contract)
+                self.assertEqual(decision.status, 'refused', decision)
+                self.assertIn(reason, decision.reason)
+        for field, invalid in [('read_only', False), ('no_sends', False), ('max_requests', 101),
+                               ('max_records', 1001), ('max_runtime_seconds', 301),
+                               ('max_artifact_bytes', 1048577)]:
+            with self.subTest(field=field):
+                original = value['safety'][field]
+                value['safety'][field] = invalid
+                decision = self.adapter.admission(snap._replace(requirement_json=json.dumps(value)), self.validator, self.contract)
+                self.assertEqual(decision.status, 'refused', decision)
+                self.assertIn('safety.' + field, decision.reason)
+                value['safety'][field] = original
 
     def test_edited_body_removal(self):
         snapshot = self.snapshot()
