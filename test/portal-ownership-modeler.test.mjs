@@ -73,3 +73,13 @@ test('nonzero mortgage matches an independent high-precision amortization calcul
  const noDelay=model.calculateScenario(pkg.ownership,p,{...defaults(),lease_up_months:0});
  assert.equal(noDelay.value.points[1].rentCollected,79800);
 });
+
+test('invalid drafts remain invalid until corrected, selected or reset',()=>{
+ let state=model.initialOwnershipState(pkg);
+ const transition=event=>{state=model.ownershipTransition(pkg,state,event);return model.calculateScenario(pkg.ownership,property,state.draft).kind;};
+ assert.equal(transition({kind:'edit',field:'rate',value:''}),'invalid');
+ assert.equal(transition({kind:'edit',field:'price',value:''}),'invalid');
+ assert.equal(transition({kind:'select',id:property.id}),'valid');
+ assert.equal(transition({kind:'edit',field:'rate',value:''}),'invalid');
+ assert.equal(transition({kind:'reset'}),'valid');
+});

@@ -9,7 +9,7 @@ const second = structuredClone(publication.properties[0]);
 second.id='second'; second.address='Second synthetic property'; second.ownership.asking_price=1200000;
 publication.properties.push(second);
 const bundle = await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import {OwnershipModeler} from './src/ui/portal/ownership-modeler'; const root=createRoot(document.getElementById('root')); window.render=p=>root.render(<OwnershipModeler publication={p} onOpenProperty={id=>{document.getElementById('opened').textContent=id}}/>); window.render(${JSON.stringify(publication)});`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,format:'iife'});
-for(const width of [390,1440]) for(const theme of ['light','dark']) {
+for(const width of [390,1280]) for(const theme of ['light','dark']) {
  test(`ownership DOM at ${width}px in ${theme} theme`,async()=>{
   const browser=await chromium.launch({headless:true,args: [...CHROMIUM_SAFETY_ARGS]});
   try {
@@ -67,3 +67,51 @@ for(const width of [390,1440]) for(const theme of ['light','dark']) {
   } finally {await browser.close();}
  });
 }
+
+function regression(name, check) {
+ test(name,async()=>{
+  const browser=await chromium.launch({headless:true,args:[...CHROMIUM_SAFETY_ARGS]});
+  try {
+   const page=await browser.newPage();
+   await page.setContent('<div id="root"></div><output id="opened"></output>');
+   await page.addScriptTag({content:bundle.outputFiles[0].text});
+   await page.locator('#ownership-comparison').waitFor();
+   await check(page);
+  } finally {await browser.close();}
+ });
+}
+regression('crossing summary uses exactly the plotted series',async page=>{
+ const assertCrossing=async()=>{
+  const year=await page.locator('#ownership-line-chart').evaluate(svg=>{
+   const lines=[...svg.querySelectorAll('polyline')].map(line=>[...line.points].map(p=>p.y));
+   return lines[0].findIndex((y,index)=>y<=lines[1][index]);
+  });
+  assert.equal((await page.locator('#line-summary').innerText()).split(' Annual points')[0],year<0?'No crossing in the ten-year illustration.':`First annual crossing at year ${year}.`);
+ };
+ await page.locator('#line-view').selectOption('lease');
+ await assertCrossing();
+ assert.match(await page.locator('#line-summary').innerText(),/year 7\./);
+ await page.locator('#line-property').selectOption('second');
+ await assertCrossing();
+ await page.locator('#line-view').selectOption('equity');
+ await assertCrossing();
+ await page.locator('#ownership-form input[name=appreciation_pct]').fill('0');
+ await assertCrossing();
+});
+regression('currency blur formats presentation without changing the assumption or derived outputs',async page=>{
+ const input=page.locator('#ownership-form input[name=rent_psf]');
+ await input.fill('24.005');
+ const tables=page.locator('.ownership table');
+ const before=await tables.allTextContents();
+ assert.match(before[0],/84,017.50/);
+ assert.match(before[0],/39,908.31/);
+ await input.press('Tab');
+ assert.deepEqual(await tables.allTextContents(),before);
+ assert.equal(await input.inputValue(),'24.01');
+ await input.focus();
+ assert.equal(await input.inputValue(),'24.005');
+ assert.equal(await page.locator('#assumption-rent_psf').inputValue(),'24.01');
+ await page.locator('#assumption-rent_psf').focus();
+ assert.equal(await page.locator('#assumption-rent_psf').inputValue(),'24.005');
+ assert.deepEqual(await tables.allTextContents(),before);
+});
