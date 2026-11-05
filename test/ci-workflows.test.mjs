@@ -90,7 +90,15 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.doesNotMatch(ci.split(/^jobs:/m)[0], /schedule|workflow_dispatch/);
   assert.match(checks, /^  workflow_call:\n  schedule:\n    - cron: "17 3 \* \* \*"\n  workflow_dispatch:$/m);
   assert.match(ci, /types: \[opened, synchronize, reopened, ready_for_review, edited\]/);
-  assert.doesNotMatch(ci, /continue-on-error:/);
+  const performance = ci.split(/^  performance:\n/m)[1].split(/^  live:/m)[0];
+  const measurement = performance.split(/^      - /m).find(step => /^run: npm run performance:check$/m.test(step));
+  assert.match(measurement, /^        continue-on-error: true$/m);
+  assert.equal(ci.match(/continue-on-error:/g)?.length, 1,
+    'only the performance measurement is report-only; setup and all other checks still block');
+  assert.match(performance, /path: \|\n            doctorcre-app\/test-artifacts\/performance\/report\.json\n            doctorcre-app\/test-artifacts\/performance\/summary\.md/);
+  assert.match(performance, /run: cat test-artifacts\/performance\/summary\.md >> "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(ci, /test "\$PERFORMANCE" = success/,
+    'the aggregate consumes the successful job conclusion after a tolerated measurement failure');
   assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
   assert.match(ci, /browser-results.py collect/);
