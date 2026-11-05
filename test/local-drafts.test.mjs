@@ -72,3 +72,28 @@ test('offline live writes send no request and stay unconfirmed', async () => {
   assert.equal(result.request.idempotency_key, 'same-key');
   assert.equal(calls, 0);
 });
+
+test('Gregorian dates reject new impossible values without changing existing drafts', () => {
+  const drafts = createLocalDrafts({ storage: memoryStorage(), viewer: 'joe' });
+  for (const date of ['', '0001-01-01', '9999-12-31', '2024-02-29', '2000-02-29']) assert.ok(drafts.save('Call lender', date));
+  const before = drafts.list();
+  for (const date of ['2026-02-31', '2026-13-01', '0000-01-01', '1900-02-29', '2026-02-29', '2026-04-31']) {
+    assert.equal(drafts.save('Call lender', date), null, date);
+    assert.deepEqual(drafts.list(), before);
+  }
+});
+
+test('stored invalid dates preserve exact text and raw date with a review disposition', () => {
+  const storage = memoryStorage();
+  const values = ['2026-02-31', '2026-13-01', '0000-01-01', 'not-a-date'];
+  storage.setItem('doctorcre:quick-add-drafts:v1:joe', JSON.stringify(values.map((dueDate, i) => ({ id: String(i), sentence: '  Call lender  ', dueDate, savedAt: 17 }))));
+  const drafts = createLocalDrafts({ storage, viewer: 'joe' });
+  assert.deepEqual(drafts.list().map(d => [d.sentence, d.dueDate, d.dateReviewRequired]), values.map(d => ['  Call lender  ', d, true]));
+  assert.equal(matchingDraftId(drafts.list(), '0', '  Call lender  ', ''), null);
+  assert.equal(matchingDraftId(drafts.list(), '0', '  Call lender  ', '2028-02-29'), '0');
+  assert.equal(matchingDraftId(drafts.list(), '0', 'Changed text', '2028-02-29'), null);
+  assert.equal(drafts.remove('0'), true);
+  assert.equal(drafts.remove('0'), false);
+  for (let i = 0; i < 40; i++) drafts.save('Next call');
+  assert.equal(drafts.list().length, 30);
+});
