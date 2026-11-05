@@ -45,3 +45,41 @@ for (const width of [390, 1440]) test(`whole calendar island and keyboard at ${w
   await page.keyboard.press('Enter');
   await page.waitForURL(url => url.pathname === '/calendar' && url.searchParams.get('day') === '2026-11-05');
 });
+
+for (const mode of ['import-failure', 'detached']) test(`calendar caller ${mode} while loading`, async t => {
+  const run = await scenario(t, { root: join(outDir, 'site') });
+  const { page } = run;
+  await page.route('**/calendar-caller-fixture', route => route.fulfill({ contentType: 'text/html', body: '<header id="host"></header><main></main>' }));
+  await page.route('**/mcp', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
+  await page.route('**/auth/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
+  if (mode === 'import-failure') await page.route('**/js/ui-calendar-panels.js', route => route.abort());
+  else await page.route('**/js/ui-calendar-panels.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+    globalThis.calendarModuleLoaded = true;
+    export async function mountCalendarPanels(left, right) {
+      left.textContent = 'Mounted calendar';
+      right.textContent = 'Mounted schedule';
+    }
+  ` }));
+  await run.open('/calendar-caller-fixture');
+  await page.evaluate(async () => {
+    const { mountAppLayout } = await import('/js/app-layout.js');
+    const ready = new Promise(resolve => { window.releaseCalendar = resolve; });
+    mountAppLayout(document, document.querySelector('#host'), '/vendors', { ready });
+  });
+  assert.equal(await page.locator('#appCalendarSlot').textContent(), '');
+  if (mode === 'detached') await page.evaluate(() => {
+    window.detachedCalendar = document.querySelector('#appLayout');
+    window.detachedCalendar.remove();
+  });
+  await page.evaluate(() => window.releaseCalendar());
+  if (mode === 'import-failure') {
+    for (const id of ['#appCalendarSlot', '#appScheduleSlot']) {
+      await page.locator(id).filter({ hasText: 'Calendar unavailable. Reload to try again.' }).waitFor();
+    }
+  } else {
+    await page.waitForFunction(() => window.calendarModuleLoaded === true);
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+    assert.deepEqual(await page.evaluate(() => [...window.detachedCalendar.querySelectorAll('#appCalendarSlot, #appScheduleSlot')].map(node => node.textContent)), ['', '']);
+  }
+});

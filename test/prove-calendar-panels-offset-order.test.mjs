@@ -1,9 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer, get } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -34,6 +34,30 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
     const origin = `http://127.0.0.1:${server.address().port}`;
+    if (mode === 'success') {
+      const marker = join(outDir, 'outside-marker.txt');
+      await writeFile(marker, 'WR616-J3-SYNTHETIC-OUTSIDE-ARTIFACT');
+      await writeFile(join(outDir, 'site-outside.txt'), 'WR616-J3-SYNTHETIC-SIBLING-PREFIX');
+      const escape = '../'.repeat(30) + marker.slice(1);
+      for (const path of [
+        `/${escape}`, '/../outside-marker.txt', '/../site-outside.txt',
+        `/${escape.replaceAll('..', '%2e%2e')}`,
+        `/${escape.replaceAll('..', '%2E%2E')}`,
+        `/${escape.replaceAll('/', '\\')}`, '/js/%5c..%5coutside-marker.txt',
+        '/js/ui-calendar-panels.js%00', '/js/%ZZ',
+      ]) await t.test(`refuses raw request ${path}`, async () => {
+        const response = await new Promise((resolve, reject) => {
+          get(`${origin}`, { path }, res => {
+            let body = '';
+            res.setEncoding('utf8');
+            res.on('data', chunk => { body += chunk; });
+            res.on('end', () => resolve({ status: res.statusCode, body }));
+          }).on('error', reject);
+        });
+        assert.equal(response.status, 404, response.body);
+        assert.equal(response.body.includes('WR616-J3-SYNTHETIC'), false);
+      });
+    }
     const flags = ['--origin', origin, '--timeout-ms', mode === 'timeout' ? '100' : '30000'];
     let result;
     try { result = { ...await exec(process.execPath, ['scripts/prove-calendar-panels-offset-order.mjs', ...flags], { timeout: 40000 }), code: 0 }; }

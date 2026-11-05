@@ -30,6 +30,9 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
   assert.match(left.textContent, /Schedule unavailable/);
   panel.render({ state: 'empty', items: [] });
   assert.match(left.textContent, /No upcoming meetings returned/);
+  panel.clear();
+  assert.match(left.textContent, /Schedule unavailable/);
+  assert.match(right.textContent, /Schedule unavailable/);
   const items = [row('Later', '2026-11-05T08:00:00-06:00'), row('Earlier', '2026-11-05T13:00:00Z'),
     row('Tie', '2026-11-05T07:00:00-06:00'),
     row('Future offset', '2026-11-05T06:00:00-06:00', '2026-11-05T07:00:00-06:00'),
@@ -43,6 +46,11 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
   panel.render({ state: 'partial', items });
   assert.match(left.textContent, /coverage is incomplete/);
   assert.deepEqual(titles(left), ['Future offset', 'Boundary', 'Earlier', 'Tie', 'Later']);
+  panel.clear();
+  assert.match(left.textContent, /Schedule unavailable/);
+  assert.match(right.textContent, /Schedule unavailable/);
+  assert.deepEqual(titles(left), []);
+  assert.deepEqual(titles(right), []);
   panel.render({ state: 'ready', items: [row('Chicago previous day', '2026-11-06T01:00:00Z'), row('All day', '2026-11-06', '2026-11-07', { all_day: true })] });
   assert.equal([...left.querySelectorAll('.calendar-panel-meeting a')].find(a => a.textContent === 'Chicago previous day').getAttribute('href'), '/calendar?day=2026-11-05&d=2026-11-05');
   assert.equal([...left.querySelectorAll('.calendar-panel-meeting a')].find(a => a.textContent === 'All day').getAttribute('href'), '/calendar?day=2026-11-06&d=2026-11-06');
@@ -54,6 +62,10 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
   panel.render({ state: 'ready', items: [items[0]] });
   assert.deepEqual(titles(left), []);
   assert.deepEqual(titles(right), ['Later']);
+  panel.render({ state: 'empty', items: [] });
+  assert.match(left.textContent, /No upcoming meetings returned/);
+  assert.match(right.textContent, /No meetings scheduled today/);
+  assert.deepEqual(titles(right), []);
   left.remove();
   panel.clear();
   assert.equal(disconnected, true);
