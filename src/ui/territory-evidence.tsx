@@ -21,6 +21,26 @@ function condition(value: unknown): Condition {
   for (const entry of conditions) if (value === entry) return entry;
   throw new Error('Invalid territory condition');
 }
+function calendarDate(value: unknown): string {
+  const date = text(value);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!parts) throw new Error('Invalid evidence date');
+  const year = Number(parts[1]), month = Number(parts[2]), day = Number(parts[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const limit = days[month - 1];
+  if (year < 1 || limit === undefined || day < 1 || day > limit) throw new Error('Invalid evidence date');
+  return date;
+}
+function observation(value: unknown): string {
+  const timestamp = text(value);
+  const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/.exec(timestamp);
+  if (!parts) throw new Error('Invalid evidence observation');
+  calendarDate(parts[1]);
+  if (Number(parts[2]) > 23 || Number(parts[3]) > 59 || Number(parts[4]) > 59 ||
+    (parts[5] !== 'Z' && (Number(parts[6]) > 23 || Number(parts[7]) > 59))) throw new Error('Invalid evidence observation');
+  return timestamp;
+}
 function parse(value: unknown): Market[] {
   const board = object(value);
   if (board.schema_version !== 'territory-state-board.v1' || board.coverage !== 'recorded_geographies_only' || !Array.isArray(board.submarkets) || board.submarkets.length > 1000) throw new Error('Invalid territory board');
@@ -29,9 +49,9 @@ function parse(value: unknown): Market[] {
     if (!Array.isArray(row.evidence)) throw new Error('Invalid territory evidence');
     return { city: text(row.city), state: text(row.state), condition: condition(row.condition), evidence: row.evidence.map(value => {
       const entry = object(value);
-      if (typeof entry.current !== 'boolean' || typeof entry.expired !== 'boolean') throw new Error('Invalid evidence status');
-      return { flag_id: text(entry.flag_id), condition: condition(entry.condition), source: text(entry.source), observed_at: text(entry.observed_at),
-        expires_on: entry.expires_on === null ? null : text(entry.expires_on), expired: entry.expired, current: entry.current };
+      if (typeof entry.current !== 'boolean' || typeof entry.expired !== 'boolean' || (entry.current && entry.expired)) throw new Error('Invalid evidence status');
+      return { flag_id: text(entry.flag_id), condition: condition(entry.condition), source: text(entry.source), observed_at: observation(entry.observed_at),
+        expires_on: entry.expires_on === null ? null : calendarDate(entry.expires_on), expired: entry.expired, current: entry.current };
     }) };
   });
 }
