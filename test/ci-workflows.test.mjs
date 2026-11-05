@@ -6,6 +6,7 @@ import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import { checkActionPins } from "../scripts/check-action-pins.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
@@ -359,10 +360,69 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   assert.match(gate, /browser-results.py verify/);
   assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
-  for (const event of ['push', 'pull_request']) for (const shards of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE', 'PRODUCTION_PROOF'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
       env: { ...process.env, CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
-        PERFORMANCE:'success', SHARDS:shards, EVENT:event } });
-    assert.equal(result.status === 0, shards === 'success', `${event} ${shards}`);
+        PERFORMANCE:'success', SHARDS:'success', EVENT:event, [dependency]:outcome } });
+    assert.equal(result.status === 0, outcome === 'success', `${event} ${dependency} ${outcome}`);
+  }
+});
+
+const validationWorkflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
+  'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
+
+function validationPolicy({ eventName = 'pull_request', action = 'opened', changes = {}, number = 7, runId = 1, workflow = validationWorkflow.name } = {}) {
+  const github = { workflow, event_name: eventName, run_id: runId,
+    event: { action, changes, ...(eventName === 'pull_request' ? { pull_request: { number } } : {}) } };
+  const evaluate = value => {
+    const expression = value.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
+    assert.match(expression, /^(?:github(?:\.[a-z_]+)+|'[^']*'|null|[\s()=!&|])+$/);
+    const resolved = expression.replace(/github(?:\.[a-z_]+)+/g, path =>
+      JSON.stringify(path.split('.').slice(1).reduce((value, key) => value?.[key], github) ?? null));
+    return runInNewContext(resolved, {}, { timeout: 1000 });
+  };
+  const trigger = (validationWorkflow.on ?? validationWorkflow.true)[eventName];
+  return {
+    triggers: Boolean(trigger && (!trigger.types || trigger.types.includes(action))),
+    group: validationWorkflow.concurrency.group.replace(/\$\{\{.*?\}\}/g, evaluate),
+    cancel: evaluate(validationWorkflow.concurrency['cancel-in-progress']),
+  };
+}
+
+test('CI metadata edits queue fresh validation without cancelling the active run', () => {
+  const active = validationPolicy();
+  for (const [action, changes, triggers, cancel] of [
+    ['edited', { body: { from: 'previous proof' } }, true, false],
+    ['opened', {}, true, false],
+    ['reopened', {}, true, false],
+    ['synchronize', {}, true, true],
+    ['ready_for_review', {}, true, true],
+    ['edited', {}, true, false],
+    ['edited', { title: { from: 'previous title' } }, true, false],
+    ['edited', { base: { ref: { from: 'previous-base' } } }, true, true],
+    ['edited', { body: { from: 'old' }, base: { ref: { from: 'old' } } }, true, true],
+    ['labeled', {}, false, false],
+    ['unlabeled', {}, false, false],
+  ]) {
+    const policy = validationPolicy({ action, changes });
+    assert.equal(policy.triggers, triggers, action);
+    assert.equal(policy.group, active.group, action);
+    assert.equal(policy.cancel, cancel, action + ' ' + JSON.stringify(changes));
+  }
+  const sequence = ['ready_for_review', 'edited', 'edited', 'synchronize'].map(action => validationPolicy({ action }));
+  assert.deepEqual(sequence.map(policy => policy.group), Array(4).fill(active.group));
+  assert.deepEqual(sequence.map(policy => policy.cancel), [true, false, false, true]);
+});
+
+test('CI isolates PRs, workflows, main pushes and merge-group runs', () => {
+  const active = validationPolicy();
+  assert.notEqual(validationPolicy({ number: 8 }).group, active.group);
+  assert.notEqual(validationPolicy({ workflow: 'Review gate' }).group, active.group);
+  for (const eventName of ['push', 'merge_group']) {
+    const policy = validationPolicy({ eventName });
+    assert.equal(policy.triggers, eventName === 'push');
+    assert.equal(policy.cancel, false);
+    assert.notEqual(policy.group, active.group);
+    assert.notEqual(policy.group, validationPolicy({ eventName, runId: 2 }).group);
   }
 });

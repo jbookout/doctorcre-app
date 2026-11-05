@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> Loading : caller waits for module imports
+    Loading --> Unavailable : import or data failure (caller message)
+    Loading --> Detached : caller removes layout before mount
+    Loading --> Unavailable : mount then clear or invalid snapshot
+    Unavailable --> ReadyEmpty : valid empty snapshot
+    ReadyEmpty --> ReadyWithMeetings : delayed valid rows arrive
+    Unavailable --> ReadyWithMeetings : valid ready rows arrive
+    ReadyWithMeetings --> PartialWithMeetings : partial snapshot arrives
+    PartialWithMeetings --> ReadyWithMeetings : complete snapshot arrives
+    ReadyWithMeetings --> MeetingEnded : render with end instant less than now
+    MeetingEnded --> ReadyEmpty : next empty snapshot
+    ReadyWithMeetings --> Unavailable : clear or invalid snapshot
+    PartialWithMeetings --> Unavailable : clear or failure
+    ReadyEmpty --> Unavailable : failure
+    ReadyWithMeetings --> Detached : targets removed and observer disconnects
+    Detached --> [*]
+    note right of ReadyWithMeetings
+      Sort numeric start instants; stable input order for ties.
+      Upcoming includes end instant equal to now.
+      Chicago day links and all-day literal dates stay unchanged.
+      Time passage takes effect on render; no new timer.
+    end note

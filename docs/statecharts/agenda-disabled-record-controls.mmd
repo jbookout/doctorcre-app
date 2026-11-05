@@ -1,0 +1,27 @@
+stateDiagram-v2
+  [*] --> hidden
+  hidden: Agenda hidden
+  review_enabled: Review visible, record actions available
+  review_disabled_pending: Review visible, command pending, record actions disabled
+  review_disabled_access: Review visible, access denied, record actions disabled
+  review_reenabled: Same review visible, record actions available again
+  disposed: Agenda removed
+  hidden --> review_enabled: Review data arrives
+  review_enabled --> review_disabled_pending: Command starts
+  review_enabled --> review_disabled_access: Access denied
+  review_disabled_pending --> review_disabled_pending: Pointer or keyboard activation does nothing
+  review_disabled_access --> review_disabled_access: Pointer or keyboard activation does nothing
+  review_disabled_pending --> review_reenabled: Command succeeds or fails and pending clears
+  review_disabled_access --> review_reenabled: Access restored
+  review_reenabled --> review_disabled_pending: Another command starts
+  review_reenabled --> review_disabled_access: Access denied again
+  review_reenabled --> review_reenabled: Each record action activates once
+  review_enabled --> hidden: Review closes or data unavailable
+  review_reenabled --> hidden: Review closes
+  hidden --> disposed: Teardown
+  review_enabled --> disposed: Teardown
+  review_disabled_pending --> disposed: Teardown
+  review_disabled_access --> disposed: Teardown
+  review_reenabled --> disposed: Teardown
+  %% never Activate a record action while the agenda is disabled.
+  %% never Lose review position, dialog visibility, or confirm chips when disabled changes.

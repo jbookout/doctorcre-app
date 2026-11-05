@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s15-microzones-competition",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "published-optional-zone-and-directory",
+    "predicate": "The deployed release identifies the merged app revision. In a publication with optional micro-zone and competition data, switch zones and directory filters. Visible figures, geometry, source pages, timestamps, years and denominators match the same selected package row. An empty market and unavailable map leave the directory usable. Absent sections disappear.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release-bound read-only observation matches the selected publication zone and filtered offices at mobile and desktop widths in both themes, including map failure and empty results.",
+    "input_class": "read-only release identity and an authorized publication walk after shell integration",
+    "deadline_seconds": 300
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 10,
+    "max_records": 20,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}
