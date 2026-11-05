@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "reply-draft-recipient-race",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "late-receipt-preserves-recipients",
+    "predicate": "Run node scripts/prove-reply-draft-recipient-race.mjs --origin https://app.doctorcre.com --timeout-ms 30000 from installed app dependencies. Read /app-release and match source_commit to the merged build. Import deployed /js/ui-email-actions.js and its chunks in an isolated browser context. Synthetic draft storage retains To-only and Cc-only newer edits after an old receipt, removes matching snapshots, and isolates actors and proposals. No natural-data occurrence is established.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with a JSON receipt naming the matching deployed release, loaded module URLs and all synthetic assertions. A protected asset, missing identity/export, timeout or failed assertion exits nonzero. The coordinator runs this after deployment.",
+    "input_class": "read-only deployed module with isolated synthetic storage",
+    "deadline_seconds": 30
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 64, "max_records": 1, "max_runtime_seconds": 30, "max_artifact_bytes": 65536}
+}

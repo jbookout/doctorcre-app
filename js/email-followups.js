@@ -63,7 +63,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const deviceDrafts = () => actionModule.createReplyDeviceDrafts(storage, client.selfActor || '');
   const persistDraft = (id, state) => {
     const saved = deviceDrafts().save(id, state);
-    if (saved) state.deviceSnapshot = { baseVersion: state.baseVersion, subject: state.subject, body: state.body };
+    if (saved) state.deviceSnapshot = { baseVersion: state.baseVersion, subject: state.subject, body: state.body, to: [...state.to], cc: [...state.cc] };
     state.deviceMessage = saved ? 'Draft saved on this device. Nothing was sent.' : 'Draft is only in this page. Device storage is unavailable.';
   };
   let visibleCount = deal ? Infinity : homeListLimit(win);
@@ -205,7 +205,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       const decision = await submitEmailProposal(client, state);
       if (disposed || loadState === 'denied') return;
       const current = rows.find(item => item.id === row.id);
-      if (decision.saved || decision.status === 'done') deviceDrafts().remove(row.id, state.deviceSnapshot || { baseVersion: state.request.base_version, subject: state.request.subject, body: state.request.body });
+      if ((decision.saved || decision.status === 'done') && state.deviceSnapshot) deviceDrafts().remove(row.id, state.deviceSnapshot);
       if (decision.saved && current && current.version <= decision.baseVersion) {
         current.version = decision.baseVersion;
         current.reply_draft = { ...current.reply_draft, subject: decision.subject, body: decision.body };

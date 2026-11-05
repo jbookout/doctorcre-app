@@ -30,10 +30,11 @@ export function createReplyDeviceDrafts(storage: Storage | null, actor: string) 
       if (!parsed) return false;
       try { storage.setItem(key(id), JSON.stringify(parsed)); return true; } catch { return false; }
     },
-    remove(id: string, expected?: Pick<Draft, 'baseVersion' | 'subject' | 'body'>) {
+    remove(id: string, expected?: Draft) {
       try {
         const current = parse(JSON.parse(storage?.getItem(key(id)) || 'null'));
-        if (expected && current && (current.baseVersion !== expected.baseVersion || current.subject !== expected.subject || current.body !== expected.body)) return;
+        if (expected && current && (current.baseVersion !== expected.baseVersion || current.subject !== expected.subject || current.body !== expected.body
+          || JSON.stringify(current.to) !== JSON.stringify(expected.to) || JSON.stringify(current.cc) !== JSON.stringify(expected.cc))) return;
         storage?.removeItem(key(id));
       } catch { /* Keep the current editor usable when storage is denied. */ }
     },
