@@ -58,7 +58,9 @@ if (values.help) {
       await page.getByRole('combobox').press('Enter');
       await page.waitForURL(`${origin.origin}/deals?deal=d1`);
       receipt.assertions.push('Keyboard selects the admitted Valid Deal');
-      console.log(JSON.stringify(receipt));
+      const output = JSON.stringify(receipt);
+      if (receipt.requests > 64 || Buffer.byteLength(output) > 65536) throw Error('Proof evidence budget exceeded');
+      console.log(output);
     };
     await Promise.race([run(), expired]);
   } catch (error) {
