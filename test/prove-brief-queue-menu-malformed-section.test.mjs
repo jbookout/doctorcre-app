@@ -56,6 +56,9 @@ test('proof CLI uses declared flags, fetched bytes, bounded failures and timeout
       assert.equal(report.release.source_commit, 'a'.repeat(40));
       assert.ok(report.assertions.length > 50);
       assert.ok(report.assertions.every(result => result.passed));
+      for (const counts of ['0-0', '1-3']) for (const assertion of ['accurate-mounted', 'accurate-menu-teardown', 'accurate-content-teardown']) {
+        assert.ok(report.assertions.some(result => result.id === `${assertion}-${counts}` && result.passed));
+      }
       assert.deepEqual(report.assets.map(asset => new URL(asset.url).pathname), fetched);
       assert.ok(report.assets.every(asset => /^[0-9a-f]{64}$/.test(asset.sha256)));
       assert.ok(fetched.some(path => /ui-shared-/.test(path)));

@@ -49,6 +49,19 @@ export async function exerciseQueueMenu() {
     second.renderMenu({ sponsor: 'joe', sections: null });
     second.dispose();
     check('unknown-teardown', menu.childElementCount === 0);
+    for (const [count, total] of [[0, 0], [1, 3]]) {
+      const accurate = createBriefQueueView(menu, content);
+      try {
+        accurate.renderMenu({ sponsor: 'joe', sections: null });
+        accurate.renderMenu({ sponsor: 'joe', sections: { today: { items: Array(count).fill({}), total } } });
+        accurate.renderList({ active: 'today', items: [], page: { total: 0, has_more: false, state: 'empty' }, busy: false, error: false });
+        check(`accurate-mounted-${count}-${total}`, today() === `Today queue · ${count} of ${total}`
+          && menu.querySelectorAll('button').length === 4 && content.childElementCount > 0);
+        accurate.dispose();
+        check(`accurate-menu-teardown-${count}-${total}`, menu.childElementCount === 0);
+        check(`accurate-content-teardown-${count}-${total}`, content.childElementCount === 0);
+      } finally { accurate.dispose(); }
+    }
     return results;
   } finally { view.dispose(); menu.remove(); content.remove(); }
 }
