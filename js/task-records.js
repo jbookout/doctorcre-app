@@ -33,7 +33,7 @@ import {
   shouldFocusTaskRetry,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
-import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
+import { browserDraftStorage, createLocalDrafts, matchingDraftId, validDraftDate } from "./local-drafts.mjs";
 import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 
@@ -58,6 +58,7 @@ let viewer = "joe";
 let localDrafts = createLocalDrafts({ storage: null, viewer: 'unverified' });
 let draftViewer = null;
 let restoredDraftId = null;
+let draftDateReview = null;
 const draftOperations = new Map();
 let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
@@ -463,7 +464,9 @@ function renderQuickAdd() {
       `<div><span>Related</span>${relatedCell(effective)}</div>`,
     ].join("");
   }
-  const plan = quickAddPlan(effective, { viewer, sentence });
+  const plan = draftDateReview
+    ? { args: null, questions: [`Review the saved date ${draftDateReview.dueDate}. Choose a valid due date before filing.`] }
+    : quickAddPlan(effective, { viewer, sentence });
   const question = $("quickAddQuestion");
   if (question) {
     question.textContent = plan.args
@@ -559,7 +562,11 @@ function wire() {
   });
 
   for (const id of ["quickAddInput", "quickAddDate"]) $(id)?.addEventListener("input", renderQuickAdd);
-  $("quickAddDate")?.addEventListener("change", renderQuickAdd);
+  $("quickAddDate")?.addEventListener("change", () => {
+    const date = $("quickAddDate").value;
+    if (date && validDraftDate(date)) draftDateReview = null;
+    renderQuickAdd();
+  });
 
   $("quickAddForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -600,6 +607,10 @@ function wire() {
 
   $("quickAddDraft")?.addEventListener("click", () => {
     const sentence = $("quickAddInput")?.value || "";
+    if (draftDateReview) {
+      announce(`Review the saved date ${draftDateReview.dueDate}. Choose a valid due date before keeping or filing this draft.`);
+      return;
+    }
     const dueDate = $("quickAddDate")?.value || "";
     const draft = localDrafts?.save(sentence, dueDate);
     if (!draft) { announce("There is nothing to keep as a draft yet."); return; }
@@ -614,12 +625,15 @@ function wire() {
     const draft = localDrafts?.list().find((item) => item.id === button?.dataset.restoreDraft);
     if (!draft) return;
     restoredDraftId = draft.id;
+    draftDateReview = draft.dateReviewRequired ? draft : null;
     $("quickAddPanel").open = true;
     $("quickAddInput").value = draft.sentence;
-    $("quickAddDate").value = draft.dueDate;
+    $("quickAddDate").value = draftDateReview ? "" : draft.dueDate;
     renderQuickAdd();
     $("quickAddInput").focus();
-    announce("Draft restored for review. Nothing was sent.");
+    announce(draftDateReview
+      ? `Draft text restored. Review the saved date ${draft.dueDate} before filing. Nothing was sent.`
+      : "Draft restored for review. Nothing was sent.");
   });
 }
 
@@ -672,6 +686,7 @@ async function loadViewer({ signal } = {}) {
       const plan = draftIdentityPlan(unverifiedPreviousActor || draftViewer, board.actor);
       if (plan === "reuse" && !unverifiedPreviousActor) return true;
       if (plan === "replace") {
+        draftDateReview = null;
         if ($("quickAddInput")) $("quickAddInput").value = "";
         if ($("quickAddDate")) $("quickAddDate").value = "";
       }
