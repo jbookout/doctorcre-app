@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s12-bulk-settle",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "home-bulk-settle-undo-focus",
+      "predicate": "The deployed app /release identifies the merged revision. In a signed-in Home walk, Joe selects two cards, settles them, observes both removed from attention, undoes the whole batch, observes both restored, then finishes review and observes focus on a named Home card. With no attention cards remaining, Finish focuses the Needs your attention heading.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Release-bound human observation confirms both removals, both restorations, and surviving named keyboard focus after Finish. Joe performs sign-in and all UI writes; the proof observer only reads evidence.",
+      "input_class": "read-only release identity and evidence from a named human signed-in walk by Joe",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 2,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

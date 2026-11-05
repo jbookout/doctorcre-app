@@ -1,3 +1,4 @@
+import { parseBatch, type BatchRequest, type BatchResult } from './batch';
 import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
 type BaseItem = Readonly<{
   item_id: string; source_type: string; source_id: string; source_version: string;
@@ -94,7 +95,7 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
     return { item_id, ok: false, error: object(row) && text(row.error) ? row.error : 'Result uncertain. Retry the same request.', ...(object(row) && text(row.current_version) ? { current_version: row.current_version } : {}) };
   });
 }
-export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
+export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
     for (const version of ['v4', 'v3', 'v2'] as const) {
@@ -112,6 +113,13 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
   }
   return {
     read,
+    async batch(request, expected) {
+      if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
+      const receipt = parseBatch(await rpc(`${request.action}-home-inbox`, request.args), request, expected);
+      let snapshot: Snapshot | null = null;
+      try { snapshot = await read(); } catch { /* Receipts remain confirmed even when readback fails. */ }
+      return { ...receipt, snapshot };
+    },
     async run(request) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
       if (request.action === 'complete' || request.action === 'reopen') {
