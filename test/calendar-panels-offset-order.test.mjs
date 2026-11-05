@@ -38,6 +38,21 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
     row('Future offset', '2026-11-05T06:00:00-06:00', '2026-11-05T07:00:00-06:00'),
     row('Elapsed offset', '2026-11-05T12:00:00+02:00', '2026-11-05T13:00:00+02:00'),
     row('Boundary', '2026-11-05T12:00:00Z', '2026-11-05T12:30:00Z')];
+  await t.test('empty calendar renders delayed ready rows directly', async () => {
+    panel.render({ state: 'empty', items: [] });
+    assert.match(left.textContent, /No upcoming meetings returned/);
+    assert.match(right.textContent, /No meetings scheduled today/);
+    assert.deepEqual(titles(left), []);
+    assert.deepEqual(titles(right), []);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    panel.render({ state: 'ready', items });
+    assert.deepEqual(titles(left), ['Future offset', 'Boundary', 'Earlier', 'Tie', 'Later']);
+    assert.deepEqual(titles(right), ['Elapsed offset', 'Future offset', 'Boundary']);
+    for (const node of [left, right]) {
+      assert.equal(node.querySelector('[role="status"]'), null);
+      assert.doesNotMatch(node.textContent, /No upcoming meetings returned|No meetings scheduled today/);
+    }
+  });
   panel.render({ state: 'ready', items });
   assert.deepEqual(titles(left), ['Future offset', 'Boundary', 'Earlier', 'Tie', 'Later']);
   assert.deepEqual(titles(right), ['Elapsed offset', 'Future offset', 'Boundary']);
@@ -66,6 +81,8 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
   assert.match(left.textContent, /No upcoming meetings returned/);
   assert.match(right.textContent, /No meetings scheduled today/);
   assert.deepEqual(titles(right), []);
+  panel.render({ state: 'ready', items: [row('Before teardown', '2026-11-06T13:00:00Z', '2026-11-06T14:00:00Z')] });
+  assert.deepEqual(titles(left), ['Before teardown']);
   left.remove();
   panel.clear();
   assert.equal(disconnected, true);
