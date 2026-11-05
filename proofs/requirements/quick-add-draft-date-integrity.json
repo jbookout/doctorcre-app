@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "quick-add-draft-date-integrity",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "stored-date-recovery",
+    "predicate": "The deployed createLocalDrafts rejects February 31, retains a stored sentence and raw invalid date with a date-review disposition, and preserves leap days. Run node scripts/prove-quick-add-draft-date-integrity.mjs --origin https://app.doctorcre.com --timeout-ms 30000 and bind its release identity to the merged source.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, deployed module URLs and all three synthetic assertions in a JSON receipt.",
+    "input_class": "isolated synthetic browser storage and read-only deployed modules",
+    "deadline_seconds": 30
+  }],
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 64, "max_records": 3, "max_runtime_seconds": 30, "max_artifact_bytes": 65536 }
+}
