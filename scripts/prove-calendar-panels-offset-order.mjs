@@ -1,3 +1,4 @@
+import { readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -27,19 +28,15 @@ export async function prove({ origin, timeoutMs }) {
       chunks.push(chunk);
     }
     const body = Buffer.concat(chunks);
-    if (json) {
-      try { return JSON.parse(body.toString()); } catch { throw protectedAsset('Missing release identity'); }
-    }
+    if (json) return { body, type };
     assert.match(type, /javascript/, 'JavaScript content type');
     assets.set(url, { body, sha256: createHash('sha256').update(body).digest('hex') });
     return body;
   }
-  const release = await read(new URL('/release', base).href, true).catch(error => {
+  const release = await readAppRelease(base, url => read(url.href, true)).catch(error => {
     if (error.message.startsWith('asset HTTP')) throw protectedAsset('Missing release identity');
     throw error;
   });
-  const identity = release?.source_commit || release?.source_revision || release?.git_sha || release?.commit || release?.source?.commit;
-  if (typeof identity !== 'string' || !/^[0-9a-f]{40}$/.test(identity) || /^0+$/.test(identity)) throw protectedAsset('Missing release identity');
   const assetUrl = new URL('/js/ui-calendar-panels.js', base).href;
   await read(assetUrl);
   const timer = setTimeout(() => { failure = new Error('Entire proof timed out'); void browser?.close(); }, remaining());
