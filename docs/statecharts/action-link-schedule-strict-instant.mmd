@@ -1,0 +1,17 @@
+stateDiagram-v2
+  [*] --> Opening: Open draft link
+  Opening --> Ready: Receive valid schedule or no schedule
+  Opening --> Unavailable: Receive malformed schedule
+  Unavailable --> Opening: Tap Reload draft
+  Ready --> Saving: Tap Approve draft
+  Saving --> Unknown: Receipt cannot confirm approval
+  Unknown --> Saving: Tap Retry approval with same key
+  Saving --> Approved: Receive exact unsent approval receipt
+  Opening --> SignedOut: Authorization refused
+  Saving --> SignedOut: Authorization refused
+  Opening --> Disposed: Leave while opening
+  Ready --> Disposed: Leave draft
+  Disposed --> Disposed: Late read settles
+  %% never Offer approval for an invalid schedule
+  %% never Approve automatically
+  %% never Render a late read after disposal

@@ -8,13 +8,27 @@ type State = { kind: 'loading' } | { kind: 'ready'; card: Draft; key: string; ph
   | { kind: 'approved' } | { kind: 'unavailable'; message: string; retry: boolean } | { kind: 'signed-out' };
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+function isScheduledInstant(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 64) return false;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!parts) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, offsetHour, offsetMinute] = parts;
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const daysInMonth = days[month - 1];
+  return daysInMonth !== undefined && day >= 1 && day <= daysInMonth
+    && Number(hourText) < 24 && Number(minuteText) < 60 && Number(secondText) < 60
+    && (offsetHour === undefined || Number(offsetHour) < 24 && Number(offsetMinute) < 60)
+    && Number.isFinite(Date.parse(value));
+}
 function parseDraft(payload: unknown, ref: string): Draft | null {
   if (!object(payload) || payload.schema_version !== 'action-link-resolve.v1' || payload.ref !== ref || !object(payload.card)) return null;
   const card = payload.card;
   if (card.kind !== 'lead_draft' || card.state !== 'pending_approval' || !uuid(card.id) || !uuid(card.lead_id)
     || typeof card.revision !== 'number' || !Number.isSafeInteger(card.revision) || card.revision < 1
     || typeof card.subject !== 'string' || typeof card.body !== 'string' || typeof card.time_zone !== 'string'
-    || !(card.scheduled_for === null || typeof card.scheduled_for === 'string' && Number.isFinite(Date.parse(card.scheduled_for)))
+    || !(card.scheduled_for === null || isScheduledInstant(card.scheduled_for))
     || !Array.isArray(card.actions) || card.actions.length !== 1) return null;
   const action: unknown = card.actions[0];
   if (!object(action) || action.action !== 'approve' || action.verb !== 'approve-lead-draft' || !object(action.args)
