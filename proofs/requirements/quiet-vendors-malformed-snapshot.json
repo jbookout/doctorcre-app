@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "quiet-vendors-malformed-snapshot",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "deployed-quiet-vendors-resilience",
+      "predicate": "After deployment, run node scripts/prove-quiet-vendors-malformed-snapshot.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Fetch /app-release, /js/ui-quiet-vendors.js and its same-origin generated chunks. Execute only fetched bytes through mountQuietVendors in an isolated document. Observe malformed refusal without empty-list claims, Refresh and Hide recovery, five-row vendor-only pagination, opt-in reads, focus restoration and ignored late resolution after disposal. This is deployed synthetic resilience, not a natural signed-in business-data journey. The coordinator must also bind the reported source_commit to the merged revision.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "The separate read-only observation records exit 0, release identity, exact fetched asset SHA-256 hashes and named passing assertions; unavailable assets exit 78 and contradictions or deadlines exit 1. Remains unproven until execution after deploy.",
+      "input_class": "read-only deployed module bytes with synthetic mount props and fake ports",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 20,
+    "max_records": 1000,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}
