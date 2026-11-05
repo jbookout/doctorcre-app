@@ -44,7 +44,11 @@ for (const [name, payload, message, labels] of [
   } finally { await browser.close(); }
 });
 
-for (const payload of [{ board, network: null }, { board: null, network }, { board: null, network: null }]) test('Retry intersects recents and session invalidation clears records', async () => {
+for (const [name, payload] of [
+  ['partial-board', { board, network: null }],
+  ['partial-contacts', { board: null, network }],
+  ['pages-only', { board: null, network: null }],
+]) test(`Retry from ${name} intersects recents and session invalidation clears records`, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
