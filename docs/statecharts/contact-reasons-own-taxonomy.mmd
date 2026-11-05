@@ -1,0 +1,17 @@
+stateDiagram-v2
+    [*] --> loading: mount
+    loading --> ready_valid: supported payload
+    loading --> invalid_card_omitted: mixed kinds, retain valid cards
+    invalid_card_omitted --> ready_valid: render only own supported kinds
+    ready_valid --> loading: more page, deduplicate IDs
+    loading --> unavailable_coverage: inherited or unknown coverage source
+    ready_valid --> unavailable_coverage: invalid coverage, retain validated update
+    unavailable_coverage --> retrying: Try again
+    retrying --> ready_valid: supported response
+    retrying --> unavailable_coverage: invalid response
+    loading --> retired: session invalidated
+    ready_valid --> retired: session invalidated
+    unavailable_coverage --> retired: session invalidated
+    retrying --> retired: session invalidated
+    retired --> retired: ignore late response and refresh
+    retired --> [*]: dispose
