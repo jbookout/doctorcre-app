@@ -98,15 +98,16 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
         window.documentCap = mountDealDocuments(target, {dealId: '11111111-1111-4111-8111-111111111111', client: {
           async listDealDocuments(args) {
             if (args.limit !== 50) throw Error('Unbounded page');
-            const documents = Array.from({length:50},() => ({...document,id:`00000000-0000-4000-8000-${String(++offset).padStart(12,'0')}`}));
+            const documents = Array.from({length:49},() => ({...document,id:`00000000-0000-4000-8000-${String(++offset).padStart(12,'0')}`}));
             return {ok:true,schema_version:'deal-documents.v1',documents,has_more:true,next_cursor:String(offset)};
           },
         }});
       },document);
       const cap = page.getByRole('region',{name:'Deal documents',exact:true}).last();
-      for (let count = 50; count < 500; count += 50) {
+      for (let count = 49; count < 500; count += 49) {
         await page.waitForFunction(count => window.document.querySelectorAll('[data-document-id]').length === count,count);
-        await cap.getByRole('button',{name:'Load more documents'}).click();
+        await cap.getByRole('button',{name:'Load more documents'}).focus();
+        await page.keyboard.press('Enter');
       }
       await cap.getByText('Showing the first 500 documents. Refresh to start again.',{exact:true}).waitFor();
       assert.equal(await cap.locator('[data-document-id]').count(),500);
