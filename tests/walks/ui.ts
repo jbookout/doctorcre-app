@@ -21,7 +21,7 @@ export async function visible(locator: Locator): Promise<void> {
 }
 export async function home(page: Page): Promise<void> {
   await page.goto('/');
-  await visible(page.getByRole('heading', { name: 'Your inbox', exact: true }));
+  await visible(page.getByRole('heading', { name: 'Welcome home.', exact: true }));
   await expect.poll(async () => !(await page.locator('.inbox-health').innerText()).includes('Updating')).toBe(true);
   expect(await page.locator('.inbox-health').innerText().then(text => !/unavailable/i.test(text))).toBe(true);
   const expand = page.getByRole('button', { name: /^See all \d+$/ });
