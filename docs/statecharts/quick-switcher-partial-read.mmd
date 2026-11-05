@@ -1,0 +1,23 @@
+stateDiagram-v2
+  [*] --> closed
+  closed --> loading: Open switcher
+  loading --> full: Both sections valid
+  loading --> partial_board: Only deals and tasks valid
+  loading --> partial_contacts: Only contacts valid
+  loading --> pages_only: Both sections invalid or read rejected
+  partial_board --> retry: Retry
+  partial_contacts --> retry: Retry
+  pages_only --> retry: Retry
+  retry --> loading: Start one new read
+  loading --> closed: Close or session invalidation
+  full --> closed: Close, selection or session invalidation
+  partial_board --> closed: Close, selection or session invalidation
+  partial_contacts --> closed: Close, selection or session invalidation
+  pages_only --> closed: Close, page selection or session invalidation
+  closed --> closed: Ignore late read completion
+  state "Full results" as full
+  state "Deals, tasks and pages only" as partial_board
+  state "Contacts and pages only" as partial_contacts
+  state "Pages only" as pages_only
+  %% never Navigate to a record outside currently admitted destinations.
+  %% never Restore records or history from a read completed after close.

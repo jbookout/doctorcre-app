@@ -1,0 +1,35 @@
+stateDiagram-v2
+    [*] --> loading
+    state "Loading terms" as loading
+    state "Current excerpt visible" as excerpt_current_visible
+    state "Expired excerpt hidden" as excerpt_expired_hidden
+    state "Unknown expiry or empty excerpt hidden" as excerpt_expiry_unknown_hidden
+    state "Refreshed terms" as refreshed
+    state "Sign in again, terms cleared" as signed_out
+    state "Panel removed" as disposed
+    loading --> refreshed: Documents and terms arrive
+    loading --> loading: Delayed response or read failure
+    refreshed --> excerpt_current_visible: Nonempty text and finite future expiry
+    refreshed --> excerpt_expired_hidden: Expiry is past or exactly now
+    refreshed --> excerpt_expiry_unknown_hidden: Expiry missing, null, invalid, or text empty
+    excerpt_current_visible --> refreshed: Refresh terms
+    excerpt_expired_hidden --> refreshed: Refresh terms
+    excerpt_expiry_unknown_hidden --> refreshed: Refresh terms
+    excerpt_current_visible --> excerpt_current_visible: Read failure retains snapshot
+    excerpt_expired_hidden --> excerpt_expired_hidden: Read failure retains snapshot
+    excerpt_expiry_unknown_hidden --> excerpt_expiry_unknown_hidden: Read failure retains snapshot
+    loading --> signed_out: Session invalidated or read refused
+    refreshed --> signed_out: Session invalidated or read refused
+    excerpt_current_visible --> signed_out: Session invalidated or read refused
+    excerpt_expired_hidden --> signed_out: Session invalidated or read refused
+    excerpt_expiry_unknown_hidden --> signed_out: Session invalidated or read refused
+    signed_out --> signed_out: Delayed response ignored
+    loading --> disposed: Close panel
+    refreshed --> disposed: Close panel
+    excerpt_current_visible --> disposed: Close panel
+    excerpt_expired_hidden --> disposed: Close panel
+    excerpt_expiry_unknown_hidden --> disposed: Close panel
+    signed_out --> disposed: Close panel
+    disposed --> disposed: Delayed response ignored
+    %% never: A newly rendered excerpt with unknown or elapsed expiry is visible.
+    %% Snapshot behavior is evaluated on render, not by a new expiry timer.
