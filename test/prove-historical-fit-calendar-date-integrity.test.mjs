@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { spawn, execFileSync } from 'node:child_process';
+import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { options } from '../scripts/prove-historical-fit-calendar-date-integrity.mjs';
+
+const revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const runner = 'scripts/prove-historical-fit-calendar-date-integrity.mjs';
+function cli(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [runner, ...args]);
+    let stdout = '', stderr = '';
+    child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
+    child.on('error', reject); child.on('exit', code => resolve({ code, stdout, stderr }));
+  });
+}
+test('CLI refuses unsafe origin and invalid arguments', () => {
+  for (const args of [[], ['--origin', 'http://example.com'], ['--origin', 'https://example.com/path'], ['--origin', 'https://example.com', '--timeout-ms', 'NaN'], ['--origin', 'https://example.com', '--expected-revision', 'main']]) {
+    assert.throws(() => options(args));
+  }
+});
+test('proof command uses served modules and fails closed on unavailable assets and releases', async t => {
+  const fixture = await startFixtureServer(); t.after(() => fixture.stop());
+  let mode = 'valid';
+  const server = createServer(async (req, res) => {
+    if (req.url === '/app-release') {
+      if (mode === 'timeout') return;
+      if (mode === 'protected-release') { res.writeHead(401); return res.end(); }
+      res.setHeader('content-type', 'application/json');
+      return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'synthetic-proof-test', source_commit: mode === 'stale' ? '0'.repeat(40) : revision }));
+    }
+    if (mode === 'protected-module') { res.writeHead(403); return res.end(); }
+    if (mode === 'missing-export') { res.setHeader('content-type', 'text/javascript'); return res.end('export const missing = true;'); }
+    const upstream = await fetch(`${fixture.url}${req.url}`);
+    res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') });
+    res.end(Buffer.from(await upstream.arrayBuffer()));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const args = ['--origin', origin, '--expected-revision', revision, '--timeout-ms', '30000'];
+  const passed = await cli(args);
+  assert.equal(passed.code, 0, passed.stderr);
+  const receipt = JSON.parse(passed.stdout);
+  assert.equal(receipt.origin, origin); assert.equal(receipt.release.source_commit, revision);
+  assert.equal(receipt.assertions.length, 7); assert.ok(receipt.module_urls.some(url => url.endsWith('/js/ui-ideal-client-profile.js')));
+  for (const failure of ['stale', 'protected-release', 'protected-module', 'missing-export', 'timeout']) {
+    mode = failure;
+    const result = await cli(failure === 'timeout' ? [...args.slice(0, -1), '200'] : args);
+    assert.notEqual(result.code, 0, failure); assert.match(result.stderr, /Historical fit proof failed/);
+  }
+});
