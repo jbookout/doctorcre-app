@@ -3,7 +3,7 @@ stateDiagram-v2
     Absent --> Empty: Refresh returns an empty checklist
     Absent --> Populated: Refresh returns requirements
     Absent --> Malformed: Response cannot be rendered
-    Populated --> Malformed: Refresh returns malformed requirements
+    Populated --> Malformed: Refresh returns malformed arrays, statuses, evidence, or source
     Populated --> Unavailable: Requirements cannot be read
     Populated --> SourceChanged: Doctrine changes
     Malformed --> Recovered: Refresh returns valid requirements

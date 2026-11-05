@@ -6,11 +6,15 @@ const STATUS = { complete: 'Recorded complete', received: 'Received', not_record
 export function renderDealChecklist(checklist) {
   if (!checklist) return '';
   const text = value => typeof value === 'string' && value.trim().length > 0;
-  const row = item => item && text(item.id) && text(item.label) && Object.hasOwn(STATUS, item.status)
+  const row = item => item && text(item.id) && text(item.label) && typeof item.status === 'string' && Object.hasOwn(STATUS, item.status)
     && (item.due_on == null || typeof item.due_on === 'string');
+  const optionalText = value => value == null || typeof value === 'string';
+  const sourceRefs = source => [source.document, source.request, source.record_verb];
   const valid = Array.isArray(checklist.phases) && checklist.phases.every(phase => phase
     && text(phase.label) && Array.isArray(phase.items) && phase.items.every(item => row(item)
-      && item.source && [item.source.document, item.source.request, item.source.record_verb].some(text)))
+      && optionalText(item.evidence_ref) && item.source
+      && sourceRefs(item.source).every(optionalText) && sourceRefs(item.source).some(text)
+      && (optionalText(item.source.version) || Number.isFinite(item.source.version))))
     && Array.isArray(checklist.due_items) && checklist.due_items.every(item => row(item) && text(item.due_on));
   const unavailable = checklist.template_state === 'unavailable';
   const unsupported = checklist.schema_version !== 'deal-checklist.v1';
@@ -24,6 +28,6 @@ export function renderDealChecklist(checklist) {
   const next = checklist.due_items[0];
   return `<details class="deal-checklist"><summary data-detail-focus="checklist"><span>Deal checklist${due ? ` · ${due} due` : ''}</span>${next ? `<span class="checklist-next"><strong>${esc(next.label)}</strong><span>${esc(STATUS[next.status])} · <time datetime="${esc(next.due_on)}">${esc(dateCaption(next.due_on))}</time></span></span>` : ''}</summary>
     ${checklist.template_state === 'deal_type_unknown' ? '<p>Confirm the deal type to see its full checklist.</p>' : ''}
-    ${checklist.phases.map(phase => `<section><h3>${esc(phase.label)}</h3><ul>${phase.items.map(item => `<li data-checklist-item="${esc(item.id)}" data-state="${esc(item.status)}"><span>${esc(item.label)}</span><strong>${esc(STATUS[item.status])}</strong>${item.due_on ? `<time datetime="${esc(item.due_on)}">${esc(dateCaption(item.due_on))}</time>` : ''}<details><summary>Evidence and source</summary><p>${esc(item.evidence_ref || 'No completion evidence recorded.')}</p><p>${esc(item.source.document || item.source.request || item.source.record_verb)}${item.source.version ? ` · version ${esc(item.source.version)}` : ''}</p></details></li>`).join('')}</ul></section>`).join('')}
+    ${checklist.phases.map(phase => `<section><h3>${esc(phase.label)}</h3><ul>${phase.items.map(item => `<li data-checklist-item="${esc(item.id)}" data-state="${esc(item.status)}"><span>${esc(item.label)}</span><strong>${esc(STATUS[item.status])}</strong>${item.due_on ? `<time datetime="${esc(item.due_on)}">${esc(dateCaption(item.due_on))}</time>` : ''}<details><summary>Evidence and source</summary><p>${esc(item.evidence_ref || 'No completion evidence recorded.')}</p><p>${esc(sourceRefs(item.source).find(text))}${item.source.version ? ` · version ${esc(item.source.version)}` : ''}</p></details></li>`).join('')}</ul></section>`).join('')}
   </details>`;
 }

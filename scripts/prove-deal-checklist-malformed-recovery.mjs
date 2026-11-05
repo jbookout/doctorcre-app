@@ -14,7 +14,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     timer = setTimeout(() => { expired = true; reject(new Error('Proof timed out')); void browser?.close(); }, timeoutMs);
   });
   const run = async () => {
-    browser = await chromium.launch({ args: CHROMIUM_SAFETY_ARGS, timeout: timeoutMs });
+    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
     if (expired) { await browser.close(); throw new Error('Proof timed out'); }
     const context = await browser.newContext({ serviceWorkers: 'block' });
     let requests = 0;
