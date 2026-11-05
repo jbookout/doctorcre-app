@@ -14,7 +14,7 @@ try {
     const timeout = Number(values['timeout-ms']);
     if (!Number.isInteger(timeout) || timeout < 1 || timeout > 30000) throw Error('Timeout must be 1..30000 ms');
     timer = setTimeout(() => { console.error('Proof timeout'); process.exitCode = 1; void browser?.close(); }, timeout);
-    browser = await chromium.launch({ args: CHROMIUM_SAFETY_ARGS, timeout });
+    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
     const context = await browser.newContext({ serviceWorkers: 'block' });
     context.setDefaultTimeout(timeout);
     const loaded = new Set();
