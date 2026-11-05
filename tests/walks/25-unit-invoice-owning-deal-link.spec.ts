@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import './privacy';
+import { expect } from '@playwright/test';
+import { test } from './privacy';
 import { designated, needs, visible } from './ui';
 
 test("25 unit:invoice-owning-deal-link", async ({ page }) => {

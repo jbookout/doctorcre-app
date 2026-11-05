@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import './privacy';
+import { expect } from '@playwright/test';
+import { test } from './privacy';
 import { card } from './ui';
 
 test("35 unit:inbox-safe-refresh", async ({ page }) => {

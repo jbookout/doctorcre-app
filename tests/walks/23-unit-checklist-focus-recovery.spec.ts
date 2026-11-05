@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import './privacy';
+import { expect } from '@playwright/test';
+import { test } from './privacy';
 import { deal, needs } from './ui';
 
 test("23 unit:checklist-focus-recovery", async ({ page }) => {

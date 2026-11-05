@@ -13,7 +13,9 @@ The setup follows [Authentication, Basic shared account](https://playwright.dev/
 
 Read-only walks find names starting with `TEST`, `[test]` or `QA` through the app. Mutation walks require names starting with `TEST WALK <number>` or `QA WALK <number>`. Each mutation walk owns its numbered records. This prevents the two workers from changing each other's records. No walk creates prerequisite business records. Missing prerequisites produce a named skip. A skip does not certify the walk. Walks requiring unavailable native receipts or private manifests remain explicitly skipped rather than asserting a weaker app-only check.
 
-Screenshots, traces and videos are off. `PLAYWRIGHT_NO_COPY_PROMPT` also disables Playwright's automatic failure DOM snapshot. The standard afterEach hook removes private locator diagnostics before the stock reporters run. Assertions retain booleans, counts and IDs only. Do not enable verbose API debugging, browser console forwarding or DOM snapshots for a production run.
+Screenshots, traces and videos are off. `PLAYWRIGHT_NO_COPY_PROMPT` also disables Playwright's automatic failure DOM snapshot. Every spec imports the automatic privacy fixture, which guards the whole context, including secondary pages, and removes private locator diagnostics before the stock reporters run. HTTP error annotations retain only resource type and status, so an edge error page or failed module is distinguishable from an absent control. Assertions retain booleans, counts and IDs only. Do not enable verbose API debugging, browser console forwarding or DOM snapshots for a production run.
+
+`node --test test/walk-privacy-browser.test.mjs` checks consecutive spec files, secondary pages, blocked writes and failure redaction against a synthetic loopback server without a saved session.
 
 List tests without signing in or opening a browser:
 

@@ -1,7 +1,6 @@
 import { test as setup } from '@playwright/test';
 import { chmod, mkdir, open } from 'node:fs/promises';
 import { sessionDirectory, sessionFile } from './session';
-import './privacy';
 
 setup('save human sign-in session', async ({ page }) => {
   await mkdir(sessionDirectory, { recursive: true, mode: 0o700 });

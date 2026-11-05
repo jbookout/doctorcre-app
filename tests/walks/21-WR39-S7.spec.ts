@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import './privacy';
+import { expect } from '@playwright/test';
+import { test } from './privacy';
 import { deal, needs } from './ui';
 
 test("21 WR39.S7", async ({ page }) => {

@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import './privacy';
+import { expect } from '@playwright/test';
+import { test } from './privacy';
 import { card, marker, needs, undo, visible } from './ui';
 
 test("33 unit:inbox-card-actions", async ({ page }) => {

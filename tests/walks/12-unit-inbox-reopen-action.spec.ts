@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import './privacy';
+import { expect } from '@playwright/test';
+import { test } from './privacy';
 import { card, complete, reloadCard, undo } from './ui';
 
 test("12 unit:inbox-reopen-action", async ({ page }) => {
