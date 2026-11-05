@@ -98,7 +98,7 @@ for (const propertyId of ['constructor', '__proto__', 'toString', 'hasOwnPropert
   test(`prototype property ${propertyId} renders empty notes and saves only own text`, async () => {
     const model = createTourList([{ id: propertyId, number: 1, address: 'Synthetic', role: 'candidate', summary: 'Synthetic' }], {
       read: async () => ({ version: 1, selected: [propertyId], notes: {} }),
-      save: async request => ({ ...request, version: request.version + 1 }),
+      save: async request => JSON.parse(JSON.stringify({ ...request, version: request.version + 1 })),
       signOut: async () => {}, clearPrivateState() {}, returnToGate() {},
     });
     await tick();
@@ -123,6 +123,9 @@ test('external inherited notes are ignored and object-valued pollution is reject
   assert.equal(inherited.state.kind, 'ready');
   assert.equal(inherited.state.draft.notes[id], undefined);
   inherited.dispose();
-  const polluted = setup({ read: async () => JSON.parse('{"version":1,"selected":[],"notes":{"__proto__":{"polluted":true}}}') }).model;
+  const polluted = createTourList([{ id: '__proto__', number: 1, address: 'Synthetic', role: 'candidate', summary: 'Synthetic' }], {
+    read: async () => JSON.parse('{"version":1,"selected":["__proto__"],"notes":{"__proto__":{"polluted":true}}}'),
+    save: async request => request, signOut: async () => {}, clearPrivateState() {}, returnToGate() {},
+  });
   await tick(); assert.equal(polluted.state.kind, 'unavailable'); polluted.dispose();
 });
