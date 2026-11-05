@@ -22,7 +22,7 @@ type FactOperation = { verb: 'resolve-fact-review'; args: { entity_ref: string; 
 export type Operation = ActionOperation | ReplyOperation | FactOperation;
 export type Observation = { id: string; value: string; unit: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null } };
 type Common = { reference: ReviewReference };
-export type Review = Common & ({ kind: 'action'; operations: ActionOperation[]; title: string } | { kind: 'reply_draft'; operations: ReplyOperation[]; subject: string; body: string; to: string[]; cc: string[] } | { kind: 'fact_review'; operations: FactOperation[]; observations: Observation[]; canonical: string });
+export type Review = Common & ({ kind: 'action'; operations: ActionOperation[]; title: string } | { kind: 'reply_draft'; operations: ReplyOperation[]; subject: string; body: string; recipients: { to: string[]; cc: string[] } | null; sendUnavailableReason: string | null } | { kind: 'fact_review'; operations: FactOperation[]; observations: Observation[]; canonical: string });
 function unreadable(): never { throw Error('This review is not supported safely. Open its source record.'); }
 function parseOperation(v: unknown): Operation {
   if (!object(v) || !object(v.args)) return unreadable();
@@ -44,9 +44,14 @@ export function parseReview(v: unknown, expected: ReviewReference): Review {
   if (reference.kind === 'action' && text(d.title) && operations.every((o): o is ActionOperation => o.verb === 'complete-one-action')) return { kind: 'action', reference, title: d.title, operations };
   if (reference.kind === 'reply_draft' && object(d.reply_draft)) {
     const r = d.reply_draft;
-    if (text(r.subject) && typeof r.body === 'string' && strings(r.to) && r.to.length === 1 && strings(r.cc) && r.cc.length === 1 && operations.every((o): o is ReplyOperation => ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'].includes(o.verb))) {
-      if (operations.some(o => o.args.proposal_id !== operations[0]?.args.proposal_id || o.args.base_version !== operations[0]?.args.base_version || o.verb === 'submit-email-draft' && (o.args.subject !== r.subject || o.args.body !== r.body || JSON.stringify(o.args.to) !== JSON.stringify(r.to) || JSON.stringify(o.args.cc) !== JSON.stringify(r.cc)))) return unreadable();
-      return { kind: 'reply_draft', reference, subject: r.subject, body: r.body, to: r.to, cc: r.cc, operations };
+    let recipients: { to: string[]; cc: string[] } | null = null;
+    if (r.to !== undefined || r.cc !== undefined) {
+      if (!strings(r.to) || r.to.length !== 1 || !strings(r.cc) || r.cc.length !== 1) return unreadable();
+      recipients = { to: r.to, cc: r.cc };
+    }
+    if (typeof r.subject === 'string' && typeof r.body === 'string' && operations.every((o): o is ReplyOperation => ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'].includes(o.verb))) {
+      if (operations.some(o => o.args.proposal_id !== operations[0]?.args.proposal_id || o.args.base_version !== operations[0]?.args.base_version || o.verb === 'submit-email-draft' && (!recipients || o.args.subject !== r.subject || o.args.body !== r.body || JSON.stringify(o.args.to) !== JSON.stringify(r.to) || JSON.stringify(o.args.cc) !== JSON.stringify(r.cc)))) return unreadable();
+      return { kind: 'reply_draft', reference, subject: r.subject, body: r.body, recipients, sendUnavailableReason: typeof d.preview_error === 'string' ? d.preview_error : null, operations };
     }
   }
   if (reference.kind === 'fact_review' && Array.isArray(d.observations) && operations.every((o): o is FactOperation => o.verb === 'resolve-fact-review')) {
