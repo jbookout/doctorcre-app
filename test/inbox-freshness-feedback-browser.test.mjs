@@ -170,9 +170,20 @@ for (const isError of [true, false]) for (const code of ['invalid_completion', '
 test('authentication loss during a refresh retires all private cards', async t => {
   const { page } = await open(t);
   await page.locator('[data-inbox-row="a"]').waitFor();
-  await page.route('**/mcp', route => route.fulfill({ status: 401, json: { error: 'authentication_required' } }));
+  let refuse;
+  const denial = new Promise(resolve => { refuse = resolve; });
+  await page.route('**/mcp', async route => {
+    await denial;
+    await route.fulfill({ status: 401, json: { error: 'authentication_required' } });
+  });
+  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v3');
   await focus(page);
-  await page.waitForFunction(() => !document.querySelector('[data-inbox-row]'));
+  await refresh;
+  refuse();
+  await page.waitForURL('**/public-shell/session-ended.html');
+  await page.getByRole('heading', { name: 'Session ended', exact: true }).waitFor();
+  assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+  assert.equal(await page.getByRole('link', { name: 'Sign in again', exact: true }).isVisible(), true);
 });
 for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`receipt and chosen focus clear fixed footer ${width} ${theme}`, async t => {
   const { page } = await open(t, { width, theme, extra: Array.from({ length: 14 }, (_, i) => row(`extra${i}`, { action_id: `00000000-0000-0000-0000-${String(100 + i).padStart(12, '0')}` })) });

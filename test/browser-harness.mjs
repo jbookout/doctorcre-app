@@ -41,6 +41,7 @@ after(async () => {
       .map(result => result.value.close()));
   } finally {
     if (browserTemp) rmSync(browserTemp, { recursive: true, force: true });
+    browserTemp = undefined;
   }
 });
 
@@ -52,12 +53,11 @@ function browserEngine(engine) {
     async launch(options = {}) {
       if (!browserTemp) {
         browserTemp = temporaryDirectory('doctorcre-browser-');
-        process.env.TMPDIR = browserTemp;
-        process.env.TEMP = browserTemp;
-        process.env.TMP = browserTemp;
       }
       const key = JSON.stringify(options);
-      if (!launched.has(key)) launched.set(key, engine.launch({ ...options, ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
+      if (!launched.has(key)) launched.set(key, engine.launch({ ...options,
+        env: { ...process.env, ...options.env, TMPDIR: browserTemp, TEMP: browserTemp, TMP: browserTemp },
+        ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
       const browser = await launched.get(key);
       const contexts = new Set();
       async function newContext(options = {}) {

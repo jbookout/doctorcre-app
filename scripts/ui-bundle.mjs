@@ -33,6 +33,7 @@ const UI_ENTRIES = {
   'ui-territory-evidence': 'territory-evidence',
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-calendar-panels': 'calendar-panels',
+  'ui-deal-documents': 'deal-documents',
   'ui-deal-tours': 'deal-tours',
   'ui-deal-tour-proposals': 'deal-tour-proposals',
   'ui-inbox': 'inbox-entry',

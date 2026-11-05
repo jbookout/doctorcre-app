@@ -32,6 +32,7 @@ export { mountTerritoryEvidence } from './territory-evidence';
 
 export { mountIdealClientProfile } from './ideal-client-profile';
 export { mountDealTours } from './deal-tours';
+export { mountDealDocuments } from './deal-documents';
 
 export { mountDealTourProposals, createTourProposalClient } from './deal-tour-proposals';
 export { createTourProposalFixture } from './tour-proposal-fixture';
