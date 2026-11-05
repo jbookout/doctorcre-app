@@ -126,3 +126,14 @@ test('malformed v5 waiting identity never falls back to a legacy read', async ()
     assert.deepEqual(calls, ['read-home-inbox-v5']);
   }
 });
+test('pinned waiting and inbox contracts use the registered v5 read and matching fixture', async () => {
+  const { readCarrInterface } = await import('../scripts/carr-interface.mjs');
+  const contract = await readCarrInterface();
+  assert.equal(contract.home_waiting.read_verb, 'read-home-inbox-v5');
+  assert.equal(contract.home_inbox_contract.read, contract.home_waiting.read_verb);
+  assert.equal(contract.home_inbox_contract.schema_version, 'home-inbox.v5');
+  assert.ok(contract.mcp_operations.includes(contract.home_waiting.read_verb));
+  const snapshot = await fixtureInboxRpc()(contract.home_waiting.read_verb, {});
+  assert.equal(api.parseSnapshot(snapshot).schema_version, contract.home_inbox_contract.schema_version);
+  assert.ok(snapshot.items.every(item => Number.isSafeInteger(item.waiting_version)));
+});
