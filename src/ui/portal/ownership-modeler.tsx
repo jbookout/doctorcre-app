@@ -65,16 +65,21 @@ const lease: Row[] = [
 ];
 function Input({field,draft,edit,id}: {field: Field;draft: Draft;edit:(field:Field,value:string)=>void;id?:string}) {
   const rule=fields[field];
-  return <label>{rule.label}<input id={id} name={field} type="number" min={rule.min} max={rule.max} step={'integer' in rule ? 1 : 'any'} value={draft[field]??''} onChange={e=>edit(field,e.target.value)} onBlur={e=>{const n=Number(e.target.value);if(e.target.value.trim()&&Number.isFinite(n)&&rule.label.includes('$'))edit(field,String(Math.round((n+Number.EPSILON)*100)/100));}} /></label>;
+  const [focused,setFocused]=useState(false);
+  const value=draft[field]??'';
+  const numeric=Number(value);
+  const display=!focused&&String(value).trim()&&Number.isFinite(numeric)&&rule.label.includes('$')?String(Math.round((numeric+Number.EPSILON)*100)/100):value;
+  return <label>{rule.label}<input id={id} name={field} type="number" min={rule.min} max={rule.max} step={'integer' in rule ? 1 : 'any'} value={display} onChange={e=>edit(field,e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} /></label>;
 }
 function TIToggles({ ownership, draft, edit, name }: {ownership:Ownership;draft:Draft;edit:(field:Field,value:string)=>void;name:string}) {
   return <fieldset className="ti-toggle"><legend>Outside tenant allowance options</legend>{ownership.defaults.ti_options.map((amount,index)=><label key={index}><input type="radio" name={name} value={amount} checked={Number(draft.tenant_ti)===amount} onChange={()=>edit('tenant_ti',String(amount))}/>{formatMoney(amount)}/SF</label>)}</fieldset>;
 }
+type ChartSeries = {name:string;key:keyof HoldingPoint;color:string};
 function HoldingChart({ result, view }: {result:Result;view:string}) {
-  const series=view==='lease' ? [{name:'Lease cost',key:'leaseCost',color:'#977036'},{name:'Ownership cash contributed',key:'cashContributed',color:'#34828a'}] satisfies {name:string;key:keyof HoldingPoint;color:string}[] : [{name:'Equity',key:'equity',color:'#34828a'},{name:'Cash contributed',key:'cashContributed',color:'#977036'}] satisfies {name:string;key:keyof HoldingPoint;color:string}[];
+  const series:[ChartSeries,ChartSeries]=view==='lease' ? [{name:'Lease cost',key:'leaseCost',color:'#977036'},{name:'Ownership cash contributed',key:'cashContributed',color:'#34828a'}] : [{name:'Equity',key:'equity',color:'#34828a'},{name:'Cash contributed',key:'cashContributed',color:'#977036'}];
   const values=result.value.points.flatMap(p=>series.map(s=>p[s.key]));
   const low=Math.min(0,...values),high=Math.max(1,...values),range=high-low;
-  const crossing=result.value.points.find(p=>view==='lease'?p.leaseCost>=p.cashContributed-p.equity:p.equity>=p.cashContributed);
+  const crossing=result.value.points.find(p=>p[series[0].key]>=p[series[1].key]);
   return <><p id="ownership-line-legend">{series.map(s=>s.name).join(' / ')}</p><svg id="ownership-line-chart" viewBox="0 0 620 280" role="img" aria-label={`${result.property.address} ${series.map(s=>s.name).join(' and ')} by year`}><text x="8" y="16" fill="currentColor">{formatMoney(high)}</text><text x="8" y="270" fill="currentColor">Years 0 to 10 · minimum {formatMoney(low)}</text>{series.map(s=><polyline key={s.key} fill="none" stroke={s.color} strokeWidth="3" points={result.value.points.map(p=>`${20+p.year*58},${240-(p[s.key]-low)/range*210}`).join(' ')}/>)}</svg><p id="line-summary">{crossing?`First annual crossing at year ${crossing.year}.`:'No crossing in the ten-year illustration.'} Annual points only. Assumptions are not guaranteed outcomes.</p></>;
 }
 export function OwnershipModeler(props: Props) {

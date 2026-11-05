@@ -46,3 +46,21 @@ S10 owns registration, strategy route and bundling. S11 owns the property dialog
 ## Throughput checkpoint
 
 Blocking work is source/schema and overlap inspection before edits. Tests and implementation share one owner. No state is shared outside the component. One worker is the smallest safe decomposition. No subagents.
+
+## Review corrections
+
+Card: WR227.S14.J4. Small, two view-layer defects. The chart summary compares the same two series used to draw its polylines. Currency controls own focus state only. Focus shows the raw draft; blur formats the displayed value without dispatching a financial edit. The reducer remains the sole owner of the assumption. Tests compare the summary with SVG points and compare every results table before and after blur.
+
+The alternatives were to quantize accepted financial inputs or preserve precision and format only the control. Presentation-only rounding requires the latter. No calculation interface changes, cache, persistence, requests, queues or new external dependencies are needed. Capacity and failure behavior remain as described above.
+
+```mermaid
+stateDiagram-v2
+ [*] --> Rounded: published assumption
+ Rounded --> Exact: focus shows stored precision
+ Exact --> Exact: typing updates assumption and results
+ Exact --> Rounded: blur preserves assumption and results
+```
+
+The regression reopens the field to verify stored precision and checks the synchronized control. Reducer tests also cover invalid-to-invalid edits and recovery through selection and reset. No additional formal-model claim is made for focus formatting.
+
+Throughput checkpoint remains one owner with no shared state. The two browser regressions failed before the fix in commit 173ede92. No-comments and design alternatives were checked directly because this job forbids subagents. No comments, casts, suppressions or compatibility paths were added.
