@@ -22,6 +22,8 @@ type Options = {
 
 export function mountDealUpdateReviews({ container, client, initialResult, onChange = () => {}, sourceTime, readWithDeadline, uuidv4 }: Options) {
   let rows: Row[] = [], state: 'loading' | 'ready' | 'error' | 'denied' = 'loading', epoch = 0, disposed = false;
+  let incomplete = false;
+  const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
   const decisions = new Map<string, Decision>();
   const win = container.ownerDocument.defaultView;
   let count = win?.matchMedia?.('(max-width: 700px)').matches ? 1 : 2;
@@ -35,7 +37,7 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
     container.setAttribute('aria-busy', String(state === 'loading'));
     flushSync(() => root.render(<>
       <header className="home-panel-head"><h2>Overdue tasks to review</h2>{rows.length > count && <span className="home-list-count">Showing {Math.min(count, rows.length)} of {rows.length}</span>}</header>
-      {state === 'denied' ? <p role="status">Sign in to review overdue tasks.</p> : state === 'error' ? <><p role="status">Could not load overdue reviews.</p>{button('refresh', 'Retry overdue reviews')}</> : state === 'loading' ? <p role="status">Loading overdue reviews…</p> : !rows.some(row => !row.automatic) ? <p className="home-empty">No overdue reviews.</p> : null}
+      {state === 'denied' ? <p role="status">Sign in to review overdue tasks.</p> : state === 'error' ? <><p role="status">Could not load overdue reviews.</p>{button('refresh', 'Retry overdue reviews')}</> : state === 'loading' ? <p role="status">Loading overdue reviews…</p> : incomplete ? <><p role="status">Some overdue reviews are unavailable. Showing usable reviews only.</p>{button('refresh', 'Retry overdue reviews')}</> : !rows.some(row => !row.automatic) ? <p className="home-empty">No overdue reviews.</p> : null}
       {rows.slice(0, count).map((row, index) => {
         const decision = decisions.get(row.assessment_id), pending = decision?.state === 'submitting', unknown = decision?.state === 'unknown';
         const disabled = state !== 'ready' || pending;
@@ -69,19 +71,20 @@ export function mountDealUpdateReviews({ container, client, initialResult, onCha
       const ids = new Set<string>();
       if (result?.schema_version !== 'deal-update-reviews.v1' || !Array.isArray(result.proposals) || result.proposals.length > 200) throw Error('Invalid overdue reviews');
       const next: Row[] = result.proposals.filter(row => {
-        const valid = row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name
+        const valid = text(row?.assessment_id) && !ids.has(row.assessment_id) && text(row.deal_id) && text(row.deal_name)
           && row.confirm_verb === 'review-deal-update' && row.assessment?.review_required === true
-          && row.assessment.action?.id && typeof row.assessment.action.description === 'string'
+          && text(row.assessment.action?.id) && (row.assessment.reason == null || typeof row.assessment.reason === 'string') && typeof row.assessment.action.description === 'string'
           && typeof row.assessment.update === 'string' && (row.assessment.quote == null || typeof row.assessment.quote === 'string');
         if (valid) ids.add(row.assessment_id);
         return valid;
       });
-      if (result.automatic_resolutions != null && !Array.isArray(result.automatic_resolutions)) throw Error('Invalid automatic resolutions');
+      if (result.automatic_resolutions != null && (!Array.isArray(result.automatic_resolutions) || result.automatic_resolutions.length > 200)) throw Error('Invalid automatic resolutions');
       for (const row of result.automatic_resolutions || []) {
-        if (row?.assessment_id && !ids.has(row.assessment_id) && row.deal_id && row.deal_name && (['action_title', 'quote', 'resolved_at'] as const).every(key => typeof row[key] === 'string') && typeof row.undo_possible === 'boolean') {
+        if (text(row?.assessment_id) && !ids.has(row.assessment_id) && text(row.deal_id) && text(row.deal_name) && (['action_title', 'quote', 'resolved_at'] as const).every(key => typeof row[key] === 'string') && typeof row.undo_possible === 'boolean') {
           ids.add(row.assessment_id); next.push({ ...row, automatic: true });
         }
       }
+      incomplete = next.length !== result.proposals.length + (result.automatic_resolutions?.length || 0);
       for (const row of rows) if (!ids.has(row.assessment_id) && ['unknown', 'submitting'].includes(decisions.get(row.assessment_id)?.state || '')) next.push(row);
       next.sort((a, b) => (a.automatic ? 1 : 0) - (b.automatic ? 1 : 0));
       for (const [id, decision] of decisions) if (decision.state === 'refused') decisions.delete(id);
