@@ -5,17 +5,18 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium, webkit, fixtureServer } from './browser-harness.mjs';
 let outDir;
 before(async () => { outDir = await temporaryDirectory('home-bulk-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => { if (outDir) await rm(outDir, { recursive: true, force: true }); });
-async function open(t, { width = 390, theme = 'light', mixed = true, stale = false, lost = false, missing = false, hold = false, undoLost = false } = {}) {
+async function open(t, { width = 390, theme = 'light', mixed = true, stale = false, lost = false, missing = false, hold = false, undoLost = false, engine = chromium, height = 900, longTitles = false } = {}) {
   const { createBatchFake, makeItem } = await import('./fixtures/home-bulk-fake.mjs');
   const items = ['a', 'b', 'c', 'd'].map(makeItem);
+  if (longTitles) for (const item of items) item.title += ' follow up on the practice office relocation proposal and confirm the next conversation';
   const fake = createBatchFake(items, { mixed, stale, lost, missing, hold, undoLost });
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
-  const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: 'Asia/Tokyo' });
+  const browser = await engine.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height }, isMobile: width < 700, hasTouch: width < 700, timezoneId: 'Asia/Tokyo' });
   page.setDefaultTimeout(5000);
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
@@ -25,9 +26,9 @@ async function open(t, { width = 390, theme = 'light', mixed = true, stale = fal
     catch { await route.abort(); }
   });
   await page.goto(`${server.origin}/?mode=live`);
-  await page.getByRole('checkbox', { name: 'Select Synthetic a', exact: true }).waitFor();
+  await page.getByRole('checkbox', { name: `Select ${items[0].title}`, exact: true }).waitFor();
   await page.getByRole('button', { name: 'See all 4', exact: true }).click();
-  for (const id of ['a', 'b', 'c', 'd']) await page.getByRole('checkbox', { name: `Select Synthetic ${id}`, exact: true }).check();
+  for (const item of items) await page.getByRole('checkbox', { name: `Select ${item.title}`, exact: true }).check();
   return { page, fake };
 }
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`mixed_batch_shows_each_receipt_and_undo_restores_only_applied ${width} ${theme}`, async t => {
@@ -152,3 +153,33 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (con
   await page.addScriptTag({ content: axe.source });
   assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
 });
+
+for (const [engineName, engine] of [['chromium', chromium], ['webkit', webkit]])
+  for (const width of [390, 375, 360, 1440]) for (const theme of ['light', 'dark']) for (const action of ['settle', 'snooze'])
+    test(`bulk Undo stays visible and tappable ${engineName} ${width} ${theme} ${action}`, { skip: engine.skip }, async t => {
+      const { page, fake } = await open(t, { engine, width, height: width < 700 ? 667 : 900, theme, mixed: false, longTitles: true });
+      for (const item of fake.items.slice(2)) await page.getByRole('checkbox', { name: `Select ${item.title}`, exact: true }).uncheck();
+      const activate = async locator => width < 700 ? locator.tap() : locator.click();
+      await activate(page.getByRole('button', { name: action === 'settle' ? 'Settle selected' : 'Snooze selected', exact: true }));
+      if (action === 'snooze') await activate(page.getByRole('button', { name: 'Not now · Tomorrow 9:00 AM Central', exact: true }));
+      await page.locator('[data-batch-state="results"]').waitFor();
+      assert.deepEqual(fake.items.map(item => item.disposition), [action === 'settle' ? 'settled' : 'snoozed', action === 'settle' ? 'settled' : 'snoozed', 'inbox', 'inbox']);
+      const undo = page.getByRole('button', { name: 'Undo whole batch', exact: true });
+      const visible = async () => {
+        const geometry = await undo.evaluate(node => {
+          const rect = node.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: innerWidth, height: innerHeight, exposed: hit === node || node.contains(hit) };
+        });
+        assert.ok(geometry.x >= 0 && geometry.y >= 0 && geometry.right <= geometry.width && geometry.bottom <= geometry.height && geometry.exposed, `Undo must be inside viewport and unoccluded: ${JSON.stringify(geometry)}`);
+      };
+      await page.screenshot({ path: `/tmp/WR617.S12.J15-${engineName}-${width}-${theme}-${action}.png` });
+      await visible();
+      await page.clock.install();
+      await page.clock.fastForward(10_000);
+      await visible();
+      await activate(undo);
+      await page.locator('[data-batch-state="undone"]').waitFor();
+      assert.equal(fake.items.every(item => item.disposition === 'inbox'), true);
+      for (const item of fake.items.slice(0, 2)) await page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('link', { name: item.title, exact: true }).waitFor();
+    });
