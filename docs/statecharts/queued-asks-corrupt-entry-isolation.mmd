@@ -1,0 +1,19 @@
+stateDiagram-v2
+  [*] --> valid_queued: valid saved request
+  [*] --> corrupt_entry_held: invalid JSON or shape
+  [*] --> storage_unavailable: storage access throws
+  valid_queued --> submitting: online drain
+  submitting --> unknown: interrupted or invalid receipt
+  submitting --> refused: matching refusal
+  submitting --> accepted: matching acceptance
+  unknown --> submitting: reconnect or check receipt
+  refused --> submitting: explicit retry only
+  accepted --> accepted: late failure ignored
+  corrupt_entry_held --> corrupt_entry_held: retain bytes, never submit
+  storage_unavailable --> valid_queued: reopen after access restored
+  valid_queued --> retired: close
+  submitting --> retired: session invalidated
+  unknown --> retired: close
+  refused --> retired: close
+  accepted --> retired: close
+  corrupt_entry_held --> retired: close, retain bytes

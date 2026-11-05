@@ -8,6 +8,37 @@ const conversation = '11111111-1111-4111-8111-111111111111';
 const key = '22222222-2222-4222-8222-222222222222';
 function memory() { const data = new Map(); return { get length() { return data.size; }, key: i => [...data.keys()][i], getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,v), removeItem: k => data.delete(k) }; }
 const receipt = request => ({ ok: true, contract: 'doc-request.v1', status: 'accepted', conversation_id: request.conversation_id, request_msg_id: request.idempotency_key, idempotency_key: request.idempotency_key });
+for (const corruptFirst of [true,false]) test(`corrupt entry isolation, corrupt first ${corruptFirst}`, async () => {
+ const storage=memory(), prefix=`doctorcre:asks:v1:joe:${conversation}:`, bad=prefix+'broken';
+ if(corruptFirst) storage.setItem(bad,'{');
+ const s=setup(storage);s.box.saveDraft('Valid frozen ask');s.box.enqueue();s.box.saveDraft('Current draft');
+ if(!corruptFirst) storage.setItem(bad,'{');
+ const reopened=setup(storage);
+ assert.deepEqual(reopened.box.entries().map(r=>r.request.body),['Valid frozen ask']);
+ assert.deepEqual(reopened.box.recovery(),[bad]);
+ reopened.connect();await reopened.box.flush();
+ assert.equal(reopened.box.entries()[0].kind,'accepted');assert.equal(reopened.calls.length,1);
+ assert.equal(reopened.calls[0].body,'Valid frozen ask');assert.equal(reopened.box.draft(),'Current draft');
+ assert.equal(storage.getItem(bad),'{');assert.equal(setup(storage).box.entries()[0].kind,'accepted');
+});
+test('malformed draft is isolated and retained without overwrite',async()=>{
+ const s=setup(),draftKey=`doctorcre:asks:v1:joe:${conversation}:draft`;
+ s.box.saveDraft('Valid');s.box.enqueue();s.storage.setItem(draftKey,'{');
+ const reopened=setup(s.storage);assert.equal(reopened.box.draft(),'');
+ assert.throws(()=>reopened.box.saveDraft('Replacement'),/recovery/);
+ assert.throws(()=>reopened.box.enqueue('Replacement'));
+ reopened.connect();await reopened.box.flush();assert.equal(reopened.box.entries()[0].kind,'accepted');
+ assert.equal(s.storage.getItem(draftKey),'{');assert.deepEqual(reopened.box.recovery(),[draftKey]);
+});
+test('invalid shapes stay held, other scopes excluded, access failures throw',()=>{
+ const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ s.storage.setItem(prefix+'bad','{}');
+ s.storage.setItem(prefix+'wrong',JSON.stringify({kind:'queued',request:{body:'Wrong',conversation_id:key,idempotency_key:key}}));
+ s.storage.setItem(`doctorcre:asks:v1:dell:${conversation}:bad`,'{');
+ s.storage.setItem(`doctorcre:asks:v1:joe:${key}:bad`,'{');
+ assert.equal(s.box.entries().length,0);assert.equal(s.box.recovery().length,2);
+ s.storage.getItem=()=>{throw Error('access denied');};assert.throws(()=>s.box.entries(),/access denied/);
+});
 function setup(storage = memory()) {
  let online = false, send = async request => receipt(request);
  const calls = [];
