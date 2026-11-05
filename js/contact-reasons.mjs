@@ -17,11 +17,11 @@ function validate(payload) {
   if (payload?.ok !== true || payload.contract !== 'practice-origination.v1' || payload.outreach_started !== false
     || !Array.isArray(payload.cards) || !Array.isArray(payload.coverage)
     || !(payload.next_cursor === null || /^[1-9][0-9]{0,18}$/.test(payload.next_cursor))
-    || !payload.coverage.every(row => row && sources[row.source] && ['available','blocked','unavailable','uncovered'].includes(row.status))) {
+    || !payload.coverage.every(row => row && Object.hasOwn(sources,row.source) && ['available','blocked','unavailable','uncovered'].includes(row.status))) {
     throw new Error('Contact reasons unavailable');
   }
   return {...payload, cards: payload.cards.filter(row => row && /^[1-9][0-9]{0,18}$/.test(row.id) && typeof row.name === 'string'
-      && kinds[row.kind] && ['research','relationship_follow_up','identity_review'].includes(row.route)
+      && Object.hasOwn(kinds,row.kind) && ['research','relationship_follow_up','identity_review'].includes(row.route)
       && /^\d{4}-\d{2}-\d{2}$/.test(row.evidence_date) && Number.isFinite(Date.parse(row.evidence_date))
       && typeof row.city === 'string' && typeof row.state === 'string'
       && Array.isArray(row.client_ids) && Array.isArray(row.client_refs)
