@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s13-tour-list-signout",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "tour-list-live-read-and-natural-save",
+    "predicate": "After release identity matches the merge, observe a deployed portal's existing Tour List version and canonical IDs, an approved natural client save and partner proposal readback, and prior-session denial after natural sign out. Do not submit synthetic choices.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Rendered IDs and version match the portal read; the natural save appears as a partner proposal; the signed-out session cannot read private content.",
+    "input_class": "authorized-private-read-only-observation",
+    "deadline_seconds": 300
+  }],
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 20, "max_records": 100, "max_runtime_seconds": 300, "max_artifact_bytes": 1048576 }
+}

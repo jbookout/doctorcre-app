@@ -41,6 +41,19 @@ const deploymentStatus = provider(["deployments", "status", "--env", "", "--json
 if (deploymentStatus.status !== 0) {
   throw new Error("could not establish the current DoctorCRE production deployment state");
 }
+const deployment = JSON.parse(deploymentStatus.stdout);
+if (!Array.isArray(deployment.versions)) throw new Error("invalid production deployment state");
+const [active] = deployment.versions;
+if (deployment.versions.length === 1 && active.percentage === 100) {
+  if (!/^[0-9a-f-]{36}$/i.test(active.version_id)) throw new Error("invalid production version identity");
+  const version = JSON.parse(provider(["versions", "view", active.version_id, "--env", "", "--json"], { capture: true }));
+  if (version.id !== active.version_id || !Array.isArray(version.resources?.bindings)) throw new Error("invalid production version state");
+  const source = version.resources.bindings.find(binding => binding.name === "GIT_SHA" && binding.type === "plain_text");
+  if (source?.text === sourceCommit) {
+    console.log(`Production already serves source ${sourceCommit}; no publication needed.`);
+    process.exit(0);
+  }
+}
 const uploadOutput = provider(["versions", "upload", "--env", "", "--strict",
   "--tag", versionTag, "--message", message, "--var", `GIT_SHA:${sourceCommit}`], { capture: true });
 process.stdout.write(uploadOutput);
