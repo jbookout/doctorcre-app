@@ -1,0 +1,16 @@
+stateDiagram-v2
+    [*] --> Validating
+    Validating --> Refused: Invalid options or conflicting flags
+    Validating --> Launching: Allocate one lease and call engine
+    Launching --> Active: Engine returns a browser
+    Launching --> Released: Launch rejects or child exits or times out
+    Active --> Closing: Caller closes browser
+    Active --> Released: Browser disconnects
+    Closing --> Released: Close succeeds or rejects
+    Closing --> Closing: Concurrent close shares promise
+    Released --> Released: Repeated close shares result
+    Refused --> [*]
+    Released --> [*]
+    %% never: A refused launch starts a browser.
+    %% never: Releasing one lease removes an unrelated directory.
+    %% never: A repeated close calls the engine twice.
