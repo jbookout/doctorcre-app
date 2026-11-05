@@ -17,6 +17,8 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const sides = {};
 const report = { schema: 'doctorcre-home-lcp-diagnostic.v1', measuredAt: new Date().toISOString(),
   platform: process.platform, nodeVersion: process.version, cpu: cpus()[0]?.model, cores: cpus().length,
+  collectorDigest: sha256(await readFile(new URL('./home-lcp-diagnostic.mjs', import.meta.url))),
+  runnerName: process.env.RUNNER_NAME ?? null, runId: process.env.GITHUB_RUN_ID ?? null,
   loadBefore: loadavg(), profile: { ...profile, samples: 5 }, batchOrder, sides, failures: [] };
 let browser;
 try {
@@ -32,7 +34,7 @@ try {
     }
     sides[label] = { sourceCommit, buildDigest, samples: [] };
   }
-  browser = await chromium.launch({ args: CHROMIUM_SAFETY_ARGS });
+  browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   report.browserVersion = browser.version();
   for (const [batch, label] of batchOrder.entries()) {
     const directory = resolve(label === 'head' ? headRoot : mainRoot);

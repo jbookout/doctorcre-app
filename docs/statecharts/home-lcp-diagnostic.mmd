@@ -5,6 +5,9 @@ stateDiagram-v2
     Observing --> Refused: navigation, readiness or LCP timeout
     Evidence --> Refused: request or page failure, invalid LCP
     Evidence --> Recorded: valid LCP and no failures
-    Refused --> Closed: preserve trace and close context
-    Recorded --> Closed: preserve trace and close context
+    Refused --> Closed: attempt trace preservation; always close context
+    Recorded --> Closed: attempt trace preservation; always close context
+    Recorded --> ArtifactFailed: trace or profile write rejected
+    Refused --> ArtifactFailed: trace or profile write rejected
+    ArtifactFailed --> Closed: close context before rejecting
     Closed --> [*]

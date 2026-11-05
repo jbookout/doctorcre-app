@@ -1,3 +1,4 @@
+import { startHomeProfile } from './home-lcp-profile.mjs';
 import { profile, applyPhoneProfile } from '../../scripts/performance-scenarios.mjs';
 
 export const batchOrder = Object.freeze(['head', 'main', 'head', 'main']);
@@ -50,9 +51,10 @@ function observeHome() {
   }, { once: true });
 }
 
-export async function collectHomeSample({ browser, url, setup = async () => {}, trace, timeoutMs = 30000 }) {
+export async function collectHomeSample({ browser, url, setup = async () => {}, trace, profileOutput, timeoutMs = 30000 }) {
   const context = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.deviceScaleFactor,
     isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  let stopProfile;
   try {
     if (trace) await context.tracing.start({ screenshots: true, snapshots: true });
     const page = await context.newPage();
@@ -63,6 +65,7 @@ export async function collectHomeSample({ browser, url, setup = async () => {}, 
     page.on('pageerror', error => failures.push(error.message));
     await applyPhoneProfile(context, page);
     await page.addInitScript(observeHome);
+    if (profileOutput) stopProfile = await startHomeProfile(context, page, profileOutput);
     await setup(page);
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.locator('[data-inbox-row]').first().waitFor({ state: 'visible' });
@@ -72,7 +75,9 @@ export async function collectHomeSample({ browser, url, setup = async () => {}, 
       navigation: performance.getEntriesByType('navigation').map(entry => entry.toJSON()), usefulReadyMs: performance.now() }));
     return validateSample({ ...sample, failures });
   } finally {
-    if (trace) await context.tracing.stop({ path: trace });
-    await context.close();
+    try {
+      try { if (stopProfile) await stopProfile(); }
+      finally { if (trace) await context.tracing.stop({ path: trace }); }
+    } finally { await context.close(); }
   }
 }
