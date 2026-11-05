@@ -189,7 +189,7 @@ test('Home performance expansion survives calendar, month and Chicago DST bounda
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const home = screens.find(screen => screen.id === 'home');
-  for (const now of ['2026-11-05T18:00:00Z', '2026-10-31T23:59:59Z', '2026-11-01T00:00:00Z',
+  for (const now of ['2026-11-05T18:00:00Z', '2026-11-01T04:59:59Z', '2026-11-01T05:00:00Z',
     '2026-11-01T06:59:59Z', '2026-11-01T07:00:00Z', '2026-03-08T07:59:59Z', '2026-03-08T08:00:00Z']) {
     await t.test(now, async () => {
       const context = await browser.newContext({ viewport: profile.viewport, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
