@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const createLegacyInboxClient = rpc => createInboxClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
+const createLegacyInboxClient = rpc => createInboxClient((name, ...args) => ['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name) ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
 const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
 const { parseSnapshot, shelves, createInboxClient } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 export const item = (item_id, fields = {}) => ({ completed_at: null, auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'source:1', source_state: 'needs_attention', title: 'Synthetic follow-up', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
@@ -154,11 +154,29 @@ for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`comp
   assert.equal(result.current_item.action_version, laterVersion);
   if (lost) assert.deepEqual(writes[0], writes[1]);
 });
-test('legacy and wrong-identity receipts cannot manufacture Undo', async () => {
+for (const invalid of [
+  {},
+  { completion_event_id: null },
+  { completion_event_id: 'not-an-event' },
+  { completion_event_id: '00000000-0000-0000-0000-000000000009', action_id: '00000000-0000-0000-0000-000000000099' },
+]) test(`invalid completion receipt refuses confirmation and retains exact retry ${JSON.stringify(invalid)}`, async () => {
   const { taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-  const client = createLegacyInboxClient(async name => name === 'read-home-inbox-v3' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
-  const [result] = await client.run(taskCommand('complete', item('a')));
+  const calls = [];
+  let valid = false;
+  const client = createLegacyInboxClient(async (name, args) => {
+    calls.push({ name, args: structuredClone(args) });
+    if (name === 'read-home-inbox-v3') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]);
+    return { ok: true, action_id: item('a').action_id, status: 'done', version: 8, ...(valid ? { completion_event_id: '00000000-0000-0000-0000-000000000009' } : invalid) };
+  });
+  const request = taskCommand('complete', item('a'));
+  await assert.rejects(client.run(request), /Completion (event|receipt) unreadable/);
+  assert.deepEqual(calls.map(call => call.name), ['complete-one-action'], 'invalid receipts cannot authorize readback');
+  assert.throws(() => taskCommand('reopen', item('a')), /Can't undo/);
+  valid = true;
+  const [result] = await client.run(request);
+  assert.deepEqual(calls[1], calls[0]);
   assert.equal(result.ok, true);
-  assert.throws(() => taskCommand('reopen', result.item, result.receipt), /Can't undo/);
+  assert.equal(taskCommand('reopen', result.item, result.receipt).args.completion_event_id, '00000000-0000-0000-0000-000000000009');
+  assert.throws(() => taskCommand('reopen', result.item, { ...result.receipt, action_id: '00000000-0000-0000-0000-000000000099' }), /Can't undo/);
   assert.throws(() => taskCommand('complete', item('working', { source_state: 'working' })), /cannot be marked done/);
 });

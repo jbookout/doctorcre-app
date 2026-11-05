@@ -90,11 +90,19 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.doesNotMatch(ci.split(/^jobs:/m)[0], /schedule|workflow_dispatch/);
   assert.match(checks, /^  workflow_call:\n  schedule:\n    - cron: "17 3 \* \* \*"\n  workflow_dispatch:$/m);
   assert.match(ci, /types: \[opened, synchronize, reopened, ready_for_review, edited\]/);
-  assert.doesNotMatch(ci, /continue-on-error:/);
+  const performance = ci.split(/^  performance:\n/m)[1].split(/^  live:/m)[0];
+  const measurement = performance.split(/^      - /m).find(step => /^run: npm run performance:check$/m.test(step));
+  assert.match(measurement, /^        continue-on-error: true$/m);
+  assert.equal(ci.match(/continue-on-error:/g)?.length, 1,
+    'only the performance measurement is report-only; setup and all other checks still block');
+  assert.match(performance, /path: \|\n            doctorcre-app\/test-artifacts\/performance\/report\.json\n            doctorcre-app\/test-artifacts\/performance\/summary\.md/);
+  assert.match(performance, /run: cat test-artifacts\/performance\/summary\.md >> "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(ci, /test "\$PERFORMANCE" = success/,
+    'the aggregate consumes the successful job conclusion after a tolerated measurement failure');
   assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
   assert.match(ci, /browser-results.py collect/);
-  assert.match(ci, /needs: \[checks, shards, performance, live, production-proof\]/);
+  assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
@@ -360,9 +368,9 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   assert.match(gate, /browser-results.py verify/);
   assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
-  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE', 'PRODUCTION_PROOF'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', 'PERFORMANCE']) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
-      env: { ...process.env, CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
+      env: { ...process.env, CHECKS:'success', LIVE:'success',
         PERFORMANCE:'success', SHARDS:'success', EVENT:event, [dependency]:outcome } });
     assert.equal(result.status === 0, outcome === 'success', `${event} ${dependency} ${outcome}`);
   }

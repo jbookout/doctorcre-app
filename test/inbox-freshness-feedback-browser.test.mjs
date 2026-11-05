@@ -24,7 +24,7 @@ async function open(t, { width = 1440, theme = 'light', clock = false, extra = [
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     calls.push({ name, args });
     let payload;
     if (name === 'read-home-inbox-v3') payload = { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true };
@@ -182,7 +182,7 @@ test('authentication loss during a refresh retires all private cards', async t =
     await denial;
     await route.fulfill({ status: 401, json: { error: 'authentication_required' } });
   });
-  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v4');
+  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v5');
   await focus(page);
   await refresh;
   refuse();

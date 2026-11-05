@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s10-shell-home-sources",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "published-market-study-home-and-sources",
+    "predicate": "After S7 and S9 integration, observe the deployed release identity and an existing signed-in published portal. Compare its Home headline and snapshot and Sources with its publication, exercise back and forward, and observe no internal notes.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "The released publication opens Home, Sources matches published data and browser history restores the page without internal notes.",
+    "input_class": "read-only deployed release identity and existing portal sign-in walk",
+    "deadline_seconds": 300
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 10, "max_records": 10, "max_runtime_seconds": 300, "max_artifact_bytes": 65536}
+}

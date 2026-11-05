@@ -26,7 +26,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`wa
       writes.push({ name, args });
       if (conflict) { conflict = false; value = { error: 'version_conflict' }; }
       else { value = await rpc(name, args); if (lost) { lost = false; return route.abort(); } }
-    } else if (['read-home-inbox-v4', 'email-match-contacts', 'complete-one-action'].includes(name)) value = await rpc(name, args);
+    } else if (['read-home-inbox-v5', 'email-match-contacts', 'complete-one-action'].includes(name)) value = await rpc(name, args);
     else if (['read-actor-roster-v1', 'search-parties-v1'].includes(name)) value = { error: 'unknown_tool' };
     else value = name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
     return route.fulfill({ json: { result: { ...(value.error ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(value) }] } } });
@@ -109,7 +109,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`di
         { id: '00000000-0000-0000-0000-000000000094', display_name: 'Demo organization', kind: 'org' }
       ], next_cursor: args.query === 'Demo' && !args.cursor ? cursor : null };
       active--;
-    } else if (['read-home-inbox-v4', 'email-match-contacts', 'set-home-waiting', 'clear-home-waiting'].includes(name)) {
+    } else if (['read-home-inbox-v5', 'email-match-contacts', 'set-home-waiting', 'clear-home-waiting'].includes(name)) {
       if (name === 'set-home-waiting') writes.push(args);
       value = await rpc(name, args);
     } else value = name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
@@ -178,4 +178,25 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`di
   await row.getByRole('button', { name: 'Correct waiting person', exact: true }).click();
   assert.equal(await input.inputValue(), '');
   assert.equal(await person.inputValue(), '');
+});
+for (const version of ['v4', 'v5']) test(`Home renders ${version} with waiting controls only on v5`, async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  const rpc = fixtureInboxRpc();
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
+  await page.route('**/mcp', async route => {
+    const { name } = route.request().postDataJSON().params;
+    const value = name === 'read-home-inbox-v5' && version === 'v4' ? { error: 'unknown_tool' }
+      : name === `read-home-inbox-${version}` ? await rpc(name, {})
+      : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
+    await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
+  });
+  await page.goto(`${server.origin}/?mode=live`);
+  const row = page.locator('[data-inbox-row="demo-review"]');
+  await row.getByText('Review the practice tour follow-up', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Inbox unavailable', { exact: true }).count(), 0);
+  assert.equal(await row.getByRole('button', { name: 'Set waiting person', exact: true }).count(), version === 'v5' ? 1 : 0);
+  assert.equal(await row.getByText(/Waiting on/).count(), version === 'v5' ? 1 : 0);
 });

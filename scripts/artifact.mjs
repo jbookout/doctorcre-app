@@ -13,7 +13,7 @@ import { dirname, join, posix } from "node:path";
 const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
 const isGenerated = path => path === GENERATED_PATH || isUiAsset(path);
-const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
+const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours", "portal"];
 const CONTRACT_INPUTS = {
   carr_interface: CARR_INTERFACE,
   route_contract: "js/routes.js",
@@ -207,6 +207,7 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
   const siteDir = join(outDir, "site");
   await rm(siteDir, { recursive: true, force: true });
   await mkdir(siteDir, { recursive: true });
+  await writeFile(join(siteDir, "artifact-manifest.json"), manifestContent);
   for (const [path, content] of files) {
     const deploymentPath = join(siteDir, path);
     await mkdir(dirname(deploymentPath), { recursive: true });
@@ -302,6 +303,8 @@ export async function runCli(root, args = process.argv.slice(2)) {
       // Use the reconstructed, committed source bytes, never a restored dist/site.
       const siteDir = join(outDir, "site");
       await rm(siteDir, { recursive: true, force: true });
+      await mkdir(siteDir, { recursive: true });
+      await writeFile(join(siteDir, "artifact-manifest.json"), expected.manifestContent);
       for (const [path, bytes] of expected.files) {
         await mkdir(dirname(join(siteDir, path)), { recursive: true });
         await writeFile(join(siteDir, path), bytes);

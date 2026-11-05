@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, settles, animationsSettled } from './browser-harness.mjs';
+import { chromium, settles, animationsSettled, WAIT_MS } from './browser-harness.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { handleDoctorcreRequest } from '../src/worker.js';
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
@@ -39,10 +39,12 @@ function fixtureScope(t) {
       try { await promise; } finally { clearTimeout(timer); }
     },
     async route(page, reply) {
-      await page.route('**/*', route => {
+      await page.context().route('**/*', route => {
         const task = (async () => {
           let response = null;
           try {
+            const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
+            if (jitter > 0 && !closing) await scope.delay(Math.random() * jitter);
             if (!closing) response = await reply(route.request());
           } catch (error) { failures.push(error); }
           if (closing || response === null) await route.abort();
@@ -60,14 +62,20 @@ function fixtureScope(t) {
   t.after(async () => {
     closing = true;
     for (const release of held) release();
+    let timer;
+    const expired = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Fixture drain timed out for ${t.name}: ${pending.size} pending routes`)), WAIT_MS);
+    });
     try {
-      while (pending.size) await Promise.allSettled([...pending]);
+      while (pending.size) await Promise.race([Promise.allSettled([...pending]), expired]);
       if (scope.page) {
-        await scope.page.goto('about:blank');
-        await scope.page.unrouteAll({behavior:'wait'});
+        await Promise.race([scope.page.goto('about:blank'), expired]);
+        while (pending.size) await Promise.race([Promise.allSettled([...pending]), expired]);
+        await Promise.race([scope.page.context().unrouteAll({behavior:'wait'}), expired]);
       }
-      while (pending.size) await Promise.allSettled([...pending]);
+      while (pending.size) await Promise.race([Promise.allSettled([...pending]), expired]);
     } finally {
+      clearTimeout(timer);
       await scope.browser?.close();
     }
     assert.deepEqual(failures, [], 'Every fixture route must complete before context teardown');
@@ -76,10 +84,11 @@ function fixtureScope(t) {
   return scope;
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,onRequest}={}) {
+// Polling assertions advance minutes of timers; replay motion only in the layout checks.
+async function open(t,{width=390,reducedMotion='reduce',path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,onRequest}={}) {
   const scope = fixtureScope(t);
   const browser = scope.browser = await chromium.launch();
-  const page = scope.page = await browser.newPage({viewport:{width,height:900}});
+  const page = scope.page = await browser.newPage({viewport:{width,height:900},reducedMotion});
   if (onRequest) page.on('request', onRequest);
   await page.clock.install({time:NOW});
   await page.addInitScript(() => {
@@ -149,6 +158,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return ({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return ({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
+  await page.waitForFunction(() => typeof document.getElementById('docOpen')?.onclick === 'function');
   return {page,state,errors,calls,posts};
 }
 
@@ -608,7 +618,10 @@ test('fresh queue absence removes projected task metadata and sequence binding',
   const {page,state}=await open(t,{rpcReply:(rpc,payload)=>rpc.name==='read-progress-board'?{...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}}:payload});
   await page.clock.runFor(60_100);await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
   state.queueEmpty=true;
-  await page.clock.runFor(60_100);await assertEventually(()=>state.queueReads>=3);
+  const emptyQueue = page.waitForResponse(async response => new URL(response.url()).pathname === '/api/room/queue' && (await response.json()).events?.length === 0);
+  await page.clock.runFor(60_100);await emptyQueue;
+  await page.waitForFunction(()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  await assertEventually(()=>state.queueReads>=3);
   await page.clock.runFor(60_100);await page.waitForFunction(()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
   assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo research/);
   assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Demo research/);
@@ -669,7 +682,7 @@ test('task detail exposes sessions, reviews, Dot jobs, dispatch pages and every 
   await page.locator('#workDispatchMore').click();await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
   await page.clock.runFor(60_100);assert.match(await page.locator('#workDispatchHistory').textContent(),/acted/);
   assert.match(await page.locator('#workReviewList').textContent(),/slice:a|Fix round/);
-  assert.match(await page.locator('#workDotList').textContent(),/Demo research/);
+  await settles(async () => assert.match(await page.locator('#workDotList').textContent(),/Demo research/));
   assert.match(await page.locator('#workCanonicalBody').textContent(),/Closure: blocked/);
   assert.match(await page.locator('.passport-telemetry').textContent(),/actual.*unavailable.*estimate|actual.*estimate.*unavailable/);
   assert.match(await page.locator('.passport-card').textContent(),/Canonical learning lifecycle: proposed/);
@@ -707,7 +720,8 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
 
 test('older task passports survive the current global wire window',async t=>{
   const {page,state,errors}=await open(t,{history:2000});
-  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
+  await page.clock.runFor(60_100);await page.waitForSelector('.passport-card');
+  await assertEventually(()=>state.turnReads>=11);
   assert.match(await page.locator('#workDotList').textContent(),/Observed Dot turn/);
   await page.locator('#viewEverything').click();assert.doesNotMatch(await page.locator('#wireFeed').textContent(),/Unrelated synthetic historical/);
   for(let i=0;i<2000;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`later-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:`Unrelated synthetic later turn ${i}`});
@@ -751,7 +765,7 @@ test('wire history, pause, missed-count and Resume live work through the new pag
 });
 
 for(const width of [320,390,1440])test(`work detail has no horizontal scroll at ${width}px and respects reduced motion`,async t=>{
-  const {page,errors}=await open(t,{width});await page.waitForSelector('.passport-card');
+  const {page,errors}=await open(t,{width,reducedMotion:'no-preference'});await page.waitForSelector('.passport-card');
   await page.clock.runFor(1000);
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#roomWireSection')).opacity==='1');
   if(process.env.PROGRESS_CAPTURE) {
@@ -894,7 +908,7 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   await page.locator('.work-lineage a').filter({hasText:'WR-900'}).click();
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('work_request')==='WR-900');
   assert.equal(new URL(page.url()).searchParams.has('task'),false);
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null);
+  await page.waitForFunction(()=>document.querySelector('#workTitle')?.textContent==='Demo work request',null);
   assert.deepEqual(errors,[]);
 });
 

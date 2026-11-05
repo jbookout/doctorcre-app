@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { compareBudget } from '../scripts/performance-budget.mjs';
 
 const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
@@ -23,7 +23,7 @@ test('both event aggregates reject failed, cancelled or skipped performance', ()
     for (const performance of ['success', 'failure', 'cancelled', 'skipped']) {
       const run = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
         env: { ...process.env, CHECKS: 'success', SHARDS: 'success', LIVE: 'success',
-          PRODUCTION_PROOF: event === 'push' ? 'skipped' : 'success', PERFORMANCE: performance, EVENT: event } });
+          PERFORMANCE: performance, EVENT: event } });
       assert.equal(run.status === 0, performance === 'success', `${event} ${performance}`);
     }
   }
@@ -44,4 +44,17 @@ test('unchanged Home budget rejects a genuine five-sample load regression', () =
   screens.home.samples = [3700, 3750, 3780, 3800, 3900].map(lcpMs => ({ lcpMs }));
   screens.home.lcpMs = 3780;
   assert.equal(compareBudget(budget, report).passed, true);
+});
+
+test('performance measures and publishes report-only results on PRs and main pushes', () => {
+  const workflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
+    'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
+  const job = workflow.jobs.performance;
+  assert.equal(job.if, undefined, 'both workflow events must run performance');
+  const measurement = job.steps.find(step => step.run === 'npm run performance:check');
+  assert.equal(measurement.if, undefined, 'both events must measure');
+  assert.equal(measurement['continue-on-error'], true, 'budget breaches remain report-only until Home has headroom');
+  for (const step of job.steps.filter(step => step.uses?.startsWith('actions/upload-artifact@') || step.name === 'Publish performance summary')) {
+    assert.equal(step.if, '${{ !cancelled() }}', 'both events retain and publish budget evidence');
+  }
 });
