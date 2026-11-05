@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "asset-manifest-publication",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "public-manifest-matches-deployed-build",
+    "predicate": "After merge and deployment, GET https://app.doctorcre.com/app-release and https://app.doctorcre.com/artifact-manifest.json without credentials, redirects or retries, with a 30 second total deadline. Require service doctorcre-app, environment production, manifest schema doctorcre-static-artifact.v1 and repository jbookout/doctorcre-app. Require both source_commit fields equal the exact deployed merge commit. Require manifest response application/json and Cache-Control no-store. GET the manifest-listed js/ui-home.js and js/ui-lead.js with the same policy and compare their byte lengths and SHA-256 hashes with their manifest rows. This is a live read of the changed static publication, not a private-data UI walk.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "All four production GETs return 200. The manifest identifies the deployed merge commit and both fetched asset hashes and lengths match. Record the full release identity, manifest digest and asset digests. Missing evidence is unproven; any conflict fails.",
+    "input_class": "read-only public build identity, manifest and two deployed JavaScript assets",
+    "deadline_seconds": 30
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 4,
+    "max_records": 1,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 1048576
+  }
+}
