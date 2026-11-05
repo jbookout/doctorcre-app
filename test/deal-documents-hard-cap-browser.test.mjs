@@ -13,7 +13,7 @@ test('Documents cap preserves validation, final pages and refresh', async t => {
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: `${artifact}/site` } });
   t.after(() => server.stop());
   const browser = await chromium.launch(); t.after(() => browser.close());
-  for (const scenario of ['exactly 500', 'short final', 'cross final', 'duplicate discarded row', 'cursor cycle', 'expire at cap', 'dispose at cap']) {
+  for (const scenario of ['exactly 500', 'short final', 'cross final', 'duplicate discarded row', 'cursor cycle', 'expire at cap', 'dispose at cap', 'dispose unavailable']) {
     await t.test(scenario, async () => {
       const page = await browser.newPage(); t.after(() => page.close());
       await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main></main></body></html>' }));
@@ -26,6 +26,7 @@ test('Documents cap preserves validation, final pages and refresh', async t => {
           dealId: '11111111-1111-4111-8111-111111111111',
           client: { async listDealDocuments(args) {
             window.requests.push(args); calls++;
+            if (scenario === 'dispose unavailable') throw Error('Synthetic unavailable documents');
             const count = scenario === 'exactly 500' ? 50 : scenario === 'short final' ? (calls === 1 ? 49 : 3) : 49;
             const documents = Array.from({ length: count }, () => ({
               id: `00000000-0000-4000-8000-${String(++offset).padStart(12, '0')}`, display_name: `Synthetic ${offset}`,
@@ -39,6 +40,14 @@ test('Documents cap preserves validation, final pages and refresh', async t => {
         });
       }, scenario);
       const panel = page.getByRole('region', { name: 'Deal documents', exact: true });
+      if (scenario === 'dispose unavailable') {
+        await panel.getByRole('button', { name: 'Retry documents' }).waitFor();
+        await page.evaluate(() => window.panel.dispose());
+        assert.equal(await page.locator('main').textContent(), '');
+        assert.equal(await panel.count(), 0);
+        assert.equal((await page.evaluate(() => window.requests)).length, 1);
+        return;
+      }
       const pages = scenario === 'short final' ? 2 : scenario === 'exactly 500' ? 10 : 11;
       for (let index = 1; index < pages; index++) {
         await page.waitForFunction(count => window.requests.length === count && !document.body.textContent.includes('Loading documents'), index);

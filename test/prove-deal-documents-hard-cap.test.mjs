@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -11,6 +11,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 test('hard-cap proof CLI executes served bytes and refuses failures and protected assets', async t => {
   const artifact = await temporaryDirectory('documents-proof-', t);
   await buildArtifact({ root, outDir: artifact, commit: '1'.repeat(40) });
+  await writeFile(`${artifact}/sentinel.js`, 'review-owned-sentinel');
   let mode = 'success';
   const requests = [];
   const server = createServer(async (req, res) => {
@@ -34,6 +35,32 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${server.address().port}`;
+  for (const path of [
+    '/js/../../sentinel.js',
+    '/js/../js/ui-deal-documents.js',
+    '/js/%2e%2e/%2e%2e/sentinel.js',
+    '/js/%2E%2E/sentinel.js',
+    '/js/..%2f..%2fsentinel.js',
+    '/js/..\\..\\sentinel.js',
+    '/js/%5c..%5csentinel.js',
+    '/js/ui-deal-documents.js%00',
+  ]) {
+    await t.test(`refuses raw asset path ${path}`, async () => {
+      const response = await new Promise((resolve, reject) => {
+        const req = request(`${origin}/`, { path, timeout: 5000 }, res => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', chunk => { body += chunk; });
+          res.on('end', () => resolve({ status: res.statusCode, body }));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => req.destroy(Error('Fixture request timed out')));
+        req.end();
+      });
+      assert.equal(response.status, 404, response.body);
+      assert.equal(response.body, '');
+    });
+  }
   for (const [scenario, expected] of [['success', 0], ['fallback', 0], ['broken', 1], ['protected', 78], ['identity', 78], ['asset-protected', 78], ['timeout', 1]]) {
     await t.test(scenario, async () => {
       mode = scenario;
