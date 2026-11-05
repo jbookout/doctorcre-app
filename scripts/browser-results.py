@@ -8,7 +8,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 CRITICAL = (
-    'test/home-sections-browser.test.mjs::at 23:30 Central tomorrow meetings stay upcoming and out of Today',
+    *(f'test/home-sections-browser.test.mjs::at {now} tomorrow meetings stay upcoming and out of Today'
+      for now in ('2026-11-03T23:00:00-06:00', '2026-11-03T23:30:00-06:00', '2026-11-03T23:59:59-06:00')),
     'test/inbox-freshness-feedback-browser.test.mjs::authentication loss during a refresh retires all private cards',
     'test/deal-tours-browser.test.mjs::creation and pending-write departures preserve history and saved notes::1440 pending keep',
     *(f'test/calendar-rail-fit-browser.test.mjs::Calendar rail fits {count} meetings in {theme}'
