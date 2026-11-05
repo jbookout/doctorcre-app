@@ -1,3 +1,4 @@
+import { readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -107,14 +108,10 @@ export async function prove({ origin, timeoutMs }) {
     return { body: Buffer.concat(chunks), type: response.headers.get('content-type') || '' };
   };
   const work = async () => {
-    const response = await read(new URL('/release', base), 65536);
-    if (!response.type.includes('json')) throw new ProtectedAsset('Release identity unavailable or sign-in required');
-    let release;
-    try { release = JSON.parse(response.body.toString()); }
-    catch { throw new ProtectedAsset('Missing release identity'); }
-    if (!release || typeof release !== 'object') throw new ProtectedAsset('Missing release identity');
-    const identity = release.source_commit || release.git_sha || release.git?.sha;
-    if (!/^[a-f0-9]{40}$/.test(identity || '') || /^0+$/.test(identity)) throw new ProtectedAsset('Missing release identity');
+    const release = await readAppRelease(base, url => read(url, 65536)).catch(error => {
+      if (error.exitCode === 78) throw new ProtectedAsset(error.message);
+      throw error;
+    });
     browserLaunch = chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
     const browser = await browserLaunch;
     const context = await browser.newContext({ serviceWorkers: 'block' });

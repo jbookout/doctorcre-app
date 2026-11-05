@@ -1,14 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium, fixtureServer, WAIT_MS } from './browser-harness.mjs';
+
+async function accountFixture(t, options, engine = chromium, serve = fixtureServer) {
+  const server = await serve();
+  let browser, page;
+  t.after(async () => {
+    let timer;
+    try {
+      if (page) await Promise.race([(async () => {
+        await page.waitForLoadState('networkidle');
+        await page.unrouteAll({ behavior: 'wait' });
+      })(), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Accounts fixture routes did not drain')), WAIT_MS);
+      })]);
+    } finally {
+      clearTimeout(timer);
+      try { await browser?.close(); }
+      finally { await server.close(); }
+    }
+  });
+  browser = await engine.launch();
+  page = await browser.newPage(options);
+  return { server, page };
+}
+
+for (const failure of ['launch', 'newPage']) {
+  test(`Accounts fixture closes acquired resources when ${failure} fails`, async () => {
+    const cleanup = [];
+    let server, browserClosed = false;
+    const startupError = new Error(`injected ${failure} failure`);
+    const engine = { async launch() {
+      if (failure === 'launch') throw startupError;
+      return {
+        async newPage() { throw startupError; },
+        async close() { browserClosed = true; },
+      };
+    } };
+    try {
+      await assert.rejects(accountFixture({ after: hook => cleanup.push(hook) }, {}, engine, async () => {
+        server = await fixtureServer();
+        return server;
+      }), error => error === startupError);
+      for (const hook of cleanup) await hook();
+      await assert.rejects(fetch(server.origin), 'failed setup stops its fixture server');
+      assert.equal(browserClosed, failure === 'newPage', 'an acquired browser closes too');
+    } finally {
+      await server?.close();
+    }
+  });
+}
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Account opens with the oldest overdue action at ${width}px ${theme}`, async t => {
-    const server = await fixtureServer();
-    t.after(() => server.close());
-    const browser = await chromium.launch();
-    t.after(() => browser.close());
-    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    const { server, page } = await accountFixture(t, { viewport: { width, height: 900 }, reducedMotion: 'reduce' });
     await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
@@ -32,11 +77,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Empty account search keeps the query and recovery in the workspace at ${width}px ${theme}`, async t => {
-    const server = await fixtureServer();
-    t.after(() => server.close());
-    const browser = await chromium.launch();
-    t.after(() => browser.close());
-    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    const { server, page } = await accountFixture(t, { viewport: { width, height: 900 }, reducedMotion: 'reduce' });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
@@ -58,11 +99,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 }
 
 test('Clearing an empty portfolio search returns focus to the account card', async t => {
-  const server = await fixtureServer();
-  t.after(() => server.close());
-  const browser = await chromium.launch();
-  t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width: 390, height: 900 }, reducedMotion: 'reduce' });
+  const { server, page } = await accountFixture(t, { viewport: { width: 390, height: 900 }, reducedMotion: 'reduce' });
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().waitFor();
@@ -76,11 +113,7 @@ test('Clearing an empty portfolio search returns focus to the account card', asy
 
 for (const reverse of [false, true]) {
   test(`Account fallback agrees with the portfolio regardless of input order (reversed=${reverse})`, async t => {
-    const server = await fixtureServer();
-    t.after(() => server.close());
-    const browser = await chromium.launch();
-    t.after(() => browser.close());
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+    const { server, page } = await accountFixture(t, { viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
     await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await page.route('**/data/board-seed.json', async route => {
@@ -109,11 +142,7 @@ for (const reverse of [false, true]) {
 }
 
 test('national account deals show the next action and latest activity', async t => {
-  const server = await fixtureServer();
-  t.after(() => server.close());
-  const browser = await chromium.launch();
-  t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const { server, page } = await accountFixture(t, { viewport: { width: 390, height: 844 } });
   await page.clock.setFixedTime(new Date('2026-10-29T15:00:00Z'));
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.route('**/data/board-seed.json', async route => {
