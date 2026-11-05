@@ -1,11 +1,11 @@
 {
-  "schema_version": "home-inbox.v4",
+  "schema_version": "home-inbox.v5",
   "command_schema_version": "home-inbox-command.v1",
   "producer": {
     "repository": "DoctorCRE/carr-system",
-    "source_commit": "e1d8e589652519cd8b70cd06d79b520032ed425b"
+    "source_commit": "7aed79d0e4ebae9f39fd439bed9d2a25c78a4eb9"
   },
-  "read": "read-home-inbox-v4",
+  "read": "read-home-inbox-v5",
   "commands": [
     "snooze-home-inbox",
     "settle-home-inbox",
@@ -19,8 +19,8 @@
   "retry": "same idempotency key and exact arguments",
   "merge_dependency": "Server contract must be deployed before this application is merged.",
   "projection": {
-    "schema_version": "home-inbox.v4",
-    "read_verb": "read-home-inbox-v4",
+    "schema_version": "home-inbox.v5",
+    "read_verb": "read-home-inbox-v5",
     "item_fields": {
       "context_label": "string|null; deal or notification subject name",
       "due_on": "YYYY-MM-DD|null; canonical action due date",
@@ -32,7 +32,9 @@
       "deal_id": "UUID|null; owning deal for completion readback, null for non-deal work",
       "auto_settled": "boolean; canonical resolution placed this item in Settled without a disposition write",
       "review_reference": "Optional or null home-review.v1 reference. Only open actions, pending reply drafts and pending fact reviews. Missing references preserve source links.",
-      "completed_at": "UTC ISO-8601 instant|null; proven canonical completion, never activity or ingestion time"
+      "completed_at": "UTC ISO-8601 instant|null; proven canonical completion, never activity or ingestion time",
+      "waiting_on": "null|{identity:{kind:party|actor,id:UUID,display_name:string|null,available:boolean},reason:string,evidence:string[],version:integer}; explicit canonical identity only, null for unknown or completed work",
+      "waiting_version": "integer; independent relationship version, 0 before the first command; pass as waiting command base_version"
     },
     "sections": [
       "inbox",
@@ -65,15 +67,21 @@
     "completion_time": "Done ordinary tasks use the exact complete-one-action, complete-action or complete-deal-item event, superseded by reopen-one-action. Done call actions use completed_at. Sent replies use send_result.sent_at. Open work, unsupported sources and unproven legacy completions return null. Later notifications never move completion. Clients group by America/Chicago."
   },
   "fallback": {
-    "read": "read-home-inbox-v3",
-    "schema_version": "home-inbox.v3",
+    "read": "read-home-inbox-v4",
+    "schema_version": "home-inbox.v4",
     "condition": "unknown_tool only",
-    "notice": "Completion times unavailable. Showing completed work without claiming a completion date.",
+    "notice": "Waiting identity unavailable. Showing cards without waiting controls.",
     "fallback": {
-      "read": "read-home-inbox-v2",
-      "schema_version": "home-inbox.v2",
+      "read": "read-home-inbox-v3",
+      "schema_version": "home-inbox.v3",
       "condition": "unknown_tool only",
-      "notice": "Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review."
+      "notice": "Completion times unavailable. Showing completed work without claiming a completion date.",
+      "fallback": {
+        "read": "read-home-inbox-v2",
+        "schema_version": "home-inbox.v2",
+        "condition": "unknown_tool only",
+        "notice": "Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review."
+      }
     }
   }
 }

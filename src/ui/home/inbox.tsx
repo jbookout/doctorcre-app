@@ -19,7 +19,7 @@ export type InboxItem = BaseItem & Readonly<{
   merged_source_ids: string[]; review_reference?: ReviewReference | null;
 }> & (Readonly<{ source_type: 'next_action' | 'capture_post_call_action'; action_id: string; action_version: number; deal_id: string | null }> |
   Readonly<{ source_type: 'capture_session' | 'email_proposal' | 'notification' | 'fact_review' | 'tour_feedback'; action_id: null; action_version: null; deal_id: string | null }>);
-export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3' | 'home-inbox.v4'; auto_settle_enabled: true }>);
+export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3' | 'home-inbox.v4' | 'home-inbox.v5'; auto_settle_enabled: true }>);
 export type Action = 'snooze' | 'settle' | 'unsettle';
 type CommandArgs = Readonly<{ idempotency_key: string; items: ReadonlyArray<Pick<InboxItem, 'item_id' | 'base_version'>> }>;
 type DispositionCommand = Readonly<{ action: 'snooze'; args: CommandArgs & Readonly<{ until: string }> }> | Readonly<{ action: 'settle' | 'unsettle'; args: CommandArgs }>;
@@ -73,18 +73,25 @@ export function parseItem(value: unknown, v3 = false, v4 = false): InboxItem {
   const reference = v3 ? parseReference(value.review_reference) : null;
   return { ...value, ...(value.review_reference === undefined ? {} : { review_reference: reference && reference.item_id === legacy.item_id && reference.source_version === legacy.source_version ? reference : null }), completed_at: v4 ? value.completed_at : null, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
 }
+const inboxVersions = [
+  { version: 'v5', schema: 'home-inbox.v5', settlement: true, completion: true, waiting: true },
+  { version: 'v4', schema: 'home-inbox.v4', settlement: true, completion: true, waiting: false },
+  { version: 'v3', schema: 'home-inbox.v3', settlement: true, completion: false, waiting: false },
+  { version: 'v2', schema: 'home-inbox.v2', settlement: false, completion: false, waiting: false },
+] as const;
 export function parseSnapshot(value: unknown): Snapshot {
-  if (!object(value) || value.ok !== true || !['home-inbox.v2', 'home-inbox.v3', 'home-inbox.v4'].includes(String(value.schema_version)) || !Array.isArray(value.items) || value.items.length > 1000 ||
-    typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== (value.schema_version !== 'home-inbox.v2')) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
+  const contract = object(value) ? inboxVersions.find(entry => entry.schema === value.schema_version) : undefined;
+  if (!contract || !object(value) || value.ok !== true || !Array.isArray(value.items) || value.items.length > 1000 ||
+    typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== contract.settlement) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
   const items = value.items.map(item => {
-    const parsed = parseItem(item, value.schema_version !== 'home-inbox.v2', value.schema_version === 'home-inbox.v4');
-    if (value.schema_version !== 'home-inbox.v4') { const { waiting_version, waiting_on, ...legacy } = parsed; return legacy; }
+    const parsed = parseItem(item, contract.settlement, contract.completion);
+    if (!contract.waiting) { const { waiting_version, waiting_on, ...legacy } = parsed; return legacy; }
     if (!object(item) || typeof item.waiting_version !== 'number' || !Number.isSafeInteger(item.waiting_version) || item.waiting_version < 0) throw Error('Waiting version unavailable.');
     return { ...parsed, waiting_version: item.waiting_version, waiting_on: parseWaiting(item.waiting_on, item.waiting_version) };
   });
   if (new Set(items.map(item => item.item_id)).size !== items.length) throw Error('Inbox returned duplicate items. Refresh to try again.');
   const shared = { ok: true, truncated: value.truncated, limit: 1000, items, working_collapsed: true } as const;
-  return value.schema_version !== 'home-inbox.v2' ? { ...shared, schema_version: value.schema_version === 'home-inbox.v4' ? 'home-inbox.v4' : 'home-inbox.v3', auto_settle_enabled: true } : { ...shared, schema_version: 'home-inbox.v2', auto_settle_enabled: false };
+  return contract.settlement ? { ...shared, schema_version: contract.schema, auto_settle_enabled: true } : { ...shared, schema_version: 'home-inbox.v2', auto_settle_enabled: false };
 }
 export function shelves(items: readonly InboxItem[], currentId?: string) {
   const result: { inbox: InboxItem[]; working: InboxItem[]; held: InboxItem[]; done: InboxItem[]; snoozed: InboxItem[]; settled: InboxItem[]; current: InboxItem | undefined } = { inbox: [], working: [], held: [], done: [], snoozed: [], settled: [], current: undefined };
@@ -123,8 +130,8 @@ export type PeoplePage = Readonly<{ choices: WaitingChoice[]; next_cursor: Party
 export type InboxClient = { review?: { current(item: InboxItem): Promise<InboxItem>; load(item: InboxItem, signal?: AbortSignal): Promise<ReturnType<typeof parseReview>>; run(item: InboxItem, request: ReviewRequest): Promise<{ item: InboxItem; receipt?: TaskReceipt; saved_version?: number }> }; actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
-    // eslint-disable-next-line no-restricted-syntax -- At most three version reads; only unknown_tool advances to the next version.
-    for (const version of ['v4', 'v3', 'v2'] as const) {
+    // eslint-disable-next-line no-restricted-syntax -- At most four version reads; only unknown_tool advances to the next version.
+    for (const { version } of inboxVersions) {
       let value: unknown;
       try { value = await rpc(`read-home-inbox-${version}`, {}, signal); }
       catch (error) {

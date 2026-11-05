@@ -32,11 +32,12 @@ export function fixtureInboxRpc() {
       const result = { ok: true, schema_version: 'home-waiting.v1', item_id: item.item_id, waiting_version: version, waiting_on };
       receipts.set(String(args.idempotency_key), result); return result;
     }
-    if (name === 'read-home-inbox-v4' || name === 'read-home-inbox-v3') return { ok: true, schema_version: name === 'read-home-inbox-v4' ? 'home-inbox.v4' : 'home-inbox.v3', truncated: false, limit: 1000, items: structuredClone(items).map(item => {
+    if (['read-home-inbox-v5', 'read-home-inbox-v4', 'read-home-inbox-v3'].includes(name)) return { ok: true, schema_version: name.replace('read-', '').replace('-v', '.v'), truncated: false, limit: 1000, items: structuredClone(items).map(item => {
       const auto_settled = item.source_state === 'done' && item.disposition === 'inbox' && !item.explicit_unsettle;
-      return { ...item, auto_settled, ...(auto_settled ? { disposition: 'settled', section: 'settled' } : {}) };
+      const { waiting_version, waiting_on, ...legacy } = item;
+      return { ...(name === 'read-home-inbox-v5' ? item : legacy), auto_settled, ...(auto_settled ? { disposition: 'settled', section: 'settled' } : {}) };
     }), working_collapsed: true, auto_settle_enabled: true };
-    if (name === 'read-home-inbox-v2') return { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items: structuredClone(items), working_collapsed: true, auto_settle_enabled: false };
+    if (name === 'read-home-inbox-v2') return { ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items: structuredClone(items).map(({ waiting_version, waiting_on, ...legacy }) => legacy), working_collapsed: true, auto_settle_enabled: false };
     if (name === 'complete-one-action' || name === 'reopen-one-action') {
       if (!object(args)) throw Error('Invalid task request');
       const prior = receipts.get(String(args.idempotency_key)); if (prior) return prior;
