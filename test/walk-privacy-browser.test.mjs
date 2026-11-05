@@ -29,6 +29,9 @@ test('guards and diagnostics', async ({ page, context }, info) => {
   await secondary.goto('/status');
   expect(info.annotations.filter(x => x.type === 'http-status' && x.description === 'document 429').length).toBe(2);
   for (const target of [page, secondary]) {
+    for (const name of ['complete-one-action', 'reopen-one-action', 'settle-home-inbox', 'unsettle-home-inbox', 'snooze-home-inbox', 'edit-email-draft', 'set-home-waiting', 'clear-home-waiting']) {
+      expect(await target.evaluate(name => fetch('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'tools/call', params: { name, arguments: { action_id: '11111111-1111-4111-8111-111111111111', idempotency_key: '11111111-1111-4111-8111-111111111112' } } }) }).then(() => false, () => true), name)).toBe(true);
+    }
     expect(await target.evaluate(() => fetch('/write', { method: 'POST' }).then(() => false, () => true))).toBe(true);
   }
 });`;
