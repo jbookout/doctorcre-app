@@ -1,8 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { request } from 'node:http';
 import { createServer } from 'node:http';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -73,6 +74,21 @@ for (const mode of ['missing export', 'failed assertion', 'missing release', 'pr
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+    if (mode === 'changed release') {
+      await writeFile(join(output, 'artifact.json'), '{}');
+      await writeFile(join(output, 'site', 'artifact.json'), '{}');
+      for (const path of ['/../artifact.json', '/%2e%2e%2fartifact.json', '/%2e%2e%5cartifact.json']) {
+        const status = await new Promise((resolve, reject) => {
+          const req = request({ host: '127.0.0.1', port: server.address().port, path }, res => {
+            res.resume();
+            resolve(res.statusCode);
+          });
+          req.on('error', reject);
+          req.end();
+        });
+        assert.equal(status, 403, `Fixture must refuse ${path}`);
+      }
+    }
     const result = await run(['--origin', `http://127.0.0.1:${server.address().port}`, '--timeout-ms', mode === 'timeout' ? '1000' : '30000']);
     assert.notEqual(result.code, 0, result.stdout);
     assert.equal(result.stdout, '');
