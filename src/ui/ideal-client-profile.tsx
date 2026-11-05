@@ -28,7 +28,8 @@ function parse(value: unknown): Profile[] {
     if (clients > won_deals || !Array.isArray(row.evidence) || row.evidence.length !== won_deals) throw new Error('Invalid historical evidence');
     const evidence = row.evidence.map(value => {
       const entry = object(value), deal_id = text(entry.deal_id), closed_on = text(entry.closed_on);
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deal_id) || !/^\d{4}-\d{2}-\d{2}$/.test(closed_on) || !Number.isFinite(Date.parse(closed_on))) throw new Error('Invalid completed deal');
+      const date = Date.parse(closed_on);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deal_id) || !/^\d{4}-\d{2}-\d{2}$/.test(closed_on) || !Number.isFinite(date) || new Date(date).toISOString().slice(0, 10) !== closed_on) throw new Error('Invalid completed deal');
       return { deal_id, closed_on };
     });
     if (new Set(evidence.map(entry => entry.deal_id)).size !== won_deals) throw new Error('Duplicate historical evidence');

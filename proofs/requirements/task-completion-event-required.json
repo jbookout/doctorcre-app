@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "task-completion-event-required",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "deployed-task-completion-event-required",
+      "predicate": "Run node scripts/prove-task-completion-event-required.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after the merged source deploys. Bind app-release source_commit to artifact-manifest.json and verify every fetched module byte count and SHA-256. Execute the manifest-selected ui-task-done module through its public exports with synthetic browser ports. Refuse absent, null, malformed, unrelated, contradictory and stale completion receipts. Preserve original-event Undo and exact completion replay before readback. Retain release identity, manifest hash, asset hashes and each assertion. No business writes.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "CLI exits 0 and emits passed with 15 named assertions. Contradiction exits 1. Unavailable evidence or timeout exits 78. Production remains unproven until this command passes.",
+      "input_class": "Read-only deployed modules with synthetic browser ports",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 10,
+    "max_records": 1,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}
