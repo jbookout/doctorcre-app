@@ -122,6 +122,37 @@ test('S1 browser: a history restore verifies its session before revealing the ol
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
 
+test('S1 browser: history restore verifies afresh when an older session check is in flight', async t => {
+ const app=await open(t);
+ await app.page.route(app.origin+'/restore-verification-fixture*',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><main><h1>Joe private cached view</h1></main>'}));
+ await app.page.goto(app.origin+'/restore-verification-fixture?mode=live');
+ await app.page.evaluate(async()=>{const {privateSession}=await import('/js/private-session.js');await privateSession().verify();});
+ await seedPrivate(app.page);
+ await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ await app.page.waitForFunction(()=>document.documentElement.style.visibility==='');
+ let actor='joe', release, started;
+ const held=new Promise(resolve=>{release=resolve;});
+ t.after(()=>release());
+ const requested=new Promise(resolve=>{started=resolve;});
+ let reads=0;
+ await app.context.route('**/auth/session',async route=>{
+  const snapshot=actor;
+  if(++reads===1){started();await held;}
+  await route.fulfill({json:{actor:{slug:snapshot},csrf_token:`synthetic-${snapshot}`}});
+ });
+ await app.page.evaluate(async()=>{
+  const {privateSession}=await import('/js/private-session.js');
+  window.olderVerification=privateSession().verify({fresh:true}).catch(()=>{});
+ });
+ await requested;
+ actor='dell';app.switchActor();
+ await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ release();
+ await app.page.waitForURL('**/public-shell/session-ended.html');
+ assert.ok(reads>=2,'restoration must issue a fresh session read');
+ await assertPurged(app.page);assert.deepEqual(app.errors,[]);
+});
+
 test('S1 browser: revocation clears a private tab title before asynchronous storage cleanup', async t => {
  const app=await open(t);
  const title=await app.page.evaluate(async()=>{

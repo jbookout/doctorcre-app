@@ -1,0 +1,8 @@
+stateDiagram-v2
+  [*] --> CachedView
+  CachedView --> CheckingSession: History restores the page; hide cached controls
+  CheckingSession --> CheckingSession: An older check finishes; keep cached controls hidden
+  CheckingSession --> VerifiedView: A fresh check confirms the same session
+  CheckingSession --> SessionEnded: A fresh check finds a changed or denied session
+  CheckingSession --> PausedView: Verification is unavailable or the read budget refuses it
+  PausedView --> CheckingSession: Allowed user interaction resumes verification
