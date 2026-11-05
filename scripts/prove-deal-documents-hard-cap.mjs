@@ -26,7 +26,7 @@ try {
       const { value, done } = await reader.read();
       if (done) break;
       bytesLoaded += value.length;
-      if (bytesLoaded > 8 * 1024 * 1024) { await reader.cancel(); throw Error('Asset byte limit exceeded'); }
+      if (bytesLoaded > 1024 * 1024) { await reader.cancel(); throw Error('Asset byte limit exceeded'); }
       chunks.push(Buffer.from(value));
     }
     return { body: Buffer.concat(chunks), type: response.headers.get('content-type') || '' };

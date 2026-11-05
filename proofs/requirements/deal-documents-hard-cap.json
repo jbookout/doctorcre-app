@@ -10,5 +10,5 @@
     "input_class": "read-only deployed assets with synthetic ports, isolated storage and business network writes denied",
     "deadline_seconds": 30
   }],
-  "safety": {"read_only": true, "no_sends": true, "max_requests": 64, "max_records": 539, "max_runtime_seconds": 30, "max_artifact_bytes": 8388608}
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 64, "max_records": 539, "max_runtime_seconds": 30, "max_artifact_bytes": 1048576}
 }
