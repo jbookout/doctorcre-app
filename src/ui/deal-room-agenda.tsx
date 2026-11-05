@@ -42,8 +42,8 @@ function DealRoomAgenda({ targets, action, ...props }: AgendaProps & { targets: 
         <div className="agenda-fact"><label>Next step</label><p>{deal.nextStep}</p></div>
         <div className="agenda-fact"><label>Next date</label><p>{deal.nextDate}</p></div>
         {deal.marketAgent !== null && <div className="agenda-fact"><label>Assigned market agent</label><p>{deal.marketAgent}</p></div>}
-        <button type="button" className="secondary" data-open-deal={deal.id}>Open full record</button>{' '}
-        <button type="button" className="secondary" data-agenda-step={deal.id}>Set next step</button>
+        <button type="button" className="secondary" data-open-deal={deal.id} disabled={disabled}>Open full record</button>{' '}
+        <button type="button" className="secondary" data-agenda-step={deal.id} disabled={disabled}>Set next step</button>
       </article>}</div>
       <footer><button type="button" className="secondary" id="agendaSkip" disabled={disabled} onClick={() => action('skipped')}>Skip</button>
         <button type="button" className="primary" id="agendaReviewed" disabled={disabled} onClick={() => action('reviewed')}>Reviewed — next</button>
