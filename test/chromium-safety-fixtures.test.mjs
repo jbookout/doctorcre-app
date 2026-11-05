@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const audit = fileURLToPath(new URL('./chromium-safety.test.mjs', import.meta.url));
+const harness = fileURLToPath(new URL('./browser-harness.mjs', import.meta.url));
 const shared = fileURLToPath(new URL('../scripts/chromium-safety-args.mjs', import.meta.url));
 const imports = `import { chromium } from 'playwright';\nimport { CHROMIUM_SAFETY_ARGS } from ${JSON.stringify(shared)};\n`;
 const flags = `'--use-mock-keychain', '--password-store=basic'`;
@@ -60,6 +61,25 @@ const fixtures = [
   ['unknown safe spread', true, 'getBrowser().launch({ args: [...CHROMIUM_SAFETY_ARGS] });'],
   ['local connection', true, 'const socket = { connect() { return 1; } }; socket.connect();'],
   ['local factory connection', true, 'function setup() { return { connect: () => true }; } const socket = setup(); socket.connect();'],
+  ['safe persistent launch', true, 'getBrowser().launchPersistentContext("/tmp/profile", { args: [...CHROMIUM_SAFETY_ARGS] });'],
+  ['safe connection', true, 'getBrowser().connect({ args: CHROMIUM_SAFETY_ARGS });'],
+  ['nonleading shared spread', false, "getBrowser().launch({ args: ['--disable-gpu', ...CHROMIUM_SAFETY_ARGS] });"],
+  ['optional launch', false, 'getBrowser()?.launch({ args: [] });'],
+  ['unknown destructured method', false, 'const { launch: start } = getBrowser(); start({ args: [] });'],
+  ['escaped local receiver', false, 'const socket = { connect() {} }; mutate(socket); socket.connect();'],
+  ['mutated local method', false, 'const socket = { connect() {} }; socket.connect = getBrowser().connect; socket.connect();'],
+  ['ambiguous local factory', false, 'function setup() { if (unknown) return getBrowser(); return { connect() {} }; } const socket = setup(); socket.connect();'],
+  ['cyclic local factory', false, 'function setup() { return setup(); } setup().connect();'],
+  ['native audio', true, 'const audio = new AudioContext(), oscillator = audio.createOscillator(); oscillator.connect(destination);'],
+  ['fake audio', false, 'const AudioContext = getBrowser; const audio = new AudioContext(), oscillator = audio.createOscillator(); oscillator.connect(destination);'],
+  ['harness helper', true, `import { chromium as safe } from ${JSON.stringify(harness)}; function open(engine) { engine.launch(); } open(safe);`],
+  ['unsafe harness helper caller', false, `import { chromium as safe } from ${JSON.stringify(harness)}; function open(engine) { engine.launch(); } open(safe); open(getBrowser());`],
+  ['harness default parameter', true, `import { chromium as safe } from ${JSON.stringify(harness)}; function open({ engine = safe } = {}) { engine.launch(); } open(); open({});`],
+  ['unsafe default override', false, `import { chromium as safe } from ${JSON.stringify(harness)}; function open({ engine = safe } = {}) { engine.launch(); } open({ engine: getBrowser() });`],
+  ['harness loop tuples', true, `import { chromium as safe } from ${JSON.stringify(harness)}; for (const [name, engine] of [['safe', safe]]) engine.launch();`],
+  ['unsafe harness loop tuple', false, `import { chromium as safe } from ${JSON.stringify(harness)}; for (const [name, engine] of [['safe', safe], ['unsafe', getBrowser()]]) engine.launch();`],
+  ['nested shared spread', false, 'getBrowser().launch({ args: [...[...CHROMIUM_SAFETY_ARGS]] });'],
+  ['spread persistent path', false, 'getBrowser().launchPersistentContext(...paths, { args: CHROMIUM_SAFETY_ARGS });'],
   ['two launches', false, 'chromium.launch({ args: CHROMIUM_SAFETY_ARGS }); chromium.launch({ args: [] });'],
 ];
 
