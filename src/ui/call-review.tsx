@@ -137,6 +137,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   let disposed = false, revoked = false, sequence = 0, writing = false;
   let load: Load = { state: 'loading' }, items: Item[] = [], selected: string | undefined, notice = '';
   let deciding: string | undefined, automaticAttempts = 0;
+  let decision: { key: string; signature: string; resolver: string; args: { candidate_id: string; accept: boolean; idempotency_key: string } } | undefined;
   let inFlight: Promise<void> | undefined, retryTimer: ReturnType<typeof setTimeout> | undefined;
   const details = new Map<string, unknown>();
   const active = () => {
@@ -165,7 +166,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
   const complete = (item: Item) => item.state === 'resolved' || reviewed.get(item.key) === item.signature;
   const outstanding = () => items.find(item => !complete(item));
   const current = () => items.find(item => item.key === selected) ?? outstanding() ?? items[0];
-  const clear = () => { items = []; reviewed.clear(); selected = undefined; };
+  const clear = () => { items = []; reviewed.clear(); selected = undefined; decision = undefined; };
   function render() {
     if (disposed) return;
     container.hidden = false;
@@ -221,12 +222,13 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         return [...applied, ...pending, ...resolved].sort((a, b) => (dealOrder.get(a.candidate.deal_id ?? '') ?? 0) - (dealOrder.get(b.candidate.deal_id ?? '') ?? 0)
           || (itemOrder.get(a.key) ?? previous.length) - (itemOrder.get(b.key) ?? previous.length));
       });
+      if (decision && !items.some(item => item.key === decision?.key && item.state === 'pending')) decision = undefined;
       if (!preserveSelection || !items.some(item => item.key === selected)) selected = outstanding()?.key ?? items[0]?.key;
       automaticAttempts = 0;
       load = { state: items.length ? 'ready' : 'empty' };
     } catch (error) {
       if (disposed || revoked || read !== sequence) return;
-      if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
+      if (signedOut(error)) { revoked = true; clear(); load = { state: 'signed_out' }; }
       // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
       else if (isObject(error) && error.status === 429) retry(touchedDeal);
       else load = { state: 'unavailable', message: 'Could not check this call. Refresh before continuing the review.' };
@@ -244,8 +246,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
       if (!completed()) await refresh({ preserveSelection: true, touchedDeal });
       if (!disposed && !revoked) options.onChange?.();
     } catch (error) {
-      if (disposed) return;
-      if (signedOut(error)) { clear(); load = { state: 'signed_out' }; }
+      if (disposed || revoked) return;
+      if (signedOut(error)) { revoked = true; clear(); load = { state: 'signed_out' }; }
       // eslint-disable-next-line no-restricted-syntax -- Only three automatic read attempts after a budget refusal; writes are never replayed.
       else if (isObject(error) && error.status === 429) { notice = refused(error); retry(touchedDeal); }
       else {
@@ -267,15 +269,46 @@ export function mountCallReview(container: HTMLElement, options: Options) {
     clear(); load = { state: 'completed' };
   }
   async function decide(item: Item, accept: boolean) {
-    const client = options.client(), idempotency_key = crypto.randomUUID();
-    if (item.candidate.resolver === 'resolve-post-call-candidate' && client.resolvePostCallCandidate) {
-      const result = await client.resolvePostCallCandidate({ candidate_id: item.candidate.candidate_id, accept, idempotency_key });
-      if (isObject(result) && result.ok === false) throw new Error('Decision refused');
-    } else if (item.candidate.resolver === 'resolve-candidate' && client.resolveConfirm) {
-      const result = await client.resolveConfirm({ proposal_id: item.candidate.candidate_id, accept, idempotency_key });
-      if (isObject(result) && result.ok === false) throw new Error('Decision refused');
-    } else throw new Error('Decision unavailable');
-    deciding = undefined;
+    if (decision) return;
+    const resolver = item.candidate.resolver, client = options.client();
+    if (!(resolver === 'resolve-post-call-candidate' && client.resolvePostCallCandidate)
+      && !(resolver === 'resolve-candidate' && client.resolveConfirm)) throw new Error('Decision unavailable');
+    decision = { key: item.key, signature: item.signature, resolver,
+      args: { candidate_id: item.candidate.candidate_id, accept, idempotency_key: crypto.randomUUID() } };
+    await sendDecision();
+  }
+  async function sendDecision() {
+    const request = decision;
+    if (!request || disposed || revoked) return;
+    const client = options.client();
+    try {
+      const { candidate_id, accept, idempotency_key } = request.args;
+      const result = request.resolver === 'resolve-post-call-candidate'
+        ? await client.resolvePostCallCandidate?.({ ...request.args })
+        : await client.resolveConfirm?.({ proposal_id: candidate_id, accept, idempotency_key });
+      if (disposed || revoked) return;
+      if (isObject(result) && result.ok === false) { decision = undefined; throw new Error('Decision refused'); }
+      if (!isObject(result) || result.ok !== true) throw new Error('Decision receipt unavailable');
+      decision = undefined; deciding = undefined;
+    } catch (error) {
+      if (disposed || revoked) return;
+      if (isObject(error) && typeof error.status === 'number' && [400, 401, 403, 404, 409, 422, 429].includes(error.status)) decision = undefined;
+      throw error;
+    }
+  }
+  async function checkOutcome() {
+    if (!decision || writing || inFlight || disposed || revoked) return;
+    await refresh();
+    if (!decision || disposed || revoked || load.state !== 'ready') return;
+    const item = items.find(item => item.key === decision?.key);
+    if (!item || item.signature !== decision.signature) {
+      notice = 'The proposal changed. Refresh to check its outcome. The original decision is still held.'; render(); return;
+    }
+    const action = decision.args.accept ? 'approve' : 'skip';
+    await act(sendDecision, error => decisionError(error, action), item.candidate.deal_id);
+  }
+  function decisionError(error: unknown, action: 'approve' | 'skip') {
+    return decision ? 'The decision outcome is unknown. Check outcome before making another decision.' : decisionRefusal(error, action);
   }
   function proposalText(candidate: Candidate) {
     if (candidate.kind === 'next_step' || candidate.kind === 'phase_move') return options.describe(candidate);
@@ -321,8 +354,8 @@ export function mountCallReview(container: HTMLElement, options: Options) {
           {item.candidate.payload.assignee && <p>Assigned to {partnerNames[item.candidate.payload.assignee] ?? item.candidate.payload.assignee} · {item.candidate.payload.due_on ? (options.dateLabel?.(item.candidate.payload.due_on) ?? item.candidate.payload.due_on) : 'No due date'}</p>}
           <p>Check the proposal and quote above. Approve it, or skip it and make any correction on the deal.</p>
           <div className="call-review-actions">
-            <button type="button" className="primary" disabled={!ready} onClick={() => void act(() => decide(item, true), error => decisionRefusal(error, 'approve'), item.candidate.deal_id)}>Approve item</button>
-            <button type="button" className="secondary" disabled={!ready} onClick={() => void act(() => decide(item, false), error => decisionRefusal(error, 'skip'), item.candidate.deal_id)}>Skip item</button>
+            <button type="button" className="primary" disabled={!ready || !!decision} onClick={() => void act(() => decide(item, true), error => decisionError(error, 'approve'), item.candidate.deal_id)}>Approve item</button>
+            <button type="button" className="secondary" disabled={!ready || !!decision} onClick={() => void act(() => decide(item, false), error => decisionError(error, 'skip'), item.candidate.deal_id)}>Skip item</button>
           </div>
           <p className="call-review-meta">Email proposals create drafts only.</p>
         </section>}
@@ -334,6 +367,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         </nav>
         <p className="call-review-meta">Check each item before completing the call review.</p>
       </>}
+      {decision && <button type="button" className="primary" disabled={writing || !!inFlight || load.state !== 'ready'} onClick={() => void checkOutcome()}>Check outcome</button>}
       {load.state !== 'completed' && <button type="button" className="secondary" disabled={writing || load.state === 'loading' || load.state === 'signed_out' || load.state === 'retrying'} onClick={() => void refresh()}>Refresh call review</button>}
     </section>;
   }
