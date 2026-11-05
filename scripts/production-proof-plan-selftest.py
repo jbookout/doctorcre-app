@@ -41,6 +41,16 @@ class AdmissionTest(unittest.TestCase):
         self.assertEqual(decision.status, 'admitted', decision)
         self.assertIn('execution unproven', decision.reason)
 
+    def test_corrupt_asks_declaration_is_admitted_without_attesting_execution(self):
+        path = 'proofs/requirements/queued-asks-corrupt-entry-isolation.json'
+        decision = self.adapter.admission(
+            self.snapshot('## Production proof\n' + path,
+                          ['src/ui/queued-asks.ts', 'src/ui/ask-composer.tsx'],
+                          requirement=(ROOT / path).read_text()),
+            self.validator, self.contract)
+        self.assertEqual(decision.status, 'admitted', decision)
+        self.assertIn('execution unproven', decision.reason)
+
     def test_snapshot_decisions(self):
         cases = [
             ('CI', NON_PRODUCT, CI_PATHS, 'pull_request', 'admitted', 'non-product'),
