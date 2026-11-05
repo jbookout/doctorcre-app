@@ -5,6 +5,25 @@ import { readFileSync } from 'node:fs';
 
 const required = ['--use-mock-keychain', '--password-store=basic'];
 
+function hasSafetyArgs(options) {
+  return /args:\s*\[\s*\.\.\.CHROMIUM_SAFETY_ARGS/.test(options);
+}
+
+for (const options of [
+  '{ args: CHROMIUM_SAFETY_ARGS, timeout: timeoutMs }',
+  '{ args: [...CHROMIUM_SAFETY_ARGS] }',
+  '{ args: [...CHROMIUM_SAFETY_ARGS, "--disable-gpu"] }',
+]) test(`the launch audit accepts shared safety arguments in ${options}`, () => {
+  assert.equal(hasSafetyArgs(options), true);
+});
+
+for (const options of [
+  '', '{}', '{ args: [] }', '{ args: ["--disable-gpu"] }',
+  '{ args: CHROMIUM_SAFETY_ARGS_UNSAFE }',
+]) test(`the launch audit rejects missing safety arguments in ${options}`, () => {
+  assert.equal(hasSafetyArgs(options), false);
+});
+
 test('every Chromium launch explicitly supplies keychain safety arguments', async () => {
   const violations = [];
   const files = execFileSync('git', ['ls-files', '*.mjs', '*.js', '*.ts'], { encoding: 'utf8' }).trim().split('\n');
@@ -12,7 +31,7 @@ test('every Chromium launch explicitly supplies keychain safety arguments', asyn
     const source = readFileSync(file, 'utf8');
     if (!/import\s+(?:\{[^}]*\bchromium\b[^}]*\}|\*\s+as\s+\w+)\s+from\s*['"](?:playwright(?:-core)?|@playwright\/test)['"]/.test(source)) continue;
     for (const launch of source.matchAll(/\b\w+\.launch\(([^)]*)\)/g)) {
-      if (!/args:\s*\[\s*\.\.\.CHROMIUM_SAFETY_ARGS/.test(launch[1])) violations.push(file);
+      if (!hasSafetyArgs(launch[1])) violations.push(file);
     }
   }
   assert.deepEqual(violations, [], 'Chromium launches must supply CHROMIUM_SAFETY_ARGS');
