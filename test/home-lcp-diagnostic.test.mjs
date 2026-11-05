@@ -60,10 +60,12 @@ test('trace write failure refuses and still closes the sample context', async ()
   const directory = await mkdtemp(join(tmpdir(), 'home-lcp-trace-'));
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   try {
+    for (const script of ['', '<script>throw Error("page failure")</script>']) {
     await assert.rejects(collectHomeSample({ browser, trace: directory, url: 'http://127.0.0.1:12345/',
       setup: page => page.route('**/*', route => route.fulfill({ contentType: 'text/html',
-        body: '<h1>Welcome home.</h1><div data-inbox-row>Task</div>' })) }), /EISDIR|directory|illegal operation/i);
+        body: '<h1>Welcome home.</h1><div data-inbox-row>Task</div>' + script })) }), /EISDIR|directory|illegal operation/i);
     assert.equal(browser.contexts().length, 0);
+    }
   } finally {
     await browser.close();
     await rm(directory, { recursive: true, force: true });

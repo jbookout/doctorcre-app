@@ -41,12 +41,11 @@ export async function startHomeProfile(context, page, output) {
       const complete = new Promise(resolve => session.once('Tracing.tracingComplete', resolve));
       await session.send('Tracing.end');
       await complete;
-      const clock = await session.send('Performance.getMetrics').catch(() => ({ metrics: [] }));
       const marks = await page.evaluate(() => ({ timeOrigin: performance.timeOrigin, now: performance.now(),
         commits: window.__homeRowCommits, marks: window.__homeRowMarks }));
       await writeFile(join(output, 'cpu.cpuprofile'), JSON.stringify(profile));
       await writeFile(join(output, 'timeline.json'), JSON.stringify({ traceEvents: timeline }));
-      await writeFile(join(output, 'row-commits.json'), JSON.stringify({ ...marks, clock }, null, 2));
+      await writeFile(join(output, 'row-commits.json'), JSON.stringify(marks, null, 2));
     } finally { await session.detach(); }
   };
 }

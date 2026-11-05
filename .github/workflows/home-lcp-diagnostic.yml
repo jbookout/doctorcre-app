@@ -49,7 +49,6 @@ jobs:
         working-directory: diagnostic
         run: node test/helpers/compare-home-lcp.mjs ../head ../main test-artifacts/home-lcp-diagnostic
       - name: Capture separate Linux CPU and timeline evidence
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         working-directory: diagnostic
         run: node test/helpers/profile-home-lcp.mjs ../main test-artifacts/home-lcp-diagnostic/profile
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
