@@ -6,7 +6,8 @@ import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export function options(args) {
-  const { values } = parseArgs({ args, options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, 'expected-revision': { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { help: { type: 'boolean' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, 'expected-revision': { type: 'string' } } });
+  if (values.help) return { help: true };
   const url = new URL(values.origin);
   assert.ok(url.protocol === 'https:' || (url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)), 'HTTPS or loopback origin required');
   assert.equal(url.href, `${url.origin}/`, 'supply an origin without credentials, path, query or fragment');
@@ -125,6 +126,19 @@ export async function prove({ origin, timeout, revision }) {
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  try { console.log(JSON.stringify(await prove(options(process.argv.slice(2))))); }
+  try {
+    const parsed = options(process.argv.slice(2));
+    if (parsed.help) console.log(`Usage: node scripts/prove-historical-fit-calendar-date-integrity.mjs --origin <origin> [options]
+
+Verify deployed historical client fit with synthetic calendar evidence.
+
+  --help                       Show this help without network or browser work.
+  --origin <origin>            Required HTTPS or loopback origin, without a path.
+  --timeout-ms <ms>            Deadline in milliseconds, 100..300000. Default 30000.
+  --expected-revision <sha>    Full 40-character revision. Default git HEAD.
+
+Exits 0 on help or a successful proof. Exits 1 on invalid arguments or proof failure.`);
+    else console.log(JSON.stringify(await prove(parsed)));
+  }
   catch (error) { console.error(`Historical fit proof failed: ${error.message}`); process.exitCode = 1; }
 }

@@ -1,4 +1,6 @@
 stateDiagram-v2
+  %% clear/dispose lifecycle edges are exercised through mountIdealClientProfile in historical-fit-calendar-date-integrity-browser.test.mjs.
+  %% CLI --help exits before proof execution and does not enter the UI lifecycle.
   [*] --> idle
   idle --> loading: Open history
   loading --> valid_history: Current receipt, all evidence dates canonical

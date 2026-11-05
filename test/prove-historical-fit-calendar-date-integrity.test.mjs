@@ -7,9 +7,9 @@ import { options } from '../scripts/prove-historical-fit-calendar-date-integrity
 
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const runner = 'scripts/prove-historical-fit-calendar-date-integrity.mjs';
-function cli(args) {
+function cli(args, nodeArgs = []) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [runner, ...args]);
+    const child = spawn(process.execPath, [...nodeArgs, runner, ...args]);
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     child.on('error', reject); child.on('exit', code => resolve({ code, stdout, stderr }));
@@ -21,8 +21,9 @@ test('CLI help documents every flag without contacting the origin', async t => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const origin = `http://127.0.0.1:${server.address().port}`;
+  const guard = `data:text/javascript,${encodeURIComponent(`import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))}; chromium.launch = () => { throw Error('help attempted browser launch'); };`)}`;
   for (const args of [['--help'], ['--help', '--origin', origin]]) {
-    const result = await cli(args);
+    const result = await cli(args, ['--import', guard]);
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stderr, '');
     for (const flag of ['--help', '--origin', '--timeout-ms', '--expected-revision']) assert.ok(result.stdout.includes(flag), flag);
