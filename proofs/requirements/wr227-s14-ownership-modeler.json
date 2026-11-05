@@ -1,0 +1,17 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s14-ownership-modeler",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "ownership-ephemeral-calculations",
+    "predicate": "The deployed app release identifies the merged revision. A read-only observer opens a portal publication containing ownership data, changes one browser-memory assumption, compares every dependent output with the reviewed deterministic calculation, and reloads to verify published defaults and no scenario storage request.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "The selected property and assumptions are visible, every dependent output matches, reload restores defaults, and no scenario reaches server storage.",
+    "input_class": "read-only release identity and portal observation with ephemeral browser edits",
+    "deadline_seconds": 300
+  }],
+  "safety": {
+    "read_only": true, "no_sends": true, "max_requests": 20,
+    "max_records": 10, "max_runtime_seconds": 300, "max_artifact_bytes": 65536
+  }
+}
