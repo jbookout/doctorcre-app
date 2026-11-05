@@ -8,6 +8,7 @@ const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
 const PROXY_EXACT = new Set(["/mcp", "/pipeline/changes", "/api/call-context", "/api/post-call"]);
 const PROXY_PREFIXES = ["/auth/", "/api/v1/", "/api/room/", "/api/system-work/", "/api/tours/", "/api/post-call/"];
 const STATIC_EXACT = new Map([
+  ["/artifact-manifest.json", "/artifact-manifest.json"],
   ["/manifest.webmanifest", "/manifest.webmanifest"],
   ["/sw.js", "/public-shell/sw.js"],
   ["/offline.html", "/public-shell/offline.html"],
@@ -99,7 +100,8 @@ async function assetResponse(request, env, path) {
     headers: { accept: request.headers.get("accept") || "*/*" },
   }));
   const headers = new Headers(response.headers);
-  headers.set("cache-control", path.endsWith(".html") || path.endsWith(".js") || path.endsWith(".css")
+  headers.set("cache-control", path === "/artifact-manifest.json" ? "no-store"
+    : path.endsWith(".html") || path.endsWith(".js") || path.endsWith(".css")
     ? "no-cache" : "public, max-age=300");
   if (path === "/public-shell/sw.js") headers.set("service-worker-allowed", "/");
   return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), path);

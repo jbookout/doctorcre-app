@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "historical-fit-calendar-date-integrity",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "canonical-calendar-evidence",
+      "predicate": "The deployed app release contains the merged revision. Run node scripts/prove-historical-fit-calendar-date-integrity.mjs --origin https://app.doctorcre.com --timeout-ms 30000 from a checkout containing that merge. The runner imports deployed mountIdealClientProfile and chunks, rejects February 31 without a win, retries a valid leap day without changing the date or deal link, and refuses stale receipts.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Release-bound synthetic browser assertions pass with origin, release, module URLs and assertions in the receipt. Nonzero on protected assets, missing export, sign-in, timeout or assertion failure.",
+      "input_class": "synthetic evidence in isolated browser storage, read-only deployed assets",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 40,
+    "max_records": 20,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

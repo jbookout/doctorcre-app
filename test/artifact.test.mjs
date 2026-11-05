@@ -220,7 +220,9 @@ test('provider preparation replaces poisoned cache output with verified committe
   const {root,outDir} = await committedFixture(t);
   await writeFile(join(outDir,'site','marker.sh'), '#!/bin/sh\nexit 99\n');
   await writeFile(join(outDir,'site','workspace.html'), 'synthetic cache poison');
+  await writeFile(join(outDir,'site','artifact-manifest.json'), 'synthetic stale manifest');
   await runCli(root,['prepare-deployment']);
+  assert.deepEqual(await readFile(join(outDir,'site','artifact-manifest.json')), await readFile(join(outDir,'doctorcre-app.manifest.json')));
   await assert.rejects(readFile(join(outDir,'site','marker.sh')), /ENOENT/);
   assert.equal((await readFile(join(outDir,'site','workspace.html'), 'utf8')).replace(/<link rel="modulepreload"[^>]+>\n/g, ''), await readFile(join(root,'workspace.html'), 'utf8'));
 });
