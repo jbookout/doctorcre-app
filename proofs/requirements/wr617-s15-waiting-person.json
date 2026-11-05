@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s15-waiting-person",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "waiting-person-completion-and-undo",
+      "predicate": "After deployment, observe the matching app release and Home at phone and desktop widths. Joe performs the signed-in set, correct and clear of a canonical waiting person and reason, followed by inline completion and Undo. Observe recorded readback, Done today placement and no restored person after reopening. Unknown held, snoozed and processing cards must name no invented person.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Home shows the canonical recorded person and reason, corrections persist on reload, completion clears waiting, and Undo reopens with Not recorded.",
+      "input_class": "read-only deployed app release and live walk",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 2,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

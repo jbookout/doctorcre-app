@@ -7,6 +7,13 @@ import { readWithDeadline } from './auto-refresh.mjs';
 import { readHomeCallFollowups } from './home-call-tasks.js';
 
 export const HOME_SCOPES = ['team', 'mine'];
+export function createHomeReadQueue() {
+  let pending = null;
+  return {
+    request(read) { if (pending !== readHomeDashboard) pending = read; },
+    take() { const read = pending || readHomeDashboard; pending = null; return read; },
+  };
+}
 export const HIDDEN_HOME_WIDGETS = Object.freeze({
   vendors: 'New vendor prospects with compatibility evidence',
   listings: 'Fresh client/listing matches with listing URL, agent contact and authorized attachments',
