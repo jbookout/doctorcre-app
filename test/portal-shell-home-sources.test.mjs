@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { uiBundle } from '../scripts/ui-bundle.mjs';
 const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'), 'src/ui/portal/shell-home-sources.tsx');
@@ -115,4 +117,53 @@ test('Home retains current demographic labels while excluding property metrics',
   assert.match(root.textContent, /Current population/);
   assert.doesNotMatch(root.textContent, /Candidate sites/);
   panel.dispose(); dom.window.close();
+});
+
+
+test('Sources exposes age, radius PDF and competitor citations with optional groups independent', async () => {
+  for (const group of ['all', 'no-radius', 'no-competition', 'neither']) {
+    const data = structuredClone(fixture);
+    if (['no-radius', 'neither'].includes(group)) delete data.demographics.micro_zones;
+    if (['no-competition', 'neither'].includes(group)) delete data.demographics.competition;
+    const { root, panel, dom } = await open(data, '#sources');
+    try {
+      const hrefs = [...root.querySelectorAll('main a')].map(a => a.getAttribute('href'));
+      for (const area of data.demographics.age.geographies) assert.ok(hrefs.includes(area.source_url), area.source_url);
+      for (const zone of data.demographics.micro_zones?.zones ?? []) {
+        const link = root.querySelector(`a[href="files/${zone.study_pdf.sha256}"]`);
+        assert.ok(link, zone.name);
+        assert.match(link.textContent, new RegExp(zone.name));
+      }
+      for (const office of data.demographics.competition?.offices ?? []) assert.ok(hrefs.includes(office.source_url), office.name);
+      assert.equal(root.textContent.includes('Radius reports'), !!data.demographics.micro_zones);
+      assert.equal(root.textContent.includes('Competitor directory sources'), !!data.demographics.competition);
+    } finally { panel.dispose(); dom.window.close(); }
+  }
+});
+
+test('Home keeps its context map without development projects', async () => {
+  const data = structuredClone(fixture); data.developments = [];
+  const { root, panel, dom } = await open(data);
+  try {
+    assert.equal(root.querySelectorAll('.portal-map').length, 1);
+    assert.match(root.textContent, /Regional context|Current practice/);
+    assert.doesNotMatch(root.textContent, /Major development activity/);
+  } finally { panel.dispose(); dom.window.close(); }
+});
+
+test('public module consumers can register planned and publication-specific routes', async () => {
+  const dir = await mkdtemp(resolve('test/.portal-consumer-'));
+  try {
+    const file = resolve(dir, 'consumer.tsx');
+    await writeFile(file, `import type { PortalModule } from '../../src/ui/portal/shell-home-sources';
+const modules = [
+  { route: 'documents', label: 'Documents', available: () => true, render: () => null },
+  { route: 'roadmap', label: 'Roadmap', available: () => true, render: () => null },
+  { route: 'local-context', label: 'Local context', available: () => true, render: () => null },
+] satisfies PortalModule[];
+void modules;
+`);
+    const result = spawnSync(resolve('node_modules/.bin/tsc'), ['--ignoreConfig', '--noEmit', '--strict', '--jsx', 'react-jsx', '--target', 'ES2022', '--moduleResolution', 'bundler', '--module', 'ESNext', file], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
