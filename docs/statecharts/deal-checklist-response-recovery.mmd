@@ -1,0 +1,22 @@
+stateDiagram-v2
+    [*] --> Absent: No checklist received
+    Absent --> Empty: Refresh returns an empty checklist
+    Absent --> Populated: Refresh returns requirements
+    Absent --> Malformed: Response cannot be rendered
+    Populated --> Malformed: Refresh returns malformed requirements
+    Populated --> Unavailable: Requirements cannot be read
+    Populated --> SourceChanged: Doctrine changes
+    Malformed --> Recovered: Refresh returns valid requirements
+    Unavailable --> Recovered: Refresh returns valid requirements
+    SourceChanged --> Recovered: Reviewed doctrine returns valid requirements
+    Recovered --> Empty: Refresh returns no requirements
+    Empty --> Populated: Refresh returns requirements
+    state Absent: Overview with no checklist
+    state Empty: Overview with no checklist
+    state Populated: Overview with recorded producer statuses
+    state Malformed: Overview with checklist unavailable and Refresh deal
+    state Unavailable: Overview with unreadable requirements and Refresh deal
+    state SourceChanged: Overview with doctrine review message
+    state Recovered: Overview with valid checklist and restored focus
+    %% never Malformed evidence claims completion
+    %% never Checklist failure closes Overview
