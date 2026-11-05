@@ -38,7 +38,7 @@ function Values({ rows }: { rows: readonly (readonly [string, number | undefined
   return <dl className="zone-values">{rows.map(([label, value, unit]) => <div key={label}><dt>{label}</dt><dd>{fmt(value)}{unit ? ` ${unit}` : ''}</dd></div>)}</dl>;
 }
 function Shares({ rows, denominator }: { rows: readonly CountShare[]; denominator: string }) {
-  return <div className="zone-table" tabIndex={0} role="region" aria-label={denominator}><table><caption>{denominator}</caption><thead><tr><th scope="col">Category</th><th scope="col">Count</th><th scope="col">Reported %</th><th scope="col">Derived %</th></tr></thead><tbody>{rows.map(row => <tr key={row.label}><th scope="row">{row.label}</th><td>{fmt(row.count)}</td><td>{fmt(row.reported_percent)}</td><td>{fmt(row.derived_percent)}</td></tr>)}</tbody></table></div>;
+  return <div className="zone-table" tabIndex={0} role="region" aria-label={denominator}><table><caption>{denominator}</caption><thead><tr><th scope="col">Category</th><th scope="col">Count</th><th scope="col">Reported %</th><th scope="col">Derived %</th></tr></thead><tbody>{rows.map((row, index) => <tr key={index}><th scope="row">{row.label}</th><td>{fmt(row.count)}</td><td>{fmt(row.reported_percent)}</td><td>{fmt(row.derived_percent)}</td></tr>)}</tbody></table></div>;
 }
 function PracticeDialog({ office, close }: { office: Office; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -64,7 +64,7 @@ function ZoneProfile({ zone, data }: { zone: MicroZone; data: MicroZones }) {
   const max = Math.max(1, ...rows.map(row => row.value ?? 0));
   return <section><div role="group" aria-label="Micro-zone topic" className="demo-switch optional-switch">{(['Population', 'Age', 'Income'] satisfies ('Population' | 'Age' | 'Income')[]).map(name => <button type="button" key={name} aria-pressed={topic === name} onClick={() => setTopic(name)}>{name} profile</button>)}</div>
     <div id="micro-zone-profile"><h3>{topic} profile</h3><p>{topic === 'Population' ? 'Population by year' : `${data.estimate_year} counts`}</p>
-      {rows.map(row => <div key={row.label} className="zone-profile-row"><span>{row.label}</span><strong>{fmt(row.value)}</strong><span className="zone-profile-bar" aria-hidden="true" style={{ width: `${(row.value ?? 0) / max * 100}%` }} /></div>)}
+      {rows.map((row, index) => <div key={`${zone.id}:${topic}:${index}`} className="zone-profile-row"><span>{row.label}</span><strong>{fmt(row.value)}</strong><span className="zone-profile-bar" aria-hidden="true" style={{ width: `${(row.value ?? 0) / max * 100}%` }} /></div>)}
       <PageLink zone={zone} page={topic === 'Population' ? zone.population.source_page : topic === 'Age' ? zone.age.source_page : zone.household_income.source_page} />
     </div>
   </section>;
