@@ -85,7 +85,9 @@ export async function prove({ origin, timeoutMs = 30000, revision } = {}) {
   } finally { clearTimeout(deadline); await browser.close(); }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv.length === 3 && process.argv[2] === '--help') {
+  console.log('Usage: node scripts/prove-queued-asks-corrupt-entry-isolation.mjs --origin <origin> [--timeout-ms <1..120000, default 30000>] [--revision <required ancestor SHA>]');
+} else if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const args=process.argv.slice(2), options={};
     for(let i=0;i<args.length;i+=2) {

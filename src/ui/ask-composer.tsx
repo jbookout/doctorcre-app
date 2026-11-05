@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { useState } from 'react';
-import { createAskOutbox, type AskRequest, type QueuedAsk } from './queued-asks';
+import { SavedDraftRecoveryError, createAskOutbox, type AskRequest, type QueuedAsk } from './queued-asks';
 
 type Client = { askSession(): Promise<{ actor: string }>; submitDocRequest(request: AskRequest, actor: string): Promise<unknown> };
 const labels: Record<QueuedAsk['kind'], string> = {
@@ -48,7 +48,9 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
             aria-describedby="askHelp askNotice" onChange={event => {
               const next = event.target.value; setText(next);
               try { box.saveDraft(next); setNotice(''); }
-              catch { setNotice('This text is only on this page. Device storage is unavailable.'); }
+              catch (error) { setNotice(error instanceof SavedDraftRecoveryError
+                ? `This text is only on this page. ${error.message}`
+                : 'This text is only on this page. Device storage is unavailable.'); }
             }} /></div>
           <p id="askHelp" className="caption">Saved asks send when you reconnect. You can keep working while an answer is pending.</p>
           <button type="submit" className="btn" disabled={!text.trim()}>Send ask</button>

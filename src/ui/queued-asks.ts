@@ -31,6 +31,9 @@ function outcome(value: unknown, request: AskRequest): 'accepted' | 'refused' | 
   if (value.status === 'refused' && 'reason' in value && typeof value.reason === 'string') return 'refused';
   return 'unknown';
 }
+export class SavedDraftRecoveryError extends Error {
+  constructor() { super('Saved draft needs recovery. Its original bytes are kept on this device.'); }
+}
 export function createAskOutbox(o: Options) {
   if (!o.actor || !uuid(o.conversation)) throw Error('Open a conversation before writing.');
   const prefix = `doctorcre:asks:v1:${encodeURIComponent(o.actor)}:${o.conversation}:`;
@@ -66,15 +69,16 @@ export function createAskOutbox(o: Options) {
     const key = prefix + row.request.idempotency_key;
     const raw = o.storage.getItem(key);
     const current = parse(raw);
-    if (raw !== null && !current) throw Error('Saved ask needs recovery. Its original bytes are kept on this device.');
-    if (current?.kind === 'accepted') return;
+    if (raw !== null && !current) { o.changed?.(); return false; }
+    if (current?.kind === 'accepted') return false;
     o.storage.setItem(key, JSON.stringify(row));
     o.changed?.();
+    return true;
   };
   for (const row of entries()) if (row.kind === 'submitting') put({ ...row, kind:'unknown' });
   async function send(row: QueuedAsk) {
     if (stopped || !o.online()) return;
-    put({ ...row, kind:'submitting' });
+    if (!put({ ...row, kind:'submitting' })) return;
     let kind: Kind = 'unknown';
     try { kind = outcome(await o.submit(row.request), row.request); } catch { /* No receipt proves no outcome. */ }
     if (!stopped) put({ ...row, kind });
@@ -101,12 +105,14 @@ export function createAskOutbox(o: Options) {
     draft, entries, recovery: () => snapshot().held,
     saveDraft(text: string) {
       const current = savedDraft();
-      if (!current) throw Error('Saved draft needs recovery. Its original bytes are kept on this device.');
+      if (!current) throw new SavedDraftRecoveryError();
       o.storage.setItem(draftKey, JSON.stringify({ text, version:current.version + 1 }));
     },
     enqueue(text = draft()) {
       if (!text.trim() || text.length > 20000) throw Error('Write an ask of up to 20,000 characters.');
-      if (draft() !== text) throw Error('The draft changed in another tab. Reopen it before sending.');
+      const current = savedDraft();
+      if (!current) throw new SavedDraftRecoveryError();
+      if (current.text !== text) throw Error('The draft changed in another tab. Reopen it before sending.');
       const snapshot = o.storage.getItem(draftKey);
       const key = o.uuid();
       if (!uuid(key) || o.storage.getItem(prefix + key)) throw Error('The request key is unavailable. Try again.');

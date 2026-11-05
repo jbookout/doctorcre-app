@@ -3,6 +3,7 @@ stateDiagram-v2
   [*] --> corrupt_entry_held: invalid JSON or shape
   [*] --> storage_unavailable: storage access throws
   valid_queued --> submitting: online drain
+  submitting --> corrupt_entry_held: saved bytes become corrupt while awaiting receipt
   submitting --> unknown: interrupted or invalid receipt
   submitting --> refused: matching refusal
   submitting --> accepted: matching acceptance
@@ -17,3 +18,5 @@ stateDiagram-v2
   refused --> retired: close
   accepted --> retired: close
   corrupt_entry_held --> retired: close, retain bytes
+  corrupt_entry_held --> corrupt_entry_held: typing or Send keeps malformed draft and shows recovery
+  retired --> retired: late receipt ignored, reconnect cannot send
