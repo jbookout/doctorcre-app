@@ -3,12 +3,15 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'ready_for_review' || github.event.action == 'converted_to_draft' || (github.event.action == 'edited' && github.event.changes.base != null)) }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
@@ -202,7 +205,7 @@ jobs:
 
   test:
     if: ${{ always() }}
-    needs: [checks, shards, performance, live, production-proof]
+    needs: [checks, shards, performance, live, production-proof, journeys]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -230,6 +233,7 @@ jobs:
         if: ${{ always() }}
         env:
           CHECKS: ${{ needs.checks.result }}
+          JOURNEYS: ${{ needs.journeys.result }}
           SHARDS: ${{ needs.shards.result }}
           PERFORMANCE: ${{ needs.performance.result }}
           LIVE: ${{ needs.live.result }}
@@ -239,6 +243,7 @@ jobs:
           test "$CHECKS" = success
           test "$LIVE" = success
           test "$SHARDS" = success
+          test "$JOURNEYS" = success
           if [ "$EVENT" = pull_request ]; then
             test "$PRODUCTION_PROOF" = success
             test "$PERFORMANCE" = success
@@ -265,4 +270,139 @@ jobs:
           name: pr-preview-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
           path: dist/site
           if-no-files-found: error
+          retention-days: 7
+
+  journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_TELEMETRY_DISABLED: "1"
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.4
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npx playwright test --project=fixtures
+      - run: npx e2e run
+      - run: npm run test:regressions
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report
+          include-hidden-files: true
+          path: |
+            .e2e/report.json
+            .e2e/artifacts
+            .e2e/logs
+            .e2e/regressions/report.json
+            .e2e/regressions/artifacts
+          retention-days: 7
+
+  production:
+    needs: [test]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.4
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+        env:
+          DOCTORCRE_SOURCE_COMMIT: ${{ github.sha }}
+      - run: npm run artifact:verify
+      - name: Require exact tested source
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
+      - name: Deploy production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo '::error::production environment requires CLOUDFLARE_API_TOKEN'; exit 1; }
+          node scripts/release-production.mjs
+
+  proof:
+    needs: [production]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.4
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify production release identity
+        run: node scripts/verify-app-release.mjs https://app.doctorcre.com/app-release "$SOURCE_COMMIT" production
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+      - name: Verify signed-out page gates
+        env:
+          DOCTORCRE_SMOKE_URL: https://app.doctorcre.com
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const base = new URL(process.env.DOCTORCRE_SMOKE_URL);
+          for (const page of ['/deals', '/leads', '/invoices', '/control-room/progress', '/doc-chats']) {
+            let target = new URL(page, base);
+            const visited = new Set();
+            while (target.pathname !== '/auth/login') {
+              assert.ok(visited.size < 10 && !visited.has(target.href), `${page}: redirect loop or limit`);
+              visited.add(target.href);
+              const response = await fetch(target, { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(30_000) });
+              assert.ok(!response.headers.has('cf-mitigated'), `${page}: Cloudflare challenge`);
+              assert.ok([301, 302, 303, 307, 308].includes(response.status), `${page} requires a sign-in redirect: HTTP ${response.status}`);
+              const location = response.headers.get('location');
+              assert.ok(location, `${page}: missing redirect location`);
+              target = new URL(location, target);
+              assert.equal(target.origin, base.origin);
+              assert.equal(target.username, '');
+              assert.equal(target.password, '');
+              assert.equal(target.hash, '');
+            }
+            assert.equal(target.searchParams.get('return_to'), page);
+          }
+          const status = await fetch(new URL('/status', base), { redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(30_000) });
+          assert.equal(status.status, 200);
+          assert.match(status.headers.get('content-type') || '', /text\/html/);
+          NODE
+      - name: Run production browser smoke
+        run: node node_modules/e2e/dist/cli/bin.js run --config e2e.production.config.ts --target chromium --output .e2e/production-smoke
+        env:
+          E2E_TELEMETRY_DISABLED: '1'
+          DOCTORCRE_SMOKE_URL: https://app.doctorcre.com
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-smoke-${{ github.sha }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .e2e/production-smoke
+          if-no-files-found: warn
           retention-days: 7

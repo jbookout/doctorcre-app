@@ -7,7 +7,7 @@ const read = (name) => readFileSync(new URL(`../scripts/${name}`, import.meta.ur
 
 test("the production release script refuses off-main and dirty checkouts, like staging", () => {
   const source = read("release-production.mjs");
-  assert.match(source, /sourceCommit !== mainCommit/);
+  assert.match(source, /"merge-base", "--is-ancestor", sourceCommit, mainCommit/);
   assert.match(source, /untracked-files=all/);
   assert.match(source, /production releases require a clean checkout/);
 });
@@ -54,7 +54,7 @@ test('credential-free environment stays closed when an unrelated secret is added
   assert.deepEqual(credentialFreeEnv({ PATH: '/fixture', CLOUDFLARE_API_TOKEN: canary, GH_TOKEN: canary, NEW_SECRET: canary }), { PATH: '/fixture' });
 });
 
-function releaseFixture(t, { mainCommit = '1'.repeat(40), dirty = '', failure = null, uploadOutput = 'Worker Version ID: 0f1e2d3c-4b5a-4968-8776-655443322110' } = {}) {
+function releaseFixture(t, { mainCommit = '1'.repeat(40), dirty = '', onMain = mainCommit === '1'.repeat(40), failure = null, uploadOutput = 'Worker Version ID: 0f1e2d3c-4b5a-4968-8776-655443322110' } = {}) {
   const root = temporaryDirectory('release-env-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'scripts')); mkdirSync(join(root, 'bin'));
@@ -75,6 +75,7 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify({ tool: '${tool}', args, deploy: !!process.env.CLOUDFLARE_API_TOKEN, unrelated: !!process.env.NEW_SECRET })+'\\n');
 if ('${tool}' === 'git' && args[0] === 'rev-parse') console.log(args[1] === 'origin/main' ? ${JSON.stringify(mainCommit)} : '${'1'.repeat(40)}');
+if ('${tool}' === 'git' && args[0] === 'merge-base') process.exit(${onMain ? 0 : 1});
 if ('${tool}' === 'git' && args[0] === 'status') console.log(${JSON.stringify(dirty)});
 for (const failure of [${JSON.stringify(failure)}].flat().filter(Boolean)) {
 const matchingCalls = failure ? fs.readFileSync(${JSON.stringify(trace)}, 'utf8').trim().split('\\n').map(JSON.parse).filter(row => row.tool === failure.tool && row.args.slice(0, failure.prefix.length).join(' ') === failure.prefix.join(' ')).length : 0;
@@ -312,26 +313,10 @@ test('staging reports Python initialization failure without printing the runtime
 });
 
 
-test('three late CI wakes promote the same green source only once', t => {
+test('publication retries promote the same green source only once', t => {
   const { root, trace, env } = releaseFixture(t);
-  const steps = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e', 'puts JSON.generate(YAML.load(STDIN.read))'], {
-    input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url)), encoding: 'utf8',
-  })).jobs.production.steps;
-  copyFileSync(new URL('../scripts/production-candidate.py', import.meta.url), join(root, 'scripts/production-candidate.py'));
-  const gh = join(root, 'bin/gh');
-  writeFileSync(gh, `#!${process.execPath}\nconsole.log(JSON.stringify([{ headSha: '${'1'.repeat(40)}', status: 'completed', conclusion: 'success' }]));\n`);
-  chmodSync(gh, 0o755);
-  for (const [sha, conclusion] of [['1', 'success'], ['2', 'failure'], ['3', 'success']]) {
-    const event = join(root, 'event.json'), output = join(root, 'output');
-    writeFileSync(event, JSON.stringify({ workflow_run: { head_sha: sha.repeat(40), conclusion } }));
-    writeFileSync(output, '');
-    const wakeEnv = { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'jbookout/doctorcre-app' };
-    assert.equal(steps.find(step => step.id === 'candidate').run, 'python3 scripts/production-candidate.py');
-    const candidate = spawnSync('python3', ['scripts/production-candidate.py'], { cwd: root, env: wakeEnv, encoding: 'utf8' });
-    assert.equal(candidate.status, 0, candidate.stderr);
-    assert.match(readFileSync(output, 'utf8'), /ready=true/);
-    assert.equal(steps.find(step => step.name === 'Deploy production').run.trim().split('\n').at(-1), 'node scripts/release-production.mjs');
-    const result = spawnSync(process.execPath, ['scripts/release-production.mjs'], { cwd: root, env: wakeEnv, encoding: 'utf8' });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = spawnSync(process.execPath, ['scripts/release-production.mjs'], { cwd: root, env, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
   }
   const rows = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);
@@ -385,4 +370,13 @@ test('a retry after successful promotion and failed readback skips another promo
   assert.match(retry.stdout, /already serves source/);
   const rows = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);
   assert.equal(rows.filter(row => row.tool === 'wrangler' && row.args[1] === 'deploy').length, 1);
+});
+
+test('production publishes an admitted ancestor after main advances', t => {
+  const { root, trace, env } = releaseFixture(t, { mainCommit: '2'.repeat(40), onMain: true });
+  const result = spawnSync(process.execPath, ['scripts/release-production.mjs'], { cwd: root, env, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const rows = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(rows.some(row => row.tool === 'git' && row.args[0] === 'merge-base'));
+  assert.ok(rows.some(row => row.tool === 'wrangler' && row.args[1] === 'deploy'));
 });

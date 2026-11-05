@@ -9,26 +9,22 @@ import test from 'node:test';
 
 const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
   'puts JSON.generate(YAML.load(STDIN.read))'], {
-  input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
+  input: readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'), encoding: 'utf8',
 }));
 
-test('production accepts same-repository main push CI wakes and resolves current main', () => {
+test('one run connects successful tests to production and proof', () => {
   const document = workflow();
   const events = document.on ?? document.true;
-  assert.deepEqual(events.workflow_run, { workflows: ['CI'], types: ['completed'] });
-  assert.deepEqual(Object.keys(events), ['workflow_run']);
-  const job = document.jobs.production;
-  for (const clause of ["head_branch == 'main'", "event == 'push'", 'head_repository.full_name == github.repository']) assert.ok(job.if.includes(clause));
-  assert.equal(job.environment, 'production');
-  assert.equal(job.concurrency['cancel-in-progress'], false);
-  assert.equal(document.permissions.contents, 'read');
-  assert.equal(document.permissions.actions, 'read');
-  assert.equal(document.env?.CLOUDFLARE_API_TOKEN, undefined);
-  assert.equal(job.env?.CLOUDFLARE_API_TOKEN, undefined);
-  const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with.ref, 'main');
-  assert.equal(checkout.with['fetch-depth'], 0);
-  assert.equal(checkout.with['persist-credentials'], false);
+  assert.deepEqual(events.push.branches, ['main']);
+  assert.ok(events.pull_request);
+  assert.ok(events.merge_group);
+  assert.equal(events.workflow_run, undefined);
+  assert.deepEqual(document.jobs.production.needs, ['test']);
+  assert.deepEqual(document.jobs.proof.needs, ['production']);
+  assert.equal(document.jobs.production.environment, 'production');
+  assert.equal(document.concurrency['cancel-in-progress'], false);
+  assert.equal(document.concurrency.queue, 'max');
+  assert.equal(document.jobs.production.steps[0].with.ref, '${{ github.sha }}');
 });
 
 test('production smoke reads each page and refuses a sign-in redirect for another page', async t => {
@@ -47,7 +43,7 @@ test('production smoke reads each page and refuses a sign-in redirect for anothe
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
-  const step = workflow().jobs.production.steps.find(step => step.name === 'Verify signed-out page gates');
+  const step = workflow().jobs.proof.steps.find(step => step.name === 'Verify signed-out page gates');
   assert.ok(step);
   const run = async () => {
     const child = spawn('bash', ['-e', '-c', step.run], { env: {
@@ -66,105 +62,49 @@ test('production smoke reads each page and refuses a sign-in redirect for anothe
   assert.notEqual((await run()).status, 0);
 });
 
-test('production waits for successful CI on that source and uses the existing publisher before its read-only smoke', () => {
-  const steps = workflow().jobs.production.steps;
-  const ci = steps.findIndex(step => step.id === 'candidate');
+test('production publication and proof use the tested source with narrow credentials', () => {
+  const { jobs } = workflow();
+  const steps = jobs.production.steps;
   const build = steps.findIndex(step => step.run === 'npm run build');
+  const verify = steps.findIndex(step => step.run === 'npm run artifact:verify');
+  const gate = steps.findIndex(step => step.name === 'Require exact tested source');
   const deploy = steps.findIndex(step => step.name === 'Deploy production');
-  const readback = steps.findIndex(step => step.name === 'Verify production release identity');
-  const smoke = steps.findIndex(step => step.name === 'Run production browser smoke');
-  assert.ok(ci >= 0 && ci < build && build < deploy && deploy < readback && readback < smoke);
-  assert.equal(steps[ci].run, 'python3 scripts/production-candidate.py');
+  assert.ok(build < verify && verify < gate && gate + 1 === deploy);
+  assert.equal(steps[build].env.DOCTORCRE_SOURCE_COMMIT, '${{ github.sha }}');
+  assert.equal(steps[gate].env.SOURCE_COMMIT, '${{ github.sha }}');
   assert.match(steps[deploy].run, /node scripts\/release-production\.mjs/);
-  assert.equal(steps[deploy].env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
-  assert.match(steps[readback].run, /verify-app-release\.mjs.*"\$SOURCE_COMMIT" production/);
-  assert.match(steps[smoke].run, /node node_modules\/e2e\/dist\/cli\/bin\.js run --config e2e\.production\.config\.ts --target chromium/);
-  for (const [index, step] of steps.entries()) {
-    if (index !== deploy) assert.equal(step.env?.CLOUDFLARE_API_TOKEN, undefined);
+  for (const [jobName, job] of Object.entries(jobs)) {
+    for (const step of job.steps ?? []) {
+      if (jobName !== 'production' || step.name !== 'Deploy production') {
+        assert.equal(step.env?.CLOUDFLARE_API_TOKEN, undefined);
+      }
+    }
   }
+  const readback = jobs.proof.steps.find(step => step.name === 'Verify production release identity');
+  assert.match(readback.run, /verify-app-release\.mjs.*"\$SOURCE_COMMIT" production/);
+  assert.equal(readback.env.SOURCE_COMMIT, '${{ github.sha }}');
+  assert.ok(jobs.proof.steps.some(step => step.name === 'Run production browser smoke'));
 });
 
-test('production refreshes main before publication and refuses a staged source after main advances', t => {
-  const steps = workflow().jobs.production.steps;
-  const gate = steps.findIndex(step => step.name === 'Require current main source');
-  const deploy = steps.findIndex(step => step.name === 'Deploy production');
-  const verify = steps.findIndex(step => step.run === 'npm run artifact:verify');
-  assert.ok(gate > verify && gate + 1 === deploy, 'refresh main immediately before publication');
-  assert.equal(steps[gate].env.SOURCE_COMMIT, '${{ steps.candidate.outputs.source_commit }}');
+test('main movement does not discard the exact tested checkout', t => {
+  const gate = workflow().jobs.production.steps.find(step => step.name === 'Require exact tested source');
   const root = temporaryDirectory('production-main-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const origin = join(root, 'origin');
-  const checkout = join(root, 'checkout');
-  const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
-  git(root, ['init', '--initial-branch=main', origin]);
-  const commit = () => git(origin, ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'Synthetic source']);
+  const origin = join(root, 'origin'), checkout = join(root, 'checkout');
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  git(root, 'init', '--initial-branch=main', origin);
+  const commit = () => git(origin, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'Synthetic source');
   commit();
-  const source = git(origin, ['rev-parse', 'HEAD']);
-  git(root, ['clone', origin, checkout]);
-  git(checkout, ['checkout', '--detach', source]);
-  const run = sourceCommit => spawnSync('bash', ['-e', '-c', steps[gate].run], {
+  const source = git(origin, 'rev-parse', 'HEAD');
+  git(root, 'clone', origin, checkout);
+  git(checkout, 'checkout', '--detach', source);
+  const run = sourceCommit => spawnSync('bash', ['-e', '-c', gate.run], {
     cwd: checkout, encoding: 'utf8', env: { PATH: process.env.PATH, SOURCE_COMMIT: sourceCommit },
   });
-  const current = run(source);
-  assert.equal(current.status, 0, current.stderr);
-  assert.notEqual(run('0'.repeat(40)).status, 0, 'refuse a different staged source');
+  assert.equal(run(source).status, 0);
   commit();
-  assert.equal(git(checkout, ['rev-parse', 'origin/main']), source, 'checkout still has the old remote reference');
-  assert.notEqual(run(source).status, 0, 'refuse stale source after fetching the advanced main');
-  git(checkout, ['remote', 'set-url', 'origin', join(root, 'missing')]);
-  assert.notEqual(run(source).status, 0, 'fail closed when main cannot be fetched');
-});
-
-
-test('queued completion wakes reconcile current main even when older or failed CI finishes last', t => {
-  const document = workflow();
-  const job = document.jobs.production;
-  assert.ok(!job.if.includes("conclusion == 'success'"), 'failed older completions must still reconcile green current main');
-  assert.equal(document.concurrency, undefined, 'unrelated skipped workflows cannot replace a pending main job');
-  assert.equal(job.concurrency.group, 'doctorcre-app-production');
-  assert.equal(job.concurrency['cancel-in-progress'], false);
-  assert.equal(job.steps[0].with.ref, 'main');
-  const candidate = job.steps.find(step => step.id === 'candidate');
-  assert.ok(candidate);
-  const root = temporaryDirectory('production-candidate-');
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
-  git('init', '--initial-branch=main');
-  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'Synthetic main');
-  const sha = git('rev-parse', 'HEAD');
-  const gh = join(root, 'gh');
-  writeFileSync(gh, '#!/usr/bin/env python3\nimport os,sys\nassert "--commit" in sys.argv and sys.argv[sys.argv.index("--commit")+1] == os.environ["FIXTURE_SHA"]\nprint(os.environ["FIXTURE_RUNS"])\n');
-  chmodSync(gh, 0o755);
-  const run = (runs, trigger = { head_sha: 'a'.repeat(40), conclusion: 'success' }) => {
-    const event = join(root, 'event.json');
-    writeFileSync(event, JSON.stringify({ workflow_run: trigger }));
-    const output = join(root, 'output');
-    writeFileSync(output, '');
-    const script = candidate.run.replace('scripts/production-candidate.py', new URL('../scripts/production-candidate.py', import.meta.url).pathname);
-    const result = spawnSync('bash', ['-e', '-c', script], { cwd: root, encoding: 'utf8', env: {
-      PATH: `${root}:${process.env.PATH}`, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'jbookout/doctorcre-app',
-      FIXTURE_SHA: sha, FIXTURE_RUNS: JSON.stringify(runs),
-    } });
-    return { ...result, output: readFileSync(output, 'utf8') };
-  };
-  const green = { headSha: sha, status: 'completed', conclusion: 'success' };
-  for (const trigger of [{ head_sha: 'a'.repeat(40), conclusion: 'success' }, { head_sha: 'b'.repeat(40), conclusion: 'failure' }, { head_sha: sha, conclusion: 'success' }]) {
-    const result = run([green], trigger);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.output, /ready=true/);
-    assert.ok(result.output.includes(`source_commit=${sha}`));
-  }
-  for (const runs of [[], [{ ...green, status: 'in_progress', conclusion: '' }], [{ ...green, conclusion: 'failure' }], [{ ...green, headSha: 'a'.repeat(40) }]]) {
-    const result = run(runs);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.output, /ready=false/);
-  }
-  writeFileSync(gh, '#!/bin/sh\nexit 1\n');
-  assert.notEqual(run([green]).status, 0, 'GitHub failure refuses publication without retry');
-  const build = job.steps.findIndex(step => step.run === 'npm run build');
-  for (const step of job.steps.slice(job.steps.indexOf(candidate) + 1)) {
-    if (step.if === 'failure()') continue;
-    assert.match(step.if, /steps.candidate.outputs.ready == 'true'/, step.name || step.run || step.uses);
-  }
-  assert.equal(job.steps[build].env.DOCTORCRE_SOURCE_COMMIT, '${{ steps.candidate.outputs.source_commit }}');
+  assert.equal(run(source).status, 0);
+  assert.notEqual(run('0'.repeat(40)).status, 0);
+  git(checkout, 'remote', 'set-url', 'origin', join(root, 'missing'));
+  assert.notEqual(run(source).status, 0);
 });
