@@ -78,3 +78,15 @@ test('same-turn repeated clicks create one pending load', async t => {
   finish(good()); await tick();
   assert.equal(host.querySelectorAll('li').length, 1);
 });
+
+for (const [state, payload] of [
+  ['refused', { cadence: { vendor_days: 14 }, proposals: [null] }],
+  ['ready', good()],
+]) test(`disposal removes the ${state} panel`, async t => {
+  const { host, island, click } = mount(t, async () => payload);
+  await click('Show quiet vendors');
+  if (state === 'refused') assert.match(host.querySelector('[role=alert]')?.textContent || '', /unavailable/);
+  else assert.equal(host.querySelectorAll('li').length, 1);
+  island.dispose();
+  assert.equal(host.innerHTML, '');
+});
