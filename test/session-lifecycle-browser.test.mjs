@@ -153,6 +153,53 @@ test('S1 browser: history restore verifies afresh when an older session check is
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
 
+for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavailable']) test(`S1 browser: overlapping restores keep cached controls hidden until latest verification is ${outcome}`, async t => {
+ const app=await open(t), {page}=app;
+ await page.route(app.origin+'/overlap-fixture*',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><main id="cached"><h1>Joe private cached view</h1><button>Cached action</button></main>'}));
+ await page.goto(app.origin+'/overlap-fixture?mode=live');
+ await page.evaluate(async()=>{const {privateSession}=await import('/js/private-session.js');await privateSession().verify();});
+ await seedPrivate(page);
+ const restore=()=>page.evaluate(()=>{
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+ });
+ await restore();
+ await page.waitForFunction(()=>document.documentElement.style.visibility==='');
+ const releases=[], requests=[];
+ let reads=0;
+ for(let i=0;i<2;i++){
+  let release, start;
+  const held=new Promise(resolve=>{release=resolve;});
+  const requested=new Promise(resolve=>{start=resolve;});
+  releases.push(release); requests.push({held,requested,start});
+ }
+ t.after(()=>releases.forEach(release=>release()));
+ await app.context.route('**/auth/session',async route=>{
+  const index=reads++;
+  assert.ok(index<2,'overlapping restores coalesce into one current revalidation');
+  requests[index].start();await requests[index].held;
+  const unavailable=index===0?outcome==='older unavailable':outcome==='unavailable';
+  const actor=index===1&&outcome==='changed'?'dell':'joe';
+  const status=unavailable?503:index===1&&outcome==='denied'?401:200;
+  await route.fulfill({status,json:{actor:{slug:actor},csrf_token:`synthetic-${actor}`}});
+ });
+ await restore();await requests[0].requested;
+ await restore();
+ releases[0]();await requests[1].requested;
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ assert.equal(await page.locator('html').evaluate(node=>getComputedStyle(node).visibility),'hidden','old restore response must not release the newer restore fence');
+ assert.equal(await page.getByRole('button',{name:'Cached action'}).isVisible(),false);
+ releases[1]();
+ if(outcome==='changed'||outcome==='denied'){
+  await page.waitForURL('**/public-shell/session-ended.html');await assertPurged(page);
+ }else{
+  await page.waitForFunction(()=>document.documentElement.style.visibility==='');
+  assert.equal(await page.locator('#cached').evaluate(node=>node.inert),outcome==='unavailable');
+  assert.equal(await page.locator('[data-session-restore-paused]').count(),outcome==='unavailable'?1:0);
+ }
+ assert.deepEqual(app.errors,[]);
+});
+
 test('S1 browser: revocation clears a private tab title before asynchronous storage cleanup', async t => {
  const app=await open(t);
  const title=await app.page.evaluate(async()=>{

@@ -1,8 +1,17 @@
 stateDiagram-v2
   [*] --> CachedView
   CachedView --> CheckingSession: History restores the page; hide cached controls
-  CheckingSession --> CheckingSession: An older check finishes; keep cached controls hidden
-  CheckingSession --> VerifiedView: A fresh check confirms the same session
-  CheckingSession --> SessionEnded: A fresh check finds a changed or denied session
-  CheckingSession --> PausedView: Verification is unavailable or the read budget refuses it
-  PausedView --> CheckingSession: Allowed user interaction resumes verification
+  VerifiedView --> CheckingSession: History restores again; hide cached controls
+  PausedView --> CheckingSession: History restores or allowed input resumes verification
+  CheckingSession --> CheckingSession: Another restore supersedes the pending verification
+  CheckingSession --> CheckingSession: An older response completes; keep cached controls hidden
+  CheckingSession --> VerifiedView: Latest verification confirms the same session
+  CheckingSession --> SessionEnded: Verification denies access or detects a changed session
+  CheckingSession --> PausedView: Latest verification is unavailable or its budget refuses it
+  PausedView --> PausedView: Read budget still refuses verification; controls stay inert
+  SessionEnded --> [*]: Replace the retired document
+  %% never: An older successful or unavailable response releases a newer restore fence.
+  %% never: Cached controls become interactive before the latest verification succeeds.
+  %% Each persisted pageshow increments restoreGeneration before revalidation.
+  %% Each poll captures that generation. Only its current owner can render completion.
+  %% Revocation remains terminal even if a denied response belongs to an older request.
