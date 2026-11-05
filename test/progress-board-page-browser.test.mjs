@@ -95,7 +95,11 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
 }
 
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
-  const { page, context, errors } = await open(t, { unfinished });
+  const snapshot = Promise.withResolvers();
+  t.after(() => snapshot.resolve());
+  const { page, context, errors } = await open(t, { unfinished, control: async (_route, rpc) => {
+    if (rpc.name === 'read-progress-board') await snapshot.promise;
+  } });
   await page.locator('[data-board-id="carr-v5"]').waitFor({ state: 'attached' });
   await page.getByText('Published boards', { exact: true }).click();
   const link = page.locator('[data-board-id="carr-v5"]');
@@ -104,6 +108,8 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   await link.click();
   const board = opened ? await opened : page;
   await board.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
+  snapshot.resolve();
+  await board.locator('#board-meta[data-read-state="published"]').waitFor({ state: 'attached' });
   assert.equal(await board.locator('#board-title').textContent(), 'System Job Board');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
   assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)),
