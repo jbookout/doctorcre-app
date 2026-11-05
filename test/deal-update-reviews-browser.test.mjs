@@ -33,9 +33,14 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `overdue-${width}-${theme}`, viewer: 'joe', reset: true } });
     const writes = [];
+    let holdAgenda = false, releaseAgenda, agendaStarted;
+    const agendaHeld = new Promise(resolve => { releaseAgenda = resolve; });
+    const agendaEntered = new Promise(resolve => { agendaStarted = resolve; });
+    t.after(() => releaseAgenda());
     let rows = [row, { ...row, assessment_id: '10000000-0000-4000-8000-000000000002', assessment: { ...row.assessment, action: { ...row.assessment.action, id: '30000000-0000-4000-8000-000000000002', description: 'Ask for the floor plan' }, quote: null, update: 'The floor plan may be ready for review.' } }];
     await page.route('**/mcp', async route => {
       const { name, arguments: args } = route.request().postDataJSON().params;
+      if (name === 'read-home-agenda' && holdAgenda) { agendaStarted(); await agendaHeld; }
       let result;
       if (name === 'read-deal-update-reviews') result = { schema_version: 'deal-update-reviews.v1', proposals: rows };
       else if (name === 'review-deal-update') {
@@ -63,12 +68,16 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
     await panel.getByRole('button', { name: 'Confirm', exact: true }).first().click();
     await panel.getByText('Task marked done.', { exact: true }).waitFor();
+    await page.waitForFunction(() => document.getElementById('refreshHome').getAttribute('aria-busy') === 'false');
+    holdAgenda = true;
     await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
     await panel.getByText('Dismissed. Task remains open.', { exact: true }).waitFor();
     assert.deepEqual(writes.map(({ decision, assessment_id }) => ({ decision, assessment_id })), [{ decision: 'resolve', assessment_id: row.assessment_id }, { decision: 'dismiss', assessment_id: '10000000-0000-4000-8000-000000000002' }]);
     assert.ok(writes.every(args => args.idempotency_key && args.reason));
+    await agendaEntered;
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
-    await panel.getByText('No overdue reviews.', { exact: true }).waitFor();
+    releaseAgenda();
+    await panel.getByText('No overdue reviews.', { exact: true }).waitFor({ timeout: 5000 });
     assert.deepEqual(errors, []);
   });
 }
