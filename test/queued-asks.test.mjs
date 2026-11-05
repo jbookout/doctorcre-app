@@ -131,23 +131,33 @@ test('asks queued during a held submission drain without retrying unknown outcom
  assert.equal(calls[1].body,'Second');
 });
 
-for (const failure of ['corrupt', 'storage']) test(`receipt update isolates ${failure} during submission`, async () => {
+for (const failure of ['corrupt', 'conversation', 'idempotency_key', 'storage']) for (const arrival of ['accepted','refused','unknown','rejected']) test(`receipt update isolates ${failure} during ${arrival} arrival`, async () => {
  const storage=memory(),calls=[],prefix=`doctorcre:asks:v1:joe:${conversation}:`;
  let serial=0,finish;
  const box=createAskOutbox({storage,actor:'joe',conversation,online:()=>true,
   uuid:()=>`22222222-2222-4222-8222-${String(++serial).padStart(12,'0')}`,
-  submit:request=>{calls.push(request);return calls.length===1?new Promise(resolve=>{finish=()=>resolve(receipt(request));}):receipt(request);}});
+  submit:request=>{calls.push(request);return calls.length===1?new Promise((resolve,reject)=>{finish=()=>{
+   if(arrival==='rejected') reject(Error('lost receipt'));
+   else resolve(arrival==='accepted'?receipt(request):arrival==='unknown'?{}:{...receipt(request),ok:false,status:'refused',reason:'not_available'});
+  };}):receipt(request);}});
  box.saveDraft('First');const first=box.enqueue();box.saveDraft('Second');box.enqueue();box.saveDraft('Current draft');
- const pending=box.flush();
- if(failure==='corrupt') storage.setItem(prefix+first.idempotency_key,'{');
- else storage.setItem=()=>{throw Error('access denied');};
+ const pending=box.flush(),heldKey=prefix+first.idempotency_key;
+ const request={...first};
+ if(failure==='conversation') request.conversation_id=key;
+ if(failure==='idempotency_key') request.idempotency_key=key;
+ const raw=failure==='corrupt'?'{':JSON.stringify({kind:'submitting',request});
+ if(failure==='storage') storage.setItem=()=>{throw Error('access denied');};
+ else {storage.setItem(heldKey,raw);assert.deepEqual(box.recovery(),[heldKey]);}
  finish();
  if(failure==='storage') {await assert.rejects(pending,/access denied/);assert.equal(calls.length,1);return;}
  await pending;
+ assert.equal(storage.getItem(heldKey),raw,'receipt must preserve held bytes');
+ assert.deepEqual(box.recovery(),[heldKey]);
  assert.deepEqual(calls.map(r=>r.body),['First','Second']);
- assert.equal(box.entries()[0].kind,'accepted');assert.equal(box.draft(),'Current draft');
- assert.equal(storage.getItem(prefix+first.idempotency_key),'{');
- assert.deepEqual(box.recovery(),[prefix+first.idempotency_key]);
+ assert.deepEqual(calls[0],first);assert.equal(box.entries()[0].kind,'accepted');assert.equal(box.draft(),'Current draft');
+ const reopened=setup(storage);reopened.connect();await reopened.box.flush();
+ assert.equal(reopened.calls.length,0);assert.deepEqual(reopened.box.recovery(),[heldKey]);
+ assert.equal(storage.getItem(heldKey),raw);
 });
 for (const kind of ['queued','unknown','refused','accepted','corrupt']) test(`stop retires ${kind} without changing saved bytes`,async()=>{
  const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
