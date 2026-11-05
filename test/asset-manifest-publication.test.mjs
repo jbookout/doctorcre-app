@@ -67,7 +67,7 @@ test('declared production proof follows built and renamed assets and refuses con
   const requirement = JSON.parse(await readFile(join(root, 'proofs/requirements/asset-manifest-publication.json')));
   assert.ok(requirement.assertions[0].predicate.includes('scripts/prove-asset-manifest-publication.mjs'));
   const payload = new Map(await Promise.all(built.manifest.files.map(async row => [row.path, await readFile(join(outDir, 'site', row.path))])));
-  for (const mode of ['built', 'renamed', 'identity', 'corrupt', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
+  for (const mode of ['built', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
     const manifest = structuredClone(built.manifest), files = new Map(payload), seen = [];
     if (mode === 'renamed') for (const row of manifest.files.filter(row => row.path.startsWith('js/') && row.path.endsWith('.js'))) {
       const next = row.path.replace('js/', 'js/renamed-');
@@ -90,7 +90,9 @@ test('declared production proof follows built and renamed assets and refuses con
           if (mode === 'redirect') return new Response(null, { status: 302, headers: { location: '/business' } });
           const data = files.get(name);
           if (!data || mode === 'missing') return new Response(null, { status: 404 });
-          return new Response(mode === 'corrupt' ? Buffer.from('corrupt') : data);
+          const content = Buffer.from(data);
+          if (mode === 'digest') content[0] ^= 1;
+          return new Response(mode === 'corrupt' ? Buffer.from('corrupt') : content);
         } },
       });
       res.writeHead(response.status, mode === 'cache' ? { ...Object.fromEntries(response.headers), 'cache-control': 'public' } : Object.fromEntries(response.headers));
@@ -113,5 +115,6 @@ test('declared production proof follows built and renamed assets and refuses con
     }
     assert.ok(seen.length <= requirement.safety.max_requests);
     assert.ok(seen.every(row => row.method === 'GET' && row.path !== '/business'));
+    if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`)).status, 403);
   });
 });
