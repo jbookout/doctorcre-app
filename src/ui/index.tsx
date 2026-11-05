@@ -33,3 +33,5 @@ export { mountTerritoryEvidence } from './territory-evidence';
 export { mountIdealClientProfile } from './ideal-client-profile';
 export { mountDealTours } from './deal-tours';
 export { mountDealDocuments } from './deal-documents';
+
+export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
