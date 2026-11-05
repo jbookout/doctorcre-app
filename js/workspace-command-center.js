@@ -14,7 +14,7 @@ import { homeClient } from './home-boot.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
-import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
+import { agendaSnapshot, createHomeReadQueue, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
 import { mountHomeWeek } from './home-week-view.js';
@@ -51,7 +51,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
   let snapshotDocObservedAt = null, calendar = null, meetingPrep = null, prepEpoch = 0;
   let relationshipDialog = null, pastWidget = null, reasons = null, secondaryRequested = false;
-  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard, meetingTimeZone = BUSINESS_TIME_ZONE;
+  let agendaExpanded = false, agendaView = 'all', meetingTimeZone = BUSINESS_TIME_ZONE;
+  const readQueue = createHomeReadQueue();
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
     openReport: async (session, { signal }) => {
@@ -197,7 +198,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const refresh = async ({ signal } = {}) => {
-    const read = nextRead; nextRead = readHomeDashboard;
+    const read = readQueue.take();
     const agendaOnly = read === readHomeAgenda;
     if (!agendaOnly) { void refreshOverdueReviews(); void emailReview?.refresh(); if (emailActivity?.open) void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
@@ -307,7 +308,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
     if (event.target.closest('[data-agenda-retry]')) {
       if (snapshot?.loading || snapshot?.unauthorized) return;
-      nextRead = readHomeAgenda;
+      readQueue.request(readHomeAgenda);
       auto.refresh();
       return;
     }
@@ -369,7 +370,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   document.addEventListener('doctorcre:brief-calendar', updateCalendar);
   document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
   window.addEventListener('doctorcre-session-invalidated', clearCalendar);
-  $('refreshHome').addEventListener('click', () => { nextRead = readHomeDashboard; void auto.revalidate(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
+  $('refreshHome').addEventListener('click', () => { readQueue.request(readHomeDashboard); void auto.revalidate(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
   function loadSecondaryPanels() {
     if (secondaryRequested) return;
     secondaryRequested = true;
@@ -417,7 +418,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const { mountDealUpdateReviews } = await import('./ui-deal-reviews.js');
       if (stale()) return;
       overdueReviews = mountDealUpdateReviews({ container: host, client, initialResult: result, sourceTime, readWithDeadline, uuidv4,
-        onChange: () => { nextRead = readHomeAgenda; void auto.refresh(); } });
+        onChange: () => { readQueue.request(readHomeAgenda); void auto.refresh(); } });
       await overdueReviews.refresh();
     } catch {
       if (!stale()) paint('Could not load overdue reviews. Refresh Home to try again.');
@@ -451,7 +452,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   if ($('homeEmailFollowups') && client.listEmailProposals) emailInitialRead = import('./email-followups.js').then(({ mountEmailFollowups }) => {
     if (disposed || emailRetired) return;
     emailReview = mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => {
-      if (emailActivity?.open) void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+      if (emailActivity?.open) void replyOutcomes?.refresh(); readQueue.request(readHomeAgenda); auto.refresh();
     } });
     return emailReview.refresh();
   });

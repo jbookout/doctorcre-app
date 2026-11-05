@@ -1,0 +1,19 @@
+stateDiagram-v2
+  [*] --> Default
+  state "Next automatic read loads all Home data" as Default
+  state "Next read updates calendar only" as Agenda
+  state "Full Home refresh waiting" as Full
+  Default --> Agenda: Review decision succeeds
+  Default --> Full: Click Refresh Home
+  Agenda --> Agenda: Another review decision succeeds
+  Agenda --> Full: Click Refresh Home
+  Full --> Full: Another review decision succeeds
+  Full --> Full: Click Refresh Home again
+  Default --> Default: Start full read
+  Agenda --> Default: Start calendar read
+  Full --> Default: Start full read
+  %% A waiting full Home refresh must not become a calendar-only read.
+  %% test/home-read-queue.test.mjs exercises the request pairs and each consume edge.
+  %% test/deal-update-reviews-browser.test.mjs drives the held agenda, full request,
+  %% later decision and actual full read in the running app.
+  %% In-flight reads, timeout and disposal belong to the existing auto-refresh lifecycle.
