@@ -12,7 +12,7 @@ export async function observeTaskReceipts(page, assetUrl) {
     const receipt = { ok: true, action_id: args.action_id, status: 'done', version: 2, completion_event_id: event };
     for (const [name, fields] of [['absent', { completion_event_id: undefined }], ['null', { completion_event_id: null }], ['malformed', { completion_event_id: 'bad' }], ['unrelated', { action_id: event }], ['contradictory', { status: 'open' }], ['stale', { version: 1 }]]) {
       let refused = false;
-      try { await completeAction({ completeOneAction: async () => ({ ...receipt, ...fields }) }, args); } catch { refused = true; }
+      try { await completeAction({ completeOneAction: async () => { const value = { ...receipt, ...fields }; if (name === 'absent') delete value.completion_event_id; return value; } }, args); } catch { refused = true; }
       check(refused, `done refuses ${name}`);
     }
     check((await completeAction({ completeOneAction: async () => receipt }, args)).completion_event_id === event, 'valid completion admitted');
@@ -29,7 +29,7 @@ export async function observeTaskReceipts(page, assetUrl) {
     const snapshot = { details: new Map([['synthetic', { next_actions: [row] }]]) };
     let reads = 0, updates = 0;
     const writes = [];
-    const client = { completeOneAction: async value => { writes.push(structuredClone(value)); return { ...receipt, completion_event_id: writes.length === 1 ? undefined : event }; }, getDeal: async () => { reads++; return { next_actions: [{ ...row, status: 'done' }] }; } };
+    const client = { completeOneAction: async value => { writes.push(structuredClone(value)); return writes.length === 1 ? { ok: true, action_id: args.action_id, status: 'done', version: 2 } : receipt; }, getDeal: async () => { reads++; return { next_actions: [{ ...row, status: 'done' }] }; } };
     try {
       await complete(host, button, client, () => updates++, () => true, snapshot);
       check(updates === 0 && reads === 0 && !button.disabled, 'missing event keeps completion available without readback');

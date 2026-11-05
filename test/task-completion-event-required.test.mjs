@@ -20,7 +20,7 @@ for (const [name, fields] of [['absent', { completion_event_id: undefined }], ['
 }
 test('completeAction retries exact request after missing event', async () => {
   const writes = [];
-  const client = { completeOneAction: async value => { writes.push(structuredClone(value)); return { ...receipt, completion_event_id: writes.length === 1 ? null : event }; } };
+  const client = { completeOneAction: async value => { writes.push(structuredClone(value)); return writes.length === 1 ? { ok: true, action_id: args.action_id, version: 2, status: 'done' } : receipt; } };
   await assert.rejects(completeAction(client, args));
   assert.equal((await completeAction(client, args)).completion_event_id, event);
   assert.deepEqual(writes, [args, args]);
@@ -40,7 +40,7 @@ test('actual Home client requires event before readback and recovers by exact re
     if (name === 'read-home-inbox-v3') { reads++; return { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [current], working_collapsed: true, auto_settle_enabled: true }; }
     writes.push(structuredClone(value));
     if (name === 'reopen-one-action') { Object.assign(current, { source_state: 'needs_attention', action_version: 3 }); return { ...receipt, version: 3, status: 'open' }; }
-    return { ...receipt, completion_event_id: ++attempts === 1 ? undefined : event };
+    return ++attempts === 1 ? { ok: true, action_id: args.action_id, version: 2, status: 'done' } : receipt;
   });
   const request = taskCommand('complete', item());
   await assert.rejects(client.run(request));
