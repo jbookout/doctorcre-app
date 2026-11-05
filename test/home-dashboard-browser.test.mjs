@@ -1244,7 +1244,7 @@ test('Home Done waits for closed action readback and leaves its sibling', async 
   t.after(() => release());
   const { page, completionRequests } = await open(t, { actionCompletion: {
     read: async deal => { if (deal !== 'd01') return []; if (written) await readback; return structuredClone(rows); },
-    write: async args => { written = true; rows[0].status = 'done'; rows[0].version = 2; return { ok: true, action_id: args.action_id, status: 'done', version: 2 }; },
+    write: async args => { written = true; rows[0].status = 'done'; rows[0].version = 2; return { ok: true, action_id: args.action_id, status: 'done', version: 2, completion_event_id: '00000000-0000-4000-8000-000000000009' }; },
   } });
   const cards = page.locator('#homeBrief article');
   await cards.first().getByRole('button', { name: 'Done', exact: true }).click();
@@ -1266,7 +1266,7 @@ test('Home Done refreshes a changed task before a new completion', async t => {
     write: async args => {
       if (++attempts === 1) { Object.assign(rows[0], { description: 'Demo updated task', version: 2 }); return { error: 'version_conflict', current_version: 2 }; }
       Object.assign(rows[0], { status: 'done', version: 3 });
-      return { ok: true, action_id: args.action_id, status: 'done', version: 3 };
+      return { ok: true, action_id: args.action_id, status: 'done', version: 3, completion_event_id: '00000000-0000-4000-8000-000000000009' };
     },
   } });
   await page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true }).click();
@@ -1313,7 +1313,7 @@ test('Home Done keeps a task on unknown outcomes and retries the same request', 
     read: async deal => deal === 'd01' ? structuredClone(rows) : [],
     write: async args => {
       if (++attempts === 1) throw Error('Connection lost');
-      rows[0].status = 'done'; return { ok: true, action_id: args.action_id, status: 'done', version: 2 };
+      rows[0].status = 'done'; return { ok: true, action_id: args.action_id, status: 'done', version: 2, completion_event_id: '00000000-0000-4000-8000-000000000009' };
     },
   } });
   const card = page.locator('#homeBrief article').first();
@@ -1337,7 +1337,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     rows[0].description = 'Demo follow-up with the practice team to review the updated property options, confirm tour availability with the listing contact and collect the revised floor plans before the next client meeting';
     const { page, errors } = await open(t, { width, theme, actionCompletion: {
       read: async deal => deal === 'd01' ? structuredClone(rows) : [],
-      write: async args => { rows[0].status = 'done'; return { ok: true, action_id: args.action_id, status: 'done', version: 2 }; },
+      write: async args => { rows[0].status = 'done'; return { ok: true, action_id: args.action_id, status: 'done', version: 2, completion_event_id: '00000000-0000-4000-8000-000000000009' }; },
     } });
     const button = page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true });
     await button.waitFor();
@@ -1362,7 +1362,7 @@ test('Home Done keeps the card when readback still shows it open', async t => {
   const rows = doneRows();
   const { page, completionRequests } = await open(t, { actionCompletion: {
     read: async deal => deal === 'd01' ? structuredClone(rows) : [],
-    write: async args => ({ ok: true, action_id: args.action_id, status: 'done', version: 2 }),
+    write: async args => ({ ok: true, action_id: args.action_id, status: 'done', version: 2, completion_event_id: '00000000-0000-4000-8000-000000000009' }),
   } });
   const button = page.locator('#homeBrief article').first().getByRole('button', { name: 'Done', exact: true });
   await button.click();
@@ -1391,7 +1391,7 @@ test('Home Done retains its card through a concurrent agenda refresh until readb
   t.after(() => release());
   const { page } = await open(t, { actionCompletion: {
     read: async deal => { if (deal !== 'd01') return []; if (written) await blocked; return structuredClone(rows); },
-    write: async args => { written = true; return { ok: true, action_id: args.action_id, status: 'done', version: 2 }; },
+    write: async args => { written = true; return { ok: true, action_id: args.action_id, status: 'done', version: 2, completion_event_id: '00000000-0000-4000-8000-000000000009' }; },
   } });
   let readStarted;
   const readback = new Promise(resolve => { readStarted = resolve; });

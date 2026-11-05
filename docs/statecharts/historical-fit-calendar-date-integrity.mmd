@@ -1,0 +1,24 @@
+stateDiagram-v2
+  %% clear/dispose lifecycle edges are exercised through mountIdealClientProfile in historical-fit-calendar-date-integrity-browser.test.mjs.
+  %% CLI --help exits before proof execution and does not enter the UI lifecycle.
+  [*] --> idle
+  idle --> loading: Open history
+  loading --> valid_history: Current receipt, all evidence dates canonical
+  loading --> invalid_history_unavailable: Current receipt, invalid evidence or read failure
+  valid_history --> loading: Apply filters or refresh
+  invalid_history_unavailable --> retrying: Refresh history
+  retrying --> valid_history: Current receipt, all evidence dates canonical
+  retrying --> invalid_history_unavailable: Invalid evidence or read failure
+  loading --> loading: New filters supersede receipt
+  loading --> cleared: Session invalidation or pagehide
+  retrying --> cleared: Session invalidation or pagehide
+  valid_history --> cleared: Clear
+  invalid_history_unavailable --> cleared: Clear
+  cleared --> loading: Reopen history
+  loading --> disposed: Dispose
+  retrying --> disposed: Dispose
+  valid_history --> disposed: Dispose
+  invalid_history_unavailable --> disposed: Dispose
+  idle --> disposed: Dispose
+  cleared --> disposed: Dispose
+  disposed --> [*]

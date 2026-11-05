@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> saved_valid: Keep a valid draft
+  saved_valid --> corrected: Select and review
+  [*] --> restored_invalid_date: Load a stored impossible date
+  restored_invalid_date --> review_required: Select draft, retain sentence and show original date
+  review_required --> review_required: File or keep without correcting, nothing sent
+  review_required --> corrected: Choose a valid date
+  corrected --> removed: File successfully with the verified account
+  review_required --> actor_invalidated: Account changes, hide previous text
+  corrected --> actor_invalidated: Account changes
+  actor_invalidated --> saved_valid: Verified account loads its own drafts
+  removed --> [*]
+  %% never File while the saved date still requires review

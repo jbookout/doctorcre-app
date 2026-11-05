@@ -207,6 +207,7 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
   const siteDir = join(outDir, "site");
   await rm(siteDir, { recursive: true, force: true });
   await mkdir(siteDir, { recursive: true });
+  await writeFile(join(siteDir, "artifact-manifest.json"), manifestContent);
   for (const [path, content] of files) {
     const deploymentPath = join(siteDir, path);
     await mkdir(dirname(deploymentPath), { recursive: true });
@@ -302,6 +303,8 @@ export async function runCli(root, args = process.argv.slice(2)) {
       // Use the reconstructed, committed source bytes, never a restored dist/site.
       const siteDir = join(outDir, "site");
       await rm(siteDir, { recursive: true, force: true });
+      await mkdir(siteDir, { recursive: true });
+      await writeFile(join(siteDir, "artifact-manifest.json"), expected.manifestContent);
       for (const [path, bytes] of expected.files) {
         await mkdir(dirname(join(siteDir, path)), { recursive: true });
         await writeFile(join(siteDir, path), bytes);
