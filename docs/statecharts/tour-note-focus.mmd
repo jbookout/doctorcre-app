@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> Ready
+    Ready: Tour notes visible
+    Reading: Tour notes visible during refresh
+    Editing: New notes remain in the editor
+    Saved: New notes saved and visible
+    Ready --> Reading: Focus notes starts background read
+    Reading --> Editing: Type before read finishes
+    Editing --> Editing: Read finishes without replacing local notes
+    Editing --> Saved: Save now confirms the typed notes
+    Reading --> Ready: Read finishes before typing
+    Ready --> Editing: Type notes
+    %% never: A background read hides the note editor and loses native typing.
+    %% never: A completed background read replaces notes typed while it was pending.
