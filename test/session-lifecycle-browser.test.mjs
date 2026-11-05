@@ -153,7 +153,7 @@ test('S1 browser: history restore verifies afresh when an older session check is
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
 
-for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavailable', 'superseded twice']) test(`S1 browser: overlapping restores keep cached controls hidden until latest verification is ${outcome}`, async t => {
+for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavailable', 'superseded twice', 'older denied']) test(`S1 browser: overlapping restores keep cached controls hidden until latest verification is ${outcome}`, async t => {
  const app=await open(t), {page}=app;
  await page.route(app.origin+'/overlap-fixture*',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><main id="cached"><h1>Joe private cached view</h1><button>Cached action</button></main>'}));
  await page.goto(app.origin+'/overlap-fixture?mode=live');
@@ -180,13 +180,19 @@ for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavai
   requests[index].start();await requests[index].held;
   const unavailable=index===0?outcome==='older unavailable':outcome==='unavailable';
   const actor=index===1&&outcome==='changed'?'dell':'joe';
-  const status=unavailable?503:index===1&&outcome==='denied'?401:200;
+  const denied=index===0?outcome==='older denied':outcome==='denied';
+  const status=unavailable?503:denied?401:200;
   await route.fulfill({status,json:{actor:{slug:actor},csrf_token:`synthetic-${actor}`}});
  });
  await restore();await requests[0].requested;
  await restore();
  if(outcome==='superseded twice')await restore();
- releases[0]();await requests[1].requested;
+ releases[0]();
+ if(outcome==='older denied'){
+  await page.waitForURL('**/public-shell/session-ended.html');await assertPurged(page);
+  assert.deepEqual(app.errors,[]);return;
+ }
+ await requests[1].requested;
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  assert.equal(await page.locator('html').evaluate(node=>getComputedStyle(node).visibility),'hidden','old restore response must not release the newer restore fence');
  assert.equal(await page.getByRole('button',{name:'Cached action'}).isVisible(),false);
