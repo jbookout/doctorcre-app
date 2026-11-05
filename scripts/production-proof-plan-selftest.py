@@ -64,6 +64,24 @@ class AdmissionTest(unittest.TestCase):
                 self.assertEqual(decision.status, status, decision)
                 self.assertIn(reason, decision.reason)
 
+    def test_performance_harness_declaration_keeps_product_proof_required(self):
+        harness = 'scripts/performance-scenarios.mjs'
+        paths = (harness, 'test/performance-scenarios-browser.test.mjs')
+        cases = [
+            (paths, 'admitted', 'non-product'),
+            ((*paths, 'src/ui/home/home.tsx'), 'refused', 'n/a requires'),
+            ((*paths, 'js/home-dashboard.js'), 'refused', 'n/a requires'),
+            ((*paths, 'scripts/prepare-offline-tour.mjs'), 'refused', 'n/a requires'),
+            ((harness + '.extra',), 'refused', 'n/a requires'),
+            (('scripts/performance-scenarios-other.mjs',), 'refused', 'n/a requires'),
+        ]
+        for changed, status, reason in cases:
+            with self.subTest(paths=changed):
+                decision = self.adapter.admission(
+                    self.snapshot(paths=changed), self.validator, self.contract)
+                self.assertEqual(decision.status, status, decision)
+                self.assertIn(reason, decision.reason)
+
     def test_pure_core_never_reads_git_files_or_network(self):
         with patch('subprocess.check_output', side_effect=AssertionError('subprocess')), \
              patch.object(Path, 'read_text', side_effect=AssertionError('file read')):
