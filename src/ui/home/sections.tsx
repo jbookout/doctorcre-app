@@ -24,7 +24,8 @@ export function HomeWelcome() {
   return <header className="home-welcome"><p className="home-kicker">YOUR DAY, IN FOCUS</p><p className="home-date">{new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</p><h1>Welcome home.</h1><p>Review what matters. Keep your day moving.</p></header>;
 }
 
-export function HomeSections({ items, current, row }: { items: readonly InboxItem[]; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
+export function HomeSections({ items, pinned, current, row }: { items: readonly InboxItem[]; pinned?: InboxItem | null; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
+  const placement = (item: InboxItem) => item.item_id === pinned?.item_id ? pinned : item;
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -38,14 +39,16 @@ export function HomeSections({ items, current, row }: { items: readonly InboxIte
     return () => clearTimeout(timer);
   }, []);
   const today = day(now);
-  const completed = completionGroups(items, now);
-  const dueToday = (item: InboxItem) => item.section === 'inbox' && item.due_on === today;
+  const completed = completionGroups(items.map(placement), now);
+  const dueToday = (item: InboxItem) => placement(item).section === 'inbox' && placement(item).due_on === today;
+
   return <div className="home-sections"><nav className="home-shortcuts" aria-label="Review workflows"><a href="/review-workflows#homeCallTasks">Call follow-ups ↗</a><a href="/review-workflows#homeEmailFollowups">Email and filings ↗</a><a href="/deals">Next steps ↗</a></nav>
-    <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => item.section === 'inbox' && !dueToday(item))} current={current} row={row} />
+    <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => placement(item).section === 'inbox' && !dueToday(item))} current={current} row={row} />
     <Slice title="Today" detail="Your tasks dated today." items={items.filter(dueToday)} current={current} row={row} />
-    <Slice title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(item.section))} current={current} row={row} />
-    <Slice title="Done today" detail="Completed today in Chicago, with a recorded completion time." items={completed.today} current={current} row={row} />
-    <Slice title="Earlier and undated completions" detail="Completed before today, or without a recorded completion time." items={completed.earlier} current={current} row={row} />
-    <Slice title="Hidden from inbox" detail="Set aside by you. These tasks may still be open." items={items.filter(item => item.section === 'settled' && !item.auto_settled)} current={current} row={row} />
+    <Slice title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(placement(item).section))} current={current} row={row} />
+    <Slice title="Done today" detail="Completed today in Chicago, with a recorded completion time." items={completed.today.map(done => items.find(item => item.item_id === done.item_id) ?? done)} current={current} row={row} />
+    <Slice title="Earlier and undated completions" detail="Completed before today, or without a recorded completion time." items={completed.earlier.map(done => items.find(item => item.item_id === done.item_id) ?? done)} current={current} row={row} />
+    <Slice title="Hidden from inbox" detail="Set aside by you. These tasks may still be open." items={items.filter(item => placement(item).section === 'settled' && !placement(item).auto_settled)} current={current} row={row} />
+
   </div>;
 }

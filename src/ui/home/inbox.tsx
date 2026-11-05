@@ -1,3 +1,4 @@
+import { parseReference, parseReview, type ReviewReference, type ReviewRequest } from './review';
 import { parseBatch, type BatchRequest, type BatchResult } from './batch';
 import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
 type BaseItem = Readonly<{
@@ -10,7 +11,7 @@ type BaseItem = Readonly<{
 export type InboxItem = BaseItem & Readonly<{
   completed_at: string | null; auto_settled: boolean; context_label: string | null; due_on: string | null; open_url: string | null;
   kind_label: 'Task' | 'Call follow-up' | 'Call' | 'Reply draft' | 'Update' | 'Fact review' | 'Tour feedback';
-  merged_source_ids: string[];
+  merged_source_ids: string[]; review_reference?: ReviewReference | null;
 }> & (Readonly<{ source_type: 'next_action' | 'capture_post_call_action'; action_id: string; action_version: number; deal_id: string | null }> |
   Readonly<{ source_type: 'capture_session' | 'email_proposal' | 'notification' | 'fact_review' | 'tour_feedback'; action_id: null; action_version: null; deal_id: string | null }>);
 export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3' | 'home-inbox.v4'; auto_settle_enabled: true }>);
@@ -54,7 +55,8 @@ export function parseItem(value: unknown, v3 = false, v4 = false): InboxItem {
     !['capture_session', 'email_proposal', 'notification', ...(v3 ? ['fact_review', 'tour_feedback'] : [])].includes(legacy.source_type) || value.action_id !== null || value.action_version !== null) throw Error('Inbox returned unreadable completion identity. Refresh to try again.');
   if (v3 && (typeof value.auto_settled !== 'boolean' || value.auto_settled && (legacy.section !== 'settled' || legacy.disposition !== 'settled' || legacy.source_state !== 'done' || legacy.explicit_unsettle || !['next_action', 'capture_post_call_action', 'email_proposal', 'fact_review', 'tour_feedback'].includes(legacy.source_type)))) throw Error('Inbox returned unreadable settlement context. Refresh to try again.');
   if (v4 && !(value.completed_at === null || typeof value.completed_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value.completed_at) && timestamp(value.completed_at) && new Date(value.completed_at).toISOString().slice(0, 19) === value.completed_at.slice(0, 19)) || v4 && legacy.source_state !== 'done' && value.completed_at !== null) throw Error('Inbox returned unreadable completion time. Refresh to try again.');
-  return { ...value, completed_at: v4 ? value.completed_at : null, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
+  const reference = v3 ? parseReference(value.review_reference) : null;
+  return { ...value, ...(value.review_reference === undefined ? {} : { review_reference: reference && reference.item_id === legacy.item_id && reference.source_version === legacy.source_version ? reference : null }), completed_at: v4 ? value.completed_at : null, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
 }
 export function parseSnapshot(value: unknown): Snapshot {
   if (!object(value) || value.ok !== true || (value.schema_version !== 'home-inbox.v2' && value.schema_version !== 'home-inbox.v3' && value.schema_version !== 'home-inbox.v4') || !Array.isArray(value.items) || value.items.length > 1000 ||
@@ -95,7 +97,7 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
     return { item_id, ok: false, error: object(row) && text(row.error) ? row.error : 'Result uncertain. Retry the same request.', ...(object(row) && text(row.current_version) ? { current_version: row.current_version } : {}) };
   });
 }
-export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
+export type InboxClient = { review?: { current(item: InboxItem): Promise<InboxItem>; load(item: InboxItem, signal?: AbortSignal): Promise<ReturnType<typeof parseReview>>; run(item: InboxItem, request: ReviewRequest): Promise<{ item: InboxItem; receipt?: TaskReceipt; saved_version?: number }> }; read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
     // eslint-disable-next-line no-restricted-syntax -- At most three version reads; only unknown_tool advances to the next version.
@@ -114,6 +116,37 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
   }
   return {
     read,
+    review: {
+      async current(item) {
+        const current = (await read()).items.find(row => row.item_id === item.item_id);
+        if (!current) throw Object.assign(Error('Card no longer available.'), { payload: { error: 'home_review_not_found' } });
+        return current;
+      },
+      async load(item, signal) {
+        if (!item.review_reference) throw Error('This card has no inline review.');
+        const value = await rpc('read-home-review', { item_id: item.item_id, source_version: item.source_version }, signal);
+        if (object(value) && typeof value.error === 'string') throw Object.assign(Error(value.error), { payload: value });
+        const detail = parseReview(value, item.review_reference);
+        if (detail.operations.some(op => op.verb === 'complete-one-action' ? op.args.action_id !== item.action_id : op.verb === 'resolve-fact-review' ? JSON.stringify([op.args.entity_ref, op.args.fact_key]) !== item.source_id : op.args.proposal_id !== item.source_id)) throw Error('Review source does not match this card.');
+        return detail;
+      },
+      async run(item, request) {
+        if (navigator.onLine === false) throw Error('Offline. Nothing was sent.');
+        const value = await rpc(request.verb, request.args);
+        if (object(value) && typeof value.error === 'string') throw Object.assign(Error(value.error), { payload: value });
+        if (!object(value) || value.ok !== true) throw Error('Receipt unavailable.');
+        let receipt: TaskReceipt | undefined;
+        if (request.verb === 'complete-one-action') {
+          if (typeof request.args.action_id !== 'string' || typeof request.args.base_version !== 'number') throw Error('Task identity unavailable.');
+          receipt = parseActionReceipt(value, { action_id: request.args.action_id, base_version: request.args.base_version, idempotency_key: request.args.idempotency_key }, 'done');
+        } else if (request.verb === 'resolve-fact-review') {
+          if (value.schema_version !== 'fact-review.v1' || !object(value.review_receipt) || value.review_receipt.entity_ref !== request.args.entity_ref || value.review_receipt.fact_key !== request.args.fact_key) throw Error('Review receipt unavailable.');
+        } else if (value.proposal_id !== item.source_id || !Number.isSafeInteger(value.version) || typeof value.version !== 'number' || typeof request.args.base_version !== 'number' || value.version <= request.args.base_version) throw Error('Draft receipt unavailable.');
+        const current = (await read()).items.find(row => row.item_id === item.item_id);
+        if (!current) throw Error('Receipt received, but exact card readback is unavailable.');
+        return { item: current, ...(request.verb === 'edit-email-draft' && typeof value.version === 'number' ? { saved_version: value.version } : {}), ...(receipt && current.action_id === receipt.action_id && current.action_version === receipt.version && current.source_state === 'done' ? { receipt } : {}) };
+      },
+    },
     async batch(request, expected) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
       const receipt = parseBatch(await rpc(`${request.action}-home-inbox`, request.args), request, expected);

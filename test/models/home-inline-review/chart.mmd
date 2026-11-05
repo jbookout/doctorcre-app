@@ -1,0 +1,20 @@
+stateDiagram-v2
+  [*] --> Collapsed
+  Collapsed --> Loading: Open review
+  Loading --> Ready: Current detail loads
+  Loading --> Refused: Missing, stale, unauthorized or unsupported
+  Ready --> Editing: Type changes
+  Ready --> Submitting: Choose supported operation
+  Editing --> Submitting: Confirm exact content
+  Submitting --> Ready: Draft saved and current detail confirmed
+  Submitting --> Done: Receipt and exact card readback
+  Submitting --> Conflict: Version changed, retain edits
+  Submitting --> Refused: Authority or resolved refusal
+  Submitting --> Uncertain: Connection or receipt unavailable
+  Uncertain --> Submitting: Retry identical request
+  Conflict --> Ready: Updated evidence loaded, retain edits
+  Done --> Collapsed: Close
+  Refused --> Collapsed: Close
+  Loading --> Collapsed: Escape or close before detail arrives
+  Ready --> Collapsed: Escape or close
+  Editing --> Collapsed: Escape or close
