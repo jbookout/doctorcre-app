@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "WR622-S2-plain-playwright-staging",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "app-release-preserves-signed-out-shell",
+      "predicate": "Observe deployed app release ancestry with app-release-live-walk.v1 and walk the signed-out shell read-only. Separately require the standard Playwright staging setup and all specs to pass after Access provisioning and synthetic data availability. This declaration does not claim a passing signed-in suite.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Deployed release contains the test/configuration change and the signed-out shell remains reachable. Signed-in staging stays unproven until its actual Playwright run succeeds.",
+      "input_class": "Read-only deployed release and signed-out shell; no production session exchange or business writes.",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 5,
+    "max_records": 1,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 1048576
+  }
+}

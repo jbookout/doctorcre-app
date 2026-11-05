@@ -1,6 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { requireStagingAuthority, withJourneyFixture } from './journey-fixture.mjs';
-import { leaseDetails } from './journey-flows.mjs';
 
 test.beforeEach(async ({ page }) => {
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
@@ -16,9 +14,22 @@ test('Leases switch missing dates and timeline', async ({ page }) => {
 });
 
 test('A lease opens and closes its details', async ({ page }) => {
-  test.setTimeout(420000);
-  await requireStagingAuthority(page.request);
-  await withJourneyFixture(fixture => leaseDetails(page, fixture));
+  const response = await page.request.get('/api/v1/business/leases');
+  expect(response.ok()).toBe(true);
+  const envelope = await response.json();
+  const { leases } = envelope.data ?? envelope;
+  const lease = leases.find((row: { client_name: string }) => /^Synthetic staging QA .* lease$/.test(row.client_name));
+  expect(lease, 'staging must contain the synthetic lease').toBeDefined();
+  const fixture = { lease };
+  await page.goto('/leases?mode=live');
+  const card = page.locator(`#leaseRadar [data-lease="${fixture.lease.id}"]`);
+  await expect(card).toContainText(fixture.lease.client_name, { timeout: 27000 });
+  await card.click();
+  await expect(page.locator('#leaseDetail')).toBeVisible();
+  await expect(page.locator('#leaseDetailTitle')).toHaveText(fixture.lease.client_name);
+  await expect(page.locator('#leaseDetail a[data-radar-key="client"]')).toHaveAttribute('href', `/clients?record=${fixture.lease.client_id}`);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#leaseDetail')).toBeHidden();
 });
 
 test('Leases search, clear, scope to mine and refresh', async ({ page }) => {
