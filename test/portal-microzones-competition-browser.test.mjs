@@ -1,0 +1,147 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile, mkdir } from 'node:fs/promises';
+import { build } from 'esbuild';
+import { chromium } from './browser-harness.mjs';
+
+const data = JSON.parse(await readFile('test/fixtures/portal-microzones-competition.market-study.json')).demographics;
+const second = data.micro_zones.zones[1];
+second.source.report_timestamp = '2026-02-03 10:30';
+second.geography.center = [-101, 41];
+second.age.denominator_population = 2460;
+second.population.by_year['2026'] = 2460;
+second.household_income.denominator_households = 960;
+second.household_income.source_page = 5;
+second.household_income.bins[0].reported_percent = 61.9;
+second.household_income.bins[0].derived_percent = 62.4;
+const css = await readFile('css/tokens.css', 'utf8') + await readFile('portal/microzones-competition.css', 'utf8');
+const bundle = await build({ stdin: { contents: `
+import {createElement} from 'react';
+import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
+import {MicrozonesCompetition,officeIdentity} from './src/ui/portal/microzones-competition';
+const root=createRoot(document.getElementById('root'));
+window.renderData=(data,mode='available')=>flushSync(()=>root.render(createElement(MicrozonesCompetition,{
+ microZones:data.micro_zones,competition:data.competition,
+ renderMap:mode==='absent'?undefined:(row)=>{
+  if(mode==='broken' && (row.kind==='competition' || row.zone.id==='zone-1-mile'))throw Error('Test map unavailable');
+  return createElement('output',{'data-map':row.kind},JSON.stringify(row.kind==='zone'?row.zone.geography:row.offices.map(office=>({id:officeIdentity(office),locator:office.locator}))));
+ }
+})));
+window.renderData(${JSON.stringify(data)});
+`, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } });
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+ test(`zone and directory transitions at ${width}px ${theme}`, async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const requests = [];
+  await page.route('http://127.0.0.1/**', route => {
+   requests.push(route.request().url());
+   if(route.request().url().includes('/files/')) return route.fulfill({ status: 404 });
+   return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en" data-theme="${theme}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Optional modules</title><style>body{margin:0;font-family:system-ui} ${css}</style><main><h1>Market study</h1><div id="root"></div></main><script>${bundle.outputFiles[0].text}</script></html>` });
+  });
+  await page.goto('http://127.0.0.1/optional');
+  const zone = page.locator('[data-zone-id]');
+  for (const name of ['Population','Households','Income','Age','Housing','Education','Employment','Home values and commute']) await zone.getByRole('heading',{name,exact:true}).waitFor();
+  assert.match(await zone.innerText(), /1-mile radius/);
+  await page.getByRole('button', { name: 'Three-mile zone' }).click();
+  assert.equal(await zone.getAttribute('data-zone-id'), 'zone-3-mile');
+  const text = await zone.innerText();
+  for(const expected of ['3-mile radius','2026-02-03 10:30','2,460','960 households','61.9','62.4','2031 projection']) assert.ok(text.includes(expected),expected);
+  assert.equal(await zone.getByRole('link',{name:'Three-mile zone report, page 5',exact:true}).first().getAttribute('href'),'files/'+ '9'.repeat(64)+'#page=5');
+  assert.equal(await zone.locator('a[href*="88888888"]').count(),0);
+  const geometry = JSON.parse(await page.locator('[data-map=zone]').innerText());
+  assert.deepEqual(geometry.center, [-101,41]);
+  assert.equal(geometry.radius_miles,3);
+  const row = zone.getByRole('row').filter({has:page.getByRole('rowheader',{name:'Under $100,000',exact:true})});
+  assert.deepEqual(await row.getByRole('cell').allTextContents(),['300','61.9','62.4']);
+  await page.getByRole('button', { name: 'One-mile zone' }).click();
+  assert.match(await zone.innerText(),/2026-01-02 09:00/);
+  assert.match(await zone.innerText(),/480 households/);
+  const identity = await page.locator('[data-office-id]').getAttribute('data-office-id');
+  const filter=page.getByRole('combobox',{name:'Competition market'});
+  await filter.selectOption({label:'Sampleville'});
+  assert.match(await page.locator('#competition').innerText(), /No offices in this package for Sampleville/);
+  assert.equal(await page.locator('[data-office-id]').count(),0);
+  assert.deepEqual(JSON.parse(await page.locator('[data-map=competition]').innerText()),[]);
+  await filter.selectOption({label:'Exampleton'});
+  assert.equal(await page.locator('[data-office-id]').getAttribute('data-office-id'),identity);
+  assert.equal(await page.getByRole('link',{name:'Visit Example Dental website'}).getAttribute('href'),'https://example.com/dental');
+  assert.equal(await page.locator('a[href*="maps"], a[href^="geo:"]').count(),0);
+  await page.getByRole('button',{name:'View Example Dental details'}).click();
+  await page.getByRole('dialog',{name:'Example Dental'}).waitFor();
+  assert.equal(await page.getByRole('dialog').getByRole('link',{name:'Primary practice website'}).getAttribute('href'),'https://example.com/dental');
+  await page.getByRole('button',{name:'Close practice details'}).click();
+  assert.equal(await page.getByRole('dialog').count(),0);
+  assert.equal(await page.getByRole('button',{name:'View Example Dental details'}).evaluate(el=>el===document.activeElement),true);
+  await page.getByRole('button',{name:'View Example Dental details'}).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('dialog').count(),0);
+  await page.getByRole('button',{name:'Age profile',exact:true}).click();
+  assert.match(await page.locator('#micro-zone-profile').innerText(),/Children.*300/s);
+  await page.getByRole('button',{name:'Income profile',exact:true}).click();
+  assert.match(await page.locator('#micro-zone-profile').innerText(),/100,000/);
+  await page.evaluate(value=>window.renderData(value,'broken'), data);
+  assert.match(await page.locator('#competition').innerText(),/Map unavailable/);
+  assert.equal(await page.locator('[data-office-id]').count(),1);
+  await page.getByRole('button',{name:'Three-mile zone'}).click();
+  assert.equal(await page.locator('[data-map=zone]').count(),1);
+  await page.evaluate(value=>window.renderData(value,'absent'), data);
+  assert.equal(await page.locator('[data-office-id]').count(),1);
+  await page.evaluate(()=>window.renderData({}));
+  assert.equal(await page.locator('.microzones-competition').count(),0);
+  await page.evaluate(value=>window.renderData(value), data);
+  const replacement = structuredClone(data);
+  replacement.micro_zones.zones=[second];
+  replacement.micro_zones.years=[{year:2027,label:'2027 estimate'},{year:2032,label:'2032 projection'}];
+  replacement.micro_zones.estimate_year=2027;
+  replacement.micro_zones.projection_year=2032;
+  replacement.micro_zones.zones[0].population.by_year={'2027':3456,'2032':4567};
+  replacement.competition.markets=['Replacement market'];
+  replacement.competition.offices=Array.from({length:10},(_,i)=>({...data.competition.offices[0],address:`Synthetic office ${i}`,market:'Replacement market'}));
+  await page.evaluate(value=>window.renderData(value), replacement);
+  assert.match(await zone.innerText(),/Estimate year 2027. Projection year 2032/);
+  assert.match(await zone.innerText(),/3,456/);
+  assert.doesNotMatch(await zone.innerText(),/2031 projection/);
+  assert.equal(await filter.inputValue(),'');
+  assert.equal(await page.locator('[data-office-id]').count(),10);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.getByRole('button',{name:'Three-mile zone'}).focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.getByRole('button',{name:'Three-mile zone'}).evaluate(el=>getComputedStyle(el).outlineStyle),'solid');
+  await mkdir('out/test-artifacts/microzones-competition',{recursive:true});
+  await page.screenshot({path:`out/test-artifacts/microzones-competition/${width}-${theme}.png`,fullPage:true});
+  await page.addScriptTag({path:'node_modules/axe-core/axe.min.js'});
+  assert.deepEqual(await page.evaluate(async()=>(await window.axe.run(document.querySelector('.microzones-competition'))).violations.map(item=>item.id)),[]);
+  const repeated = structuredClone(data);
+  for (const [index, selected] of repeated.micro_zones.zones.entries()) {
+   const categories = index === 0
+    ? [{label:'Repeated',count:111},{label:'Repeated',count:222}]
+    : [{label:'New category',count:333}];
+   selected.age.bins = structuredClone(categories);
+   selected.age.groups = structuredClone(categories);
+  }
+  await page.evaluate(value=>window.renderData(value), repeated);
+  await page.getByRole('button',{name:'One-mile zone',exact:true}).click();
+  await page.getByRole('button',{name:'Age profile',exact:true}).click();
+  for (const name of ['One-mile zone','Three-mile zone','One-mile zone']) {
+   await page.getByRole('button',{name,exact:true}).click();
+   const expected = name === 'One-mile zone'
+    ? [['Repeated','111'],['Repeated','222']]
+    : [['New category','333']];
+   const profileRows = await page.locator('#micro-zone-profile .zone-profile-row').evaluateAll(rows=>rows.map(row=>[row.querySelector('span').textContent,row.querySelector('strong').textContent]));
+   const ageTables = zone.getByRole('region',{name:/^Age (bins|groups), denominator/});
+   const tableRows = await ageTables.locator('tbody').evaluateAll(tables=>tables.map(table=>Array.from(table.rows,row=>[row.cells[0].textContent,row.cells[1].textContent])));
+   assert.deepEqual({tableRows,profileRows},{tableRows:[expected,expected],profileRows:expected},`${name} age tables and profile replace every category`);
+   assert.equal(await page.locator('#micro-zone-profile .zone-source').textContent(),`${name} report, page ${repeated.micro_zones.zones.find(row=>row.name===name).age.source_page}`);
+   assert.equal(await page.getByRole('button',{name:'Age profile',exact:true}).getAttribute('aria-pressed'),'true');
+  }
+  assert.deepEqual(errors,[]);
+  assert.ok(requests.every(url=>url==='http://127.0.0.1/optional'||url.startsWith('http://127.0.0.1/files/')));
+ });
+}
