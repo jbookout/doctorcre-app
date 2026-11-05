@@ -6,7 +6,7 @@ const day = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago'
 function Slice({ title, detail, items, current, row }: { title: string; detail: string; items: readonly InboxItem[]; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
   const [expanded, expand] = useState(false);
   const shown = expanded ? items : items.filter((item, index) => index === 0 || item.item_id === current);
-  return <section className="home-slice" aria-label={title}><header><div><h2>{title} <span>{items.length}</span></h2><p>{detail}</p></div>{items.length > 1 && <button type="button" aria-expanded={expanded} onClick={() => expand(!expanded)}>{expanded ? 'Show less' : `See all ${items.length}`}</button>}</header>{items.length ? shown.map(row) : <p className="home-slice-empty">Nothing here right now.</p>}</section>;
+  return <section className="home-slice" aria-label={title}><header><div><h2 tabIndex={-1}>{title} <span>{items.length}</span></h2><p>{detail}</p></div>{items.length > 1 && <button type="button" aria-expanded={expanded} onClick={() => expand(!expanded)}>{expanded ? 'Show less' : `See all ${items.length}`}</button>}</header>{items.length ? shown.map(row) : <p className="home-slice-empty">Nothing here right now.</p>}</section>;
 }
 
 export function HomeWelcome() {
