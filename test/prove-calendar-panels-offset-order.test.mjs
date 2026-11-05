@@ -1,3 +1,4 @@
+import { APP_RELEASE_PATH } from '../scripts/app-release-reader.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,7 +24,7 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
       if (mode === 'timeout') return;
       if (mode === 'protected') { res.writeHead(403).end(); return; }
       if (mode === 'signin') { res.writeHead(302, { location: '/sign-in' }).end(); return; }
-      if (req.url === '/app-release') {
+      if (req.url === APP_RELEASE_PATH) {
         const response = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'identity' ? undefined : '1'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
         res.writeHead(response.status, Object.fromEntries(response.headers)).end(await response.text()); return;
       }
