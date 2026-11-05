@@ -1,6 +1,9 @@
 stateDiagram-v2
     [*] --> Ready
     Ready --> Pending: Open filing editor
+    Pending --> Ready: Cancel before deal read settles
+    Ready --> Retired: Canceled deal read loses authorization
+    NewEditing --> Retired: Canceled deal read loses authorization
     Pending --> Editing: Deal read succeeds
     Pending --> Unavailable: Network failure
     Unavailable --> Ready: Cancel
@@ -30,3 +33,4 @@ stateDiagram-v2
     Disposed --> Disposed: Late result or retained event
     %% never Retired exposes edit controls or accepts a write.
     %% never Disposed accepts a late result.
+    %% never Draft supersession suppresses authorization loss in a mounted editor.

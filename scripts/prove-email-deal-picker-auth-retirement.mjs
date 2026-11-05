@@ -47,6 +47,21 @@ export async function exercise(page, asset) {
       check(m.counts.denied === 1, `board denial ${JSON.stringify(error)}`); m.stale();
       check(m.counts.preview + m.counts.create + m.counts.confirm === 0, 'retired editor makes no calls'); m.close();
     }
+    for (const error of [{ status: 401 }, { status: 403 }, { code: 'session_changed' }]) {
+      for (const replacement of [false, true]) {
+        let rejectBoard;
+        const m = mount({ getBoard: () => new Promise((resolve, reject) => { rejectBoard = reject; }) });
+        m.click('file'); m.click('cancel');
+        check(m.model.state.kind === 'idle', 'pending deal editor cancels');
+        if (replacement) { m.click('new'); m.fill('name', 'Synthetic'); m.fill('client', 'Synthetic'); }
+        const form = m.host.querySelector('form');
+        rejectBoard(error); await tick();
+        check(m.counts.denied === 1 && !m.host.querySelector('form,button,input,select,textarea,a'), `canceled board denial retires ${replacement ? 'replacement' : 'ready'} ${JSON.stringify(error)}`);
+        form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        m.stale(); await tick();
+        check(m.counts.preview + m.counts.create + m.counts.confirm === 0, 'canceled board denial prevents new calls'); m.close();
+      }
+    }
     {
       const m = mount({ getBoard: async () => { throw Error('network'); } });
       m.click('file'); await tick();
