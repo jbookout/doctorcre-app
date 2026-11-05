@@ -38,8 +38,11 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
       const marker = join(outDir, 'outside-marker.txt');
       await writeFile(marker, 'WR616-J3-SYNTHETIC-OUTSIDE-ARTIFACT');
       await writeFile(join(outDir, 'site-outside.txt'), 'WR616-J3-SYNTHETIC-SIBLING-PREFIX');
+      const suspiciousFiles = ['%2e%2e-marker.js', '%2E%2E-marker.js', 'back\\slash.js', '%5c-marker.js', 'nul%00.js'];
+      for (const file of suspiciousFiles) await writeFile(join(outDir, 'site', 'js', file), 'WR616-J3-SYNTHETIC-SUSPICIOUS-TARGET');
       const escape = '../'.repeat(30) + marker.slice(1);
       for (const path of [
+        ...suspiciousFiles.map(file => `/js/${file}`),
         `/${escape}`, '/../outside-marker.txt', '/../site-outside.txt',
         `/${escape.replaceAll('..', '%2e%2e')}`,
         `/${escape.replaceAll('..', '%2E%2E')}`,
