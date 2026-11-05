@@ -1,3 +1,4 @@
+import { type BatchReceipt } from './batch';
 import { object, parseResults, type Command, type InboxItem } from './inbox';
 export function fixtureInboxRpc() {
   const make = (item_id: string, title: string, state: InboxItem['source_state'], disposition: InboxItem['disposition'] = 'inbox'): InboxItem => ({ waiting_version: 0, waiting_on: null, auto_settled: false, context_label: 'Demo practice with a long owning deal name', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', item_id, title, source_type: 'next_action', source_id: item_id, source_version: 'synthetic:1', source_state: state, activity_at: new Date().toISOString(), hold_until: null, unseen: state === 'done', disposition, snoozed_until: disposition === 'snoozed' ? new Date(Date.now() + 3_600_000).toISOString() : null, explicit_unsettle: false, section: disposition !== 'inbox' ? disposition : state === 'done' ? 'done' : state === 'working' ? 'working' : 'inbox', base_version: 'synthetic:1' });
@@ -6,6 +7,8 @@ export function fixtureInboxRpc() {
   const people = [{ id: '00000000-0000-0000-0000-000000000099', name: 'Demo reviewer' }, { id: '00000000-0000-0000-0000-000000000098', name: 'Demo coordinator' }];
   const actors = [{ id: '00000000-0000-0000-0000-000000000097', slug: 'demo-partner', display_name: 'Demo partner', kind: 'human' }];
   const receipts = new Map<string, unknown>();
+  const batchEntries = new Map<string, readonly unknown[]>();
+  const batches = new Map<string, Map<string, { before: InboxItem; after: string; undone: boolean }>>();
   return async (name: string, args: unknown) => {
     if (name === 'read-actor-roster-v1') return { ok: true, schema_version: 'actor-roster.v1', actors };
     if (name === 'search-parties-v1') {
@@ -43,6 +46,35 @@ export function fixtureInboxRpc() {
       Object.assign(item, { action_version: item.action_version! + 1, source_state: done ? 'done' : 'needs_attention', ...(done ? { waiting_on: null, waiting_version: (item.waiting_version || 0) + 1 } : {}), section: done ? 'done' : item.disposition, base_version: crypto.randomUUID() });
       const receipt = { ok: true, action_id: item.action_id, version: item.action_version, status: done ? 'done' : 'open', completion_event_id: args.completion_event_id || crypto.randomUUID() };
       receipts.set(String(args.idempotency_key), receipt); return receipt;
+    }
+    if (object(args) && args.reversible === true && (name === 'settle-home-inbox' || name === 'snooze-home-inbox')) {
+      const key = String(args.idempotency_key);
+      const prior = receipts.get(key); if (prior) return prior;
+      const undo = typeof args.undo_of === 'string';
+      const batch = undo ? batches.get(String(args.undo_of)) : new Map<string, { before: InboxItem; after: string; undone: boolean }>();
+      if (!batch) throw Error('Original batch is unavailable.');
+      const entries = Array.isArray(args.items) ? args.items : batchEntries.get(String(args.undo_of)) || [];
+      const results: BatchReceipt[] = entries.map((entry: unknown) => {
+        if (!object(entry) || typeof entry.item_id !== 'string') throw Error('Invalid batch card.');
+        const item_id = entry.item_id, item = items.find(item => item.item_id === item_id);
+        if (!item) return { item_id, status: 'not_found' };
+        if (undo) {
+          const saved = batch.get(item_id);
+          if (!saved || saved.undone) return { item_id, status: 'already' };
+          if (saved.after !== item.base_version) return { item_id, status: 'not_allowed', error: 'version_conflict' };
+          Object.assign(item, saved.before); saved.undone = true;
+        } else {
+          if (entry.base_version !== item.base_version) return { item_id, status: 'not_allowed', error: 'version_conflict' };
+          if (name === 'settle-home-inbox' && item.disposition === 'settled' || name === 'snooze-home-inbox' && item.disposition === 'snoozed' && item.snoozed_until === args.until) return { item_id, status: 'already' };
+          const before = structuredClone(item);
+          Object.assign(item, { disposition: name === 'settle-home-inbox' ? 'settled' : 'snoozed', section: name === 'settle-home-inbox' ? 'settled' : 'snoozed', snoozed_until: args.until || null, base_version: crypto.randomUUID() });
+          batch.set(item_id, { before, after: item.base_version, undone: false });
+        }
+        return { item_id, status: 'applied' };
+      });
+      if (!undo) { batches.set(key, batch); batchEntries.set(key, entries); }
+      const result = { ok: true, schema_version: 'home-inbox-batch.v1', batch_key: undo ? args.undo_of : key, results };
+      receipts.set(key, result); return result;
     }
     const request = { action: name.split('-')[0], args } as Command;
     const prior = receipts.get(request.args.idempotency_key); if (prior) return prior;

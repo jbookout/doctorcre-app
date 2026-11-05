@@ -1,3 +1,4 @@
+import { BulkControls } from './bulk-controls';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
@@ -48,7 +49,9 @@ function Inbox({ client }: { client: InboxClient }) {
   }, [home, query.isPending]);
   const [selected, select] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Pending | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [singleBusy, setBusy] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const busy = singleBusy || batchBusy;
   const [notice, setNotice] = useState('');
   const [failures, setFailures] = useState<ItemResult[]>([]);
   const [undo, setUndo] = useState<Undo[]>([]);
@@ -86,6 +89,12 @@ function Inbox({ client }: { client: InboxClient }) {
     target?.focus();
     target?.scrollIntoView({ block: 'center' });
   }, [focusTargets]);
+  function finishBatch() {
+    const next = root.current?.querySelector<HTMLElement>('.home-slice[aria-label="Needs your attention"] h3 a, .home-slice[aria-label="Today"] h3 a');
+    const target = next || root.current?.querySelector<HTMLElement>('.home-slice h2');
+    target?.focus();
+    target?.scrollIntoView({ block: 'center' });
+  }
   async function run(operation: Pending) {
     if (inFlight.current) return;
     setPending(operation);
@@ -182,7 +191,7 @@ function Inbox({ client }: { client: InboxClient }) {
       {(['working', 'held', 'done', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf} open={placed.current?.section === shelf || undefined}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'held' ? 'Held' : shelf === 'done' ? 'Done' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
       </>}
     </>}
-    {picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Hide selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Show selected</button><button disabled={busy || picked.length > 100} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze(picked); }}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
+    {home ? <BulkControls finish={finishBatch} client={client} picked={picked} selected={selected} locked={singleBusy || !!pending || !online} select={select} snapshot={value => cache.setQueryData(queryKey, value)} prepare={() => cache.cancelQueries({ queryKey })} lock={value => { inFlight.current = value; setBatchBusy(value); }} /> : picked.length > 0 && <div className="inbox-bulk" aria-label="Selected cards"><strong>{picked.length} selected</strong><button disabled={busy || picked.length > 100} onClick={() => act('settle', picked)}>Hide selected</button><button disabled={busy || picked.length > 100} onClick={() => act('unsettle', picked)}>Show selected</button><button disabled={busy || picked.length > 100} onClick={event => { snoozeOpener.current = event.currentTarget; setSnooze(picked); }}>Snooze selected</button><button onClick={() => select(new Set())}>Clear</button></div>}
     {snooze && <dialog className="inbox-snooze" ref={node => { if (node && !node.open) node.showModal(); }} onCancel={() => { cancelSnooze(); }} aria-label="Snooze cards"><h2>Snooze {snooze.length === 1 ? 'card' : `${snooze.length} cards`}</h2><p>Choose when this returns to your inbox.</p>{[1, 24].map(hours => <button autoFocus={hours === 1} key={hours} onClick={() => { const rows = snooze; setSnooze(null); act('snooze', rows, new Date(Date.now() + hours * 3_600_000).toISOString()); }}>{hours === 1 ? '1 hour' : '24 hours'} · {new Date(Date.now() + hours * 3_600_000).toLocaleString()}</button>)}<button onClick={() => { cancelSnooze(); }}>Cancel</button></dialog>}
     <footer className="inbox-footer">Use ↑ ↓ to move between cards. On your phone, swipe right to hide or wake, left to snooze.</footer>
   </div>;

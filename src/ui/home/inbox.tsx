@@ -1,3 +1,4 @@
+import { parseBatch, type BatchRequest, type BatchResult } from './batch';
 import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
 export type WaitingIdentity = Readonly<{ kind: 'party' | 'actor'; id: string; available: boolean; display_name: string | null }>;
 export type Waiting = Readonly<{ identity: WaitingIdentity; reason: string; evidence: string[]; version: number }>;
@@ -116,7 +117,7 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
 export type WaitingChoice = Pick<WaitingIdentity, 'kind' | 'id'> & { name: string };
 export type PartyCursor = Readonly<{ query: string; name: string; id: string }>;
 export type PeoplePage = Readonly<{ choices: WaitingChoice[]; next_cursor: PartyCursor | null }>;
-export type InboxClient = { actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]> };
+export type InboxClient = { actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
     async function available(name: string): Promise<unknown> {
@@ -186,6 +187,13 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
       const item = snapshot.items.find(item => item.item_id === request.args.item_id);
       if (!item || item.waiting_version === undefined || item.waiting_version < result.waiting_version) throw Error('Waiting change recorded. Readback unavailable. Retry the same request.');
       return item;
+    },
+    async batch(request, expected) {
+      if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
+      const receipt = parseBatch(await rpc(`${request.action}-home-inbox`, request.args), request, expected);
+      let snapshot: Snapshot | null = null;
+      try { snapshot = await read(); } catch { /* Receipts remain confirmed even when readback fails. */ }
+      return { ...receipt, snapshot };
     },
     async run(request) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');
