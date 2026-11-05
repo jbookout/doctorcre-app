@@ -1,0 +1,26 @@
+[
+  {
+    "file": "market-study.v1.schema.json",
+    "revision": "865fefee26fcbbe50a04c7515c5f3d3bc8913cd1",
+    "source": "client-portal/market-study.v1.schema.json",
+    "sha256": "7fdbbe045615a0d9c5825e955dc0e1d0682412093150c8218c9458ec7014552f"
+  },
+  {
+    "file": "example-health.market-study.json",
+    "revision": "865fefee26fcbbe50a04c7515c5f3d3bc8913cd1",
+    "source": "client-portal/fixtures/example-health.market-study.json",
+    "sha256": "b2d0181f0d994b8068228868b10a376c2a9609ea5caa779514f6be1a98ae69ff"
+  },
+  {
+    "file": "market-study.v1.1.schema.json",
+    "revision": "edd0439778542302ae24c72c858ac27d39c3d82a",
+    "source": "client-portal/market-study.v1.1.schema.json",
+    "sha256": "47641e12d1b4b5124e8c79eaa2d7037f183c2bccfeaa5bb4745d25bf464003d8"
+  },
+  {
+    "file": "same-name-geographies.v1.1.json",
+    "revision": "edd0439778542302ae24c72c858ac27d39c3d82a",
+    "source": "client-portal/fixtures/same-name-geographies.v1.1.json",
+    "sha256": "b6261aced39ec6224272d1813a41106f3b67a4c0b28a74838c83a53d6137ba05"
+  }
+]

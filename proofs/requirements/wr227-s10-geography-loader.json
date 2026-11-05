@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s10-geography-loader",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "canonical-geography-publication-replacement",
+    "predicate": "After producer and consumer delivery, read the deployed release and an authorized existing publication revision. Select distinct same-named geographies and observe chart values and sources following each canonical ID. Load a fresh publication and repeat without retaining old selected data. Do not create a publication.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Each chart and source follows the selected canonical geography ID in the observed publication revision before and after replacement.",
+    "input_class": "read-only deployed release identity and existing authorized publication",
+    "deadline_seconds": 300
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 10, "max_records": 10, "max_runtime_seconds": 300, "max_artifact_bytes": 65536}
+}
