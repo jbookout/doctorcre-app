@@ -3,11 +3,51 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 const built = await build({ entryPoints: ['src/ui/portal/masterplan-provider.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
-const { providerSession } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].contents).toString('base64')}`);
+const { providerSession, currentRights } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].contents).toString('base64')}`);
 function receipt() {
   return { provider: 'Synthetic', sku: 'offline-test', termsUrl: 'https://example.com/terms', reviewer: 'Synthetic reviewer', reviewedAt: '2026-11-01T00:00:00Z', expiresAt: '2026-12-01T00:00:00Z', renderer: 'maplibre-gl@6.4.1', storageClass: 'memory-only', storableFields: [], retention: 'none', purge: 'unmount', attribution: 'Synthetic tiles', exportPath: 'none', quotaGate: '60/minute', resourcePrefixes: ['https://example.com/'] };
 }
 const now = () => Date.parse('2026-11-05T00:00:00Z');
+
+test('rights URLs must parse as credential-free HTTPS before any provider read', async () => {
+  for (const termsUrl of ['https://', 'https://user@evil.test@example.com/terms', 'https://example.com/terms?key=secret', '//example.com/terms', 'http://example.com/terms']) {
+    assert.equal(currentRights({ ...receipt(), termsUrl }, now()), false, termsUrl);
+  }
+  for (const prefix of ['https://', 'https://user@evil.test@example.com/', 'https://example.com/?key=secret', '//example.com/', 'http://example.com/']) {
+    let calls = 0;
+    const session = providerSession({ receipt: { ...receipt(), resourcePrefixes: [prefix] }, now,
+      fetch: async () => { calls++; return new Response('ok'); } });
+    await assert.rejects(session.read('https://example.com/tile'), prefix);
+    assert.equal(calls, 0, prefix);
+    session.dispose();
+  }
+  assert.equal(currentRights({ ...receipt(), termsUrl: 'HTTPS://EXAMPLE.COM/terms' }, now()), true);
+});
+
+test('provider allowlist compares parsed origins for every basemap resource', async () => {
+  for (const path of ['style', 'tiles.json', 'tiles/0/0/0.pbf', 'fonts/Synthetic/0-255.pbf', 'sprite.json', 'sprite.png']) {
+    const fetched = [];
+    const session = providerSession({ receipt: receipt(), now, fetch: async url => { fetched.push(url); return new Response('ok'); } });
+    for (const url of [
+      `https://example.com.evil.test/${path}`, `https://evil.test/${path}?u=example.com`,
+      `https://evil.test/example.com/${path}`, `https://example.com@evil.test/${path}`,
+      `https://user@evil.test@example.com/${path}`, `//example.com/${path}`, `//evil.test/${path}`,
+      `http://example.com/${path}`, `ftp://example.com/${path}`, `https://example.com:444/${path}`,
+    ]) await assert.rejects(session.read(url), url);
+    assert.deepEqual(fetched, []);
+    await session.read(`HTTPS://EXAMPLE.COM/${path}`);
+    assert.deepEqual(fetched, [`HTTPS://EXAMPLE.COM/${path}`]);
+    session.dispose();
+  }
+  const fetched = [];
+  const session = providerSession({ receipt: { ...receipt(), resourcePrefixes: ['https://example.com/maps/'] }, now,
+    fetch: async url => { fetched.push(url); return new Response('ok'); } });
+  for (const url of ['https://example.com/maps.evil/tile', 'https://example.com/maps/../tile']) await assert.rejects(session.read(url));
+  await session.read('https://example.com/maps/tile');
+  assert.deepEqual(fetched, ['https://example.com/maps/tile']);
+  session.dispose();
+});
+
 test('provider bounds attempts, concurrent reads, response size and cancellation', async () => {
   let calls = 0;
   const failed = providerSession({ receipt: receipt(), now, fetch: async () => { calls++; return new Response('', { status: 404 }); } });
