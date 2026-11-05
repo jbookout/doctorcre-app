@@ -41,6 +41,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Documents lists canonical deal files through `listDealDocuments` and `deal-documents.v1`. Open a deal, then select Documents. Rows show stored metadata and canonical UUID/hash identity, with no download or sharing controls. `node --test test/deal-documents-browser.test.mjs` verifies 390px and 1440px in both themes, loading, empty and unavailable states, retry, session expiry, bounded pagination and a late response after leaving the deal. Synthetic captures are under `out/test-artifacts/deal-documents/`.
 
+- Pending client tour badges use one paginated board feed, with server-owned counts. `node --test test/deal-proposal-badge-browser.test.mjs` covers 390px/1440px in both themes, zero versus unavailable, pagination, keyboard opening, session invalidation, confirmed keep/use readback refresh, and unchanged deal navigation. The workspace holder boundary and CARR feed are synthetic pending their delivery.
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link Back changes the URL, so check URL and workspace visibility independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.

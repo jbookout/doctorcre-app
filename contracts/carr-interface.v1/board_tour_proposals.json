@@ -1,0 +1,48 @@
+{
+  "schema_version": "board-tour-proposals.v1",
+  "status": "synthetic; producer not deployed",
+  "read": {
+    "verb": "list-board-tour-proposals",
+    "arguments": {
+      "limit": 100,
+      "cursor": "optional opaque string"
+    }
+  },
+  "semantics": "One row per affected deal across the complete feed. pending_count is server-owned. Omitted deals mean zero only after all pages succeed. No client counting of proposal rows.",
+  "response_fixture": {
+    "ok": true,
+    "schema_version": "board-tour-proposals.v1",
+    "deals": [
+      {
+        "deal_id": "d14",
+        "pending_count": 2
+      },
+      {
+        "deal_id": "d23",
+        "pending_count": 4
+      },
+      {
+        "deal_id": "d20",
+        "pending_count": 0
+      }
+    ],
+    "next_cursor": null
+  },
+  "second_page_fixture": {
+    "ok": true,
+    "schema_version": "board-tour-proposals.v1",
+    "deals": [
+      {
+        "deal_id": "d16",
+        "pending_count": 7
+      }
+    ],
+    "next_cursor": null
+  },
+  "limits": {
+    "page_size": 100,
+    "max_pages": 100,
+    "timeout_ms_per_page": 10000
+  },
+  "deployment_order": "Reconcile with the versioned CARR producer and land workspace holder wr586-s5-j5 before opening a PR. This fixture grants no production authority."
+}

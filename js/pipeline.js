@@ -102,6 +102,8 @@ function autoHtml(deal) {
 }
 const dealTitle = (deal) => dealName(deal.name);
 const phoneBoard = globalThis.matchMedia?.('(max-width:480px)');
+let boardProposalBadges;
+const proposalBadgeHost = deal => `<span data-board-proposal-host="${esc(deal.id)}"></span>`;
 function cardHtml(deal) {
   const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
   const attention = Boolean(overdue);
@@ -110,7 +112,7 @@ function cardHtml(deal) {
     attributes: `data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}"`,
     title: `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button>`,
     meta: `<span class="owner">${esc(actorName(deal.owner))}</span>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}`,
-    body: `<div class="deal-alert">${renderDealSummary(deal,{today,board:true})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}` });
+    body: `<div class="deal-alert">${renderDealSummary(deal,{today,board:true})}${renderDealItems(deal,{today,buttons:true,empty:false,board:true})}</div>${renderDealVendors(deal.vendors)}${renderClientPortalLink(deal.client_portal_url)}${autoHtml(deal)}${proposalBadgeHost(deal)}` });
 }
 function rowHtml(deal) {
   const nextStep = noteText(deal.next_step);
@@ -118,13 +120,13 @@ function rowHtml(deal) {
   return workCard({ variant: 'row', className: 'kanban-card deal-row', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}"`,
     title: `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button>`,
     meta: `<span class="owner">${esc(actorName(deal.owner))}</span>`,
-    body: `<span class="deal-stage">${esc(columnLabel(deal.phase))}</span><div class="deal-row-next"><p class="next-line" title="${esc(nextStep)}">${nextStep.trim() ? esc(nextStep) : 'Next step missing'}</p>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}${renderDealVendors(deal.vendors)}${autoHtml(deal)}</div>` });
+    body: `<span class="deal-stage">${esc(columnLabel(deal.phase))}</span><div class="deal-row-next"><p class="next-line" title="${esc(nextStep)}">${nextStep.trim() ? esc(nextStep) : 'Next step missing'}</p>${renderOverdueFlag(deal.id, dealTitle(deal), overdue)}${renderDealVendors(deal.vendors)}${autoHtml(deal)}${proposalBadgeHost(deal)}</div>` });
 }
 function parkedHtml(deal) {
   const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
   return workCard({ variant: 'tile', className: 'kanban-card parked-card', heading: 'h4', attributes: `data-id="${esc(deal.id)}" tabindex="0"`,
     title: esc(dealTitle(deal)), meta: esc(actorName(deal.owner)), status: deal.parking_reason !== 'other' ? deal.parking_reason?.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase()) : '',
-    body: `<p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), board: true })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}`,
+    body: `<p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), board: true })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}${proposalBadgeHost(deal)}`,
     actions: `<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button>` });
 }
 
@@ -261,6 +263,7 @@ function renderBoard() {
   }
   if (focusedStage) board.querySelector(`[data-collapse-stage="${CSS.escape(focusedStage)}"]`)?.focus();
   renderPendingWrites();
+  boardProposalBadges?.paint();
 }
 
 const emptyStagesNote = count => count ? `<p class="stages-hidden"><span>${state.showEmptyStages ? `Showing ${count} stage${count === 1 ? '' : 's'} with no deals` : `${count} stage${count === 1 ? '' : 's'} hidden`}</span> <button type="button" data-toggle-empty-stages aria-pressed="${Boolean(state.showEmptyStages)}"><span aria-hidden="true">${state.showEmptyStages ? '− ' : '+ '}</span>${state.showEmptyStages ? 'Hide empty stages' : 'Show empty stages'}</button></p>` : '';
@@ -382,6 +385,7 @@ function applyBoardSnapshot(board) {
 }
 
 async function loadBoard() {
+  void boardProposalBadges?.refresh();
   const outcome = await state.boardSync.refreshBoard({ reason: 'load-board' });
   if (!outcome.applied && state.boardSync.status().snapshots === 0) {
     say('The board could not be read. Nothing here has been inferred, and no record is shown.');
@@ -1899,6 +1903,7 @@ async function boot() {
   if (linkedDeal) void openWorkspace(linkedDeal).then(() => {
     if (incomingScope.get('item') && state.panelDeal === linkedDeal) void itemSheet.open(linkedDeal,incomingScope.get('item'));
   });
+  boardProposalBadges = await import('./ui-deal-proposal-badge.js').then(({ bootBoardProposalBadges }) => bootBoardProposalBadges({ document, open: openWorkspace })).catch(() => null);
   void loadBoard();
   mountVisibilityPoll({ lifecycle: true, poll: refreshPanel });
   mountVisibilityPoll({ poll: () => { return pollOnce().catch(() => false); } });
