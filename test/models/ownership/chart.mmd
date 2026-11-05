@@ -1,0 +1,11 @@
+stateDiagram-v2
+  s0: draft=0 stored=0 phase="valid"
+  s1: draft=1 stored=0 phase="valid"
+  s2: draft=2 stored=0 phase="invalid"
+  [*] --> s0
+  s0 --> s1: EditValid
+  s0 --> s2: EditInvalid
+  s1 --> s0: Reset
+  s1 --> s2: EditInvalid
+  s2 --> s0: Reset
+  s2 --> s1: EditValid
