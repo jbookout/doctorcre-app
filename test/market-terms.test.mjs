@@ -172,6 +172,29 @@ test('malformed responses fail closed and Compare retries with retained filters'
   }
 });
 
+test('stale malformed replies preserve Loading until the current valid response renders', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div'), pending = [];
+  const valid = {ok:true,schema_version:'market-terms.v1',rows:[{entity_ref:'d1',fact_key:'rent',value:'35',term_kind:'executed',term_date:'2025',effective_from:'2025'}],coverage:{recorded_documents:1,canonical_receipts:1,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:1}};
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:() => new Promise(resolve => pending.push(resolve))}});
+  try {
+    root.querySelector('[name=as_of]').value = '2025-01-01';
+    root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
+    assert.equal(pending.length, 2);
+    pending[0]({...valid,rows:[null]});
+    await new Promise(done => setTimeout(done, 10));
+    assert.match(root.querySelector('[data-market-results]').textContent, /^Loading comparable terms/);
+    assert.equal(root.querySelector('table'), null);
+    pending[1](valid);
+    await new Promise(done => setTimeout(done, 10));
+    assert.match(root.textContent, /Terms as of 2025-01-01/);
+    assert.match(root.querySelector('table').textContent, /rent: 35/);
+    assert.doesNotMatch(root.textContent, /Loading comparable terms|Could not load comparable terms/);
+  } finally {
+    panel.dispose(); dom.window.close();
+  }
+});
+
 test('stale malformed replies cannot replace ready results and stale valid replies cannot clear an error', async () => {
   const dom = new JSDOM('<div></div>'); setup(dom);
   const root = document.querySelector('div'), pending = [];
