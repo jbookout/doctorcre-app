@@ -503,3 +503,7 @@ export interface Ownership {
     methods: Rich;
   };
 }
+
+export function portalAsset(asset: Asset) {
+  return /^[a-f0-9]{64}$/.test(asset.sha256) ? `files/${asset.sha256}` : undefined;
+}

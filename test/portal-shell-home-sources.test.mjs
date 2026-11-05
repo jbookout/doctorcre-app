@@ -107,3 +107,12 @@ test('host resolves once, disposes visible data and refuses failed loads before 
     panel.dispose(); dom.window.close();
   }
 });
+
+test('Home retains current demographic labels while excluding property metrics', async () => {
+  const data = structuredClone(fixture);
+  data.market.snapshot[0].label = 'Current population';
+  const { root, panel, dom } = await open(data);
+  assert.match(root.textContent, /Current population/);
+  assert.doesNotMatch(root.textContent, /Candidate sites/);
+  panel.dispose(); dom.window.close();
+});

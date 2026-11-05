@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { MarketStudy } from './shell-home-sources';
-import { portalAsset } from './shell-home-sources';
+import { portalAsset } from './package';
+import type { CarrMarketStudyV1 } from './package';
 
 type MapHandle = {
   on: (event: string, listener: () => void) => void;
@@ -15,7 +15,7 @@ type MapLibrary = {
   setWorkerUrl: (url: string) => void;
 };
 export type ContextMarker = { id: string; label: string; lon: number; lat: number; open: () => void };
-export function HomeMap({ publication, markers }: { publication: MarketStudy; markers: ContextMarker[] }) {
+export function HomeMap({ publication, markers }: { publication: CarrMarketStudyV1; markers: ContextMarker[] }) {
   const container = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {

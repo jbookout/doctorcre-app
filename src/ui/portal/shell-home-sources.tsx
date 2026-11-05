@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import type { Asset, CarrMarketStudyV1, Development, Rich } from './package';
+import { portalAsset } from './package';
+import type { CarrMarketStudyV1, Development, Rich } from './package';
 
 import { HomeMap } from './home-map';
 import type { ContextMarker } from './home-map';
@@ -29,9 +30,7 @@ export function RichText({ runs }: { runs: Rich }) {
   return <>{runs.map((run, index) => 'text' in run ? <span key={index}>{run.text}</span>
     : <ExternalLink key={index} url={run.link.url}>{run.link.label}</ExternalLink>)}</>;
 }
-export function portalAsset(asset: Asset) {
-  return /^[a-f0-9]{64}$/.test(asset.sha256) ? `files/${asset.sha256}` : undefined;
-}
+export { portalAsset } from './package';
 function Wordmark({ publication }: { publication: MarketStudy }) {
   const [failed, setFailed] = useState(false);
   return publication.client.logo && !failed
@@ -66,7 +65,7 @@ function Home({ publication, open, available }: { publication: MarketStudy; open
     <h2>{publication.market.headline}</h2><p>{publication.market.intro}</p>
     <a href={available('demographics') ? '#demographics' : '#sources'}>Explore demographics and sources</a>
   </section><section aria-label="Market snapshot" data-snapshot className="portal-snapshot">
-    {publication.market.snapshot.filter(figure => !/candidate|propert|listing|rent|asking|sites/i.test(figure.label)).map((figure, index) => <article key={index}><strong>{figure.value}</strong><p>{figure.label}</p>
+    {publication.market.snapshot.filter(figure => !/\b(candidate|properties|property|listings?|rents?|asking|sites)\b/i.test(figure.label)).map((figure, index) => <article key={index}><strong>{figure.value}</strong><p>{figure.label}</p>
       {available('demographics') && <a href="#demographics">Explore demographic context</a>}</article>)}
   </section>{publication.developments.length > 0 && <section><h2>Major development activity</h2>
     <HomeMap publication={publication} markers={markers} /><div className="portal-directory">{publication.developments.map(item => <article key={item.id}>
