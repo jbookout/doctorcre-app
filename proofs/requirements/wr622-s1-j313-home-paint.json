@@ -1,0 +1,23 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr622-s1-j313-home-paint",
+  "targets": ["app"],
+  "assertions": [
+    {
+      "id": "home-lcp-hosted-and-live-heading",
+      "predicate": "The deployed app release matches the merged revision. A successful hosted main performance job on that revision records five cold Home loads with CPU slowdown 4, latency 150 ms and download throughput 200000 bytes/s, and Home LCP median at most 3600 ms. A read-only live Home walk under the same phone profile identifies the Welcome home heading as the LCP element and preserves the final 390px and 1280px light and dark layout.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Release-bound hosted performance summary confirms Home LCP median at most 3600 ms with the unchanged five-sample phone profile, and live read-only evidence identifies the same welcome heading.",
+      "input_class": "read-only deployed app release, hosted main performance summary, and live Home observation evidence",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 2,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}
