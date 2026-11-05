@@ -7,6 +7,19 @@ import { readFile } from 'node:fs/promises';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 
 const assets = await uiAssets(path => readFile(path, 'utf8'));
+const disposalMutants = new Map();
+for (const [mode, guard] of [
+  ['loading-only-disposal', "view.kind !== 'loading'"],
+  ['ready-disposal', "view.kind === 'ready'"],
+  ['error-disposal', "view.kind === 'error'"],
+]) {
+  disposalMutants.set(mode, await uiAssets(async path => {
+    const source = await readFile(path, 'utf8');
+    return path === 'src/ui/territory-evidence.tsx'
+      ? source.replace('dispose() { disposed = true;', `dispose() { if (${guard}) return; disposed = true;`)
+      : source;
+  }));
+}
 const exec = promisify(execFile);
 async function run(t, mode, timeout = '30000') {
   const server = createServer((req, res) => {
@@ -15,7 +28,7 @@ async function run(t, mode, timeout = '30000') {
       res.setHeader('Content-Type', 'application/json');
       return res.end(mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'fixture' }));
     }
-    let bytes = assets.get(req.url.slice(1));
+    let bytes = (disposalMutants.get(mode) || assets).get(req.url.slice(1));
     if (mode === 'unavailable' || (mode === 'chunk-missing' && req.url.includes('ui-shared-'))) bytes = undefined;
     if (mode === 'contradiction' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}');
     if (mode === 'foreign-import' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('import "https://foreign.invalid/a.js";');
@@ -46,4 +59,14 @@ for (const mode of ['release-missing', 'unavailable', 'chunk-missing', 'foreign-
 test('proof CLI bounds total timeout', async t => {
   const result = await run(t, 'timeout', '100');
   assert.equal(result.code, 1); assert.match(JSON.stringify(result.receipt), /timeout/);
+});
+
+for (const [mode, assertion] of [
+  ['loading-only-disposal', 'ready disposal empties host'],
+  ['ready-disposal', 'ready disposal empties host'],
+  ['error-disposal', 'error disposal empties host'],
+]) test(`proof CLI rejects ${mode} mutation`, async t => {
+  const result = await run(t, mode);
+  assert.equal(result.code, 1, 'proof must reject broken disposal');
+  assert.equal(result.receipt.assertions[0].name, assertion);
 });
