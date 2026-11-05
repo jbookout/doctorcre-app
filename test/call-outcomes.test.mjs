@@ -300,16 +300,22 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
     const button = page.getByRole('button', { name: accept ? 'Approve item' : 'Skip item', exact: true });
     await button.click();
     await page.getByRole('alert').waitFor();
-    assert.equal(await page.getByRole('alert').innerText(), `Could not ${accept ? 'approve' : 'skip'} this item. Refresh and check before retrying.`);
+    assert.equal(await page.getByRole('alert').innerText(), 'The decision outcome is unknown. Check outcome before making another decision.');
     if (resolver === 'resolve-post-call-candidate' && process.env.UI_SCREENSHOT_DIR) {
       await mkdir(process.env.UI_SCREENSHOT_DIR, { recursive: true });
       await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/refusal-${accept ? 'approve' : 'skip'}-${width}-${theme}.png`, fullPage: true });
     }
     assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
-    assert.equal(await page.evaluate(() => window.decisions.length), 1, 'refusals never auto-retry');
-    await button.click();
+    assert.equal(await page.evaluate(() => window.decisions.length), 1, 'unknown outcomes never auto-retry');
+    assert.equal(await button.isEnabled(), false, 'the original choice stays blocked while its outcome is unknown');
+    assert.equal(await page.getByRole('button', { name: accept ? 'Skip item' : 'Approve item', exact: true }).isEnabled(), false, 'the opposite choice stays blocked while the outcome is unknown');
+    const original = await page.evaluate(() => structuredClone(window.decisions[0]));
+    await page.getByRole('button', { name: 'Check outcome', exact: true }).click();
     await page.getByText('No longer pending', { exact: true }).waitFor();
     const writes = await page.evaluate(() => window.decisions);
+    assert.equal(writes.length, 2, 'one explicit check replays exactly once');
+    assert.deepEqual(writes[0], original, 'the held original request is unchanged');
+    assert.deepEqual(writes[1], original, 'Check outcome reuses the exact original request');
     assert.equal(writes[1][resolver === 'resolve-candidate' ? 'proposal_id' : 'candidate_id'], 'card-1');
     assert.equal(writes[1].accept, accept);
     assert.equal(typeof writes[1].idempotency_key, 'string');
