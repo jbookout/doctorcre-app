@@ -32,6 +32,8 @@ test('a call whose filing fails is not shown as filed, and Home says it needs at
   await expect(page.locator('#homeCallTasks')).toContainText('No call follow-ups');
   await expect(page.locator('.call-outcome')).toHaveCount(0);
 
+  await expect(page.locator('#callModeAvailability')).toHaveText('Call recorder not connected');
+  await page.getByRole('button', { name: 'Check call recorder status' }).click();
   await page.getByRole('button', { name: 'Call mode' }).click();
   const status = page.locator('#postCallStatus');
   await expect(status).toContainText('The post-call report needs attention.');
