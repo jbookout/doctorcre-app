@@ -6,7 +6,6 @@ import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
 import { checkActionPins } from "../scripts/check-action-pins.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
@@ -36,7 +35,7 @@ test("PR jobs build the merge candidate when the branch predates a required npm 
   await writeFile(join(directory, "package.json"), JSON.stringify({ private: true, scripts: { build: 'node -e "console.log(\'MERGE-BUILD-PASSED\')"' } }));
   const merge = commit();
   const contexts = { "github.sha": merge, "github.event.pull_request.head.sha": head };
-  const workflows = [ci, checks, await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8")];
+  const workflows = [ci, checks];
   for (const workflow of workflows) {
     for (const [, name, job] of workflow.matchAll(/^  (\w+):\n([\s\S]*?)(?=^  \w+:|$(?![\s\S]))/gm)) {
       const checkout = job.split(/^      - /m).find(step => /^uses: actions\/checkout@/m.test(step));
@@ -94,7 +93,7 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
   assert.match(ci, /browser-results.py collect/);
-  assert.match(ci, /needs: \[checks, shards, performance, live, production-proof\]/);
+  assert.match(ci, /needs: \[checks, shards, performance, live, production-proof, journeys\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
@@ -134,7 +133,7 @@ test("release build is read-only and publisher receives only this run's digest-b
 });
 
 test("checkout never persists credentials", async () => {
-  for (const file of ["ci.yml", "e2e.yml", "release.yml"]) {
+  for (const file of ["ci.yml", "release.yml"]) {
     const workflow = await readFile(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8");
     for (const step of workflow.split(/^      - /m).slice(1).filter(s => s.includes("actions/checkout@"))) assert.match(step, /persist-credentials: false/);
   }
@@ -360,9 +359,9 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   assert.match(gate, /browser-results.py verify/);
   assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
-  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE', 'PRODUCTION_PROOF'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', 'JOURNEYS', ...(event === 'pull_request' ? ['PERFORMANCE', 'PRODUCTION_PROOF'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
-      env: { ...process.env, CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
+      env: { ...process.env, JOURNEYS:'success', CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
         PERFORMANCE:'success', SHARDS:'success', EVENT:event, [dependency]:outcome } });
     assert.equal(result.status === 0, outcome === 'success', `${event} ${dependency} ${outcome}`);
   }
@@ -371,58 +370,14 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
 const validationWorkflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
   'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
 
-function validationPolicy({ eventName = 'pull_request', action = 'opened', changes = {}, number = 7, runId = 1, workflow = validationWorkflow.name } = {}) {
-  const github = { workflow, event_name: eventName, run_id: runId,
-    event: { action, changes, ...(eventName === 'pull_request' ? { pull_request: { number } } : {}) } };
-  const evaluate = value => {
-    const expression = value.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
-    assert.match(expression, /^(?:github(?:\.[a-z_]+)+|'[^']*'|null|[\s()=!&|])+$/);
-    const resolved = expression.replace(/github(?:\.[a-z_]+)+/g, path =>
-      JSON.stringify(path.split('.').slice(1).reduce((value, key) => value?.[key], github) ?? null));
-    return runInNewContext(resolved, {}, { timeout: 1000 });
-  };
-  const trigger = (validationWorkflow.on ?? validationWorkflow.true)[eventName];
-  return {
-    triggers: Boolean(trigger && (!trigger.types || trigger.types.includes(action))),
-    group: validationWorkflow.concurrency.group.replace(/\$\{\{.*?\}\}/g, evaluate),
-    cancel: evaluate(validationWorkflow.concurrency['cancel-in-progress']),
-  };
-}
-
-test('CI metadata edits queue fresh validation without cancelling the active run', () => {
-  const active = validationPolicy();
-  for (const [action, changes, triggers, cancel] of [
-    ['edited', { body: { from: 'previous proof' } }, true, false],
-    ['opened', {}, true, false],
-    ['reopened', {}, true, false],
-    ['synchronize', {}, true, true],
-    ['ready_for_review', {}, true, true],
-    ['edited', {}, true, false],
-    ['edited', { title: { from: 'previous title' } }, true, false],
-    ['edited', { base: { ref: { from: 'previous-base' } } }, true, true],
-    ['edited', { body: { from: 'old' }, base: { ref: { from: 'old' } } }, true, true],
-    ['labeled', {}, false, false],
-    ['unlabeled', {}, false, false],
-  ]) {
-    const policy = validationPolicy({ action, changes });
-    assert.equal(policy.triggers, triggers, action);
-    assert.equal(policy.group, active.group, action);
-    assert.equal(policy.cancel, cancel, action + ' ' + JSON.stringify(changes));
-  }
-  const sequence = ['ready_for_review', 'edited', 'edited', 'synchronize'].map(action => validationPolicy({ action }));
-  assert.deepEqual(sequence.map(policy => policy.group), Array(4).fill(active.group));
-  assert.deepEqual(sequence.map(policy => policy.cancel), [true, false, false, true]);
-});
-
-test('CI isolates PRs, workflows, main pushes and merge-group runs', () => {
-  const active = validationPolicy();
-  assert.notEqual(validationPolicy({ number: 8 }).group, active.group);
-  assert.notEqual(validationPolicy({ workflow: 'Review gate' }).group, active.group);
-  for (const eventName of ['push', 'merge_group']) {
-    const policy = validationPolicy({ eventName });
-    assert.equal(policy.triggers, eventName === 'push');
-    assert.equal(policy.cancel, false);
-    assert.notEqual(policy.group, active.group);
-    assert.notEqual(policy.group, validationPolicy({ eventName, runId: 2 }).group);
-  }
+test('main runs queue through proof while PR and merge groups are isolated', () => {
+  const events = validationWorkflow.on ?? validationWorkflow.true;
+  assert.ok(events.push && events.pull_request && events.merge_group);
+  const concurrency = validationWorkflow.concurrency;
+  assert.equal(concurrency['cancel-in-progress'], false);
+  assert.equal(concurrency.queue, 'max');
+  assert.equal(concurrency.group, '${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}');
+  assert.deepEqual(validationWorkflow.jobs.production.needs, ['test']);
+  assert.deepEqual(validationWorkflow.jobs.proof.needs, ['production']);
+  assert.equal(validationWorkflow.jobs.production.if, "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}");
 });

@@ -4,9 +4,8 @@
 // a refusal, never a creation. The hostname attachment (app.doctorcre.com)
 // lives outside this script and outside wrangler.jsonc.
 //
-// Run only from a clean checkout at exactly origin/main, under Joe's explicit
-// instruction for that release. `versions deploy ... @100%` is the one
-// irreversible step; undo it with `npm run rollback:production -- <id>`.
+// Run from the clean main-history source admitted by the production workflow.
+// `versions deploy ... @100%` is the irreversible step; undo it with `npm run rollback:production -- <id>`.
 import { execFileSync } from "node:child_process";
 
 import { credentialFreeEnv } from "./release-environment.mjs";
@@ -25,7 +24,7 @@ const mainCommit = run("git", ["rev-parse", "origin/main"], { capture: true }).t
 const status = run("git", ["status", "--porcelain", "--untracked-files=all"], { capture: true }).trim();
 
 if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error("HEAD is not a full Git commit");
-if (sourceCommit !== mainCommit) throw new Error("production releases must use the exact origin/main commit");
+run("git", ["merge-base", "--is-ancestor", sourceCommit, mainCommit]);
 if (status) throw new Error("production releases require a clean checkout");
 
 // Verification also replaces dist/site from the verified archive, so restored

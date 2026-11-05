@@ -103,7 +103,7 @@ class ResultsTest(unittest.TestCase):
                 import os
                 gate = subprocess.run(['bash', '-e', '-c', shell], capture_output=True,
                                       env={**os.environ, 'CHECKS':'success', 'LIVE':'success',
-                                           'SHARDS':'failure', 'PERFORMANCE':'success',
+                                           'SHARDS':'failure', 'PERFORMANCE':'success', 'JOURNEYS':'success',
                                            'PRODUCTION_PROOF':'success', 'EVENT':event})
                 self.assertNotEqual(gate.returncode, 0)
 

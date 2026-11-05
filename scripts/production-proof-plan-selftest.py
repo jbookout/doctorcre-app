@@ -174,12 +174,12 @@ class AdmissionTest(unittest.TestCase):
     def test_real_aggregate(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn('ready_for_review, edited', workflow)
-        self.assertIn('needs: [checks, shards, performance, live, production-proof]', workflow)
+        self.assertIn('needs: [checks, shards, performance, live, production-proof, journeys]', workflow)
         script = 'test "$CHECKS" = success' + workflow.split('          test "$CHECKS" = success', 1)[1].split('\n\n  preview:', 1)[0]
         for event, proof, expected in [('pull_request', 'failure', 1), ('pull_request', 'success', 0),
                                        ('push', 'skipped', 0), ('merge_group', 'skipped', 0)]:
             settings = dict(os.environ, CHECKS='success', LIVE='success', SHARDS='success',
-                            PERFORMANCE='success', EVENT=event, PRODUCTION_PROOF=proof)
+                            PERFORMANCE='success', JOURNEYS='success', EVENT=event, PRODUCTION_PROOF=proof)
             self.assertEqual(subprocess.run(['bash', '-e', '-c', script], env=settings, timeout=5).returncode, expected)
 
 
