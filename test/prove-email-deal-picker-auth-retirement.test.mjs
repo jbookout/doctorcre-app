@@ -42,6 +42,9 @@ test('exact CLI executes manifest-bound fixture module', async () => {
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.release.source_commit, 'a'.repeat(40));
   assert.ok(receipt.assertions.includes('board denial {"status":401}'));
+  for (const error of [{ status: 401 }, { status: 403 }, { code: 'session_changed' }]) {
+    assert.ok(receipt.assertions.includes(`canceled board denial retires replacement ${JSON.stringify(error)}`));
+  }
   assert.ok(receipt.assets.every(asset => /^[a-f0-9]{64}$/.test(asset.sha256)));
   assert.ok(f.calls() <= 10);
 });

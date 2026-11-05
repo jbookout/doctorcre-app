@@ -125,8 +125,9 @@ export function mountEmailActions(host: HTMLElement, row: Row, client: Client, m
       const reasons = host.querySelector('[data-deal-reasons]');
       if (reasons) reasons.innerHTML = suggested.map(item => `<p><a href="/deals?deal=${encodeURIComponent(item.deal)}">${escape(item.name)}</a> · ${escape(item.reasons.join('; '))}</p>`).join('') || '<p>No suggested deals. Search all accessible deals.</p>';
     } catch (error) {
-      if (!current() || model.state.kind !== 'editing' || model.state.draft !== draft) return;
-      if (!retireIfDenied(error)) message('Could not load deals. Cancel and try again.');
+      if (!current() || retireIfDenied(error)) return;
+      if (model.state.kind !== 'editing' || model.state.draft !== draft) return;
+      message('Could not load deals. Cancel and try again.');
     }
   }
   function retireIfDenied(error: unknown) {
