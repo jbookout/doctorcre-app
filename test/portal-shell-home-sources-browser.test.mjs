@@ -11,6 +11,12 @@ async function open(t, width = 390, theme = 'light', mapAvailable = false, publi
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   if (!mapAvailable) await page.route('**/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs', route => route.abort());
   else await page.route('**/portal/files/*', route => route.fulfill({ json: { type: 'FeatureCollection', features: [] } }));
+  for (const item of publication.developments) {
+    await page.route(`**/portal/files/${item.image.asset.sha256}`, route => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#657887"/><text x="32" y="210" fill="white" font-size="28">Synthetic development preview</text></svg>',
+      }));
+  }
   await page.goto(`${server.url}/portal/index.html`);
   await page.evaluate(async ({ fixture, theme }) => {
     document.documentElement.dataset.theme = theme;
@@ -19,6 +25,42 @@ async function open(t, width = 390, theme = 'light', mapAvailable = false, publi
   }, { fixture: publication, theme });
   return page;
 }
+
+test('Home and Sources keep readable cards and touch navigation at both widths and themes', async t => {
+  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+    await t.test(`${width} ${theme}`, async t => {
+      const publication = structuredClone(fixture);
+      publication.properties = Array.from({ length: 4 }, (_, index) => ({
+        ...fixture.properties[0], id: `sample-${index}`, address: `Example address ${index + 1}`,
+      }));
+      const page = await open(t, width, theme, false, publication);
+      await page.locator('.portal-hero').waitFor();
+      const previews = page.locator('.portal-directory article img');
+      assert.equal(await previews.count(), fixture.developments.length);
+      assert.equal(await previews.first().getAttribute('alt'), fixture.developments[0].image.alt);
+      assert.equal(await previews.first().evaluate(node => getComputedStyle(node).objectFit), 'cover');
+      await previews.first().scrollIntoViewIfNeeded();
+      await previews.first().evaluate(node => node.decode());
+      for (const link of await page.locator('.portal-header nav a').all()) {
+        assert.ok((await link.boundingBox()).height >= 44);
+      }
+      assert.equal(await page.locator('.portal-hero > p').last().evaluate(node => node.getBoundingClientRect().width <= 720), true);
+      await page.getByRole('navigation').getByRole('link', { name: 'Sources', exact: true }).click();
+      await page.getByRole('heading', { name: 'Sources', exact: true }).waitFor();
+      const cards = page.locator('.portal-source-list article');
+      assert.equal(await cards.count(), publication.properties.length);
+      assert.equal(await cards.evaluateAll(nodes => nodes.slice(1).every((node, index) => {
+        const box = node.getBoundingClientRect();
+        const previous = nodes[index].getBoundingClientRect();
+        return box.top >= previous.bottom + 12 || box.left >= previous.right + 12;
+      })), true);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await mkdir('out/test-artifacts/portal-shell', { recursive: true });
+      await page.evaluate(() => { scrollTo(0, 0); document.activeElement?.blur(); });
+      await page.screenshot({ path: `out/test-artifacts/portal-shell/sources-${width}-${theme}.png`, fullPage: true });
+    });
+  }
+});
 
 test('scroll progress and sticky title track document and header geometry', async t => {
   for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {

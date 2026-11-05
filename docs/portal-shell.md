@@ -103,8 +103,8 @@ future coordinated schema revision if other packages use different labels.
 This is a partial S10 builder handoff. Reference CSS, asset and interaction
 parity is unproven. The Studio must run the assigned S10 rows using the private
 publications after S7/S9 land. Map anchor/practice markers and focus/hover previews are implemented.
-Stems, exact reference styling, scroll progress and header-height tracking are
-not implemented. Local-layer MapLibre and development markers use the existing
+Stems, scroll progress and resize-aware header tracking are implemented and
+covered by the shell browser suite. Exact reference styling remains unproven. Local-layer MapLibre and development markers use the existing
 self-hosted 6.4.1 assets; vector basemaps remain S16. No approximate coordinate
 is exposed as navigation.
 
@@ -114,3 +114,18 @@ committed fixture. Existing app URLs, passwords and roadmap are untouched.
 The deployed portal proof remains pending. After integration and release, verify
 the published Home headline and snapshot, open Sources, exercise browser history,
 and confirm no internal notes appear. A local fixture cannot attest this.
+
+
+## Fixture styling verification
+
+The remainder round adds development image previews, spaced Sources cards,
+explicit heading and paragraph rhythm, and navigation targets of at least 44px.
+The existing module and adapter interfaces remain unchanged. Browser checks run
+Home and Sources at 390px and 1280px in both themes, including a four-property
+Sources grid. These checks prove fixture layout, not reference pixel parity.
+
+The earlier cancelled CI run failed its aggregate receipt gate because the
+shards had no complete receipts. The same missing-receipt input is refused by
+both this branch and origin/main. A later hosted run on the unchanged initial
+head passed every job, including all shards and performance:
+https://github.com/jbookout/doctorcre-app/actions/runs/41977014209.

@@ -41,9 +41,9 @@ function Wordmark({ publication }: { publication: MarketStudy }) {
 function Sources({ publication }: { publication: MarketStudy }) {
   return <>{publication.sources.sections.map((section, index) => <section key={index}>
     <h2>{section.heading}</h2><p><RichText runs={section.body} /></p>
-  </section>)}<section><h2>Listing sources</h2>{publication.properties.map(property => <article key={property.id}>
+  </section>)}<section><h2>Listing sources</h2><div className="portal-source-list">{publication.properties.map(property => <article key={property.id}>
     <h3>{property.address}</h3><ul>{property.sources.map((source, index) => <li key={index}><ExternalLink url={source.url}>{source.label}</ExternalLink></li>)}</ul>
-  </article>)}</section><section><h2>Demographic sources</h2><p><RichText runs={publication.demographics.methodology} /></p>
+  </article>)}</div></section><section><h2>Demographic sources</h2><p><RichText runs={publication.demographics.methodology} /></p>
     <p><RichText runs={publication.demographics.growth.source} /></p>
     <ul>{publication.demographics.growth.geographies.map((area, index) => <li key={index}><ExternalLink url={area.source_url}>{area.name}</ExternalLink></li>)}</ul>
   </section></>;
@@ -80,7 +80,7 @@ function Home({ publication, open, available }: { publication: MarketStudy; open
       {available('demographics') && <a href="#demographics">Explore demographic context</a>}</article>)}
   </section>{publication.developments.length > 0 && <section><h2>Major development activity</h2>
     <HomeMap publication={publication} markers={markers} /><div className="portal-directory">{publication.developments.map(item => <article key={item.id}>
-      <p>{item.place} · {item.stage}</p><h3>{item.title}</h3><p>{item.summary}</p>
+      <img className="portal-development-image" src={portalAsset(item.image.asset)} alt={item.image.alt} loading="lazy" style={{ objectFit: item.image.fit ?? 'cover' }} /><p>{item.place} · {item.stage}</p><h3>{item.title}</h3><p>{item.summary}</p>
       <button type="button" onClick={() => open({ title: item.title, body: <DevelopmentDetails item={item} /> })}>Explore {item.title}</button>
     </article>)}</div></section>}
     {publication.context_anchors && <section><h2>Regional context</h2><div className="portal-directory">{publication.context_anchors.map((anchor, index) => <article key={index}>
