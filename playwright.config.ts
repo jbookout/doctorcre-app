@@ -18,6 +18,12 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
+    {
+      name: 'fixtures',
+      testDir: './tests/fixtures',
+      outputDir: '.e2e/fixture-playwright',
+      use: { ...devices['Desktop Chrome'], extraHTTPHeaders: {} },
+    },
     { name: 'setup', testMatch: /.*\.setup\.ts/, use: { trace: 'off' } },
     {
       name: 'chromium',
