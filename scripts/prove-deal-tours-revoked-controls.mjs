@@ -19,7 +19,7 @@ export function parseArgs(args) {
 
 export async function prove({ origin, timeoutMs = 30000, screenshotDir }) {
   const started = Date.now();
-  const browser = await chromium.launch({ args: CHROMIUM_SAFETY_ARGS, timeout: timeoutMs });
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
   let timer;
   const work = async () => {
     const context = await browser.newContext({ serviceWorkers: 'block' });
