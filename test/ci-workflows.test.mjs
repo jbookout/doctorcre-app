@@ -368,7 +368,7 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   assert.match(gate, /browser-results.py verify/);
   assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
-  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', 'PERFORMANCE']) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
       env: { ...process.env, CHECKS:'success', LIVE:'success',
         PERFORMANCE:'success', SHARDS:'success', EVENT:event, [dependency]:outcome } });
@@ -433,4 +433,16 @@ test('CI isolates PRs, workflows, main pushes and merge-group runs', () => {
     assert.notEqual(policy.group, active.group);
     assert.notEqual(policy.group, validationPolicy({ eventName, runId: 2 }).group);
   }
+});
+
+
+test('shard deadline admits the recorded main CI workload plus setup headroom', () => {
+  const shard = ci.split(/^  shards:\n/m)[1].split(/^  performance:/m)[0];
+  const deadlineMinutes = Number(shard.match(/timeout-minutes: (\d+)/)[1]);
+  // Main run 42118414420 exhausted 900 seconds with a test still running.
+  const exhaustedSeconds = 900;
+  const setupAndVarianceSeconds = 300;
+  assert.ok(deadlineMinutes * 60 > exhaustedSeconds + setupAndVarianceSeconds,
+    'allow the recorded 15-minute workload plus five minutes of setup and runner variance');
+  assert.ok(deadlineMinutes <= 30, 'keep the shard bounded');
 });
