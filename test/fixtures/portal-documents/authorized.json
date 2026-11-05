@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "schema_version": "client-portal.v1",
+  "portal": {
+    "slug": "example-health",
+    "roadmap": { "current_phase": "research", "phases": [{ "slug": "research", "label": "Research" }] },
+    "materials": [
+      { "kind": "document", "title": "Example floor plan", "content": "Shared synthetic floor plan notes." },
+      { "kind": "report", "title": "Example report", "content": "Shared synthetic report text." },
+      { "kind": "tour", "title": "Example tour", "content": "Shared synthetic tour text." }
+    ]
+  }
+}
