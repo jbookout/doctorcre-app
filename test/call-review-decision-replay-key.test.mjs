@@ -116,6 +116,11 @@ for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) {
     assert.match(s.node.textContent, /outcome is unknown/);
     assert.equal([...s.node.querySelectorAll('button')].find(b => b.textContent === 'Skip item').disabled, true);
     assert.equal(s.writes.length, 1);
+    if (status === 429) {
+      const afterCooldown = Date.now() + 60_001;
+      t.mock.method(Date, 'now', () => afterCooldown);
+      await new Promise(resolve => setTimeout(resolve, 1100));
+    }
     await s.click('Check outcome');
     assert.equal(s.writes.length, 2);
     assert.deepEqual(s.writes[1], s.writes[0]);
@@ -146,4 +151,13 @@ for (const readbackFails of [false, true]) test(`live resolveConfirm receipt cle
   assert.equal(s.writes.length, 1);
   assert.doesNotMatch(s.node.textContent, /outcome is unknown/);
   assert.match(s.node.textContent, readbackFails ? /Could not check/ : /No longer pending/);
+});
+for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) test(`live ${resolver} missing receipt stays unknown`, async t => {
+  const s = await setup(t, () => mcp({}), resolver, false, true);
+  await s.click('Approve item');
+  assert.match(s.node.textContent, /outcome is unknown/);
+  assert.equal([...s.node.querySelectorAll('button')].find(b => b.textContent === 'Skip item').disabled, true);
+  await s.click('Check outcome');
+  assert.equal(s.writes.length, 2);
+  assert.deepEqual(s.writes[1], s.writes[0]);
 });

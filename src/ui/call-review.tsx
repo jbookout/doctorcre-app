@@ -288,11 +288,11 @@ export function mountCallReview(container: HTMLElement, options: Options) {
         : await client.resolveConfirm?.({ proposal_id: candidate_id, accept, idempotency_key });
       if (disposed || revoked) return;
       if (isObject(result) && result.ok === false) { decision = undefined; throw new Error('Decision refused'); }
-      if (!isObject(result) || result.ok !== true) throw new Error('Decision receipt unavailable');
+      if (!isObject(result) || !(result.ok === true || (request.resolver === 'resolve-candidate' && result.status === 'ok'))) throw new Error('Decision receipt unavailable');
       decision = undefined; deciding = undefined;
     } catch (error) {
       if (disposed || revoked) return;
-      if (isObject(error) && typeof error.status === 'number' && [400, 401, 403, 404, 409, 422, 429].includes(error.status)) decision = undefined;
+      if (isObject(error) && !error.pendingRequest && (error.writeRefusal === true || signedOut(error))) decision = undefined;
       throw error;
     }
   }
