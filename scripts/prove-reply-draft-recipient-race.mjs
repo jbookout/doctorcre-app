@@ -15,7 +15,7 @@ function options(args) {
 async function prove({ origin, timeout }) {
   let browser, timer, expired = false;
   const work = async () => {
-    browser = await chromium.launch({ args: CHROMIUM_SAFETY_ARGS, timeout });
+    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
     if (expired) { await browser.close(); throw Error('Proof timeout'); }
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage();

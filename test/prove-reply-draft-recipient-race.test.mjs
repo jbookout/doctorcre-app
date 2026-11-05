@@ -1,10 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { request } from 'node:http';
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -68,7 +67,18 @@ for (const mode of ['missing export', 'failed assertion', 'missing release', 'pr
         else if (mode === 'request cap') res.end("for (let i = 0; i < 65; i++) await fetch('/js/read.js');");
         else if (mode === 'oversized asset') res.end(' '.repeat(1048577));
         else if (mode === 'mutation') res.end("await fetch('/business-write', { method: 'POST' });");
-        else if (mode === 'changed release') res.end(await readFile(join(output, 'site', new URL(req.url, 'http://127.0.0.1').pathname)));
+        else if (mode === 'changed release') {
+          const root = resolve(output, 'site');
+          let path;
+          try {
+            path = resolve(root, '.' + decodeURIComponent(req.url.split('?')[0]).replaceAll('\\', '/'));
+          } catch {
+            res.statusCode = 403;
+            return res.end();
+          }
+          if (!path.startsWith(root + sep)) { res.statusCode = 403; return res.end(); }
+          res.end(await readFile(path));
+        }
         else res.end('export const createReplyDeviceDrafts = () => ({ save: () => true, remove() {}, restore: () => null });');
       }
     });
