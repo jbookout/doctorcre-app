@@ -326,10 +326,12 @@ test('three late CI wakes promote the same green source only once', t => {
     writeFileSync(event, JSON.stringify({ workflow_run: { head_sha: sha.repeat(40), conclusion } }));
     writeFileSync(output, '');
     const wakeEnv = { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'jbookout/doctorcre-app' };
-    const candidate = spawnSync('bash', ['-e', '-c', steps.find(step => step.id === 'candidate').run], { cwd: root, env: wakeEnv, encoding: 'utf8' });
+    assert.equal(steps.find(step => step.id === 'candidate').run, 'python3 scripts/production-candidate.py');
+    const candidate = spawnSync('python3', ['scripts/production-candidate.py'], { cwd: root, env: wakeEnv, encoding: 'utf8' });
     assert.equal(candidate.status, 0, candidate.stderr);
     assert.match(readFileSync(output, 'utf8'), /ready=true/);
-    const result = spawnSync('bash', ['-e', '-c', steps.find(step => step.name === 'Deploy production').run.replace('node scripts/', `${process.execPath} scripts/`)], { cwd: root, env: wakeEnv, encoding: 'utf8' });
+    assert.equal(steps.find(step => step.name === 'Deploy production').run.trim().split('\n').at(-1), 'node scripts/release-production.mjs');
+    const result = spawnSync(process.execPath, ['scripts/release-production.mjs'], { cwd: root, env: wakeEnv, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
   }
   const rows = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);
