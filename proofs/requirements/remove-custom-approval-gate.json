@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "remove-custom-approval-gate",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "app-unchanged-release",
+      "predicate": "After merge and deployment, app-release-live-walk.v1 proves the merge is an ancestor of the served app source_commit and the public root still loads. Separately read the merged GitHub tree to confirm the approval workflow and its scripts are absent, and the native required review is approved. No business behavior changes are claimed.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Matching deployed release ancestry and a successful public root read; GitHub shows native approval and no custom approval workflow. Missing observations leave this unproven.",
+      "input_class": "Read-only release identity, public page and GitHub PR metadata",
+      "deadline_seconds": 60
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 20,
+    "max_records": 20,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 1048576
+  }
+}
