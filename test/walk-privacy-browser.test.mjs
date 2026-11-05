@@ -143,7 +143,6 @@ test('waiting changes stay bound to the verified item', async ({page,context}) =
 });
 
 test('notification prerequisite waits for successful readiness and fails on feed errors', async t => {
-  let state = 'ready';
   let answers = 0;
   const server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html');
@@ -151,17 +150,27 @@ test('notification prerequisite waits for successful readiness and fails on feed
       answers++;
       return response.end('<div class="doc-message">Synthetic answer</div>');
     }
-    response.end(`<div id="feedState" data-state="pending"></div><ul id="feedList"></ul><script>setTimeout(()=>{document.querySelector('#feedList').innerHTML=${JSON.stringify(state === 'ready' ? '<li>TEST answer <a href="/doc-chats/test-answer">Open answer</a></li>' : '')};document.querySelector('#feedState').dataset.state=${JSON.stringify(state)}},200)</script>`);
+    response.end('<div id="feedState" data-state="pending"></div><ul id="feedList"></ul>');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const directory = temporaryDirectory('doctorcre-walk-notification-', t);
-  writeFileSync(resolve(directory, 'notification.spec.ts'), `import ${JSON.stringify(resolve('tests/walks/11-WR-000620.spec.ts'))};`);
+  writeFileSync(resolve(directory, 'notification.spec.ts'), `
+import { test } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
+import ${JSON.stringify(resolve('tests/walks/11-WR-000620.spec.ts'))};
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(state => {
+    if (location.pathname !== '/updates') return;
+    document.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+      document.querySelector('#feedList').innerHTML = state === 'ready' ? '<li>TEST answer <a href="/doc-chats/test-answer">Open answer</a></li>' : '';
+      document.querySelector('#feedState').dataset.state = state;
+    }, 200), { once: true });
+  }, process.env.WALK_NOTIFICATION_STATE);
+});`);
   const config = resolve(directory, 'playwright.config.ts');
   writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', expect: { timeout: 1000 }, use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
   for (const scenario of ['ready', 'empty', 'unavailable', 'refused', 'pending']) {
-    state = scenario;
-    const result = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 15_000 }).catch(error => error);
+    const result = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 15_000, env: { ...process.env, WALK_NOTIFICATION_STATE: scenario } }).catch(error => error);
     const report = JSON.parse(result.stdout);
     if (scenario === 'ready') {
       assert.equal(answers, 2, 'The delayed notification must open and reload its stored answer');
