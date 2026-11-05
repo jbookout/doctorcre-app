@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr622-s9-j1-formatter-pooling",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "home-completion-formatting",
+    "predicate": "The deployed /app-release identifies doctorcre-app production and a source_commit containing this merge. A read-only signed-in Home walk opens Done today and Earlier and undated completions, confirms grouping by Chicago completion date and unchanged date/time labels, and confirms the welcome date. Expand groups only; perform no completion, reopen, hide, or other production write.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release-bound observation confirms Home completion groups and formatted strings without a production write. Formatter setup-cost reduction is proven by the source regression; no LCP improvement is claimed.",
+    "input_class": "read-only production app release identity and signed-in Home observation",
+    "deadline_seconds": 300
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 20, "max_records": 1000, "max_runtime_seconds": 300, "max_artifact_bytes": 65536}
+}

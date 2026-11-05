@@ -1,7 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { InboxItem } from './inbox';
 
-const day = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
+const completionFormat = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+const welcomeFormat = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' });
+const day = (date: Date) => dayFormat.format(date);
 
 export function completionGroups(items: readonly InboxItem[], now: Date) {
   const completed = items.filter(item => item.section === 'done' || item.auto_settled).sort((a, b) => (b.completed_at ? Date.parse(b.completed_at) : 0) - (a.completed_at ? Date.parse(a.completed_at) : 0) || a.item_id.localeCompare(b.item_id));
@@ -11,7 +14,7 @@ export function completionGroups(items: readonly InboxItem[], now: Date) {
 }
 export function completionLabel(item: InboxItem) {
   if (!item.completed_at) return 'Done, time not recorded';
-  return `Done ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(item.completed_at))}`;
+  return `Done ${completionFormat.format(new Date(item.completed_at))}`;
 }
 
 function Slice({ title, detail, items, current, row }: { title: string; detail: string; items: readonly InboxItem[]; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
@@ -21,7 +24,7 @@ function Slice({ title, detail, items, current, row }: { title: string; detail: 
 }
 
 export function HomeWelcome() {
-  return <header className="home-welcome"><p className="home-kicker">YOUR DAY, IN FOCUS</p><p className="home-date">{new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</p><h1>Welcome home.</h1><p>Review what matters. Keep your day moving.</p></header>;
+  return <header className="home-welcome"><p className="home-kicker">YOUR DAY, IN FOCUS</p><p className="home-date">{welcomeFormat.format(new Date())}</p><h1>Welcome home.</h1><p>Review what matters. Keep your day moving.</p></header>;
 }
 
 export function HomeSections({ items, pinned, current, row }: { items: readonly InboxItem[]; pinned?: InboxItem | null; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
