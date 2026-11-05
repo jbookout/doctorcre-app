@@ -32,3 +32,6 @@ dialog::backdrop { background: var(--scrim); }
 dialog img { width: 100%; max-height: 340px; }
 @media (max-width: 600px) { .portal-header { gap: 1rem; } .portal-header nav { margin-left: 0; width: 100%; } main, footer { padding: 1rem; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+
+.portal-marker-preview { display: none; position: absolute; bottom: 100%; left: 0; width: 220px; padding: .75rem; border: 1px solid var(--portal-line); color: var(--portal-text); background: var(--portal-card); pointer-events: none; }
+.portal-marker:focus .portal-marker-preview, .portal-marker:hover .portal-marker-preview { display: block; }

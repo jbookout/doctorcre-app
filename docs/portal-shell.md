@@ -102,8 +102,8 @@ future coordinated schema revision if other packages use different labels.
 
 This is a partial S10 builder handoff. Reference CSS, asset and interaction
 parity is unproven. The Studio must run the assigned S10 rows using the private
-publications after S7/S9 land. Map anchor/practice markers, preview popovers,
-stems, exact reference styling, scroll progress and header-height tracking are
+publications after S7/S9 land. Map anchor/practice markers and focus/hover previews are implemented.
+Stems, exact reference styling, scroll progress and header-height tracking are
 not implemented. Local-layer MapLibre and development markers use the existing
 self-hosted 6.4.1 assets; vector basemaps remain S16. No approximate coordinate
 is exposed as navigation.

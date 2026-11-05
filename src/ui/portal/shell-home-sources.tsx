@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { portalAsset } from './package';
-import type { CarrMarketStudyV1, Development, Rich } from './package';
+import type { CarrMarketStudyV1, ContextAnchor, Development, Rich } from './package';
 
 import { HomeMap } from './home-map';
 import type { ContextMarker } from './home-map';
@@ -57,9 +57,19 @@ function DevelopmentDetails({ item }: { item: Development }) {
     <a href="#sources">View primary source</a></>;
 }
 type Detail = { title: string; body: ReactNode };
+function anchorDetail(anchor: ContextAnchor): Detail {
+  return { title: anchor.name, body: <><p>{anchor.address}</p><p>{anchor.category}</p><p>{anchor.locator.precision}</p><p>{anchor.source_note}</p><p><ExternalLink url={anchor.address_source_url}>Address source</ExternalLink></p><p><ExternalLink url={anchor.locator_source_url}>Locator source</ExternalLink></p></> };
+}
+function practiceDetail(publication: MarketStudy, practice: NonNullable<MarketStudy['client']['current_practice']>): Detail {
+  return { title: publication.client.display_name, body: <><p>{practice.address}</p><p>{practice.size_note}</p><p>{practice.locator.precision}</p><p><RichText runs={practice.source_note} /></p>{publication.client.website && <ExternalLink url={publication.client.website}>Practice website</ExternalLink>}</> };
+}
 function Home({ publication, open, available }: { publication: MarketStudy; open: (detail: Detail) => void; available: (route: PortalRoute) => boolean }) {
   const practice = publication.client.current_practice;
-  const markers = useMemo(() => publication.developments.flatMap((item, index): ContextMarker[] => item.locator ? [{ id: item.id, label: `${index + 1}. ${item.title}`, lon: item.locator.lon, lat: item.locator.lat, open: () => open({ title: item.title, body: <DevelopmentDetails item={item} /> }) }] : []), [publication, open]);
+  const markers = useMemo(() => [
+    ...publication.developments.flatMap((item, index): ContextMarker[] => item.locator ? [{ id: item.id, label: `${index + 1}. ${item.title}`, preview: item.summary, lon: item.locator.lon, lat: item.locator.lat, open: () => open({ title: item.title, body: <DevelopmentDetails item={item} /> }) }] : []),
+    ...(publication.context_anchors ?? []).map((anchor, index): ContextMarker => ({ id: `anchor-${index}`, label: anchor.name, preview: `${anchor.category} · ${anchor.address}`, lon: anchor.locator.lon, lat: anchor.locator.lat, open: () => open(anchorDetail(anchor)) })),
+    ...(practice ? [{ id: 'practice', label: `${practice.marker_letter}. Current practice`, preview: practice.address, lon: practice.locator.lon, lat: practice.locator.lat, open: () => open(practiceDetail(publication, practice)) }] : []),
+  ], [publication, practice, open]);
   return <><section className="portal-hero"><Wordmark publication={publication} />
     <p>Prepared for {publication.prepared.for} · {publication.prepared.on}</p>
     <h2>{publication.market.headline}</h2><p>{publication.market.intro}</p>
@@ -73,9 +83,9 @@ function Home({ publication, open, available }: { publication: MarketStudy; open
       <button type="button" onClick={() => open({ title: item.title, body: <DevelopmentDetails item={item} /> })}>Explore {item.title}</button>
     </article>)}</div></section>}
     {publication.context_anchors && <section><h2>Regional context</h2><div className="portal-directory">{publication.context_anchors.map((anchor, index) => <article key={index}>
-      <h3>{anchor.name}</h3><p>{anchor.category}</p><button type="button" onClick={() => open({ title: anchor.name, body: <><p>{anchor.address}</p><p>{anchor.category}</p><p>{anchor.locator.precision}</p><p>{anchor.source_note}</p><p><ExternalLink url={anchor.address_source_url}>Address source</ExternalLink></p><p><ExternalLink url={anchor.locator_source_url}>Locator source</ExternalLink></p></> })}>Explore {anchor.name}</button>
+      <h3>{anchor.name}</h3><p>{anchor.category}</p><button type="button" onClick={() => open(anchorDetail(anchor))}>Explore {anchor.name}</button>
     </article>)}</div></section>}
-    {practice && <section><h2>Current practice</h2><button type="button" onClick={() => open({ title: publication.client.display_name, body: <><p>{practice.address}</p><p>{practice.size_note}</p><p>{practice.locator.precision}</p><p><RichText runs={practice.source_note} /></p>{publication.client.website && <ExternalLink url={publication.client.website}>Practice website</ExternalLink>}</> })}>Explore current practice</button></section>}
+    {practice && <section><h2>Current practice</h2><button type="button" onClick={() => open(practiceDetail(publication, practice))}>Explore current practice</button></section>}
     {available('purchases') && <a className="portal-cta" href="#purchases">Explore purchase opportunities</a>}</>;
 }
 function DetailDialog({ detail, close }: { detail: Detail; close: () => void }) {

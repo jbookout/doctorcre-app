@@ -14,7 +14,7 @@ type MapLibrary = {
   NavigationControl: new (options: { showCompass: boolean }) => object;
   setWorkerUrl: (url: string) => void;
 };
-export type ContextMarker = { id: string; label: string; lon: number; lat: number; open: () => void };
+export type ContextMarker = { id: string; label: string; preview: string; lon: number; lat: number; open: () => void };
 export function HomeMap({ publication, markers }: { publication: CarrMarketStudyV1; markers: ContextMarker[] }) {
   const container = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -47,7 +47,9 @@ export function HomeMap({ publication, markers }: { publication: CarrMarketStudy
         const count = groups.get(key) ?? 0; groups.set(key, count + 1);
         const button = document.createElement('button'); button.type = 'button';
         button.className = 'portal-marker'; button.textContent = marker.label;
-        button.title = marker.label; button.addEventListener('click', marker.open);
+        button.setAttribute('aria-label', marker.label);
+        const preview = document.createElement('span'); preview.className = 'portal-marker-preview'; preview.textContent = marker.preview;
+        button.append(preview); button.addEventListener('click', marker.open);
         new library.Marker({ element: button, offset: [count * 34, count * -24] }).setLngLat([marker.lon, marker.lat]).addTo(map);
       }
       const points: [number, number][] = [...(publication.map.home_extent_points ?? []), ...markers.map((marker): [number, number] => [marker.lon, marker.lat])];

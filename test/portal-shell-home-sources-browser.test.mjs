@@ -70,6 +70,10 @@ test('self-hosted local-layer map opens the development with no navigation hando
   const page = await open(t, 1280, 'light', true);
   const marker = page.locator('.portal-map').getByRole('button', { name: '1. Example Town Center', exact: true });
   await marker.waitFor();
+  await page.locator('.portal-map').getByRole('button', { name: 'Example Regional Hospital', exact: true }).waitFor();
+  await page.locator('.portal-map').getByRole('button', { name: 'C. Current practice', exact: true }).waitFor();
+  await marker.focus();
+  await page.locator('.portal-marker-preview').getByText('A mixed-use center.', { exact: true }).waitFor();
   await marker.click();
   await page.getByRole('dialog').waitFor();
   assert.match(await page.getByRole('dialog').innerText(), /Adds rooftops near the study area/);
