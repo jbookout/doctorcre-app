@@ -94,3 +94,46 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     await page.getByRole('heading', { name: 'Regional growth', exact: true }).waitFor();
   });
 }
+
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+  test(`duplicate geography names retain their own values and sources at ${width}px in ${theme}`, async t => {
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+    await page.route('http://127.0.0.1/**', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en" data-theme="${theme}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Duplicate geography fixture</title><style>body{margin:0;font-family:system-ui} ${css}</style><main><h1>Demographics</h1><div id="root"></div></main><script>${bundle.outputFiles[0].text}</script></html>` }));
+    await page.goto('http://127.0.0.1/demographics');
+    const duplicate = structuredClone(data);
+    for (const section of ['growth', 'age', 'median_income']) duplicate[section].geographies[1].name = 'Sample County';
+    await page.evaluate(value => window.renderData(value), duplicate);
+    const growth = page.getByRole('group', { name: 'Growth geography', exact: true });
+    await growth.getByRole('button').nth(1).click();
+    assert.equal(await growth.locator('[aria-pressed=true]').count(), 1);
+    assert.notEqual(await growth.getByRole('button').nth(0).innerText(), await growth.getByRole('button').nth(1).innerText());
+    assert.match(await page.locator('[data-growth] table').innerText(), /11,000/);
+    assert.doesNotMatch(await page.locator('[data-growth] table').innerText(), /60,000/);
+    assert.equal(await page.locator('#regional-growth-chart a').getAttribute('href'), 'https://example.com/city-population');
+    const household = page.getByRole('group', { name: 'Household geography', exact: true });
+    assert.equal(await household.getByRole('button').count(), 2);
+    await household.getByRole('button').nth(1).click();
+    assert.equal(await household.locator('[aria-pressed=true]').count(), 1);
+    assert.match(await page.locator('[data-age]').innerText(), /25%/);
+    assert.equal(await page.locator('[data-age] a').getAttribute('href'), 'https://example.com/city-age');
+    assert.match(await page.locator('[data-selected=true]').innerText(), /\$80,000/);
+    assert.equal(await page.locator('[data-median] a').getAttribute('href'), 'https://example.com/city-age');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await mkdir('out/test-artifacts/demographics-core', { recursive: true });
+    await page.screenshot({ path: `out/test-artifacts/demographics-core/duplicates-${width}-${theme}.png`, fullPage: true });
+    const replacement = structuredClone(duplicate);
+    replacement.growth.geographies[1].series[2].value = 12000;
+    replacement.age.geographies[1].under_18_pct = 31;
+    await page.evaluate(value => window.renderData(value), replacement);
+    assert.equal(await growth.getByRole('button').nth(0).getAttribute('aria-pressed'), 'true');
+    assert.equal(await household.getByRole('button').nth(0).getAttribute('aria-pressed'), 'true');
+    assert.match(await page.locator('[data-growth] table').innerText(), /60,000/);
+    assert.match(await page.locator('[data-age]').innerText(), /22%/);
+    await growth.getByRole('button').nth(1).click();
+    await household.getByRole('button').nth(1).click();
+    assert.match(await page.locator('[data-growth] table').innerText(), /12,000/);
+    assert.match(await page.locator('[data-age]').innerText(), /31%/);
+  });
+}
