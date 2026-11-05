@@ -1313,7 +1313,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   mountAutoRefresh({ document, window, refresh: async () => {
     await loadLibrary();
     const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || sheetPending || sheetConflict || sheetBusy || tourAction || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
-    if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id);
+    if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id, { keepEditorVisible: true });
     else if (id(state.projectionId)) await loadFeedback();
   } });
 })();

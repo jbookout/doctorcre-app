@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s14-done-today",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "done-today-completion-time",
+      "predicate": "After deploy, a task completed on a synthetic test deal appears under Done today on Home with its recorded America/Chicago completion time. Yesterday completions with new activity remain outside Done today. Joe performs the signed-in completion and Home walk as the named human step.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "The deployed app release matches the merged revision and Home shows the completed test task with its Chicago completion time.",
+      "input_class": "read-only deployed app release and live walk",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 2,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

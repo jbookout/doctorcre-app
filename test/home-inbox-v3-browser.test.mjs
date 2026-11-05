@@ -19,7 +19,9 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   const rows = ['next_action', 'email_proposal', 'fact_review', 'tour_feedback'].map((source_type, i) => ({ item_id: String(i), source_type, source_id: String(i), source_version: 's1', source_state: 'done', title: `Resolved ${source_type}`, activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'settled', snoozed_until: null, explicit_unsettle: false, section: 'settled', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: ['Task', 'Reply draft', 'Fact review', 'Tour feedback'][i], merged_source_ids: [], action_id: i === 0 ? id : null, action_version: i === 0 ? 7 : null, deal_id: null, auto_settled: true }));
   const calls = [];
   await page.route('**/mcp', route => {
-    const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
+    const { name, arguments: args } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    calls.push({ name, args });
     let payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: rows }
       : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
     if (name.endsWith('-home-inbox')) {
@@ -30,9 +32,9 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(`${server.origin}/?mode=live`);
-  const done = page.getByRole('region', { name: 'Recently done', exact: true });
+  const done = page.getByRole('region', { name: 'Earlier and undated completions', exact: true });
   await done.getByRole('button', { name: 'See all 4', exact: true }).click();
-  for (const reason of ['Task completed', 'Answered', 'Review resolved', 'Feedback received']) await done.getByText(reason, { exact: true }).waitFor();
+  assert.equal(await done.getByText('Done, time not recorded', { exact: true }).count(), 4);
   assert.equal(await page.getByRole('region', { name: 'Hidden from inbox', exact: true }).locator('[data-inbox-row]').count(), 0);
   assert.equal(await page.getByRole('region', { name: 'In motion and waiting', exact: true }).locator('[data-inbox-row]').count(), 0);
   assert.doesNotMatch(await done.textContent(), /by you/);
@@ -61,7 +63,8 @@ for (const refusal of ['unknown_tool', 'partner_required', 'malformed']) test(`H
   const calls = [];
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/mcp', route => {
-    const { name } = route.request().postDataJSON().params; calls.push(name);
+    const { name } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } }); calls.push(name);
     const payload = name === 'read-home-inbox-v3' ? { error: refusal }
       : name === 'read-home-inbox-v2' ? { ok: true, schema_version: 'home-inbox.v2', auto_settle_enabled: false, working_collapsed: true, truncated: false, limit: 1000, items: [] }
       : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
@@ -93,6 +96,7 @@ for (const [transition, before, after] of [
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/mcp', route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     let payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [item] } : { items: [] };
     if (name === 'settle-home-inbox') {
       Object.assign(item, { section: 'settled', disposition: 'settled', base_version: 'opaque:2' });
@@ -104,9 +108,9 @@ for (const [transition, before, after] of [
   await page.locator('[data-inbox-row="transition"]').waitFor();
   Object.assign(item, after);
   await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
-  const section = after.section === 'settled' || after.section === 'done' ? 'Recently done' : 'Needs your attention';
+  const section = after.section === 'settled' || after.section === 'done' ? 'Earlier and undated completions' : 'Needs your attention';
   await page.getByRole('region', { name: section, exact: true }).locator('[data-inbox-row="transition"]').waitFor();
-  if (after.auto_settled) await page.getByText('Task completed', { exact: true }).waitFor();
+  if (after.auto_settled) await page.getByText('Done, time not recorded', { exact: true }).waitFor();
   else await page.locator('[data-inbox-row="transition"] .inbox-badge').filter({ hasText: after.source_state.replaceAll('_', ' ') }).waitFor();
   if (transition === 'Processing completes') {
     await page.locator('[data-inbox-row="transition"]').getByRole('button', { name: 'Hide from inbox', exact: true }).click();
