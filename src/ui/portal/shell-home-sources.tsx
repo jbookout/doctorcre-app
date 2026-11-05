@@ -10,9 +10,9 @@ import { trackShellGeometry } from './shell-geometry';
 import type { ContextMarker } from './home-map';
 
 export type MarketStudy = CarrMarketStudyV1;
-export type PortalRoute = 'home' | 'purchases' | 'demographics' | 'tour-list' | 'ownership' | 'sources';
+export type PortalRoute = string;
 export type PortalModule = {
-  route: Exclude<PortalRoute, 'home' | 'sources'>;
+  route: PortalRoute;
   label: string;
   available: (publication: MarketStudy) => boolean;
   render: (publication: MarketStudy) => ReactNode;
@@ -46,6 +46,13 @@ function Sources({ publication }: { publication: MarketStudy }) {
   </article>)}</div></section><section><h2>Demographic sources</h2><p><RichText runs={publication.demographics.methodology} /></p>
     <p><RichText runs={publication.demographics.growth.source} /></p>
     <ul>{publication.demographics.growth.geographies.map((area, index) => <li key={index}><ExternalLink url={area.source_url}>{area.name}</ExternalLink></li>)}</ul>
+    <ul>{publication.demographics.age.geographies.map((area, index) => <li key={index}><ExternalLink url={area.source_url}>{area.name} age distribution</ExternalLink></li>)}</ul>
+    {publication.demographics.micro_zones && <><h3>Radius reports</h3><ul>{publication.demographics.micro_zones.zones.map(zone => <li key={zone.id}>
+      <a href={portalAsset(zone.study_pdf)} target="_blank" rel="noopener noreferrer">{zone.name} report PDF</a>
+    </li>)}</ul></>}
+    {publication.demographics.competition && <><h3>Competitor directory sources</h3><ul>{publication.demographics.competition.offices.map((office, index) => <li key={index}>
+      <ExternalLink url={office.source_url}>{office.name}</ExternalLink>
+    </li>)}</ul></>}
   </section></>;
 }
 function DevelopmentDetails({ item }: { item: Development }) {
@@ -78,8 +85,8 @@ function Home({ publication, open, available }: { publication: MarketStudy; open
   </section><section aria-label="Market snapshot" data-snapshot className="portal-snapshot">
     {publication.market.snapshot.filter(figure => !/\b(candidate|properties|property|listings?|rents?|asking|sites)\b/i.test(figure.label)).map((figure, index) => <article key={index}><strong>{figure.value}</strong><p>{figure.label}</p>
       {available('demographics') && <a href="#demographics">Explore demographic context</a>}</article>)}
-  </section>{publication.developments.length > 0 && <section><h2>Major development activity</h2>
-    <HomeMap publication={publication} markers={markers} /><div className="portal-directory">{publication.developments.map(item => <article key={item.id}>
+  </section><HomeMap publication={publication} markers={markers} />{publication.developments.length > 0 && <section><h2>Major development activity</h2>
+    <div className="portal-directory">{publication.developments.map(item => <article key={item.id}>
       <img className="portal-development-image" src={portalAsset(item.image.asset)} alt={item.image.alt} loading="lazy" style={{ objectFit: item.image.fit ?? 'cover' }} /><p>{item.place} · {item.stage}</p><h3>{item.title}</h3><p>{item.summary}</p>
       <button type="button" onClick={() => open({ title: item.title, body: <DevelopmentDetails item={item} /> })}>Explore {item.title}</button>
     </article>)}</div></section>}

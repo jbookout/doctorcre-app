@@ -5,7 +5,7 @@ import { chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 const fixture = JSON.parse(await readFile(new URL('./fixtures/portal/example-health.market-study.json', import.meta.url)));
 
-async function open(t, width = 390, theme = 'light', mapAvailable = false, publication = fixture) {
+async function open(t, width = 390, theme = 'light', mapAvailable = false, publication = fixture, moduleRoutes = []) {
   const server = await startFixtureServer(); t.after(server.stop);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -18,11 +18,11 @@ async function open(t, width = 390, theme = 'light', mapAvailable = false, publi
       }));
   }
   await page.goto(`${server.url}/portal/index.html`);
-  await page.evaluate(async ({ fixture, theme }) => {
+  await page.evaluate(async ({ fixture, theme, moduleRoutes }) => {
     document.documentElement.dataset.theme = theme;
     const { mountPortal } = await import('/js/ui-portal.js');
-    window.portalPanel = mountPortal(document.querySelector('#portal-root'), { load: async () => fixture });
-  }, { fixture: publication, theme });
+    window.portalPanel = mountPortal(document.querySelector('#portal-root'), { load: async () => fixture, modules: moduleRoutes.map(route => ({ route, label: route, available: () => true, render: () => `${route} content` })) });
+  }, { fixture: publication, theme, moduleRoutes });
   return page;
 }
 
@@ -190,4 +190,43 @@ test('self-hosted local-layer map opens the development with no navigation hando
   await page.getByRole('dialog').getByRole('link', { name: 'View primary source', exact: true }).click();
   await page.getByRole('heading', { name: 'Sources', exact: true }).waitFor();
   assert.equal(await page.getByRole('dialog').count(), 0);
+});
+
+
+test('citations, independent context and registered routes work at both widths and themes', async t => {
+  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+    for (const empty of [false, true]) await t.test(`${width} ${theme} optional groups ${empty ? 'absent' : 'present'}`, async t => {
+      const publication = structuredClone(fixture);
+      if (empty) {
+        publication.developments = [];
+        delete publication.demographics.micro_zones;
+        delete publication.demographics.competition;
+      }
+      const routes = ['documents', 'roadmap', 'local-context'];
+      const page = await open(t, width, theme, true, publication, routes);
+      await page.locator('.portal-marker').first().waitFor();
+      assert.equal(await page.locator('.portal-map').count(), 1);
+      assert.equal(await page.locator('.portal-marker').count(), publication.developments.filter(d => d.locator).length + publication.context_anchors.length + 1);
+      assert.equal(await page.getByRole('heading', { name: 'Major development activity', exact: true }).count(), empty ? 0 : 1);
+      await page.getByRole('navigation').getByRole('link', { name: 'Sources', exact: true }).click();
+      await page.getByRole('heading', { name: 'Sources', exact: true }).waitFor();
+      const hrefs = await page.locator('main a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
+      for (const area of publication.demographics.age.geographies) assert.ok(hrefs.includes(area.source_url));
+      for (const zone of publication.demographics.micro_zones?.zones ?? []) assert.ok(hrefs.includes(`files/${zone.study_pdf.sha256}`));
+      for (const office of publication.demographics.competition?.offices ?? []) assert.ok(hrefs.includes(office.source_url));
+      assert.equal(await page.getByRole('heading', { name: 'Radius reports', exact: true }).count(), empty ? 0 : 1);
+      assert.equal(await page.getByRole('heading', { name: 'Competitor directory sources', exact: true }).count(), empty ? 0 : 1);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await mkdir('out/test-artifacts/portal-shell', { recursive: true });
+      await page.screenshot({ path: `out/test-artifacts/portal-shell/citations-${width}-${theme}-${empty}.png`, fullPage: true });
+      for (const route of routes) {
+        await page.getByRole('navigation').getByRole('link', { name: route, exact: true }).click();
+        await page.getByRole('heading', { name: route, exact: true }).waitFor();
+        assert.match(await page.locator('main').innerText(), new RegExp(`${route} content`));
+      }
+      await page.getByRole('navigation').getByRole('link', { name: 'Home', exact: true }).click();
+      await page.locator('.portal-marker').first().waitFor();
+      await page.screenshot({ path: `out/test-artifacts/portal-shell/context-${width}-${theme}-${empty}.png`, fullPage: true });
+    });
+  }
 });

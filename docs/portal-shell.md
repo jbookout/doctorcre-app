@@ -13,9 +13,10 @@ is implemented in this module. S9 must invoke this interface after sign-in.
 `mountMarketStudy` is the synchronous interface for an already validated package.
 Both return an idempotent `dispose` method.
 
-`PortalModule` registers a typed route, title, data-presence predicate and React
-renderer. The shell evaluates availability before navigation or rendering and
-mounts only the active renderer. S11, S12 and S13 can own their modules without
+`PortalModule` registers a string route, title, data-presence predicate and React
+renderer. Home and Sources are shell-owned routes. Modules provide unique fragment
+names, including Documents, Roadmap and publication-specific pages. The shell evaluates availability before navigation or rendering and
+mounts only the active renderer. Later slices can own their modules without
 editing the router. No hypothetical fallback implementations are registered.
 Home and Sources always exist in the full schema. The shell makes no CARR writes.
 
@@ -129,3 +130,17 @@ shards had no complete receipts. The same missing-receipt input is refused by
 both this branch and origin/main. A later hosted run on the unchanged initial
 head passed every job, including all shards and performance:
 https://github.com/jbookout/doctorcre-app/actions/runs/41977014209.
+
+
+## Review regression coverage
+
+Sources renders age geography links alongside growth citations. Optional radius
+reports link through `portalAsset`, and competitor directory links use
+`ExternalLink`. Each optional group disappears independently when absent.
+Home renders its context map independently of the optional development directory.
+An empty development list retains practice and context-anchor markers.
+
+The shell regression tests cover each finding through DOM rendering, an external
+TypeScript module consumer and Chromium at 390px and 1280px in both themes.
+The existing publication and map lifecycle statecharts are unchanged by these
+rendering and route-contract repairs.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { JSDOM } from 'jsdom';
@@ -152,7 +152,8 @@ test('Home keeps its context map without development projects', async () => {
 });
 
 test('public module consumers can register planned and publication-specific routes', async () => {
-  const dir = await mkdtemp(resolve('test/.portal-consumer-'));
+  await mkdir('out', { recursive: true });
+  const dir = await mkdtemp(resolve('out/portal-consumer-'));
   try {
     const file = resolve(dir, 'consumer.tsx');
     await writeFile(file, `import type { PortalModule } from '../../src/ui/portal/shell-home-sources';
