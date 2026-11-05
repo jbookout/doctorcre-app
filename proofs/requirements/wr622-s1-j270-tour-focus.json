@@ -1,0 +1,17 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr622-s1-j270-tour-focus",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "tour-focus-keeps-native-notes",
+    "predicate": "The deployed app /release identifies the merged revision. During a signed-in Tour walk, Joe focuses the internal notes as a background detail read runs, types a synthetic note, saves it, and observes the same note after reopening the Tour. A read-only observer records the release and the visible result.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "The background read keeps the editor visible and the typed note is saved and survives reopening.",
+    "input_class": "read-only release identity and evidence from a named human signed-in walk by Joe",
+    "deadline_seconds": 300
+  }],
+  "safety": {
+    "read_only": true, "no_sends": true, "max_requests": 2,
+    "max_records": 10, "max_runtime_seconds": 300, "max_artifact_bytes": 65536
+  }
+}
