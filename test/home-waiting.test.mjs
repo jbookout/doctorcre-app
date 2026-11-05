@@ -117,3 +117,12 @@ test('v5 unsupported falls back through every legacy version only for unknown_to
     assert.deepEqual(calls, ['v5', 'v4', 'v3', 'v2'].slice(0, ['v5', 'v4', 'v3', 'v2'].indexOf(supported) + 1).map(v => `read-home-inbox-${v}`));
   }
 });
+test('malformed v5 waiting identity never falls back to a legacy read', async () => {
+  const snapshot = await fixtureInboxRpc()('read-home-inbox-v5', {});
+  for (const fields of [{ waiting_version: undefined }, { waiting_on: undefined }, { waiting_version: -1 }]) {
+    const calls = [];
+    const client = api.createInboxClient(async name => { calls.push(name); return { ...snapshot, items: [{ ...snapshot.items[0], ...fields }] }; });
+    await assert.rejects(client.read(), /Waiting/);
+    assert.deepEqual(calls, ['read-home-inbox-v5']);
+  }
+});

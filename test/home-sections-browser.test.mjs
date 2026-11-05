@@ -72,7 +72,7 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
       : name === 'calendar-meeting-prep' ? { state, items: [] }
       : name === 'deal-room-board' ? { actor: 'joe', deals: [] }
@@ -116,7 +116,7 @@ for (const outcome of ['empty', 'unavailable']) test(`Home reserves its frame an
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     if (name !== 'read-home-inbox-v3') panelReads.push(name);
     const value = name === 'read-home-inbox-v3' ? outcome === 'empty'
       ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
