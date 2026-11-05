@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -12,21 +12,21 @@ const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e'
   input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
 }));
 
-test('production accepts only a successful same-repository main push CI run and pins its exact source', () => {
+test('production accepts same-repository main push CI wakes and resolves current main', () => {
   const document = workflow();
   const events = document.on ?? document.true;
   assert.deepEqual(events.workflow_run, { workflows: ['CI'], types: ['completed'] });
   assert.deepEqual(Object.keys(events), ['workflow_run']);
   const job = document.jobs.production;
-  for (const clause of ["conclusion == 'success'", "head_branch == 'main'", "event == 'push'", 'head_repository.full_name == github.repository']) assert.ok(job.if.includes(clause));
+  for (const clause of ["head_branch == 'main'", "event == 'push'", 'head_repository.full_name == github.repository']) assert.ok(job.if.includes(clause));
   assert.equal(job.environment, 'production');
-  assert.equal(document.concurrency['cancel-in-progress'], false);
+  assert.equal(job.concurrency['cancel-in-progress'], false);
   assert.equal(document.permissions.contents, 'read');
   assert.equal(document.permissions.actions, 'read');
   assert.equal(document.env?.CLOUDFLARE_API_TOKEN, undefined);
   assert.equal(job.env?.CLOUDFLARE_API_TOKEN, undefined);
   const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with.ref, '${{ github.event.workflow_run.head_sha }}');
+  assert.equal(checkout.with.ref, 'main');
   assert.equal(checkout.with['fetch-depth'], 0);
   assert.equal(checkout.with['persist-credentials'], false);
 });
@@ -68,15 +68,13 @@ test('production smoke reads each page and refuses a sign-in redirect for anothe
 
 test('production waits for successful CI on that source and uses the existing publisher before its read-only smoke', () => {
   const steps = workflow().jobs.production.steps;
-  const ci = steps.findIndex(step => step.name === 'Require successful main CI');
+  const ci = steps.findIndex(step => step.id === 'candidate');
   const build = steps.findIndex(step => step.run === 'npm run build');
   const deploy = steps.findIndex(step => step.name === 'Deploy production');
   const readback = steps.findIndex(step => step.name === 'Verify production release identity');
   const smoke = steps.findIndex(step => step.name === 'Run production browser smoke');
   assert.ok(ci >= 0 && ci < build && build < deploy && deploy < readback && readback < smoke);
-  assert.match(steps[ci].run, /--workflow ci\.yml --commit "\$SOURCE_COMMIT" --event push/);
-  assert.match(steps[ci].run, /--branch main/);
-  assert.match(steps[ci].run, /gh run watch "\$ci_run" --exit-status/);
+  assert.equal(steps[ci].run, 'python3 scripts/production-candidate.py');
   assert.match(steps[deploy].run, /node scripts\/release-production\.mjs/);
   assert.equal(steps[deploy].env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
   assert.match(steps[readback].run, /verify-app-release\.mjs.*"\$SOURCE_COMMIT" production/);
@@ -92,7 +90,7 @@ test('production refreshes main before publication and refuses a staged source a
   const deploy = steps.findIndex(step => step.name === 'Deploy production');
   const verify = steps.findIndex(step => step.run === 'npm run artifact:verify');
   assert.ok(gate > verify && gate + 1 === deploy, 'refresh main immediately before publication');
-  assert.equal(steps[gate].env.SOURCE_COMMIT, '${{ github.event.workflow_run.head_sha }}');
+  assert.equal(steps[gate].env.SOURCE_COMMIT, '${{ steps.candidate.outputs.source_commit }}');
   const root = temporaryDirectory('production-main-');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const origin = join(root, 'origin');
@@ -115,4 +113,58 @@ test('production refreshes main before publication and refuses a staged source a
   assert.notEqual(run(source).status, 0, 'refuse stale source after fetching the advanced main');
   git(checkout, ['remote', 'set-url', 'origin', join(root, 'missing')]);
   assert.notEqual(run(source).status, 0, 'fail closed when main cannot be fetched');
+});
+
+
+test('queued completion wakes reconcile current main even when older or failed CI finishes last', t => {
+  const document = workflow();
+  const job = document.jobs.production;
+  assert.ok(!job.if.includes("conclusion == 'success'"), 'failed older completions must still reconcile green current main');
+  assert.equal(document.concurrency, undefined, 'unrelated skipped workflows cannot replace a pending main job');
+  assert.equal(job.concurrency.group, 'doctorcre-app-production');
+  assert.equal(job.concurrency['cancel-in-progress'], false);
+  assert.equal(job.steps[0].with.ref, 'main');
+  const candidate = job.steps.find(step => step.id === 'candidate');
+  assert.ok(candidate);
+  const root = temporaryDirectory('production-candidate-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
+  git('init', '--initial-branch=main');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'Synthetic main');
+  const sha = git('rev-parse', 'HEAD');
+  const gh = join(root, 'gh');
+  writeFileSync(gh, '#!/usr/bin/env python3\nimport os,sys\nassert "--commit" in sys.argv and sys.argv[sys.argv.index("--commit")+1] == os.environ["FIXTURE_SHA"]\nprint(os.environ["FIXTURE_RUNS"])\n');
+  chmodSync(gh, 0o755);
+  const run = (runs, trigger = { head_sha: 'a'.repeat(40), conclusion: 'success' }) => {
+    const event = join(root, 'event.json');
+    writeFileSync(event, JSON.stringify({ workflow_run: trigger }));
+    const output = join(root, 'output');
+    writeFileSync(output, '');
+    const script = candidate.run.replace('scripts/production-candidate.py', new URL('../scripts/production-candidate.py', import.meta.url).pathname);
+    const result = spawnSync('bash', ['-e', '-c', script], { cwd: root, encoding: 'utf8', env: {
+      PATH: `${root}:${process.env.PATH}`, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'jbookout/doctorcre-app',
+      FIXTURE_SHA: sha, FIXTURE_RUNS: JSON.stringify(runs),
+    } });
+    return { ...result, output: readFileSync(output, 'utf8') };
+  };
+  const green = { headSha: sha, status: 'completed', conclusion: 'success' };
+  for (const trigger of [{ head_sha: 'a'.repeat(40), conclusion: 'success' }, { head_sha: 'b'.repeat(40), conclusion: 'failure' }, { head_sha: sha, conclusion: 'success' }]) {
+    const result = run([green], trigger);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.output, /ready=true/);
+    assert.ok(result.output.includes(`source_commit=${sha}`));
+  }
+  for (const runs of [[], [{ ...green, status: 'in_progress', conclusion: '' }], [{ ...green, conclusion: 'failure' }], [{ ...green, headSha: 'a'.repeat(40) }]]) {
+    const result = run(runs);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.output, /ready=false/);
+  }
+  writeFileSync(gh, '#!/bin/sh\nexit 1\n');
+  assert.notEqual(run([green]).status, 0, 'GitHub failure refuses publication without retry');
+  const build = job.steps.findIndex(step => step.run === 'npm run build');
+  for (const step of job.steps.slice(job.steps.indexOf(candidate) + 1)) {
+    if (step.if === 'failure()') continue;
+    assert.match(step.if, /steps.candidate.outputs.ready == 'true'/, step.name || step.run || step.uses);
+  }
+  assert.equal(job.steps[build].env.DOCTORCRE_SOURCE_COMMIT, '${{ steps.candidate.outputs.source_commit }}');
 });
