@@ -18,14 +18,14 @@ async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', r
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
-  const row = { item_id: 'one', source_type: kind === 'action' ? 'next_action' : kind === 'reply_draft' ? 'email_proposal' : 'fact_review', source_id: kind === 'fact_review' ? JSON.stringify([id, 'term_months']) : id, source_version: 'v1', source_state: 'needs_attention', title: 'Synthetic review', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: kind === 'action' ? 'Task' : kind === 'reply_draft' ? 'Reply draft' : 'Fact review', merged_source_ids: [], action_id: kind === 'action' ? id : null, action_version: kind === 'action' ? 1 : null, deal_id: null, auto_settled: false };
+  const row = { item_id: 'one', source_type: kind === 'action' ? 'next_action' : kind === 'reply_draft' ? 'email_proposal' : 'fact_review', source_id: kind === 'fact_review' ? JSON.stringify([id, 'term_months']) : id, source_version: 'v1', source_state: 'needs_attention', title: 'Synthetic review', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: kind === 'action' ? 'Task' : kind === 'reply_draft' ? 'Reply draft' : 'Fact review', merged_source_ids: [], action_id: kind === 'action' ? id : null, action_version: kind === 'action' ? 1 : null, deal_id: null, auto_settled: false, completed_at: null };
   if (reference) row.review_reference = { kind, item_id: row.item_id, source_version: row.source_version, operations: kind === 'action' ? ['complete-one-action'] : kind === 'reply_draft' ? ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'] : ['resolve-fact-review'] };
   let version = 1, subject = 'Synthetic subject', body = 'Synthetic body', fail = refusal;
   const calls = [];
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
     let payload = { items: [] };
-    if (name === 'read-home-inbox-v3') payload = { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [row] };
+    if (name === 'read-home-inbox-v4') payload = { ok: true, schema_version: 'home-inbox.v4', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [row] };
     if (name === 'read-home-review') {
       if (fail && fail !== 'version_conflict' && fail !== 'uncertain' && fail !== 'after_save_change') payload = { error: fail };
       else if (args.source_version !== row.source_version) payload = { error: 'home_review_stale' };

@@ -33,7 +33,8 @@ async function open(t, { path = '/inbox', width = 1280, theme = 'light', saved =
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   const calls = [];
   await page.route('**/mcp', async route => {
-    const { name } = route.request().postDataJSON().params; calls.push(name);
+    const { name } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } }); calls.push(name);
     if (name === 'read-home-inbox-v3') await inboxReady;
     const today = { subject_type: 'deal', subject_id: deal.id, subject_name: title, what: deal.next_step, due_on: deal.next_date, owner_partner: 'joe' };
     const payload = name === 'deal-room-board' ? { actor: 'joe', deals: [deal] }
