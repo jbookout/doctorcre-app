@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s17-documents",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "documents-authorized-materials",
+    "predicate": "After the owned S9 file-release adapter and S10 shell mount the Documents reader, the deployed app release contains this merge. A read-only published portal walk compares its shared material list and one released file with the publication. An already-withdrawn item is absent or denied. A second portal session cannot fetch that material. No real file is created or withdrawn for proof. Until the adapter and mounting land this proof remains pending, and local injected tests do not establish production authority.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release-bound evidence confirms publication equality, file release, withdrawal refusal and cross-portal isolation; otherwise pending or failed.",
+    "input_class": "read-only deployed app release and authorized published portal sessions",
+    "deadline_seconds": 300
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 12,
+    "max_records": 100,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}
