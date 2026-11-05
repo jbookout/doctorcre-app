@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
+import { resolverFixture } from '../scripts/prove-call-review-decision-replay-key.mjs';
 import { createLiveClient } from '../js/live-client.js';
 import { build } from 'esbuild';
 import { writeFile, unlink } from 'node:fs/promises';
@@ -15,7 +16,7 @@ async function setup(t, resolve, resolver = 'resolve-post-call-candidate', failI
   globalThis.window = dom.window; globalThis.document = dom.window.document;
   dom.window.HTMLElement.prototype.scrollIntoView = () => {};
   const node = document.querySelector('main'), writes = [];
-  const rows = [{ session_id: 's', call_date: '2026-10-01', applied: [], open_cards: [{ candidate_id: 'c', resolver, kind: 'assigned_action', payload: { action: 'Synthetic task' } }] }];
+  const rows = [{ session_id: 's', call_date: '2026-10-01', applied: [], open_cards: [{ candidate_id: 'c', resolver, kind: resolver === 'resolve-candidate' ? 'next_step' : 'assigned_action', payload: { action: 'Synthetic task' } }] }];
   let client = { readCallOutcomes: async () => { if (failInitialRead) { failInitialRead = false; throw new Error('offline'); } return { calls: structuredClone(rows) }; }, resolvePostCallCandidate: async args => { writes.push(args); return resolve(args, rows, writes.length); } };
   client.resolveConfirm = client.resolvePostCallCandidate;
   if (transport) client = createLiveClient({ fetchImpl: async (path, init) => {
@@ -36,7 +37,7 @@ async function setup(t, resolve, resolver = 'resolve-post-call-candidate', failI
   return { node, rows, writes, view, click, client, dom };
 }
 for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) test(`lost reply retains exact request for explicit check via ${resolver}`, async t => {
-  const s = await setup(t, (args, rows, count) => { if (count === 1) throw new Error('lost'); rows[0].open_cards = []; return { ok: true }; }, resolver);
+  const s = await setup(t, (args, rows, count) => { if (count === 1) throw new Error('lost'); rows[0].open_cards = []; return resolverFixture(args.candidate_id || args.proposal_id, args.accept); }, resolver);
   await s.click('Approve item');
   assert.equal(s.writes.length, 1);
   assert.equal([...s.node.querySelectorAll('button')].find(b => b.textContent === 'Skip item').disabled, true);
@@ -69,11 +70,11 @@ test('authentication failure retires controls', async t => {
 test('late completion after invalidation cannot restore controls', async t => {
   let finish; const s = await setup(t, () => new Promise(resolve => { finish = resolve; }));
   await s.click('Approve item'); s.dom.window.dispatchEvent(new s.dom.window.Event('doctorcre-session-invalidated'));
-  finish({ ok: true }); await settle(); assert.match(s.node.textContent, /Sign in again/);
+  finish(resolverFixture('c', true)); await settle(); assert.match(s.node.textContent, /Sign in again/);
 });
 test('late completion after disposal stays empty', async t => {
   let finish; const s = await setup(t, () => new Promise(resolve => { finish = resolve; }));
-  await s.click('Approve item'); s.view.dispose(); finish({ ok: true }); await settle();
+  await s.click('Approve item'); s.view.dispose(); finish(resolverFixture('c', true)); await settle();
   assert.equal(s.node.innerHTML, ''); assert.equal(s.node.hidden, true);
 });
 test('failed authoritative read never replays and refresh restores recovery', async t => {
@@ -82,7 +83,7 @@ test('failed authoritative read never replays and refresh restores recovery', as
   await s.click('Check outcome'); assert.equal(s.writes.length, 1); assert.match(s.node.textContent, /Could not check/);
   s.client.readCallOutcomes = async () => ({ calls: structuredClone(s.rows) }); await s.view.refresh();
   assert.equal([...s.node.querySelectorAll('button')].find(b => b.textContent === 'Check outcome').disabled, false);
-  s.client.resolvePostCallCandidate = async args => { s.writes.push(args); s.rows[0].open_cards = []; return { ok: true }; };
+  s.client.resolvePostCallCandidate = async args => { s.writes.push(args); s.rows[0].open_cards = []; return resolverFixture(args.candidate_id || args.proposal_id, args.accept); };
   await s.click('Check outcome'); assert.deepEqual(s.writes[1], s.writes[0]); assert.equal(s.writes[1].accept, false);
 });
 test('authorization failure during recovery permanently retires the guide', async t => {
@@ -92,14 +93,14 @@ test('authorization failure during recovery permanently retires the guide', asyn
   s.client.readCallOutcomes = async () => ({ calls: s.rows }); await s.view.refresh(); assert.match(s.node.textContent, /Sign in again/);
 });
 test('initial unavailable read recovers and ready disposal clears controls', async t => {
-  const s = await setup(t, () => ({ ok: true }), 'resolve-post-call-candidate', true);
+  const s = await setup(t, () => resolverFixture('c', true), 'resolve-post-call-candidate', true);
   s.client.readCallOutcomes = async () => { throw new Error('offline'); };
   await s.view.refresh(); assert.match(s.node.textContent, /Could not check/);
   s.client.readCallOutcomes = async () => ({ calls: s.rows }); await s.view.refresh();
   assert.match(s.node.textContent, /Needs your decision/); s.view.dispose(); assert.equal(s.node.innerHTML, '');
 });
 test('ready authorization failure and recovery disposal retire controls', async t => {
-  const s = await setup(t, () => ({ ok: true }));
+  const s = await setup(t, () => resolverFixture('c', true));
   s.client.readCallOutcomes = async () => { throw { status: 401 }; };
   await s.view.refresh(); assert.match(s.node.textContent, /Sign in again/);
 });
@@ -111,7 +112,7 @@ test('recovery disposal removes the held request', async t => {
 const mcp = (payload, isError = false) => Response.json({ result: { isError, content: [{ type: 'text', text: JSON.stringify(payload) }] } });
 for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) {
   for (const status of [400, 404, 409, 422, 429, 503]) test(`live ${resolver} retains HTTP ${status} for exact replay`, async t => {
-    const s = await setup(t, (args, rows, count) => count === 1 ? new Response('Unconfirmed', { status }) : mcp({ ok: true }), resolver, false, true);
+    const s = await setup(t, (args, rows, count) => count === 1 ? new Response('Unconfirmed', { status }) : mcp(resolverFixture(args.candidate_id, args.accept)), resolver, false, true);
     await s.click('Approve item');
     assert.match(s.node.textContent, /outcome is unknown/);
     assert.equal([...s.node.querySelectorAll('button')].find(b => b.textContent === 'Skip item').disabled, true);
@@ -127,7 +128,7 @@ for (const resolver of ['resolve-post-call-candidate', 'resolve-candidate']) {
     assert.doesNotMatch(s.node.textContent, /outcome is unknown/);
   });
   test(`live ${resolver} semantic refusal releases approval so Skip reaches the wire`, async t => {
-    const s = await setup(t, (args, rows, count) => count === 1 ? mcp({ error: 'assignee_not_provisioned' }, true) : mcp({ ok: true }), resolver, false, true);
+    const s = await setup(t, (args, rows, count) => count === 1 ? mcp({ error: 'assignee_not_provisioned' }, true) : mcp(resolverFixture(args.candidate_id, args.accept)), resolver, false, true);
     await s.click('Approve item');
     assert.doesNotMatch(s.node.textContent, /outcome is unknown/);
     await s.click('Skip item');
@@ -145,7 +146,7 @@ for (const code of ['internal_error', 'unhandled_verb_failure', 'carr_unavailabl
   assert.deepEqual(s.writes[1], s.writes[0]);
 });
 for (const readbackFails of [false, true]) test(`live resolveConfirm receipt clears uncertainty when readback ${readbackFails ? 'fails' : 'resolves'}`, async t => {
-  const s = await setup(t, (args, rows) => { rows[0].open_cards = []; return mcp({ ok: true, ref: 'synthetic-ref' }); }, 'resolve-candidate', false, true);
+  const s = await setup(t, (args, rows) => { rows[0].open_cards = []; return mcp(resolverFixture(args.candidate_id, args.accept)); }, 'resolve-candidate', false, true);
   if (readbackFails) s.client.readCallOutcomes = async () => { throw new Error('read unavailable'); };
   await s.click('Approve item');
   assert.equal(s.writes.length, 1);
