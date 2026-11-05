@@ -49,6 +49,10 @@ export function createAskOutbox(o: Options) {
     return { text:value.text, version:value.version };
   }
   const draft = () => savedDraft()?.text ?? '';
+  const admitted = (key: string, raw: string | null): QueuedAsk | null => {
+    const row = parse(raw);
+    return row && row.request.conversation_id === o.conversation && key === prefix + row.request.idempotency_key ? row : null;
+  };
   const snapshot = () => {
     const rows: QueuedAsk[] = [];
     const held: string[] = [];
@@ -58,8 +62,8 @@ export function createAskOutbox(o: Options) {
       const key = o.storage.key(i);
       if (!key?.startsWith(prefix)) continue;
       if (key === draftKey) { if (!savedDraft()) held.push(key); continue; }
-      const row = parse(o.storage.getItem(key));
-      if (row && row.request.conversation_id === o.conversation && key === prefix + row.request.idempotency_key) rows.push(row);
+      const row = admitted(key, o.storage.getItem(key));
+      if (row) rows.push(row);
       else held.push(key);
     }
     return { rows, held };
@@ -68,7 +72,7 @@ export function createAskOutbox(o: Options) {
   const put = (row: QueuedAsk) => {
     const key = prefix + row.request.idempotency_key;
     const raw = o.storage.getItem(key);
-    const current = parse(raw);
+    const current = admitted(key, raw);
     if (raw !== null && !current) { o.changed?.(); return false; }
     if (current?.kind === 'accepted') return false;
     o.storage.setItem(key, JSON.stringify(row));

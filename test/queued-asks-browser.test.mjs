@@ -192,3 +192,34 @@ test('session invalidation during submission ignores held receipt and stops queu
  assert.equal(await page.locator('#retirementProbe').textContent(),'');
  assert.deepEqual(result.after,result.before);assert.equal(result.calls,1);
 });
+for (const corruption of ['conversation_id','idempotency_key']) test(`late acceptance preserves ${corruption} recovery notice and bytes`,async t=>{
+ const server=await fixtureServer();t.after(()=>server.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto(server.origin+'/conversations');
+ await page.evaluate(async conversation=>{
+  const {mountAskComposer}=await import('/js/ui-host.js');
+  const host=document.createElement('section');host.id='receiptProbe';document.querySelector('main').append(host);
+  const prefix=`doctorcre:asks:v1:receipt-probe:${conversation}:`;
+  for(const [i,key] of ['22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'].entries())localStorage.setItem(prefix+key,JSON.stringify({kind:'queued',request:{body:i?'Second':'First',idempotency_key:key,conversation_id:conversation}}));
+  window.receiptProbe={prefix,calls:[]};
+  await mountAskComposer(host,{askSession:async()=>({actor:'receipt-probe'}),submitDocRequest:request=>{
+   window.receiptProbe.calls.push(request);
+   const receipt={ok:true,contract:'doc-request.v1',status:'accepted',...request,request_msg_id:request.idempotency_key};
+   return window.receiptProbe.calls.length===1?new Promise(resolve=>{window.receiptProbe.release=()=>resolve(receipt);}):Promise.resolve(receipt);
+  }},conversation);
+ },conversation);
+ const host=page.locator('#receiptProbe');await host.getByText('Sending your ask…',{exact:true}).waitFor();
+ await host.locator('textarea').fill('Current draft');
+ await page.evaluate(corruption=>{
+  const probe=window.receiptProbe,key=probe.prefix+probe.calls[0].idempotency_key;
+  const row=JSON.parse(localStorage.getItem(key));row.request[corruption]='44444444-4444-4444-8444-444444444444';
+  probe.raw=JSON.stringify(row);probe.key=key;localStorage.setItem(key,probe.raw);window.dispatchEvent(new Event('storage'));
+ },corruption);
+ await host.getByText(/Some saved asks or the saved draft need recovery/).waitFor();
+ await page.evaluate(()=>window.receiptProbe.release());
+ await host.getByText('Received by Dr. CRE. An answer is still pending.',{exact:true}).waitFor();
+ await host.getByText(/Some saved asks or the saved draft need recovery/).waitFor();
+ assert.equal(await host.locator('textarea').inputValue(),'Current draft');
+ assert.equal(await host.getByText('First',{exact:true}).count(),0);
+ assert.deepEqual(await page.evaluate(()=>({preserved:localStorage.getItem(window.receiptProbe.key)===window.receiptProbe.raw,calls:window.receiptProbe.calls.map(r=>r.body)})),{preserved:true,calls:['First','Second']});
+});
