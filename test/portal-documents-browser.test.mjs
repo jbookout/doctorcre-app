@@ -33,7 +33,7 @@ const empty = { ...fixture, portal: { ...fixture.portal, materials: [] } };
 test('Documents renders safe shared text at phone and desktop widths in both themes', async () => {
   const browser = await chromium.launch();
   try {
-    for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+    for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
       const page = await setup(browser, { width, theme });
       const input = structuredClone(fixture);
       input.portal.internal_note = 'Never visible internal note';
@@ -140,5 +140,50 @@ test('hidden pages clear text and timeout aborts without automatic retry', async
     await page.clock.fastForward(20000);
     assert.equal(await page.evaluate(() => window.requests.length), 2);
     assert.equal(await page.locator('article,a').count(), 0);
+  } finally { await browser.close(); }
+});
+
+test('padded contract-limit titles and content keep unrelated authorized entries visible', async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+      const page = await setup(browser, { width, theme });
+      const input = structuredClone(fixture);
+      input.portal.materials[0].title = ` ${'🩺'.repeat(200)} `;
+      input.portal.materials[1].content = ` ${'a'.repeat(10000)} `;
+      await resolve(page, received(input));
+      await settles(async () => assert.equal(await page.getByRole('article').count(), 3));
+      assert.equal(await page.getByRole('heading', { level: 3 }).first().textContent(), input.portal.materials[0].title);
+      assert.equal(await page.getByRole('article').nth(1).locator('p').nth(1).textContent(), input.portal.materials[1].content);
+      assert.equal(await page.getByRole('heading', { name: 'Example tour' }).count(), 1);
+      assert.equal(await page.locator('a,img,input,form').count(), 0);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
+test('hiding a loading page aborts and discards its late response before a fresh visible read', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await setup(browser);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await settles(async () => assert.match(await page.getByRole('status').innerText(), /Return to this page/));
+    assert.equal(await page.evaluate(() => window.requests[0].signal.aborted), true);
+    await resolve(page, received(fixture));
+    assert.equal(await page.getByRole('article').count(), 0);
+    assert.equal(await page.getByRole('button').isDisabled(), true);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForFunction(() => window.requests.length === 2);
+    assert.equal(await page.getByRole('article').count(), 0);
+    await resolve(page, received(fixture));
+    await page.getByRole('heading', { name: 'Example floor plan' }).waitFor();
+    assert.equal(await page.getByRole('article').count(), 3);
   } finally { await browser.close(); }
 });

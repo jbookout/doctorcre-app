@@ -29,3 +29,20 @@ test('maximum contract list is supported', () => {
   const material = { kind: 'document', title: 'a'.repeat(200), content: 'a'.repeat(10000) };
   assert.equal(parseDocuments({ ...fixture, portal: { ...fixture.portal, materials: Array(100).fill(material) } }, 'example-health').materials.length, 100);
 });
+
+for (const [field, limit] of [['title', 200], ['content', 10000]]) {
+  test(`space-padded ${field} at the producer limit preserves every authorized material`, () => {
+    const input = structuredClone(fixture);
+    input.portal.materials[0][field] = ` ${'🩺'.repeat(limit)} `;
+    assert.deepEqual(parseDocuments(input, 'example-health'), { kind: 'ready', materials: input.portal.materials });
+  });
+}
+test('non-space whitespace counts toward the producer limit and malformed lists refuse as a whole', () => {
+  const input = structuredClone(fixture);
+  input.portal.materials[0].title = '\t';
+  assert.deepEqual(parseDocuments(input, 'example-health'), { kind: 'ready', materials: input.portal.materials });
+  for (const title of [' '.repeat(202), ` ${'a'.repeat(201)} `, `\t${'a'.repeat(200)}\t`]) {
+    input.portal.materials[0].title = title;
+    assert.deepEqual(parseDocuments(input, 'example-health'), { kind: 'refused' });
+  }
+});
