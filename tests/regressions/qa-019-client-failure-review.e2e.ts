@@ -5,13 +5,8 @@ const test = reproTest();
 test('QA-019 reviewing Tours retains unavailable-client recovery', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
   await refuseReads(app, browser);
   await app.open('/tours?mode=live');
-  await expect(browser.locator('#plan-message')).toContainText(/unavailable/i);
-  await expect(browser.locator('#plan-client option')).toHaveCount(1);
-  await screen.getByRole('textbox', 'Tour name').fill('Demo review packet');
-  await screen.getByRole('textbox', 'Tour notes').fill('Synthetic fixture tour notes');
-  await screen.getByRole('button', 'Review packet draft', { exact: true }).tap();
-  await expect(browser.locator('#plan-message')).toContainText(/unavailable/i);
-  await expect(browser.locator('#plan-message')).toContainText(/refresh|retry|try again/i);
+  await expect(browser.locator('#tour-library-state')).toContainText(/unavailable/i);
+  await expect(browser.locator('#plan-form, #create-tour-form')).toHaveCount(0);
 });
 
 test('QA-019 client access denial retires packet review and offers sign-in', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {

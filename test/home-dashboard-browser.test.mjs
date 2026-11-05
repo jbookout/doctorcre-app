@@ -1087,6 +1087,8 @@ test('H03 phone keeps the chosen day through a meeting update', async t => {
   const meetings = Array.from({ length: 8 }, (_, index) => ({ ...meeting, title: `${meeting.title} ${index}` }));
   const { page } = await open(t, { width: 390, calendar: { state: 'ready', items: meetings } });
   const panel = page.getByRole('region', { name: 'Calendar', exact: true });
+  await panel.getByRole('button', { name: meetings.at(-1).title, exact: true }).waitFor();
+  await page.locator('#refreshHome[aria-busy="false"]').waitFor();
   await panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true }).click();
   const day = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
   const position = async () => {

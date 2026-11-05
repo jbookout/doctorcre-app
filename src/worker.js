@@ -65,8 +65,9 @@ function unavailable(documentRequest) {
 function secure(response, path) {
   const headers = new Headers(response.headers);
   const capture = path === "/tours/day.html" || path === "/calls" || path === "/calls.html";
+  const tourEditor = path === '/tours/route-editor.html';
   headers.set("content-security-policy", [
-    "default-src 'self'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'",
+    "default-src 'self'", "base-uri 'none'", "object-src 'none'", `frame-ancestors ${tourEditor ? "'self'" : "'none'"}`,
     "form-action 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data:",
     "connect-src 'self' http://127.0.0.1:4682", "worker-src 'self'",
@@ -74,7 +75,7 @@ function secure(response, path) {
   ].join("; "));
   headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   headers.set("x-content-type-options", "nosniff");
-  headers.set("x-frame-options", "DENY");
+  headers.set("x-frame-options", tourEditor ? "SAMEORIGIN" : "DENY");
   headers.set("referrer-policy", "same-origin");
   headers.set("permissions-policy", `camera=(), geolocation=(), microphone=${capture ? "(self)" : "()"}, payment=(), usb=()`);
   headers.set("cross-origin-opener-policy", "same-origin");
