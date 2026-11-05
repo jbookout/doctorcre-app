@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { portalAsset } from './package';
 import type { CarrMarketStudyV1 } from './package';
+import { layoutMarkers } from './marker-layout';
 
 type MapHandle = {
   on: (event: string, listener: () => void) => void;
   remove: () => void;
   addControl: (control: object) => void;
   fitBounds: (bounds: [number, number][], options: { padding: number; maxZoom: number }) => void;
+  project: (position: [number, number]) => { x: number; y: number };
 };
+type MarkerHandle = { setLngLat: (position: [number, number]) => MarkerHandle; addTo: (map: MapHandle) => MarkerHandle; setOffset: (offset: [number, number]) => void };
 type MapLibrary = {
   Map: new (options: object) => MapHandle;
-  Marker: new (options: { element: HTMLElement; offset: [number, number] }) => { setLngLat: (position: [number, number]) => { addTo: (map: MapHandle) => void } };
+  Marker: new (options: { element: HTMLElement; anchor: 'center' }) => MarkerHandle;
   NavigationControl: new (options: { showCompass: boolean }) => object;
   setWorkerUrl: (url: string) => void;
 };
@@ -41,22 +44,40 @@ export function HomeMap({ publication, markers }: { publication: CarrMarketStudy
             { id: 'roads', type: 'line', source: 'roads', paint: { 'line-color': tokens.getPropertyValue('--hairline-strong').trim(), 'line-width': 1.4 } }] } });
       map.on('error', fail);
       map.addControl(new library.NavigationControl({ showCompass: false }));
-      const groups = new Map<string, number>();
+      const stems = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      stems.classList.add('portal-stems'); stems.setAttribute('aria-hidden', 'true');
+      container.current.append(stems);
+      const handles: { marker: ContextMarker; button: HTMLButtonElement; handle: MarkerHandle; stem: Element }[] = [];
       for (const marker of markers) {
-        const key = `${marker.lon.toFixed(2)},${marker.lat.toFixed(2)}`;
-        const count = groups.get(key) ?? 0; groups.set(key, count + 1);
         const button = document.createElement('button'); button.type = 'button';
         button.className = 'portal-marker'; button.textContent = marker.label;
         button.setAttribute('aria-label', marker.label);
         const preview = document.createElement('span'); preview.className = 'portal-marker-preview'; preview.textContent = marker.preview;
         button.append(preview); button.addEventListener('click', marker.open);
-        new library.Marker({ element: button, offset: [count * 34, count * -24] }).setLngLat([marker.lon, marker.lat]).addTo(map);
+        const handle = new library.Marker({ element: button, anchor: 'center' }).setLngLat([marker.lon, marker.lat]).addTo(map);
+        const stem = document.createElementNS(stems.namespaceURI, 'line');
+        stem.classList.add('pin-stem'); stems.append(stem);
+        handles.push({ marker, button, handle, stem });
       }
+      const layout = () => {
+        if (retired || !map || !container.current) return;
+        const currentMap = map;
+        const boxes = handles.map(({ marker, button }) => ({ ...currentMap.project([marker.lon, marker.lat]), width: button.offsetWidth, height: button.offsetHeight }));
+        const positions = layoutMarkers(boxes, { width: container.current.clientWidth, height: container.current.clientHeight });
+        positions.forEach((point, index) => {
+          const item = handles[index];
+          if (!item) return;
+          item.handle.setOffset([point.x - point.anchor.x, point.y - point.anchor.y]);
+          for (const [key, value] of Object.entries({ x1: point.anchor.x, y1: point.anchor.y, x2: point.x, y2: point.y })) item.stem.setAttribute(key, String(value));
+        });
+      };
+      map.on('move', layout); map.on('resize', layout); map.on('load', layout);
       const points: [number, number][] = [...(publication.map.home_extent_points ?? []), ...markers.map((marker): [number, number] => [marker.lon, marker.lat])];
       if (points.length > 1) {
         map.fitBounds([[Math.min(...points.map(p => p[0])), Math.min(...points.map(p => p[1]))],
           [Math.max(...points.map(p => p[0])), Math.max(...points.map(p => p[1]))]], { padding: 60, maxZoom: 11 });
       }
+      layout();
     };
     void start().catch(fail);
     return () => { retired = true; map?.remove(); };

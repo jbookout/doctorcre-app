@@ -5,7 +5,7 @@ import { chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 const fixture = JSON.parse(await readFile(new URL('./fixtures/portal/example-health.market-study.json', import.meta.url)));
 
-async function open(t, width = 390, theme = 'light', mapAvailable = false) {
+async function open(t, width = 390, theme = 'light', mapAvailable = false, publication = fixture) {
   const server = await startFixtureServer(); t.after(server.stop);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -16,9 +16,76 @@ async function open(t, width = 390, theme = 'light', mapAvailable = false) {
     document.documentElement.dataset.theme = theme;
     const { mountPortal } = await import('/js/ui-portal.js');
     window.portalPanel = mountPortal(document.querySelector('#portal-root'), { load: async () => fixture });
-  }, { fixture, theme });
+  }, { fixture: publication, theme });
   return page;
 }
+
+test('scroll progress and sticky title track document and header geometry', async t => {
+  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+    await t.test(`${width} ${theme}`, async t => {
+      const page = await open(t, width, theme);
+      await page.getByRole('heading', { name: fixture.market.home_title, exact: true }).waitFor();
+      await page.locator('.scroll-progress').waitFor({ state: 'attached' });
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--scroll-progress').trim() === '0');
+      await page.evaluate(() => scrollTo(0, (document.documentElement.scrollHeight - innerHeight) / 2));
+      await page.waitForFunction(() => Math.abs(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--scroll-progress')) - .5) < .02);
+      await page.evaluate(() => { document.querySelector('header').style.paddingBottom = '100px'; });
+      await page.waitForFunction(() => Math.abs(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--site-header-height')) - document.querySelector('header').getBoundingClientRect().height) < 1);
+      assert.equal(await page.locator('h1').evaluate(node => Math.abs(parseFloat(getComputedStyle(node).top) - document.querySelector('header').getBoundingClientRect().height) < .01), true);
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--scroll-progress').trim() === '1');
+      await page.getByRole('navigation').getByRole('link', { name: 'Sources', exact: true }).click();
+      await page.getByRole('heading', { name: 'Sources', exact: true }).waitFor();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.evaluate(() => { document.querySelector('main').style.minHeight = '4000px'; scrollTo(0, 500); });
+      await page.waitForFunction(() => {
+        const expected = scrollY / (document.documentElement.scrollHeight - innerHeight);
+        return Math.abs(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--scroll-progress')) - expected) < .001;
+      });
+      await page.evaluate(() => { document.querySelector('main').replaceChildren(); document.querySelector('main').style.minHeight = '0'; scrollTo(0, 0); });
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--scroll-progress').trim() === '0');
+      await page.evaluate(() => { window.portalPanel.dispose(); });
+      assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--scroll-progress')), '');
+      assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--site-header-height')), '');
+      await page.evaluate(() => dispatchEvent(new Event('resize')));
+      await page.waitForTimeout(50);
+      assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--site-header-height')), '');
+    });
+  }
+});
+
+test('colliding context labels have stems ending at visible centres after map resize', async t => {
+  const publication = structuredClone(fixture);
+  const locator = publication.developments[0].locator;
+  for (const development of publication.developments) development.locator = locator;
+  for (const anchor of publication.context_anchors) anchor.locator = locator;
+  publication.client.current_practice.locator = locator;
+  for (const width of [390, 1280]) {
+    await t.test(String(width), async t => {
+      const page = await open(t, width, 'light', true, publication);
+      await page.locator('.pin-stem').first().waitFor({ state: 'attached' });
+      const validGeometry = () => {
+        const map = document.querySelector('.portal-map > div').getBoundingClientRect();
+        const labels = [...document.querySelectorAll('.portal-marker')].map(node => node.getBoundingClientRect());
+        const stems = [...document.querySelectorAll('.pin-stem')];
+        return labels.length > 2 && labels.every((box, i) => {
+          const stem = stems[i];
+          return Math.abs(Number(stem.getAttribute('x2')) - (box.x + box.width / 2 - map.x)) < 2 &&
+            Math.abs(Number(stem.getAttribute('y2')) - (box.y + box.height / 2 - map.y)) < 2 &&
+            box.x >= map.x - 1 && box.right <= map.right + 1 &&
+            labels.slice(0, i).every(other => box.right <= other.x || other.right <= box.x || box.bottom <= other.y || other.bottom <= box.y);
+        });
+      };
+      await page.waitForFunction(validGeometry);
+      await page.setViewportSize({ width: width + 80, height: 900 });
+      await page.waitForFunction(validGeometry);
+      await page.locator('.portal-marker').first().click();
+      await page.getByRole('dialog').waitFor();
+    });
+  }
+});
 
 test('synthetic shell supports keyboard, history, dialogs and expiry on phone and desktop in both themes', async t => {
   for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {

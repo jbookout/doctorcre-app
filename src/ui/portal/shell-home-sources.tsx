@@ -6,6 +6,7 @@ import { portalAsset } from './package';
 import type { CarrMarketStudyV1, ContextAnchor, Development, Rich } from './package';
 
 import { HomeMap } from './home-map';
+import { trackShellGeometry } from './shell-geometry';
 import type { ContextMarker } from './home-map';
 
 export type MarketStudy = CarrMarketStudyV1;
@@ -105,6 +106,11 @@ function Shell({ options }: { options: PortalOptions }) {
   const [hash, setHash] = useState(window.location.hash);
   const [detail, setDetail] = useState<Detail | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const header = useRef<HTMLElement>(null);
+  const shell = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (header.current && shell.current) return trackShellGeometry(header.current, shell.current);
+  }, []);
   const route = hash.replace(/^#/, '') || 'home';
   const module = modules.find(module => module.route === route);
   const title = route === 'home' ? publication.market.home_title : route === 'sources' ? 'Sources' : module?.label ?? 'Page unavailable';
@@ -115,8 +121,8 @@ function Shell({ options }: { options: PortalOptions }) {
     return () => window.removeEventListener('hashchange', change);
   }, []);
   useLayoutEffect(() => { heading.current?.focus(); heading.current?.scrollIntoView?.({ block: 'start' }); }, [hash]);
-  return <div className="market-study"><a className="portal-skip" href="#portal-main" onClick={event => { event.preventDefault(); heading.current?.focus(); }}>Skip to content</a>
-    <header className="portal-header"><ExternalLink url="https://www.carr.us/">CARR</ExternalLink><a href="#home" aria-label={`${publication.client.display_name} Home`}><Wordmark publication={publication} /></a>
+  return <div ref={shell} className="market-study"><div className="scroll-progress" aria-hidden="true" /><a className="portal-skip" href="#portal-main" onClick={event => { event.preventDefault(); heading.current?.focus(); }}>Skip to content</a>
+    <header ref={header} className="portal-header site-header"><ExternalLink url="https://www.carr.us/">CARR</ExternalLink><a href="#home" aria-label={`${publication.client.display_name} Home`}><Wordmark publication={publication} /></a>
       <nav aria-label="Market study">{[{ route: 'home', label: 'Home' }, ...modules, { route: 'sources', label: 'Sources' }].map(item => <a key={item.route} href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined}>{item.label}</a>)}</nav>
     </header><main id="portal-main"><h1 ref={heading} tabIndex={-1}>{title}</h1>
       {route === 'home' ? <Home publication={publication} open={setDetail} available={available} /> : route === 'sources' ? <Sources publication={publication} /> : module ? module.render(publication) : <p>This page is unavailable in this publication. <a href="#home">Return Home</a></p>}

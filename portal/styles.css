@@ -4,7 +4,7 @@ body { margin: 0; background: var(--portal-bg); color: var(--portal-text); }
 a { color: var(--portal-accent); text-underline-offset: .2em; }
 button { font: inherit; color: inherit; background: var(--portal-card); border: 1px solid var(--portal-line); border-radius: .35rem; padding: .6rem 1rem; cursor: pointer; min-height: 44px; }
 :focus-visible { outline: 3px solid var(--portal-accent); outline-offset: 4px; }
-.portal-header { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; padding: 1rem max(1rem, calc((100vw - 1200px)/2)); background: var(--portal-card); border-bottom: 1px solid var(--portal-line); }
+.portal-header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; padding: 1rem max(1rem, calc((100vw - 1200px)/2)); background: var(--portal-card); border-bottom: 1px solid var(--portal-line); }
 .portal-header nav { display: flex; flex-wrap: wrap; gap: 1rem; margin-left: auto; }
 .portal-header nav a { padding: .5rem; }
 [aria-current=page] { font-weight: 750; text-decoration-thickness: 3px; }
@@ -12,13 +12,13 @@ button { font: inherit; color: inherit; background: var(--portal-card); border: 
 .portal-wordmark { display: block; font-weight: 750; letter-spacing: .12em; line-height: 1.2; }
 .portal-wordmark small { display: block; font-size: .6em; }
 main, footer { max-width: 1200px; margin: auto; padding: 1.5rem; }
-h1 { position: sticky; top: 0; z-index: 2; margin: 0; padding: 1rem 0; background: var(--portal-bg); font-size: clamp(1.6rem, 4vw, 2.8rem); line-height: 1.2; scroll-margin-top: 1rem; }
+h1 { position: sticky; top: var(--site-header-height, 0px); z-index: 2; margin: 0; padding: 1rem 0; background: var(--portal-bg); font-size: clamp(1.6rem, 4vw, 2.8rem); line-height: 1.2; scroll-margin-top: var(--site-header-height, 0px); }
 h2 { font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.25; }
 section { margin: 2rem 0; }
-.portal-hero { padding: clamp(1rem, 5vw, 4rem); border: 1px solid var(--portal-line); background: var(--portal-card); }
+.portal-hero { padding: clamp(1.5rem, 5vw, 4rem); border: 1px solid var(--portal-line); border-radius: var(--radius-3); background: var(--portal-card); }
 .portal-hero h2 { max-width: 22ch; font-size: clamp(2rem, 5vw, 3.8rem); }
 .portal-snapshot, .portal-directory { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
-article { background: var(--portal-card); border: 1px solid var(--portal-line); padding: 1.25rem; overflow-wrap: anywhere; }
+article { background: var(--portal-card); border: 1px solid var(--portal-line); border-radius: var(--radius-3); padding: 1.25rem; overflow-wrap: anywhere; }
 .portal-snapshot strong { font-size: 2rem; }
 .portal-map { margin: 1.5rem 0; }
 .portal-map > div { height: 360px; background: var(--portal-card); }
@@ -35,3 +35,14 @@ dialog img { width: 100%; max-height: 340px; }
 
 .portal-marker-preview { display: none; position: absolute; bottom: 100%; left: 0; width: 220px; padding: .75rem; border: 1px solid var(--portal-line); color: var(--portal-text); background: var(--portal-card); pointer-events: none; }
 .portal-marker:focus .portal-marker-preview, .portal-marker:hover .portal-marker-preview { display: block; }
+.scroll-progress { position: fixed; inset: 0 0 auto; height: 3px; background: var(--portal-accent); transform: scaleX(var(--scroll-progress, 0)); transform-origin: left; z-index: 8; pointer-events: none; }
+.portal-map > div { position: relative; }
+.portal-stems { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pin-stem { stroke: var(--portal-text); stroke-width: 1.5; }
+.portal-marker { z-index: 1; }
+.portal-marker:focus, .portal-marker:hover { z-index: 2; }
+.portal-hero > p { max-width: 65ch; }
+.portal-snapshot article p { margin-bottom: 0; color: var(--portal-muted); }
+.portal-directory article { display: flex; flex-direction: column; align-items: flex-start; }
+.portal-directory article button { margin-top: auto; }
+main > section > p { max-width: 75ch; }
