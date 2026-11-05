@@ -12,7 +12,7 @@ before(async () => { outDir = temporaryDirectory('inline-review-'); await buildA
 after(async () => { await rm(outDir, { recursive: true, force: true }); });
 const id = '00000000-0000-0000-0000-000000000001';
 const eventId = '00000000-0000-0000-0000-000000000002';
-async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', refusal = null, reference = true } = {}) {
+async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', refusal = null, reference = true, missingRecipients = false, initialBody = 'Synthetic body', writeRefusal = null } = {}) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -20,7 +20,7 @@ async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', r
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   const row = { item_id: 'one', source_type: kind === 'action' ? 'next_action' : kind === 'reply_draft' ? 'email_proposal' : 'fact_review', source_id: kind === 'fact_review' ? JSON.stringify([id, 'term_months']) : id, source_version: 'v1', source_state: 'needs_attention', title: 'Synthetic review', activity_at: '2026-11-03T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: kind === 'action' ? 'Task' : kind === 'reply_draft' ? 'Reply draft' : 'Fact review', merged_source_ids: [], action_id: kind === 'action' ? id : null, action_version: kind === 'action' ? 1 : null, deal_id: null, auto_settled: false, completed_at: null };
   if (reference) row.review_reference = { kind, item_id: row.item_id, source_version: row.source_version, operations: kind === 'action' ? ['complete-one-action'] : kind === 'reply_draft' ? ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'] : ['resolve-fact-review'] };
-  let version = 1, subject = 'Synthetic subject', body = 'Synthetic body', fail = refusal;
+  let version = 1, subject = 'Synthetic subject', body = initialBody, fail = refusal;
   const calls = [];
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
@@ -31,13 +31,14 @@ async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', r
       else if (args.source_version !== row.source_version) payload = { error: 'home_review_stale' };
       else {
         const bound = { proposal_id: id, base_version: version };
-        const draft = { subject, body, to: ['demo@example.test'], cc: ['copy@example.test'] };
+        const draft = { subject, body, ...(missingRecipients ? {} : { to: ['demo@example.test'], cc: ['copy@example.test'] }) };
         payload = { ok: true, schema_version: 'home-review.v1', reference: row.review_reference,
-          detail: kind === 'action' ? { title: row.title } : kind === 'reply_draft' ? { reply_draft: draft } : { canonical_fact: null, observations: [{ id: eventId, value: '60', unit: 'months', source: { document_ref: id, page_start: 1, page_end: 1, cited_text: 'Synthetic signed term is 60 months.' } }] },
-          operations: kind === 'action' ? [{ verb: 'complete-one-action', args: { action_id: id, base_version: version } }] : kind === 'reply_draft' ? [{ verb: 'edit-email-draft', args: bound }, { verb: 'dismiss-email-proposal', args: bound }, { verb: 'submit-email-draft', args: { ...bound, ...draft } }] : [{ verb: 'resolve-fact-review', args: { entity_ref: id, fact_key: 'term_months', base_version: 0, review_version: 'r1' }, decisions: ['approve', 'correct', 'reject'] }] };
+          detail: kind === 'action' ? { title: row.title } : kind === 'reply_draft' ? { reply_draft: draft, ...(missingRecipients ? { confirm_verb: null, preview_error: 'email_draft_copy_address_missing' } : {}) } : { canonical_fact: null, observations: [{ id: eventId, value: '60', unit: 'months', source: { document_ref: id, page_start: 1, page_end: 1, cited_text: 'Synthetic signed term is 60 months.' } }] },
+          operations: kind === 'action' ? [{ verb: 'complete-one-action', args: { action_id: id, base_version: version } }] : kind === 'reply_draft' ? [{ verb: 'edit-email-draft', args: bound }, { verb: 'dismiss-email-proposal', args: bound }, ...(missingRecipients ? [] : [{ verb: 'submit-email-draft', args: { ...bound, ...draft } }])] : [{ verb: 'resolve-fact-review', args: { entity_ref: id, fact_key: 'term_months', base_version: 0, review_version: 'r1' }, decisions: ['approve', 'correct', 'reject'] }] };
       }
     }
     if (['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft', 'complete-one-action', 'resolve-fact-review', 'reopen-one-action'].includes(name)) {
+      if (writeRefusal) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: writeRefusal }) }] } } });
       if (fail === 'uncertain') { fail = null; return route.abort(); }
       if (fail === 'version_conflict') { fail = null; version++; row.source_version = 'v2'; row.review_reference.source_version = 'v2'; payload = { error: 'version_conflict' }; }
       else {
@@ -178,4 +179,70 @@ test('a newer draft after the save receipt requires explicit review and preserve
   await panel.getByText('Updated elsewhere', { exact: true }).waitFor();
   assert.equal(await panel.getByLabel('Message', { exact: true }).inputValue(), 'Keep the reviewed local body');
   assert.equal(calls.filter(c => c.name === 'edit-email-draft').length, 1);
+});
+
+for (const initialBody of ['Synthetic body', '']) test(`decline ignores invalid content with initial body ${initialBody ? 'present' : 'empty'}`, async t => {
+  const { page, panel, calls } = await setup(t, { width: 390, initialBody });
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  await panel.getByLabel('Message', { exact: true }).fill('');
+  await panel.getByLabel('Subject', { exact: true }).fill('');
+  await panel.getByLabel('Reason for declining', { exact: true }).fill('Decline this synthetic draft');
+  await panel.getByRole('button', { name: 'Decline draft', exact: true }).click();
+  await panel.getByText('This card is confirmed. Its current state is shown in your inbox.', { exact: true }).waitFor();
+  const writes = calls.filter(c => c.name === 'dismiss-email-proposal');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].args.reason, 'Decline this synthetic draft');
+  assert.equal(calls.filter(c => ['edit-email-draft', 'submit-email-draft'].includes(c.name)).length, 0);
+});
+for (const action of ['Save draft', 'Decline draft']) test(`unavailable send recipients preserve ${action}`, async t => {
+  const { page, panel, calls } = await setup(t, { width: 390, missingRecipients: true });
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  await panel.getByText('Sending unavailable: email_draft_copy_address_missing', { exact: true }).waitFor();
+  assert.equal(await panel.getByRole('button', { name: 'Submit reply for sending', exact: true }).count(), 0);
+  assert.equal(await panel.getByRole('button', { name: 'Save draft', exact: true }).count(), 1);
+  assert.equal(await panel.getByRole('button', { name: 'Decline draft', exact: true }).count(), 1);
+  await panel.getByLabel('Message', { exact: true }).fill('Reviewed without recipients');
+  await panel.getByLabel('Reason for declining', { exact: true }).fill('No reply needed');
+  await panel.getByRole('button', { name: action, exact: true }).click();
+  await panel.getByText(action === 'Save draft' ? 'Saved as a draft. Nothing was sent.' : 'This card is confirmed. Its current state is shown in your inbox.', { exact: true }).waitFor();
+  const writes = calls.filter(c => ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'].includes(c.name));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].name, action === 'Save draft' ? 'edit-email-draft' : 'dismiss-email-proposal');
+  assert.equal('to' in writes[0].args || 'cc' in writes[0].args, false);
+});
+for (const writeRefusal of ['human_only_verb_requires_verified_partner', 'home_review_resolved']) test(`submitted review refuses ${writeRefusal}`, async t => {
+  const { page, panel, calls } = await setup(t, { writeRefusal });
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  await panel.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await panel.getByText(writeRefusal === 'home_review_resolved' ? 'This card is already resolved. Refresh the inbox to see its current state.' : 'Sign in as the owning verified partner to review this card.', { exact: true }).waitFor();
+  assert.equal(calls.filter(c => c.name === 'edit-email-draft').length, 1);
+  assert.equal(await panel.getByRole('button', { name: 'Save draft', exact: true }).count(), 0);
+});
+test('Escape closes unsaved edits without a write and returns focus', async t => {
+  const { page, panel, calls } = await setup(t);
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  await panel.getByLabel('Message', { exact: true }).fill('Unsaved local changes');
+  await page.keyboard.press('Escape');
+  assert.equal(await panel.count(), 0);
+  await page.waitForFunction(() => document.activeElement?.textContent === 'Review card');
+  assert.equal(calls.filter(c => ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'].includes(c.name)).length, 0);
+});
+test('save and send still require valid reply content', async t => {
+  const { page, panel, calls } = await setup(t);
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  for (const field of ['Message', 'Subject']) {
+    await panel.getByLabel(field, { exact: true }).fill('');
+    for (const name of ['Save draft', 'Submit reply for sending']) await panel.getByRole('button', { name, exact: true }).click();
+    assert.equal(calls.filter(c => ['edit-email-draft', 'submit-email-draft'].includes(c.name)).length, 0);
+    await panel.getByLabel(field, { exact: true }).fill('Reviewed content');
+  }
+});
+
+test('decline requires a nonblank reason even when content is empty', async t => {
+  const { page, panel, calls } = await setup(t, { initialBody: '' });
+  await page.getByRole('button', { name: 'Review card', exact: true }).click();
+  await panel.getByLabel('Reason for declining', { exact: true }).fill('   ');
+  await panel.getByRole('button', { name: 'Decline draft', exact: true }).click();
+  await panel.getByText('Give a reason before declining this draft.', { exact: true }).waitFor();
+  assert.equal(calls.filter(c => c.name === 'dismiss-email-proposal').length, 0);
 });

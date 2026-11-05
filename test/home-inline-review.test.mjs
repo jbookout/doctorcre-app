@@ -38,3 +38,20 @@ test('wrong-identity receipts and missing readback never confirm another card', 
 test('malformed and mismatched references preserve the source card without inline controls', () => {
   for (const review_reference of [undefined, null, { ...ref('reply_draft'), item_id: 'other' }, { ...ref('reply_draft'), operations: ['delete-deal'] }]) assert.ok(!parseItem({ ...row, review_reference }, true).review_reference);
 });
+
+test('producer can offer save and decline without recipients while send requires exact recipients', () => {
+  const reference = ref('reply_draft');
+  const detail = { reply_draft: { subject: 'Synthetic subject', body: '', owner: 'joe' }, preview_error: 'email_draft_copy_address_missing', confirm_verb: null };
+  const operations = ['edit-email-draft', 'dismiss-email-proposal'].map(verb => ({ verb, args: bound }));
+  const response = { ok: true, schema_version: 'home-review.v1', reference, detail, operations };
+  const parsed = parseReview(response, reference);
+  assert.deepEqual(parsed.operations.map(o => o.verb), ['edit-email-draft', 'dismiss-email-proposal']);
+  assert.equal(parsed.recipients, null);
+  assert.equal(parsed.sendUnavailableReason, 'email_draft_copy_address_missing');
+  assert.equal(parseReview({ ...response, detail: { ...detail, reply_draft: { ...detail.reply_draft, subject: '' } } }, reference).subject, '');
+  const submit = { verb: 'submit-email-draft', args: { ...bound, ...reply.reply_draft } };
+  assert.throws(() => parseReview({ ...response, operations: [...operations, submit] }, reference), /supported/);
+  for (const recipients of [{ to: [] }, { to: ['demo@example.test'] }, { to: ['demo@example.test'], cc: [] }, { to: ['other@example.test'], cc: ['copy@example.test'] }]) {
+    assert.throws(() => parseReview({ ...response, detail: { reply_draft: { ...detail.reply_draft, ...recipients } }, operations: [submit] }, reference), /supported/);
+  }
+});
