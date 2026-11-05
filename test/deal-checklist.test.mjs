@@ -112,3 +112,30 @@ for (const [name, patch] of Object.entries({
   assert.deepEqual(value, before);
   assert.match(renderDealChecklist(checklist), /Attorney review/);
 });
+
+for (const [name, patch] of Object.entries({
+  'array status': { status: ['complete'] },
+  'object status': { status: { toString: null } },
+  'object evidence': { evidence_ref: { toString: null } },
+  'object source version': { source: { document: 'kit', version: { toString: null } } },
+  'object source document with valid request': { source: { document: { toString: null }, request: 'valid' } },
+})) test(`malformed scalar hides checklist evidence: ${name}`, () => {
+  const value = JSON.parse(JSON.stringify(checklist));
+  Object.assign(value.phases[0].items[0], patch);
+  const root = new JSDOM(renderDealChecklist(value)).window.document;
+  assert.equal(root.querySelector('[role="status"]')?.textContent, 'Checklist unavailable.');
+  assert.equal(root.querySelector('[data-refresh-detail]').textContent, 'Refresh deal');
+  assert.equal(root.querySelector('[data-checklist-item]'), null);
+  assert.doesNotMatch(root.body.textContent, /Recorded complete|Received|Demo contract clause 3/);
+});
+
+for (const status of [['complete'], { toString: null }, 1, true, null]) {
+  test(`malformed due status hides the due summary: ${JSON.stringify(status)}`, () => {
+    const value = JSON.parse(JSON.stringify(checklist));
+    value.due_items[0].status = status;
+    const root = new JSDOM(renderDealChecklist(value)).window.document;
+    assert.equal(root.querySelector('[role="status"]')?.textContent, 'Checklist unavailable.');
+    assert.equal(root.querySelector('.checklist-next'), null);
+    assert.doesNotMatch(root.body.textContent, /Recorded complete/);
+  });
+}
