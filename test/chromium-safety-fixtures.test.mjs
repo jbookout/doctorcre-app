@@ -43,6 +43,9 @@ const fixtures = [
   ['mutated spread', false, 'chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS].slice(0, 0) });'],
   ['dynamic import', false, `const { chromium: engine } = await import('playwright'); engine.launch({ args: [] });`],
   ['require import', false, `const { chromium: engine } = require('playwright'); engine.launch({ args: [] });`],
+  ['re-export', false, `export { chromium as engine } from 'playwright';`],
+  ['namespace complete', true, `import * as pw from 'playwright'; pw.chromium.launch({ args: [${flags}] });`],
+  ['alias complete', true, `import { chromium as engine } from 'playwright-core'; engine.launch({ args: [${flags}] });`],
   ['two launches', false, 'chromium.launch({ args: CHROMIUM_SAFETY_ARGS }); chromium.launch({ args: [] });'],
 ];
 
@@ -53,8 +56,8 @@ for (const [name, accepted, source, useShared = true] of fixtures) {
       execFileSync('git', ['init', '-q', root]);
       writeFileSync(join(root, 'fixture.mjs'), (useShared ? imports : `import { chromium } from 'playwright';\n`) + source);
       execFileSync('git', ['add', 'fixture.mjs'], { cwd: root });
-      const result = spawnSync(process.execPath, ['--test', '--test-name-pattern=every Chromium launch', audit], {
-        cwd: root, encoding: 'utf8', timeout: 30_000,
+      const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-name-pattern=every Chromium launch', audit], {
+        cwd: root, encoding: 'utf8', timeout: 30_000, env: { ...process.env, NODE_TEST_CONTEXT: undefined },
       });
       assert.equal(result.error, undefined);
       assert.equal(result.status, accepted ? 0 : 1, result.stdout + result.stderr);
