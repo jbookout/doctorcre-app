@@ -20,10 +20,6 @@ function Slice({ title, detail, items, current, row }: { title: string; detail: 
   return <section className="home-slice" aria-label={title}><header><div><h2 tabIndex={-1}>{title} <span>{items.length}</span></h2><p>{detail}</p></div>{items.length > 1 && <button type="button" aria-expanded={expanded} onClick={() => expand(!expanded)}>{expanded ? 'Show less' : `See all ${items.length}`}</button>}</header>{items.length ? shown.map(row) : <p className="home-slice-empty">Nothing here right now.</p>}</section>;
 }
 
-export function HomeWelcome() {
-  return <header className="home-welcome"><p className="home-kicker">YOUR DAY, IN FOCUS</p><p className="home-date">{new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</p><h1>Welcome home.</h1><p>Review what matters. Keep your day moving.</p></header>;
-}
-
 export function HomeSections({ items, pinned, current, row }: { items: readonly InboxItem[]; pinned?: InboxItem | null; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
   const placement = (item: InboxItem) => item.item_id === pinned?.item_id ? pinned : item;
   const [now, setNow] = useState(() => new Date());

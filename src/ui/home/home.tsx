@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { command, taskCommand, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot, type TaskReceipt } from './inbox';
 import { recordRoutes } from './routes';
 import { WaitingEditor } from './waiting-editor';
-import { HomeWelcome, HomeSections } from './sections';
+import { HomeSections } from './sections';
 
 type Pending = { request: Command; before: readonly InboxItem[]; undoing?: true };
 type Undo = { action: Action | 'reopen'; items: readonly InboxItem[]; until?: string; receipt?: TaskReceipt };
@@ -49,6 +49,17 @@ function Inbox({ client }: { client: InboxClient }) {
     const host = document.getElementById('homeRoot');
     if (home && !query.isPending && host) markHomeReady(host);
   }, [home, query.isPending]);
+  useLayoutEffect(() => {
+    const welcome = document.getElementById('homeWelcome');
+    if (!welcome) return;
+    welcome.hidden = !home;
+    document.getElementById('homeRoot')?.classList.toggle('home-inbox', home);
+    const date = welcome.querySelector('.home-date');
+    if (home && date) {
+      date.textContent = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
+      date.removeAttribute('aria-busy');
+    }
+  }, [home, query.dataUpdatedAt]);
   const [reviewing, setReviewing] = useState<InboxItem | null>(null);
   const reviewOpener = useRef<HTMLButtonElement | null>(null);
   useLayoutEffect(() => { if (!reviewing && reviewOpener.current) { if (reviewOpener.current.isConnected) reviewOpener.current.focus(); else root.current?.querySelector<HTMLElement>('[data-inbox-row] h3 a')?.focus(); } }, [reviewing]);
@@ -186,7 +197,6 @@ function Inbox({ client }: { client: InboxClient }) {
     const index = links.indexOf(event.target); const next = links[index + (event.key === 'ArrowDown' ? 1 : -1)];
     if (next) { event.preventDefault(); next.focus(); }
   }}>
-    {home && <HomeWelcome />}
     <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p>{home ? <h2>Your inbox</h2> : <h1>Inbox</h1>}<p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {query.data && !query.data.auto_settle_enabled && <p role="status">Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review.</p>}

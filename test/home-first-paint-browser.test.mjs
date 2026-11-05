@@ -1,0 +1,45 @@
+import test, { before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { chromium, fixtureServer } from './browser-harness.mjs';
+let outDir;
+before(async () => { outDir = temporaryDirectory('home-first-paint-'); await buildArtifact({ root: process.cwd(), outDir }); });
+after(async () => { await rm(outDir, { recursive: true, force: true }); });
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`Home welcome paints before inbox modules at ${width} ${theme}`, async t => {
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 844 } });
+  await page.clock.setFixedTime(new Date('2026-11-04T18:00:00Z'));
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  await page.route('**/js/ui-inbox.js', async route => { await held; await route.continue(); });
+  try {
+    await page.goto(server.origin, { waitUntil: 'commit' });
+    const welcome = page.getByRole('heading', { name: 'Welcome home.', exact: true });
+    await welcome.waitFor({ state: 'visible' });
+    await welcome.evaluate(node => { window.firstWelcome = node; });
+    assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+    assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
+    release();
+    await page.locator('[data-inbox-row]').first().waitFor();
+    assert.equal(await welcome.count(), 1);
+    assert.equal(await welcome.evaluate(node => node === window.firstWelcome), true);
+    assert.equal(await page.locator('.home-date').textContent(), 'Wednesday, November 4');
+    const more = page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('button', { name: /See all|Show less/ });
+    await more.click(); assert.equal(await more.getAttribute('aria-expanded'), 'true');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.locator('[data-inbox-row] h3 a').first().click();
+    await page.getByRole('heading', { name: 'Inbox', exact: true }).waitFor();
+    assert.equal(await welcome.isVisible(), false);
+    await page.goBack();
+    await welcome.waitFor({ state: 'visible' });
+    assert.equal(await welcome.evaluate(node => node === window.firstWelcome), true);
+    await page.clock.setFixedTime(new Date('2026-11-05T18:00:00Z'));
+    await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.home-date')?.textContent === 'Thursday, November 5');
+  } finally { release(); }
+});
