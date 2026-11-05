@@ -153,7 +153,7 @@ test('S1 browser: history restore verifies afresh when an older session check is
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
 
-for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavailable']) test(`S1 browser: overlapping restores keep cached controls hidden until latest verification is ${outcome}`, async t => {
+for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavailable', 'superseded twice']) test(`S1 browser: overlapping restores keep cached controls hidden until latest verification is ${outcome}`, async t => {
  const app=await open(t), {page}=app;
  await page.route(app.origin+'/overlap-fixture*',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><main id="cached"><h1>Joe private cached view</h1><button>Cached action</button></main>'}));
  await page.goto(app.origin+'/overlap-fixture?mode=live');
@@ -176,7 +176,7 @@ for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavai
  t.after(()=>releases.forEach(release=>release()));
  await app.context.route('**/auth/session',async route=>{
   const index=reads++;
-  assert.ok(index<2,'overlapping restores coalesce into one current revalidation');
+  if(index>=2)return route.fallback();
   requests[index].start();await requests[index].held;
   const unavailable=index===0?outcome==='older unavailable':outcome==='unavailable';
   const actor=index===1&&outcome==='changed'?'dell':'joe';
@@ -185,6 +185,7 @@ for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavai
  });
  await restore();await requests[0].requested;
  await restore();
+ if(outcome==='superseded twice')await restore();
  releases[0]();await requests[1].requested;
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  assert.equal(await page.locator('html').evaluate(node=>getComputedStyle(node).visibility),'hidden','old restore response must not release the newer restore fence');
@@ -196,7 +197,14 @@ for (const outcome of ['same', 'changed', 'denied', 'unavailable', 'older unavai
   await page.waitForFunction(()=>document.documentElement.style.visibility==='');
   assert.equal(await page.locator('#cached').evaluate(node=>node.inert),outcome==='unavailable');
   assert.equal(await page.locator('[data-session-restore-paused]').count(),outcome==='unavailable'?1:0);
+  if(outcome==='unavailable'){
+   await app.context.unroute('**/auth/session');
+   await restore();await page.waitForFunction(()=>document.documentElement.style.visibility==='');
+   assert.equal(await page.locator('#cached').evaluate(node=>node.inert),false);
+   assert.equal(await page.locator('[data-session-restore-paused]').count(),0);
+  }
  }
+ assert.ok(reads>=2,'the latest restore needs its own session read');
  assert.deepEqual(app.errors,[]);
 });
 

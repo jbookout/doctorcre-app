@@ -142,10 +142,22 @@ export function privateSession() {
       fenced.clear(); paused.remove();
     }
   };
+  let restoreGeneration = 0;
+  const finishRestore = (generation, unavailable) => {
+    if (generation !== restoreGeneration) return;
+    renderRestore(unavailable);
+    win.document.documentElement.style.visibility = '';
+  };
   const restore = mountVisibilityPoll({ document: win.document, window: win, periodic: false, poll: async () => {
-    const session = await browserBoundary.verify({ fresh: true });
-    renderRestore(false);
-    return session;
+    const generation = restoreGeneration;
+    try {
+      const session = await browserBoundary.verify({ fresh: true });
+      finishRestore(generation, false);
+      return session;
+    } catch (error) {
+      finishRestore(generation, true);
+      throw error;
+    }
   } });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
   // eslint-disable-next-line no-restricted-syntax -- Restored pages verify once per persisted pageshow before unlocking controls; the document request budget limits the verifier.
@@ -153,11 +165,10 @@ export function privateSession() {
     if (!event.persisted) return;
     if (browserBoundary.revoked) { win.location.replace('/public-shell/session-ended.html'); return; }
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
-    // Verification unlocks cached controls; a refused read still renders a paused view.
+    const generation = ++restoreGeneration;
     win.document.documentElement.style.visibility = 'hidden';
-    void restore.poll().then(session => renderRestore(!session)).finally(() => {
-      win.document.documentElement.style.visibility = '';
-    });
+    // Revalidation waits for an older poll, then reads for this restore.
+    void restore.revalidate().then(session => finishRestore(generation, !session));
   });
   return browserBoundary;
 }
