@@ -40,7 +40,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   await page.locator('.kanban-card').first().waitFor();
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const get = state.client.getDeal;
-    window.checklistMode = 'due';
+    window.checklistMode = 'malformed';
     window.checklistReads = 0;
     state.client.getDeal = async (...args) => {
       window.checklistReads++;
@@ -54,14 +54,22 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
       return { ...detail, checklist: window.checklistMode === 'absent' ? null : {
         schema_version: 'deal-checklist.v1', template_state: ['unavailable', 'source_changed', 'deal_type_unknown'].includes(window.checklistMode) ? window.checklistMode : 'current',
         due_items: complete || received || ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [review],
-        phases: ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
+        phases: window.checklistMode === 'malformed' ? null : ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
       } };
     };
   });
   await page.locator('.card-open').first().click();
   const checklist = page.locator('.deal-checklist');
   const summary = checklist.locator(':scope > summary');
+  await checklist.getByText('Checklist unavailable.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#detailUpdateForm').count(), 1);
+  assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
+  await checklist.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(evidence, `${width}-${theme}-malformed.png`), animations: 'disabled' });
+  await page.evaluate(() => { window.checklistMode = 'due'; });
+  await checklist.getByRole('button', { name: 'Refresh deal', exact: true }).click();
   await summary.waitFor();
+  assert.equal(await summary.evaluate(element => document.activeElement === element), true);
   assert.match(await summary.textContent(), /Demo attorney review/);
   assert.equal(await checklist.evaluate(element => element.open), false);
   const dueBox = await summary.boundingBox();
