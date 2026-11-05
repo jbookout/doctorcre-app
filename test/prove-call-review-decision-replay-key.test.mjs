@@ -49,7 +49,11 @@ test('exact proof CLI executes manifest-selected bytes and rejects invalid evide
   assert.equal(result.code, 0, result.stderr);
   const receipt = JSON.parse(result.stdout);
   assert.equal(receipt.release.source_commit, release.source_commit);
-  assert.equal(receipt.assertions.length, 4);
+  assert.equal(receipt.assertions.length, 8);
+  for (const resolver of ['resolve-candidate', 'resolve-post-call-candidate']) {
+    assert.ok(receipt.assertions.includes(resolver + ':http-uncertainty-blocks-new-decisions'));
+    assert.ok(receipt.assertions.includes(resolver + ':exact-original-decision-replay'));
+  }
   assert.ok(receipt.assets['/js/ui-call.js']); assert.ok(requests <= 10);
   for (const [failure, code] of [['manifest', 1], ['hash', 1], ['assertion', 1], ['missing', 78], ['release', 78], ['timeout', 78]]) {
     mode = failure; requests = 0;
