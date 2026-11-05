@@ -13,7 +13,7 @@ import { dirname, join, posix } from "node:path";
 const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
 const isGenerated = path => path === GENERATED_PATH || isUiAsset(path);
-const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
+const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours", "portal"];
 const CONTRACT_INPUTS = {
   carr_interface: CARR_INTERFACE,
   route_contract: "js/routes.js",
