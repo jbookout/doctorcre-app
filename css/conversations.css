@@ -17,6 +17,19 @@
  */
 
 .topbar { flex-wrap: wrap; }
+.turn, .turn-answer, .answer-table { min-width: 0; max-width: 100%; }
+.answer-table { margin-block: 1rem; }
+.answer-table input { max-width: 100%; min-height: 44px; }
+.answer-table button, .answer-source summary { min-height: 44px; }
+.answer-scroll { overflow-x: auto; max-width: 100%; }
+.answer-scroll table { border-collapse: collapse; width: 100%; }
+.answer-scroll th, .answer-scroll td { padding: .5rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.answer-scroll td { min-width: 7rem; }
+.answer-source { font-size: .8rem; }
+.answer-source span { display: block; max-width: 15rem; overflow-wrap: anywhere; }
+.answer-chart { margin: 1rem 0; overflow-wrap: anywhere; }
+.answer-chart svg { display: block; width: 100%; height: auto; }
+.answer-chart :focus { outline: 3px solid currentColor; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
 .hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }

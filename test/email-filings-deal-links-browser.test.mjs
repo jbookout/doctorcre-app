@@ -66,6 +66,8 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.doesNotMatch(await panel.innerText(), /PRIVATE|example\.test|20000000/);
     await panel.getByText('Current filing destination unavailable.', { exact: true }).waitFor();
     await panel.scrollIntoViewIfNeeded();
+    // Scrolling can place Undo under the pointer; compare both controls at rest.
+    await page.mouse.move(0, 0);
     const controls = await first.evaluate(article => {
       const link = article.querySelector('a'), undo = article.querySelector('button');
       return {

@@ -2,18 +2,18 @@
 
 ## Sub-features
 
-The existing tour planner retains separate Client and Research drafts. Plan from search selects the exact subject, carries area and space type into planning, and includes every nonempty search constraint in packet review. Client-record refreshes leave existing drafts untouched and offer keep-or-use choices for differing client-sourced fields, including typed and empty values. Comparisons show before/after values and the local read time. A changed suggested tour name requires an explicit draft-name choice before packet review. These are tab-local drafts. No canonical search revision, listing shortlist, route creation, or packet compilation is claimed.
+Tours is a cross-deal library. A deal-bound row opens the deal workspace Tours tab. Legacy unbound tours remain readable. Tour creation starts only inside a deal workspace. The workspace embeds the existing route editor, which owns shortlist, route, packet and retained-write recovery.
 
 ## How to get to it (user POV)
 
-Open Tours. Enter search criteria under Search for space. Choose Plan from search. Review the plan and select Review packet draft. The Search draft section shows the same subject's size, budget basis, transaction, availability, parking, and requirements.
+Open Deals, choose a deal board card, then Tours. Open an existing tour or choose Start a tour. Back to deal tours returns to the list. The browser URL stays under /deals and carries the selected tour. Old itinerary URLs for deal-bound tours redirect here. Public share packets keep their existing routes.
 
 ## Driving it with Playwright
 
-Run `npx playwright test --project=fixtures tests/fixtures/tours-client-drafts.spec.mjs --trace=on`. The search-packet cases cover phone, tablet, and desktop in both themes. They check all ten fields, exact client isolation, cleared fields after reload, Research, and inert text. The client-record update cases use 390×844 and 1440×900 in both themes and capture name comparison, Plan updates and Search updates. Screenshots are written to the test output directory.
+Run node --test test/deal-tours.test.mjs test/deal-tours-browser.test.mjs test/tour-composer.test.mjs test/w6-planner.test.mjs test/w6-planner-browser.test.mjs. The browser fixture drives the board, Tours tab, shared editor, saving, creation, return links and old deep links at 390, 1024 and 1440 in light and dark. Screenshots remain under out/test-artifacts/deal-tours.
 
-Run `node --test test/w6-planner.test.mjs` for mounted form behavior, unavailable client reads, invalid criteria, and repeated planning with private files retained.
+Run npx playwright test --project=fixtures tests/fixtures/tours-client-drafts.spec.mjs --trace=on for cross-deal library links and absence of standalone planning forms.
 
 ## Gotchas
 
-The search draft belongs to the exact client ID or Research. It is separate from deliberately edited itinerary facts. Reopen packet review to see newer criteria. Another client selected in Search never supplies fallback criteria for the plan. Client refresh reads existing records through the authenticated contract. No mailbox capture or licensed listing search runs in the browser.
+The editor is a same-origin frame with its own document. Use frameLocator with the title Tour shortlist, route and packet. The parent URL owns the selection. The frame cannot create without a matching deal workspace parent. Editor responses and recovered requests still use the authenticated CARR contract. Retained requests preserve their original session and tour binding. Reconcile an unresolved request in its original workspace. These tests prove synthetic persistence only.
