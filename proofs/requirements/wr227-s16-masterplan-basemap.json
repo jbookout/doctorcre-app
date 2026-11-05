@@ -1,0 +1,23 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s16-masterplan-basemap",
+  "targets": ["app"],
+  "assertions": [
+    {
+      "id": "selected-property-survives-map-layer-changes",
+      "predicate": "On the deployed publication, select a property, move the camera, toggle the master-plan overlay and basemap, then simulate unavailable tiles. The same property remains selected, the camera remains stable, the list remains usable, and permitted local layers return. Check the actual renderer and provider against the reviewed current rights receipt.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "The deployed app release contains this revision. Overlay and basemap changes preserve camera and selection. Missing tiles restore permitted local layers and an honest notice. Provider access occurs only under a current reviewed rights receipt matching the renderer.",
+      "input_class": "read-only deployed publication and rights receipt",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 60,
+    "max_records": 32,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

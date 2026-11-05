@@ -1,0 +1,14 @@
+stateDiagram-v2
+  [*] --> local
+  local --> loading: Choose vector with current rights
+  local --> fallback: Rights missing or invalid
+  loading --> vector: Style installs
+  loading --> fallback: Read or style fails
+  vector --> fallback: Tile or renderer fails
+  loading --> local: Choose local and cancel
+  vector --> local: Choose local
+  fallback --> local: Choose local
+  local --> disposed: Unmount
+  loading --> disposed: Unmount and cancel
+  vector --> disposed: Unmount and cancel
+  fallback --> disposed: Unmount
