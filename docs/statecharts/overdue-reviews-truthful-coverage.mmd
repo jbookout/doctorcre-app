@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Ready: Complete valid read
+    Pending --> Unavailable: Rejected rows or failed read
+    Ready --> Pending: Refresh
+    Unavailable --> Pending: Retry overdue reviews
+    Ready --> Recovery: Decision outcome unconfirmed
+    Recovery --> Pending: Refresh while outcome unknown
+    Recovery --> Ready: Check outcome verifies original decision
+    Pending --> Retired: Authorization lost
+    Ready --> Retired: Authorization lost
+    Recovery --> Retired: Authorization lost
+    Unavailable --> Retired: Authorization lost
+    Pending --> Disposed: Panel removed
+    Ready --> Disposed: Panel removed
+    Recovery --> Disposed: Panel removed
+    Unavailable --> Disposed: Panel removed
+    Retired --> Disposed: Panel removed
+    Disposed --> Disposed: Late results ignored
+    Retired --> Retired: Late results ignored
+    Unavailable --> Recovery: Valid row outcome unconfirmed
+    %% never Claim an empty inbox after rejecting a supplied row.
+    %% never Render malformed names or late results after retirement or disposal.
