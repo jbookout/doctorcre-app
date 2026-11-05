@@ -1,4 +1,4 @@
-name: Inbox paint experiment
+name: Inbox dependency attribution
 on:
   push:
     branches: [wr622-s1-j339-inbox-paint]
@@ -21,11 +21,6 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: a4bbe1580388fb62e92fd373f58f2f760b19114d
-          path: head
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
           ref: 4d1acc9b301cf6e9159ea245268dca56f35a1180
           path: main
           persist-credentials: false
@@ -37,11 +32,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: diagnostic
       - run: npm ci && npm run build
-        working-directory: head
-      - run: npm ci && npm run build
         working-directory: main
-      - run: node test/helpers/compare-home-lcp.mjs ../head ../main test-artifacts/j339-linux
-        working-directory: diagnostic
       - name: Measure separate causal probes
         working-directory: diagnostic
         run: |
@@ -50,7 +41,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: ${{ always() }}
         with:
-          name: inbox-paint-experiment
+          name: inbox-dependency-attribution
           path: diagnostic/test-artifacts/j339-*
           if-no-files-found: error
           retention-days: 14
