@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s12-phone-undo",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "phone-home-bulk-undo-visible",
+      "predicate": "The deployed /app-release identifies the merged revision. Joe bulk-settles two Home cards on his phone, sees Undo inside the viewport above the bottom bar, taps it, and both cards return. Joe repeats with bulk snooze and observes both cards return after Undo. Undo remains available for at least ten seconds. Desktop behavior matches.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Release-bound observation confirms visible, unobstructed Undo and restoration of both cards after settle and snooze. Joe performs sign-in and UI writes; the proof observer reads evidence only.",
+      "input_class": "read-only release identity and evidence from a named human signed-in walk by Joe",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 2,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}
