@@ -4,7 +4,7 @@ import { createServer, get } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 
@@ -16,6 +16,7 @@ after(async () => rm(outDir, { recursive: true, force: true }));
 for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chunk-protected', 'timeout']) {
   test(`proof CLI ${mode} with production flags`, async t => {
     const requests = [];
+    const siteRoot = resolve(outDir, 'site');
     const server = createServer(async (req, res) => {
       requests.push({ method: req.method, path: req.url });
       if (mode === 'timeout') return;
@@ -26,7 +27,13 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
       }
       if (mode === 'chunk-protected' && req.url !== '/js/ui-calendar-panels.js') { res.writeHead(401).end(); return; }
       try {
-        let content = await readFile(join(outDir, 'site', req.url));
+        const requestedPath = decodeURIComponent(req.url);
+        if (/%2e|%5c|%00/i.test(req.url) || requestedPath.includes('\\') || requestedPath.includes(String.fromCharCode(0))) {
+          res.writeHead(404).end(); return;
+        }
+        const file = resolve(siteRoot, requestedPath.slice(1));
+        if (!file.startsWith(siteRoot + sep)) { res.writeHead(404).end(); return; }
+        let content = await readFile(file);
         if (mode === 'broken' && req.url === '/js/ui-calendar-panels.js') content = Buffer.from('export async function mountCalendarPanels(left) { return { render() {left.textContent="broken"}, clear() {} }; }');
         res.writeHead(200, { 'content-type': 'text/javascript' }).end(content);
       } catch { res.writeHead(404).end(); }
