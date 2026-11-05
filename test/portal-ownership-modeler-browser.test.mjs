@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { readFile } from 'node:fs/promises';
 const publication = JSON.parse(await readFile(new URL('./fixtures/ownership/example-health.market-study.json',import.meta.url)));
 const second = structuredClone(publication.properties[0]);
@@ -10,7 +11,7 @@ publication.properties.push(second);
 const bundle = await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import {OwnershipModeler} from './src/ui/portal/ownership-modeler'; const root=createRoot(document.getElementById('root')); window.render=p=>root.render(<OwnershipModeler publication={p} onOpenProperty={id=>{document.getElementById('opened').textContent=id}}/>); window.render(${JSON.stringify(publication)});`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,format:'iife'});
 for(const width of [390,1440]) for(const theme of ['light','dark']) {
  test(`ownership DOM at ${width}px in ${theme} theme`,async()=>{
-  const browser=await chromium.launch({headless:true});
+  const browser=await chromium.launch({headless:true,args: [...CHROMIUM_SAFETY_ARGS]});
   try {
    const context=await browser.newContext({viewport:{width,height:1000},colorScheme:theme});
    const page=await context.newPage(); const errors=[]; const requests=[];
