@@ -199,7 +199,7 @@ test('TileJSON, glyph and sprite resources use the bounded protocol and restore 
   await controller.vector('https://example.com/style');
   assert.equal(state.kind, 'vector');
   assert.deepEqual(reads, ['https://example.com/style', 'https://example.com/tiles.json']);
-  assert.match(sources.get('s16-vector-base').tiles[0], /^s16tiles.*https:\/\/example.com\/tiles\/\{z\}/);
+  assert.equal(sources.get('s16-vector-base').tiles[0], `${[...protocols.keys()][0]}://1/https://example.com/tiles/{z}/{x}/{y}.pbf`);
   const [protocol, handler] = [...protocols][0];
   assert.ok(glyphs.startsWith(protocol + '://'));
   assert.equal(sprites.size, 1);
