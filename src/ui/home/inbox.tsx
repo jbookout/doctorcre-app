@@ -98,6 +98,7 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
 export type InboxClient = { read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
+    // eslint-disable-next-line no-restricted-syntax -- At most three version reads; only unknown_tool advances to the next version.
     for (const version of ['v4', 'v3', 'v2'] as const) {
       let value: unknown;
       try { value = await rpc(`read-home-inbox-${version}`, {}, signal); }

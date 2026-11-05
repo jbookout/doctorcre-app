@@ -28,7 +28,12 @@ export function HomeSections({ items, current, row }: { items: readonly InboxIte
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-    const tick = () => { setNow(new Date()); timer = setTimeout(tick, 60_000 - Date.now() % 60_000); };
+    const tick = () => {
+      setNow(new Date());
+      // eslint-disable-next-line no-restricted-syntax -- One local clock update per minute boundary; no reads, one timer, cleared on unmount.
+      timer = setTimeout(tick, 60_000 - Date.now() % 60_000);
+    };
+    // eslint-disable-next-line no-restricted-syntax -- One initial minute-boundary timer; no reads, cleared on unmount.
     timer = setTimeout(tick, 60_000 - Date.now() % 60_000);
     return () => clearTimeout(timer);
   }, []);

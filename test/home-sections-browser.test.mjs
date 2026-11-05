@@ -207,7 +207,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${run.outputDir}/done-today-${width}-${theme}.png`, fullPage: true });
   await new Promise(resolve => setTimeout(resolve, 2200));
-  await page.clock.fastForward(14 * 60 * 60 * 1000 - 18_000);
+  await page.clock.pauseAt(new Date('2026-11-05T05:59:59Z'));
   assert.equal(await today.locator('[data-inbox-row]').count(), 1);
   await page.clock.fastForward(1000);
   await today.locator('[data-inbox-row]').waitFor({ state: 'detached' });

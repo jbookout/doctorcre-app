@@ -15,11 +15,13 @@ for (const action of ['settle','snooze']) test(`local synthetic ${action} batch 
   const after = await client.read();
   for (const item of items) assert.deepEqual(after.items.find(next => next.item_id === item.item_id), item);
 });
-test('confirmed receipts survive a failed read without another mutation', async () => {
+for (const version of ['v4', 'v3', 'v2']) test(`confirmed receipts survive a failed ${version} read without another mutation`, async () => {
   let writes = 0;
   const request = batchRequest('settle', [{ item_id: 'a', base_version: 'a'.repeat(32) }]);
   const client = createInboxClient(async (name) => {
-    if (name === 'read-home-inbox-v3') throw Error('read failed');
+    if (name === `read-home-inbox-${version}`) throw Error('read failed');
+    if (name.startsWith('read-home-inbox-')) return { error: 'unknown_tool' };
+    assert.equal(name, 'settle-home-inbox');
     writes++;
     return { ok: true, schema_version: 'home-inbox-batch.v1', batch_key: request.args.idempotency_key, results: [{ item_id: 'a', status: 'applied' }] };
   });
