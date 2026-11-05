@@ -17,10 +17,19 @@ export async function exerciseContactReasons(page, moduleUrl) {
       const card = {id:'9',name:'Synthetic valid practice',kind:'enumeration',route:'research',city:'Demo City',state:'FL',evidence_date:'2026-10-26',source:'nppes',npi:'1234567890',source_url:'https://npiregistry.cms.hhs.gov/provider-view/1234567890',client_ids:[],client_refs:[]};
       const payload = {ok:true,contract:'practice-origination.v1',outreach_started:false,next_cursor:'8',coverage:[{source:'nppes',status:'available'}],cards:[card,...['constructor','toString','__proto__'].map((kind,i)=>({...card,id:String(20+i),name:`Invalid ${kind}`,kind}))]};
       const probe = window.taxonomyProof = {payload,reads:[],held:false};
-      probe.mount = mountContactReasons({host:document.querySelector('main'),window,client:{listPracticeOrigination:args=>{
-        probe.reads.push({before_id:args.before_id});
-        return probe.held ? new Promise(resolve=>{probe.resolve=resolve;}) : JSON.parse(JSON.stringify(probe.payload));
-      }}});
+      probe.remount = ({source,held=false} = {}) => {
+        probe.mount?.dispose();
+        probe.payload=JSON.parse(JSON.stringify(payload));
+        if (source) probe.payload.coverage=[{source,status:'available'}];
+        probe.reads=[];
+        probe.held=held;
+        probe.resolve=null;
+        probe.mount = mountContactReasons({host:document.querySelector('main'),window,client:{listPracticeOrigination:args=>{
+          probe.reads.push({before_id:args.before_id});
+          return probe.held ? new Promise(resolve=>{probe.resolve=resolve;}) : JSON.parse(JSON.stringify(probe.payload));
+        }}});
+      };
+      probe.remount();
     },moduleUrl);
     const host = page.locator('#taxonomy-proof');
     await host.getByText('Synthetic valid practice',{exact:true}).waitFor();
@@ -49,12 +58,18 @@ export async function exerciseContactReasons(page, moduleUrl) {
       await host.getByText(/Contact reasons unavailable/).waitFor();
       assert.equal(await host.locator('.work-card').count(),2);
       assert.doesNotMatch(await host.locator('[aria-label="Source coverage"]').innerText(),/constructor|toString|__proto__/);
+      const reads = await page.evaluate(()=>window.taxonomyProof.reads.length);
+      await host.getByRole('button',{name:'Try again',exact:true}).click();
+      await page.waitForFunction(reads=>window.taxonomyProof.reads.length === reads+1 && document.querySelector('#taxonomy-proof').getAttribute('aria-busy') === 'false',reads);
+      await host.getByText(/Contact reasons unavailable/).waitFor();
+      assert.equal(await host.locator('.work-card').count(),2);
+      assert.doesNotMatch(await host.locator('[aria-label="Source coverage"]').innerText(),/constructor|toString|__proto__/);
       await page.evaluate(()=>{window.taxonomyProof.payload.coverage=[{source:'pecos',status:'available'}];});
       await host.getByRole('button',{name:'Try again',exact:true}).click();
       await page.waitForFunction(()=>!document.querySelector('[data-retry-reasons]'));
       assert.match(await host.locator('[aria-label="Source coverage"]').innerText(),/PECOS/);
     }
-    assertions.push('inherited coverage is unavailable and Retry recovers');
+    assertions.push('inherited coverage remains unavailable on unsuccessful Retry, then recovers');
     await page.evaluate(()=>{const p=window.taxonomyProof;p.held=true;p.mount.refresh();});
     await page.waitForFunction(()=>typeof window.taxonomyProof.resolve==='function');
     await page.evaluate(()=>{
@@ -64,8 +79,47 @@ export async function exerciseContactReasons(page, moduleUrl) {
     await host.getByText('Sign in to view contact reasons.',{exact:true}).waitFor();
     await page.evaluate(async()=>{await Promise.resolve();window.taxonomyProof.mount.refresh();});
     assert.equal(await host.locator('.work-card').count(),0);
-    assert.deepEqual(errors,[]);
     assertions.push('retired session ignores late results');
+    for (const state of ['loading','unavailable','retrying']) {
+      await page.evaluate(state=>window.taxonomyProof.remount({source:'constructor',held:state==='loading'}),state);
+      if (state === 'loading') {
+        await host.getByText('Loading contact reasons…',{exact:true}).waitFor();
+        await page.waitForFunction(()=>typeof window.taxonomyProof.resolve==='function');
+        assert.equal(await host.getAttribute('aria-busy'),'true');
+        assert.equal(await host.locator('.work-card').count(),0);
+      } else {
+        await host.getByText(/Contact reasons unavailable/).waitFor();
+        assert.equal(await host.locator('.work-card').count(),0);
+        if (state === 'retrying') {
+          await page.evaluate(()=>{const p=window.taxonomyProof;p.held=true;p.resolve=null;});
+          await host.getByRole('button',{name:'Try again',exact:true}).click();
+          await page.waitForFunction(()=>typeof window.taxonomyProof.resolve==='function');
+          assert.equal(await host.getAttribute('aria-busy'),'true');
+        }
+      }
+      await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+      await host.getByText('Sign in to view contact reasons.',{exact:true}).waitFor();
+      await page.evaluate(async()=>{
+        const p=window.taxonomyProof;
+        p.payload.coverage=[{source:'nppes',status:'available'}];
+        p.resolve?.(p.payload);
+        await new Promise(resolve=>setTimeout(resolve,0));
+      });
+      const reads = await page.evaluate(()=>window.taxonomyProof.reads.length);
+      await page.evaluate(()=>window.taxonomyProof.mount.refresh());
+      assert.equal(await page.evaluate(()=>window.taxonomyProof.reads.length),reads);
+      assert.equal(await host.locator('.work-card').count(),0);
+      assert.equal(await host.getAttribute('aria-busy'),'false');
+      await host.getByText('Sign in to view contact reasons.',{exact:true}).waitFor();
+      assert.equal(await host.getByRole('button').count(),0);
+      assertions.push(`${state} retires and ignores late results and refresh`);
+    }
+    const reads = await page.evaluate(()=>window.taxonomyProof.reads.length);
+    await page.evaluate(()=>{const p=window.taxonomyProof;p.mount.dispose();p.mount.refresh();});
+    assert.equal(await page.evaluate(()=>window.taxonomyProof.reads.length),reads);
+    assert.equal(await host.locator('.work-card').count(),0);
+    assert.equal(await host.innerText(),'');
+    assert.deepEqual(errors,[]);
     return assertions;
   } finally {
     await page.evaluate(()=>window.taxonomyProof?.mount.dispose());

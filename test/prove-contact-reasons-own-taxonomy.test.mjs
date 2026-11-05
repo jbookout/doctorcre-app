@@ -36,7 +36,7 @@ for (const mode of ['valid','missing-export','protected','sign-in','timeout','ba
       const receipt=JSON.parse(stdout);
       assert.equal(receipt.origin,origin);
       assert.equal(receipt.release.source_commit,revision);
-      assert.equal(receipt.assertions.length,4);
+      assert.equal(receipt.assertions.length,7);
       assert.ok(receipt.module_urls.some(url=>url.endsWith('/js/ui-reasons.js')));
       assert.ok(receipt.requests<=40);
     } else {
