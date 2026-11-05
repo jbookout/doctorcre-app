@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { prepareVectorStyle } from './masterplan-style';
 import { currentRights, providerSession } from './masterplan-provider';
 import type { ProviderRights } from './masterplan-provider';
 
 export type DevelopmentOverlay = {
   id: string; title: string;
+  locator?: { lon: number; lat: number };
   overlay?: { type: 'FeatureCollection'; features: unknown[] };
   overlay_note?: string;
 };
 type MapIssue = { sourceId?: string };
 export interface MasterplanMap {
+  getContainer(): HTMLElement;
+  project(coordinates: [number, number]): { x: number; y: number };
+  getGlyphs(): string | null;
+  setGlyphs(url: string | null): unknown;
+  addSprite(id: string, url: string): unknown;
+  removeSprite(id: string): unknown;
   addSource(id: string, source: object): unknown;
   getSource(id: string): unknown;
   removeSource(id: string): unknown;
@@ -22,7 +31,7 @@ export interface MasterplanMap {
   off(event: 'click', layer: string, listener: () => void): unknown;
 }
 export interface ProtocolRegistry {
-  addProtocol(name: string, handler: (request: { url: string }, abort: AbortController) => Promise<{ data: ArrayBuffer }>): unknown;
+  addProtocol(name: string, handler: (request: { url: string; type?: string }, abort: AbortController) => Promise<{ data: ArrayBuffer | Record<string, unknown> }>): unknown;
   removeProtocol(name: string): unknown;
 }
 export type BasemapState = { kind: 'local' | 'loading' | 'vector' | 'fallback' | 'disposed'; notice: string };
@@ -50,6 +59,8 @@ export function masterplanController(options: Options) {
   const clicks = new Map<string, () => void>();
   let state: BasemapState['kind'] = 'local';
   let generation = 0;
+  let glyphs: { previous: string | null } | undefined;
+  const sprites = new Set<string>();
   let visible = true;
   let loading: AbortController | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
@@ -64,6 +75,9 @@ export function masterplanController(options: Options) {
     loading?.abort();
     clearTimeout(expiry);
     clean(vectors);
+    for (const id of sprites) map.removeSprite(id);
+    sprites.clear();
+    if (glyphs) { map.setGlyphs(glyphs.previous); glyphs = undefined; }
     for (const id of localLayerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
   };
   const fallback = () => {
@@ -72,7 +86,7 @@ export function masterplanController(options: Options) {
     publish('fallback', localAvailable ? 'Vector basemap unavailable. Showing the permitted local map layers.' : 'Map unavailable. The property list remains available.');
   };
   const issue = ({ sourceId }: MapIssue) => {
-    if ((state === 'loading' && !sourceId) || (sourceId && vectors.sources.has(sourceId))) fallback();
+    if (((state === 'loading' || state === 'vector') && !sourceId) || (sourceId && vectors.sources.has(sourceId))) fallback();
     else if (sourceId && overlays.sources.has(sourceId)) {
       removeOverlays();
       options.onState({ kind: state, notice: 'Master plan unavailable. Property cards remain available.' });
@@ -83,10 +97,16 @@ export function masterplanController(options: Options) {
     clicks.clear(); clean(overlays);
   };
   registry.addProtocol(protocol, async (request, abort) => {
+    const prefix = `${protocol}://${generation}/`;
+    if (!request.url.startsWith(prefix) || !loading || !['loading', 'vector'].includes(state)) throw new Error('Vector basemap retired.');
+    const revision = generation;
     try {
-      if (state !== 'vector') throw new Error('Vector basemap retired.');
-      return { data: await network.read(request.url.slice(protocol.length + 3), abort.signal) };
-    } catch (error) { if (!abort.signal.aborted) fallback(); throw error; }
+      const bytes = await network.read(request.url.slice(prefix.length), AbortSignal.any([abort.signal, loading.signal]));
+      if (request.type !== 'json') return { data: bytes };
+      const data: unknown = JSON.parse(new TextDecoder().decode(bytes));
+      if (!record(data)) throw new Error('Invalid sprite metadata.');
+      return { data };
+    } catch (error) { if (!abort.signal.aborted && revision === generation) fallback(); throw error; }
   });
   map.on('error', issue);
   return {
@@ -131,29 +151,47 @@ export function masterplanController(options: Options) {
       local();
       if (!localAvailable || !currentRights(options.receipt, (options.now ?? Date.now)())) { fallback(); return; }
       publish('loading', 'Loading vector basemap. Local map layers remain available.');
-      loading = new AbortController();
+      const request = new AbortController();
+      loading = request;
       const revision = generation;
       try {
-        const bytes = await network.read(url, loading.signal);
+        const bytes = await network.read(url, request.signal);
         if (revision !== generation) return;
-        const style: unknown = JSON.parse(new TextDecoder().decode(bytes));
-        if (!record(style) || style.version !== 8 || style.glyphs || style.sprite || !record(style.sources)
-          || !Array.isArray(style.layers) || Object.keys(style.sources).length > 8 || style.layers.length > 64) throw new Error('Unsupported provider style.');
-        for (const [id, source] of Object.entries(style.sources)) {
-          if (!/^[a-zA-Z0-9_-]+$/.test(id) || !record(source) || source.type !== 'vector' || source.url
-            || !Array.isArray(source.tiles) || source.tiles.length !== 1 || typeof source.tiles[0] !== 'string') throw new Error('Unsupported vector source.');
+        const style = await prepareVectorStyle({ bytes, url, read: address => network.read(address, request.signal), wrap: address => `${protocol}://${revision}/${address}` });
+        if (revision !== generation) return;
+        if (style.glyphs) {
+          glyphs = { previous: map.getGlyphs() };
+          map.setGlyphs(style.glyphs);
+        }
+        for (const sprite of style.sprites) {
+          const id = `${protocol}-${sprite.id}`;
+          sprites.add(id); map.addSprite(id, sprite.url);
+        }
+        for (const [id, source] of style.sources) {
           const name = `s16-vector-${id}`;
-          vectors.sources.add(name);
-          map.addSource(name, { ...source, tiles: [`${protocol}://${source.tiles[0]}`] });
+          vectors.sources.add(name); map.addSource(name, source);
           if (revision !== generation) { clean(vectors); return; }
         }
+        const image = (value: unknown): unknown => {
+          if (typeof value === 'string') {
+            const colon = value.indexOf(':');
+            const sprite = colon < 0 ? 'default' : value.slice(0, colon);
+            if (!style.sprites.some(item => item.id === sprite)) throw new Error('Missing sprite.');
+            return `${protocol}-${sprite}:${colon < 0 ? value : value.slice(colon + 1)}`;
+          }
+          if (style.sprites.length !== 1 || style.sprites[0]?.id !== 'default') throw new Error('Ambiguous sprite expression.');
+          return ['concat', `${protocol}-default:`, value];
+        };
         for (const layer of style.layers) {
-          if (!record(layer) || typeof layer.id !== 'string' || !['fill', 'line', 'background', 'circle'].includes(String(layer.type))
-            || (layer.type !== 'background' && (typeof layer.source !== 'string' || !vectors.sources.has(`s16-vector-${layer.source}`)))) throw new Error('Unsupported vector layer.');
           const id = `s16-vector-${layer.id}`;
+          const paint = { ...(record(layer.paint) ? layer.paint : {}) };
+          const layout = { ...(record(layer.layout) ? layer.layout : {}) };
+          for (const key of ['fill-pattern', 'line-pattern', 'background-pattern']) if (paint[key] !== undefined) paint[key] = image(paint[key]);
+          if (layout['icon-image'] !== undefined) layout['icon-image'] = image(layout['icon-image']);
+          if (layer.type !== 'symbol') paint[`${layer.type}-color`] = layer.type === 'background' ? '#f3f0ea' : layer.type === 'fill' ? '#e3ded3' : '#958064';
+          else { paint['text-color'] = '#403b32'; paint['text-halo-color'] = '#f3f0ea'; paint['text-halo-width'] = 1; }
           vectors.layers.add(id);
-          const color = layer.type === 'background' ? '#f3f0ea' : layer.type === 'fill' ? '#e3ded3' : '#958064';
-          map.addLayer({ ...layer, id, ...(typeof layer.source === 'string' ? { source: `s16-vector-${layer.source}` } : {}), paint: { ...(record(layer.paint) ? layer.paint : {}), [`${layer.type}-color`]: color } }, localLayerIds.find(id => Boolean(map.getLayer(id))));
+          map.addLayer({ ...layer, id, ...(typeof layer.source === 'string' ? { source: `s16-vector-${layer.source}` } : {}), paint, layout }, localLayerIds.find(id => Boolean(map.getLayer(id))));
           if (revision !== generation) { clean(vectors); return; }
         }
         for (const id of localLayerIds) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
@@ -185,10 +223,10 @@ export function MasterplanBasemap(props: Omit<Options, 'onState'> & { developmen
   }, [props.map, props.registry, props.receipt, props.localLayerIds]);
   useEffect(() => { controller.current?.overlays(props.developments); }, [props.developments, props.map, props.registry, props.receipt, props.localLayerIds]);
   useEffect(() => { controller.current?.visible(visible); }, [visible, props.developments, props.map, props.registry, props.receipt, props.localLayerIds]);
-  const plans = props.developments.filter(item => item.overlay);
+  const plans = props.developments.filter(item => item.overlay).slice(0, 32);
   return <section aria-label="Map layers" style={{ display: 'grid', gap: 8, padding: 12, maxWidth: '100%', color: 'var(--ink, inherit)', background: 'var(--surface-1, transparent)' }}>
     {plans.length > 0 && <><label><input type="checkbox" checked={visible} onChange={event => setVisible(event.target.checked)} /> Show master plan</label>
-      {visible && plans.map(item => <button type="button" className="overlay-map-label" key={item.id} onClick={() => callback.current(item.id)}>{item.title}</button>)}
+      {visible && <ProjectLabels map={props.map} developments={plans} openProject={id => callback.current(id)} />}
       {visible && plans.map(item => item.overlay_note && <small key={item.id}>{item.overlay_note}</small>)}</>}
     {props.styleUrl && <label>Basemap <select value={state.kind === 'vector' || state.kind === 'loading' ? 'vector' : 'local'} onChange={event => {
       if (event.target.value === 'vector' && props.styleUrl) void controller.current?.vector(props.styleUrl);
@@ -196,4 +234,21 @@ export function MasterplanBasemap(props: Omit<Options, 'onState'> & { developmen
     }}><option value="local">Local map layers</option><option value="vector">Vector basemap</option></select></label>}
     <p role="status">{state.notice}</p>
   </section>;
+}
+
+function ProjectLabels(props: Pick<Options, 'map' | 'openProject'> & { developments: DevelopmentOverlay[] }) {
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    const update = () => redraw(value => value + 1);
+    props.map.on('move', update); props.map.on('resize', update);
+    return () => { props.map.off('move', update); props.map.off('resize', update); };
+  }, [props.map]);
+  const container = props.map.getContainer();
+  return createPortal(props.developments.map(item => {
+    if (!item.locator) return null;
+    const { x, y } = props.map.project([item.locator.lon, item.locator.lat]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > container.clientWidth || y > container.clientHeight) return null;
+    return <button type="button" className="overlay-map-label" key={item.id} onClick={() => props.openProject(item.id)}
+      style={{ position: 'absolute', left: x, top: Math.max(80, y), maxHeight: 80, overflow: 'auto', transform: 'translate(-50%, -100%)', maxWidth: Math.min(220, 2 * Math.min(x, container.clientWidth - x)), zIndex: 2, whiteSpace: 'normal', minHeight: 44, color: 'var(--ink, #403b32)', background: 'var(--surface-1, #f3f0ea)', border: '1px solid #958064', borderRadius: 4 }}>{item.title}</button>;
+  }), container);
 }

@@ -12,3 +12,7 @@ stateDiagram-v2
   loading --> disposed: Unmount and cancel
   vector --> disposed: Unmount and cancel
   fallback --> disposed: Unmount
+  loading --> loading: Resolve bounded TileJSON and install glyphs and sprites
+  vector --> fallback: Glyph or sprite fails
+  loading --> local: Retire asset requests on local switch
+  vector --> vector: Move or resize repositions project labels

@@ -93,7 +93,7 @@ test('overlay updates and vector failures preserve camera, selection and unrelat
   assert.equal(state.kind, 'vector');
   assert.equal(layers.get('water').visibility, 'none');
   const handler = [...protocols.values()][0];
-  await assert.rejects(handler({ url: `${[...protocols.keys()][0]}://https://example.com/1/1/1.pbf` }, new AbortController()));
+  await assert.rejects(handler({ url: `${[...protocols.keys()][0]}://1/https://example.com/1/1/1.pbf` }, new AbortController()));
   assert.equal(state.kind, 'fallback');
   assert.equal(layers.get('water').visibility, 'visible');
   assert.deepEqual(map.camera, [10, 20, 7]);
@@ -109,7 +109,7 @@ test('missing style, unsupported assets, overlay errors and late loads keep the 
   const { masterplanController } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
   let state;
   let mode = 'missing';
-  let suppliedStyle = { version: 8, sources: {}, layers: [], sprite: 'https://example.com/sprite' };
+  let suppliedStyle = { version: 8, sources: {}, layers: [], sprite: { invalid: true } };
   let resolve;
   const layers = new Map([['water', {}], ['roads', {}], ['selected-property', {}]]);
   const sources = new Map();
@@ -137,7 +137,7 @@ test('missing style, unsupported assets, overlay errors and late loads keep the 
   }
   current.dispose();
   mode = 'unsupported'; current = controller();
-  suppliedStyle = { version: 8, sources: {}, layers: [], sprite: 'https://example.com/sprite' };
+  suppliedStyle = { version: 8, sources: {}, layers: [], sprite: { invalid: true } };
   await current.vector('https://example.com/style');
   assert.equal(state.kind, 'fallback');
   mode = 'bad-overlay';
@@ -172,4 +172,68 @@ test('missing style, unsupported assets, overlay errors and late loads keep the 
   await current.vector('https://example.com/style');
   assert.match(state.notice, /Map unavailable. The property list/);
   current.dispose();
+});
+
+test('TileJSON, glyph and sprite resources use the bounded protocol and restore host configuration', async () => {
+  const result = await build({ entryPoints: ['src/ui/portal/masterplan-basemap.tsx'], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { masterplanController } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
+  const sources = new Map();
+  const layers = new Map([['water', {}]]);
+  const sprites = new Map();
+  const protocols = new Map();
+  let glyphs = 'https://host.example/fonts/{fontstack}/{range}.pbf';
+  let state;
+  const reads = [];
+  const map = { addSource: (id, value) => sources.set(id, value), getSource: id => sources.get(id), removeSource: id => sources.delete(id),
+    addLayer: value => layers.set(value.id, value), getLayer: id => layers.get(id), removeLayer: id => layers.delete(id),
+    setLayoutProperty() {}, on() {}, off() {}, getGlyphs: () => glyphs, setGlyphs: value => { glyphs = value; },
+    addSprite: (id, url) => sprites.set(id, url), removeSprite: id => sprites.delete(id) };
+  const controller = masterplanController({ map, registry: { addProtocol: (id, handler) => protocols.set(id, handler), removeProtocol: id => protocols.delete(id) },
+    localLayerIds: ['water'], receipt: receipt(), now, onState: value => { state = value; }, openProject() {}, fetch: async url => {
+      reads.push(url);
+      if (url.endsWith('/style')) return Response.json({ version: 8, glyphs: './fonts/{fontstack}/{range}.pbf', sprite: './sprite', sources: { base: { type: 'vector', url: './tiles.json' } }, layers: [{ id: 'label', type: 'symbol', source: 'base', 'source-layer': 'places', layout: { 'text-field': '{name}', 'icon-image': 'park' } }] });
+      if (url.endsWith('/tiles.json')) return Response.json({ tilejson: '3.0.0', tiles: ['./tiles/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14 });
+      if (url.endsWith('/sprite.json')) return Response.json({ park: { width: 1, height: 1 } });
+      return new Response(new Uint8Array([1, 2]));
+    } });
+  await controller.vector('https://example.com/style');
+  assert.equal(state.kind, 'vector');
+  assert.deepEqual(reads, ['https://example.com/style', 'https://example.com/tiles.json']);
+  assert.match(sources.get('s16-vector-base').tiles[0], /^s16tiles.*https:\/\/example.com\/tiles\/\{z\}/);
+  const [protocol, handler] = [...protocols][0];
+  assert.ok(glyphs.startsWith(protocol + '://'));
+  assert.equal(sprites.size, 1);
+  assert.match(layers.get('s16-vector-label').layout['icon-image'], /:park$/);
+  for (const url of [glyphs.replace('{fontstack}', 'Synthetic').replace('{range}', '0-255'), [...sprites.values()][0] + '.png']) {
+    assert.equal((await handler({ url }, new AbortController())).data.byteLength, 2);
+  }
+  const json = await handler({ url: [...sprites.values()][0] + '.json', type: 'json' }, new AbortController());
+  assert.deepEqual(json.data, { park: { width: 1, height: 1 } });
+  const stale = glyphs;
+  controller.local();
+  assert.equal(glyphs, 'https://host.example/fonts/{fontstack}/{range}.pbf');
+  assert.equal(sprites.size, 0);
+  await assert.rejects(handler({ url: stale }, new AbortController()));
+  assert.equal(state.kind, 'local');
+  controller.dispose();
+});
+
+test('TileJSON resolution refuses malformed metadata and caps source and template fan-out', async () => {
+  const result = await build({ entryPoints: ['src/ui/portal/masterplan-style.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { prepareVectorStyle } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
+  const bytes = value => new TextEncoder().encode(JSON.stringify(value)).buffer;
+  const style = sources => bytes({ version: 8, sources, layers: [] });
+  let reads = 0;
+  const options = { url: 'https://example.com/style', wrap: value => value, read: async () => { reads++; return bytes({ tiles: ['https://example.com/tile'] }); } };
+  for (const sources of [
+    Object.fromEntries(Array.from({ length: 9 }, (_, i) => [i, { type: 'vector', url: './tiles.json' }])),
+    { base: { type: 'vector', url: 'http://example.com/tiles.json' } },
+    { base: { type: 'vector', tiles: Array(5).fill('./tile') } },
+    { base: { type: 'vector', tiles: ['./tile'], minzoom: 20, maxzoom: 2 } },
+  ]) await assert.rejects(prepareVectorStyle({ ...options, bytes: style(sources) }));
+  assert.equal(reads, 0);
+  const direct = style({ base: { type: 'vector', url: './tiles.json' } });
+  for (const metadata of [null, {}, { tiles: ['http://example.com/tile'] }, { tiles: [], maxzoom: 5 }]) {
+    await assert.rejects(prepareVectorStyle({ ...options, bytes: direct, read: async () => bytes(metadata) }));
+  }
 });

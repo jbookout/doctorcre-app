@@ -1,6 +1,6 @@
 # Master-plan overlay and basemap adapter
 
-Card: WR227.S16.J1
+Card: WR227.S16.J2
 
 ## Contract and grounding
 
@@ -25,9 +25,9 @@ separately from the trusted host, never as client package claims.
 Capacity is bounded to 32 overlays, eight vector sources and 64 vector layers.
 At ten times current load, limits refuse excess data before resource creation.
 Each provider session allows two concurrent reads and 60 attempts per minute.
-Overload refuses immediately, with no growing queue. Vector sources require
-direct tile templates. TileJSON, symbols, glyphs and sprites refuse to local
-fallback. Their support remains an explicit A-A40 gap.
+Overload refuses immediately, with no growing queue. Vector sources support
+direct tile templates and TileJSON. Symbol layers, glyphs and up to four sprites
+use the same bounded protocol. Unrecognized or invalid resources refuse to fallback.
 
 Load spread follows renderer tile demand. The style loads before installation.
 Style or tile failure restores local layers while preserving the host and list.
@@ -72,10 +72,38 @@ chart omits overlay toggles, authorization and terminal self-transitions.
 The committed synthetic fixture extends the pinned fixture's overlay with a
 polygon, road-context line and dashed closure line. The GeoJSON schema permits
 these features. No client reference source was copied into this checkout.
-Controls provide project-opening buttons; reference floating-label positioning
-and full private visual parity remain unproven.
+Projected project labels open projects and follow map movement and resizing.
+Private visual parity remains unproven. Neither supplied S16 brief names the
+absolute REF-A source directory needed for comparison. No private content is
+copied into source.
 
 S10 must mount the controls after map load, pass the same map and MapLibre
 protocol registry, and retire the controller before removing the map. No sibling
 files are modified. This adapter is not yet reachable from the publication.
 Private parity and deployed proof remain the coordinator's integration work.
+
+## Resource and label design
+
+The resource shape is a prepared vector style with resolved direct tile templates,
+one optional glyph template and up to four namespaced sprites. TileJSON resolves
+before installation. All renderer reads use the existing bounded session, including
+assets. The controller retains one abort scope per vector generation. Retired
+requests cannot change a newer view. Glyph configuration is restored on fallback,
+local switch and unmount. Sprites have unique IDs and are removed with owned layers.
+
+Two designs were considered. Replacing the entire style simplifies asset setup but
+moves ownership of property layers into this adapter. Preparing namespaced resources
+preserves the existing ownership and reuses the tested network budget. Choose the
+latter. Labels are DOM buttons projected from package locators into the existing map
+container. Move and resize update their positions. They never change the camera.
+
+The existing capacity, no-store policy, circuit, request deadlines and consistency
+rules apply to every resource. TileJSON metadata is read sequentially, at most eight
+sources. Glyph and sprite demand shares the two-read concurrency and 60/minute cap.
+There is no queue, persistence, database access, write or send. At ten times fixture
+load the same caps refuse overload. Invalid resources restore the permitted map.
+
+The resource regression failed before implementation because the controller
+returned fallback. Resource preparation and labels share one controller and are
+implemented sequentially in this owned clone. No fan-out applies because this
+worker may not start children.
