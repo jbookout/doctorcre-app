@@ -52,8 +52,8 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
         <h3>{doc.display_name}</h3><p>{doc.document_type || 'Document'} · Stored <time dateTime={doc.stored_at}>{new Date(doc.stored_at).toLocaleDateString()}</time>{doc.page_count === null ? '' : ` · ${doc.page_count} pages`}</p>
         <details><summary>Document identity</summary><dl><dt>Document UUID</dt><dd>{doc.id}</dd><dt>SHA-256</dt><dd>{doc.content_hash}</dd></dl></details>
       </li>)}</ul>}
-      {state.kind === 'ready' && page?.next && (page.documents.length < MAX_DOCUMENTS
-        ? <button className="btn" type="button" onClick={() => void load(page, page.next)}>Load more documents</button>
+      {state.kind === 'ready' && page && (page.documents.length < MAX_DOCUMENTS
+        ? page.next && <button className="btn" type="button" onClick={() => void load(page, page.next)}>Load more documents</button>
         : <p>Showing the first {MAX_DOCUMENTS} documents. Refresh to start again.</p>)}
     </section>));
   }
@@ -72,7 +72,7 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
       }
       if (page.next && (page.next === cursor || cursors.has(page.next) || !page.documents.length)) throw Error('Repeated cursor');
       if (cursor) cursors.add(cursor);
-      state = { kind: 'ready', page: { documents: [...previous.documents, ...page.documents], next: page.next }, cursor: null };
+      state = { kind: 'ready', page: { documents: [...previous.documents, ...page.documents.slice(0, MAX_DOCUMENTS - previous.documents.length)], next: page.next }, cursor: null };
     } catch (error) {
       if (disposed || ticket !== generation) return;
       if (record(error) && (error.status === 401 || error.status === 403)) { expire(); return; }
