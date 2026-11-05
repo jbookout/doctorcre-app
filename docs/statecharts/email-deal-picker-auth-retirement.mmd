@@ -8,6 +8,7 @@ stateDiagram-v2
     Editing --> Previewing: Review selected deal
     Previewing --> Preview: Exact target accepted
     Previewing --> Recovery: Preview refused
+    Recovery --> Ready: Refresh and review
     Preview --> Saving: Confirm
     Saving --> Recovery: Outcome unknown
     Recovery --> Saving: Check outcome with original request
@@ -16,6 +17,7 @@ stateDiagram-v2
     NewEditing --> Creating: Submit new deal
     Creating --> Previewing: Deal created
     Creating --> Recovery: Creation outcome unknown
+    Recovery --> Creating: Check creation outcome
     Preview --> Created: Cancel created filing
     Previewing --> Created: Created filing preview fails
     Created --> Previewing: Review created deal
