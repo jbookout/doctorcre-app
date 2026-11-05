@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> ColdContext
+    ColdContext --> Observing: install observers before navigation
+    Observing --> Evidence: inbox visible and LCP observed
+    Observing --> Refused: navigation, readiness or LCP timeout
+    Evidence --> Refused: request or page failure, invalid LCP
+    Evidence --> Recorded: valid LCP and no failures
+    Refused --> Closed: preserve trace and close context
+    Recorded --> Closed: preserve trace and close context
+    Closed --> [*]
