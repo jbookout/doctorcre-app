@@ -3,8 +3,8 @@ import { test } from '@playwright/test';
 test.beforeEach(async ({ page }, info) => {
   if (info.project.name === 'setup') return;
   page.on('response', response => {
-    if (response.request().isNavigationRequest() && response.status() >= 400) {
-      info.annotations.push({ type: 'navigation-http-status', description: String(response.status()) });
+    if (response.status() >= 400) {
+      info.annotations.push({ type: 'http-status', description: `${response.request().resourceType()} ${response.status()}` });
     }
   });
   await page.route('**/*', async route => {

@@ -7,6 +7,7 @@ test("47 WR591.S36", async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/deals');
     for (const id of ['boardView', 'listView', 'closedView', 'lostView', 'parkedToggle']) {
+      if (id === 'parkedToggle') await page.locator('#boardView').click();
       const button = page.locator(`#${id}`);
       await visible(button);
       await button.click();
