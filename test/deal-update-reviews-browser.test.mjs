@@ -33,11 +33,18 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `overdue-${width}-${theme}`, viewer: 'joe', reset: true } });
     const writes = [];
+    let reviewReads = 0;
+    let holdAgenda = false, releaseAgenda, agendaStarted;
+    const agendaHeld = new Promise(resolve => { releaseAgenda = resolve; });
+    const agendaEntered = new Promise(resolve => { agendaStarted = resolve; });
+    t.after(() => releaseAgenda());
     let rows = [row, { ...row, assessment_id: '10000000-0000-4000-8000-000000000002', assessment: { ...row.assessment, action: { ...row.assessment.action, id: '30000000-0000-4000-8000-000000000002', description: 'Ask for the floor plan' }, quote: null, update: 'The floor plan may be ready for review.' } }];
+    rows.push({ ...row, assessment_id: '10000000-0000-4000-8000-000000000004', assessment: { ...row.assessment, action: { ...row.assessment.action, id: '30000000-0000-4000-8000-000000000004', description: 'Check revised timing' } } });
     await page.route('**/mcp', async route => {
       const { name, arguments: args } = route.request().postDataJSON().params;
+      if (name === 'read-home-agenda' && holdAgenda) { agendaStarted(); await agendaHeld; }
       let result;
-      if (name === 'read-deal-update-reviews') result = { schema_version: 'deal-update-reviews.v1', proposals: rows };
+      if (name === 'read-deal-update-reviews') { reviewReads++; result = { schema_version: 'deal-update-reviews.v1', proposals: rows }; }
       else if (name === 'review-deal-update') {
         writes.push(args);
         const selected = rows.find(row => row.assessment_id === args.assessment_id);
@@ -54,21 +61,28 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await panel.locator('a').first().getAttribute('href'), `/deals?deal=${row.deal_id}`);
     assert.equal(await panel.locator('article').count(), width === 390 ? 1 : 2);
     await panel.screenshot({ path: `out/test-artifacts/overdue-reviews/${width}-${theme}.png`, animations: 'disabled' });
-    if (width === 390) {
-      assert.match(await panel.innerText(), /Show 1 more/);
-      await panel.getByRole('button', { name: 'Show 1 more' }).click();
-    }
-    assert.match(await panel.locator('q').last().innerText(), /The floor plan may be ready/);
+    await panel.getByRole('button', { name: `Show ${width === 390 ? 2 : 1} more` }).click();
+    assert.match(await panel.locator('q').nth(1).innerText(), /The floor plan may be ready/);
     for (const box of await Promise.all((await panel.getByRole('button').all()).map(b => b.boundingBox()))) assert.ok(box.height >= 44);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
     await panel.getByRole('button', { name: 'Confirm', exact: true }).first().click();
     await panel.getByText('Task marked done.', { exact: true }).waitFor();
-    await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await page.waitForFunction(() => document.getElementById('refreshHome').getAttribute('aria-busy') === 'false');
+    holdAgenda = true;
+    await panel.getByRole('button', { name: 'Dismiss', exact: true }).first().click();
     await panel.getByText('Dismissed. Task remains open.', { exact: true }).waitFor();
     assert.deepEqual(writes.map(({ decision, assessment_id }) => ({ decision, assessment_id })), [{ decision: 'resolve', assessment_id: row.assessment_id }, { decision: 'dismiss', assessment_id: '10000000-0000-4000-8000-000000000002' }]);
     assert.ok(writes.every(args => args.idempotency_key && args.reason));
+    await agendaEntered;
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
-    await panel.getByText('No overdue reviews.', { exact: true }).waitFor();
+    const beforeRefresh = reviewReads;
+    await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('#homeOverdueReviews [role=status]').length >= 3);
+    assert.equal(writes.length, 3);
+    assert.equal(rows.length, 0);
+    releaseAgenda();
+    await panel.getByText('No overdue reviews.', { exact: true }).waitFor({ timeout: 5000 });
+    assert.ok(reviewReads > beforeRefresh, 'the queued full read reloads reviews after the later decision');
     assert.deepEqual(errors, []);
   });
 }

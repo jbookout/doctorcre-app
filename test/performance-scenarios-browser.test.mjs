@@ -177,3 +177,40 @@ test('Tours guidance keeps its phone width while the shared shell loads', async 
     } finally { await context.close(); }
   });
 });
+
+
+test('Home performance expansion survives calendar, month and Chicago DST boundaries', async t => {
+  const { applyPhoneProfile } = await import('../scripts/performance-scenarios.mjs');
+  const outDir = await temporaryDirectory('doctorcre-home-clock-');
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
+  t.after(() => server.stop());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  t.after(() => browser.close());
+  const home = screens.find(screen => screen.id === 'home');
+  for (const now of ['2026-11-05T18:00:00Z', '2026-11-01T04:59:59Z', '2026-11-01T05:00:00Z',
+    '2026-11-01T06:59:59Z', '2026-11-01T07:00:00Z', '2026-03-08T07:59:59Z', '2026-03-08T08:00:00Z']) {
+    await t.test(now, async () => {
+      const context = await browser.newContext({ viewport: profile.viewport, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+      try {
+        const page = await context.newPage();
+        await page.clock.setFixedTime(new Date(now));
+        await applyPhoneProfile(context, page);
+        await page.goto(server.url + home.route, { waitUntil: 'networkidle' });
+        await page.locator(home.ready).first().waitFor();
+        const slice = page.locator('.home-slice[aria-label="Needs your attention"]');
+        assert.equal(await slice.locator('[data-inbox-row]').count(), 1, 'collapsed attention slice retains its first task');
+        await page.locator(home.tap).first().tap();
+        await page.waitForFunction(home.complete);
+        assert.equal(await slice.locator('[data-inbox-row]').count(), 2, 'timed expansion reveals both tasks');
+        const elapsed = await page.evaluate(async () => {
+          const started = performance.now();
+          await new Promise(resolve => setTimeout(() => requestAnimationFrame(resolve), 25));
+          return performance.now() - started;
+        });
+        assert.ok(elapsed >= 25, 'calendar pin preserves timers and the monotonic measurement clock');
+      } finally { await context.close(); }
+    });
+  }
+});

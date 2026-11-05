@@ -1,0 +1,24 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr622-s1-j282-main-deploy",
+  "targets": ["app"],
+  "assertions": [
+    {
+      "id": "main-release-contains-burst",
+      "predicate": "The production /app-release source_commit contains this fix and all three merges 3a6c0a86, d2396e29 and 28a1a144. Its exact source has successful main push CI and a successful normal production deployment.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Read-only release identity, git ancestry and hosted pipeline evidence bind the live release to successful exact-source main CI and deployment.",
+      "input_class": "read-only production release identity and public source ancestry with hosted CI evidence",
+      "deadline_seconds": 300
+    },
+    {
+      "id": "home-refresh-reconciles-overdue",
+      "predicate": "In a signed-in Home walk, Joe refreshes Home immediately after resolving or dismissing the last overdue review. The panel reconciles to No overdue reviews without reloading the page.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "The observer reads release-bound evidence that a manual refresh reconciles the overdue panel after a review decision. Joe performs sign-in and the decision; the observer makes no writes.",
+      "input_class": "read-only evidence from a named human signed-in walk by Joe",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 4, "max_records": 10, "max_runtime_seconds": 300, "max_artifact_bytes": 65536}
+}
