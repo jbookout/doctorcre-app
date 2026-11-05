@@ -1,0 +1,37 @@
+stateDiagram-v2
+  [*] --> loading: Open Documents
+  loading: Loading documents
+  ready_below_cap: Documents visible, fewer than 500
+  loading_more: Documents visible, loading next page
+  ready_at_cap: 500 documents visible, limit notice when more exist
+  unavailable_retry: Documents unavailable, retry offered
+  expired: Session expired, documents removed
+  disposed: Panel closed
+  loading --> loading: Delayed reply
+  loading --> ready_below_cap: Valid first page
+  loading --> unavailable_retry: Failure or invalid page
+  ready_below_cap --> loading_more: Load more
+  loading_more --> loading_more: Delayed reply
+  loading_more --> ready_below_cap: Valid page leaves fewer than 500
+  loading_more --> ready_at_cap: Valid page reaches or crosses 500, accept remaining rows
+  loading_more --> unavailable_retry: Failure, duplicate document or repeated cursor
+  unavailable_retry --> loading_more: Retry the failed next page
+  unavailable_retry --> loading: Retry first page or refresh
+  ready_below_cap --> loading: Refresh
+  ready_at_cap --> loading: Refresh
+  loading --> expired: Session invalidated or authorization refused
+  loading_more --> expired: Session invalidated or authorization refused
+  ready_below_cap --> expired: Session invalidated
+  ready_at_cap --> expired: Session invalidated
+  unavailable_retry --> expired: Session invalidated
+  loading --> disposed: Close panel
+  loading_more --> disposed: Close panel
+  ready_below_cap --> disposed: Close panel
+  ready_at_cap --> disposed: Close panel
+  unavailable_retry --> disposed: Close panel
+  expired --> disposed: Close panel
+  expired --> expired: Delayed reply ignored
+  disposed --> disposed: Delayed reply ignored
+  %% never Render or retain more than 500 accepted documents.
+  %% never Request another page after 500 documents are accepted.
+  %% never Accept duplicate IDs or cyclic cursors, including discarded rows.
