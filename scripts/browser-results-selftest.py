@@ -104,7 +104,7 @@ class ResultsTest(unittest.TestCase):
                 gate = subprocess.run(['bash', '-e', '-c', shell], capture_output=True,
                                       env={**os.environ, 'CHECKS':'success', 'LIVE':'success',
                                            'SHARDS':'failure', 'PERFORMANCE':'success',
-                                           'PRODUCTION_PROOF':'success', 'EVENT':event})
+                                           'EVENT':event})
                 self.assertNotEqual(gate.returncode, 0)
 
     def test_planned_unstarted_and_interrupted_files_are_distinct(self):
