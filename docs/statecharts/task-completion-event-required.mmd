@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> Ready
+  Ready --> Pending: Mark done
+  Pending --> Recovery: Missing or invalid receipt
+  Recovery --> Pending: Retry same request
+  Pending --> Confirmed: Event receipt and exact readback
+  Pending --> Recovery: Readback fails
+  Pending --> Recovery: Stale version
+  Confirmed --> Pending: Undo original event
+  Pending --> Ready: Exact reopen receipt and readback
+  Pending --> Unavailable: Operation unavailable
+  Ready --> Retired: Authorization retired
+  Pending --> Disposed: Dispose before reply
