@@ -13,7 +13,7 @@ const id = (x: unknown): x is string => typeof x === 'string' && /^[a-z][a-z0-9_
 const uuid = (x: unknown): x is string => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x);
 function isSource(x: unknown): x is Source {
   return object(x) && (keys(x, ['record_id']) && uuid(x.record_id)
-    || keys(x, ['fact_id', 'version']) && uuid(x.fact_id) && typeof x.version === 'number' && Number.isInteger(x.version) && x.version >= 1);
+    || keys(x, ['fact_id', 'version']) && uuid(x.fact_id) && typeof x.version === 'number' && Number.isSafeInteger(x.version) && x.version >= 1);
 }
 function isCell(x: unknown): x is Cell {
   if (!object(x) || !keys(x, ['value', 'source']) || !('value' in x) || ('source' in x && !isSource(x.source))) return false;

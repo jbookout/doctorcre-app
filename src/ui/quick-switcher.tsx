@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { recentIds, rememberDestination as remember, clearRecents } from './switcher-history';
 
 type Destination = { id: string; label: string; kind: 'Deal' | 'Contact' | 'Task' | 'Page'; href: string };
-type ReadState = { kind: 'loading' } | { kind: 'ready'; items: Destination[] } | { kind: 'error' };
+type Availability = 'full' | 'board' | 'contacts' | 'none';
+type ReadState = { kind: 'loading' } | { kind: 'ready'; items: Destination[]; availability: Availability } | { kind: 'error' };
 type Options = {
   opener: HTMLElement;
   pages: { label: string; href: string }[];
@@ -13,8 +14,8 @@ type Options = {
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
-function destinations({ board, network }: { board: unknown; network: unknown }): Destination[] {
-  if (!record(board) || !Array.isArray(board.deals) || !record(network) || !Array.isArray(network.nodes)) throw Error('Unavailable');
+function boardDestinations(board: unknown): Destination[] {
+  if (!record(board) || !Array.isArray(board.deals)) throw Error('Invalid board');
   const result: Destination[] = [];
   const seen = new Set<string>();
   const deals = [...board.deals];
@@ -25,6 +26,7 @@ function destinations({ board, network }: { board: unknown; network: unknown }):
   }
   for (const deal of deals) {
     if (!record(deal) || !text(deal.id) || !text(deal.name)) throw Error('Invalid deal');
+    if (deal.open_actions !== undefined && (!Array.isArray(deal.open_actions) || deal.open_actions.some(action => !record(action) || !text(action.id) || !text(action.description)))) throw Error('Invalid tasks');
     if (seen.has(deal.id)) continue;
     seen.add(deal.id);
     const href = `/deals?deal=${encodeURIComponent(deal.id)}`;
@@ -35,6 +37,12 @@ function destinations({ board, network }: { board: unknown; network: unknown }):
       });
     }
   }
+  return result;
+}
+
+function contactDestinations(network: unknown): Destination[] {
+  if (!record(network) || !Array.isArray(network.nodes)) throw Error('Invalid contacts');
+  const result: Destination[] = [];
   for (const node of network.nodes) {
     if (!record(node) || !text(node.id) || !text(node.name) || !['vendor', 'client', 'lead', 'contact', 'deal'].includes(String(node.kind))) throw Error('Invalid contact');
     if (node.kind === 'deal' || node.contact_state === 'retired') continue;
@@ -42,6 +50,24 @@ function destinations({ board, network }: { board: unknown; network: unknown }):
   }
   return result;
 }
+
+function admittedSection(parse: () => Destination[]): Destination[] | null {
+  try { return parse(); } catch { return null; }
+}
+
+function destinations({ board, network }: { board: unknown; network: unknown }): Extract<ReadState, { kind: 'ready' }> {
+  const deals = admittedSection(() => boardDestinations(board));
+  const contacts = admittedSection(() => contactDestinations(network));
+  return { kind: 'ready', items: [...(deals ?? []), ...(contacts ?? [])],
+    availability: deals !== null ? contacts !== null ? 'full' : 'board' : contacts !== null ? 'contacts' : 'none' };
+}
+
+const unavailableMessage = {
+  full: '',
+  board: 'Contacts unavailable. Deals, tasks and pages are still available.',
+  contacts: 'Deals and tasks unavailable. Contacts and pages are still available.',
+  none: 'Deals and contacts unavailable. Pages are still available.',
+};
 
 export function openQuickSwitcher({ opener, pages, read }: Options) {
   if (document.querySelector('[data-quick-switcher]')) return;
@@ -83,28 +109,33 @@ function Switcher({ pages, read, close }: Omit<Options, 'opener'> & { close: () 
   const normalized = query.trim().toLocaleLowerCase();
   const recents = recentIds().flatMap(id => all.find(item => item.id === id) || []);
   const results = normalized ? all.filter(item => `${item.label} ${item.kind}`.toLocaleLowerCase().includes(normalized)) : [...recents, ...pageItems.filter(page => !recents.some(item => item.id === page.id))];
-  const selected = results[active];
+  const activeIndex = Math.min(active, Math.max(0, results.length - 1));
+  const selected = results[activeIndex];
+  const unavailable = state.kind === 'error' ? unavailableMessage.none : state.kind === 'ready' ? unavailableMessage[state.availability] : '';
   useEffect(() => { input.current?.focus(); }, []);
   useEffect(() => {
     let current = true;
     setState({ kind: 'loading' });
+    setActive(0);
     void read().then(payload => {
-      const items = destinations(payload);
       if (current) {
+        const admitted = destinations(payload);
+        const items = admitted.items;
         const path = `${location.pathname}${location.search}`;
         const opened = [...items, ...pageItems].find(item => item.href === path);
         if (opened) remember(opened.id);
-        setState({ kind: 'ready', items });
+        setActive(0);
+        setState(admitted);
       }
     }).catch(() => { if (current) setState({ kind: 'error' }); });
     return () => { current = false; };
   }, [attempt]);
-  useEffect(() => { document.getElementById(`quick-option-${active}`)?.scrollIntoView({ block: 'nearest' }); }, [active]);
+  useEffect(() => { document.getElementById(`quick-option-${activeIndex}`)?.scrollIntoView({ block: 'nearest' }); }, [activeIndex]);
   const navigate = (item: Destination) => { remember(item.id); close(); location.assign(item.href); };
   return <div className="quick-switcher-content">
     <header><h2>Jump to</h2><button type="button" aria-label="Close quick switcher" onClick={close}>Close</button></header>
     <input ref={input} id="quick-input" role="combobox" aria-label="Jump to" autoComplete="off" placeholder="Deals, contacts, tasks and pages"
-      aria-expanded="true" aria-autocomplete="list" aria-controls="quick-results" aria-activedescendant={selected ? `quick-option-${active}` : undefined}
+      aria-expanded="true" aria-autocomplete="list" aria-controls="quick-results" aria-activedescendant={selected ? `quick-option-${activeIndex}` : undefined}
       value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={event => {
         if (isTextEntry(event.nativeEvent)) return;
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -112,11 +143,11 @@ function Switcher({ pages, read, close }: Omit<Options, 'opener'> & { close: () 
           if (results.length) setActive(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length);
         } else if (event.key === 'Enter' && selected) { event.preventDefault(); navigate(selected); }
       }} />
-    <p role="status">{state.kind === 'loading' ? 'Loading accessible items…' : state.kind === 'error' ? 'Deals and contacts unavailable. Pages are still available.' : normalized && results.length === 0 ? 'No matches. Try a deal, contact or page name.' : `${results.length} destinations`}</p>
-    {state.kind === 'error' && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry</button>}
+    <p role="status">{state.kind === 'loading' ? 'Loading accessible items…' : unavailable ? unavailable : normalized && results.length === 0 ? 'No matches. Try a deal, contact or page name.' : `${results.length} destinations`}</p>
+    {unavailable && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry</button>}
     {!normalized && <h3>{recents.length ? 'Recent' : 'Pages'}</h3>}
     <ul id="quick-results" role="listbox" aria-label="Destinations">
-      {results.map((item, index) => <li key={item.id} id={`quick-option-${index}`} role="option" aria-selected={index === active}
+      {results.map((item, index) => <li key={item.id} id={`quick-option-${index}`} role="option" aria-selected={index === activeIndex}
         onPointerMove={() => setActive(index)} onMouseDown={event => event.preventDefault()} onClick={() => navigate(item)}>
         <span>{item.label}</span><small>{item.kind}</small>
       </li>)}
