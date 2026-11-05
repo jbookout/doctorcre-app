@@ -49,6 +49,7 @@ export function WaitingPeople({ client, id, selected, select }: { client: InboxC
     if (!fallback) setParties([]);
     if (fallback || !query.trim()) { setSearch({ kind: 'idle' }); return; }
     setSearch({ kind: 'debouncing' });
+    // eslint-disable-next-line no-restricted-syntax -- One 300 ms search debounce per picker, cleared on query change or unmount.
     const timer = setTimeout(() => request(query.trim(), token), 300);
     return () => clearTimeout(timer);
   }, [query, fallback]);
