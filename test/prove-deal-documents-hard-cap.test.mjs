@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -12,6 +13,7 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
   const artifact = await temporaryDirectory('documents-proof-', t);
   await buildArtifact({ root, outDir: artifact, commit: '1'.repeat(40) });
   await writeFile(`${artifact}/sentinel.js`, 'review-owned-sentinel');
+  const fixtureRoot = resolve(artifact, 'site');
   let mode = 'success';
   const requests = [];
   const server = createServer(async (req, res) => {
@@ -25,8 +27,10 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
     }
     if (req.url === '/app-release') return res.end(JSON.stringify(mode === 'fallback' ? { service: 'doctorcre-app', source_commit: '1'.repeat(40) } : {}));
     try {
-      if (!/^\/js\/[\w/.-]+\.js$/.test(req.url)) throw Error('bad path');
-      let bytes = await readFile(`${artifact}/site${req.url}`);
+      if (!/^\/js\/[\w/.-]+\.js$/.test(req.url) || /[%\\\0]/.test(req.url) || /(?:^|\/)\.\.?(?:\/|$)/.test(req.url)) throw Error('bad path');
+      const assetPath = resolve(fixtureRoot, `.${req.url}`);
+      if (!assetPath.startsWith(fixtureRoot + sep)) throw Error('bad path');
+      let bytes = await readFile(assetPath);
       if (mode === 'broken' && req.url === '/js/ui-deal-documents.js') bytes = Buffer.from('export function mountDealDocuments(){throw Error("Synthetic broken deployment")}');
       if (mode === 'asset-protected' && req.url !== '/js/ui-deal-documents.js') { res.writeHead(302, { location: '/sign-in' }); return res.end(); }
       res.setHeader('Content-Type', 'text/javascript'); res.end(bytes);
