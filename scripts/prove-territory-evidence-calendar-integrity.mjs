@@ -64,19 +64,26 @@ export async function exerciseTerritoryEvidence() {
     pending = new Promise(resolve => { release = resolve; });
     const stale = view.refresh();
     check('loading hides prior evidence', !!host.querySelector('[role="status"]') && !host.querySelector('table'));
-    pending = undefined;
+    let releaseCurrent;
+    pending = new Promise(resolve => { releaseCurrent = resolve; });
     host.querySelector('input[name="city"]').value = 'New City';
     host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await settle();
     check('filter generation starts new read', calls.at(-1).city === 'New City');
     const staleBoard = board(); staleBoard.submarkets[0].city = 'Stale City';
     release(staleBoard); await stale;
-    check('stale success ignored', !host.textContent.includes('Stale City') && !!host.querySelector('table'));
+    check('stale success keeps newer request loading', !host.textContent.includes('Stale City') && !!host.querySelector('[role="status"]') && !host.querySelector('table'));
+    releaseCurrent(board()); await settle(); pending = undefined;
+    check('newer success renders after stale success', !!host.querySelector('table'));
     let reject;
     pending = new Promise((_, no) => { reject = no; });
-    const staleFailure = view.refresh(); pending = undefined; await refresh();
+    const staleFailure = view.refresh();
+    pending = new Promise(resolve => { releaseCurrent = resolve; });
+    const current = view.refresh();
     reject({ code: 'unauthorized' }); await staleFailure;
-    check('stale authorization failure ignored', authorized === 0 && !!host.querySelector('table'));
+    check('stale authorization failure keeps newer request loading', authorized === 0 && !!host.querySelector('[role="status"]') && !host.querySelector('table'));
+    releaseCurrent(board()); await current; pending = undefined;
+    check('newer success renders after stale failure', !!host.querySelector('table'));
     failure = { code: 'forbidden' }; await refresh(); failure = undefined;
     check('authorization clears evidence', authorized === 1 && !host.querySelector('table') && !host.querySelector('details').open);
     await open(); check('cleared view can reload', !!host.querySelector('table'));
@@ -93,6 +100,19 @@ export async function exerciseTerritoryEvidence() {
   lateHost.querySelector('details').dispatchEvent(new Event('toggle'));
   await settle(); lateView.dispose(); rejectLate({ code: 'unauthorized' }); await settle();
   check('disposed failure ignored', lateHost.childElementCount === 0 && authorized === 1); lateHost.remove();
+  for (const [state, patch, selector] of [
+    ['ready', {}, 'table'], ['error', { observed_at: '2026-02-31' }, '[role="alert"]'],
+  ]) {
+    const teardownHost = document.createElement('div'); document.body.append(teardownHost);
+    const teardownView = mountTerritoryEvidence(teardownHost, { getTerritoryStateBoard: async () => board(patch) }, () => authorized++);
+    try {
+      const details = teardownHost.querySelector('details'); details.open = true;
+      details.dispatchEvent(new Event('toggle')); await settle();
+      check(`${state} mounted before disposal`, !!teardownHost.querySelector(selector));
+      teardownView.dispose();
+      check(`${state} disposal empties host`, teardownHost.childElementCount === 0);
+    } finally { teardownView.dispose(); teardownHost.remove(); }
+  }
   return results;
 }
 

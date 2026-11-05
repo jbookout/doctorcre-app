@@ -13,5 +13,9 @@ for (const width of [390, 1280]) for (const colorScheme of ['light', 'dark']) {
     const results = await page.evaluate(exerciseTerritoryEvidence);
     assert.ok(results.length > 30);
     assert.ok(results.every(result => result.passed));
+    for (const name of ['ready disposal empties host', 'error disposal empties host',
+      'stale success keeps newer request loading', 'stale authorization failure keeps newer request loading']) {
+      assert.ok(results.some(result => result.name === name && result.passed), name);
+    }
   });
 }

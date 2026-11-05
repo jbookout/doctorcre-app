@@ -68,5 +68,5 @@ for (const [mode, assertion] of [
 ]) test(`proof CLI rejects ${mode} mutation`, async t => {
   const result = await run(t, mode);
   assert.equal(result.code, 1, 'proof must reject broken disposal');
-  assert.equal(result.receipt.assertions[0].name, assertion);
+  assert.ok(result.receipt.assertions[0].name.includes(assertion), JSON.stringify(result.receipt));
 });
