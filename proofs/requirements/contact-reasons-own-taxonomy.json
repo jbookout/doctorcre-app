@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "contact-reasons-own-taxonomy",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "contact-reasons-own-taxonomy-live",
+    "predicate": "Run node scripts/prove-contact-reasons-own-taxonomy.mjs --origin https://app.doctorcre.com --timeout-ms 30000 from the merged checkout. Require deployed release ancestry, import deployed controller and renderer chunks, omit constructor, toString and __proto__ kinds beside a valid card, refuse inherited coverage with unavailable text, recover with Retry and retire on session invalidation.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release-bound runner exits zero with origin, release, module URLs and every mounted assertion passing",
+    "input_class": "read-only deployed assets with synthetic listPracticeOrigination and isolated browser storage",
+    "deadline_seconds": 30
+  }],
+  "safety": {"read_only": true,"no_sends": true,"max_requests": 40,"max_records": 10,"max_runtime_seconds": 30,"max_artifact_bytes": 65536}
+}
