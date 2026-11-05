@@ -94,3 +94,22 @@ test('separate profiling capture retains CPU, timeline and connected row commit 
     assert.equal(browser.contexts().length, 0);
   } finally { await browser.close(); await rm(directory, { recursive: true, force: true }); }
 });
+test('a row committed after network idle contributes its painted LCP candidate', async () => {
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    const sample = await collectHomeSample({ browser, url: 'http://127.0.0.1:12345/', setup: async page => {
+      await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: '<h1>Welcome</h1>' }));
+      page.once('load', async () => {
+        await page.waitForLoadState('networkidle');
+        await page.evaluate(() => {
+          const row = document.createElement('article');
+          row.setAttribute('data-inbox-row', 'task');
+          row.innerHTML = '<h3 style="font-size:40px">Review the practice tour follow-up</h3>';
+          document.body.appendChild(row);
+        });
+      });
+    } });
+    assert.equal(sample.lcp.at(-1).element.tag, 'H3');
+    assert.equal(browser.contexts().length, 0);
+  } finally { await browser.close(); }
+});

@@ -69,6 +69,8 @@ export async function collectHomeSample({ browser, url, setup = async () => {}, 
     await setup(page);
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.locator('[data-inbox-row]').first().waitFor({ state: 'visible' });
+    // Visibility can precede paint when the row commits after network idle.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await page.waitForFunction(() => window.__homeLcpDiagnostic.lcp.length > 0);
     const sample = await page.evaluate(() => ({ ...window.__homeLcpDiagnostic,
       resources: performance.getEntriesByType('resource').map(entry => entry.toJSON()),
