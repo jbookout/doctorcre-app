@@ -80,6 +80,9 @@ for (const failure of [${JSON.stringify(failure)}].flat().filter(Boolean)) {
 const matchingCalls = failure ? fs.readFileSync(${JSON.stringify(trace)}, 'utf8').trim().split('\\n').map(JSON.parse).filter(row => row.tool === failure.tool && row.args.slice(0, failure.prefix.length).join(' ') === failure.prefix.join(' ')).length : 0;
 if (failure && failure.tool === '${tool}' && args.slice(0, failure.prefix.length).join(' ') === failure.prefix.join(' ') && matchingCalls === (failure.onCall || 1)) { console.error(failure.stderr || 'synthetic failure'); process.exit(failure.status || 1); }
 }
+if ('${tool}' === 'wrangler' && args[0] === 'deployments') console.log(JSON.stringify(fs.existsSync(${JSON.stringify(join(root, 'published.json'))}) ? JSON.parse(fs.readFileSync(${JSON.stringify(join(root, 'published.json'))}, 'utf8')) : { versions: [] }));
+if ('${tool}' === 'wrangler' && args[0] === 'versions' && args[1] === 'view') console.log(JSON.stringify({ id: args[2], resources: { bindings: [{ name: 'GIT_SHA', type: 'plain_text', text: '1'.repeat(40) }] } }));
+if ('${tool}' === 'wrangler' && args[0] === 'versions' && args[1] === 'deploy') fs.writeFileSync(${JSON.stringify(join(root, 'published.json'))}, JSON.stringify({ versions: [{ version_id: args[2].split('@')[0], percentage: 100 }] }));
 if ('${tool}' === 'wrangler' && args.includes('upload')) console.log(${JSON.stringify(uploadOutput)});
 if (fs.existsSync(${JSON.stringify(join(root, 'fail'))}) && ('${tool}' === 'node' || '${tool}' === 'npm')) { console.error('synthetic failure'); process.exit(1); }
 `);
@@ -306,4 +309,16 @@ test('staging reports Python initialization failure without printing the runtime
   assert.doesNotMatch(result.stdout + result.stderr, /Fatal Python error/);
   assert.equal((result.stdout + result.stderr).includes(canary), false);
   assert.equal(readFileSync(trace, 'utf8'), '');
+});
+
+
+test('three late CI wakes promote the same green source only once', t => {
+  const { root, trace, env } = releaseFixture(t);
+  for (const wake of ['current-success', 'older-failure', 'oldest-success']) {
+    const result = spawnSync(process.execPath, ['scripts/release-production.mjs'], { cwd: root, env, encoding: 'utf8' });
+    assert.equal(result.status, 0, `${wake}: ${result.stderr}`);
+  }
+  const rows = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(rows.filter(row => row.tool === 'wrangler' && row.args[0] === 'versions' && row.args[1] === 'deploy').length, 1);
+  assert.equal(rows.filter(row => row.tool === 'wrangler' && row.args[1] === 'upload').length, 1);
 });
