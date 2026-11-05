@@ -109,6 +109,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   const board = opened ? await opened : page;
   await board.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
   snapshot.resolve();
+  await board.locator('#board-meta[data-read-state="published"]').waitFor({ state: 'attached' });
   assert.equal(await board.locator('#board-title').textContent(), 'System Job Board');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
   assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)),

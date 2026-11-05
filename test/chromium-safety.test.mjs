@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 const required = ['--use-mock-keychain', '--password-store=basic'];
 
 function hasSafetyArgs(options) {
-  return /args:\s*\[\s*\.\.\.CHROMIUM_SAFETY_ARGS/.test(options);
+  return /args:\s*(?:CHROMIUM_SAFETY_ARGS\s*(?:,|})|\[\s*\.\.\.CHROMIUM_SAFETY_ARGS\b)/.test(options);
 }
 
 for (const options of [
