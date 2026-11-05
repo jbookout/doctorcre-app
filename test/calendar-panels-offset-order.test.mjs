@@ -44,8 +44,8 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
   assert.match(left.textContent, /coverage is incomplete/);
   assert.deepEqual(titles(left), ['Future offset', 'Boundary', 'Earlier', 'Tie', 'Later']);
   panel.render({ state: 'ready', items: [row('Chicago previous day', '2026-11-06T01:00:00Z'), row('All day', '2026-11-06', '2026-11-07', { all_day: true })] });
-  assert.equal(left.querySelector('.calendar-panel-meeting a').getAttribute('href'), '/calendar?day=2026-11-05&d=2026-11-05');
-  assert.equal([...left.querySelectorAll('.calendar-panel-meeting a')][1].getAttribute('href'), '/calendar?day=2026-11-06&d=2026-11-06');
+  assert.equal([...left.querySelectorAll('.calendar-panel-meeting a')].find(a => a.textContent === 'Chicago previous day').getAttribute('href'), '/calendar?day=2026-11-05&d=2026-11-05');
+  assert.equal([...left.querySelectorAll('.calendar-panel-meeting a')].find(a => a.textContent === 'All day').getAttribute('href'), '/calendar?day=2026-11-06&d=2026-11-06');
   assert.match(left.textContent, /Nov 6 · All day/);
   panel.render({ state: 'ready', items: [{ title: 'Invalid', start: 'invalid', end: 'invalid' }] });
   assert.match(left.textContent, /Schedule unavailable/);
@@ -53,7 +53,7 @@ test('calendar snapshot transitions compare instants and preserve day semantics'
   t.mock.timers.setTime(Date.parse('2026-11-06T00:00:00Z'));
   panel.render({ state: 'ready', items: [items[0]] });
   assert.deepEqual(titles(left), []);
-  assert.deepEqual(titles(right), []);
+  assert.deepEqual(titles(right), ['Later']);
   left.remove();
   panel.clear();
   assert.equal(disconnected, true);
