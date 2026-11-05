@@ -84,10 +84,11 @@ function fixtureScope(t) {
   return scope;
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,onRequest}={}) {
+// Polling assertions advance minutes of timers; replay motion only in the layout checks.
+async function open(t,{width=390,reducedMotion='reduce',path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,onRequest}={}) {
   const scope = fixtureScope(t);
   const browser = scope.browser = await chromium.launch();
-  const page = scope.page = await browser.newPage({viewport:{width,height:900}});
+  const page = scope.page = await browser.newPage({viewport:{width,height:900},reducedMotion});
   if (onRequest) page.on('request', onRequest);
   await page.clock.install({time:NOW});
   await page.addInitScript(() => {
@@ -764,7 +765,7 @@ test('wire history, pause, missed-count and Resume live work through the new pag
 });
 
 for(const width of [320,390,1440])test(`work detail has no horizontal scroll at ${width}px and respects reduced motion`,async t=>{
-  const {page,errors}=await open(t,{width});await page.waitForSelector('.passport-card');
+  const {page,errors}=await open(t,{width,reducedMotion:'no-preference'});await page.waitForSelector('.passport-card');
   await page.clock.runFor(1000);
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#roomWireSection')).opacity==='1');
   if(process.env.PROGRESS_CAPTURE) {
