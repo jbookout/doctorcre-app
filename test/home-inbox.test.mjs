@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+const createLegacyInboxClient = rpc => createInboxClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
 const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
-const { parseSnapshot, shelves } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-export const item = (item_id, fields = {}) => ({ auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'source:1', source_state: 'needs_attention', title: 'Synthetic follow-up', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
+const { parseSnapshot, shelves, createInboxClient } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+export const item = (item_id, fields = {}) => ({ completed_at: null, auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'source:1', source_state: 'needs_attention', title: 'Synthetic follow-up', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
 const legacySnapshot = items => ({ ok: true, schema_version: 'home-inbox.v2', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: false });
 const snapshot = items => ({ ...legacySnapshot(items), schema_version: 'home-inbox.v3', auto_settle_enabled: true });
 test('actor snapshot rejects duplicate identities and refusal is not empty', () => {
@@ -21,10 +22,9 @@ test('Done is not Settled and current Working card remains reachable', () => {
 });
 
 test('commands retain exact retry identity and inspect mixed and missing results', async () => {
-  const { createInboxClient: originalClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
+  const { command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const calls = []; let attempt = 0;
-  const client = createInboxClient(async (name, args) => {
+  const client = createLegacyInboxClient(async (name, args) => {
     if (name === 'read-home-inbox-v3') return snapshot([item('a', { disposition: 'settled', base_version: 'opaque:2' })]);
     calls.push({ name, args: structuredClone(args) });
     if (++attempt === 1) throw Error('Response lost');
@@ -71,11 +71,10 @@ test('v2 preserves producer context, completion identity and opaque versions', (
 });
 
 test('v1 command receipts recover v2 metadata through one authoritative read', async () => {
-  const { command, createInboxClient: originalClient } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
+  const { command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const calls = [];
   const request = command('settle', [item('a', { base_version: 'do-not-parse:007' })]);
-  const client = createInboxClient(async (name, args) => {
+  const client = createLegacyInboxClient(async (name, args) => {
     calls.push({ name, args });
     if (name === 'read-home-inbox-v3') return snapshot([item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque', context_label: 'Updated deal' })]);
     const { context_label, due_on, open_url, kind_label, merged_source_ids, action_id, action_version, deal_id, ...legacy } = item('a', { disposition: 'settled', section: 'settled', base_version: 'next:opaque' });
@@ -100,12 +99,11 @@ test('source links use only supported producer destinations', async () => {
 });
 
 for (const change of ['snooze', 'source edit']) for (const retry of [false, true]) test(`newer ${change} readback cannot authorize Undo${retry ? ' after exact-key retry' : ''}`, async () => {
-  const { createInboxClient: originalClient, command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { command } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const receipt = item('a', { disposition: 'settled', section: 'settled', base_version: 'receipt:2' });
   const current = item('a', { ...receipt, base_version: 'later:3', ...(change === 'snooze' ? { disposition: 'snoozed', section: 'snoozed', snoozed_until: '2099-01-01T00:00:00Z' } : { title: 'Edited elsewhere', source_version: 'source:2', action_version: 8, context_label: 'New deal', due_on: '2026-11-06' }) });
   const writes = [];
-  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
-  const client = createInboxClient(async (name, args) => {
+  const client = createLegacyInboxClient(async (name, args) => {
     if (name === 'read-home-inbox-v3') return snapshot([current]);
     writes.push(structuredClone(args));
     if (retry && writes.length === 1) throw Error('Response lost');
@@ -121,11 +119,10 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
 });
 
  test('completion receipt authorizes only its exact task version and event', async () => {
-  const { createInboxClient: originalClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
+  const { taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const calls = [];
   const event = '00000000-0000-0000-0000-000000000009';
-  const client = createInboxClient(async (name, args) => {
+  const client = createLegacyInboxClient(async (name, args) => {
     calls.push({ name, args });
     if (name === 'read-home-inbox-v3') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]);
     return { ok: true, action_id: item('a').action_id, status: 'done', version: 8, completion_event_id: event };
@@ -142,10 +139,9 @@ for (const change of ['snooze', 'source edit']) for (const retry of [false, true
  });
 
 for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`completion cannot authorize a newer version ${laterVersion}, lost response ${lost}`, async () => {
-  const { createInboxClient: originalClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const { taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
   const writes = [];
-  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
-  const client = createInboxClient(async (name, args) => {
+  const client = createLegacyInboxClient(async (name, args) => {
     if (name === 'read-home-inbox-v3') return snapshot([item('a', { source_state: 'done', section: 'done', action_version: laterVersion })]);
     writes.push(structuredClone(args));
     if (lost && writes.length === 1) throw Error('Response lost');
@@ -159,9 +155,8 @@ for (const laterVersion of [9, 10]) for (const lost of [false, true]) test(`comp
   if (lost) assert.deepEqual(writes[0], writes[1]);
 });
 test('legacy and wrong-identity receipts cannot manufacture Undo', async () => {
-  const { createInboxClient: originalClient, taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
-  const createInboxClient = rpc => originalClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
-  const client = createInboxClient(async name => name === 'read-home-inbox-v3' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
+  const { taskCommand } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+  const client = createLegacyInboxClient(async name => name === 'read-home-inbox-v3' ? snapshot([item('a', { source_state: 'done', section: 'done', action_version: 8 })]) : { ok: true, action_id: item('a').action_id, status: 'done', version: 8 });
   const [result] = await client.run(taskCommand('complete', item('a')));
   assert.equal(result.ok, true);
   assert.throws(() => taskCommand('reopen', result.item, result.receipt), /Can't undo/);

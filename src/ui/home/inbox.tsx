@@ -1,3 +1,4 @@
+import { parseReference, parseReview, type ReviewReference, type ReviewRequest } from './review';
 import { parseBatch, type BatchRequest, type BatchResult } from './batch';
 import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
 export type WaitingIdentity = Readonly<{ kind: 'party' | 'actor'; id: string; available: boolean; display_name: string | null }>;
@@ -13,9 +14,9 @@ type BaseItem = Readonly<{
 }>;
 export type InboxItem = BaseItem & Readonly<{
   waiting_version?: number; waiting_on?: Waiting | null;
-  auto_settled: boolean; context_label: string | null; due_on: string | null; open_url: string | null;
+  completed_at: string | null; auto_settled: boolean; context_label: string | null; due_on: string | null; open_url: string | null;
   kind_label: 'Task' | 'Call follow-up' | 'Call' | 'Reply draft' | 'Update' | 'Fact review' | 'Tour feedback';
-  merged_source_ids: string[];
+  merged_source_ids: string[]; review_reference?: ReviewReference | null;
 }> & (Readonly<{ source_type: 'next_action' | 'capture_post_call_action'; action_id: string; action_version: number; deal_id: string | null }> |
   Readonly<{ source_type: 'capture_session' | 'email_proposal' | 'notification' | 'fact_review' | 'tour_feedback'; action_id: null; action_version: null; deal_id: string | null }>);
 export type Snapshot = Readonly<{ ok: true; truncated: boolean; limit: 1000; items: InboxItem[]; working_collapsed: true }> & (Readonly<{ schema_version: 'home-inbox.v2'; auto_settle_enabled: false }> | Readonly<{ schema_version: 'home-inbox.v3' | 'home-inbox.v4'; auto_settle_enabled: true }>);
@@ -56,7 +57,7 @@ function parseBaseItem(value: unknown): BaseItem {
 }
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const day = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-export function parseItem(value: unknown, v3 = false): InboxItem {
+export function parseItem(value: unknown, v3 = false, v4 = false): InboxItem {
   const legacy = parseBaseItem(value);
   if (!object(value) || !(value.context_label === null || text(value.context_label)) ||
     !(value.due_on === null || day(value.due_on)) || !(value.open_url === null || text(value.open_url)) ||
@@ -68,13 +69,15 @@ export function parseItem(value: unknown, v3 = false): InboxItem {
   if (task ? !uuid(value.action_id) || !Number.isSafeInteger(value.action_version) || typeof value.action_version !== 'number' || value.action_version < 1 || value.action_version > 2147483647 :
     !['capture_session', 'email_proposal', 'notification', ...(v3 ? ['fact_review', 'tour_feedback'] : [])].includes(legacy.source_type) || value.action_id !== null || value.action_version !== null) throw Error('Inbox returned unreadable completion identity. Refresh to try again.');
   if (v3 && (typeof value.auto_settled !== 'boolean' || value.auto_settled && (legacy.section !== 'settled' || legacy.disposition !== 'settled' || legacy.source_state !== 'done' || legacy.explicit_unsettle || !['next_action', 'capture_post_call_action', 'email_proposal', 'fact_review', 'tour_feedback'].includes(legacy.source_type)))) throw Error('Inbox returned unreadable settlement context. Refresh to try again.');
-  return { ...value, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
+  if (v4 && !(value.completed_at === null || typeof value.completed_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value.completed_at) && timestamp(value.completed_at) && new Date(value.completed_at).toISOString().slice(0, 19) === value.completed_at.slice(0, 19)) || v4 && legacy.source_state !== 'done' && value.completed_at !== null) throw Error('Inbox returned unreadable completion time. Refresh to try again.');
+  const reference = v3 ? parseReference(value.review_reference) : null;
+  return { ...value, ...(value.review_reference === undefined ? {} : { review_reference: reference && reference.item_id === legacy.item_id && reference.source_version === legacy.source_version ? reference : null }), completed_at: v4 ? value.completed_at : null, auto_settled: v3 ? value.auto_settled : false } as InboxItem;
 }
 export function parseSnapshot(value: unknown): Snapshot {
   if (!object(value) || value.ok !== true || !['home-inbox.v2', 'home-inbox.v3', 'home-inbox.v4'].includes(String(value.schema_version)) || !Array.isArray(value.items) || value.items.length > 1000 ||
     typeof value.truncated !== 'boolean' || value.limit !== 1000 || value.working_collapsed !== true || value.auto_settle_enabled !== (value.schema_version !== 'home-inbox.v2')) throw Error('Inbox unavailable. The server could not provide the complete inbox.');
   const items = value.items.map(item => {
-    const parsed = parseItem(item, value.schema_version !== 'home-inbox.v2');
+    const parsed = parseItem(item, value.schema_version !== 'home-inbox.v2', value.schema_version === 'home-inbox.v4');
     if (value.schema_version !== 'home-inbox.v4') { const { waiting_version, waiting_on, ...legacy } = parsed; return legacy; }
     if (!object(item) || typeof item.waiting_version !== 'number' || !Number.isSafeInteger(item.waiting_version) || item.waiting_version < 0) throw Error('Waiting version unavailable.');
     return { ...parsed, waiting_version: item.waiting_version, waiting_on: parseWaiting(item.waiting_on, item.waiting_version) };
@@ -117,22 +120,22 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
 export type WaitingChoice = Pick<WaitingIdentity, 'kind' | 'id'> & { name: string };
 export type PartyCursor = Readonly<{ query: string; name: string; id: string }>;
 export type PeoplePage = Readonly<{ choices: WaitingChoice[]; next_cursor: PartyCursor | null }>;
-export type InboxClient = { actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
+export type InboxClient = { review?: { current(item: InboxItem): Promise<InboxItem>; load(item: InboxItem, signal?: AbortSignal): Promise<ReturnType<typeof parseReview>>; run(item: InboxItem, request: ReviewRequest): Promise<{ item: InboxItem; receipt?: TaskReceipt; saved_version?: number }> }; actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {
-    async function available(name: string): Promise<unknown> {
-      try { return await rpc(name, {}, signal); }
-      catch (error) { if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error; return { error: 'unknown_tool' }; }
+    // eslint-disable-next-line no-restricted-syntax -- At most three version reads; only unknown_tool advances to the next version.
+    for (const version of ['v4', 'v3', 'v2'] as const) {
+      let value: unknown;
+      try { value = await rpc(`read-home-inbox-${version}`, {}, signal); }
+      catch (error) {
+        if (!object(error) || !object(error.payload) || error.payload.error !== 'unknown_tool') throw error;
+        value = { error: 'unknown_tool' };
+      }
+      if (object(value) && value.error === 'unknown_tool') continue;
+      if (!object(value) || value.schema_version !== `home-inbox.${version}`) throw Error('Inbox unavailable. The server inbox could not be verified.');
+      return parseSnapshot(value);
     }
-    let value = await available('read-home-inbox-v4');
-    if (object(value) && value.error === 'unknown_tool') value = await available('read-home-inbox-v3');
-    if (object(value) && value.error === 'unknown_tool') {
-      const legacy = await rpc('read-home-inbox-v2', {}, signal);
-      if (!object(legacy) || legacy.schema_version !== 'home-inbox.v2') throw Error('Inbox unavailable. The earlier inbox could not be verified.');
-      return parseSnapshot(legacy);
-    }
-    if (!object(value) || !['home-inbox.v3', 'home-inbox.v4'].includes(String(value.schema_version))) throw Error('Inbox unavailable. Automatic settlement could not be verified.');
-    return parseSnapshot(value);
+    throw Error('Inbox unavailable. No supported inbox could be verified.');
   }
   const unavailable = Symbol('unknown_tool');
   async function directory(name: string, args: unknown): Promise<unknown> {
@@ -187,6 +190,37 @@ export function createInboxClient(rpc: (name: string, args: unknown, signal?: Ab
       const item = snapshot.items.find(item => item.item_id === request.args.item_id);
       if (!item || item.waiting_version === undefined || item.waiting_version < result.waiting_version) throw Error('Waiting change recorded. Readback unavailable. Retry the same request.');
       return item;
+    },
+    review: {
+      async current(item) {
+        const current = (await read()).items.find(row => row.item_id === item.item_id);
+        if (!current) throw Object.assign(Error('Card no longer available.'), { payload: { error: 'home_review_not_found' } });
+        return current;
+      },
+      async load(item, signal) {
+        if (!item.review_reference) throw Error('This card has no inline review.');
+        const value = await rpc('read-home-review', { item_id: item.item_id, source_version: item.source_version }, signal);
+        if (object(value) && typeof value.error === 'string') throw Object.assign(Error(value.error), { payload: value });
+        const detail = parseReview(value, item.review_reference);
+        if (detail.operations.some(op => op.verb === 'complete-one-action' ? op.args.action_id !== item.action_id : op.verb === 'resolve-fact-review' ? JSON.stringify([op.args.entity_ref, op.args.fact_key]) !== item.source_id : op.args.proposal_id !== item.source_id)) throw Error('Review source does not match this card.');
+        return detail;
+      },
+      async run(item, request) {
+        if (navigator.onLine === false) throw Error('Offline. Nothing was sent.');
+        const value = await rpc(request.verb, request.args);
+        if (object(value) && typeof value.error === 'string') throw Object.assign(Error(value.error), { payload: value });
+        if (!object(value) || value.ok !== true) throw Error('Receipt unavailable.');
+        let receipt: TaskReceipt | undefined;
+        if (request.verb === 'complete-one-action') {
+          if (typeof request.args.action_id !== 'string' || typeof request.args.base_version !== 'number') throw Error('Task identity unavailable.');
+          receipt = parseActionReceipt(value, { action_id: request.args.action_id, base_version: request.args.base_version, idempotency_key: request.args.idempotency_key }, 'done');
+        } else if (request.verb === 'resolve-fact-review') {
+          if (value.schema_version !== 'fact-review.v1' || !object(value.review_receipt) || value.review_receipt.entity_ref !== request.args.entity_ref || value.review_receipt.fact_key !== request.args.fact_key) throw Error('Review receipt unavailable.');
+        } else if (value.proposal_id !== item.source_id || !Number.isSafeInteger(value.version) || typeof value.version !== 'number' || typeof request.args.base_version !== 'number' || value.version <= request.args.base_version) throw Error('Draft receipt unavailable.');
+        const current = (await read()).items.find(row => row.item_id === item.item_id);
+        if (!current) throw Error('Receipt received, but exact card readback is unavailable.');
+        return { item: current, ...(request.verb === 'edit-email-draft' && typeof value.version === 'number' ? { saved_version: value.version } : {}), ...(receipt && current.action_id === receipt.action_id && current.action_version === receipt.version && current.source_state === 'done' ? { receipt } : {}) };
+      },
     },
     async batch(request, expected) {
       if (navigator.onLine === false) throw Error('Offline. No change was sent. Reconnect and retry manually.');

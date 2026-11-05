@@ -90,9 +90,9 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(checks, /^  workflow_call:\n  schedule:\n    - cron: "17 3 \* \* \*"\n  workflow_dispatch:$/m);
   assert.match(ci, /types: \[opened, synchronize, reopened, ready_for_review, edited\]/);
   assert.doesNotMatch(ci, /continue-on-error:/);
-  assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4/);
+  assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
-  assert.match(ci, /--test-shard=\$\{\{ matrix\.shard \}\}\/4 --test-timeout=\d+ test\/\*\.test\.mjs/);
+  assert.match(ci, /browser-results.py collect/);
   assert.match(ci, /needs: \[checks, shards, performance, live, production-proof\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
@@ -345,4 +345,24 @@ test('required CI runs the strict no-emit UI typecheck', async () => {
   assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
   assert.match(pkg.scripts.check, /npm run typecheck/);
   assert.match(checksJob, /run: npm run check/);
+});
+
+test('main and PR synthetic shards retain first attempts and gate critical execution', () => {
+  const shards = ci.split(/^  shards:\n/m)[1].split(/^  performance:/m)[0];
+  assert.doesNotMatch(shards, /if: \$\{\{ github.event_name == 'pull_request' \}\}/);
+  assert.match(shards, /python3 scripts\/browser-results.py run/);
+  assert.match(shards, /--shard \$\{\{ matrix.shard \}\}/);
+  assert.match(shards, /if: \$\{\{ always\(\) \}\}[\s\S]*browser-results.py collect/);
+  assert.match(shards, /retention-days: 14/);
+  assert.match(shards, /browser-results-\$\{\{ github.sha \}\}-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}-\$\{\{ matrix.shard \}\}/);
+  const gate = ci.split(/^  test:\n/m)[1].split(/^  preview:/m)[0];
+  assert.match(gate, /browser-results.py verify/);
+  assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
+  const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
+  for (const event of ['push', 'pull_request']) for (const shards of ['success', 'failure', 'cancelled', 'skipped']) {
+    const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
+      env: { ...process.env, CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
+        PERFORMANCE:'success', SHARDS:shards, EVENT:event } });
+    assert.equal(result.status === 0, shards === 'success', `${event} ${shards}`);
+  }
 });

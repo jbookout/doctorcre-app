@@ -116,18 +116,21 @@ export function createCallMode(deps) {
     // eslint-disable-next-line no-restricted-syntax -- Post-call poll adapter is limited by mountVisibilityPoll to a max of 20 attempts, with hidden/idle stops and failure backoff.
     setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
     clearTimeout: deps.clearTimeout || ((h) => clearTimeout(h)) };
+  let disposed = false;
   const state = { callMode: { state: 'idle' }, postCall: idlePostCall(), pollTimer: null,
     tickTimer: null, contextInFlight: null, eligibility: 'unknown', eligibilityInFlight: null };
 
   // Only a read of the companion can establish eligibility. Abort the request
   // and bound the whole response (including JSON) even if a transport hangs.
   function checkEligibility() {
+    if (disposed) return Promise.resolve(false);
     if (state.eligibilityInFlight) return state.eligibilityInFlight;
     state.eligibility = 'checking';
     render();
     const probe = (async () => {
       try {
         const snapshot = await api('state',null,deps.eligibilityTimeoutMs ?? 1200);
+        if (disposed) return false;
         state.callMode = snapshot;
         state.eligibility = 'available';
         return true;
@@ -177,12 +180,22 @@ export function createCallMode(deps) {
   }
 
   function render() {
-    const eligible = state.eligibility === 'available';
+    const eligible = !disposed && state.eligibility === 'available';
+    const recording = eligible && !state.recorderUncertain && callModeActive();
+    const toolbarButton = $('#callModeButton');
+    if (toolbarButton) {
+      toolbarButton.classList.toggle('recording', recording);
+      toolbarButton.innerHTML = recording
+        ? `<span aria-hidden="true">●</span> ${elapsedTime(state.callMode.started_at, now)}`
+        : '<span aria-hidden="true">☎</span>';
+      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(state.callMode.started_at, now)}` : 'Call mode');
+    }
+    $('#callModeStage')?.classList.toggle('recording', recording);
     const availability = $('#callModeAvailability');
     if (availability) {
       availability.hidden = eligible;
-      availability.textContent = state.eligibility === 'checking' || state.eligibility === 'unknown'
-        ? 'Checking the call recorder…' : 'Call recorder offline';
+      availability.textContent = state.eligibility === 'unknown' ? 'Call recorder not connected'
+        : state.eligibility === 'checking' ? 'Checking the call recorder…' : 'Call recorder offline';
     }
     for (const id of ['callModeButton', 'callModeStandalone']) {
       const element = $(`#${id}`);
@@ -190,7 +203,7 @@ export function createCallMode(deps) {
     }
     const recheck = $('#callModeRetry');
     if (recheck) {
-      recheck.hidden = eligible || state.eligibility === 'unknown';
+      recheck.hidden = eligible;
       recheck.disabled = state.eligibility === 'checking';
     }
     if (!eligible) {
@@ -204,11 +217,9 @@ export function createCallMode(deps) {
       return;
     }
     const snapshot = state.callMode || { state: 'idle' };
-    const recording = callModeActive(snapshot);
     const processing = ['transcribing', 'ready_to_extract', 'filed'].includes(snapshot.state);
     const stage = $('#callModeStage');
     if (!stage) return;
-    stage.classList.toggle('recording', recording);
     stage.classList.toggle('processing', processing);
     // A finished call (transcript ready or filed) must not block the next one.
     const busy = recording || snapshot.state === 'transcribing';
@@ -230,14 +241,6 @@ export function createCallMode(deps) {
     const speakers = $('#callModeSpeakers');
     speakers.hidden = !labels.mic;
     speakers.textContent = labels.mic ? `${labels.mic} on microphone · ${labels.system || 'Other participant'} on system audio` : '';
-    const toolbarButton = $('#callModeButton');
-    if (toolbarButton) {
-      toolbarButton.classList.toggle('recording', recording);
-      toolbarButton.innerHTML = recording
-        ? `<span aria-hidden="true">●</span> ${elapsedTime(snapshot.started_at, now)}`
-        : '<span aria-hidden="true">☎</span>';
-      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(snapshot.started_at, now)}` : 'Call mode');
-    }
     renderPostCall();
   }
 
@@ -675,7 +678,9 @@ export function createCallMode(deps) {
 
   async function refresh({ quiet = false, snapshot: suppliedSnapshot = null } = {}) {
     try {
-      state.callMode = suppliedSnapshot || await api('state');
+      const next = suppliedSnapshot || await api('state');
+      if (disposed) return;
+      state.callMode = next;
       const notice = $('#callModePermission');
       if (notice) notice.hidden = true;
       const snapshot = state.callMode;
@@ -701,12 +706,14 @@ export function createCallMode(deps) {
         }
       }
     } catch (error) {
+      state.eligibility = 'unavailable';
+      render();
       showFailure(error);
     }
   }
 
   function startTicker() {
-    if (state.tickTimer) return;
+    if (disposed || state.tickTimer) return;
     state.tickTimer = mountLocalTicker({ document: root, window: root.defaultView, setInterval: timers.setInterval, clearInterval: timers.clearInterval, intervalMs: 250, tick: () => { if (callModeActive()) render(); } });
   }
 
@@ -798,6 +805,7 @@ export function createCallMode(deps) {
       return true;
     } catch (error) {
       if (error.outcomeUnknown) state.recorderUncertain = true;
+      render();
       showFailure(error);
       return false;
     } finally {
@@ -817,6 +825,7 @@ export function createCallMode(deps) {
       toast('Recording stopped. Processing the call.');
     } catch (error) {
       if (error.outcomeUnknown) state.recorderUncertain = true;
+      render();
       showFailure(error);
     } finally { if (button) button.disabled = false; }
   }
@@ -862,6 +871,6 @@ export function createCallMode(deps) {
   return {
     state, open, close, start, stop, refresh, refreshPostCall, render, handleClick, checkEligibility,
     startPolling, stopPolling, publishWeeklyCallContext,
-    dispose() { state.callGeneration = (state.callGeneration || 0) + 1; retireOutcomes(); root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) state.tickTimer.dispose(); state.tickTimer = null; },
+    dispose() { disposed = true; state.eligibility = 'unknown'; render(); state.callGeneration = (state.callGeneration || 0) + 1; retireOutcomes(); root.removeEventListener('input', questionInput); stopPolling(); if (state.tickTimer) state.tickTimer.dispose(); state.tickTimer = null; },
   };
 }

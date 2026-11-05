@@ -18,7 +18,7 @@ test('Inbox uses one phone shell row and grouped controls in both themes', async
   });
   await page.goto('http://localhost/control-room?tab=inbox');
   await expect(page.locator('#panelInbox')).toBeVisible();
-  await expect(page.locator('#callModeAvailability')).toHaveText('Call recorder offline');
+  await expect(page.locator('#callModeAvailability')).toHaveText('Call recorder not connected');
   for (const theme of ['dark', 'light']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     await testInfo.attach(`inbox-390-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });

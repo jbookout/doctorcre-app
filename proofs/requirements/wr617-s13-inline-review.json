@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s13-inline-review",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "home-inline-review-single-card-receipt",
+      "predicate": "The deployed app release identifies the merged revision. Joe resolves one Home card inline in a signed-in walk, and the domain record reads back resolved with a receipt naming only that card.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Release-bound evidence confirms the resolved domain record and a receipt naming only the selected card. Joe performs sign-in and the UI write; the proof observer reads evidence only.",
+      "input_class": "read-only release identity and evidence from a named human signed-in walk by Joe",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 2,
+    "max_records": 10,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

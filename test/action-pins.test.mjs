@@ -85,7 +85,9 @@ test('CI checks pins before dependency and browser setup while retaining the ful
   assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('- uses: actions/setup-node'));
   assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npm ci'));
   assert.ok(checks.indexOf('run: npm run ci:fast') < checks.indexOf('run: npx playwright install'));
-  assert.match(ci, /run: node --test --test-concurrency=2 --test-shard=.* test\/\*\.test\.mjs/);
+  const shards = ci.split(/^  shards:\n/m)[1].split(/^  \w+:/m)[0];
+  assert.match(shards, /shard: \[1, 2, 3, 4\]/);
+  assert.match(shards, /^        run: python3 scripts\/browser-results\.py run --input out\/browser-results\/\$\{\{ matrix\.shard \}\} --shard \$\{\{ matrix\.shard \}\}$/m);
 });
 
 for (const [name, source, valid] of [

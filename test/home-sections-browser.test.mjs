@@ -16,7 +16,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await run.open('/');
   await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
-  for (const name of ['Needs your attention', 'Today', 'In motion and waiting', 'Recently done']) {
+  for (const name of ['Needs your attention', 'Today', 'In motion and waiting', 'Done today', 'Earlier and undated completions']) {
     const heading = page.locator('main').getByRole('heading', { name: new RegExp(`^${name}`) });
     await heading.waitFor();
     assert.equal(await heading.count(), 1);
@@ -72,6 +72,7 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
       : name === 'calendar-meeting-prep' ? { state, items: [] }
       : name === 'deal-room-board' ? { actor: 'joe', deals: [] }
@@ -81,7 +82,7 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   await run.open(`/?mode=live`);
   await page.getByRole('heading', { name: 'Welcome home.' }).waitFor();
   await page.locator('main').getByText('Nothing here right now.', { exact: true }).first().waitFor();
-  assert.equal(await page.locator('main').getByText('Nothing here right now.', { exact: true }).count(), 5);
+  assert.equal(await page.locator('main').getByText('Nothing here right now.', { exact: true }).count(), 6);
   await page.locator('#appScheduleSlot').getByText(state === 'unavailable' ? 'Schedule unavailable. Refresh to try again.' : state === 'partial' ? 'No meetings returned for today.' : 'No meetings scheduled today.', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-inbox-row]').count(), 0);
 });
@@ -115,6 +116,7 @@ for (const outcome of ['empty', 'unavailable']) test(`Home reserves its frame an
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
+    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     if (name !== 'read-home-inbox-v3') panelReads.push(name);
     const value = name === 'read-home-inbox-v3' ? outcome === 'empty'
       ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
@@ -173,4 +175,41 @@ test('late automatic Home walkthrough preserves an open account menu', async t =
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   assert.equal(await page.locator('#accountMenu').isVisible(), true);
   assert.equal(await page.locator('[data-walkthrough]').count(), 0);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Done today evidence ${width} ${theme}`, async t => {
+  const run = await scenario(t, { root: join(outDir, 'site'), page: { viewport: { width, height: 900 }, timezoneId: 'America/Chicago' } });
+  const { page } = run;
+  await page.clock.install({ time: new Date('2026-11-04T16:00:17Z') });
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
+  const item = (item_id, completed_at, fields = {}) => ({ waiting_version: 0, waiting_on: null, item_id, completed_at, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'done', title: item_id, activity_at: '2026-11-04T16:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'done', base_version: 'v1', context_label: 'Demo practice', due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000001', action_version: 7, deal_id: null, auto_settled: false, ...fields });
+  const items = [item('Finished after midnight', '2026-11-04T06:10:00Z', { section: 'settled', disposition: 'settled', auto_settled: true }), item('Yesterday with a new notification', '2026-11-04T05:30:00Z'), item('Legacy completed task', null), item('Manually hidden task', null, { source_state: 'needs_attention', disposition: 'settled', section: 'settled' })];
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
+  await page.route('**/mcp', route => {
+    const { name } = route.request().postDataJSON().params;
+    const value = name === 'read-home-inbox-v4' ? { ok: true, schema_version: 'home-inbox.v4', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true } : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
+  });
+  await run.open('/?mode=live');
+  const today = page.getByRole('region', { name: 'Done today', exact: true });
+  await today.getByText('Finished after midnight', { exact: true }).waitFor();
+  assert.equal(await today.locator('[data-inbox-row]').count(), 1);
+  assert.equal(await today.getByText('Yesterday with a new notification', { exact: true }).count(), 0);
+  await today.getByText('Done Nov 4, 2026, 12:10 AM CST', { exact: true }).waitFor();
+  const earlier = page.getByRole('region', { name: 'Earlier and undated completions', exact: true });
+  await earlier.getByRole('button', { name: 'See all 2' }).click();
+  await earlier.getByText('Done, time not recorded', { exact: true }).waitFor();
+  const hidden = page.getByRole('region', { name: 'Hidden from inbox', exact: true });
+  await hidden.getByText('Manually hidden task', { exact: true }).waitFor();
+  await hidden.getByText('Hidden from inbox by you', { exact: true }).waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: `${run.outputDir}/done-today-${width}-${theme}.png`, fullPage: true });
+  await new Promise(resolve => setTimeout(resolve, 2200));
+  await page.clock.pauseAt(new Date('2026-11-05T05:59:59Z'));
+  assert.equal(await today.locator('[data-inbox-row]').count(), 1);
+  await page.clock.fastForward(1000);
+  await today.locator('[data-inbox-row]').waitFor({ state: 'detached' });
+  assert.equal(await today.locator('[data-inbox-row]').count(), 0);
 });
