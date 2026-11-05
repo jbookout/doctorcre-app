@@ -1,6 +1,9 @@
 import { test as setup, expect } from '@playwright/test';
 
 setup('authenticate the staging test account', async ({ request }) => {
+  if (!process.env.CF_ACCESS_CLIENT_ID || !process.env.CF_ACCESS_CLIENT_SECRET) {
+    throw new Error('CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be provided for Access-protected staging');
+  }
   const secret = process.env.E2E_SESSION_SECRET;
   if (!secret) throw new Error('E2E_SESSION_SECRET must be provided through the environment');
 

@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { createLoopFixture } from './loop-fixture';
 
 test.describe.configure({ retries: 0 });
 
@@ -17,17 +16,12 @@ test('Ideas search and clear a loaded board, including its empty state', async (
 });
 
 test('A parked idea opens and closes without answering it', async ({ page }) => {
-  const fixture = await createLoopFixture(page.request, 'idea');
-  try {
-    await page.goto('/ideas-events?tab=ideas');
-    await expect(page.locator('#ideaStatusLabel')).toHaveText('Current', { timeout: 27000 });
-    await page.locator('.idea-tile').filter({ hasText: fixture.title }).click();
-    await expect(page.locator('#ideaDialog')).toBeVisible();
-    await page.locator('#ideaDialogClose').click();
-    await expect(page.locator('#ideaDialog')).toBeHidden();
-  } finally {
-    await fixture.cleanup();
-  }
+  await page.goto('/ideas-events?tab=ideas');
+  await expect(page.locator('#ideaStatusLabel')).toHaveText('Current', { timeout: 27000 });
+  await page.locator('.idea-tile').filter({ hasText: 'Synthetic staging QA' }).first().click();
+  await expect(page.locator('#ideaDialog')).toBeVisible();
+  await page.locator('#ideaDialogClose').click();
+  await expect(page.locator('#ideaDialog')).toBeHidden();
 });
 
 test('V2-F02: Ideas navigation loads the signed-in app shell', async ({ page }) => {
@@ -58,19 +52,19 @@ test('V2-B01: Events load and a synthetic event edit is saved and restored', asy
   test.skip(!/^(Synthetic|E2E)\b/i.test(original), 'Only synthetic staging events may be changed.');
   const modified = original + ' [V2 staging cleanup]';
   try {
-    await page.locator('#eventTitle').fill(modified);
+  await page.locator('#eventTitle').fill(modified);
+  await page.locator('#eventSave').click();
+  await expect(page.locator('#eventDialog')).toBeHidden();
+  await expect(page.locator('.event-card[data-event-id="' + id + '"]')).toContainText(modified);
+  } finally {
+  await page.goto('/ideas-events?tab=events');
+  const card = page.locator('.event-card[data-event-id="' + id + '"]');
+  await card.click();
+  if (await page.locator('#eventTitle').inputValue() === modified) {
+    await page.locator('#eventTitle').fill(original);
     await page.locator('#eventSave').click();
     await expect(page.locator('#eventDialog')).toBeHidden();
-    await expect(page.locator('.event-card[data-event-id="' + id + '"]')).toContainText(modified);
-  } finally {
-    await page.goto('/ideas-events?tab=events');
-    const card = page.locator('.event-card[data-event-id="' + id + '"]');
-    await card.click();
-    if (await page.locator('#eventTitle').inputValue() === modified) {
-      await page.locator('#eventTitle').fill(original);
-      await page.locator('#eventSave').click();
-      await expect(page.locator('#eventDialog')).toBeHidden();
-    }
-    await expect(card).toContainText(original);
+  }
+  await expect(card).toContainText(original);
   }
 });

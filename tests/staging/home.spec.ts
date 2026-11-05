@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { withHomeFixture } from './journey-fixture.mjs';
 
 test.beforeEach(async ({ page }) => {
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
@@ -29,12 +28,13 @@ test('V2-F03: Charts navigation opens, selects and returns to Overview', async (
 });
 
 test('Home deal attention opens the selected deal details', async ({ page }) => {
-  test.setTimeout(420000);
-  await withHomeFixture(async fixture => {
-    await page.goto('/review-workflows');
-    await page.locator(`#dealFlags a[data-home-key="deal:${fixture.deal.id}"]`).click();
-    await expect(page).toHaveURL(new RegExp(`/deals\\?deal=${fixture.deal.id}`));
-    await expect(page.locator('#recordPanel')).toBeVisible();
-    await expect(page.locator('#panelTitle')).toHaveText(fixture.deal.name);
-  });
+  await page.goto('/review-workflows');
+  const link = page.locator('#dealFlags a[data-home-key]').filter({ hasText: 'Synthetic staging QA' }).first();
+  await expect(link).toBeVisible();
+  const target = await link.getAttribute('href');
+  const name = await link.innerText();
+  await link.click();
+  await expect(page).toHaveURL(target!);
+  await expect(page.locator('#recordPanel')).toBeVisible();
+  await expect(page.locator('#panelTitle')).toHaveText(name);
 });
