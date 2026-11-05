@@ -53,7 +53,8 @@ test('staging deploys the tested commit before signed-in journeys and keeps the 
   const document = workflow();
   const job = document.jobs.staging;
   assert.equal(document.concurrency.group, 'signed-in-staging');
-  assert.equal(document.concurrency['cancel-in-progress'], true);
+  assert.equal(document.concurrency['cancel-in-progress'], false);
+  assert.equal(document.concurrency.queue, 'max');
   const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
   assert.equal(checkout.with.ref, '${{ github.sha }}');
   assert.equal(checkout.with['fetch-depth'], 0);
