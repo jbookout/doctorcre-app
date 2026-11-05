@@ -241,7 +241,7 @@ test('TileJSON, glyph and sprite resources use the bounded protocol and restore 
   assert.deepEqual(reads, ['https://example.com/style', 'https://example.com/tiles.json']);
   assert.equal(sources.get('s16-vector-base').tiles[0], `${[...protocols.keys()][0]}://1/https://example.com/tiles/{z}/{x}/{y}.pbf`);
   const [protocol, handler] = [...protocols][0];
-  assert.ok(glyphs.startsWith(protocol + '://'));
+  assert.equal(new URL(glyphs).protocol, protocol + ':');
   assert.equal(sprites.size, 1);
   assert.match(layers.get('s16-vector-label').layout['icon-image'], /:park$/);
   for (const url of [glyphs.replace('{fontstack}', 'Synthetic').replace('{range}', '0-255'), [...sprites.values()][0] + '.png']) {
@@ -275,5 +275,49 @@ test('TileJSON resolution refuses malformed metadata and caps source and templat
   const direct = style({ base: { type: 'vector', url: './tiles.json' } });
   for (const metadata of [null, {}, { tiles: ['http://example.com/tile'] }, { tiles: [], maxzoom: 5 }]) {
     await assert.rejects(prepareVectorStyle({ ...options, bytes: direct, read: async () => bytes(metadata) }));
+  }
+});
+
+test('style, TileJSON, tile, glyph and sprite URLs cannot bypass the provider origin', async () => {
+  const result = await build({ entryPoints: ['src/ui/portal/masterplan-style.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { prepareVectorStyle } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
+  const bytes = value => new TextEncoder().encode(JSON.stringify(value)).buffer;
+  const base = 'https://example.com/style';
+  const placements = {
+    TileJSON: url => ({ sources: { base: { type: 'vector', url } } }),
+    tile: url => ({ sources: { base: { type: 'vector', tiles: [url] } } }),
+    glyph: url => ({ glyphs: url }),
+    sprite: url => ({ sprite: url }),
+  };
+  for (const [kind, place] of Object.entries(placements)) {
+    for (const hostile of ['https://example.com.evil.test/resource', 'https://evil.test/?u=example.com',
+      'https://evil.test/example.com/resource', 'https://example.com@evil.test/resource',
+      'https://user@evil.test@example.com/resource', '//evil.test/resource',
+      'http://example.com/resource', 'ftp://example.com/resource']) {
+      const fetched = [];
+      const session = providerSession({ receipt: receipt(), now, fetch: async url => { fetched.push(url); return new Response('ok'); } });
+      await assert.rejects(async () => {
+        const wrapped = [];
+        await prepareVectorStyle({ bytes: bytes({ version: 8, sources: {}, layers: [], ...place(hostile) }), url: base,
+          read: url => session.read(url), wrap: url => { wrapped.push(url); return url; } });
+        for (const url of wrapped) await session.read(url);
+      }, `${kind}: ${hostile}`);
+      assert.deepEqual(fetched, [], `${kind}: ${hostile}`);
+      session.dispose();
+    }
+    for (const allowed of ['HTTPS://EXAMPLE.COM/resource', '//example.com/resource', './resource']) {
+      const fetched = [];
+      const session = providerSession({ receipt: receipt(), now, fetch: async url => {
+        fetched.push(url);
+        return new Response(bytes({ tiles: ['./tile'] }));
+      } });
+      const wrapped = [];
+      await prepareVectorStyle({ bytes: bytes({ version: 8, sources: {}, layers: [], ...place(allowed) }), url: base,
+        read: url => session.read(url), wrap: url => { wrapped.push(url); return url; } });
+      for (const url of wrapped) await session.read(url);
+      assert.ok(fetched.length > 0, kind);
+      for (const url of fetched) assert.equal(new URL(url).origin, 'https://example.com', kind);
+      session.dispose();
+    }
   }
 });

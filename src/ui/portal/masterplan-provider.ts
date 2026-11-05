@@ -16,6 +16,12 @@ export interface ProviderRights {
   quotaGate: string;
   resourcePrefixes: string[];
 }
+function credentialFreeHttps(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash;
+  } catch { return false; }
+}
 export function currentRights(rights: ProviderRights | undefined, now: number): rights is ProviderRights {
   if (!rights) return false;
   const reviewed = Date.parse(rights.reviewedAt);
@@ -25,7 +31,8 @@ export function currentRights(rights: ProviderRights | undefined, now: number): 
     && rights.storageClass === 'memory-only' && rights.storableFields.length === 0
     && [rights.provider, rights.sku, rights.reviewer, rights.retention, rights.purge,
       rights.attribution, rights.exportPath, rights.quotaGate].every(value => value.trim().length > 0)
-    && rights.termsUrl.startsWith('https://') && rights.resourcePrefixes.length > 0;
+    && credentialFreeHttps(rights.termsUrl) && rights.resourcePrefixes.length > 0
+    && rights.resourcePrefixes.every(credentialFreeHttps);
 }
 export function providerSession(options: {
   receipt: ProviderRights | undefined;
