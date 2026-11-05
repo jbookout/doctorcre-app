@@ -2,11 +2,35 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
-type Row = { entity_ref: string; fact_key: string; value: string; unit: string; term_kind: string; term_date: string; effective_from: string; effective_to: string | null; expense_basis: string | null; confidence: string; sources: { document_ref: string; page_start: number; page_end: number; quarantined: boolean }[]; context_source?: { document_ref: string } };
-type Coverage = { comparable_deals: number; canonical_receipts: number; recorded_documents: number; eligible_receipts?: number; unsupported_receipts: number; superseded_without_context?: number; unclassified_receipts: number };
+type Row = { entity_ref: string; fact_key: string; value: string; unit?: string | null; term_kind: string; term_date: string; effective_from: string; effective_to?: string | null; expense_basis?: string | null; confidence?: string | null; sources?: { document_ref: string; page_start?: number | null; page_end?: number | null; quarantined?: boolean }[]; context_source?: { document_ref: string } | null };
+type Coverage = { comparable_deals: number; canonical_receipts: number; recorded_documents: number; eligible_receipts?: number | null; unsupported_receipts: number; superseded_without_context?: number | null; unclassified_receipts: number };
 type Response = { ok: boolean; schema_version: string; rows: Row[]; coverage: Coverage };
-type Options = { client: { readMarketTerms(args: { submarket?: string; use_type?: string; as_of?: string }): Promise<Response> }; entityRef: string; submarket?: string; useType?: string; dealName?: (entityRef: string) => string | null | undefined };
+type Options = { client: { readMarketTerms(args: { submarket?: string; use_type?: string; as_of?: string }): Promise<unknown> }; entityRef: string; submarket?: string; useType?: string; dealName?: (entityRef: string) => string | null | undefined };
 type View = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; data: Response; asOf: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+function isResponse(value: unknown): value is Response {
+  if (!isRecord(value) || value.ok !== true || value.schema_version !== 'market-terms.v1' || !Array.isArray(value.rows) || !isRecord(value.coverage)) return false;
+  const coverage = value.coverage;
+  if (!['comparable_deals', 'canonical_receipts', 'recorded_documents', 'unsupported_receipts', 'unclassified_receipts'].every(key => isCount(coverage[key]))) return false;
+  if (!['eligible_receipts', 'superseded_without_context'].every(key => coverage[key] == null || isCount(coverage[key]))) return false;
+  return value.rows.every(row => {
+    if (!isRecord(row)) return false;
+    if (!['entity_ref', 'fact_key', 'value', 'term_kind', 'term_date', 'effective_from'].every(key => typeof row[key] === 'string')) return false;
+    if (!['unit', 'effective_to', 'expense_basis', 'confidence'].every(key => row[key] == null || typeof row[key] === 'string')) return false;
+    if (row.context_source != null && (!isRecord(row.context_source) || typeof row.context_source.document_ref !== 'string')) return false;
+    if (row.sources === undefined) return true;
+    return Array.isArray(row.sources) && row.sources.every(source => isRecord(source)
+      && typeof source.document_ref === 'string'
+      && ['page_start', 'page_end'].every(key => source[key] == null || isCount(source[key]))
+      && (source.quarantined === undefined || typeof source.quarantined === 'boolean'));
+  });
+}
 
 function Comparison({ client, submarket = '', useType = '', dealName, refreshRef }: Options & { refreshRef: { current: () => void } }) {
   const [view, setView] = useState<View>({ kind: 'loading' });
@@ -28,7 +52,7 @@ function Comparison({ client, submarket = '', useType = '', dealName, refreshRef
     try {
       const data = await client.readMarketTerms({ ...(submarket && { submarket }), ...(use_type && { use_type }), ...(asOf && { as_of: asOf }) });
       if (current !== sequence.current) return;
-      if (!data?.ok || data.schema_version !== 'market-terms.v1' || !Array.isArray(data.rows) || !data.coverage) throw new Error('Invalid response');
+      if (!isResponse(data)) throw new Error('Invalid response');
       setView({ kind: 'ready', data, asOf });
     } catch (error: unknown) {
       if (current !== sequence.current) return;
@@ -47,7 +71,7 @@ function Results({ data, asOf, dealName }: { data: Response; asOf: string; dealN
     const superseded = row.effective_to && (!asOf || row.effective_to <= asOf) && data.rows.some(next => next.entity_ref === row.entity_ref && next.fact_key === row.fact_key && next.term_kind === row.term_kind && next.effective_from === row.effective_to);
     const number = Number(row.value), usd = /^USD/i.test(row.unit || ''), value = usd && row.value !== '' && Number.isFinite(number) ? new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',maximumFractionDigits:2}).format(number) : row.value;
     const sources = row.sources || [];
-    return <tr key={index} className={superseded ? 'superseded' : undefined}><td data-label="Date">{row.term_date}</td><td data-label="Deal"><a href={`/deals?deal=${encodeURIComponent(row.entity_ref)}`}>{dealName?.(row.entity_ref) || 'Name not available'}</a></td><td data-label="Stage">{row.term_kind}</td><td data-label="Term">{row.fact_key}: {value}{usd && Number.isFinite(number) ? row.unit.replace(/^USD/i, '') : row.unit ? ` ${row.unit}` : ''}</td><td data-label="Expense basis">{row.expense_basis || 'Not recorded'}</td><td data-label="Confidence">{(row.confidence || '').replaceAll('_',' ')}</td><td data-label="Effective period">{row.effective_from} to {row.effective_to || 'present'}{superseded ? ' · superseded' : ''}</td><td data-label="Source">{sources.length ? sources.map((source, index) => <span key={index}>{index > 0 && '; '}{source.document_ref}{source.page_start ? `, p. ${source.page_start}${source.page_end && source.page_end !== source.page_start ? `–${source.page_end}` : ''}` : ''}{source.quarantined && <strong> — Quarantined: not supporting evidence</strong>}</span>) : row.context_source?.document_ref || 'Source unavailable'}</td></tr>;
+    return <tr key={index} className={superseded ? 'superseded' : undefined}><td data-label="Date">{row.term_date}</td><td data-label="Deal"><a href={`/deals?deal=${encodeURIComponent(row.entity_ref)}`}>{dealName?.(row.entity_ref) || 'Name not available'}</a></td><td data-label="Stage">{row.term_kind}</td><td data-label="Term">{row.fact_key}: {value}{usd && Number.isFinite(number) ? (row.unit || '').replace(/^USD/i, '') : row.unit ? ` ${row.unit}` : ''}</td><td data-label="Expense basis">{row.expense_basis || 'Not recorded'}</td><td data-label="Confidence">{(row.confidence || '').replaceAll('_',' ')}</td><td data-label="Effective period">{row.effective_from} to {row.effective_to || 'present'}{superseded ? ' · superseded' : ''}</td><td data-label="Source">{sources.length ? sources.map((source, index) => <span key={index}>{index > 0 && '; '}{source.document_ref}{source.page_start ? `, p. ${source.page_start}${source.page_end && source.page_end !== source.page_start ? `–${source.page_end}` : ''}` : ''}{source.quarantined && <strong> — Quarantined: not supporting evidence</strong>}</span>) : row.context_source?.document_ref || 'Source unavailable'}</td></tr>;
   })}</tbody></table>}</>;
 }
 export function mountMarketTerms(root: HTMLElement, options: Options) {

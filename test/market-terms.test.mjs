@@ -51,7 +51,7 @@ test('only an amended period is labeled superseded', async () => {
   const root = dom.window.document.querySelector('div');
   const term = {entity_ref:'d1',fact_key:'rent',value:'25',unit:'USD/SF/year',term_kind:'executed',term_date:'2024-01-01',effective_from:'2024-01-01',effective_to:'2025-01-01',confidence:'human_review',sources:[]};
   const rows = [term, {...term,effective_from:'2025-01-01',effective_to:null}, {...term,entity_ref:'d2'}];
-  mountMarketTerms(root, {entityRef:'d14',client:{readMarketTerms:async () => ({ok:true,schema_version:'market-terms.v1',rows,coverage:{recorded_documents:1,canonical_receipts:3,classified_receipts:3,comparable_deals:2}})}});
+  mountMarketTerms(root, {entityRef:'d14',client:{readMarketTerms:async () => ({ok:true,schema_version:'market-terms.v1',rows,coverage:{recorded_documents:1,canonical_receipts:3,classified_receipts:3,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:2}})}});
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(root.querySelectorAll('tr.superseded').length, 1);
 });
@@ -148,4 +148,60 @@ test('superseded display uses the selected date and history never depends on the
   await new Promise(done => setTimeout(done, 30));
   assert.equal(root.querySelectorAll('.superseded').length, 1);
   panel.dispose();
+});
+
+test('malformed responses fail closed and Compare retries with retained filters', async () => {
+  const row = {entity_ref:'d1',fact_key:'rent',value:'25',term_kind:'executed',term_date:'2024',effective_from:'2024'};
+  const valid = {ok:true,schema_version:'market-terms.v1',rows:[row],coverage:{recorded_documents:1,canonical_receipts:1,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:1}};
+  const bad = [...Object.keys(valid.coverage).map(key => ({...valid,coverage:{...valid.coverage,[key]:undefined}})), null, {...valid,ok:1}, {...valid,rows:[null]}, ...['bad',{},[null],[{document_ref:12}],[{document_ref:'d',page_start:Infinity}],[{document_ref:'d',quarantined:'false'}]].map(sources => ({...valid,rows:[{...row,sources}]})), ...['value','entity_ref','term_date','unit','confidence','effective_to','expense_basis'].map(key => ({...valid,rows:[{...row,[key]:{}}]})), {...valid,rows:[{...row,context_source:{document_ref:1}}]}, ...[undefined,NaN,Infinity,-1,'1',0.5].map(count => ({...valid,coverage:{...valid.coverage,canonical_receipts:count}})), {...valid,coverage:{...valid.coverage,eligible_receipts:'1'}}];
+  for (const response of bad) {
+    const dom = new JSDOM('<div></div>'); setup(dom);
+    const root = document.querySelector('div'); let calls = 0;
+    const panel = mountMarketTerms(root, {entityRef:'d1',submarket:'North',client:{readMarketTerms:async () => ++calls === 1 ? response : valid}});
+    await new Promise(done => setTimeout(done, 10));
+    assert.match(root.textContent, /Could not load comparable terms/);
+    assert.equal(root.querySelector('table'), null);
+    assert.equal(calls, 1, 'no automatic retry');
+    root.querySelector('[name=as_of]').value = '2025-01-01';
+    root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
+    await new Promise(done => setTimeout(done, 10));
+    assert.match(root.textContent, /Terms as of 2025-01-01/);
+    assert.equal(root.querySelector('[name=submarket]').value, 'North');
+    assert.equal(calls, 2);
+    panel.dispose(); dom.window.close();
+  }
+});
+
+test('stale malformed replies cannot replace ready results and stale valid replies cannot clear an error', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div'), pending = [];
+  const valid = {ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:0,canonical_receipts:0,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:0}};
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:() => new Promise(resolve => pending.push(resolve))}});
+  panel.refresh();
+  pending[1](valid);
+  await new Promise(done => setTimeout(done, 10));
+  pending[0]({...valid,rows:[null]});
+  await new Promise(done => setTimeout(done, 10));
+  assert.match(root.textContent, /No comparable terms/);
+  panel.refresh(); panel.refresh();
+  pending[3]({...valid,rows:[null]});
+  await new Promise(done => setTimeout(done, 10));
+  pending[2](valid);
+  await new Promise(done => setTimeout(done, 10));
+  assert.match(root.textContent, /Could not load comparable terms/);
+  panel.refresh(); panel.dispose(); pending[4]({...valid,rows:[null]});
+  await new Promise(done => setTimeout(done, 10));
+  assert.equal(root.textContent, '');
+  dom.window.close();
+});
+
+test('compatible optional fields remain absent or nullable without rejecting a valid comparison', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div');
+  const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:async () => ({ok:true,schema_version:'market-terms.v1',rows:[{entity_ref:'d1',fact_key:'rent',value:'35',term_kind:'executed',term_date:'2025',effective_from:'2025',context_source:null,unit:null,confidence:null,expense_basis:null,effective_to:null}],coverage:{recorded_documents:1,canonical_receipts:1,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:1,eligible_receipts:null,superseded_without_context:null}})}});
+  await new Promise(done => setTimeout(done, 10));
+  assert.match(root.textContent, /rent: 35/);
+  assert.match(root.textContent, /Source unavailable/);
+  assert.doesNotMatch(root.textContent, /undefined|Could not load/);
+  panel.dispose(); dom.window.close();
 });
