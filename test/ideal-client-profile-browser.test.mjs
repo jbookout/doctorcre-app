@@ -36,6 +36,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
         if (mode === 'overflow') payload = { error: 'client_profile_limit_exceeded' };
         if (mode === 'refused') payload = { error: 'forbidden' };
         if (mode === 'invalid') payload.coverage = 'all_deals';
+        if (mode === 'invalid-date') payload.profiles[0].evidence[0].closed_on = '2026-02-31';
       }
       return route.fulfill({ json: { jsonrpc: '2.0', id: req.id, result: { isError: Boolean(payload.error), content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
     });
@@ -97,6 +98,9 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     mode = 'overflow'; await region.getByRole('button', { name: 'Refresh history' }).click();
     await region.getByRole('alert').waitFor(); assert.match(await region.innerText(), /Narrow.*filters/);
     assert.equal(await region.getByRole('table').count(), 0);
+    mode = 'invalid-date'; await region.getByRole('button', { name: 'Refresh history' }).click();
+    await region.getByRole('alert').waitFor(); assert.equal(await region.getByRole('table').count(), 0);
+    assert.match(await region.innerText(), /Historical client fit unavailable/);
     mode = 'invalid'; await region.getByRole('button', { name: 'Refresh history' }).click();
     await region.getByRole('alert').waitFor(); assert.equal(await region.getByRole('table').count(), 0);
     mode = 'empty'; await region.getByRole('button', { name: 'Refresh history' }).click();
