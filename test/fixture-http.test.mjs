@@ -154,3 +154,94 @@ test('snapshot loader refuses oversized files before starting a fixture', async 
   await writeFile(root + '/large.js', '12345');
   await assert.rejects(loadFixtureAssets({ root, manifest: new Map([['/large.js', 'large.js']]), limits: { bytes: 4 } }), RangeError);
 });
+
+
+test('explicit response headers preserve negative cache-policy scenarios', async t => {
+  const fixture = await startFixture({ routes: new Map([['/manifest', {
+    body: '{}', contentType: 'application/json', headers: { 'cache-control': 'public' },
+  }]]) });
+  t.after(() => fixture.close());
+  const response = await raw(fixture.origin, '/manifest');
+  assert.equal(response.headers['cache-control'], 'public');
+  assert.equal(response.body, '{}');
+});
+
+test('fixed Worker seam routes POST through the real router and serves a copied asset snapshot', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  const assets = new Map([['/workspace.html', { body: 'admitted shell', contentType: 'text/html' }]]);
+  const calls = [];
+  const fixture = await startWorkerFixture({ assets, env: { CARR: { fetch: async request => {
+    calls.push({path:new URL(request.url).pathname, method:request.method, body:request.method === 'POST' ? await request.text() : ''});
+    return Response.json({ result: 'synthetic producer response' });
+  } } } });
+  t.after(() => fixture.close());
+  assets.get('/workspace.html').body = 'changed after listen';
+  assert.equal(await (await fetch(fixture.origin + '/?mode=live')).text(), 'admitted shell');
+  const response = await fetch(fixture.origin + '/mcp', { method: 'POST', body: '{"method":"tools/call"}', headers: { 'content-type': 'application/json' } });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).result, 'synthetic producer response');
+  assert.ok(calls.some(row => row.path === '/mcp' && row.method === 'POST' && row.body.includes('tools/call')));
+  const before = calls.length;
+  assert.equal((await raw(fixture.origin, '/..%2fprivate')).status, 400);
+  assert.equal(calls.length, before);
+  assert.equal((await fetch(fixture.origin + '/js/unlisted.js')).status, 404);
+  await assert.rejects(startWorkerFixture({ assets, env: { ASSETS: { fetch() {} } } }), /Unknown fixture field/);
+  await assert.rejects(startWorkerFixture({ listener() {} }), /Unknown fixture field/);
+});
+
+test('Worker seam bounds request bodies, preserves cookies and cancels pending bindings on close', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  let reads = 0, entered;
+  const pending = new Promise(resolve => { entered = resolve; });
+  const fixture = await startWorkerFixture({ limits: { body: 32 }, env: { CARR: { fetch: request => {
+    reads++;
+    if (new URL(request.url).pathname === '/auth/session') return new Response('{}', { headers: [
+      ['set-cookie', 'one=1; Path=/'], ['set-cookie', 'two=2; Path=/'],
+    ] });
+    entered();
+    return new Promise((resolve, reject) => request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true }));
+  } } } });
+  t.after(() => fixture.close());
+  const oversized = await fetch(fixture.origin + '/mcp', { method: 'POST', body: 'x'.repeat(33) });
+  assert.equal(oversized.status, 413);
+  assert.equal(reads, 0);
+  const session = await fetch(fixture.origin + '/auth/session');
+  assert.deepEqual(session.headers.getSetCookie(), ['one=1; Path=/', 'two=2; Path=/']);
+  const request = fetch(fixture.origin + '/mcp', { method: 'POST', body: '{}' });
+  const refused = assert.rejects(request);
+  await pending;
+  await fixture.close();
+  await refused;
+  await fixture.close();
+});
+
+test('Worker seam refuses response streams beyond its body budget and executable asset scenarios', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  await assert.rejects(startWorkerFixture({assets:new Map([['/a.js',{body:'x',hold:'ignored'}]])}), /Unknown fixture field/);
+  await assert.rejects(startWorkerFixture({assets:new Map([['/a.js',{sequence:[{body:'x'}]}]])}), /Unknown fixture field/);
+  const fixture = await startWorkerFixture({limits:{body:4},env:{CARR:{fetch:async () => new Response('too long')}}});
+  t.after(() => fixture.close());
+  assert.equal((await fetch(fixture.origin + '/mcp',{method:'POST',body:'{}'})).status,502);
+});
+
+test('Worker route overrides are copied GET descriptors while POST still crosses the real router', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  const routes = new Map([['/mcp',{body:'finite document',contentType:'text/html'}]]);
+  const fixture = await startWorkerFixture({routes,env:{CARR:{fetch:async () => Response.json({producer:true})}}});
+  t.after(() => fixture.close());
+  routes.clear();
+  assert.equal(await (await fetch(fixture.origin + '/mcp')).text(),'finite document');
+  assert.deepEqual(await (await fetch(fixture.origin + '/mcp',{method:'POST',body:'{}'})).json(),{producer:true});
+});
+
+test('Worker integration can bind the explicit loopback port its companion contract requires', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  const reserved = await startFixture();
+  const port = Number(new URL(reserved.origin).port);
+  await reserved.close();
+  const fixture = await startWorkerFixture({port});
+  t.after(() => fixture.close());
+  assert.equal(Number(new URL(fixture.origin).port),port);
+  await assert.rejects(startWorkerFixture({port:-1}),/port/);
+  await assert.rejects(startFixture({port}),/Unknown fixture field/);
+});

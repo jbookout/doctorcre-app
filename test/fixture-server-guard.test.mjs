@@ -32,6 +32,7 @@ for (const source of [
 
 for (const source of [
   "const {get} = require('http'); get('http://fixture.invalid');",
+  "import {createRequire} from 'node:module'; const require = createRequire(import.meta.url); require.resolve('playwright');",
   "const h = require('http'); h.get('http://fixture.invalid');",
   "const {get} = await import('http'); get('http://fixture.invalid');",
   "import {get, request} from 'node:http'; get('http://fixture.invalid');",
@@ -77,4 +78,16 @@ test('fixture helper graphs refuse unknown dynamic loaders and transport helper 
   assert.deepEqual(await checkFixtureServers(root), []);
   await writeFile(root + '/scripts/fixture-http.mjs', "import './helper.mjs'; export const startFixture = async () => {};");
   assert.ok((await checkFixtureServers(root)).some(error => /Transport must not import/.test(error)));
+});
+
+test('fixed Worker transport graph refuses filesystem capabilities in its router dependencies', async t => {
+  const root = temporaryDirectory('fixture-worker-graph-', t);
+  execFileSync('git', ['init', '-q', root]);
+  await mkdir(root + '/scripts'); await mkdir(root + '/src');
+  await writeFile(root + '/scripts/fixture-http.mjs', "import {handleDoctorcreRequest} from '../src/worker.js'; export const startWorkerFixture = async () => {};");
+  await writeFile(root + '/src/worker.js', 'export const handleDoctorcreRequest = () => {};');
+  assert.deepEqual(await checkFixtureServers(root), []);
+  await writeFile(root + '/src/worker.js', "import './assets'; export const handleDoctorcreRequest = () => {};");
+  await writeFile(root + '/src/assets.js', "const {readFile} = await import('node:fs/promises');");
+  assert.ok((await checkFixtureServers(root)).some(error => /src\/assets.js:1:.*filesystem/.test(error)));
 });

@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { fileURLToPath } from 'node:url';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, pausedClock } from './browser-harness.mjs';
 import axe from 'axe-core';
-import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
@@ -56,26 +57,10 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
       }
       return Response.json({ result: { isError, content: [{ text: JSON.stringify(payload) }] } });
     } },
-    ASSETS: { fetch: async request => {
-      const path = new URL(request.url).pathname;
-      try { return new Response(await readFile(assetRoot ? new URL('.' + path, assetRoot) : new URL('..' + path, import.meta.url)), {
-        headers: { 'content-type': /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html' },
-      }); } catch { return new Response('Not found', { status: 404 }); }
-    } },
   };
-  const server = createServer(async (incoming, outgoing) => {
-    try {
-      const chunks = []; for await (const chunk of incoming) chunks.push(chunk);
-      const response = await handleDoctorcreRequest(new Request(new URL(incoming.url, origin), {
-        method: incoming.method, ...(chunks.length ? { body: Buffer.concat(chunks) } : {}),
-      }), env);
-      outgoing.writeHead(response.status, Object.fromEntries(response.headers));
-      outgoing.end(Buffer.from(await response.arrayBuffer()));
-    } catch (error) { outgoing.writeHead(500); outgoing.end(error.message); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await startWorkerFixture({ assets: await appAssetSnapshot(assetRoot && fileURLToPath(assetRoot)), env });
+  t.after(() => server.close());
+  const origin = server.origin;
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) return route.abort();

@@ -12,7 +12,7 @@ const text = node => node?.type === 'StringLiteral' ? node.value
     ? text(node.left) + text(node.right) : undefined;
 const property = node => node.computed ? text(node.property) : node.property?.name;
 
-export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoaders = true } = {}) {
+export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoaders = true, transportDependency = false } = {}) {
   const errors = [], imports = [];
   const fail = (node, reason) => errors.push(`${filename}:${node.loc?.start.line || 1}: ${reason}`);
   let ast;
@@ -34,7 +34,7 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
     if (typeof name !== 'string') { if (strictLoaders) fail(node, 'Dynamic module capability cannot be verified'); return; }
     if (name.startsWith('.')) imports.push(name);
     if (/^(?:express|serve-static|send|sirv|http-server|fastify|koa|connect)$/.test(name)) fail(node, 'Static server packages bypass fixture transport');
-    if (isTransport && /^(?:node:)?fs(?:\/|$)/.test(name)) fail(node, 'Fixture transport cannot import filesystem APIs');
+    if ((isTransport || transportDependency) && /^(?:node:)?fs(?:\/|$)/.test(name)) fail(node, 'Fixture transport cannot import filesystem APIs');
     if (!network.test(name) || isTransport) return;
     if (names.some(n => constructors.has(n) || n === '*')) fail(node, 'Server construction belongs to scripts/fixture-http.mjs');
   };
@@ -79,7 +79,7 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
       if (isTransport) {
         const names = path.node.declaration?.declarations?.map(d => d.id.name) || [path.node.declaration?.id?.name];
         names.push(...path.node.specifiers.map(s => s.exported?.name));
-        if (names.filter(Boolean).some(n => !['startFixture', 'fixtureKey'].includes(n))) fail(path.node, 'Only descriptor transport exports are allowed');
+        if (names.filter(Boolean).some(n => !['startFixture', 'startWorkerFixture', 'fixtureKey'].includes(n))) fail(path.node, 'Only descriptor transport exports are allowed');
       }
     },
     ExportDefaultDeclaration(path) { if (isTransport) fail(path.node, 'Default transport exports are forbidden'); },
@@ -90,7 +90,9 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
       moduleCheck(path.node, name, network.test(name) && !isTransport ? loaderCapabilities(path) : ['*']);
     },
     ReferencedIdentifier(path) {
-      if (loaders.has(path.node.name) && !(path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node)) fail(path.node, 'Cannot alias module loader');
+      if (loaders.has(path.node.name)
+        && !(path.parentPath.isMemberExpression() && path.parentPath.node.object === path.node && property(path.parentPath.node) === 'resolve')
+        && !(path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node)) fail(path.node, 'Cannot alias module loader');
     },
     OptionalMemberExpression(path) {
       if (property(path.node) === 'getBuiltinModule') fail(path.node, 'Optional builtin module capability is not verified');
@@ -122,6 +124,21 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
     results.set(file, checkFixtureSource(source, file, { strictLoaders: file === transport }));
   }
   const errors = [...results.values()].flatMap(r => r.errors);
+  const transportVisited = new Set();
+  function checkTransportGraph(file) {
+    if (transportVisited.has(file)) return;
+    transportVisited.add(file);
+    const source = sources.get(file);
+    if (source === undefined) { errors.push(`${file}:1: Unresolved transport dependency`); return; }
+    const result = checkFixtureSource(source, file, { transportDependency: true });
+    errors.push(...result.errors);
+    for (const imported of result.imports) {
+      const path = relative(root, resolve(root, dirname(file), imported));
+      const target = [path, ...['.mjs', '.js', '.ts', '.tsx'].map(ext => path + ext), path.replace(/\.js$/, '.ts')].find(candidate => sources.has(candidate));
+      if (target) checkTransportGraph(target);
+      else if (/\.[cm]?[jt]sx?$/.test(path) || !/\.\w+$/.test(path)) errors.push(`${file}:1: Unresolved transport dependency ${imported}`);
+    }
+  }
   const visited = new Set();
   function checkGraph(file) {
     if (visited.has(file)) return;
@@ -130,7 +147,8 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
     if (source === undefined) { errors.push(`${file}:1: Fixture helper is outside scanned source`); return; }
     const result = checkFixtureSource(source, file);
     errors.push(...result.errors);
-    if (file === transport && result.imports.length) errors.push(`${file}:1: Transport must not import local helpers`);
+    if (file === transport && result.imports.some(name => !['../src/worker.js', './qa-fixture-dispatch.mjs', './work-inventory-fixture.mjs', './atlas-fixture.mjs'].includes(name))) errors.push(`${file}:1: Transport must not import local helpers`);
+    if (file === transport) checkTransportGraph(file);
     for (const imported of result.imports) {
       const path = relative(root, resolve(root, dirname(file), imported));
       const target = [path, ...['.mjs', '.js', '.ts', '.tsx'].map(ext => path + ext), path.replace(/\.js$/, '.ts')].find(candidate => sources.has(candidate));
@@ -139,7 +157,7 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
     }
   }
   for (const [file, result] of results) {
-    if (file === transport || result.imports.some(path => /(?:fixture-http|proof-fixture-server)\.mjs$/.test(path))
+    if (file === transport || result.imports.some(path => /(?:fixture-http)\.mjs$/.test(path))
       || result.errors.some(error => /Server construction|raw server|Bun server/.test(error))) checkGraph(file);
   }
   return [...new Set(errors)];

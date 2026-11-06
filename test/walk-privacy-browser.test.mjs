@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -20,12 +20,11 @@ test('no-fixture POST admission refuses every registry write and unknown read-li
   refused.unshift('read-client-portal');
   refused.push('read-invented', 'get-invented', 'list-invented', 'preview-invented', 'search-invented', 'human-actors', 'search-parties');
   const receipts = [];
-  const server = createServer((request, response) => {
+  const server = await startWorkerFixture({ routes:new Map([['/',{body:'synthetic sink',contentType:'text/html'}]]), env:{CARR:{fetch:async request => {
     if (request.method !== 'GET') receipts.push(request.method);
-    response.end('synthetic sink');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+    return new Response('synthetic sink');
+  }}} });
+  t.after(() => server.close());
   const directory = temporaryDirectory('doctorcre-walk-read-guard-', t);
   writeFileSync(resolve(directory, 'reads.spec.ts'), `
 import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
@@ -50,7 +49,7 @@ test('allowlist contains only recorded registry reads', async ({page}) => {
   expect(await page.evaluate(() => fetch('/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'tools/call',params:{name:'read-home-inbox-v5',arguments:{}}})}).then(r=>r.status))).toBe(200);
 });`);
   const config = resolve(directory, 'playwright.config.ts');
-  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: '${server.origin}', serviceWorkers: 'block' } };`);
   const { stdout } = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 30_000 }).catch(error => {
     assert.deepEqual(receipts, [], 'Refused requests must never reach the server');
     throw error;
@@ -61,13 +60,11 @@ test('allowlist contains only recorded registry reads', async ({page}) => {
 
 test('walk privacy covers consecutive spec files and secondary pages', async t => {
   let writes = 0;
-  const server = createServer((request, response) => {
+  const server = await startWorkerFixture({ routes:new Map([['/status',{status:429,body:'synthetic',contentType:'text/html'}]]), env:{CARR:{fetch:async request => {
     if (request.method === 'POST') writes++;
-    response.writeHead(request.method === 'POST' ? 200 : 429);
-    response.end('synthetic');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+    return new Response('synthetic');
+  }}} });
+  t.after(() => server.close());
   const directory = temporaryDirectory('doctorcre-walk-privacy-', t);
   const spec = `
 import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
@@ -89,7 +86,7 @@ test('guards and diagnostics', async ({ page, context }, info) => {
 import { test } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
 test('redacts private failures', async () => { throw new Error('SYNTHETIC_PRIVATE_BODY'); });`);
   const config = resolve(directory, 'playwright.config.ts');
-  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: '${server.origin}', serviceWorkers: 'block' } };`);
   const result = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], {
     timeout: 30_000, env: { ...process.env, PLAYWRIGHT_NO_COPY_PROMPT: '1' },
   }).then(() => assert.fail('The synthetic privacy failure must remain failed'), error => error);
@@ -102,12 +99,11 @@ test('redacts private failures', async () => { throw new Error('SYNTHETIC_PRIVAT
 
 test('walk mutation admission requires canonical TEST deal and exact record IDs', async t => {
   let writes = 0;
-  const server = createServer((request, response) => {
+  const server = await startWorkerFixture({ env:{CARR:{fetch:async request => {
     if (request.method !== 'GET') writes++;
-    response.end('synthetic mutation sink');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+    return new Response('synthetic mutation sink');
+  }}} });
+  t.after(() => server.close());
   const directory = temporaryDirectory('doctorcre-walk-admission-', t);
   writeFileSync(resolve(directory, 'admission.spec.ts'), `
 import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
@@ -181,7 +177,7 @@ test('waiting changes stay bound to the verified item', async ({page,context}) =
   expect(await send(page,'clear-home-waiting',{item_id:item.item_id})).toBe(200);
 });`);
   const config = resolve(directory, 'playwright.config.ts');
-  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: '${server.origin}', serviceWorkers: 'block' } };`);
   const { stdout } = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 30_000 });
   const report = JSON.parse(stdout);
   assert.equal(report.stats.expected, 4);
@@ -192,17 +188,11 @@ test('waiting changes stay bound to the verified item', async ({page,context}) =
 });
 
 test('notification prerequisite waits for successful readiness and fails on feed errors', async t => {
-  let answers = 0;
-  const server = createServer((request, response) => {
-    response.setHeader('Content-Type', 'text/html');
-    if (request.url.startsWith('/doc-chats/')) {
-      answers++;
-      return response.end('<div class="doc-message">Synthetic answer</div>');
-    }
-    response.end('<div id="feedState" data-state="pending"></div><ul id="feedList"></ul>');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  const server = await startWorkerFixture({ routes:new Map([
+    ['/updates',{body:'<div id="feedState" data-state="pending"></div><ul id="feedList"></ul>',contentType:'text/html'}],
+    ['/doc-chats/test-answer',{body:'<div class="doc-message">Synthetic answer</div>',contentType:'text/html'}],
+  ]) });
+  t.after(() => server.close());
   const directory = temporaryDirectory('doctorcre-walk-notification-', t);
   writeFileSync(resolve(directory, 'notification.spec.ts'), `
 import { test } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
@@ -217,12 +207,12 @@ test.beforeEach(async ({ page }) => {
   }, process.env.WALK_NOTIFICATION_STATE);
 });`);
   const config = resolve(directory, 'playwright.config.ts');
-  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', expect: { timeout: 1000 }, use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', expect: { timeout: 1000 }, use: { baseURL: '${server.origin}', serviceWorkers: 'block' } };`);
   for (const scenario of ['ready', 'empty', 'unavailable', 'refused', 'pending']) {
     const result = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 15_000, env: { ...process.env, WALK_NOTIFICATION_STATE: scenario } }).catch(error => error);
     const report = JSON.parse(result.stdout);
     if (scenario === 'ready') {
-      assert.equal(answers, 2, 'The delayed notification must open and reload its stored answer');
+      assert.equal(server.requests.filter(row => row.path === '/doc-chats/test-answer').length, 2, 'The delayed notification must open and reload its stored answer');
       assert.equal(report.stats.skipped, 1);
       assert.match(JSON.stringify(report.suites), /same stored request ID/);
     } else if (scenario === 'empty') {
@@ -238,19 +228,12 @@ test.beforeEach(async ({ page }) => {
 test('every mutating walk skips without a TEST fixture and sends zero writes', async t => {
   const methods = [];
   const empty = { ok: true, schema_version: 'home-inbox.v5', truncated: false, limit: 1000, working_collapsed: true, auto_settle_enabled: true, items: [] };
-  const server = createServer(async (request, response) => {
-    let body = '';
-    for await (const chunk of request) body += chunk;
-    methods.push({ method: request.method, path: request.url, name: body ? JSON.parse(body)?.params?.name : null });
-    if (request.url === '/mcp') {
-      response.setHeader('Content-Type', 'application/json');
-      return response.end(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify(empty) }] } }));
-    }
-    response.setHeader('Content-Type', 'text/html');
-    response.end('<h1>Welcome home.</h1><div class="inbox-health">Updating</div><script>fetch("/mcp", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({method:"tools/call",params:{name:"read-home-inbox-v5",arguments:{}}})}).then(r=>r.json()).then(()=>document.querySelector(".inbox-health").textContent="Up to date")</script>');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  const server = await startWorkerFixture({routes:new Map([['/',{contentType:'text/html',body:'<h1>Welcome home.</h1><div class="inbox-health">Updating</div><script>fetch("/mcp", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({method:"tools/call",params:{name:"read-home-inbox-v5",arguments:{}}})}).then(r=>r.json()).then(()=>document.querySelector(".inbox-health").textContent="Up to date")</script>'}]]),env:{CARR:{fetch:async request => {
+    const body = await request.text();
+    methods.push({method:request.method,path:new URL(request.url).pathname,name:body ? JSON.parse(body)?.params?.name : null});
+    return Response.json({result:{content:[{type:'text',text:JSON.stringify(empty)}]}});
+  }}} });
+  t.after(() => server.close());
   const directory = temporaryDirectory('doctorcre-walk-absent-', t);
   const specs = readdirSync('tests/walks').filter(name => /^(01|03|07|10|12|13|14|15|33)-/.test(name));
   for (const name of specs) writeFileSync(resolve(directory, name), `
@@ -261,7 +244,7 @@ import ${JSON.stringify(resolve('tests/walks', name))};
 test.beforeEach(() => { expect(parseSnapshot(${JSON.stringify(empty)}).items).toEqual([]); });
 test.afterEach(async ({context}) => { expect(await inboxItems(context)).toEqual([]); });`);
   const config = resolve(directory, 'playwright.config.ts');
-  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: '${server.origin}', serviceWorkers: 'block' } };`);
   const { stdout } = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 30_000 });
   const report = JSON.parse(stdout);
   assert.equal(report.stats.skipped, 9);
@@ -273,12 +256,9 @@ test.afterEach(async ({context}) => { expect(await inboxItems(context)).toEqual(
 });
 
 test('deal and tour discovery waits for asynchronously rendered records', async t => {
-  const server = createServer((_request, response) => {
-    response.setHeader('Content-Type', 'text/html');
-    response.end(`<button id="listView">List</button><span id="boardStatusLabel">Ready</span><span id="boardAsOf">Updated</span><a class="deal-link" data-open-deal="synthetic" onclick="document.querySelector('#recordPanel').hidden=false;setTimeout(()=>document.querySelector('#recordPanel').innerHTML='<section class=deal-opening-snapshot>Deal snapshot</section><details class=deal-checklist></details>',200)">TEST deal</a><div id="recordPanel" hidden></div><button role="tab" onclick="setTimeout(()=>document.querySelector('#workspace-tours').innerHTML='<ul class=deal-tour-list><li data-open-tour>TEST tour</li></ul>',200)">Tours</button><div id="workspace-tours">Loading tours…</div>`);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  const document = {contentType:'text/html',body:`<button id="listView">List</button><span id="boardStatusLabel">Ready</span><span id="boardAsOf">Updated</span><a class="deal-link" data-open-deal="synthetic" onclick="document.querySelector('#recordPanel').hidden=false;setTimeout(()=>document.querySelector('#recordPanel').innerHTML='<section class=deal-opening-snapshot>Deal snapshot</section><details class=deal-checklist></details>',200)">TEST deal</a><div id="recordPanel" hidden></div><button role="tab" onclick="setTimeout(()=>document.querySelector('#workspace-tours').innerHTML='<ul class=deal-tour-list><li data-open-tour>TEST tour</li></ul>',200)">Tours</button><div id="workspace-tours">Loading tours…</div>`};
+  const server = await startWorkerFixture({routes:new Map([['/',document],['/deals',document]])});
+  t.after(() => server.close());
   const directory = temporaryDirectory('doctorcre-walk-discovery-', t);
   writeFileSync(resolve(directory, 'discovery.spec.ts'), `
 import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
@@ -291,7 +271,7 @@ test('delayed deal and tour records exist before prerequisite counts', async ({p
   expect(await page.locator('[data-open-tour]').count()).toBe(1);
 });`);
   const config = resolve(directory, 'playwright.config.ts');
-  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: '${server.origin}', serviceWorkers: 'block' } };`);
   const { stdout } = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 15_000 });
   assert.equal(JSON.parse(stdout).stats.expected, 1);
 });
