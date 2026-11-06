@@ -108,7 +108,7 @@ test('proof synthetic notification matches existing producer fixture and product
     return model.notificationCards(payload);
   } });
   assert.deepEqual(observed.find(payload => payload.notifications[0].delivery?.[1]?.state === 'delivered').notifications[0], row);
-  assert.ok(result.assertions.includes('producer-delivery-contract')); 
+  assert.ok(result.assertions.includes('producer-delivery-contract'));
 });
 
 for (const width of [390, 1440]) {
