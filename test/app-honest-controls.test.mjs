@@ -5,8 +5,10 @@ import { JSDOM } from 'jsdom';
 import { mountDocPresence } from '../js/doc-presence.js';
 import { createDocContext } from '../js/doc-context-model.js';
 import { createCallMode, CALL_MODE_URL } from '../js/call-mode.js';
-import { createServer } from 'node:http';
-import { extname } from 'node:path';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { componentDocument, chromium, animationsSettled, settles, fixtureServer } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { appShellMarkup } from '../js/navigation.js';
@@ -202,23 +204,23 @@ test('a pending recorder recheck coalesces presses and remains retryable after a
   });
 });
 
-test('honest controls fit 320px, 390px and iPad in both motion settings with 44px touch targets', async () => {
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css' };
-  const server = createServer(async (req, res) => {
-    const response = await handleDoctorcreRequest(new Request(new URL(req.url, 'http://example.test')), {
-      CARR: { fetch: async () => new Response('signed in') },
-      ASSETS: { fetch: async (request) => {
-        const path = new URL(request.url).pathname.slice(1);
-        try {
-          return new Response(await read(path), { headers: { 'content-type': types[extname(path)] || 'text/plain' } });
-        } catch { return new Response('Missing fixture asset', { status: 404 }); }
-      } },
+test('honest controls fit 320px, 390px and iPad in both motion settings with 44px touch targets', async t => {
+  const root=temporaryDirectory('honest-controls-snapshot-',t);
+  const {manifest}=await buildArtifact({root:process.cwd(),outDir:root});
+  const snapshot=await loadFixtureAssets({root:`${root}/site`,manifest:new Map(manifest.files.map(row=>['/'+row.path,row.path]))});
+  const routes=new Map();
+  for(const path of [...snapshot.keys(),'/deals','/doc-chats','/auth/session','/api/system-work/session']) {
+    const response=await handleDoctorcreRequest(new Request('https://example.test'+path),{
+      CARR:{fetch:async()=>new Response('signed in')},
+      ASSETS:{fetch:async request=>{
+        const entry=snapshot.get(new URL(request.url).pathname);
+        return entry?new Response(entry.body,{headers:{'content-type':entry.contentType}}):new Response('Missing fixture asset',{status:404});
+      }}
     });
-    res.writeHead(response.status, Object.fromEntries(response.headers));
-    res.end(Buffer.from(await response.arrayBuffer()));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
+    routes.set(path,{status:response.status,headers:Object.fromEntries(response.headers),contentType:response.headers.get('content-type')||'application/octet-stream',body:Buffer.from(await response.arrayBuffer())});
+  }
+  const server=await startFixture({routes});
+  const base=server.origin;
   const browser = await chromium.launch({ headless: true });
   try {
     for (const width of [320, 390, 820]) for (const reducedMotion of ['reduce', 'no-preference']) {
@@ -286,7 +288,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}: ${JSON.stringify(overflow)}`);
       await page.close();
     }
-  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+  } finally { await browser.close(); await server.close(); }
 });
 
 // Pin the fractional translation that made CI intermittently report 43.999px.
