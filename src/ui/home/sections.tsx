@@ -43,10 +43,16 @@ export function HomeSections({ items, pinned, current, row }: { items: readonly 
   }, []);
   const today = day(now);
   const completed = completionGroups(items.map(placement), now);
+  const overdue = (item: InboxItem) => {
+    const placed = placement(item);
+    return placed.section === 'inbox' && placed.source_state === 'needs_attention' && placed.action_id !== null && placed.due_on !== null && placed.due_on < today;
+  };
+  const overdueItems = items.filter(overdue);
   const dueToday = (item: InboxItem) => placement(item).section === 'inbox' && placement(item).due_on === today;
 
   return <div className="home-sections"><nav className="home-shortcuts" aria-label="Review workflows"><a href="/review-workflows#homeCallTasks">Call follow-ups ↗</a><a href="/review-workflows#homeEmailFollowups">Email and filings ↗</a><a href="/deals">Next steps ↗</a></nav>
-    <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => placement(item).section === 'inbox' && !dueToday(item))} current={current} row={row} />
+    {overdueItems.length > 0 && <Slice title="Overdue" detail="Your tasks dated before today." items={overdueItems} current={current} row={row} />}
+    <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => placement(item).section === 'inbox' && !dueToday(item) && !overdue(item))} current={current} row={row} />
     <Slice title="Today" detail="Your tasks dated today." items={items.filter(dueToday)} current={current} row={row} />
     <Slice title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(placement(item).section))} current={current} row={row} />
     <Slice title="Done today" detail="Completed today in Chicago, with a recorded completion time." items={completed.today.map(done => items.find(item => item.item_id === done.item_id) ?? done)} current={current} row={row} />

@@ -20,6 +20,8 @@ async function fixture(t, mode) {
     for (const name of names) files.set('js/' + name, Buffer.from('export const synthetic = true;'));
   }
   const manifest = { schema: 'doctorcre-static-artifact.v1', repository: 'jbookout/doctorcre-app', source_commit: '1'.repeat(40), files: [...files].map(([path, data]) => ({ path, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') })) };
+  if (mode === 'canonical') manifest.repository = 'DoctorCRE/doctorcre-app';
+  if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
   if (mode === 'identity') manifest.source_commit = '2'.repeat(40);
   if (mode === 'wrong-asset') files.set('js/ui-task-done.js', Buffer.from('export const wrong = true;'));
   if (mode === 'cross-origin') manifest.files.find(row => row.path === 'js/ui-task-done.js').path = 'https://other.test/js/ui-task-done.js';
@@ -72,4 +74,9 @@ test('fixture refuses encoded traversal outside its root', async t => {
   const f = await fixture(t);
   const response = await fetch(f.origin + '/%2e%2e%2fprivate');
   assert.equal(response.status, 403);
+});
+
+for (const [mode, expected] of [['canonical', 0], ['unrelated', 1]]) test(`manifest repository ${mode}`, async t => {
+  const f = await fixture(t, mode), result = await cli(f.origin);
+  assert.equal(result.code, expected, JSON.stringify(result));
 });
