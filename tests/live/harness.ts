@@ -37,7 +37,7 @@ async function serveApp(carr: LocalCarr): Promise<AppFixture> {
   const CARR = { fetch: (request: Request) => {
     const url = new URL(request.url);
     return fetch(`${carr.url}${url.pathname}${url.search}`, { method: request.method, headers: request.headers,
-      body: request.body, redirect: 'manual', duplex: 'half' } as RequestInit);
+      body: request.body, signal:request.signal, redirect: 'manual', duplex: 'half' } as RequestInit);
   } };
   return startWorkerFixture({assets:await snapshot(),port:Number(new URL(APP_ORIGIN).port),
     env:{CARR,APP_ENV:'local',GIT_SHA:'0'.repeat(40)}});

@@ -245,3 +245,18 @@ test('Worker integration can bind the explicit loopback port its companion contr
   await assert.rejects(startWorkerFixture({port:-1}),/port/);
   await assert.rejects(startFixture({port}),/Unknown fixture field/);
 });
+
+test('demo profile preserves outage controls without replacing the Worker asset router', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  const fixture = await startWorkerFixture({demo:true,assets:new Map([['/workspace.html',{body:'demo shell',contentType:'text/html'}]]),
+    env:{APP_ENV:'fixture',GIT_SHA:'0'.repeat(40),CARR:{fetch:async () => new Response(null)}}});
+  t.after(() => fixture.close());
+  assert.equal(await (await fetch(fixture.origin + '/')).text(),'demo shell');
+  const release = await fetch(fixture.origin + '/app-release');
+  assert.equal((await release.json()).environment,'fixture');
+  const outage = await fetch(fixture.origin + '/app-release?outage=release');
+  assert.equal(outage.status,503);
+  assert.equal(outage.headers.get('cache-control'),'no-store');
+  assert.equal((await fetch(fixture.origin + '/api/v1/work-inventory')).status,200);
+  assert.equal((await fetch(fixture.origin + '/api/v1/atlas-graph')).status,200);
+});

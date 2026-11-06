@@ -121,7 +121,7 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
         const url = new URL(request.url);
         let special;
         if (demo && url.pathname === '/app-release' && ['release','all'].includes(url.searchParams.get('outage')))
-          special = Response.json({error:'app_release_outage_requested_by_the_fixture_switch'},{status:503});
+          special = Response.json({error:'app_release_outage_requested_by_the_fixture_switch'},{status:503,headers:{'cache-control':'no-store'}});
         if (demo && url.pathname === '/api/v1/atlas-graph') {
           const answer = atlasFixtureResponse(url,request.method);
           special = new Response(answer.body === null ? null : JSON.stringify(answer.body),{status:answer.status,headers:{...answer.headers,'cache-control':'no-store'}});
