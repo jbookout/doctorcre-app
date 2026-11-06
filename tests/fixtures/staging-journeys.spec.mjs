@@ -80,7 +80,7 @@ export async function localFixture(browser) {
     try {
       if (!contextClosed) await context.close();
     } catch (error) {
-      if (!contextClosed && browser.isConnected()) throw error;
+      if (!/(?:^|: )Target page, context or browser has been closed(?:\n|$)/.test(error.message)) throw error;
     } finally {
       server.closeAllConnections();
       await new Promise(resolve => server.close(resolve));
