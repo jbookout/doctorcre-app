@@ -1,7 +1,7 @@
 import { test } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { detail } from '../../test/fixtures/tour-day.synthetic.mjs';
 import { leaseRadarFixture } from '../../js/lease-radar-fixture.js';
@@ -163,6 +163,45 @@ test('Fixture cleanup releases its server when context disposal fails', async ({
 test('Fixture cleanup tolerates an already closed context and repeated disposal', async ({ browser }) => {
   const local = await localFixture(browser);
   await local.page.context().close();
+  await Promise.all([local.close(), local.close()]);
+  assert.equal(local.server.listening, false);
+});
+
+for (const connected of [true, false]) {
+  test(`Fixture cleanup preserves HAR failure after context closes with browser connected=${connected}`, async ({ browser }, testInfo) => {
+    const blocker = testInfo.outputPath('har-blocker');
+    await mkdir(testInfo.outputDir, { recursive: true });
+    await writeFile(blocker, 'This file prevents creating the HAR directory.');
+    const local = await localFixture({
+      newContext: options => browser.newContext({ ...options, recordHar: { path: `${blocker}/journey.har` } }),
+      isConnected: () => connected,
+    });
+    const context = local.page.context();
+    let closed = false;
+    context.once('close', () => { closed = true; });
+    try {
+      await assert.rejects(local.close(), error => {
+        assert.equal(closed, true, 'the real context close event precedes the HAR error');
+        assert.match(error.message, /EEXIST|ENOTDIR/);
+        return true;
+      });
+      assert.equal(local.server.listening, false);
+      await assert.rejects(local.close(), /EEXIST|ENOTDIR/);
+    } finally {
+      local.server.closeAllConnections();
+      await new Promise(resolve => local.server.close(resolve));
+    }
+  });
+}
+
+test('Fixture cleanup tolerates a target closing during disposal', async ({ browser }) => {
+  const local = await localFixture(browser);
+  const context = local.page.context();
+  const close = context.close.bind(context);
+  context.close = async () => {
+    await close();
+    await context.newPage();
+  };
   await Promise.all([local.close(), local.close()]);
   assert.equal(local.server.listening, false);
 });
