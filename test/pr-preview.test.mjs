@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { downloadPreview, checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
+import { isAppRepositoryRemote, downloadPreview, checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
 import preview from '../src/preview-worker.js';
 
 const base = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
@@ -100,7 +100,7 @@ test('local previews only download the exact successful head and never install o
   const gh = (...args) => { calls.push(args); return JSON.stringify([run]); };
   downloadPreview('7', sha, '/synthetic-assets', gh);
   assert.deepEqual(calls.map(args => args.slice(0, 2)), [['run', 'list'], ['run', 'download']]);
-  assert.deepEqual(calls[1], ['run', 'download', '17', '--repo', 'jbookout/doctorcre-app', '--name', `pr-preview-7-${sha}`, '--dir', '/synthetic-assets']);
+  assert.deepEqual(calls[1], ['run', 'download', '17', '--repo', 'DoctorCRE/doctorcre-app', '--name', `pr-preview-7-${sha}`, '--dir', '/synthetic-assets']);
   for (const change of [{ headSha: 'b'.repeat(40) }, { status: 'in_progress' }, { conclusion: 'failure' }]) {
     calls.length = 0;
     assert.throws(() => downloadPreview('7', sha, '/synthetic-assets', (...args) => {
@@ -110,4 +110,14 @@ test('local previews only download the exact successful head and never install o
   }
   const source = await readFile(new URL('../scripts/pr-preview.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /previewBuildEnv|sandbox|['"]npm['"]|['"]clone['"]|['"]build['"]/);
+});
+
+test('preview checkout admits both app remotes and refuses unrelated repositories', () => {
+  for (const prefix of ['https://github.com/', 'git@github.com:', 'ssh://git@github.com/'])
+    for (const suffix of ['', '.git']) {
+      assert.equal(isAppRepositoryRemote(`${prefix}jbookout/doctorcre-app${suffix}`), true);
+      assert.equal(isAppRepositoryRemote(`${prefix}DoctorCRE/doctorcre-app${suffix}`), true);
+      assert.equal(isAppRepositoryRemote(`${prefix}DoctorCRE/other${suffix}`), false);
+    }
+  assert.equal(isAppRepositoryRemote('https://github.com.evil/DoctorCRE/doctorcre-app'), false);
 });

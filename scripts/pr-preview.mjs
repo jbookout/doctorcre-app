@@ -1,3 +1,4 @@
+import { APP_REPOSITORY, isAppRepository } from '../js/repository-identity.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
 import { execFileSync } from 'node:child_process';
 import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { credentialFreeEnv } from './release-environment.mjs';
 
 // PR code runs only in hosted CI. Locally, download static assets and deploy
 // them with main's Worker, config and lockfile-pinned Wrangler.
-export const REPO = 'jbookout/doctorcre-app';
+export const REPO = APP_REPOSITORY;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const MARK = '<!-- doctorcre-pr-preview -->';
 const SITE_LIMITS = { files: 5000, bytes: 200 * 1024 * 1024 };
@@ -88,9 +89,14 @@ const gh = (...args) => run('gh', [...args], { capture: true }).trim();
 const ghPr = (...args) => gh(...args, '-R', REPO);
 const git = (...args) => run('git', args, { capture: true }).trim();
 
+export function isAppRepositoryRemote(origin) {
+  const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(origin);
+  return Boolean(match && isAppRepository(match[1]));
+}
+
 function assertRunningFromMain() {
   const origin = git('config', '--get', 'remote.origin.url');
-  if (!new RegExp(`^(https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)${REPO}(\\.git)?$`).test(origin)) {
+  if (!isAppRepositoryRemote(origin)) {
     throw new Error(`origin is ${origin}, not ${REPO}; run this from a checkout of ${REPO}`);
   }
   run('git', ['fetch', '--quiet', 'origin', 'main']);
