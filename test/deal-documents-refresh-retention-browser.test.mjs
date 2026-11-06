@@ -4,7 +4,10 @@ import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
-import { observeRefreshRetention, refreshRecordings } from '../scripts/prove-deal-documents-refresh-retention.mjs';
+import { readFile } from 'node:fs/promises';
+import { observeRefreshRetention } from './deal-documents-refresh-observer.mjs';
+
+const refreshRecordings = JSON.parse(await readFile(new URL('./fixtures/deal-documents-refresh-retention/recordings.json', import.meta.url), 'utf8'));
 
 test('refresh retains last successful metadata and replaces scans', async t => {
   const artifact = await temporaryDirectory('documents-retention-', t);
@@ -12,6 +15,21 @@ test('refresh retains last successful metadata and replaces scans', async t => {
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: `${artifact}/site` } }); t.after(() => server.stop());
   const browser = await chromium.launch(); t.after(() => browser.close());
   for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+    for (const recording of ['initial', 'replacement']) {
+      await t.test(`observer rejects an altered ${recording} request ${width} ${theme}`, async () => {
+        const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
+        try {
+          await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }));
+          await page.goto(`${server.url}/documents-harness`);
+          const recordings = structuredClone(refreshRecordings);
+          recordings[recording].request.limit = 49;
+          await assert.rejects(
+            page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.js', recordings }),
+            new RegExp(`recorded ${recording} request matches production call`),
+          );
+        } finally { await page.close(); }
+      });
+    }
     for (const transition of ['Loading -> Disposed', 'Stale -> Expired', 'Stale -> Disposed']) {
       await t.test(`${transition} ${width} ${theme}`, async () => {
         const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });

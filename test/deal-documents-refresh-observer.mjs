@@ -1,14 +1,3 @@
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
-import { chromium } from 'playwright';
-import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
-import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
-
-export const refreshRecordings = JSON.parse(readFileSync(new URL('../test/fixtures/deal-documents-refresh-retention/recordings.json', import.meta.url), 'utf8'));
-
 export async function observeRefreshRetention({ assetUrl, recordings, failure = 'network', replacement = 'nonempty' }) {
   const { mountDealDocuments } = await import(assetUrl);
   const target = document.createElement('main'); document.body.replaceChildren(target);
@@ -74,55 +63,4 @@ export async function observeRefreshRetention({ assetUrl, recordings, failure = 
     }
     return { retained: true, retryCursor: null, replacement, requestCount: requests.length };
   } finally { panel.dispose(); }
-}
-
-export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
-  const base = new URL(origin);
-  assert.ok(base.origin === origin && ['http:', 'https:'].includes(base.protocol) && !base.username && !base.password, 'origin only');
-  assert.ok(Number.isInteger(timeoutMs) && timeoutMs >= 100 && timeoutMs <= 300000, 'bounded timeout');
-  const abort = new AbortController();
-  const timeoutError = Object.assign(Error('Proof deadline exceeded'), { exitCode: 78 });
-  const timer = setTimeout(() => abort.abort(timeoutError), timeoutMs);
-  let browser, requests = 0, bytes = 0;
-  const assets = new Map();
-  async function read(url) {
-    assert.ok(++requests <= 64, 'request cap');
-    const response = await proofFetch(url, { signal: abort.signal });
-    if (!response.ok) throw Object.assign(Error(`Asset HTTP ${response.status}`), { exitCode: 78 });
-    const chunks = [];
-    for await (const chunk of response.body) { bytes += chunk.length; assert.ok(bytes <= 4 * 1024 * 1024, 'byte cap'); chunks.push(chunk); }
-    return { body: Buffer.concat(chunks), type: response.headers.get('content-type') || '' };
-  }
-  try {
-    const release = await readAppRelease(base, read);
-    browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }, { signal: abort.signal });
-    const context = await browser.newContext({ serviceWorkers: 'block' });
-    await context.route('**/*', async route => {
-      const url = new URL(route.request().url());
-      if (route.request().method() !== 'GET' || url.origin !== origin) return route.abort();
-      if (url.pathname === '/__documents-proof') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' });
-      if (!/^\/js\/[\w.-]+\.js$/.test(url.pathname)) return route.abort();
-      try {
-        if (!assets.has(url.href)) {
-          const asset = await read(url); assert.match(asset.type, /javascript/);
-          assets.set(url.href, asset);
-        }
-        await route.fulfill({ contentType: 'text/javascript', body: assets.get(url.href).body });
-      } catch { await route.abort(); }
-    });
-    const page = await context.newPage();
-    await page.goto(`${origin}/__documents-proof`);
-    const observed = await page.evaluate(observeRefreshRetention, { assetUrl: `${origin}/js/ui-deal-documents.js`, recordings: refreshRecordings });
-    const after = await readAppRelease(base, read);
-    assert.deepEqual(after, release, 'unchanged app release');
-    return { ok: true, release, after, deployed_asset_fixture: observed, natural_authenticated_observation: 'insufficient_evidence',
-      production_acceptance: false, requests, assets: [...assets].map(([url, asset]) => ({ url, sha256: createHash('sha256').update(asset.body).digest('hex') })) };
-  } catch (error) { throw abort.signal.aborted ? timeoutError : error; }
-  finally { clearTimeout(timer); await browser?.close(); }
-}
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string' } } });
-    console.log(JSON.stringify(await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms'] || 30000) })));
-  } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message, production_acceptance: false })); process.exitCode = error.exitCode || 1; }
 }
