@@ -3,18 +3,50 @@ import assert from 'node:assert/strict';
 import { createServer } from './proof-fixture-server.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { handleDoctorcreRequest } from '../src/worker.js';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 
 const assets = await uiAssets(path => readFile(path, 'utf8'));
 const exec = promisify(execFile);
 async function run(t, mode, timeout = '30000', fixture = false) {
-  const server = createServer((req, res) => {
+  const history = temporaryDirectory('territory-proof-history-', t);
+  const git = async (...args) => (await exec('git', args, { cwd: history })).stdout.trim();
+  await git('init');
+  const record = async value => {
+    await writeFile(join(history, 'revision.txt'), value);
+    await git('add', 'revision.txt');
+    await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-m', value);
+    return git('rev-parse', 'HEAD');
+  };
+  const older = await record('older'), required = await record('required'), descendant = await record('descendant');
+  await git('checkout', '--orphan', 'unrelated');
+  const unrelated = await record('unrelated');
+  const commit = mode === 'unknown-expected' ? 'f'.repeat(40) : required;
+  const released = mode === 'older' ? older : mode === 'unrelated' ? unrelated : mode === 'unknown' ? 'f'.repeat(40) : ['descendant', 'ancestry-slow'].includes(mode) ? descendant : required;
+  const slowBin = join(history, 'bin'), slowPid = join(history, 'git.pid');
+  if (mode === 'ancestry-slow') {
+    await mkdir(slowBin);
+    await writeFile(join(slowBin, 'git'), `#!${process.execPath}
+const fs = require('node:fs');
+fs.writeFileSync(${JSON.stringify(slowPid)}, String(process.pid));
+setTimeout(() => {}, 10000);
+`, { mode: 0o755 });
+  }
+  const seen = [];
+  const server = createServer(async (req, res) => {
+    seen.push(req.url);
     res.setHeader('content-type', 'application/json');
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'production' }));
+      if (mode === 'release-missing') return res.end('{}');
+      if (mode === 'ancestry-slow') await new Promise(resolve => setTimeout(resolve, 700));
+      const response = await handleDoctorcreRequest(new Request('http://fixture.test/app-release'), { GIT_SHA: released, APP_ENV: 'production' });
+      return res.end(Buffer.from(await response.arrayBuffer()));
     }
     let bytes = assets.get(req.url.slice(1));
     if (mode === 'unavailable' || (mode === 'chunk-missing' && req.url.includes('ui-shared-'))) bytes = undefined;
@@ -26,17 +58,26 @@ async function run(t, mode, timeout = '30000', fixture = false) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const args = ['scripts/prove-territory-evidence-current-history-view.mjs', '--origin', origin, '--timeout-ms', timeout];
+  const args = [fileURLToPath(new URL('../scripts/prove-territory-evidence-current-history-view.mjs', import.meta.url)), '--origin', origin, '--commit', commit, '--timeout-ms', timeout];
   if (fixture) args.push('--fixture');
-  try { const result = await exec(process.execPath, args, { timeout: 35000 }); return { code: 0, receipt: JSON.parse(result.stdout) }; }
-  catch (error) { return { code: error.code, receipt: JSON.parse(error.stdout) }; }
+  const started = performance.now();
+  let result;
+  try { const child = await exec(process.execPath, args, { cwd: history, timeout: 35000, env: { ...process.env, ...(mode === 'ancestry-slow' ? { PATH: slowBin + ':' + process.env.PATH } : {}) } }); result = { code: 0, receipt: JSON.parse(child.stdout) }; }
+  catch (error) { result = { code: error.code, receipt: JSON.parse(error.stdout) }; }
+  if (mode === 'ancestry-slow') {
+    assert.ok(performance.now() - started < 2200, 'ancestry shares the 1200 ms total deadline');
+    assert.deepEqual(seen, ['/app-release'], 'expired ancestry cannot download assets or launch a browser');
+    const pid = Number(await readFile(slowPid, 'utf8'));
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+  }
+  if (result.code === 0) assert.equal(result.receipt.release.source_commit, released);
+  return result;
 }
 test('proof CLI passes module fixtures but refuses natural acceptance', async t => {
   const result = await run(t, 'success');
   assert.equal(result.code, 78, JSON.stringify(result.receipt));
   assert.equal(result.receipt.natural.status, 'insufficient_evidence');
   assert.equal(result.receipt.scope, 'deployed_module_fixture');
-  assert.equal(result.receipt.release.source_commit, 'a'.repeat(40));
   assert.ok(result.receipt.assets.length > 2 && result.receipt.assets.length <= 20);
   assert.ok(result.receipt.assets.every(asset => /^[a-f0-9]{64}$/.test(asset.sha256)));
   assert.ok(result.receipt.assertions.length > 30);
@@ -83,7 +124,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes 
   } };
   const origin = `http://127.0.0.1:${server.address().port}`;
   try {
-    await assert.rejects(prove({origin, timeoutMs:1200, engine,
+    await assert.rejects(prove({origin, commit:'a'.repeat(40), timeoutMs:1200, engine,
       exercise: mode === 'stalled evaluation' ? () => new Promise(() => {}) : undefined}), error => error.exitCode === 78);
     await acquisition;
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -126,3 +167,13 @@ test('explicit loopback fixture replay exits zero', async t => {
   assert.equal(result.code, 0);
   assert.equal(result.receipt.natural.status, 'insufficient_evidence');
 });
+
+for (const [mode, code] of [['descendant', 0], ['success', 0], ['older', 1], ['unrelated', 1], ['unknown', 78], ['unknown-expected', 78], ['release-missing', 78], ['contradiction', 1], ['ancestry-slow', 78]]) {
+  test(`release containment CLI ${mode} exits ${code}`, async t => {
+    const result = await run(t, mode, mode === 'ancestry-slow' ? '1200' : '30000', true);
+    assert.equal(result.code, code, JSON.stringify(result.receipt));
+    if (['older', 'unrelated'].includes(mode)) assert.match(JSON.stringify(result.receipt), /release commit mismatch/);
+    if (['unknown', 'unknown-expected'].includes(mode)) assert.match(JSON.stringify(result.receipt), /ancestry evidence unavailable/);
+    if (code === 0) assert.equal(result.receipt.assertions.length, 53);
+  });
+}

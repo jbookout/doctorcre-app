@@ -7,6 +7,7 @@ import { init, parse } from 'es-module-lexer';
 
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { execFile } from 'node:child_process';
 export const territoryResponse = JSON.parse(readFileSync(new URL('../test/fixtures/territory-evidence-current-history-view/recordings.json', import.meta.url))).response;
 
 export async function exerciseEvidenceHistory(response) {
@@ -80,12 +81,19 @@ export async function exerciseEvidenceHistory(response) {
   return results;
 }
 
-export async function prove({ origin, timeoutMs = 30000, engine = chromium, exercise = exerciseEvidenceHistory }) {
+export async function prove({ origin, commit, timeoutMs = 30000, engine = chromium, exercise = exerciseEvidenceHistory }) {
+  if (!/^[a-f0-9]{40}$/.test(commit || '') || /^0+$/.test(commit)) throw new Error('Expected a merge commit');
   const base = new URL(origin);
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new Error('Expected an origin');
   const assets = new Map(), hashes = [];
   let release, browser, timer;
   const controller = new AbortController();
+  const deadline = performance.now() + timeoutMs;
+  const remaining = () => {
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0 || controller.signal.aborted) throw unavailable('Total proof timeout');
+    return ms;
+  };
   const unavailable = message => Object.assign(new Error(message), { exitCode: 78 });
   const work = async () => {
     const fetchBytes = async path => {
@@ -105,6 +113,19 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, exer
       return bytes;
     };
     release = await readAppRelease(base, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
+    if (release.source_commit !== commit) {
+      try {
+        await new Promise((resolve, reject) => {
+          let failure;
+          const child = execFile('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(remaining(), 5000), signal: controller.signal, killSignal: 'SIGKILL' }, error => { failure = error; });
+          child.once('close', () => failure ? reject(failure) : resolve());
+        });
+      } catch (error) {
+        remaining();
+        if (error.code === 1) throw new Error('release commit mismatch');
+        throw unavailable('Release ancestry evidence unavailable');
+      }
+    }
     await init;
     const queue = ['/js/ui-territory-evidence.js'];
     for (let i = 0; i < queue.length; i++) {
@@ -118,7 +139,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, exer
         if (!queue.includes(url.pathname)) queue.push(url.pathname);
       }
     }
-    browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }, { signal: controller.signal });
+    browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     if (controller.signal.aborted) { await browser.close(); throw unavailable('Total proof timeout'); }
     const context = await browser.newContext({ serviceWorkers: 'block' });
     await context.route('**/*', route => {
@@ -129,7 +150,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, exer
       return bytes ? route.fulfill({ contentType: 'text/javascript', body: bytes }) : route.abort();
     });
     const page = await context.newPage();
-    await page.goto(new URL('/__territory_proof__', base).href, { timeout: timeoutMs });
+    await page.goto(new URL('/__territory_proof__', base).href, { timeout: remaining() });
     const assertions = await page.evaluate(exercise, territoryResponse);
     const after = await readAppRelease(base, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
     if (after.source_commit !== release.source_commit) throw unavailable('Release changed during observation');
@@ -146,11 +167,11 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, exer
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, fixture: { type: 'boolean' } } });
-    if (!values.origin || !/^\d+$/.test(values['timeout-ms']) || Number(values['timeout-ms']) < 1 || Number(values['timeout-ms']) > 30000) throw new Error('Usage: --origin <origin> [--timeout-ms <1..30000>] [--fixture]');
+    const { values } = parseArgs({ options: { origin: { type: 'string' }, commit: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, fixture: { type: 'boolean' } } });
+    if (!values.origin || !values.commit || !/^\d+$/.test(values['timeout-ms']) || Number(values['timeout-ms']) < 1 || Number(values['timeout-ms']) > 30000) throw new Error('Usage: --origin <origin> --commit <expected-merge> [--timeout-ms <1..30000>] [--fixture]');
     const base = new URL(values.origin);
     if (values.fixture && (base.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname))) throw new Error('Fixture success requires a loopback origin');
-    const receipt = await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms']) });
+    const receipt = await prove({ origin: values.origin, commit: values.commit, timeoutMs: Number(values['timeout-ms']) });
     console.log(JSON.stringify(receipt));
     process.exitCode = values.fixture ? 0 : 78;
   } catch (error) { console.log(JSON.stringify(error.receipt || { error: error.message })); process.exitCode = error.exitCode || 1; }
