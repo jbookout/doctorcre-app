@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
@@ -56,7 +57,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`proof closes own
   const origin = await fixture(t, 'pass');
   let acquired, evaluationEntered = false;
   const engine = { async launch(options) {
-    acquired = await chromium.launch(options);
+    acquired = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] });
     if (mode === 'late launch') {
       await new Promise(resolve => setTimeout(resolve, 2500));
       return acquired;
