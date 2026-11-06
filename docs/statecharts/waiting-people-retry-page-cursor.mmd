@@ -1,0 +1,25 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Waiting: Enter a name
+  Waiting --> Searching: Name unchanged for 300 ms
+  Waiting --> Waiting: Edit the name before 300 ms
+  Searching --> Choices: Page succeeds
+  Choices --> Searching: Ask for more results
+  Searching --> Retry: Page fails, accepted choices stay visible
+  Retry --> Searching: Retry the exact failed page
+  Searching --> Searching: Repeated retry clicks admit one read
+  Retry --> Waiting: Enter another name, retire failed page
+  Searching --> Waiting: Enter another name, ignore late page
+  Searching --> Contacts: Directory verb unavailable
+  Waiting --> Idle: Clear the name
+  Choices --> Waiting: Enter another name
+  Idle --> Closed: Close editor
+  Waiting --> Closed: Close editor
+  Searching --> Closed: Close editor, ignore late page
+  Choices --> Closed: Close editor
+  Retry --> Closed: Close editor
+  Contacts --> Closed: Close editor
+  Closed --> [*]
+  %% never Retry restarts an accepted page.
+  %% never Late pages replace the current name's choices.
+  %% never Retry removes the selected person or duplicates accepted choices.
