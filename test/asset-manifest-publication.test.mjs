@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -81,10 +81,18 @@ test('declared production proof follows built and renamed assets and refuses con
   const descendant = await record('descendant');
   git('checkout', '--orphan', 'unrelated');
   const unrelated = await record('unrelated');
-  for (const mode of ['descendant', 'non-descendant', 'unknown', 'unknown-release', 'descendant-identity', 'built', 'legacy', 'unrelated', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
+  const slowBin = join(history, 'bin');
+  const slowPid = join(history, 'slow-git.pid');
+  await mkdir(slowBin);
+  await writeFile(join(slowBin, 'git'), `#!${process.execPath}
+import { writeFileSync } from 'node:fs';
+writeFileSync(${JSON.stringify(slowPid)}, String(process.pid));
+setTimeout(() => {}, 4000);
+`, { mode: 0o755 });
+  for (const mode of ['ancestry-timeout', 'descendant', 'non-descendant', 'unknown', 'unknown-release', 'descendant-identity', 'built', 'legacy', 'unrelated', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
     const manifest = structuredClone(built.manifest), files = new Map(payload), seen = [];
-    const required = mode === 'unknown' ? 'f'.repeat(40) : ['descendant', 'non-descendant', 'unknown-release', 'descendant-identity'].includes(mode) ? ancestor : commit;
-    const released = mode === 'non-descendant' ? unrelated : mode === 'unknown-release' ? 'f'.repeat(40) : ['descendant', 'descendant-identity'].includes(mode) ? descendant : commit;
+    const required = mode === 'unknown' ? 'f'.repeat(40) : ['ancestry-timeout', 'descendant', 'non-descendant', 'unknown-release', 'descendant-identity'].includes(mode) ? ancestor : commit;
+    const released = mode === 'non-descendant' ? unrelated : mode === 'unknown-release' ? 'f'.repeat(40) : ['ancestry-timeout', 'descendant', 'descendant-identity'].includes(mode) ? descendant : commit;
     manifest.source_commit = mode === 'descendant-identity' ? ancestor : released;
     if (mode === 'renamed') for (const row of manifest.files.filter(row => row.path.startsWith('js/') && row.path.endsWith('.js'))) {
       const next = row.path.replace('js/', 'js/renamed-');
@@ -101,6 +109,7 @@ test('declared production proof follows built and renamed assets and refuses con
       try { path = resolve(siteRoot, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
       if (!path.startsWith(siteRoot + sep)) { res.writeHead(403); return res.end(); }
       if (mode === 'timeout') return;
+      if (mode === 'ancestry-timeout') await new Promise(resolve => setTimeout(resolve, 1500));
       const response = await handleDoctorcreRequest(new Request('https://app.example' + req.url), {
         GIT_SHA: released, APP_ENV: 'production',
         ASSETS: { fetch: async request => {
@@ -119,11 +128,19 @@ test('declared production proof follows built and renamed assets and refuses con
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     t.after(() => { server.closeAllConnections(); server.close(); });
-    const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : '30000'], { cwd: history, stdio: ['ignore', 'pipe', 'pipe'] });
+    const started = performance.now();
+    const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : mode === 'ancestry-timeout' ? '2000' : '30000'], { cwd: history, env: { ...process.env, ...(mode === 'ancestry-timeout' ? { PATH: slowBin + ':' + process.env.PATH } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const [code] = await once(child, 'close');
-    assert.equal(code, ['built', 'legacy', 'renamed', 'descendant'].includes(mode) ? 0 : ['timeout', 'unknown', 'unknown-release'].includes(mode) ? 78 : 1, stdout + stderr);
+    assert.equal(code, ['built', 'legacy', 'renamed', 'descendant'].includes(mode) ? 0 : ['timeout', 'ancestry-timeout', 'unknown', 'unknown-release'].includes(mode) ? 78 : 1, stdout + stderr);
+    if (mode === 'ancestry-timeout') {
+      const elapsed = performance.now() - started;
+      assert.deepEqual(seen.map(row => row.path), ['/app-release']);
+      const pid = Number(await readFile(slowPid, 'utf8'));
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+      assert.ok(elapsed < 3200, `2000 ms total deadline exceeded: ${elapsed} ms`);
+    }
     const receipt = JSON.parse(stdout);
     assert.equal(receipt.status, code === 0 ? 'passed' : 'failed');
     if (!code) {
