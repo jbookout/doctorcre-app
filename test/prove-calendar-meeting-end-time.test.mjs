@@ -7,7 +7,28 @@ import { execFile } from 'node:child_process';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium } from 'playwright';
-import { prove } from '../scripts/prove-calendar-meeting-end-time.mjs';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
+import * as proof from '../scripts/prove-calendar-meeting-end-time.mjs';
+const { prove } = proof;
+
+test('acceptance recordings retain producer timestamps and response flags', () => {
+  assert.ok(proof.calendarRecordings, 'producer-recorded calendar responses are required');
+  const { provenance, records } = proof.calendarRecordings;
+  assert.equal(provenance.function, 'calendarSection');
+  assert.match(provenance.source_commit, /^[a-f0-9]{40}$/);
+  assert.match(provenance.source_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(records.length, 12);
+  for (const { response } of records) {
+    assert.equal(response.source, 'outlook_local_store');
+    assert.equal(response.malformed_items, undefined);
+    assert.ok(Array.isArray(response.notes));
+    for (const item of response.items) {
+      for (const key of ['start', 'end']) assert.match(item[key], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      for (const key of ['all_day', 'time_changed', 'schedule_conflict']) assert.equal(typeof item[key], 'boolean');
+      assert.equal(item.schedule_conflict, item.schedule_conflicts.length > 0);
+    }
+  }
+});
 const exec = promisify(execFile);
 
 test('proof CLI accepts a working-tree fixture and rejects a broken deployed module', async t => {
@@ -39,7 +60,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`proof closes acq
   t.after(async () => { await acquisition?.catch(() => {}); await owned?.close(); });
   const engine = { launch(options) {
     acquisition = (async () => {
-      owned = await chromium.launch({ ...options, timeout: 10000 });
+      owned = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS], timeout: 10000 });
       if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 100));
       else {
         const newPage = owned.newPage.bind(owned);
