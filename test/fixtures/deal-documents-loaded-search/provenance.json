@@ -1,0 +1,8 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "962b2e1c6ad7ac644db1214d1ebd5d92d20c54a2",
+  "module": "mcp-server/src/deal-files.js",
+  "module_sha256": "97b17764d89dfb44d86b42cc8e01a2210163b311a89f68b0606e943cca89ffe7",
+  "producer_sha256": "df3e1fc050a40875d2e05e01ee7bd72e760da7711f30a99977966356691390eb",
+  "recording_method": "Registered handler with synthetic v_deal_documents query adapter. page_count is null as emitted by the view. Inputs and rows are stored in recordings.json."
+}
