@@ -61,3 +61,40 @@ test('query change retires failed and in-flight pages and unmount discards queue
   release(); await tick(40); assert.equal(maxActive, 1); assert.deepEqual(ui.options(), ['', id(90), id(2)]);
   ui.input('Ann'); await tick(350); ui.input('Later'); await tick(350); ui.dom.window.stop(); release(); await tick(30); assert.equal(ui.calls.length, 3);
 });
+test('changing a failed query clears retry and clearing a debounce admits no read', async t => {
+  const ui = await mount(t, async args => { if (args.query === 'Fail') throw Error('synthetic'); return page(2); });
+  ui.input('Fail'); await tick(350); assert.ok(ui.doc.body.textContent.includes('Retry search'));
+  ui.input('Bea'); await tick(350); assert.equal(ui.calls.at(-1).cursor, undefined); assert.deepEqual(ui.options(), ['', id(90), id(2)]);
+  ui.input('Later'); await tick(50); ui.input(''); await tick(350); assert.equal(ui.calls.length, 2); assert.deepEqual(ui.options(), ['', id(90)]);
+});
+test('directory unavailable falls back through contacts parser without automatic retry', async t => {
+  const ui = await mount(t, async args => args.query ? { error: 'unknown_tool' } : { schema_version: 'email-match-contacts.v1', contacts: [{ exact: true, name: 'Fallback', contact_snapshot: { party_id: id(4) } }] });
+  ui.input('Ann'); await tick(350);
+  assert.ok(ui.doc.body.textContent.includes('Name search is unavailable'));
+  assert.deepEqual(ui.options(), ['', id(90), id(4)]); assert.equal(ui.calls.length, 1); assert.equal(ui.doc.querySelector('input'), null);
+});
+test('retry failure remains explicit and deduplicates a successful repeated option', async t => {
+  let attempts = 0;
+  const ui = await mount(t, async args => {
+    if (!args.cursor) return page(1, cursor(1));
+    if (++attempts < 3) throw Error('synthetic failure');
+    return { ...page(2), parties: [...page(1).parties, ...page(2).parties] };
+  });
+  ui.input('Ann'); await tick(350); ui.click('More results'); await tick(20);
+  await tick(350); assert.equal(attempts, 1);
+  ui.click('Retry search'); await tick(20); assert.equal(attempts, 2);
+  ui.click('Retry search'); await tick(20); assert.equal(attempts, 3); assert.deepEqual(ui.options(), ['', id(90), id(1), id(2)]);
+});
+for (const phase of ['idle', 'debouncing', 'ready', 'failed', 'contacts', 'loading']) test(`close editor from ${phase} retires timers and late pages`, async t => {
+  let release;
+  const ui = await mount(t, async args => {
+    if (phase === 'failed') throw Error('synthetic');
+    if (phase === 'contacts') return args.query ? { error: 'unknown_tool' } : { schema_version: 'email-match-contacts.v1', contacts: [] };
+    if (phase === 'loading') await new Promise(resolve => { release = resolve; });
+    return page(1);
+  });
+  if (phase !== 'idle') { ui.input('Ann'); await tick(phase === 'debouncing' ? 50 : 350); }
+  const count = ui.calls.length;
+  ui.dom.window.stop(); release?.(); await tick(350);
+  assert.equal(ui.calls.length, count); assert.equal(ui.doc.querySelector('select'), null);
+});

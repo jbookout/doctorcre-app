@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "waiting-people-retry-page-cursor",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "waiting-people-exact-page-retry",
+    "predicate": "Run node scripts/prove-waiting-people-retry-page-cursor.mjs --origin https://app.doctorcre.com --timeout-ms 30000 against deployed bytes. Verify first page and team identities, retained choices and selection after failure, exact cursor retry and append once, new-query invalidation, and teardown.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, SHA-256 asset hashes and all five named assertions. Exit 1 on contradiction and 78 on unavailable release, assets or witness. This is synthetic deployed behavior only.",
+    "input_class": "read-only fetched deployed modules with contract-checked synthetic RPC inside an isolated browser",
+    "deadline_seconds": 30
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 31, "max_records": 25, "max_runtime_seconds": 30, "max_artifact_bytes": 65536}
+}
