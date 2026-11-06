@@ -91,7 +91,7 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
   const appFixtureClients = new Set(['../js/fixture-client.js', '../js/live-client.js'].map(path => new URL(path, scripts).href));
   const visited = new Map();
   async function inspect(url, depth) {
-    if (appFixtureClients.has(url.href) || url.href === new URL('app-release-reader.mjs', scripts).href || (visited.get(url.href) ?? -1) >= depth) return;
+    if (url.href === new URL('./proof-browser.mjs', import.meta.url).href || appFixtureClients.has(url.href) || url.href === new URL('app-release-reader.mjs', scripts).href || (visited.get(url.href) ?? -1) >= depth) return;
     visited.set(url.href, depth);
     const source = await readFile(url, 'utf8');
     const filename = url.href.slice(root.href.length);

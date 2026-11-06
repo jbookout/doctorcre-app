@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from './proof-fixture-server.mjs';
 import { fixtureServer } from './browser-harness.mjs';
-import { chromium as realChromium } from 'playwright';
-import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
+import { assertProofDeadlineCleanup } from './proof-browser-harness.mjs';
 import { prove } from '../scripts/prove-market-terms-fact-filter.mjs';
 
 function cli(origin) {
@@ -44,49 +43,12 @@ test('CLI working-tree fixture passes; broken deployed asset fails; natural proo
   } finally { await proxy.close(); await upstream.close(); }
 });
 
-test('deadline closes late launch and stalled evaluation resources with exit 78', async () => {
-  const fixture = await server((req,res) => {res.setHeader('content-type','application/json'); res.end(JSON.stringify(release));});
-  try {
-    for (const mode of ['late launch','stalled evaluation']) {
-      let acquired = 0, closed = 0;
-      const browser = {close:async () => { closed++; },newPage:async () => ({route:async () => {},goto:async () => {},evaluate:() => new Promise(() => {})})};
-      const engine = {launch:async () => { if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve,300)); acquired++; return browser; }};
-      await assert.rejects(prove({origin:fixture.origin,timeoutMs:150,fixture:true,engine}),error => error.exitCode === 78);
-      await new Promise(resolve => setTimeout(resolve,350));
-      assert.equal(acquired,1,mode); assert.ok(closed >= 1,mode);
-    }
-  } finally { await fixture.close(); }
-});
-
-
-test('real Chromium disconnects after late acquisition and stalled evaluation deadlines', async () => {
+for (const mode of ['late launch', 'stalled evaluation']) test(`real CLI closes owned Chromium after ${mode}`, async t => {
   const fixture = await server((req,res) => { res.setHeader('content-type','application/json'); res.end(JSON.stringify(release)); });
   try {
-    for (const mode of ['late launch','stalled evaluation']) {
-      let acquired;
-      let finishLaunch;
-      const launched = new Promise(resolve => { finishLaunch = resolve; });
-      const engine = { launch: async options => {
-        acquired = await realChromium.launch({...options,args:[...CHROMIUM_SAFETY_ARGS],timeout:10000});
-        finishLaunch();
-        if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve,1000));
-        else {
-          const newPage = acquired.newPage.bind(acquired);
-          acquired.newPage = async () => {
-            const page = await newPage();
-            page.goto = async () => {};
-            page.evaluate = () => new Promise(() => {});
-            return page;
-          };
-        }
-        return acquired;
-      }};
-      try {
-        await assert.rejects(prove({origin:fixture.origin,timeoutMs:700,fixture:true,engine}),error => error.exitCode === 78);
-        await launched;
-        await new Promise(resolve => setTimeout(resolve,1200));
-        assert.equal(acquired.isConnected(),false,mode);
-      } finally { await acquired?.close(); }
-    }
+    await assertProofDeadlineCleanup(t, {
+      entry: 'scripts/prove-market-terms-fact-filter.mjs',
+      args: ['--origin', fixture.origin, '--fixture'], mode,
+    });
   } finally { await fixture.close(); }
 });
