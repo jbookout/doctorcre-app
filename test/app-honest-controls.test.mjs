@@ -220,6 +220,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
     routes.set(path,{status:response.status,headers:Object.fromEntries(response.headers),contentType:response.headers.get('content-type')||'application/octet-stream',body:Buffer.from(await response.arrayBuffer())});
   }
   const server=await startFixture({routes});
+  t.after(()=>server.close());
   const base=server.origin;
   const browser = await chromium.launch({ headless: true });
   try {
