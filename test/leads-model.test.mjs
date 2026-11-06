@@ -117,3 +117,23 @@ test('stage clock preserves offset equivalence, leap days, ordering, limits and 
  assert.equal(stageReview({correspondence:[]},'engaged').question,'What contact has taken place?');
  assert.equal(stageReview({correspondence:entries},'outreach_active').question,'What outreach has started?');
 });
+
+test('stage clock excludes fractional future instants without suppressing explanation', () => {
+ const now = Date.parse('2026-03-10T12:00:00.123Z');
+ for (const occurred_at of ['2026-03-10T12:00:00.123001Z', '2026-03-10T06:00:00.123000000000000000000000000001-06:00']) {
+  const result = stageReview({correspondence:[{id:'future',kind:'email_in',occurred_at}]}, 'engaged', now);
+  assert.deepEqual(result.evidence, [], occurred_at);
+  assert.equal(result.question, 'What contact has taken place?');
+  assert.equal(result.reason, null);
+ }
+});
+test('stage clock orders exact fractional instants before limiting evidence', () => {
+ for (const date of ['2026-03-09', '1969-12-31']) {
+  const entries = ['000001','000002','000003','000004'].map((fraction, i) => ({id:String(i+1),kind:'email_in',occurred_at:`${date}T12:00:00.${fraction}Z`}));
+  const result = stageReview({correspondence:entries}, 'engaged', Date.parse('2026-03-10T12:00:00Z'));
+  assert.deepEqual(result.evidence.map(row => row.id), ['4','3','2']);
+ }
+ const entries = ['2026-03-09T12:00:00.123456789000000000000000000002Z','2026-03-09T06:00:00.123456789000000000000000000003-06:00','2026-03-09T12:00:00.123456789000000000000000000001Z','2026-03-09T12:00:00.123456789000000000000000000003000Z']
+  .map((occurred_at,i)=>({id:String(i),kind:'email_in',occurred_at}));
+ assert.deepEqual(stageReview({correspondence:entries},'engaged').evidence.map(row=>row.id),['1','3','0']);
+});
