@@ -29,7 +29,7 @@ test('no-fixture POST admission refuses every registry write and unknown read-li
   const directory = temporaryDirectory('doctorcre-walk-read-guard-', t);
   writeFileSync(resolve(directory, 'reads.spec.ts'), `
 import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
-import { test } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
+import { test, readOnlyVerbs } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
 test('no unverified mutation leaves the browser', async ({page}) => {
   await page.goto('/');
   for (const name of ${JSON.stringify(refused)}) {
@@ -40,6 +40,14 @@ test('no unverified mutation leaves the browser', async ({page}) => {
     ['POST', {method:'tools/list',params:{name:'read-home-inbox-v5'}}],
     ['POST', {params:{name:'read-home-inbox-v5'}}],
   ]) expect(await page.evaluate(({method,envelope})=>fetch('/mcp',{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(envelope)}).then(()=>false,()=>true),{method,envelope})).toBe(true);
+});
+test('allowlist contains only recorded registry reads', async ({page}) => {
+  const verbs = ${JSON.stringify(registry.verbs)};
+  expect(readOnlyVerbs.length).toBeGreaterThan(0);
+  expect(new Set(readOnlyVerbs).size).toBe(readOnlyVerbs.length);
+  for (const name of readOnlyVerbs) expect(verbs.find(verb => verb.name === name)?.write, name).toBe(false);
+  await page.goto('/');
+  expect(await page.evaluate(() => fetch('/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'tools/call',params:{name:'read-home-inbox-v5',arguments:{}}})}).then(r=>r.status))).toBe(200);
 });`);
   const config = resolve(directory, 'playwright.config.ts');
   writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
@@ -47,8 +55,8 @@ test('no unverified mutation leaves the browser', async ({page}) => {
     assert.deepEqual(receipts, [], 'Refused requests must never reach the server');
     throw error;
   });
-  assert.equal(JSON.parse(stdout).stats.expected, 1);
-  assert.deepEqual(receipts, []);
+  assert.equal(JSON.parse(stdout).stats.expected, 2);
+  assert.deepEqual(receipts, ['POST']);
 });
 
 test('walk privacy covers consecutive spec files and secondary pages', async t => {
@@ -117,7 +125,7 @@ async function fixture(context, ordinary = false, missing = false, number = 12) 
     if (request.method() === 'POST' && request.postDataJSON()?.params?.name === 'read-home-inbox-v5') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(snapshot) }] } } });
     if (request.method() !== 'GET') return route.fallback();
     if (new URL(request.url()).pathname === '/deals') return route.fulfill({ contentType: 'text/html', body: '<button id="listView">List</button><span id="boardStatusLabel">Ready</span><span id="boardAsOf">Updated</span><a class="deal-link" data-open-deal="' + item.deal_id + '">' + (ordinary ? 'Ordinary deal' : 'TEST WALK ' + number + ' deal') + '</a>' });
-    return route.fulfill({ contentType: 'text/html', body: '<h1>Welcome home.</h1><div class="inbox-health">Updating</div><main></main><script>fetch("/mcp", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({params:{name:"read-home-inbox-v5"}})}).then(r=>r.json()).then(()=>{document.querySelector("main").innerHTML=' + JSON.stringify(missing ? '' : '<article data-inbox-row="' + item.item_id + '"><h3><a>' + item.title + '</a></h3><button>Mark done</button></article>') + ';document.querySelector(".inbox-health").textContent="Up to date"})</script>' });
+    return route.fulfill({ contentType: 'text/html', body: '<h1>Welcome home.</h1><div class="inbox-health">Updating</div><main></main><script>fetch("/mcp", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({method:"tools/call",params:{name:"read-home-inbox-v5"}})}).then(r=>r.json()).then(()=>{document.querySelector("main").innerHTML=' + JSON.stringify(missing ? '' : '<article data-inbox-row="' + item.item_id + '"><h3><a>' + item.title + '</a></h3><button>Mark done</button></article>') + ';document.querySelector(".inbox-health").textContent="Up to date"})</script>' });
   });
   return snapshot.items[0] || item;
 }
@@ -229,16 +237,29 @@ test.beforeEach(async ({ page }) => {
 
 test('every mutating walk skips without a TEST fixture and sends zero writes', async t => {
   const methods = [];
-  const server = createServer((request, response) => {
-    methods.push(request.method);
+  const empty = { ok: true, schema_version: 'home-inbox.v5', truncated: false, limit: 1000, working_collapsed: true, auto_settle_enabled: true, items: [] };
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    methods.push({ method: request.method, path: request.url, name: body ? JSON.parse(body)?.params?.name : null });
+    if (request.url === '/mcp') {
+      response.setHeader('Content-Type', 'application/json');
+      return response.end(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify(empty) }] } }));
+    }
     response.setHeader('Content-Type', 'text/html');
-    response.end('<h1>Welcome home.</h1><div class="inbox-health">Up to date</div>');
+    response.end('<h1>Welcome home.</h1><div class="inbox-health">Updating</div><script>fetch("/mcp", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({method:"tools/call",params:{name:"read-home-inbox-v5",arguments:{}}})}).then(r=>r.json()).then(()=>document.querySelector(".inbox-health").textContent="Up to date")</script>');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const directory = temporaryDirectory('doctorcre-walk-absent-', t);
   const specs = readdirSync('tests/walks').filter(name => /^(01|03|07|10|12|13|14|15|33)-/.test(name));
-  for (const name of specs) writeFileSync(resolve(directory, name), `import ${JSON.stringify(resolve('tests/walks', name))};`);
+  for (const name of specs) writeFileSync(resolve(directory, name), `
+import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
+import { test, inboxItems } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
+import { parseSnapshot } from ${JSON.stringify(resolve('src/ui/home/inbox.tsx'))};
+import ${JSON.stringify(resolve('tests/walks', name))};
+test.beforeEach(() => { expect(parseSnapshot(${JSON.stringify(empty)}).items).toEqual([]); });
+test.afterEach(async ({context}) => { expect(await inboxItems(context)).toEqual([]); });`);
   const config = resolve(directory, 'playwright.config.ts');
   writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
   const { stdout } = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 30_000 });
@@ -247,7 +268,8 @@ test('every mutating walk skips without a TEST fixture and sends zero writes', a
   assert.equal(report.stats.unexpected, 0);
   for (const suite of report.suites) for (const spec of suite.specs) assert.match(JSON.stringify(spec.tests[0].annotations), /needs designated test record: Home card named TEST WALK/);
   assert.ok(methods.length >= 9);
-  assert.equal(methods.filter(method => method !== 'GET').length, 0);
+  assert.equal(methods.filter(request => request.method === 'POST').length, 9);
+  assert.ok(methods.every(request => request.method === 'GET' || request.method === 'POST' && request.path === '/mcp' && request.name === 'read-home-inbox-v5'));
 });
 
 test('deal and tour discovery waits for asynchronously rendered records', async t => {

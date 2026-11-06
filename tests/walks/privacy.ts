@@ -1,6 +1,85 @@
 import { test as base, type BrowserContext } from '@playwright/test';
 import { object, parseSnapshot, type InboxItem } from '../../src/ui/home/inbox';
 
+export const readOnlyVerbs: readonly string[] = [
+  'calendar-meeting-prep',
+  'capture-queue',
+  'catch-me-up',
+  'correspondence-readiness',
+  'current-work-item',
+  'current-work-requests',
+  'deal-board',
+  'deal-room-board',
+  'email-match-contacts',
+  'engineering-passport',
+  'find',
+  'find-and-catch-up',
+  'get-call-context',
+  'get-deal-room',
+  'get-incident',
+  'governance-queue',
+  'ideal-client-profile',
+  'incident-board',
+  'lead-board',
+  'list-deal-documents',
+  'list-doc-conversations',
+  'list-doc-suggestions',
+  'list-email-proposals',
+  'list-email-thread-filings',
+  'list-fact-review',
+  'list-feature-switches',
+  'list-industry-events',
+  'list-my-codex-sessions',
+  'list-practice-origination',
+  'list-progress-boards',
+  'list-verbs',
+  'loop-board',
+  'loop-headers',
+  'morning-assurance-queue',
+  'morning-brief',
+  'morning-brief-queue',
+  'notification-feed',
+  'preview-email-deal-progress',
+  'preview-email-filing',
+  'preview-email-next-step',
+  'quiet-follow-ups',
+  'read-actor-roster-v1',
+  'read-assurance-health',
+  'read-call-outcomes',
+  'read-correspondence-thread',
+  'read-deal-update-reviews',
+  'read-dispatch-history',
+  'read-doc-activity',
+  'read-doc-conversation',
+  'read-doc-outcome-cards',
+  'read-home-agenda',
+  'read-home-inbox',
+  'read-home-inbox-v2',
+  'read-home-inbox-v3',
+  'read-home-inbox-v4',
+  'read-home-inbox-v5',
+  'read-home-review',
+  'read-invoice-tracker',
+  'read-loop',
+  'read-notification-preferences',
+  'read-portfolio',
+  'read-post-call-followups',
+  'read-progress-board',
+  'read-resource-dashboard',
+  'read-room',
+  'read-room-queue',
+  'read-session-identity',
+  'resolve-action-link',
+  'schedule-board',
+  'search-parties-v1',
+  'standing-context',
+  'territory-state-board',
+  'today-triage',
+  'unfinished-work',
+  'work-queue',
+  'work-request-card',
+];
+
 type Admission = { items: InboxItem[]; verbs: readonly string[] };
 const snapshots = new WeakMap<BrowserContext, Promise<InboxItem[]>>();
 const admissions = new WeakMap<BrowserContext, Admission>();
@@ -33,12 +112,15 @@ export const test = base.extend<{ walkPrivacy: void }>({
       const request = route.request();
       if (['GET', 'HEAD', 'OPTIONS'].includes(request.method())) return route.continue();
       const path = new URL(request.url()).pathname;
-      if (path === '/mcp') {
+      if (path === '/mcp' && request.method() === 'POST') {
         let params;
-        try { params = request.postDataJSON()?.params; } catch { return route.abort('blockedbyclient'); }
+        try {
+          const envelope = request.postDataJSON();
+          if (envelope?.method !== 'tools/call') return route.abort('blockedbyclient');
+          params = envelope.params;
+        } catch { return route.abort('blockedbyclient'); }
         const name: unknown = params?.name;
-        const reads = ['deal-room-board', 'morning-brief', 'notification-feed', 'schedule-board', 'email-match-contacts', 'work-request-card', 'work-queue', 'human-actors', 'search-parties'];
-        if (typeof name === 'string' && (/^(read-|get-|list-|preview-|search-)/.test(name) || reads.includes(name))) return route.continue();
+        if (typeof name === 'string' && readOnlyVerbs.includes(name)) return route.continue();
         const admission = admissions.get(context);
         const args = params?.arguments;
         if (admission && typeof name === 'string' && admission.verbs.includes(name) && object(args) && typeof args.idempotency_key === 'string') {
