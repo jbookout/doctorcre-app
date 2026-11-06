@@ -63,6 +63,14 @@ class ResultsTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     results.verify(output, self.files, 1)
 
+    def test_same_case_name_in_another_file_cannot_replace_critical_identity(self):
+        self.produce()
+        file = self.root / self.files[0]
+        file.write_text(file.read_text().replace(self.files[0], 'test/other.test.mjs'))
+        _, output = self.run_node(1)
+        with self.assertRaises(ValueError):
+            results.verify(output, self.files, 1)
+
     def test_missing_truncated_empty_and_deleted_file_refused(self):
         output = self.root / '1.xml'
         with self.assertRaises(OSError):
