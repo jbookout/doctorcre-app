@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from './proof-fixture-server.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { carrInterface } from './carr-contract.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -77,7 +78,7 @@ test('filing recordings retain the registered producer projection before adversa
   const recording = filingProof.filingRecording;
   assert.ok(recording, 'producer-recorded filing responses are required');
   assert.equal(recording.producer.repository, 'DoctorCRE/carr-system');
-  assert.equal(recording.producer.revision, '35ba9fad92915185f71603080b37c0352b4a20df');
+  assert.equal(recording.producer.revision, carrInterface.producer.source_commit);
   assert.equal(recording.producer.source_sha256, 'c7d88f4776f4b41350a010bbb853efe388efc4f933630874461629a9e5972752');
   assert.equal(recording.producer.verb, 'list-email-thread-filings');
   assert.deepEqual(recording.emptyResponse, { filings: [] });
