@@ -4,16 +4,126 @@ import { chromium } from 'playwright';
 import { proofFetch, readAppRelease, launchProofBrowser } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
-export async function observeFilings() {
+export const filingRecording = {
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "revision": "35ba9fad92915185f71603080b37c0352b4a20df",
+    "path": "mcp-server/src/email-proposals.js",
+    "source_sha256": "c7d88f4776f4b41350a010bbb853efe388efc4f933630874461629a9e5972752",
+    "verb": "list-email-thread-filings"
+  },
+  "sourceTimes": [
+    "2026-11-06T00:30:00Z",
+    "2026-03-08T07:59:00Z",
+    "2026-03-08T08:00:00Z",
+    "2026-11-01T06:30:00Z",
+    "2026-11-01T07:30:00Z",
+    "2025-10-01T13:00:00Z",
+    "2024-02-29T17:30:00+05:30"
+  ],
+  "response": {
+    "filings": [
+      {
+        "event_id": "40000000-0000-4000-8000-000000000000",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000000",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 0",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2026-11-06T00:30:00.000Z",
+        "activity_version": 1
+      },
+      {
+        "event_id": "40000000-0000-4000-8000-000000000001",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000001",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 1",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2026-03-08T07:59:00.000Z",
+        "activity_version": 1
+      },
+      {
+        "event_id": "40000000-0000-4000-8000-000000000002",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000002",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 2",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2026-03-08T08:00:00.000Z",
+        "activity_version": 1
+      },
+      {
+        "event_id": "40000000-0000-4000-8000-000000000003",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000003",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 3",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2026-11-01T06:30:00.000Z",
+        "activity_version": 1
+      },
+      {
+        "event_id": "40000000-0000-4000-8000-000000000004",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000004",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 4",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2026-11-01T07:30:00.000Z",
+        "activity_version": 1
+      },
+      {
+        "event_id": "40000000-0000-4000-8000-000000000005",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000005",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 5",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2025-10-01T13:00:00.000Z",
+        "activity_version": 1
+      },
+      {
+        "event_id": "40000000-0000-4000-8000-000000000006",
+        "deal": "20000000-0000-4000-8000-000000000001",
+        "activity_id": "30000000-0000-4000-8000-000000000006",
+        "recorded_at": "2026-11-06T12:00:00.000Z",
+        "summary": "",
+        "current_deal_id": "20000000-0000-4000-8000-000000000001",
+        "subject": "Synthetic filing 6",
+        "sender_name": "Synthetic Sender",
+        "occurred_at": "2024-02-29T12:00:00.000Z",
+        "activity_version": 1
+      }
+    ]
+  },
+  "emptyResponse": {
+    "filings": []
+  }
+};
+
+export async function observeFilings(recordedResponse) {
   const { createLiveClient } = await import('/js/live-client.js');
   const { mountEmailFilings } = await import('/js/email-filings.js');
-  const times = ['2026-11-06T00:30:00Z', '2026-03-08T07:59:00Z', '2026-03-08T08:00:00Z',
-    '2026-11-01T06:30:00Z', '2026-11-01T07:30:00Z', '2025-10-01T13:00:00Z',
-    '2024-02-29T17:30:00+05:30', '2026-02-31T12:00:00Z', null, '', 'invalid'];
-  const deal = '20000000-0000-4000-8000-000000000001';
-  const filings = times.map((occurred_at, i) => ({ event_id: `40000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-    deal, current_deal_id: deal, activity_id: `30000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-    activity_version: null, recorded_at: '2026-11-06T12:00:00Z', summary: '', subject: `Synthetic filing ${i}`, sender_name: 'Synthetic Sender', occurred_at }));
+  const deal = recordedResponse.filings[0].deal;
+  const filings = structuredClone(recordedResponse.filings);
+  // These intentionally invalid parser inputs are separate from the producer recording.
+  for (const [i, occurred_at] of ['2026-02-31T12:00:00Z', null, '', 'invalid'].entries()) {
+    filings.push({ ...filings[0], event_id: '40000000-0000-4000-8000-' + String(i + 7).padStart(12, '0'),
+      activity_id: '30000000-0000-4000-8000-' + String(i + 7).padStart(12, '0'), occurred_at });
+  }
   let reads = 0;
   const client = createLiveClient({ fetchImpl: async (path, init) => {
     const rpc = JSON.parse(init.body);
@@ -72,7 +182,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
         const page = await context.newPage();
         await page.clock.setFixedTime(new Date('2026-11-06T12:00:00Z'));
         await page.goto(new URL('/__filings-proof', base).href);
-        const observation = await page.evaluate(observeFilings);
+        const observation = await page.evaluate(observeFilings, filingRecording.response);
         if (routeFailure) throw routeFailure;
         assert.deepEqual(observation.labels, ['Nov 5, 6:30 PM CST', 'Mar 8, 1:59 AM CST', 'Mar 8, 3:00 AM CDT',
           'Nov 1, 1:30 AM CDT', 'Nov 1, 1:30 AM CST', 'Oct 1, 2025, 8:00 AM CDT', 'Feb 29, 2024, 6:00 AM CST',

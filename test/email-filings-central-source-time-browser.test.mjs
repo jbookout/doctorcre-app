@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium, fixtureServer } from './browser-harness.mjs';
-import { observeFilings } from '../scripts/prove-email-filings-central-source-time.mjs';
+import { observeFilings, filingRecording } from '../scripts/prove-email-filings-central-source-time.mjs';
 let outDir, server, browser;
 before(async () => {
   outDir = temporaryDirectory('central-filings-');
@@ -23,7 +23,7 @@ for (const timezoneId of ['UTC', 'America/Los_Angeles', 'America/Chicago']) {
       await page.goto(server.origin);
       await page.evaluate(theme => document.documentElement.dataset.theme = theme, colorScheme);
       await page.clock.setFixedTime(new Date('2026-11-06T12:00:00Z'));
-      const result = await page.evaluate(observeFilings);
+      const result = await page.evaluate(observeFilings, filingRecording.response);
       assert.deepEqual(result.labels, [
         'From Synthetic Sender · Nov 5, 6:30 PM CST',
         'From Synthetic Sender · Mar 8, 1:59 AM CST',
@@ -45,20 +45,32 @@ for (const timezoneId of ['UTC', 'America/Los_Angeles', 'America/Chicago']) {
 test('refresh retry session retirement and disposal ignore late reads', async t => {
   const page = await browser.newPage(); t.after(() => page.close());
   await page.goto(server.origin);
-  const result = await page.evaluate(async () => {
+  const result = await page.evaluate(async emptyResponse => {
+    const { createLiveClient } = await import('/js/live-client.js');
+    const recordedClient = createLiveClient({ fetchImpl: async (_path, init) => {
+      const rpc = JSON.parse(init.body);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(emptyResponse) }] } }));
+    } });
     const { mountEmailFilings } = await import('/js/email-filings.js');
     const host = document.createElement('section'); document.body.append(host);
     let mode = 'ready', release;
     const client = { listEmailThreadFilings: async () => {
       if (mode === 'error') throw Error('synthetic failure');
       if (mode === 'held') await new Promise(resolve => { release = resolve; });
-      return { filings: [] };
+      return recordedClient.listEmailThreadFilings();
     } };
     const panel = mountEmailFilings({ container: host, client });
     const read = panel.refresh(); const loading = host.getAttribute('aria-busy'); await read;
     const ready = host.textContent.includes('No filed emails');
     mode = 'error'; await panel.refresh(); const error = host.textContent.includes('Could not load');
-    mode = 'ready'; host.querySelector('button').click(); await new Promise(resolve => setTimeout(resolve));
+    mode = 'ready';
+    await new Promise(resolve => {
+      const observer = new MutationObserver(() => {
+        if (host.textContent.includes('No filed emails')) { observer.disconnect(); resolve(); }
+      });
+      observer.observe(host, { childList: true, subtree: true });
+      host.querySelector('button').click();
+    });
     const retry = host.textContent.includes('No filed emails');
     mode = 'held'; const pending = panel.refresh();
     window.dispatchEvent(new CustomEvent('doctorcre-session-invalidated'));
@@ -68,21 +80,26 @@ test('refresh retry session retirement and disposal ignore late reads', async t 
     const late = second.refresh(); second.dispose(); const snapshot = host.innerHTML;
     release(); await late; await second.refresh();
     return { loading, ready, error, retry, retired, disposed: snapshot === host.innerHTML };
-  });
+  }, filingRecording.emptyResponse);
   assert.deepEqual(result, { loading: 'true', ready: true, error: true, retry: true, retired: true, disposed: true });
 });
 
 test('ready and failed panels retire on session loss and ready disposal prevents refresh', async t => {
   const page = await browser.newPage(); t.after(() => page.close());
   await page.goto(server.origin);
-  const result = await page.evaluate(async () => {
+  const result = await page.evaluate(async emptyResponse => {
+    const { createLiveClient } = await import('/js/live-client.js');
+    const recordedClient = createLiveClient({ fetchImpl: async (_path, init) => {
+      const rpc = JSON.parse(init.body);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(emptyResponse) }] } }));
+    } });
     const { mountEmailFilings } = await import('/js/email-filings.js');
     const snapshots = [];
     for (const failed of [false, true]) {
       const host = document.createElement('section'); document.body.append(host);
       const panel = mountEmailFilings({ container: host, client: { listEmailThreadFilings: async () => {
         if (failed) throw Error('synthetic');
-        return { filings: [] };
+        return recordedClient.listEmailThreadFilings();
       } } });
       await panel.refresh();
       window.dispatchEvent(new CustomEvent('doctorcre-session-invalidated'));
@@ -91,9 +108,9 @@ test('ready and failed panels retire on session loss and ready disposal prevents
     }
     let reads = 0;
     const host = document.createElement('section'); document.body.append(host);
-    const panel = mountEmailFilings({ container: host, client: { listEmailThreadFilings: async () => { reads++; return { filings: [] }; } } });
+    const panel = mountEmailFilings({ container: host, client: { listEmailThreadFilings: async () => { reads++; return recordedClient.listEmailThreadFilings(); } } });
     await panel.refresh(); panel.dispose(); await panel.refresh();
     return { snapshots, reads };
-  });
+  }, filingRecording.emptyResponse);
   assert.deepEqual(result, { snapshots: [true, true], reads: 1 });
 });

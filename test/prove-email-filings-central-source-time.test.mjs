@@ -9,7 +9,8 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
-import { prove } from '../scripts/prove-email-filings-central-source-time.mjs';
+import * as filingProof from '../scripts/prove-email-filings-central-source-time.mjs';
+const { prove } = filingProof;
 const exec = promisify(execFile);
 let outDir;
 before(async () => { outDir = temporaryDirectory('filings-cli-'); await buildArtifact({ root: process.cwd(), outDir }); });
@@ -70,4 +71,26 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`proof deadline c
   await pending;
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(acquired.isConnected(), false, 'owned browser process closed');
+});
+
+test('filing recordings retain the registered producer projection before adversarial mutations', () => {
+  const recording = filingProof.filingRecording;
+  assert.ok(recording, 'producer-recorded filing responses are required');
+  assert.equal(recording.producer.repository, 'DoctorCRE/carr-system');
+  assert.equal(recording.producer.revision, '35ba9fad92915185f71603080b37c0352b4a20df');
+  assert.equal(recording.producer.source_sha256, 'c7d88f4776f4b41350a010bbb853efe388efc4f933630874461629a9e5972752');
+  assert.equal(recording.producer.verb, 'list-email-thread-filings');
+  assert.deepEqual(recording.emptyResponse, { filings: [] });
+  assert.equal(recording.response.filings.length, 7);
+  for (const [index, row] of recording.response.filings.entries()) {
+    assert.deepEqual(Object.keys(row).sort(), ['event_id', 'deal', 'activity_id', 'recorded_at', 'summary',
+      'current_deal_id', 'subject', 'sender_name', 'occurred_at', 'activity_version'].sort());
+    for (const key of ['event_id', 'deal', 'activity_id', 'current_deal_id']) assert.match(row[key], /^[a-f0-9-]{36}$/);
+    for (const key of ['recorded_at', 'occurred_at']) {
+      assert.equal(typeof row[key], 'string');
+      assert.ok(Number.isFinite(Date.parse(row[key])));
+    }
+    assert.equal(Date.parse(row.occurred_at), Date.parse(recording.sourceTimes[index]));
+    assert.equal(row.activity_version, 1);
+  }
 });
