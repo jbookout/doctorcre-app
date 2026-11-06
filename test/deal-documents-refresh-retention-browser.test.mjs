@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
-import { chromium } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
 import { readFile } from 'node:fs/promises';
 import { observeRefreshRetention } from './deal-documents-refresh-observer.mjs';
 
@@ -19,8 +19,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
       await t.test(`observer rejects an altered ${recording} request ${width} ${theme}`, async () => {
         const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
         try {
-          await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }));
-          await page.goto(`${server.url}/documents-harness`);
+          await componentDocument(page, server.url, {owner:'documents refresh', html: '<!doctype html><body></body>'});
           const recordings = structuredClone(refreshRecordings);
           recordings[recording].request.limit = 49;
           await assert.rejects(
@@ -34,8 +33,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
       await t.test(`${transition} ${width} ${theme}`, async () => {
         const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
         try {
-          await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main></main></body>' }));
-          await page.goto(`${server.url}/documents-harness`);
+          await componentDocument(page, server.url, {owner:'documents refresh', html: '<!doctype html><body><main></main></body>'});
           await page.evaluate(async ({ transition, response }) => {
             const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
             const target = document.querySelector('main'), pending = [], requests = [];
@@ -90,8 +88,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
         await t.test(`${failure} ${replacement} ${width} ${theme}`, async () => {
           const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
           try {
-            await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }));
-            await page.goto(`${server.url}/documents-harness`);
+            await componentDocument(page, server.url, {owner:'documents refresh', html: '<!doctype html><body></body>'});
             const result = await page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.js', recordings: refreshRecordings, failure, replacement });
             assert.ok(result.retained || result.authorizationCleared);
           } finally { await page.close(); }
