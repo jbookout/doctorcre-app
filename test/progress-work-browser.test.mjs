@@ -614,6 +614,41 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
   assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
 });
 
+for (const outcome of ['success', 'failure', 'auth retirement']) test(`queue absence during held work refresh converges after ${outcome}`, async t => {
+  const held = fixtureScope(t).hold();
+  let started = false;
+  const {page,state,calls,errors} = await open(t, {rpcReply:async (rpc,payload) => {
+    if (rpc.name === 'read-progress-board') return {...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}};
+    if (rpc.name === 'read-session-identity') {
+      started = true;
+      await held.promise;
+      if (outcome === 'failure') return {...payload,sessions:null};
+    }
+    return payload;
+  }});
+  await assertEventually(() => started);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  state.queueEmpty = true;
+  const emptyQueue = page.waitForResponse(async response => new URL(response.url()).pathname === '/api/room/queue' && (await response.json()).events?.length === 0);
+  await page.clock.runFor(60_100); await emptyQueue;
+  await page.waitForFunction(() => document.querySelector('#queueLive').textContent === 'Live' && !document.querySelector('.queue-card'));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('progress-queue', {detail:{state:'Live',cards:[]}})));
+  if (outcome === 'auth retirement') await page.evaluate(async () => (await import('/js/progress-auth.js')).invalidateAuth());
+  const reads = calls.filter(call => call.name === 'read-progress-board').length;
+  held.release();
+  await page.waitForFunction(() => !document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Demo research/);
+  assert.doesNotMatch(await page.locator('#workTitle').textContent(), /Demo research/);
+  if (outcome === 'auth retirement') {
+    assert.match(await page.locator('#workMetadata').textContent(), /Sign in/);
+    assert.equal(calls.filter(call => call.name === 'read-progress-board').length, reads);
+  } else {
+    assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
+    assert.equal(calls.filter(call => call.name === 'read-progress-board').length, reads + 1, 'Busy invalidations coalesce into one follow-up');
+  }
+  assert.deepEqual(errors, []);
+});
+
 test('fresh queue absence removes projected task metadata and sequence binding',async t=>{
   const {page,state}=await open(t,{rpcReply:(rpc,payload)=>rpc.name==='read-progress-board'?{...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}}:payload});
   await page.clock.runFor(60_100);await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
