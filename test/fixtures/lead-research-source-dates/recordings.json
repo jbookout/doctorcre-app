@@ -1,0 +1,146 @@
+{
+  "schema_version": "lead-workspace.v1",
+  "generated_at": "2026-10-01T16:00:00Z",
+  "last_search_at": "2026-10-01T14:00:00Z",
+  "leads": [
+    {
+      "id": "30000000-0000-0000-0000-000000000001",
+      "party_id": "30000000-0000-0000-0000-000000000101",
+      "registry_ref": "L-1",
+      "base_version": 1,
+      "doctor_name": "Dr. Example 1",
+      "city": "Pensacola",
+      "state": "FL",
+      "specialty": "Dental",
+      "stage": "new",
+      "score": 79,
+      "suppressed": false,
+      "owner": null,
+      "possible_clients": []
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000002",
+      "party_id": "30000000-0000-0000-0000-000000000102",
+      "registry_ref": "L-2",
+      "base_version": 1,
+      "doctor_name": "Dr. Example 2",
+      "city": "Pensacola",
+      "state": "FL",
+      "specialty": "Dental",
+      "stage": "new",
+      "score": 78,
+      "suppressed": false,
+      "owner": null,
+      "possible_clients": []
+    }
+  ],
+  "detail": {
+    "id": "30000000-0000-0000-0000-000000000001",
+    "party_id": "30000000-0000-0000-0000-000000000101",
+    "registry_ref": "L-1",
+    "base_version": 1,
+    "doctor_name": "Dr. Example 1",
+    "city": "Pensacola",
+    "state": "FL",
+    "specialty": "Dental",
+    "stage": "new",
+    "score": 79,
+    "suppressed": false,
+    "owner": null,
+    "possible_clients": [],
+    "phone": "+1-555-010-0000",
+    "email": "example@example.test",
+    "notes": "Planning a dental relocation.\n\nOriginal synthetic entry with room requirements.",
+    "est_lease_event": "2027-03-01",
+    "correspondence": [
+      {
+        "id": "30000000-0000-0000-0000-000000000600",
+        "kind": "email_in",
+        "occurred_at": "2026-10-01T10:00:00Z",
+        "summary": "Reply confirms interest in a tour.",
+        "detail": "Synthetic original email: please show available dental space."
+      },
+      {
+        "id": "30000000-0000-0000-0000-000000000601",
+        "kind": "meeting",
+        "occurred_at": "2026-09-30T12:00:00Z",
+        "summary": "Space plans discussed.",
+        "detail": "Synthetic calendar entry: 2,000 square feet."
+      }
+    ],
+    "stage_history": [
+      {
+        "event_id": "30000000-0000-0000-0000-000000000500",
+        "prior_stage": "outreach_active",
+        "stage": "engaged",
+        "occurred_at": "2026-10-01T10:00:00Z",
+        "reason": "Reply received"
+      }
+    ],
+    "research": {
+      "state": "needs_review",
+      "evidence": [
+        {
+          "flag_id": "30000000-0000-0000-0000-000000000700",
+          "kind": "verified",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "https://example.test/source/0",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Synthetic finding 0"
+        },
+        {
+          "flag_id": "30000000-0000-0000-0000-000000000701",
+          "kind": "discrepancy",
+          "found": true,
+          "expired": false,
+          "proposes_correction": true,
+          "source": "https://example.test/source/1",
+          "observed_at": "2026-11-06T03:00:00+02:00",
+          "expires_on": null,
+          "value": "Synthetic finding 1"
+        },
+        {
+          "flag_id": "30000000-0000-0000-0000-000000000702",
+          "kind": "verified",
+          "found": false,
+          "expired": true,
+          "proposes_correction": false,
+          "source": "https://example.test/source/2",
+          "observed_at": "2024-02-29T23:00:00-06:00",
+          "expires_on": "2025-02-29",
+          "value": "Synthetic finding 2"
+        },
+        {
+          "flag_id": "30000000-0000-0000-0000-000000000703",
+          "kind": "verified",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "https://example.test/source/3",
+          "observed_at": "2026-02-30T12:00:00Z",
+          "expires_on": "2026-04-31",
+          "value": "Synthetic finding 3"
+        }
+      ],
+      "coverage": "recorded_findings_only",
+      "external_search_performed": false,
+      "next_step": "Review discrepancies against original sources before working this record."
+    },
+    "correspondence_page": {
+      "total": 3,
+      "has_more": true,
+      "next_cursor": {
+        "id": "30000000-0000-0000-0000-000000000601",
+        "occurred_at": "2026-09-30T12:00:00Z"
+      }
+    },
+    "stage_history_page": {
+      "total": 1,
+      "has_more": false,
+      "next_cursor": null
+    }
+  }
+}
