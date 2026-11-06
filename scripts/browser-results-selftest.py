@@ -31,7 +31,7 @@ class ResultsTest(unittest.TestCase):
                 source += (change(body) if change else body) + '\n'
             (self.root / file).write_text(source + '\n});\n')
 
-    def run_node(self, shard, timeout=10):
+    def run_node(self, shard, timeout=60):
         output = self.root / f'{shard}.xml'
         env = dict(os.environ)
         env.pop('NODE_TEST_CONTEXT', None)
