@@ -114,7 +114,7 @@ function Review({ item, documents, index, terms }: { item: Item; documents: Docu
 }
 
 const comparisonRows: Record<string, number> = { base_rent_per_sf: 9, term_months: 13, free_rent_months: 14, landlord_ti_per_sf: 15 };
-function Comparison({ client, entityRef, terms, signal }: Options & { signal: AbortSignal }) {
+function Comparison({ client, entityRef, terms, signal, revealTerm }: Options & { signal: AbortSignal; revealTerm: () => void }) {
   const [loading, setLoading] = useState(false);
   const [label, setLabel] = useState('Prepare terms comparison');
   const [result, setResult] = useState<ReactNode>(null);
@@ -123,6 +123,7 @@ function Comparison({ client, entityRef, terms, signal }: Options & { signal: Ab
   function fieldLink(key: string) {
     return <a href={`#term-${key}`} data-comparison-field={key} onClick={event => {
       event.preventDefault(); event.stopPropagation();
+      revealTerm();
       const target = document.getElementById(`term-${key}`); target?.scrollIntoView?.({ block: 'start' }); target?.focus({ preventScroll: true });
     }}>{terms[key]?.label || key}</a>;
   }
@@ -187,9 +188,39 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   const reactRoot = createRoot(root);
   let listContent: ReactNode = null;
   let recordRevision = 0;
+  let selectedTerm = '';
+  const filterHintId = `term-filter-${crypto.randomUUID()}`;
+  function applyTermFilter() {
+    const selector = root.querySelector<HTMLSelectElement>('[data-term-filter]');
+    if (!selector) return;
+    selector.value = selectedTerm;
+    let matching = 0;
+    for (const article of root.querySelectorAll<HTMLElement>('[data-fact-key]')) {
+      article.hidden = !!selectedTerm && article.dataset.factKey !== selectedTerm;
+      if (!article.hidden) matching++;
+    }
+    root.querySelector<HTMLElement>('[data-term-count]')!.textContent = `${matching} matching of ${items.length} loaded terms`;
+    root.querySelector<HTMLElement>('[data-term-empty]')!.hidden = matching !== 0 || !selectedTerm;
+    const lockedKeys = [...pending.keys()].map(form => items[Number(form.dataset.factReview)]?.fact_key).filter(Boolean);
+    for (const option of selector.options) option.disabled = !!option.value && lockedKeys.some(key => key !== option.value);
+    root.querySelector<HTMLElement>('[data-term-filter-hint]')!.textContent = writing || pending.size
+      ? 'A review is saving or its outcome is unconfirmed. Keep that term visible until its outcome is confirmed.'
+      : 'Filters already loaded review items. Other terms may exist outside this loaded view.';
+  }
+  function revealTerm() { selectedTerm = ''; applyTermFilter(); }
+  function focusLinkedTerm() {
+    const hash = root.ownerDocument.defaultView?.location.hash || '';
+    if (!hash.startsWith('#term-')) return;
+    const target = root.ownerDocument.getElementById(hash.slice(1));
+    if (!target || !root.contains(target)) return;
+    revealTerm();
+    target.scrollIntoView?.({ block: 'start' });
+    target.focus({ preventScroll: true });
+  }
   let documentSignature: string | undefined;
   function render() {
-    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} signal={lifetime.signal} /><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} signal={lifetime.signal} revealTerm={revealTerm} /><label>Filter by term<select aria-label="Filter by term" data-term-filter aria-describedby={filterHintId}><option value="">All loaded terms</option>{[...new Set([...items.map(item => item.fact_key), ...(selectedTerm ? [selectedTerm] : [])])].map(key => <option key={key} value={key}>{FACT_TERMS[key]?.label || key.replaceAll('_', ' ')}</option>)}</select></label><p id={filterHintId} data-term-filter-hint /><p role="status" data-term-count /><p data-term-empty hidden>No matching loaded terms. Clear the term filter to see all loaded terms.</p><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    applyTermFilter();
   }
   function setDocuments(result: Document[] | null) {
     const next = result || [];
@@ -250,6 +281,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       listContent = <>{listContent}{Object.keys(comparisonRows).filter(key => !items.some(item => item.fact_key === key)).map(key => <section key={key} className="fact-term fact-empty" id={`term-${key}`} tabIndex={-1}><h3>{FACT_TERMS[key]?.label}</h3><p>No sourced terms recorded.</p></section>)}</>;
       render();
       status.textContent = message;
+      focusLinkedTerm();
     } catch (caught) {
       if (!disposed && current === generation) {
         if (caught && typeof caught === 'object' && 'status' in caught && (caught.status === 401 || caught.status === 403)) { expire(); return; }
@@ -257,7 +289,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       }
     }
   }
-  function markDirty() { dirty = true; }
+  function markDirty(event: Event) { if ((event.target as HTMLElement).closest('form')) dirty = true; }
   function change(event: { target: Controls }) {
     const form = event.target.closest('form');
     if (!form) return;
@@ -306,6 +338,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       writing = true; generation++;
       for (const control of root.querySelectorAll<Controls>('input, select, textarea, button')) control.disabled = true;
       output.textContent = 'Saving…';
+      applyTermFilter();
       const result = await client[request.method](request.args, { signal: lifetime.signal });
       if (disposed) return;
       if (result.ok !== true || result.schema_version !== 'fact-review.v1') throw new Error('Receipt unavailable');
@@ -342,6 +375,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     } finally {
       writing = false;
       if (!disposed) {
+        applyTermFilter();
         for (const control of root.querySelectorAll<Controls>('input, select, textarea, button')) control.disabled = false;
         root.querySelector<HTMLButtonElement>('[data-refresh-terms]')!.disabled = pending.size > 0;
         for (const form of root.querySelectorAll<HTMLFormElement>('[data-fact-review]')) change({ target: control(form, "decision") });
@@ -359,7 +393,16 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     if (button) { button.hidden = true; (button.nextElementSibling as HTMLElement).hidden = false; }
   }
   root.addEventListener('submit', submit);
-  const onChange = (event: Event) => change({ target: event.target as Controls });
+  const onChange = (event: Event) => {
+    const target = event.target as Controls;
+    if (target.matches('[data-term-filter]')) {
+      const hidesPending = [...pending.keys()].some(form => target.value && items[Number(form.dataset.factReview)]?.fact_key !== target.value);
+      if (!writing && !hidesPending) selectedTerm = target.value;
+      applyTermFilter();
+      return;
+    }
+    change({ target });
+  };
   root.addEventListener('change', onChange);
   root.addEventListener('change', markDirty);
   root.addEventListener('input', markDirty);
@@ -378,8 +421,10 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     root.removeEventListener('submit', submit); root.removeEventListener('change', onChange); root.removeEventListener('click', click);
     root.removeEventListener('change', markDirty); root.removeEventListener('input', markDirty);
     root.ownerDocument.defaultView?.removeEventListener('doctorcre-session-invalidated', expire);
+    root.ownerDocument.defaultView?.removeEventListener('hashchange', focusLinkedTerm);
   }
   root.ownerDocument.defaultView?.addEventListener('doctorcre-session-invalidated', expire);
+  root.ownerDocument.defaultView?.addEventListener('hashchange', focusLinkedTerm);
   void refresh();
   return { refresh, dispose };
 }

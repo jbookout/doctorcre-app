@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 
 const networkModules = /^(?:node:)?(?:https?|http2|net|tls|dgram|dns|undici)(?:\/|$)|^(?:axios|got|node-fetch|ws)$/;
 const controlledImports = new Map([
-  ['child_process', ['execFileSync']], ['playwright', ['chromium']],
+  ['child_process', ['execFileSync', 'execFile']], ['playwright', ['chromium']],
   ['playwright-core', ['chromium']], ['@playwright/test', ['chromium']],
 ]);
 

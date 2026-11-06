@@ -47,8 +47,9 @@ export function mountMeetingPreparation({ document, window, client }) {
   const reads = createCurrentRead({ clock: window });
   let trigger = null, timeZone;
   const clear = () => { reads.invalidate(); content.replaceChildren(); retry.disabled = false; };
+  const retire = () => { clear(); window.dispatchEvent(new Event('doctorcre:meeting-preparation-closed')); };
   const close = onDialogClosed(dialog, () => {
-    clear();
+    retire();
     if (trigger) (trigger.isConnected ? trigger : document.querySelector('[data-prepare-meetings]') || document.getElementById('homePrimaryAction'))?.focus();
     trigger = null;
   });
@@ -68,9 +69,9 @@ export function mountMeetingPreparation({ document, window, client }) {
     });
   };
   function invalidate() { trigger = null; clear(); dialog.close(); }
-  dialog.querySelector('[data-prep-close]').onclick = () => { clear(); dialog.close(); };
+  dialog.querySelector('[data-prep-close]').onclick = () => { retire(); dialog.close(); };
   retry.onclick = refresh;
-  dialog.addEventListener('cancel', clear);
+  dialog.addEventListener('cancel', retire);
   window.addEventListener('doctorcre-session-invalidated', invalidate);
   return {
     open(button, selectedTimeZone) { timeZone = selectedTimeZone; trigger = button; clear(); if (!dialog.open) dialog.showModal(); dialog.querySelector('h2').focus(); return refresh(); },

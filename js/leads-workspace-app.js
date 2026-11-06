@@ -11,7 +11,7 @@ import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '
 import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead, leadTitle, marketKey, specialtyKey,
-  visibleLeads, marketCounts, stageReview, automaticMove, undoReview } from "./leads-model.js";
+  visibleLeads, marketCounts, stageReview, automaticMove, undoReview, leadTimestamp } from "./leads-model.js";
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -327,6 +327,14 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (!value) return "";
     return /^https:\/\/\S+$/.test(value) ? `<a href="${esc(value)}">${esc(value)}</a>` : esc(value);
   }
+  function researchDates(item) {
+    const observed = leadTimestamp(item.observed_at);
+    const observedLabel = observed === null ? "Observed time unavailable" : `Observed <time datetime="${esc(item.observed_at)}">${esc(new Date(observed.seconds * 1000).toLocaleString("en-US", { timeZone: BUSINESS_TIME_ZONE, year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }))}</time>`;
+    const expiry = item.expires_on;
+    const expiryInstant = typeof expiry === "string" && /^\d{4}-\d{2}-\d{2}$/.test(expiry) ? leadTimestamp(`${expiry}T12:00:00Z`) : null;
+    const expiryLabel = expiry == null ? "Expiry unrecorded" : expiryInstant === null ? "Expiry date unavailable" : `Expires on <time datetime="${esc(expiry)}">${esc(new Date(expiryInstant.seconds * 1000).toLocaleDateString("en-US", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" }))}</time>`;
+    return `<p class="research-observed">${observedLabel}</p><p class="research-expires-on">${expiryLabel}</p>`;
+  }
   function researchMarkup(research) {
     if (!research) return `<section class="detail-panel" id="sourcedResearch"><h3>Sourced research</h3><p>Sourced research was not included in this read.</p></section>`;
     const facts = research.evidence.map(item => {
@@ -334,7 +342,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       const label = `${kind}${item.proposes_correction ? " · Proposed correction" : ""}`;
       const words = [item.found ? "Finding recorded." : "Nothing found.", factText(item.value)].join(" ");
       const source = sourceMarkup(item.source);
-      return `<li><strong>${esc(label)}</strong><p class="research-finding">${esc(words)}</p>${item.expired ? '<p class="research-expiry">Expired</p>' : ""}${source ? `<p class="research-source">Source: ${source}</p>` : ""}</li>`;
+      return `<li><strong>${esc(label)}</strong><p class="research-finding">${esc(words)}</p>${researchDates(item)}${item.expired ? '<p class="research-expiry">Expired</p>' : ""}${source ? `<p class="research-source">Source: ${source}</p>` : ""}</li>`;
     }).join("");
     const body = facts ? `<p>${esc(RESEARCH_LABELS[research.state])}</p><ol class="research-facts">${facts}</ol>` : `<p>No sourced findings.</p><p>${esc(research.next_step)}</p>`;
     return `<section class="detail-panel" id="sourcedResearch"><h3>Sourced research</h3>${body}${facts && research.next_step ? `<p>${esc(research.next_step)}</p>` : ""}</section>`;
@@ -617,7 +625,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   $("closeStage").addEventListener("click", () => $("stageDialog").close());
   for (const id of ["leadDetail", "stageDialog"]) onDialogClosed($(id), () => {
     if (id === "stageDialog") { ++state.reviewEpoch; state.reviewTarget = null; state.proposal = null; }
-    else { clearGuidance(); ++state.detailEpoch; state.detailId = null; state.detail = null; if (state.identityReady) state.resumeDetail = null; }
+    else { clearGuidance(); ++state.detailEpoch; if (state.detailId) state.resumeDetail = null; state.detailId = null; state.detail = null; }
     paintCommandFeedback();
     if (!$("leadDetail").open && !$("stageDialog").open) {
       selectDocRecord("lead", null);
@@ -745,11 +753,12 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     for (const id of ["detailTitle", "detailBody", "stageTitle", "stageContext", "stageQuestions", "stageError", "moveAnnouncement"]) $(id).replaceChildren();
     render();
   }
+  win.addEventListener("doctorcre-session-invalidated", suspendPrivateView);
   const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
   const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   // eslint-disable-next-line no-restricted-syntax -- Hidden-state events only clear lead identity, document context, and drag state; they perform no HTTP reads.
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
-  return { state, refresh, openReview, readDetail, dispose() { territory?.dispose(); clearGuidance(); reasons?.dispose(); disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); win.removeEventListener("pagehide", clearTerritory); win.removeEventListener("doctorcre-session-invalidated", clearTerritory); state.map?.dispose(); win.removeEventListener("pagehide", clearGuidance); doc.removeEventListener("visibilitychange", resume); } };
+  return { state, refresh, openReview, readDetail, dispose() { if (disposed) return; disposed = true; suspendPrivateView(); territory?.dispose(); reasons?.dispose(); auto.dispose(); win.removeEventListener("doctorcre-session-invalidated", suspendPrivateView); win.removeEventListener("pagehide", clearTerritory); win.removeEventListener("doctorcre-session-invalidated", clearTerritory); state.map?.dispose(); win.removeEventListener("pagehide", clearGuidance); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("leadBoard")) mountLeadsWorkspace();

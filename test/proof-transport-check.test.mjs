@@ -31,6 +31,8 @@ for (const source of [
   "import { execFileSync } from 'node:child_process'; execFileSync('/usr/bin/curl', ['https://example.com'])",
   "import { spawn } from 'node:child_process'; spawn('sh', ['-c', 'curl https://example.com'])",
   "import { execFileSync as read } from 'node:child_process'; read('/usr/bin/curl', ['https://example.com'])",
+  "import { execFile } from 'node:child_process'; execFile('/usr/bin/curl', ['https://example.com'], () => {})",
+  "import { execFile } from 'node:child_process'; const run = execFile; run('curl', ['https://example.com'])",
   "process.getBuiltinModule('https').get('https://example.com')",
   "import net from 'node:net'",
   "import tls from 'tls'",
@@ -197,7 +199,6 @@ test('reader marks requests and preserves caller User-Agent and headers', async 
   assert.equal(headers.has('x-doctorcre-release-reader'), false);
 });
 
-
 test('a local helper named proof-browser cannot bypass transport policy', async t => {
   const root = temporaryDirectory('proof-fake-browser-', t);
   await mkdir(root + '/scripts');
@@ -205,4 +206,8 @@ test('a local helper named proof-browser cannot bypass transport policy', async 
   await writeFile(root + '/scripts/proof-browser.mjs', "export const read = () => fetch('https://example.com');");
   const errors = await checkProofTransports(pathToFileURL(root + '/'));
   assert.ok(errors.some(error => error.includes('fetch')), errors.join('\n'));
+});
+
+test('asynchronous read-only git ancestry remains admissible', () => {
+  assert.deepEqual(checkProofSource("import { execFile } from 'node:child_process'; execFile('git', ['merge-base', '--is-ancestor', required, released], { signal }, error => {});"), []);
 });
