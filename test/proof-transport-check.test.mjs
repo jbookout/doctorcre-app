@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -31,6 +31,8 @@ for (const source of [
   "import { execFileSync as read } from 'node:child_process'; read('/usr/bin/curl', ['https://example.com'])",
   "process.getBuiltinModule('https').get('https://example.com')",
   "import './new-http-helper.mjs'",
+  "await page.goto('https://example.com/app-release')",
+  "await route.fetch({ url: 'https://example.com/app-release' })",
 ]) test(`transport bypass is refused: ${source}`, () => {
   assert.ok(checkProofSource(source).length, source);
 });

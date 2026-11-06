@@ -60,6 +60,15 @@ export function checkProofSource(source, filename = 'proof.mjs') {
       }
     }
     if (node.type === 'Identifier' && ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'require', 'eval', 'Function'].includes(node.name) && !(node.name === 'fetch' && parent?.type === 'MemberExpression' && parent.property === node)) fail(node, `HTTP and code loading must use declared proof interfaces (${node.name})`);
+    if (node.type === 'MemberExpression' && node.property?.name === 'fetch') {
+      const options = parent?.arguments?.[0];
+      if (node.object?.name !== 'route' || parent?.type !== 'CallExpression' || parent.callee !== node || options?.type !== 'ObjectExpression' || options.properties.some(property => !['maxRedirects', 'timeout'].includes(property.key?.name))) fail(node, 'only the declared asset route may fetch through the browser');
+    }
+    if (node.type === 'StringLiteral' && /\/app-release(?:[?#]|$)/.test(node.value)) {
+      const telemetry = parent?.type === 'ObjectProperty' && ['path', 'release_url'].includes(parent.key?.name);
+      const receiptURL = filename === 'prove-deal-documents-hard-cap.mjs' && parent?.type === 'NewExpression' && parent.callee?.name === 'URL';
+      if (!telemetry && !receiptURL) fail(node, 'release HTTP belongs to the shared reader');
+    }
     if (node.type === 'MemberExpression' && node.property?.name === 'request' && node.object?.name !== 'verb' && !(parent?.type === 'CallExpression' && parent.callee === node)) fail(node, 'browser HTTP clients must use the shared reader');
     if (node.type === 'MemberExpression' && node.object.type === 'Identifier' && globals.has(node.object.name)) {
       if (node.computed || !globals.get(node.object.name).includes(node.property.name)) fail(node, `undeclared ${node.object.name} capability`);
