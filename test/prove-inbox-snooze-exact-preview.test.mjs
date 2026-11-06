@@ -7,6 +7,7 @@ import { createServer } from './proof-fixture-server.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { prove } from '../scripts/prove-inbox-snooze-exact-preview.mjs';
 let out;
 before(async () => { out = await temporaryDirectory('snooze-proof-'); await buildArtifact({ root: process.cwd(), outDir: out }); });
@@ -54,7 +55,7 @@ test('late launch closes its acquired browser after deadline with no survivor', 
   let disposed;
   const closed = new Promise(resolve => { disposed = resolve; });
   const engine = { async launch(options) {
-    browser = await chromium.launch({ ...options, timeout: 15000 });
+    browser = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])], timeout: 15000 });
     await new Promise(resolve => setTimeout(resolve, 100));
     return new Proxy(browser, { get(target, key) {
       if (key === 'close') return async () => { await target.close(); disposed(); };
@@ -75,7 +76,7 @@ test('stalled evaluation closes only the acquired browser on deadline', async t 
     const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
   } });
   const engine = { async launch(options) {
-    browser = await chromium.launch(options);
+    browser = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] });
     return new Proxy(browser, { get(target, key) {
       if (key === 'newContext') return async (...args) => {
         const context = await target.newContext(...args);
