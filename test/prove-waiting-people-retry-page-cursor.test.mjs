@@ -6,7 +6,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { resolve, sep, join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { assertions, checkedDirectory, inboxFixture } from '../scripts/prove-waiting-people-retry-page-cursor.mjs';
+import { assertions, checkedDirectory, inboxFixture, runProof } from '../scripts/prove-waiting-people-retry-page-cursor.mjs';
 import { build } from 'esbuild';
 const runner = 'scripts/prove-waiting-people-retry-page-cursor.mjs';
 let outDir;
@@ -67,4 +67,21 @@ for (const [mode, expected] of [['unavailable', 78], ['unavailable asset', 78], 
 });
 test('proof CLI refuses invalid flags and origin', async () => {
   for (const args of [[], ['--origin', 'file:///tmp'], ['--origin', 'http://localhost/path'], ['--origin', 'http://localhost', '--timeout-ms', '30001']]) assert.equal((await cli(args)).code, 1);
+});
+
+test('proof closes a browser acquired after expiry without starting browser work', async t => {
+  const server = createServer((_req, res) => setTimeout(() => res.end(JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40) })), 200));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  let acquire, launchOptions, closed = false, browserWork = 0;
+  const acquired = new Promise(resolve => { acquire = resolve; });
+  const engine = { launch(options) { launchOptions = options; return acquired; } };
+  const browser = { async close() { closed = true; }, async newContext() { browserWork++; throw Error('Expired proof started browser work'); } };
+  await assert.rejects(runProof({ origin: `http://127.0.0.1:${server.address().port}`, timeout: 600, engine }), /Proof deadline exceeded/);
+  assert.ok(launchOptions, 'release completed before launch');
+  acquire(browser);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(closed, true, 'late browser must be closed');
+  assert.equal(browserWork, 0, 'expired proof must not create a context');
+  assert.ok(launchOptions.timeout > 0 && launchOptions.timeout <= 400, 'launch uses only the shared deadline remaining after release retrieval');
 });
