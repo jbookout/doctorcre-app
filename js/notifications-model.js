@@ -79,22 +79,22 @@ export function unreadLine(payload) {
 
 /* ----------------------------------------------------------------- the cards */
 
-/**
- * One phrase per delivery row, plus the device-off phrase when the producer
- * wrote no device row at all. An unrecognised state is named as itself rather
- * than dropped, because a state this page has not been taught is still a state
- * the record layer recorded.
- */
 export function deliveryPhrases(delivery) {
-  const rows = (Array.isArray(delivery) ? delivery : [])
-    .filter((row) => row && typeof row === "object" && isText(row.channel) && isText(row.state));
-  const phrases = rows.map((row) => ({
-    channel: row.channel,
-    state: row.state,
-    phrase: DELIVERY_PHRASES[row.state] || "Delivery status unavailable",
-  }));
-  if (!rows.some((row) => row.channel === "device")) {
-    phrases.push({ channel: "device", state: "absent", phrase: DEVICE_OFF });
+  const rows = Array.isArray(delivery) ? delivery : [];
+  const validRow = row => row && typeof row === "object"
+    && ["in_app", "device"].includes(row.channel)
+    && isText(row.state) && Object.hasOwn(DELIVERY_PHRASES, row.state);
+  const phrases = rows
+    .filter(row => row && typeof row === "object" && isText(row.channel))
+    .map(row => ({
+      channel: row.channel,
+      state: isText(row.state) ? row.state : "unavailable",
+      phrase: validRow(row) ? DELIVERY_PHRASES[row.state] : "Delivery status unavailable",
+    }));
+  if (!rows.some(row => row?.channel === "device")) {
+    const absent = Array.isArray(delivery) && rows.every(validRow);
+    phrases.push({ channel: "device", state: absent ? "absent" : "unavailable",
+      phrase: absent ? DEVICE_OFF : "Delivery status unavailable" });
   }
   return phrases;
 }
