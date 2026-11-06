@@ -39,6 +39,12 @@ export async function observeLeadClock({ origin, board, detail }) {
     check(review(candidate.correspondence).question === null, `valid instant usable ${occurred_at}`);
   }
   check(review([entry('2026-03-10T12:00:01Z')]).question === 'What contact has taken place?', 'future evidence excluded with manual explanation');
+  for (const occurred_at of ['2026-03-10T12:00:00.000001Z', '2026-03-10T06:00:00.000000000000000000000000000001-06:00']) {
+    const result = review([entry(occurred_at)]);
+    check(result.evidence.length === 0 && result.question === 'What contact has taken place?' && result.reason === null, `fractional future evidence excluded ${occurred_at}`);
+  }
+  const fractionalRows = ['000001', '000002', '000003', '000004'].map((fraction, i) => entry(`2026-03-09T12:00:00.${fraction}Z`, 'email_in', false, String(i + 1)));
+  check(review(fractionalRows).evidence.map(row => row.id).join() === '4,3,2', 'exact fractional ordering before three-entry limit');
   check(review([]).question === 'What contact has taken place?', 'missing evidence requires manual explanation');
   check(review([entry('2026-03-09T12:00:00Z', 'call')]).question !== null, 'disconnected call requires explanation');
   check(review([entry('2026-03-09T12:00:00Z', 'call', true)]).reason === 'Call completed', 'connected call usable');

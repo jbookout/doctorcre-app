@@ -101,7 +101,7 @@ function validateLead(lead) {
   return lead;
 }
 export function validateLeadWorkspace(payload) {
-  projection(object(payload) && payload.schema_version === "lead-workspace.v1" && Number.isFinite(leadTimestamp(payload.generated_at)) && Array.isArray(payload.leads));
+  projection(object(payload) && payload.schema_version === "lead-workspace.v1" && leadTimestamp(payload.generated_at) !== null && Array.isArray(payload.leads));
   payload.leads.forEach(validateLead);
   projection(new Set(payload.leads.map(lead => lead.id)).size === payload.leads.length);
   return payload;
@@ -109,14 +109,14 @@ export function validateLeadWorkspace(payload) {
 export function validateLeadDetail(detail, id) {
   validateLead(detail); projection(detail.id === id);
   for (const key of ["phone", "email", "notes", "plans", "est_lease_event"]) projection(optionalText(detail[key]));
-  projection(Array.isArray(detail.correspondence) && detail.correspondence.every(entry => object(entry) && text(entry.id) && text(entry.kind) && Number.isFinite(leadTimestamp(entry.occurred_at)) && optionalText(entry.summary) && optionalText(entry.detail)));
-  projection(Array.isArray(detail.stage_history) && detail.stage_history.every(entry => object(entry) && text(entry.event_id) && Number.isFinite(leadTimestamp(entry.occurred_at)) && optionalText(entry.prior_stage) && optionalText(entry.stage) && optionalText(entry.reason)));
+  projection(Array.isArray(detail.correspondence) && detail.correspondence.every(entry => object(entry) && text(entry.id) && text(entry.kind) && leadTimestamp(entry.occurred_at) !== null && optionalText(entry.summary) && optionalText(entry.detail)));
+  projection(Array.isArray(detail.stage_history) && detail.stage_history.every(entry => object(entry) && text(entry.event_id) && leadTimestamp(entry.occurred_at) !== null && optionalText(entry.prior_stage) && optionalText(entry.stage) && optionalText(entry.reason)));
   for (const kind of ["correspondence", "stage_history"]) {
     const page = detail[`${kind}_page`];
     if (page === undefined) continue;
     projection(object(page) && Number.isSafeInteger(page.total) && page.total >= detail[kind].length && typeof page.has_more === "boolean");
     if (!page.has_more) projection(page.next_cursor === null);
-    else if (kind === "correspondence") projection(object(page.next_cursor) && text(page.next_cursor.id) && Number.isFinite(leadTimestamp(page.next_cursor.occurred_at)));
+    else if (kind === "correspondence") projection(object(page.next_cursor) && text(page.next_cursor.id) && leadTimestamp(page.next_cursor.occurred_at) !== null);
     else projection(typeof page.next_cursor === "string" && /^[0-9]+$/.test(page.next_cursor));
   }
   if (detail.research !== undefined) validateResearch(detail.research);

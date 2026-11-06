@@ -34,7 +34,7 @@ async function fixture(t, mode) {
  }
  if(mode==='assertion') {
   const path='/js/leads-model.js',source=assets.get(path).toString();
-  const faulty=source.replace('export function leadTimestamp(value) {','export function leadTimestamp(value) { return Date.parse(value);');
+  const faulty=source.replace('day <= days[month - 1]', 'day <= 31');
   assert.notEqual(faulty,source,'assertion fixture replaces timestamp admission');
   assets.set(path,Buffer.from(faulty));
  }
@@ -70,6 +70,8 @@ test('lead clock CLI proves exact deployed modules and contract-checked fixtures
  const f=await fixture(t);const {code,receipt}=await cli(f.origin);
  assert.equal(code,0,JSON.stringify(receipt));assert.equal(receipt.release.service,'doctorcre-app');
  assert.equal(receipt.release.environment,'production');assert.equal(receipt.release.source_commit,'1'.repeat(40));
+ assert.ok(receipt.assertions.includes('fractional future evidence excluded 2026-03-10T12:00:00.000001Z'));
+ assert.ok(receipt.assertions.includes('exact fractional ordering before three-entry limit'));
  assert.ok(receipt.assertions.length>50);assert.equal(receipt.assets.length,f.assets.size);
  for(const asset of receipt.assets)assert.equal(asset.sha256,hash(f.assets.get(new URL(asset.url).pathname)));
  assert.ok(receipt.requests<=35);assert.ok(f.seen.every(([method])=>method==='GET'));
