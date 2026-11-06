@@ -72,7 +72,9 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
       await panel.getByText(document.display_name,{exact:true}).waitFor();
       mode = 'malformed'; await panel.getByRole('button',{name:'Refresh documents'}).click();
       await panel.getByText('Documents unavailable.',{exact:false}).waitFor();
-      assert.equal(await panel.getByText(document.display_name,{exact:true}).count(),0);
+      assert.equal(await panel.getByText(document.display_name,{exact:true}).count(),1);
+      assert.equal(await panel.locator(`[data-document-id="${id}"]`).getAttribute('data-content-hash'),document.content_hash);
+      await panel.getByText('Last successful read. Documents may be out of date.',{exact:true}).waitFor();
       mode = 'held'; const started = new Promise(resolve => { requested = resolve; });
       await panel.getByRole('button',{name:'Retry documents'}).click(); await started;
       await panel.getByText('Loading documents…',{exact:true}).waitFor();

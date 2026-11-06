@@ -1,3 +1,4 @@
+import { isAppRepository } from '../js/repository-identity.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -121,7 +122,7 @@ export async function prove({ origin, timeoutMs }) {
       receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.pathname) }));
       const manifestBytes = await get('/artifact-manifest.json');
       const manifest = json(manifestBytes);
-      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || manifest.repository !== 'jbookout/doctorcre-app' || !Array.isArray(manifest.files)) throw unavailable('Manifest unavailable');
+      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || !isAppRepository(manifest.repository) || !Array.isArray(manifest.files)) throw unavailable('Manifest unavailable');
       if (manifest.source_commit !== receipt.release.source_commit) throw Error('Manifest release mismatch');
       receipt.manifest_sha256 = hash(manifestBytes);
       const rows = new Map();
