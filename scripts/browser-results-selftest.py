@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -42,6 +43,8 @@ class ResultsTest(unittest.TestCase):
         return run, output
 
     def test_failure_annotations_use_real_test_file_and_line(self):
+        self.root = self.root / 'workspace/doctorcre-app'
+        (self.root / 'test').mkdir(parents=True)
         file = self.root / 'test/failing.test.mjs'
         file.write_text("import test from 'node:test';\nimport assert from 'node:assert/strict';\n"
                         "test('failure case', () => {\n  assert.equal(1, 2);\n});\n"
@@ -73,15 +76,24 @@ class ResultsTest(unittest.TestCase):
                        INPUT_FAIL_ON_FAILURE='true', INPUT_FAIL_ON_PARSE_ERROR='true',
                        INPUT_REQUIRE_TESTS='true', INPUT_REQUIRE_PASSED_TESTS='true',
                        INPUT_CHECK_RETRIES='false', INPUT_GROUP_REPORTS='true',
+                       INPUT_RESOLVE_IGNORE_CLASSNAME='false', INPUT_UPDATE_CHECK='false',
+                       INPUT_INCLUDE_PASSED='false', INPUT_ANNOTATE_NOTICE='false',
+                       INPUT_FLAKY_SUMMARY='false', INPUT_SKIP_COMMENT_WITHOUT_TESTS='false',
+                       INPUT_FAILED_SUMMARY_LOGS='false', INPUT_UPDATECOMMENT='true',
                        INPUT_CHECK_ANNOTATIONS='true', INPUT_INCLUDE_SKIPPED='true',
                        INPUT_FAILED_SUMMARY='true', INPUT_FOLLOW_SYMLINK='false',
                        INPUT_TRUNCATE_STACK_TRACES='true', INPUT_TRANSFORMERS='[]',
-                       INPUT_CHECK_NAME='JUnit Test Report',
-                       INPUT_TEST_FILES_PREFIX=self.root.name + '/')
+                       INPUT_CHECK_NAME='JUnit Test Report')
+            workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+            publisher = workflow.split('      - name: Publish native JUnit')[1].split('      - name: Retain execution evidence')[0]
+            for key, value in re.findall(r'^          (\w+): (.+)$', publisher, re.M):
+                if key != 'report_paths':
+                    env['INPUT_' + key.upper()] = value
             published = subprocess.run(['node', action], cwd=self.root.parent, env=env,
                                        capture_output=True, text=True, timeout=30)
             log = published.stdout + published.stderr
             self.assertEqual(published.returncode, 1, log)
+            self.assertIn('::error title=', log, log)
             annotation = next(line for line in log.splitlines() if '::error title=' in line)
             self.assertIn(f'file={self.root.name}/test/failing.test.mjs,line=4,endLine=4', annotation)
             print(annotation)

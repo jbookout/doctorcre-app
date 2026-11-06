@@ -2,6 +2,8 @@
 import argparse
 from collections import Counter
 from pathlib import Path
+import re
+from urllib.parse import unquote
 import sys
 import xml.etree.ElementTree as ET
 
@@ -15,6 +17,21 @@ CRITICAL = (
     *(f'test/home-sections-browser.test.mjs::sectioned Home and shared panels {width} {theme}'
       for width in (390, 1024, 1280, 1440) for theme in ('light', 'dark')),
 )
+
+def add_failure_locations(path, repository):
+    tree = ET.parse(path, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))
+    repository = repository.resolve()
+    for case in tree.iter('testcase'):
+        for issue in [*case.findall('failure'), *case.findall('error')]:
+            for filename, line in re.findall(r'(?:file://)?(/[^\n()]+\.test\.mjs):(\d+):\d+', issue.text or ''):
+                source = Path(unquote(filename)).resolve()
+                if not source.is_relative_to(repository / 'test') or not source.is_file():
+                    continue
+                case.set('file', source.relative_to(repository).as_posix())
+                case.set('line', line)
+                break
+    tree.write(path, encoding='utf-8', xml_declaration=True)
+
 
 def verify(path, files, shard):
     root = ET.parse(path).getroot()
@@ -54,6 +71,7 @@ if __name__ == '__main__':
     parser.add_argument('--shard', type=int, choices=range(1, 5), required=True)
     args = parser.parse_args()
     try:
+        add_failure_locations(args.input, Path.cwd())
         verify(args.input, sorted(str(p) for p in Path('test').glob('*.test.mjs')), args.shard)
     except (OSError, ValueError, ET.ParseError) as error:
         print(error, file=sys.stderr)
