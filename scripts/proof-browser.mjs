@@ -2,11 +2,20 @@ import { chromium as rawChromium } from 'playwright';
 import { temporaryDirectory } from './temp-directory.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
+// Chromium base/command_line.cc: kSwitchPrefixes, IsSwitch,
+// AppendSwitchesAndArguments and AppendSwitchNative.
+// https://github.com/chromium/chromium/blob/main/base/command_line.cc
+// Reserve the union of platform spellings, including Windows slash/case forms.
+function switchName(argument) {
+  return argument.trim().match(/^(?:--?|\/)([^=]*)/)?.[1].replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+const mandatorySwitches = new Set(CHROMIUM_SAFETY_ARGS.map(switchName));
+
 export const chromium = {
   async launch(options = {}) {
     let removeDirectory;
     const directory = temporaryDirectory('doctorcre-proof-browser-', { after(cleanup) { removeDirectory = cleanup; } });
-    const args = (options.args || []).filter(arg => !CHROMIUM_SAFETY_ARGS.some(required => arg.split('=')[0] === required.split('=')[0]));
+    const args = (options.args || []).filter(arg => !mandatorySwitches.has(switchName(arg)));
     try {
       const browser = await rawChromium.launch({
         ...options,

@@ -27,6 +27,39 @@ test('mandatory flags cannot be replaced; caller flags and environment survive',
   assert.equal(existsSync(seen.env.TMPDIR), false);
 });
 
+test('reserved switch spelling table cannot override mandatory flags', async t => {
+  let seen;
+  await stubLaunch(t, async options => { seen = options.args; return { close: async () => {} }; });
+  for (const name of ['password-store', 'use-mock-keychain']) {
+    for (const spelling of [name, name.toUpperCase(), name.replace(/^./, c => c.toUpperCase())]) {
+      for (const prefix of ['-', '--', '/']) {
+        for (const value of ['', '=', '=gnome', '=false', '=GNOME', '=gnome=extra']) {
+          for (const whitespace of ['', ' ', '\t\r\n']) {
+            const argument = `${whitespace}${prefix}${spelling}${value}${whitespace}`;
+            const browser = await chromium.launch({ args: [argument, '--disable-gpu', '-unrelated=value', '--password-store-extra=kept'] });
+            try {
+              assert.deepEqual(seen, [...required, '--disable-gpu', '-unrelated=value', '--password-store-extra=kept'], JSON.stringify(argument));
+            } finally { await browser.close(); }
+          }
+        }
+      }
+    }
+  }
+});
+
+test('real Chromium cannot receive the single-dash password-store override', async () => {
+  const browser = await chromium.launch({ args: ['--enable-automation', '-password-store=gnome', '--disable-gpu'] });
+  try {
+    const cdp = await browser.newBrowserCDPSession();
+    const { arguments: args } = await cdp.send('Browser.getBrowserCommandLine');
+    const stores = args.filter(arg => /^--?password-store(?:=|$)/.test(arg));
+    assert.ok(stores.length > 0);
+    assert.ok(stores.every(arg => arg === '--password-store=basic'), JSON.stringify(stores));
+    assert.ok(args.includes('--use-mock-keychain'));
+    assert.ok(args.includes('--disable-gpu'));
+  } finally { await browser.close(); }
+});
+
 test('each launch owns a unique directory; close and double close dispose once', async t => {
   const roots = []; let closes = 0;
   await stubLaunch(t, async options => { roots.push(options.env.TMPDIR); return { close: async () => { closes++; }, newPage: async () => 'full API' }; });
