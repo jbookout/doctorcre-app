@@ -48,12 +48,23 @@ export function marketCounts(leads, filters = {}, locate = () => null) {
   return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
     .map(group => ({ ...group, locations: [...group.locations.values()] }));
 }
+export function leadTimestamp(value) {
+  if (typeof value !== "string" || value.length > 64) return NaN;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!parts || parts[0] !== value) return NaN;
+  const [, year, month, day, hour, minute, second, offsetHour, offsetMinute] = parts.map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (!(day >= 1 && day <= days[month - 1] && hour < 24 && minute < 60 && second < 60
+    && (Number.isNaN(offsetHour) || offsetHour < 24 && offsetMinute < 60))) return NaN;
+  return Date.parse(value);
+}
 export function stageReview(detail, target, now = Date.now()) {
   const kinds = target === "engaged" ? ["email_in", "meeting", "call"] : target === "outreach_active" ? ["email_out"] : [];
   const evidence = (detail.correspondence || []).filter(entry => kinds.includes(entry.kind) &&
     (entry.kind !== "call" || entry.connected === true) &&
-    Number.isFinite(Date.parse(entry.occurred_at)) && Date.parse(entry.occurred_at) <= now)
-    .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)).slice(0, 3);
+    Number.isFinite(leadTimestamp(entry.occurred_at)) && leadTimestamp(entry.occurred_at) <= now)
+    .sort((a, b) => leadTimestamp(b.occurred_at) - leadTimestamp(a.occurred_at)).slice(0, 3);
   const questions = { new: "Why return this lead to New?", qualified: "What makes this lead qualified?",
     outreach_active: "What outreach has started?", engaged: "What contact has taken place?",
     nurture_drip: "What is the follow-up plan?", opportunity: "What space plans are confirmed?",
