@@ -15,8 +15,8 @@ function cli(origin) {
     child.on('close', code => resolve({ code, stdout, stderr }));
   });
 }
-async function fixture(t, upstream, fail = false) {
-  const routes=new Map(upstream?snapshot:[]);
+async function fixture(t, fail = false) {
+  const routes=new Map(snapshot);
   routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)})});
   if(fail)routes.set('/js/ui-quick-switcher.js',{contentType:'text/javascript',body:'export function openQuickSwitcher() { throw Error("Broken deployed fixture"); }'});
   const server=await startFixture({routes});
@@ -24,19 +24,18 @@ async function fixture(t, upstream, fail = false) {
   return server.origin;
 }
 test('CLI passing fixture proves module only and failing fixture fails assertions', async t => {
-  const upstream = true;
-  const passing = await cli(await fixture(t, upstream));
+  const passing = await cli(await fixture(t));
   assert.equal(passing.code, 78, passing.stdout + passing.stderr);
   const receipt = JSON.parse(passing.stdout);
   assert.equal(receipt.deployed_module, 'pass');
   assert.equal(receipt.natural_acceptance, 'insufficient_evidence');
   assert.equal(receipt.fixture_assertions.business_reads, 1);
-  const failing = await cli(await fixture(t, upstream, true));
+  const failing = await cli(await fixture(t, true));
   assert.equal(failing.code, 1, failing.stdout + failing.stderr);
   assert.match(JSON.parse(failing.stdout).error, /Broken deployed fixture/);
 });
 for (const mode of ['late launch', 'stalled evaluation']) test(`deadline disposes ${mode} without retained browser handles`, async t => {
-  const origin = new URL(await fixture(t, null));
+  const origin = new URL(await fixture(t));
   let open = 0;
   const engine = { launch: async () => {
     if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 150));
@@ -53,7 +52,7 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`deadline dispose
 });
 for (const mode of ['late launch', 'stalled evaluation']) test(`real browser closes after ${mode}`, async t => {
   const { chromium } = await import('playwright');
-  const origin = new URL(await fixture(t, null));
+  const origin = new URL(await fixture(t));
   let acquired;
   let launched;
   const launchSettled = new Promise(resolve => launched = resolve);

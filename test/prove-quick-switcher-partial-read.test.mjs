@@ -23,19 +23,18 @@ test('help and malformed arguments', async () => {
 test('declared runner command proves served fixture module', async t => {
   const routes = new Map(snapshot);
   routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)})});
-  const proxy = await startFixture({routes});
-  const server = { url: proxy.origin, origin: proxy.origin, stop: () => proxy.close(), close: () => proxy.close() };
+  const server = await startFixture({routes});
   try {
     const plan = JSON.parse(readFileSync('proofs/requirements/quick-switcher-partial-read.json', 'utf8'));
     assert.ok(plan.assertions[0].predicate.includes(`node ${runner} --origin https://app.doctorcre.com --timeout-ms 30000`));
-    const result = await cli(['--origin', server.url, '--timeout-ms', '30000']);
+    const result = await cli(['--origin', server.origin, '--timeout-ms', '30000']);
     assert.equal(result.code, 0, result.stderr);
     const receipt = JSON.parse(result.stdout);
     assert.equal(receipt.release.service, 'doctorcre-app');
     assert.equal(receipt.assertions.length, 4);
-    assert.ok(receipt.module_urls.includes(`${server.url}/js/ui-quick-switcher.js`));
+    assert.ok(receipt.module_urls.includes(`${server.origin}/js/ui-quick-switcher.js`));
     assert.ok(receipt.requests <= 64);
-  } finally { await server.stop(); }
+  } finally { await server.close(); }
 });
 for (const mode of ['missing export', 'failed assertion', 'unavailable release', 'timeout']) test(`runner refuses ${mode}`, async () => {
   const routes = new Map([['/app-release',{contentType:'application/json',body:JSON.stringify(mode==='unavailable release'?{}:{service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)}),...(mode==='timeout'?{hold:'timeout'}:{})}],['/js/ui-quick-switcher.js',{contentType:'text/javascript',body:mode==='missing export'?'export const unrelated = 1;':'export function openQuickSwitcher() { throw Error("Fixture assertion failed"); }'}]]);

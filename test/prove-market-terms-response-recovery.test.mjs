@@ -22,8 +22,7 @@ test('proof CLI help, bad arguments and exact declaration command against fixtur
   for (const args of [[], ['--origin','bad'], ['--origin','https://example.com/path'], ['--origin','https://example.com','--timeout-ms','NaN']]) assert.notEqual((await cli(args)).code, 0);
   const routes = new Map(snapshot);
   routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)})});
-  const proxy = await startFixture({routes});
-  const server = { url: proxy.origin, origin: proxy.origin, stop: () => proxy.close(), close: () => proxy.close() };
+  const server = await startFixture({routes});
   try {
     const result = await cli(['--origin',server.origin,'--timeout-ms','30000']);
     assert.equal(result.code, 0, result.stderr);

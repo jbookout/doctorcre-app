@@ -19,16 +19,15 @@ test('proof CLI help and invalid arguments fail closed', async () => {
 test('proof declaration command runs deployed module assertions against fixture', async t => {
   const routes = new Map(snapshot);
   routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)})});
-  const proxy = await startFixture({routes});
-  const server = { url: proxy.origin, origin: proxy.origin, stop: () => proxy.close(), close: () => proxy.close() };
-  t.after(server.stop);
-  const { stdout } = await exec(process.execPath, [script, '--origin', server.url, '--timeout-ms', '30000']);
+  const server = await startFixture({routes});
+  t.after(()=>server.close());
+  const { stdout } = await exec(process.execPath, [script, '--origin', server.origin, '--timeout-ms', '30000']);
   await writeFile('/tmp/WR617.S18.J1-proof-receipt.json', stdout);
   const receipt = JSON.parse(stdout);
-  assert.equal(receipt.origin, server.url);
+  assert.equal(receipt.origin, server.origin);
   assert.equal(receipt.assertions.length, 3);
-  assert.ok(receipt.loaded_module_urls.includes(`${server.url}/js/local-drafts.mjs`));
-  await assert.rejects(exec(process.execPath, [script, '--origin', server.url, '--timeout-ms', '1']));
+  assert.ok(receipt.loaded_module_urls.includes(`${server.origin}/js/local-drafts.mjs`));
+  await assert.rejects(exec(process.execPath, [script, '--origin', server.origin, '--timeout-ms', '1']));
 });
 
 for (const failure of ['release', 'export', 'assertion']) test(`proof fails closed for ${failure}`, async t => {
