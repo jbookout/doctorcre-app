@@ -7,7 +7,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const network = /^(?:node:)?(?:https?|http2|net|tls)$/;
 const constructors = new Set(['createServer', 'createSecureServer', 'Server', 'Http2Server', 'Http2SecureServer']);
 const transport = 'scripts/fixture-http.mjs';
-const text = node => node?.type === 'StringLiteral' ? node.value : undefined;
+const text = node => node?.type === 'StringLiteral' ? node.value
+  : node?.type === 'BinaryExpression' && node.operator === '+' && typeof text(node.left) === 'string' && typeof text(node.right) === 'string'
+    ? text(node.left) + text(node.right) : undefined;
 const property = node => node.computed ? text(node.property) : node.property?.name;
 
 export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoaders = true } = {}) {
@@ -87,13 +89,19 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
       const name = evaluated.confident ? evaluated.value : text(path.node.source);
       moduleCheck(path.node, name, network.test(name) && !isTransport ? loaderCapabilities(path) : ['*']);
     },
+    ReferencedIdentifier(path) {
+      if (loaders.has(path.node.name) && !(path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node)) fail(path.node, 'Cannot alias module loader');
+    },
+    OptionalMemberExpression(path) {
+      if (property(path.node) === 'getBuiltinModule') fail(path.node, 'Optional builtin module capability is not verified');
+    },
     MemberExpression(path) {
       if (property(path.node) === 'getBuiltinModule' && !(path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node)) fail(path.node, 'Cannot alias builtin module loader');
     },
     CallExpression(path) {
       const node = path.node;
       if (node.callee.type === 'Identifier' && loaders.has(node.callee.name)
-        || node.callee.type === 'MemberExpression' && property(node.callee) === 'getBuiltinModule') {
+        || node.callee.type === 'MemberExpression' && ['require', 'getBuiltinModule'].includes(property(node.callee))) {
         const name = text(node.arguments[0]);
         moduleCheck(node, name, network.test(name) && !isTransport ? loaderCapabilities(path) : ['*']);
       }
