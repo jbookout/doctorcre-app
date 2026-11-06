@@ -2,6 +2,7 @@ import { isAppRepository } from '../js/repository-identity.mjs';
 import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -10,9 +11,17 @@ export async function prove({ origin, commit, timeoutMs }) {
   assert.match(commit, /^[a-f0-9]{40}$/);
   assert.ok(!/^0+$/.test(commit), 'a deployed commit is required');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const deadline = performance.now() + timeoutMs;
+  const expired = () => Object.assign(Error('Proof deadline exceeded'), { exitCode: 78 });
+  const remaining = () => {
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0 || controller.signal.aborted) throw expired();
+    return ms;
+  };
+  const timer = setTimeout(() => controller.abort(expired()), timeoutMs);
   let requests = 0, bytes = 0;
   const get = async path => {
+    remaining();
     const url = new URL(path, origin);
     assert.equal(url.origin, origin, 'same-origin evidence only');
     assert.ok(++requests <= 4, 'four-request budget');
@@ -31,14 +40,26 @@ export async function prove({ origin, commit, timeoutMs }) {
   };
   try {
     const release = await readAppRelease(origin, async url => { const { response, data } = await get(url.pathname); return { type: response.headers.get('content-type') || '', body: data }; });
-    assert.equal(release.source_commit, commit, 'release commit mismatch');
+    if (release.source_commit !== commit) {
+      try {
+        await new Promise((resolve, reject) => {
+          let failure;
+          const child = execFile('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(remaining(), 5000), signal: controller.signal, killSignal: 'SIGKILL' }, error => { failure = error; });
+          child.once('close', () => failure ? reject(failure) : resolve());
+        });
+      } catch (error) {
+        remaining();
+        if (error.code === 1) throw Error('release commit mismatch');
+        throw Object.assign(Error('Release ancestry evidence unavailable'), { exitCode: 78 });
+      }
+    }
     const { response, data } = await get('/artifact-manifest.json');
     assert.match(response.headers.get('content-type') || '', /^application\/json(?:;|$)/i);
     assert.equal(response.headers.get('cache-control'), 'no-store');
     const manifest = JSON.parse(data);
     assert.equal(manifest.schema, 'doctorcre-static-artifact.v1');
     assert.ok(isAppRepository(manifest.repository), 'manifest repository mismatch');
-    assert.equal(manifest.source_commit, commit, 'manifest commit mismatch');
+    assert.equal(manifest.source_commit, release.source_commit, 'manifest commit mismatch');
     assert.ok(Array.isArray(manifest.files) && manifest.files.length <= 10000, 'manifest file inventory required');
     const files = new Map();
     for (const row of manifest.files) {
