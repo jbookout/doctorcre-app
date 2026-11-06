@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { get } from 'node:http';
 import { readFile, writeFile, rm } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { createServer } from './proof-fixture-server.mjs';
@@ -26,14 +27,32 @@ test('proof CLI passes working-tree Home and rejects a missing layout retirement
     }
     try {
       const path = decodeURIComponent(req.url);
-      assert.ok(!path.includes('\\') && !path.includes(String.fromCharCode(0)));
+      if (/%2e|%5c|%00/i.test(req.url) || path.includes('\\') || path.includes(String.fromCharCode(0))) {
+        res.writeHead(403).end(); return;
+      }
       const file = resolve(site, '.' + path);
-      assert.ok(file.startsWith(site + sep));
+      if (!file.startsWith(site + sep)) { res.writeHead(403).end(); return; }
       res.writeHead(200, { 'content-type': 'text/javascript' }).end(await readFile(file));
     } catch { res.writeHead(404).end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
+  await writeFile(join(out, 'outside-marker.js'), 'synthetic outside artifact');
+  await writeFile(join(out, 'site-outside-marker.js'), 'synthetic sibling prefix');
+  for (const path of ['/js/%2e%2e/js/app-layout.js', '/../outside-marker.js', '/%2e%2e%2foutside-marker.js', '/..%2fsite-outside-marker.js', '/%2E%2E/outside-marker.js']) {
+    await t.test(`fixture server refuses traversal ${path}`, async () => {
+      const response = await new Promise((resolve, reject) => {
+        get({ hostname: '127.0.0.1', port: server.address().port, path }, res => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', chunk => { body += chunk; });
+          res.on('end', () => resolve({ status: res.statusCode, body }));
+        }).on('error', reject);
+      });
+      assert.equal(response.status, 403);
+      assert.equal(response.body, '');
+    });
+  }
   const productionArgs = [args[0], '--origin', `http://127.0.0.1:${server.address().port}`, '--timeout-ms', '30000'];
   const deployed = JSON.parse((await exec(process.execPath, productionArgs, { timeout: 40000 })).stdout);
   assert.equal(deployed.release.source_commit, '1'.repeat(40));
