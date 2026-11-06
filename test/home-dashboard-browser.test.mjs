@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { actionCompletion, calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null, blockUi = false } = {}) {
+async function open(t, { preparationResponse, calendarPanelsGate, actionCompletion, calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, freshBrief = false, emptyAgenda = false, initialDetailFailure = null, blockUi = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -31,6 +31,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
   const resources = []; page.on('request', request => resources.push(new URL(request.url()).pathname));
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
+  if (preparationResponse) responses.set('calendar-meeting-prep', preparationResponse);
   let boardMalformed = malformedBoard, briefFailure = initialBriefFailure;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
@@ -98,6 +99,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     if (blockUi && url.pathname === '/js/ui-next-step.js') return route.abort();
+    if (calendarPanelsGate && url.pathname === '/js/ui-calendar-panels.js') await calendarPanelsGate;
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
@@ -106,7 +108,7 @@ async function open(t, { actionCompletion, calendar, initialBriefFailure = false
   await page.goto(`${origin}/review-workflows?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, resources, completionRequests, releaseInitialFeed, responses, blockUi(value) { blockUi = value; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, client, errors, calls, resources, completionRequests, releaseInitialFeed, responses, blockUi(value) { blockUi = value; }, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -910,7 +912,7 @@ test('Meeting preparation distinguishes unavailable, malformed, partial and veri
   assert.deepEqual(errors, []);
 });
 
-for (const retire of ['close', 'session']) test(`Meeting preparation fences late results after ${retire}`, async t => {
+for (const retire of ['close', 'button', 'native', 'session']) test(`Meeting preparation fences late results after ${retire}`, async t => {
   const { page, responses, errors, calls } = await open(t, { calendar: prepCalendar });
   await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
   let release;
@@ -923,13 +925,15 @@ for (const retire of ['close', 'session']) test(`Meeting preparation fences late
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
   await settles(async () => assert.match(await dialog.innerText(), /Loading meeting preparation/));
   if (retire === 'close') await page.keyboard.press('Escape');
+  else if (retire === 'button') await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
+  else if (retire === 'native') await dialog.evaluate(node => node.close());
   else await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
   await settles(async () => assert.equal(await dialog.isVisible(), false));
   const oldResult = { state: 'partial', items: [], notes: ['Demo retired private preparation'] };
   release(oldResult);
   await page.evaluate(() => window.pendingLayoutRefresh);
   assert.doesNotMatch(await page.locator('body').textContent(), /Demo retired private preparation/);
-  if (retire === 'close') {
+  if (retire !== 'session') {
     responses.set('calendar-meeting-prep', { state: 'empty', items: [] });
     await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
     await settles(async () => assert.match(await dialog.innerText(), /No upcoming meetings/));
@@ -1519,4 +1523,123 @@ test('loading the missing next step panel preserves existing Home card nodes', a
   await page.getByRole('region', { name: 'Deals with no next step' }).waitFor();
   for (const card of cards) assert.equal(await card.evaluate(node => node.isConnected), true, 'existing card stays attached');
   assert.equal(await link.evaluate(node => document.activeElement === node), true, 'focused link stays the same node');
+});
+
+
+test('Preparation close preserves the unrelated layout board and triage refresh', async t => {
+  const { page, client, responses, calls, errors } = await open(t, { calendar: prepCalendar });
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  await settles(async () => assert.match(await dialog.innerText(), /Demo practice planning/));
+  let release;
+  responses.set('calendar-meeting-prep', new Promise(resolve => { release = resolve; }));
+  t.after(() => release({ state: 'empty', items: [] }));
+  const brief = await client.morningBrief();
+  brief.sections.today = { state: 'ready', items: [{ subject_type: 'deal', subject_id: 'd14', subject_name: 'Demo independent triage', what: 'Demo independent triage', due_on: '2026-10-02' }] };
+  responses.set('morning-brief', brief);
+  const before = calls.filter(name => name === 'calendar-meeting-prep').length;
+  await page.evaluate(() => { window.pendingLayoutRefresh = document.getElementById('appTodayRetry').onclick(); });
+  await settles(() => assert.ok(calls.filter(name => name === 'calendar-meeting-prep').length > before));
+  await page.keyboard.press('Escape');
+  release({ state: 'partial', items: [], notes: ['Demo retired shared preparation'] });
+  await page.evaluate(() => window.pendingLayoutRefresh);
+  assert.match(await page.locator('#appTodayNext').textContent(), /Demo independent triage/);
+  assert.doesNotMatch(await page.locator('body').textContent(), /Demo retired shared preparation/);
+  assert.deepEqual(errors, []);
+});
+
+test('Native close fences a same-turn preparation result before queued cleanup and reopen', async t => {
+  const { page, errors } = await open(t, { calendar: prepCalendar });
+  const result = await page.evaluate(async () => {
+    const { mountMeetingPreparation } = await import('/js/meeting-preparation.js');
+    let resolve;
+    const owner = mountMeetingPreparation({ document, window, client: { calendarMeetingPrep: () => new Promise(done => { resolve = done; }) } });
+    const pending = owner.open(null, 'America/Chicago');
+    const dialog = [...document.querySelectorAll('.meeting-preparation')].at(-1);
+    dialog.close();
+    resolve({ state: 'partial', items: [], notes: ['Demo same turn retired'] });
+    await pending;
+    const text = dialog.textContent;
+    const fresh = owner.open(null, 'America/Chicago');
+    resolve({ state: 'partial', items: [], notes: ['Demo fresh reopen'] });
+    await fresh;
+    const reopened = dialog.textContent;
+    owner.dispose();
+    return { text, reopened };
+  });
+  assert.doesNotMatch(result.text, /Demo same turn retired/);
+  assert.match(result.reopened, /Demo fresh reopen/);
+  assert.deepEqual(errors, []);
+});
+
+
+for (const resolveFirst of [false, true]) test(`Shared preparation retires across lazy panel acquisition with result first ${resolveFirst}`, async t => {
+  let acquire, release;
+  const calendarPanelsGate = new Promise(resolve => { acquire = resolve; });
+  const preparationResponse = new Promise(resolve => { release = resolve; });
+  t.after(() => { acquire(); release({ state: 'empty', items: [] }); });
+  const { page, responses, calls, errors } = await open(t, { calendar: prepCalendar, calendarPanelsGate, preparationResponse });
+  await settles(() => assert.ok(calls.includes('calendar-meeting-prep')));
+  await page.evaluate(() => { window.pendingLayoutRefresh = document.getElementById('appTodayRetry').onclick(); });
+  if (resolveFirst) {
+    const arrived = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'calendar-meeting-prep');
+    release({ state: 'partial', items: [], notes: ['Demo retired lazy preparation'] });
+    await (await arrived).finished();
+  }
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  if (resolveFirst) await settles(async () => assert.match(await dialog.textContent(), /Demo retired lazy preparation/));
+  await dialog.evaluate(node => new Promise(resolve => {
+    node.addEventListener('close', () => resolve(), { once: true });
+    node.close();
+  }));
+  acquire();
+  release({ state: 'partial', items: [], notes: ['Demo retired lazy preparation'] });
+  await page.evaluate(() => window.pendingLayoutRefresh);
+  assert.doesNotMatch(await page.locator('body').textContent(), /Demo retired lazy preparation/);
+  responses.set('calendar-meeting-prep', { state: 'partial', items: [], notes: ['Demo fresh lazy preparation'] });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  await settles(async () => assert.match(await dialog.innerText(), /Demo fresh lazy preparation/));
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
+  await settles(async () => assert.match(await page.locator('#appCalendarSlot').textContent(), /Demo fresh lazy preparation/));
+  assert.deepEqual(errors, []);
+});
+
+for (const retirement of ['native close', 'session clear']) test(`Shared preparation close-reopen retires the layout read after ${retirement}`, async t => {
+  const { page, responses, calls, errors } = await open(t, { calendar: prepCalendar });
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
+  await page.evaluate(async () => {
+    const { mountMeetingPreparation } = await import('/js/meeting-preparation.js');
+    const { createClient } = await import('/js/client.js');
+    const owner = mountMeetingPreparation({ document, window, client: await createClient('live') });
+    await owner.open(null, 'America/Chicago');
+    window.preparationReopenProbe = { owner, dialog: [...document.querySelectorAll('.meeting-preparation')].at(-1) };
+  });
+  let release;
+  const obsolete = { state: 'partial', items: [], notes: ['Demo obsolete reopened preparation'] };
+  responses.set('calendar-meeting-prep', new Promise(resolve => { release = resolve; }));
+  t.after(() => release(obsolete));
+  const before = calls.filter(name => name === 'calendar-meeting-prep').length;
+  await page.evaluate(() => { window.pendingLayoutRefresh = document.getElementById('appTodayRetry').onclick(); });
+  await settles(() => assert.ok(calls.filter(name => name === 'calendar-meeting-prep').length > before));
+  responses.set('calendar-meeting-prep', { state: 'partial', items: [], notes: ['Demo current reopened preparation'] });
+  await page.evaluate(async retirement => {
+    const { owner, dialog } = window.preparationReopenProbe;
+    window.preparationClosed = new Promise(resolve => dialog.addEventListener('close', resolve, { once: true }));
+    if (retirement === 'session clear') owner.clear();
+    else dialog.close();
+    await owner.open(null, 'America/Chicago');
+  }, retirement);
+  const dialog = page.locator('.meeting-preparation').last();
+  assert.match(await dialog.textContent(), /Demo current reopened preparation/);
+  release(obsolete);
+  await page.evaluate(async () => { await window.pendingLayoutRefresh; await window.preparationClosed; });
+  assert.match(await dialog.textContent(), /Demo current reopened preparation/);
+  assert.doesNotMatch(await page.locator('body').textContent(), /Demo obsolete reopened preparation/);
+  assert.equal(await dialog.evaluate(node => node.open), true);
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
+  await settles(async () => assert.match(await page.locator('#appCalendarSlot').textContent(), /Demo current reopened preparation/));
+  await page.evaluate(() => { window.preparationReopenProbe.owner.dispose(); delete window.preparationReopenProbe; });
+  assert.deepEqual(errors, []);
 });

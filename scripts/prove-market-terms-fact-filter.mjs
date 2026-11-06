@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { marketTermsFixtures } from '../test/fixtures/market-terms.mjs';
-import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function exerciseFilter(page, origin) {
   const fixtures = marketTermsFixtures();
@@ -81,7 +80,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
     const before = await readAppRelease(origin, {timeoutMs:remaining()});
     controller.signal.throwIfAborted();
     if (!fixture || !['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw unavailable('insufficient_evidence: natural signed-in observation belongs to authorized proof worker');
-    browser = await launchProofBrowser(engine, {args:[...CHROMIUM_SAFETY_ARGS],timeout:timeoutMs}, {signal:controller.signal});
+    browser = await launchProofBrowser(engine, {timeout:timeoutMs}, {signal:controller.signal});
     const page = await browser.newPage();
     let requests = 0, bytes = 0;
     await page.route('**/*', async route => {

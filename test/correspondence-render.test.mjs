@@ -2,7 +2,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
 import { JSDOM } from 'jsdom';
 import { renderEvidence, loadEvidence, mountEvidence } from '../js/correspondence.js';
 import { correspondenceState, meetingEvidence } from '../js/correspondence-model.js';
@@ -11,12 +11,11 @@ const readyView = { threads: correspondenceState(found, identity), meetings: mee
 
 test('390px and iPad fixture evidence stays readable, sourced, read-only and touch-sized', async t => {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
-  const page = await browser.newPage();
   const css = await readFile(new URL('../css/correspondence.css', import.meta.url), 'utf8');
   const system = (await readFile(new URL('../css/tokens.css', import.meta.url), 'utf8')) + (await readFile(new URL('../css/system.css', import.meta.url), 'utf8'));
   for (const width of [390, 768]) {
-    await page.setViewportSize({ width, height: 844 });
-    await page.setContent(`<style>${system}\n${css}</style><main style="padding:16px">${renderEvidence(readyView)}</main>`);
+    const page = await browser.newPage({viewport:{width,height:844}});
+    await componentDocument(page, 'http://localhost', {html: `<style>${system}\n${css}</style><main style="padding:16px">${renderEvidence(readyView)}</main>`});
     assert.equal(await page.locator('.evidence-item').count(), 2);
     assert.equal(await page.locator('.evidence-item .evidence-source').count(), 0);
     assert.equal(await page.locator('button,input,textarea,a').count(), 0);

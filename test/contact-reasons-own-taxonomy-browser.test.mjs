@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chromium} from './browser-harness.mjs';
+import {chromium, componentDocument} from './browser-harness.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 import {exerciseContactReasons} from '../scripts/prove-contact-reasons-own-taxonomy.mjs';
 
@@ -10,22 +10,20 @@ for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
     t.after(() => browser.close());
     const page = await browser.newPage({viewport:{width,height:1000},colorScheme});
     await routeLeads(page);
-    await page.route('http://localhost/__contact-taxonomy-proof__', route => route.fulfill({
-      contentType: 'text/html', body: '<!doctype html><html><body></body></html>',
-    }));
-    await page.goto('http://localhost/__contact-taxonomy-proof__');
+    await componentDocument(page, 'http://localhost', { dispose: page => page.evaluate(() => window.taxonomyObserver.abort()) });
     await page.evaluate(() => {
       window.taxonomyTransitions = [];
+      window.taxonomyObserver = new AbortController();
       document.addEventListener('click', event => {
         if (event.target.closest('[data-retry-reasons]')) {
           window.taxonomyTransitions.push({edge:'retry',source:window.taxonomyProof.payload.coverage[0].source});
         }
-      }, true);
+      }, { capture: true, signal: window.taxonomyObserver.signal });
       window.addEventListener('doctorcre-session-invalidated', () => {
         const host = document.querySelector('#taxonomy-proof');
         window.taxonomyTransitions.push({edge:'retire',busy:host.getAttribute('aria-busy'),
           unavailable:host.textContent.includes('Contact reasons unavailable'),cards:host.querySelectorAll('.work-card').length});
-      });
+      }, { signal: window.taxonomyObserver.signal });
     });
     const assertions = await exerciseContactReasons(page,'http://localhost/js/contact-reasons.mjs');
     assert.ok(assertions.includes('retired session ignores late results'));

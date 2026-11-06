@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chromium, fixtureServer} from './browser-harness.mjs';
+import {componentDocument, chromium, fixtureServer} from './browser-harness.mjs';
 
 async function open(t, width) {
   const server = await fixtureServer();
@@ -8,10 +8,12 @@ async function open(t, width) {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({viewport: {width, height: 900}});
-  await page.route('**/dialog-test', route => route.fulfill({contentType: 'text/html', body: `
-    <button id="first">First record</button><button id="second">Second record</button>
-    <dialog id="jobDialog"><h2 id="jobTitle"></h2><div id="jobBody"></div><button id="jobClose">Close</button></dialog>`}));
-  await page.goto(server.origin + '/dialog-test');
+  await componentDocument(page, server.origin, {
+    owner: 'dialog lifecycle',
+    dispose: page => page.evaluate(() => { window.planner?.dispose(); window.tourDay?.dispose(); window.dialogOwner?.dispose?.(); }),
+    html: `<script type="module" src="/js/doc-context.js"></script><button id="first">First record</button><button id="second">Second record</button>
+    <dialog id="jobDialog"><h2 id="jobTitle"></h2><div id="jobBody"></div><button id="jobClose">Close</button></dialog>`,
+  });
   return page;
 }
 
@@ -32,6 +34,7 @@ for (const width of [390, 1440]) {
           dialog = document.querySelector('.relationship-dialog');
           rows = [{id: 'a', name: 'Synthetic first', kind: 'person', verticals: []}, {id: 'b', name: 'Synthetic second', kind: 'person', verticals: []}];
         }
+        window.dialogOwner = detail;
         const snapshot = () => ({nodes: rows, edges: [], referrals: []});
         const show = index => kind === 'job' ? detail.open(rows[index]) : detail.open(snapshot(), rows[index].id);
         document.getElementById('first').focus(); show(0);
