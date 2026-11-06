@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -41,23 +41,30 @@ test('proof CLI working-tree pass and broken fixture', async t => {
   });
 });
 
-for (const mode of ['stalled evaluation', 'late launch']) test(`proof deadline closes owned browser after ${mode}`, async t => {
-  let owned, server, evaluated = false, release;
+for (const mode of ['stalled evaluation', 'late launch', 'late launch with delayed process exit']) test(`proof deadline closes owned browser after ${mode}`, async t => {
+  let owned, server, descendant, evaluated = false, release;
   let ownedPids = [];
   const delivery = new Promise(resolve => { release = resolve; });
   const engine = { async launch(options) {
     server = await chromium.launchServer({ ...options, args: [...CHROMIUM_SAFETY_ARGS], timeout: 10000 });
     owned = await chromium.connect(server.wsEndpoint());
     ownedPids = [server.process().pid];
+    if (mode === 'late launch with delayed process exit') {
+      descendant = spawn(process.execPath, ['-e', "process.stdin.resume(); process.stdin.on('end', () => process.exit(0));"], { stdio: ['pipe', 'ignore', 'ignore'] });
+      ownedPids.push(descendant.pid);
+    }
     const { stdout } = await exec('ps', ['-axo', 'pid=,ppid=']);
     const processes = stdout.trim().split('\n').map(line => line.trim().split(/\s+/).map(Number));
     for (let index = 0; index < ownedPids.length; index++) {
       ownedPids.push(...processes.filter(([, parent]) => parent === ownedPids[index]).map(([pid]) => pid));
     }
-    if (mode === 'late launch') await delivery;
+    if (mode.startsWith('late launch')) await delivery;
     return {
       newPage: async () => ({ route: async () => {}, goto: async () => {}, evaluate: () => { evaluated = true; return new Promise(() => {}); } }),
-      close: async () => { await server.close(); await owned.close(); },
+      close: async () => {
+        await server.close(); await owned.close();
+        if (descendant) setTimeout(() => descendant.stdin.end(), 100);
+      },
     };
   } };
   try {
@@ -65,13 +72,18 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`proof deadline c
       assert.equal(error.exitCode || (error.name === 'TimeoutError' ? 78 : 1), 78); return true;
     });
     release();
+    const survivingPids = () => ownedPids.filter(pid => {
+      try { process.kill(pid, 0); return true; }
+      catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+    });
     const deadline = Date.now() + 15000;
-    while ((!owned || owned.isConnected() || (server.process().exitCode === null && server.process().signalCode === null)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+    while ((!owned || owned.isConnected() || (server.process().exitCode === null && server.process().signalCode === null) || survivingPids().length > 0) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
     if (mode === 'stalled evaluation') assert.equal(evaluated, true);
     assert.ok(owned, 'a real Chromium handle was acquired');
     assert.equal(owned.isConnected(), false);
     assert.ok(server.process().exitCode !== null || server.process().signalCode !== null, 'owned Chromium process exited');
+    assert.deepEqual(survivingPids(), [], 'every recorded owned process exited before the cleanup bound');
     for (const pid of ownedPids) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
     t.diagnostic(`${mode}: exit 78; zero surviving owned browser processes (PID ${server.process().pid})`);
-  } finally { release(); await owned?.close(); await server?.close(); }
+  } finally { release(); descendant?.kill(); await owned?.close(); await server?.close(); }
 });
