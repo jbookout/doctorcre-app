@@ -911,10 +911,14 @@ test('Meeting preparation distinguishes unavailable, malformed, partial and veri
 });
 
 for (const retire of ['close', 'session']) test(`Meeting preparation fences late results after ${retire}`, async t => {
-  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
+  const { page, responses, errors, calls } = await open(t, { calendar: prepCalendar });
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
   let release;
   responses.set('calendar-meeting-prep', new Promise(resolve => { release = resolve; }));
   t.after(() => release({ state: 'empty', items: [] }));
+  const before = calls.filter(name => name === 'calendar-meeting-prep').length;
+  await page.evaluate(() => { window.pendingLayoutRefresh = document.getElementById('appTodayRetry').onclick(); });
+  await settles(() => assert.ok(calls.filter(name => name === 'calendar-meeting-prep').length > before));
   await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
   await settles(async () => assert.match(await dialog.innerText(), /Loading meeting preparation/));
@@ -923,14 +927,26 @@ for (const retire of ['close', 'session']) test(`Meeting preparation fences late
   await settles(async () => assert.equal(await dialog.isVisible(), false));
   const oldResult = { state: 'partial', items: [], notes: ['Demo retired private preparation'] };
   release(oldResult);
-  await page.waitForTimeout(50);
+  await page.evaluate(() => window.pendingLayoutRefresh);
   assert.doesNotMatch(await page.locator('body').textContent(), /Demo retired private preparation/);
   if (retire === 'close') {
     responses.set('calendar-meeting-prep', { state: 'empty', items: [] });
     await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
     await settles(async () => assert.match(await dialog.innerText(), /No upcoming meetings/));
     assert.doesNotMatch(await dialog.innerText(), /Demo retired private preparation/);
-  } else assert.equal(await page.locator('#homeMeetings').textContent(), '');
+    responses.set('calendar-meeting-prep', { state: 'partial', items: [], notes: ['Demo current preparation'] });
+    await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
+    await settles(async () => assert.match(await page.locator('#appCalendarSlot').textContent(), /Demo current preparation/));
+  } else {
+    assert.equal(await page.locator('#homeMeetings').textContent(), '');
+    const retiredReads = calls.filter(name => name === 'calendar-meeting-prep').length;
+    await page.evaluate(async () => {
+      await document.getElementById('appTodayRetry').onclick();
+      dispatchEvent(new Event('focus'));
+    });
+    assert.equal(calls.filter(name => name === 'calendar-meeting-prep').length, retiredReads);
+    assert.doesNotMatch(await page.locator('#appCalendarSlot').textContent(), /Demo retired private preparation/);
+  }
   assert.deepEqual(errors, []);
 });
 
