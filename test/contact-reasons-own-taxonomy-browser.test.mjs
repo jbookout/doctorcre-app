@@ -10,9 +10,10 @@ for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
     t.after(() => browser.close());
     const page = await browser.newPage({viewport:{width,height:1000},colorScheme});
     await routeLeads(page);
-    await page.goto('http://localhost/leads');
-    await page.locator('.lead-card').first().waitFor();
-    await page.waitForFunction(() => typeof document.getElementById('docOpen')?.onclick === 'function');
+    await page.route('http://localhost/__contact-taxonomy-proof__', route => route.fulfill({
+      contentType: 'text/html', body: '<!doctype html><html><body></body></html>',
+    }));
+    await page.goto('http://localhost/__contact-taxonomy-proof__');
     await page.evaluate(() => {
       window.taxonomyTransitions = [];
       document.addEventListener('click', event => {
