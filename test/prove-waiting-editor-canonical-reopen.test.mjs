@@ -16,6 +16,8 @@ async function serve(mode) {
   requests.push({method:req.method,url:req.url});
   if(mode==='timeout')return;
   if(req.url==='/app-release'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(mode==='unavailable'?{}:{service:'doctorcre-app',source_commit:'1'.repeat(40)}));}
+  if(mode==='bytes'){res.setHeader('Content-Type','text/javascript');return res.end(' '.repeat(11*1024*1024));}
+  if(mode==='assets'){const n=req.url==='/js/ui-inbox.js'?0:Number(req.url.match(/asset-(\d+)/)?.[1]);res.setHeader('Content-Type','text/javascript');return res.end(`import './asset-${n+1}.js';`);}
   if(mode==='missing'){res.writeHead(404);return res.end();}
   let path;try{path=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));}catch{res.writeHead(400);return res.end();}
   if(!path.startsWith(root+sep)){res.writeHead(403);return res.end();}
@@ -25,8 +27,8 @@ async function serve(mode) {
 test('exact production-proof declaration and command pass fetched fixture bytes',async()=>{
  const plan=JSON.parse(await readFile('proofs/requirements/waiting-editor-canonical-reopen.json','utf8'));
  assert.ok(plan.assertions[0].predicate.includes(`node ${runner} --origin https://app.doctorcre.com --timeout-ms 30000`));
- const server=await serve('pass');try{const result=await cli(server.origin);assert.equal(result.code,0,result.stderr);const receipt=JSON.parse(result.stdout);assert.equal(receipt.assertions.length,5);assert.ok(receipt.assets.length<=30);assert.ok(receipt.assets.every(a=>/^[0-9a-f]{64}$/.test(a.sha256)));assert.ok(receipt.assets.some(a=>a.path==='/js/ui-inbox.js'));assert.ok(server.requests.every(r=>r.method==='GET'));}finally{await server.close();}
+ const server=await serve('pass');try{const result=await cli(server.origin);assert.equal(result.code,0,result.stderr);const receipt=JSON.parse(result.stdout);assert.equal(receipt.assertions.length,5);assert.ok(receipt.assets.length<=30);assert.ok(receipt.fetched_bytes<=10*1024*1024);assert.ok(receipt.assets.every(a=>/^[0-9a-f]{64}$/.test(a.sha256)));assert.ok(receipt.assets.some(a=>a.path==='/js/ui-inbox.js'));assert.ok(server.requests.every(r=>r.method==='GET'));}finally{await server.close();}
 });
-for(const [mode,expected] of [['unavailable',78],['missing',78],['timeout',78],['contradiction',1]])test(`proof ${mode} exit ${expected}`,async()=>{
+for(const [mode,expected] of [['unavailable',78],['missing',78],['timeout',78],['contradiction',1],['bytes',78],['assets',78]])test(`proof ${mode} exit ${expected}`,async()=>{
  const server=await serve(mode);try{const result=await cli(server.origin,mode==='timeout'?'100':'3000');assert.equal(result.code,expected,result.stderr);assert.notEqual(result.stderr,'');}finally{await server.close();}
 });
