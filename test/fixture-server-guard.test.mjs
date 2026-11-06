@@ -91,3 +91,16 @@ test('fixed Worker transport graph refuses filesystem capabilities in its router
   await writeFile(root + '/src/assets.js', "const {readFile} = await import('node:fs/promises');");
   assert.ok((await checkFixtureServers(root)).some(error => /src\/assets.js:1:.*filesystem/.test(error)));
 });
+
+test('finite query-only module retries resolve all branches and unknown alternatives still refuse', () => {
+  const result = checkFixtureSource("const VIEW = './view.js'; let attempt = 0; const module = () => attempt ? `${VIEW}?retry=${attempt}` : VIEW; await import(module());");
+  assert.deepEqual(result.errors,[]);
+  assert.deepEqual(result.imports,['./view.js']);
+  assert.ok(checkFixtureSource("let name; const module = () => name ? './view.js' : name; await import(module());").errors.length);
+  assert.ok(checkFixtureSource("let name; await import(`${name}?retry=1`);").errors.length);
+});
+
+test('the generated UI module graph resolves the app call and queue imports from checked-out source', async () => {
+  const errors = await checkFixtureServers();
+  assert.equal(errors.some(error => /Unresolved fixture helper.*ui-(call|queue)\.js/.test(error)),false,errors.join('\n'));
+});

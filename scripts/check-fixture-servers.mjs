@@ -1,3 +1,4 @@
+import { uiAssets } from './ui-bundle.mjs';
 import { parseSync, traverse } from '@babel/core';
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -11,6 +12,42 @@ const text = node => node?.type === 'StringLiteral' ? node.value
   : node?.type === 'BinaryExpression' && node.operator === '+' && typeof text(node.left) === 'string' && typeof text(node.right) === 'string'
     ? text(node.left) + text(node.right) : undefined;
 const property = node => node.computed ? text(node.property) : node.property?.name;
+
+function finiteModules(path, seen = new Set()) {
+  if (!path?.node || seen.has(path.node)) return;
+  const next = new Set(seen).add(path.node);
+  const evaluated = path.evaluate();
+  if (evaluated.confident && typeof evaluated.value === 'string') return [evaluated.value];
+  if (path.isIdentifier()) {
+    const binding = path.scope.getBinding(path.node.name);
+    if (binding?.constant && binding.path.isVariableDeclarator()) return finiteModules(binding.path.get('init'), next);
+  }
+  if (path.isConditionalExpression()) {
+    const left = finiteModules(path.get('consequent'), next), right = finiteModules(path.get('alternate'), next);
+    if (left && right) return [...new Set([...left,...right])];
+  }
+  if (path.isTemplateLiteral()) {
+    let prefix = '';
+    for (let index = 0; index < path.node.quasis.length; index++) {
+      const literal = path.node.quasis[index].value.cooked;
+      if (literal == null) return;
+      prefix += literal;
+      if (prefix.includes('?') && /^(?:\.|\/|https?:\/\/)/.test(prefix)) return [prefix.split('?')[0]];
+      if (index < path.node.expressions.length) {
+        const part = finiteModules(path.get(`expressions.${index}`), next);
+        if (!part || part.length !== 1) return;
+        prefix += part[0];
+      }
+    }
+    return [prefix];
+  }
+  if (path.isCallExpression() && !path.node.arguments.length && path.get('callee').isIdentifier()) {
+    const binding = path.scope.getBinding(path.node.callee.name);
+    const init = binding?.constant && binding.path.isVariableDeclarator() && binding.path.get('init');
+    if (init && init.isArrowFunctionExpression() && !init.node.params.length && !init.get('body').isBlockStatement())
+      return finiteModules(init.get('body'), next);
+  }
+}
 
 export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoaders = true, transportDependency = false } = {}) {
   const errors = [], imports = [];
@@ -32,7 +69,7 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
   } });
   const moduleCheck = (node, name, names) => {
     if (typeof name !== 'string') { if (strictLoaders) fail(node, 'Dynamic module capability cannot be verified'); return; }
-    if (name.startsWith('.')) imports.push(name);
+    if (name.startsWith('.')) imports.push(name.split(/[?#]/)[0]);
     if (/^(?:express|serve-static|send|sirv|http-server|fastify|koa|connect)$/.test(name)) fail(node, 'Static server packages bypass fixture transport');
     if ((isTransport || transportDependency) && /^(?:node:)?fs(?:\/|$)/.test(name)) fail(node, 'Fixture transport cannot import filesystem APIs');
     if (!network.test(name) || isTransport) return;
@@ -85,9 +122,8 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
     ExportDefaultDeclaration(path) { if (isTransport) fail(path.node, 'Default transport exports are forbidden'); },
     ExportAllDeclaration(path) { if (isTransport) fail(path.node, 'Transport re-exports are forbidden'); moduleCheck(path.node, path.node.source.value, ['*']); },
     ImportExpression(path) {
-      const evaluated = path.get('source').evaluate();
-      const name = evaluated.confident ? evaluated.value : text(path.node.source);
-      moduleCheck(path.node, name, network.test(name) && !isTransport ? loaderCapabilities(path) : ['*']);
+      for (const name of finiteModules(path.get('source')) || [undefined])
+        moduleCheck(path.node, name, network.test(name) && !isTransport ? loaderCapabilities(path) : ['*']);
     },
     ReferencedIdentifier(path) {
       if (loaders.has(path.node.name)
@@ -122,6 +158,19 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
     const source = await readFile(resolve(root, file), 'utf8');
     sources.set(file, source);
     results.set(file, checkFixtureSource(source, file, { strictLoaders: file === transport }));
+  }
+  if (sources.has('scripts/ui-bundle.mjs')) {
+    try {
+      for (const [file, bytes] of await uiAssets(async file => {
+        const source = sources.get(file);
+        if (source === undefined) throw new Error(`Missing generated module input ${file}`);
+        return source;
+      })) {
+        const source = bytes.toString();
+        sources.set(file,source);
+        results.set(file,checkFixtureSource(source,file,{strictLoaders:false}));
+      }
+    } catch (error) { return [`scripts/ui-bundle.mjs:1: Generated fixture graph failed: ${error.message}`]; }
   }
   const errors = [...results.values()].flatMap(r => r.errors);
   const transportVisited = new Set();
