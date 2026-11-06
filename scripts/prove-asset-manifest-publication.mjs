@@ -43,7 +43,9 @@ export async function prove({ origin, commit, timeoutMs }) {
     if (release.source_commit !== commit) {
       try {
         await new Promise((resolve, reject) => {
-          execFile('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(remaining(), 5000), signal: controller.signal, killSignal: 'SIGKILL' }, error => error ? reject(error) : resolve());
+          let failure;
+          const child = execFile('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(remaining(), 5000), signal: controller.signal, killSignal: 'SIGKILL' }, error => { failure = error; });
+          child.once('close', () => failure ? reject(failure) : resolve());
         });
       } catch (error) {
         remaining();
