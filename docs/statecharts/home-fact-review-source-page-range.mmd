@@ -1,0 +1,6 @@
+flowchart TD
+    Input[Current bound fact review] --> Pages{Positive safe integers at most 100000?}
+    Pages -->|No| Refuse[Unsupported review with no approval control]
+    Pages -->|Yes| Ordered{Last page at least first page?}
+    Ordered -->|No| Refuse
+    Ordered -->|Yes| Admit[Original citation and decision controls]

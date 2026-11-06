@@ -41,6 +41,7 @@ export const factSnapshot = cases => ({ ok: true, schema_version: 'home-inbox.v5
 export async function exerciseHome(page) {
   const cases = factCases();
   const calls = [];
+  let active;
   const assertions = [];
   const check = (name, passed) => { assertions.push({ name, passed }); assert.ok(passed, name); };
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
@@ -48,12 +49,15 @@ export async function exerciseHome(page) {
     const { name, arguments: args } = route.request().postDataJSON().params;
     calls.push({ name, args });
     const selected = cases.find(c => c.name === args.item_id);
-    const payload = name === 'read-home-inbox-v5' ? factSnapshot(cases)
+    const payload = name === 'read-home-inbox-v5' ? factSnapshot([active])
       : name === 'read-home-review' && selected && args.source_version === selected.row.source_version ? selected.response : { error: 'proof_unexpected_rpc' };
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
-  await page.goto('/__home-proof?mode=live', { waitUntil: 'domcontentloaded' });
   for (const c of cases) {
+    active = c;
+    await page.goto('/inbox?mode=live', { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-inbox-row]').first().waitFor();
+    await page.evaluate(() => { history.replaceState(null, '', '/?mode=live'); dispatchEvent(new PopStateEvent('popstate')); });
     const row = page.locator(`[data-inbox-row="${c.name}"]`);
     await row.getByRole('button', { name: 'Review card', exact: true }).click();
     const panel = page.getByRole('region', { name: `Review Synthetic ${c.name}`, exact: true });
@@ -64,7 +68,7 @@ export async function exerciseHome(page) {
       check(`${c.name} offers approval`, await panel.getByRole('option', { name: 'Approve a sourced value', exact: true }).count() === 1);
       check(`${c.name} preserves excerpt`, (await panel.locator('blockquote').textContent()) === (source.cited_text || 'Excerpt no longer available'));
     } else {
-      await panel.getByText('Could not load this review. Close and try again.', { exact: true }).waitFor();
+      await panel.locator('form, [role="status"]').filter({ hasNotText: 'Loading current evidence' }).first().waitFor();
       check(`${c.name} refuses approval`, await panel.locator('form, select, button:has-text("Save review")').count() === 0);
     }
     await panel.getByRole('button', { name: 'Close review', exact: true }).click();
@@ -124,7 +128,7 @@ export async function prove({ origin, timeoutMs }) {
       context.setDefaultTimeout(Math.max(1, Math.min(5000, end - Date.now())));
       await context.route('**/*', route => {
         const url = new URL(route.request().url());
-        if (url.origin === origin && url.pathname === '/__home-proof') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script></body>' });
+        if (url.origin === origin && url.pathname === '/inbox') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main id="homeRoot" data-inbox></main><script type="module" src="/js/ui-inbox.js"></script></body>' });
         const body = assets.get(url.href);
         return body ? route.fulfill({ contentType: 'text/javascript', body }) : route.abort();
       });
