@@ -1,30 +1,31 @@
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-const runner='scripts/prove-waiting-editor-canonical-reopen.mjs';let outDir;
-before(async()=>{outDir=temporaryDirectory('waiting-reopen-proof-');await buildArtifact({root:process.cwd(),outDir});});
+const runner='scripts/prove-waiting-editor-canonical-reopen.mjs';let outDir, manifest;
+before(async()=>{outDir=temporaryDirectory('waiting-reopen-proof-');({manifest}=await buildArtifact({root:process.cwd(),outDir}));});
 after(()=>rm(outDir,{recursive:true,force:true}));
 function cli(origin,timeout='30000',nodeArgs=[]) {return new Promise((resolve,reject)=>{const child=spawn(process.execPath,[...nodeArgs,runner,'--origin',origin,'--timeout-ms',timeout]);let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c);child.stderr.on('data',c=>stderr+=c);child.on('error',reject);child.on('exit',code=>resolve({code,stdout,stderr}));});}
 async function serve(mode) {
- const root=resolve(outDir,'site');const requests=[];
- const server=createServer(async(req,res)=>{
-    res.setHeader('content-type', 'application/json');
-  requests.push({method:req.method,url:req.url});
-  if(mode==='timeout')return;
-  if(req.url==='/app-release'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(mode==='unavailable'?{}:{service:'doctorcre-app', environment: 'production',source_commit:'1'.repeat(40)}));}
-  if(mode==='observing-timeout')return;
-  if(mode==='bytes'){res.setHeader('Content-Type','text/javascript');return res.end(' '.repeat(11*1024*1024));}
-  if(mode==='assets'){const n=req.url==='/js/ui-inbox.js'?0:Number(req.url.match(/asset-(\d+)/)?.[1]);res.setHeader('Content-Type','text/javascript');return res.end(`import './asset-${n+1}.js';`);}
-  if(mode==='missing'){res.writeHead(404);return res.end();}
-  let path;try{path=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));}catch{res.writeHead(400);return res.end();}
-  if(!path.startsWith(root+sep)){res.writeHead(403);return res.end();}
-  try{let body=await readFile(path);if(mode==='contradiction'&&req.url==='/js/ui-inbox.js')body=Buffer.from('document.querySelector("main").textContent="Wrong deployed behavior";');res.setHeader('Content-Type','text/javascript');res.end(body);}catch{res.writeHead(404);res.end();}
- });await new Promise(r=>server.listen(0,'127.0.0.1',r));return {origin:`http://127.0.0.1:${server.address().port}`,requests,async close(){server.closeAllConnections();await new Promise(r=>server.close(r));}};
+ const root=resolve(outDir,'site');
+ const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
+ if (mode === 'missing') responses.clear();
+ if (mode === 'contradiction') responses.set('/js/ui-inbox.js', { contentType: 'text/javascript', body: 'document.querySelector("main").textContent="Wrong deployed behavior";' });
+ if (mode === 'bytes') responses.set('/js/ui-inbox.js', { contentType: 'text/javascript', body: ' '.repeat(11*1024*1024) });
+ if (mode === 'assets') {
+  responses.set('/js/ui-inbox.js', { contentType: 'text/javascript', body: "import './asset-1.js';" });
+  for (let i = 1; i <= 32; i++) responses.set(`/js/asset-${i}.js`, { contentType: 'text/javascript', body: `import './asset-${i+1}.js';` });
+ }
+ if (mode === 'observing-timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+ responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify(mode === 'unavailable' ? {} : { service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40) }) });
+ if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+ const server = await startFixture({ routes: responses });
+ return { origin: server.origin, close: server.close, get requests() { return server.requests.map(req => ({ method: req.method, url: req.target })); } };
 }
 test('exact production-proof declaration and command pass fetched fixture bytes',async()=>{
  const plan=JSON.parse(await readFile('proofs/requirements/waiting-editor-canonical-reopen.json','utf8'));
