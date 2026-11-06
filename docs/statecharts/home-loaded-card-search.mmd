@@ -1,0 +1,30 @@
+stateDiagram-v2
+  [*] --> Mounted: parsed snapshot loaded
+  state Mounted {
+    state Query {
+      [*] --> AllLoaded
+      AllLoaded --> Filtered: type query / clear selection and announce
+      Filtered --> Filtered: edit query / recompute literal subset
+      Filtered --> AllLoaded: Clear
+      Filtered --> Filtered: refresh / retain query and replace snapshot
+      Filtered --> Filtered: Home card query / pin if unmatched
+    }
+    --
+    state Availability {
+      [*] --> Interactive
+      Interactive --> Locked: begin action or review
+      Locked --> Locked: query changes refused
+      Locked --> Interactive: confirmed action or close review
+      Locked --> Interactive: dismiss uncertainty and refresh
+    }
+    --
+    state Disclosure {
+      [*] --> Collapsed
+      Collapsed --> Expanded: See all
+      Expanded --> Collapsed: Show less
+    }
+  }
+  Mounted --> FullInbox: follow card title
+  FullInbox --> Mounted: browser Back / restore search
+  Mounted --> Disposed: session clear or unmount
+  Disposed --> [*]
