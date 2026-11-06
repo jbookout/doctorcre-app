@@ -1,3 +1,4 @@
+import { businessDay } from './business-date.js';
 import { COLUMNS, columnBySlug, columnByValue, noteText } from './pipeline-model.js';
 import { escapeText } from './change-receipts.mjs';
 import { sourceTime } from './email-source-line.js';
@@ -22,10 +23,7 @@ export function calendarDay(value) {
   const stamp = Date.parse(day + 'T00:00:00Z');
   return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0,10) === day ? day : null;
 }
-const today = now => {
-  const date = new Date(now);
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-};
+const today = now => businessDay(new Date(now));
 export function dateCaption(day) {
   return day ? new Date(day+'T12:00:00Z').toLocaleDateString([], {month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}) : '—';
 }
