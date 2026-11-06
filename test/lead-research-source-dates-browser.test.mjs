@@ -16,7 +16,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     page.setDefaultTimeout(5000);
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     let reject = false;
-    await routeLeads(page, { getBoard: () => recording, getDetail: (row, args) => {
+    let restoring = false;
+    await routeLeads(page, { getBoard: async () => {
+      if (restoring) await page.evaluate(async () => {
+        await window.researchClose;
+        if (!window.researchApp.state.identityReady) throw new Error('Expected verified identity before board response');
+        document.querySelector('#leadDetail').dispatchEvent(new Event('close'));
+      });
+      return recording;
+    }, getDetail: (row, args) => {
       if (reject) return { ...recording.detail, research: { ...recording.detail.research, evidence: [{ ...recording.detail.research.evidence[0], observed_at: 'not-a-date' }] } };
       const next = structuredClone(recording.detail);
       next.id = row.id;
@@ -70,8 +78,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.locator('#closeDetail').click();
     await page.locator('[data-open]').first().click();
     await panel.waitFor();
-    await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+    await page.evaluate(() => {
+      const dialog = document.querySelector('#leadDetail');
+      window.researchClose = new Promise(resolve => {
+        dialog.addEventListener('close', event => { event.stopImmediatePropagation(); resolve(); }, { capture: true, once: true });
+      });
+      window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    });
     await panel.waitFor({ state: 'detached' });
+    restoring = true;
     await page.evaluate(() => window.researchApp.refresh());
     await panel.waitFor();
     await page.evaluate(() => window.researchApp.dispose());
@@ -102,3 +117,53 @@ test('disposal clears rendered dates and ignores a late detail response', async 
   await pending;
   assert.equal(w.document.querySelector('#sourcedResearch'), null);
 });
+
+for (const closeAt of ['before identity', 'after identity', 'after reopen']) {
+  test(`research resumes when the suspended dialog close arrives ${closeAt}`, async t => {
+    const { JSDOM } = await import('jsdom');
+    const { mountLeadsWorkspace } = await import('../js/leads-workspace-app.js');
+    const dom = new JSDOM(await readFile(new URL('../leads.html', import.meta.url), 'utf8'), { url: 'https://example.test/leads', pretendToBeVisual: true });
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    w.HTMLDialogElement.prototype.close = function () { this.open = false; };
+    let releaseBoard;
+    let boardStarted;
+    const readingBoard = new Promise(resolve => { boardStarted = resolve; });
+    let restoring = false;
+    const client = {
+      getActor: async () => 'example-partner',
+      getWorkspace: async () => {
+        if (restoring) {
+          const pending = new Promise(resolve => { releaseBoard = () => resolve(structuredClone(recording)); });
+          boardStarted();
+          return pending;
+        }
+        return structuredClone(recording);
+      },
+      getLeadDetail: async () => structuredClone(recording),
+    };
+    const app = mountLeadsWorkspace(w.document, client, { mapFactory: async () => ({ update() {}, dispose() {} }) });
+    t.after(() => { app.dispose(); w.close(); });
+    await app.refresh();
+    await app.readDetail(recording.detail.id);
+    assert.ok(w.document.querySelector('#sourcedResearch'));
+    const dialog = w.document.querySelector('#leadDetail');
+    w.dispatchEvent(new w.Event('doctorcre-session-invalidated'));
+    assert.equal(w.document.querySelector('#sourcedResearch'), null);
+    if (closeAt === 'before identity') dialog.dispatchEvent(new w.Event('close'));
+    restoring = true;
+    const pending = app.refresh();
+    await readingBoard;
+    if (closeAt === 'after identity') dialog.dispatchEvent(new w.Event('close'));
+    releaseBoard();
+    await pending;
+    if (closeAt === 'after reopen') dialog.dispatchEvent(new w.Event('close'));
+    assert.equal(dialog.open, true, 'restores the previously open lead');
+    assert.equal(w.document.querySelectorAll('#sourcedResearch li').length, 4, 'restores sourced research');
+    dialog.close();
+    dialog.dispatchEvent(new w.Event('close'));
+    restoring = false;
+    await app.refresh();
+    assert.equal(dialog.open, false, 'an explicit close stays closed');
+  });
+}
