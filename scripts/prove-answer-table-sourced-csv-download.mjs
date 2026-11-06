@@ -37,9 +37,7 @@ export async function assertSourcedCsv(recordings) {
   const button = name => [...host.querySelectorAll('button')].find(b => b.textContent === name);
   const downloads = [], acquired = [], revoked = [];
   const create = URL.createObjectURL, revoke = URL.revokeObjectURL, click = HTMLAnchorElement.prototype.click;
-  let failure = '', network = 0;
-  const fetchOriginal = window.fetch;
-  window.fetch = (...args) => { network++; return fetchOriginal(...args); };
+  let failure = '';
   URL.createObjectURL = blob => { if (failure === 'create') throw Error('create failed'); const url = create(blob); acquired.push(url); downloads.push({blob,url}); return url; };
   URL.revokeObjectURL = url => { revoked.push(url); revoke(url); };
   HTMLAnchorElement.prototype.click = function() { if (failure === 'click') throw Error('click failed'); downloads.at(-1).filename = this.download; };
@@ -110,11 +108,10 @@ export async function assertSourcedCsv(recordings) {
     await settle(); check('no stale completion after disposal', host.childNodes.length === 0);
     check('every acquired URL revoked exactly once', acquired.length === revoked.length && new Set(revoked).size === revoked.length && acquired.every(u => revoked.includes(u)));
     check('producer data unchanged', original === JSON.stringify(recordings));
-    check('zero business or network calls', network === 0);
     return assertions;
   } finally {
     api.disposeAnswerBlocks(host); host.remove(); URL.createObjectURL = create; URL.revokeObjectURL = revoke;
-    HTMLAnchorElement.prototype.click = click; window.fetch = fetchOriginal;
+    HTMLAnchorElement.prototype.click = click;
   }
 }
 
@@ -192,11 +189,6 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
   const deadline = new Promise((_, reject) => {
     timer = setTimeout(() => { controller.abort(unavailable('total deadline exceeded')); reject(controller.signal.reason); }, timeoutMs);
   });
-  const git = args => new Promise((resolve, reject) => {
-    let failure, output;
-    const child = execFile('git', args, { cwd: new URL('../', import.meta.url), timeout: Math.max(1, Math.min(5000, timeoutMs - (Date.now() - started))), signal: controller.signal, killSignal: 'SIGKILL' }, (error, stdout) => { failure = error; output = stdout; });
-    child.once('close', () => failure ? reject(failure) : resolve(output.trim()));
-  });
   try {
     await Promise.race([deadline, (async () => {
       let requests = 0;
@@ -218,11 +210,17 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.href) }));
       if (!fixture || commit) {
         try {
-          commit ||= await git(['log', 'origin/main', '-1', '--format=%H', '--fixed-strings', '--grep=(#767)']);
+          commit ||= await new Promise((resolve, reject) => {
+            let failure, output;
+            const child = execFile('git', ['log', 'origin/main', '-1', '--format=%H', '--fixed-strings', '--grep=(#767)'], { cwd: new URL('../', import.meta.url), timeout: Math.max(1, Math.min(5000, timeoutMs - (Date.now() - started))), signal: controller.signal, killSignal: 'SIGKILL' }, (error, stdout) => { failure = error; output = stdout; });
+            child.once('close', () => failure ? reject(failure) : resolve(output.trim()));
+          });
           if (!/^[a-f0-9]{40}$/.test(commit || '')) throw unavailable('PR merge commit unknown');
-          await git(['cat-file', '-e', `${commit}^{commit}`]);
-          await git(['cat-file', '-e', `${receipt.release.source_commit}^{commit}`]);
-          if (commit !== receipt.release.source_commit) await git(['merge-base', '--is-ancestor', commit, receipt.release.source_commit]);
+          await new Promise((resolve, reject) => {
+            let failure;
+            const child = execFile('git', ['merge-base', '--is-ancestor', commit, receipt.release.source_commit], { cwd: new URL('../', import.meta.url), timeout: Math.max(1, Math.min(5000, timeoutMs - (Date.now() - started))), signal: controller.signal, killSignal: 'SIGKILL' }, error => { failure = error; });
+            child.once('close', () => failure ? reject(failure) : resolve());
+          });
           receipt.required_commit = commit;
         } catch (error) { throw unavailable(error.code === 1 ? 'Release does not contain required commit' : 'Release ancestry evidence unavailable'); }
       }
@@ -255,7 +253,15 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       });
       const page = await context.newPage();
       await page.goto(`${origin}/__answer-proof`);
-      receipt.assertions = await page.evaluate(assertSourcedCsv, recordings);
+      await page.evaluate(() => import('/js/ui-answers.js').then(() => {}));
+      let exportRequests = 0;
+      const countExportRequest = () => exportRequests++;
+      page.on('request', countExportRequest);
+      try {
+        receipt.assertions = await page.evaluate(assertSourcedCsv, recordings);
+        receipt.assertions.push({ name: 'zero business or network calls', passed: exportRequests === 0 });
+        if (exportRequests) throw Error('Export added network calls');
+      } finally { page.off('request', countExportRequest); }
       if (!fixture) {
         if (!cdpUrl) throw unavailable('No signed-in browser session supplied; deployed fixture assertions passed');
         naturalBrowser = await launchProofBrowser({ launch: options => engine.connectOverCDP(cdpUrl, {...options, isLocal: true}) }, { timeout: Math.max(1, timeoutMs - (Date.now() - started)) }, { signal: controller.signal });

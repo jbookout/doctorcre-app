@@ -14,7 +14,11 @@ test('sourced CSV selection, lifecycle, escaping and zero business calls', async
       await page.route('**/__csv-component', r => r.fulfill({contentType:'text/html',body:'<!doctype html><body></body>'}));
       await page.goto(server.origin + '/__csv-component');
       await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+      await page.evaluate(() => import('/js/ui-answers.js').then(() => {}));
+      const requests = [];
+      page.on('request', request => requests.push(request.url()));
       const result = await page.evaluate(assertSourcedCsv, recordings);
+      assert.deepEqual(requests, [], 'CSV actions add zero network requests');
       assert.ok(result.length > 20);
     } finally { await page.close(); }
   });
