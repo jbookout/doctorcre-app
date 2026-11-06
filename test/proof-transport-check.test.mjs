@@ -24,13 +24,15 @@ for (const source of [
   "await import('node:https')",
   "const assetUrl = 'node:https'; await import(assetUrl)",
   "const { request } = await import('playwright'); await request.newContext()",
-  "import { chromium } from 'playwright'; const context = await chromium.launch(); await context.request.get('https://example.com')",
+  "import { chromium } from 'playwright'; const context = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); await context.request.get('https://example.com')",
   "import { execSync } from 'node:child_process'; execSync('/usr/bin/curl https://example.com')",
   "import { execFileSync } from 'node:child_process'; execFileSync('/usr/bin/curl', ['https://example.com'])",
   "import { spawn } from 'node:child_process'; spawn('sh', ['-c', 'curl https://example.com'])",
   "import { execFileSync as read } from 'node:child_process'; read('/usr/bin/curl', ['https://example.com'])",
   "process.getBuiltinModule('https').get('https://example.com')",
-  "import './new-http-helper.mjs'",
+  "import net from 'node:net'",
+  "import tls from 'tls'",
+  "import { request } from 'undici'",
   "await page.goto('https://example.com/app-release')",
   "await route.fetch({ url: 'https://example.com/app-release' })",
 ]) test(`transport bypass is refused: ${source}`, () => {
@@ -103,4 +105,8 @@ test('real Chromium closes after late acquisition and stalled evaluation', async
     assert.ok(acquired, mode);
     assert.equal(acquired.isConnected(), false, mode);
   }
+});
+
+test('pure modules and ordinary globals are outside transport enforcement', () => {
+  assert.deepEqual(checkProofSource("import { detail } from '../test/leads-workspace-fixture.mjs'; import { basename } from 'node:path'; const decoder = new TextDecoder(); process.exitCode = 0;"), []);
 });

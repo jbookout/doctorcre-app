@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { readAppRelease } from './app-release-reader.mjs';
+import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export function observeDelivery(model) {
@@ -55,7 +55,7 @@ export async function prove({ origin, timeoutMs }) {
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(1, Math.min(10000, deadline - Date.now()));
   let browser;
-  try { browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }); }
+  try { browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }); }
   catch { throw Object.assign(Error('Isolated browser unavailable'), { exitCode: 78 }); }
   let timedOut = false;
   const shutdown = setTimeout(() => { timedOut = true; void browser.close(); }, Math.max(1, deadline - Date.now() - 100));
@@ -67,18 +67,18 @@ export async function prove({ origin, timeoutMs }) {
     const get = async url => {
       if (++requests > 22 || Date.now() >= deadline) throw refusal('Proof request budget exhausted');
       let response;
-      try { response = await context.request.get(url, { timeout: remaining(), maxRedirects: 0 }); }
+      try { response = await proofFetch(url, { signal: AbortSignal.timeout(remaining()), redirect: 'manual' }); }
       catch { throw refusal('Asset or identity unavailable'); }
-      if ([301, 302, 303, 307, 308, 401, 403].includes(response.status())) throw refusal('Protected asset or sign-in required');
-      const body = await response.body();
+      if ([301, 302, 303, 307, 308, 401, 403].includes(response.status)) throw refusal('Protected asset or sign-in required');
+      const body = Buffer.from(await response.arrayBuffer());
       bytes += body.length;
       if (bytes > 10 * 1024 * 1024) throw refusal('Proof byte budget exhausted');
       return { response, body };
     };
     const read = async url => {
       const { response, body } = await get(String(url));
-      if (response.status() !== 200) throw refusal('Unavailable identity');
-      return { body, type: response.headers()['content-type'] || '' };
+      if (response.status !== 200) throw refusal('Unavailable identity');
+      return { body, type: response.headers.get('content-type') || '' };
     };
     const identity = await readAppRelease(origin, read);
     const page = await context.newPage();
@@ -91,7 +91,7 @@ export async function prove({ origin, timeoutMs }) {
         if (!/^\/js\/[A-Za-z0-9._-]+\.(?:js|mjs)$/.test(url.pathname) || url.search) throw Error('Business network request refused');
         if (++moduleRequests > 20) throw refusal('Asset budget exhausted');
         const { response, body } = await get(url.href);
-        if (response.status() !== 200 || !/javascript/.test(response.headers()['content-type'] || '')) throw refusal('Protected or missing JavaScript asset');
+        if (response.status !== 200 || !/javascript/.test(response.headers.get('content-type') || '')) throw refusal('Protected or missing JavaScript asset');
         assets.push({ url: url.href, sha256: createHash('sha256').update(body).digest('hex') });
         await route.fulfill({ contentType: 'text/javascript', body });
       } catch (error) { routeError = error; await route.abort(); }
