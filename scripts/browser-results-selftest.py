@@ -120,6 +120,26 @@ class ResultsTest(unittest.TestCase):
         self.assertEqual(len(set(union)), len(union))
         print(f'native partition: {len(union)} files, no duplicates')
 
+    def test_first_attempt_proof_requires_only_produced_native_evidence(self):
+        plan = json.loads((ROOT / 'proofs/requirements/wr617-s1-ci-first-attempt-evidence.json').read_text())
+        observation = next(a for a in plan['assertions'] if a['id'] == 'main-first-attempt-evidence-retained')
+        requirement = json.dumps(observation)
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        unsupported = []
+        for obsolete, producer in [('browser-coverage', 'name: browser-coverage'),
+                                   ('planned manifests', 'planned'), ('start/exit evidence', 'started'),
+                                   ('per-file JUnit', 'per-file')]:
+            required, produced = obsolete in requirement, producer in workflow
+            print(f'{obsolete}: required={required} produced={produced}')
+            if required and not produced:
+                unsupported.append(obsolete)
+        self.assertEqual(unsupported, [], 'proof requires deleted evidence')
+        self.assertIn('per-shard native JUnit XML', requirement)
+        self.assertIn('required test aggregate', requirement)
+        self.assertIn('out/browser-results/junit.xml', workflow)
+        self.assertIn('retention-days: 14', workflow)
+        self.assertIn('needs: [checks, shards, performance, live]', workflow)
+
     def test_required_aggregate_accepts_only_native_success_including_retained_shards(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         shell = workflow.split('      - name: Require all applicable jobs to pass')[1].split('        run: |\n')[1].split('\n  preview:')[0]
