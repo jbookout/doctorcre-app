@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { validateCarrRecordings } from '../test/support/carr-fixture-contract.mjs';
 import { readFile, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -6,7 +7,7 @@ import { chromium } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
-export const calendarRecordings = {
+export const calendarRecordings = validateCarrRecordings({
   provenance: {"repository":"DoctorCRE/carr-system","source_commit":"f08895ac514770f8ce6eb00a29159a6072da9c46","path":"mcp-server/src/brief-calendar.js","function":"calendarSection","source_sha256":"3926d5ce2d25312407ad3b4dad18f8443cfef75371e30bbb9ebb7cac65fc045c"},
   records: [
     {"name":"empty","now":"2026-11-05T14:00:00Z","snapshot":{"schema":"carr-calendar-agenda.v1","observed_at":"2026-11-05T14:00:00Z","items":[],"warnings":[]},"response":{"state":"empty","source":"outlook_local_store","notes":[],"observed_at":"2026-11-05T14:00:00.000Z","sources":{"outlook_calendar":{"state":"ready"}},"items":[]}},
@@ -22,7 +23,7 @@ export const calendarRecordings = {
     {"name":"year boundary partial","now":"2026-12-31T23:30:00-06:00","snapshot":{"schema":"carr-calendar-agenda.v1","observed_at":"2026-12-31T23:30:00-06:00","items":[{"title":"year boundary","start":"2026-12-31T23:30:00-06:00","end":"2027-01-01T00:30:00-06:00","time_changed":true},{"title":"Overlapping appointment","start":"2027-01-01T05:30:01.000Z","end":"2027-01-01T00:30:00-06:00"}],"warnings":[{"code":"responses_unverified"}]},"response":{"state":"partial","source":"outlook_local_store","notes":["May include meetings you declined or that were cancelled or deleted. Check Outlook."],"observed_at":"2027-01-01T05:30:00.000Z","sources":{"outlook_calendar":{"state":"partial"}},"items":[{"start":"2027-01-01T05:30:00.000Z","end":"2027-01-01T06:30:00.000Z","title":"year boundary","location":null,"organizer":{"name":null,"email":null},"attendees":[],"attendee_count":0,"all_day":false,"recurring":false,"time_changed":true,"times":[],"conflict":false,"schedule_conflict":true,"schedule_conflicts":[{"title":"Overlapping appointment","start":"2027-01-01T05:30:01.000Z","end":"2027-01-01T06:30:00.000Z","overlap_start":"2027-01-01T05:30:01.000Z","overlap_end":"2027-01-01T06:30:00.000Z"}],"schedule_conflicts_omitted":0},{"start":"2027-01-01T05:30:01.000Z","end":"2027-01-01T06:30:00.000Z","title":"Overlapping appointment","location":null,"organizer":{"name":null,"email":null},"attendees":[],"attendee_count":0,"all_day":false,"recurring":false,"time_changed":false,"times":[],"conflict":false,"schedule_conflict":true,"schedule_conflicts":[{"title":"year boundary","start":"2027-01-01T05:30:00.000Z","end":"2027-01-01T06:30:00.000Z","overlap_start":"2027-01-01T05:30:01.000Z","overlap_end":"2027-01-01T06:30:00.000Z"}],"schedule_conflicts_omitted":0}]}},
     {"name":"refreshed","now":"2026-11-05T14:00:00Z","snapshot":{"schema":"carr-calendar-agenda.v1","observed_at":"2026-11-05T14:00:00Z","items":[{"title":"Later","start":"2026-11-05T16:00:00Z","end":"2026-11-05T17:00:00Z"},{"title":"Earlier","start":"2026-11-05T14:00:00Z","end":"2026-11-05T15:00:00Z","time_changed":true},{"title":"All day","start":"2026-11-05T00:00:00Z","end":"2026-11-06T00:00:00Z","all_day":true}],"warnings":[]},"response":{"state":"ready","source":"outlook_local_store","notes":[],"observed_at":"2026-11-05T14:00:00.000Z","sources":{"outlook_calendar":{"state":"ready"}},"items":[{"start":"2026-11-05T00:00:00.000Z","end":"2026-11-06T00:00:00.000Z","title":"All day","location":null,"organizer":{"name":null,"email":null},"attendees":[],"attendee_count":0,"all_day":true,"recurring":false,"time_changed":false,"times":[],"conflict":false,"schedule_conflict":false,"schedule_conflicts":[],"schedule_conflicts_omitted":0},{"start":"2026-11-05T14:00:00.000Z","end":"2026-11-05T15:00:00.000Z","title":"Earlier","location":null,"organizer":{"name":null,"email":null},"attendees":[],"attendee_count":0,"all_day":false,"recurring":false,"time_changed":true,"times":[],"conflict":false,"schedule_conflict":false,"schedule_conflicts":[],"schedule_conflicts_omitted":0},{"start":"2026-11-05T16:00:00.000Z","end":"2026-11-05T17:00:00.000Z","title":"Later","location":null,"organizer":{"name":null,"email":null},"attendees":[],"attendee_count":0,"all_day":false,"recurring":false,"time_changed":false,"times":[],"conflict":false,"schedule_conflict":false,"schedule_conflicts":[],"schedule_conflicts_omitted":0}]}}
   ],
-};
+});
 
 export async function observe(recordings) {
   const response = name => structuredClone(recordings.records.find(record => record.name === name).response);
@@ -70,7 +71,11 @@ export async function observe(recordings) {
   rail.style.height = '1600px';
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   check('rail grows', left.querySelectorAll('.calendar-panel-meeting[hidden]').length === 0);
-  panel.render({ state: 'ready', items: [{ title: 'bad', start: 'invalid', end: 'invalid' }] });
+  const invalid = response('same day');
+  invalid.items[0].start = 'invalid';
+  invalid.items[0].end = 'invalid';
+  invalid.items.splice(1);
+  panel.render(invalid);
   check('invalid snapshot', labels(left).length === 0 && left.textContent.includes('Schedule unavailable'));
   panel.render(refreshed);
   panel.clear();
