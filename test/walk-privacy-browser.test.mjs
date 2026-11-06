@@ -3,12 +3,53 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 
 const require = createRequire(import.meta.url);
+
+test('no-fixture POST admission refuses every registry write and unknown read-like verb', async t => {
+  const registry = JSON.parse(readFileSync('test/fixtures/walk-verb-registry.json', 'utf8')).response;
+  assert.equal(registry.ok, true);
+  assert.equal(registry.names_only, true);
+  assert.equal(registry.count, registry.verbs.length);
+  const refused = registry.verbs.filter(verb => verb.write === true).map(verb => verb.name);
+  assert.ok(refused.includes('read-client-portal'));
+  refused.unshift('read-client-portal');
+  refused.push('read-invented', 'get-invented', 'list-invented', 'preview-invented', 'search-invented', 'human-actors', 'search-parties');
+  const receipts = [];
+  const server = createServer((request, response) => {
+    if (request.method !== 'GET') receipts.push(request.method);
+    response.end('synthetic sink');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const directory = temporaryDirectory('doctorcre-walk-read-guard-', t);
+  writeFileSync(resolve(directory, 'reads.spec.ts'), `
+import { expect } from ${JSON.stringify(require.resolve('@playwright/test'))};
+import { test } from ${JSON.stringify(resolve('tests/walks/privacy.ts'))};
+test('no unverified mutation leaves the browser', async ({page}) => {
+  await page.goto('/');
+  for (const name of ${JSON.stringify(refused)}) {
+    expect(await page.evaluate(name => fetch('/mcp', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'tools/call',params:{name,arguments:{}}})}).then(()=>false,()=>true), name), name).toBe(true);
+  }
+  for (const [method, envelope] of [
+    ['PUT', {method:'tools/call',params:{name:'read-home-inbox-v5'}}],
+    ['POST', {method:'tools/list',params:{name:'read-home-inbox-v5'}}],
+    ['POST', {params:{name:'read-home-inbox-v5'}}],
+  ]) expect(await page.evaluate(({method,envelope})=>fetch('/mcp',{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(envelope)}).then(()=>false,()=>true),{method,envelope})).toBe(true);
+});`);
+  const config = resolve(directory, 'playwright.config.ts');
+  writeFileSync(config, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results', use: { baseURL: 'http://127.0.0.1:${server.address().port}', serviceWorkers: 'block' } };`);
+  const { stdout } = await promisify(execFile)(process.execPath, [require.resolve('@playwright/test/cli'), 'test', '--config', config, '--reporter=json'], { timeout: 30_000 }).catch(error => {
+    assert.deepEqual(receipts, [], 'Refused requests must never reach the server');
+    throw error;
+  });
+  assert.equal(JSON.parse(stdout).stats.expected, 1);
+  assert.deepEqual(receipts, []);
+});
 
 test('walk privacy covers consecutive spec files and secondary pages', async t => {
   let writes = 0;
