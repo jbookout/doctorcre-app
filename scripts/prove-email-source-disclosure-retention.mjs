@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
-import { checkedResponses, producerIdentity } from '../test/fixtures/email-source-disclosure.mjs';
+import { readFileSync } from 'node:fs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function observe(page) {
-  const responses = await checkedResponses();
+  const directory = new URL('../test/fixtures/email-source-disclosure/', import.meta.url);
+  const records = JSON.parse(readFileSync(new URL('recordings.json', directory)));
+  const producerIdentity = JSON.parse(readFileSync(new URL('producer.json', directory)));
+  const responses = Object.fromEntries(Object.entries(records).map(([name, record]) => [name, record.response]));
   return page.evaluate(async ({ responses, producerHash }) => {
     const { createLiveClient } = await import('/js/live-client.js');
     const { mountEmailFollowups } = await import('/js/email-followups.js');

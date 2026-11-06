@@ -11,7 +11,11 @@ import { checkedResponses, producerIdentity, recordings } from './fixtures/email
 test('every successful recording equals the pinned registered producer', async () => {
   assert.equal(producerIdentity.revision, 'f08895ac514770f8ce6eb00a29159a6072da9c46');
   assert.equal(producerIdentity.files['email-proposals.js'], 'c7d88f4776f4b41350a010bbb853efe388efc4f933630874461629a9e5972752');
-  assert.equal(Object.keys(await checkedResponses()).length, 8);
+  const expected = await checkedResponses();
+  assert.equal(Object.keys(expected).length, 8);
+  const observed = await observe({ evaluate: async (_observation, payload) => payload });
+  assert.deepEqual(observed.responses, expected, 'proof passes exactly the producer-checked recordings to the app');
+  assert.equal(observed.producerHash, producerIdentity.files['email-proposals.js']);
   for (const name of Object.keys(recordings())) {
     const record = recordings()[name];
     if (record.verb === 'preview-email-next-step') delete record.response.proposal_digest;
