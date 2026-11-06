@@ -1,3 +1,4 @@
+import { isAppRepository } from '../js/repository-identity.mjs';
 import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -36,7 +37,7 @@ export async function prove({ origin, commit, timeoutMs }) {
     assert.equal(response.headers.get('cache-control'), 'no-store');
     const manifest = JSON.parse(data);
     assert.equal(manifest.schema, 'doctorcre-static-artifact.v1');
-    assert.equal(manifest.repository, 'jbookout/doctorcre-app');
+    assert.ok(isAppRepository(manifest.repository), 'manifest repository mismatch');
     assert.equal(manifest.source_commit, commit, 'manifest commit mismatch');
     assert.ok(Array.isArray(manifest.files) && manifest.files.length <= 10000, 'manifest file inventory required');
     const files = new Map();

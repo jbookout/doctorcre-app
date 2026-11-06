@@ -40,6 +40,8 @@ async function fixture(t, mode) {
  }
  if(mode==='foreign')assets.set('/js/leads-model.js',Buffer.from('import "https://foreign.invalid/module.js";'));
  const manifest={schema:'doctorcre-static-artifact.v1',repository:'jbookout/doctorcre-app',source_commit:'1'.repeat(40),files:[...assets].map(([path,bytes])=>({path:path.slice(1),bytes:bytes.length,sha256:hash(bytes)}))};
+  if (mode === 'canonical') manifest.repository = 'DoctorCRE/doctorcre-app';
+  if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
  const seen=[];let releases=0;
  const server=createServer(async(req,res)=>{
   seen.push([req.method,req.url]);
@@ -108,4 +110,9 @@ for(const width of [390,1280])test(`lead clock UI rejects malformed detail and r
  assert.equal(await page.locator('#stageQuestions textarea').count(),0);
  assert.equal(await page.locator('#saveStage').isDisabled(),false);
  await page.locator('#closeStage').click();assert.deepEqual(writes,[]);
+});
+
+for (const [mode, expected] of [['canonical', 0], ['unrelated', 78]]) test(`manifest repository ${mode}`, async t => {
+  const f = await fixture(t, mode), result = await cli(f.origin);
+  assert.equal(result.code, expected, JSON.stringify(result));
 });
