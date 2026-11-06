@@ -20,3 +20,19 @@ stateDiagram-v2
   %% never Replace an active draft during background refresh.
   %% never Reuse old text with a fresh base when opening a closed editor.
   %% never Change an unresolved request during recovery.
+
+  state "Proof runner" as Proof {
+    [*] --> Fetching
+    Fetching --> Compiling: Release available
+    Compiling --> Launching: Fixture ready
+    Launching --> Observing: Browser ready
+    Observing --> Cleaned: Assertions finish or fail
+    Fetching --> Cancelling: Deadline
+    Compiling --> Cancelling: Deadline
+    Launching --> Cancelling: Deadline
+    Observing --> Cancelling: Deadline
+    Cancelling --> Cleaned: Worker disposes compiler and browser
+    Cleaned --> [*]
+  }
+  %% never Advance proof startup after cancellation.
+  %% never Return from proof while its worker still owns a browser.

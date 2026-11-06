@@ -1,13 +1,25 @@
 import { chromium } from 'playwright';
-import { build } from 'esbuild';
+import { context as buildContext } from 'esbuild';
 import { init, parse } from 'es-module-lexer';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
-export async function syntheticWaiting() {
-  const compiled = await build({ stdin: { contents: "export {fixtureInboxRpc} from './src/ui/home/fixture'; export {createInboxClient,parseSnapshot} from './src/ui/home/inbox';", resolveDir: fileURLToPath(new URL('../', import.meta.url)) }, bundle: true, write: false, platform: 'node', format: 'esm' });
+export async function syntheticWaiting(signal) {
+  signal?.throwIfAborted();
+  const compiler = await buildContext({ stdin: { contents: "export {fixtureInboxRpc} from './src/ui/home/fixture'; export {createInboxClient,parseSnapshot} from './src/ui/home/inbox';", resolveDir: fileURLToPath(new URL('../', import.meta.url)) }, bundle: true, write: false, platform: 'node', format: 'esm' });
+  const cancel = () => { void compiler.cancel(); };
+  signal?.addEventListener('abort', cancel, { once: true });
+  let compiled;
+  try {
+    signal?.throwIfAborted();
+    compiled = await compiler.rebuild();
+    signal?.throwIfAborted();
+  } finally {
+    signal?.removeEventListener('abort', cancel);
+    await compiler.dispose();
+  }
   const { fixtureInboxRpc, createInboxClient, parseSnapshot } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
   const raw = fixtureInboxRpc();
   const rpc = async (name, args) => {
@@ -20,6 +32,7 @@ export async function syntheticWaiting() {
     const item = (await client.read()).items[0];
     return client.wait({ action: 'set', args: { idempotency_key: crypto.randomUUID(), item_id: item.item_id, item_version: item.base_version, base_version: item.waiting_version, reason, evidence: [`proof:${reason}`], target: { kind: 'party', id: '00000000-0000-0000-0000-000000000099' } } });
   };
+  signal?.throwIfAborted();
   await seed('Old reason');
   return { rpc, client, seed, parseSnapshot };
 }
@@ -67,6 +80,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw Error('timeout-ms must be 1..30000');
   let browser, timer, bytes = 0;
   const controller = new AbortController();
+  const deadline = performance.now() + timeoutMs;
   const assets = new Map();
   const allowed = new Set(['/js/ui-inbox.js', '/js/boot-mode.js', '/js/private-session.js', '/js/mcp-requests.mjs']);
   const receipt = { release: null, assets: [], assertions: [], synthetic: true };
@@ -100,16 +114,18 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     assets.set(path, pending);
     return pending;
   };
-  const expired = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); void browser?.close(); reject(unavailable('Proof deadline exceeded')); }, timeoutMs); });
-  try {
-    return await Promise.race([expired, (async () => {
+  const worker = (async () => {
+    try {
       await init;
       try { receipt.release = JSON.parse((await fetchBytes('/app-release')).toString()); }
       catch { throw unavailable('Release identity unavailable'); }
       if (receipt.release?.service !== 'doctorcre-app' || !/^[0-9a-f]{40}$/.test(receipt.release?.source_commit) || (receipt.release.source_commit === '0'.repeat(40) && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw unavailable('Release identity unavailable');
-      const synthetic = await syntheticWaiting();
+      controller.signal.throwIfAborted();
+      const synthetic = await syntheticWaiting(controller.signal);
+      controller.signal.throwIfAborted();
       const writes = []; let lost = false; let assetFailure; let rpcCount = 0;
-      browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
+      browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, Math.ceil(deadline - performance.now())) });
+      controller.signal.throwIfAborted();
       const context = await browser.newContext({ serviceWorkers: 'block' });
       context.setDefaultTimeout(Math.min(5000, Math.floor(timeoutMs / 2)));
       await context.route('**/*', async route => {
@@ -133,7 +149,9 @@ export async function prove({ origin, timeoutMs = 30000 }) {
         try { return await route.fulfill({ contentType: 'text/javascript', body: await asset(target.pathname) }); }
         catch (error) { assetFailure = error; return route.abort(); }
       });
+      controller.signal.throwIfAborted();
       const page = await context.newPage();
+      controller.signal.throwIfAborted();
       await page.goto(url.origin + '/inbox?mode=live');
       try { receipt.assertions = await observeWaiting(page, synthetic, writes, () => { lost = true; }); }
       catch (error) { throw assetFailure || error; }
@@ -141,8 +159,24 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       receipt.fetched_bytes = bytes;
       if (Buffer.byteLength(JSON.stringify(receipt)) > 65536) throw Error('Receipt budget exceeded');
       return receipt;
-    })()]);
-  } finally { clearTimeout(timer); controller.abort(); await browser?.close(); }
+    } catch (error) {
+      throw controller.signal.aborted ? controller.signal.reason : error;
+    } finally { await browser?.close(); }
+  })();
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = unavailable('Proof deadline exceeded');
+      controller.abort(error);
+      void browser?.close().catch(() => {});
+      reject(error);
+    }, timeoutMs);
+  });
+  try { return await Promise.race([expired, worker]); }
+  finally {
+    controller.abort();
+    await worker.catch(() => {});
+    clearTimeout(timer);
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -9,13 +9,14 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 const runner='scripts/prove-waiting-editor-canonical-reopen.mjs';let outDir;
 before(async()=>{outDir=temporaryDirectory('waiting-reopen-proof-');await buildArtifact({root:process.cwd(),outDir});});
 after(()=>rm(outDir,{recursive:true,force:true}));
-function cli(origin,timeout='30000') {return new Promise((resolve,reject)=>{const child=spawn(process.execPath,[runner,'--origin',origin,'--timeout-ms',timeout]);let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c);child.stderr.on('data',c=>stderr+=c);child.on('error',reject);child.on('exit',code=>resolve({code,stdout,stderr}));});}
+function cli(origin,timeout='30000',nodeArgs=[]) {return new Promise((resolve,reject)=>{const child=spawn(process.execPath,[...nodeArgs,runner,'--origin',origin,'--timeout-ms',timeout]);let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c);child.stderr.on('data',c=>stderr+=c);child.on('error',reject);child.on('exit',code=>resolve({code,stdout,stderr}));});}
 async function serve(mode) {
  const root=resolve(outDir,'site');const requests=[];
  const server=createServer(async(req,res)=>{
   requests.push({method:req.method,url:req.url});
   if(mode==='timeout')return;
   if(req.url==='/app-release'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(mode==='unavailable'?{}:{service:'doctorcre-app',source_commit:'1'.repeat(40)}));}
+  if(mode==='observing-timeout')return;
   if(mode==='bytes'){res.setHeader('Content-Type','text/javascript');return res.end(' '.repeat(11*1024*1024));}
   if(mode==='assets'){const n=req.url==='/js/ui-inbox.js'?0:Number(req.url.match(/asset-(\d+)/)?.[1]);res.setHeader('Content-Type','text/javascript');return res.end(`import './asset-${n+1}.js';`);}
   if(mode==='missing'){res.writeHead(404);return res.end();}
@@ -69,4 +70,39 @@ test('startup deadline closes late browser and terminates the CLI', async () => 
   }
   await server.close();
  }
+});
+
+test('compilation cancellation refuses synthetic startup', async () => {
+ const { syntheticWaiting } = await import('../scripts/prove-waiting-editor-canonical-reopen.mjs');
+ const controller = new AbortController();
+ const reason = Error('Cancelled compilation');
+ const compiling = syntheticWaiting(controller.signal);
+ controller.abort(reason);
+ await assert.rejects(compiling, error => error === reason);
+});
+
+test('observation deadline closes the browser during an asset fetch', async () => {
+ const server = await serve('observing-timeout');
+ const preload = `
+  import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+  const launch = chromium.launch.bind(chromium);
+  chromium.launch = async options => {
+   const browser = await launch(options);
+   const newContext = browser.newContext.bind(browser);
+   browser.newContext = async options => {
+    const context = await newContext(options);
+    context.setDefaultTimeout = () => {};
+    return context;
+   };
+   browser.on('disconnected', () => process.stderr.write('browser disconnected\\n'));
+   return browser;
+  };
+ `;
+ try {
+  const result = await cli(server.origin, '3000', ['--import', `data:text/javascript,${encodeURIComponent(preload)}`]);
+  assert.equal(result.code, 78, result.stderr);
+  assert.match(result.stderr, /Proof deadline exceeded/);
+  assert.match(result.stderr, /browser disconnected/);
+  assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.js'));
+ } finally { await server.close(); }
 });
