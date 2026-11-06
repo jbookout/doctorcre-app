@@ -57,7 +57,11 @@ test('whole repository guard detects hidden wrappers and outside-directory const
   await writeFile(root + '/scripts/use.mjs', "import {start} from '../hidden/helper.mjs'; start();");
   await writeFile(root + '/hidden/helper.mjs', 'export const start = () => 1;');
   assert.deepEqual(await checkFixtureServers(root), []);
-  for (const source of ["import h from 'http'; export const start = listener => h.createServer(listener);", "export {createServer as start} from 'node:http';"]) {
+  for (const source of ["import h from 'http'; export const start = listener => h.createServer(listener);", "export {createServer as start} from 'node:http';",
+    "const name = process.env.SYNTHETIC_MODULE; const h = await import(name); export const start = () => h.createServer();",
+    "const name = process.env.SYNTHETIC_MODULE; const h = await import(name); const start = h['create' + 'Server']; start();",
+    "const name = process.env.SYNTHETIC_MODULE; const h = await import(name); export const start = () => new h.Server();",
+  ]) {
     await writeFile(root + '/hidden/helper.mjs', source);
     const result = spawnSync(process.execPath, ['scripts/check-fixture-servers.mjs', root], { encoding: 'utf8' });
     assert.equal(result.status, 1, result.stderr);
