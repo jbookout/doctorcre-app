@@ -115,7 +115,7 @@ test('a throwing disposer still closes its context', async () => {
     await assert.rejects(browser.close(), /dispose failed/);
     assert.equal(page.isClosed(), true);
     assert.equal(page.context().browser().contexts().length, 0);
-  } finally { await browser.close(); }
+  } finally { await assert.rejects(browser.close(), /dispose failed/); }
 });
 
 test('a test exception retires its view and context through finally', async () => {
@@ -145,4 +145,41 @@ test('the standalone missing-unsubscribe negative fixture exits with a test fail
     promisify(execFile)(process.execPath, ['--test', fileURLToPath(new URL('./fixtures/missing-unsubscribe.mjs', import.meta.url))], { timeout: 30_000, env }),
     error => error.code === 1 && /missing-unsubscribe fixture.*doctorcre-session-invalidated/s.test(error.stdout),
   );
+});
+
+test('browser close drains every context and held route before rejecting, and repeated close joins completion', async () => {
+  const browser = await chromium.launch();
+  const first = await browser.newPage(), second = await browser.newPage();
+  let releaseDispose, releaseRoute, routeEntered;
+  const disposal = new Promise(resolve => { releaseDispose = resolve; });
+  const routeHeld = new Promise(resolve => { releaseRoute = resolve; });
+  const entered = new Promise(resolve => { routeEntered = resolve; });
+  await componentDocument(first, 'http://localhost', { owner: 'first leak' });
+  await first.evaluate(() => window.addEventListener('focus', () => {}));
+  await componentDocument(second, 'http://localhost', { dispose: () => disposal });
+  await second.route('**/held', async route => { routeEntered(); await routeHeld; await route.fulfill({ body: 'released' }); });
+  await second.evaluate(() => { window.heldFetch = fetch('/held'); });
+  await entered;
+  let settled = false;
+  const closing = browser.close();
+  const outcome = closing.then(() => { settled = true; }, () => { settled = true; });
+  try {
+    await assert.rejects(first.close(), /first leak/);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false, 'first rejection must not finish browser close');
+    assert.equal(second.isClosed(), false);
+    assert.equal(browser.close(), closing, 'repeated close returns the same completion promise');
+    releaseDispose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false, 'held route must drain before close settles');
+    releaseRoute();
+    await assert.rejects(closing, /first leak/);
+    assert.equal(second.isClosed(), true);
+    assert.equal(second.context().browser().contexts().length, 0);
+    assert.equal(browser.close(), closing, 'failure remains the idempotent result');
+  } finally {
+    releaseDispose(); releaseRoute();
+    await outcome;
+    await second.context().close().catch(() => {});
+  }
 });

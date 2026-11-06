@@ -60,6 +60,7 @@ function browserEngine(engine) {
         ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
       const browser = await launched.get(key);
       const contexts = new Set();
+      let closing;
       async function newContext(options = {}) {
           const context = await browser.newContext(options);
           contexts.add(context);
@@ -93,10 +94,12 @@ function browserEngine(engine) {
           }
           return page;
         },
-        async close() {
-          const open = [...contexts];
-          contexts.clear();
-          await Promise.all(open.map(context => context.close()));
+        close() {
+          return closing ??= (async () => {
+            const results = await Promise.allSettled([...contexts].map(context => context.close()));
+            const failed = results.find(result => result.status === 'rejected');
+            if (failed) throw failed.reason;
+          })();
         },
       };
     },

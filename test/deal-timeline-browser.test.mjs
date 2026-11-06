@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
-import { chromium, waitForAsync } from './browser-harness.mjs';
+import { componentDocument, chromium, waitForAsync } from './browser-harness.mjs';
 import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
 // A touch tablet: the iPad Mini portrait profile.
@@ -158,7 +158,7 @@ for (const timezoneId of ['UTC','America/Chicago','America/Los_Angeles','Asia/To
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({timezoneId});
  await page.clock.setFixedTime(new Date('2026-11-06T02:00:00Z'));
- await page.goto(`${fixture.origin}/deals`);
+ await componentDocument(page, fixture.origin, {owner:'deadline date boundaries'});
  const assertions=await exercise(page,`${fixture.origin}/js/deal-timeline.js`);
  assert.equal(assertions.length,83);
  assert.ok(assertions.every(result=>result.passed));
