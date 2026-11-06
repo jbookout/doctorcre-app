@@ -63,6 +63,7 @@ function browserEngine(engine) {
       async function newContext(options = {}) {
           const context = await browser.newContext(options);
           contexts.add(context);
+          context.once('close', () => contexts.delete(context));
           context.setDefaultTimeout(WAIT_MS);
           // Tests never reach the network. A page's Google Fonts link held its
           // load event, and so page.goto, until an outside server answered. A
@@ -169,3 +170,5 @@ export async function pausedClock(page, time) {
     clock._currentRealTimeTimer = undefined;
   });
 }
+
+export { componentDocument } from './component-document.mjs';
