@@ -2,7 +2,7 @@ import { isAppRepository } from '../js/repository-identity.mjs';
 import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -11,9 +11,17 @@ export async function prove({ origin, commit, timeoutMs }) {
   assert.match(commit, /^[a-f0-9]{40}$/);
   assert.ok(!/^0+$/.test(commit), 'a deployed commit is required');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const deadline = performance.now() + timeoutMs;
+  const expired = () => Object.assign(Error('Proof deadline exceeded'), { exitCode: 78 });
+  const remaining = () => {
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0 || controller.signal.aborted) throw expired();
+    return ms;
+  };
+  const timer = setTimeout(() => controller.abort(expired()), timeoutMs);
   let requests = 0, bytes = 0;
   const get = async path => {
+    remaining();
     const url = new URL(path, origin);
     assert.equal(url.origin, origin, 'same-origin evidence only');
     assert.ok(++requests <= 4, 'four-request budget');
@@ -34,9 +42,12 @@ export async function prove({ origin, commit, timeoutMs }) {
     const release = await readAppRelease(origin, async url => { const { response, data } = await get(url.pathname); return { type: response.headers.get('content-type') || '', body: data }; });
     if (release.source_commit !== commit) {
       try {
-        execFileSync('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(timeoutMs, 5000), stdio: 'pipe' });
+        await new Promise((resolve, reject) => {
+          execFile('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(remaining(), 5000), signal: controller.signal, killSignal: 'SIGKILL' }, error => error ? reject(error) : resolve());
+        });
       } catch (error) {
-        if (error.status === 1) throw Error('release commit mismatch');
+        remaining();
+        if (error.code === 1) throw Error('release commit mismatch');
         throw Object.assign(Error('Release ancestry evidence unavailable'), { exitCode: 78 });
       }
     }
