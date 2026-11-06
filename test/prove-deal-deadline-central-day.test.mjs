@@ -55,7 +55,7 @@ test('exact proof CLI passes deployed modules and refuses contradictions, unavai
  assert.equal(release.service,'doctorcre-app');assert.equal(release.environment,'production');
  for (const [scenario,code] of [['pass',0],['fail',1],['unavailable',78],['missing',78],['changed',1],['foreign',1],['cap',1],['bytes',1],['timeout',78]]) {
   mode=scenario;identities=0;assets=0;
-  const result=await cli(origin,scenario==='timeout'?'150':'30000');
+  const result=await cli(origin);
   assert.equal(result.code,code,JSON.stringify(result));
   const receipt=JSON.parse(result.output);
   console.log(JSON.stringify({scenario,exit:result.code,assertions:receipt.assertions?.length,error:receipt.error}));
