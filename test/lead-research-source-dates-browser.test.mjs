@@ -16,7 +16,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     page.setDefaultTimeout(5000);
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     let reject = false;
-    await routeLeads(page, { getBoard: () => recording, getDetail: (row, args) => {
+    let restoring = false;
+    await routeLeads(page, { getBoard: async () => {
+      if (restoring) await page.evaluate(async () => {
+        await window.researchClose;
+        if (!window.researchApp.state.identityReady) throw new Error('Expected verified identity before board response');
+        document.querySelector('#leadDetail').dispatchEvent(new Event('close'));
+      });
+      return recording;
+    }, getDetail: (row, args) => {
       if (reject) return { ...recording.detail, research: { ...recording.detail.research, evidence: [{ ...recording.detail.research.evidence[0], observed_at: 'not-a-date' }] } };
       const next = structuredClone(recording.detail);
       next.id = row.id;
@@ -70,8 +78,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await page.locator('#closeDetail').click();
     await page.locator('[data-open]').first().click();
     await panel.waitFor();
-    await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+    await page.evaluate(() => {
+      const dialog = document.querySelector('#leadDetail');
+      window.researchClose = new Promise(resolve => {
+        dialog.addEventListener('close', event => { event.stopImmediatePropagation(); resolve(); }, { capture: true, once: true });
+      });
+      window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    });
     await panel.waitFor({ state: 'detached' });
+    restoring = true;
     await page.evaluate(() => window.researchApp.refresh());
     await panel.waitFor();
     await page.evaluate(() => window.researchApp.dispose());
