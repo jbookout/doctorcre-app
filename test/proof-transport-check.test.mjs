@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readdir, readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { checkProofSource, checkProofTransports } from '../scripts/proof-transport-check.mjs';
+import { launchProofBrowser } from '../scripts/app-release-reader.mjs';
+
+const exec = promisify(execFile);
+const runners = (await readdir(new URL('../scripts/', import.meta.url))).filter(name => /^prove-.*\.mjs$/.test(name) && name !== 'prove-loop-lint-coverage.mjs');
+
+test('every production proof obeys the transport allowlist', async () => {
+  assert.deepEqual(await checkProofTransports(), []);
+});
+
+for (const source of [
+  "await fetch('https://example.com/app-release')",
+  "await globalThis.fetch('https://example.com')",
+  "const { fetch: read } = globalThis; await read('https://example.com')",
+  "const read = globalThis['fe' + 'tch']; await read('https://example.com')",
+  "import * as http from 'node:http'; http.get('http://example.com')",
+  "import { get as read } from 'node:https'; read('https://example.com')",
+  "await import('node:https')",
+  "const assetUrl = 'node:https'; await import(assetUrl)",
+  "const { request } = await import('playwright'); await request.newContext()",
+  "import { chromium } from 'playwright'; const context = await chromium.launch(); await context.request.get('https://example.com')",
+  "import { execSync } from 'node:child_process'; execSync('/usr/bin/curl https://example.com')",
+  "import { execFileSync } from 'node:child_process'; execFileSync('/usr/bin/curl', ['https://example.com'])",
+  "import { spawn } from 'node:child_process'; spawn('sh', ['-c', 'curl https://example.com'])",
+  "import { execFileSync as read } from 'node:child_process'; read('/usr/bin/curl', ['https://example.com'])",
+  "process.getBuiltinModule('https').get('https://example.com')",
+  "import './new-http-helper.mjs'",
+]) test(`transport bypass is refused: ${source}`, () => {
+  assert.ok(checkProofSource(source).length, source);
+});
+
+test('the reader and declared browser driver remain admissible', () => {
+  assert.deepEqual(checkProofSource("import { readAppRelease } from './app-release-reader.mjs'; import { chromium } from 'playwright'; await readAppRelease('https://example.com');"), []);
+});
+
+for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${environment ?? 'missing'} environment through the real reader`, async t => {
+  const server = createServer((_req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ service: 'doctorcre-app', environment, source_commit: '1'.repeat(40) }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  for (const runner of runners) {
+    await t.test(runner, async () => {
+      const args = [`scripts/${runner}`, '--origin', origin];
+      if (runner === 'prove-asset-manifest-publication.mjs') args.push('--commit', '1'.repeat(40));
+      args.push('--timeout-ms', '3000');
+      await assert.rejects(exec(process.execPath, args, { timeout: 15000 }), error => {
+        assert.equal(error.code, 78, `${runner}: ${error.stdout} ${error.stderr}`);
+        return true;
+      });
+    });
+  }
+});
+
+for (const mode of ['late launch', 'stalled evaluation']) test(`browser deadline cleans up ${mode}`, async () => {
+  let alive = 0;
+  const engine = { async launch() {
+    if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 70));
+    alive++;
+    return { close: async () => { alive = 0; }, newPage: async () => ({ evaluate: () => new Promise(() => {}) }) };
+  } };
+  let browser;
+  try {
+    await assert.rejects(async () => {
+      browser = await launchProofBrowser(engine, { timeout: 20 });
+      await (await browser.newPage()).evaluate(() => {});
+    }, { exitCode: 78 });
+  } finally { await browser?.close(); }
+  await new Promise(resolve => setTimeout(resolve, 90));
+  assert.equal(alive, 0);
+});
+
+test('real Chromium closes after late acquisition and stalled evaluation', async () => {
+  const { chromium } = await import('playwright');
+  const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
+  for (const mode of ['late launch', 'stalled evaluation']) {
+    let acquired;
+    const engine = { async launch(options) {
+      acquired = await chromium.launch({ ...options, timeout: 10000, args: [...CHROMIUM_SAFETY_ARGS] });
+      if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 1200));
+      return acquired;
+    } };
+    let browser;
+    try {
+      await assert.rejects(async () => {
+        browser = await launchProofBrowser(engine, { timeout: 1000 });
+        const page = await browser.newPage();
+        await page.evaluate(() => new Promise(() => {}));
+      }, { exitCode: 78 });
+    } finally { await browser?.close(); }
+    const until = Date.now() + 12000;
+    while ((!acquired || acquired.isConnected()) && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(acquired, mode);
+    assert.equal(acquired.isConnected(), false, mode);
+  }
+});

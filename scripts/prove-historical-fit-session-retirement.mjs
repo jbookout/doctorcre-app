@@ -1,10 +1,10 @@
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function responseFixture() {
@@ -120,12 +120,12 @@ export async function prove({ origin, timeout }) {
     let release;
     try {
       release = await readAppRelease(origin, async url => {
-        const response = await fetch(url, { redirect: 'error', signal, cache: 'no-store' });
+        const response = await proofFetch(url, { redirect: 'error', signal, cache: 'no-store' });
         assert.ok(response.ok, 'release unavailable');
         return { type: response.headers.get('content-type') || '', body: Buffer.from(await response.arrayBuffer()) };
       });
     } catch (error) { unavailable = `release unavailable: ${error.message}`; throw error; }
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout });
     if (expired) { await browser.close(); throw Error('deadline exceeded'); }
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage(); page.setDefaultTimeout(timeout);
@@ -137,7 +137,7 @@ export async function prove({ origin, timeout }) {
         unavailable = `asset outside allowlist or asset cap: ${url.pathname}`; return route.abort();
       }
       try {
-        const response = await fetch(url, { signal, redirect: 'error', cache: 'no-store' });
+        const response = await proofFetch(url, { signal, redirect: 'error', cache: 'no-store' });
         assert.ok(response.ok && /javascript/.test(response.headers.get('content-type') || ''), `asset unavailable: ${url.pathname}`);
         const chunks = []; let size = 0;
         for await (const chunk of response.body) {

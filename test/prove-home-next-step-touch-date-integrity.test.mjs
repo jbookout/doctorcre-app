@@ -27,6 +27,7 @@ test('exact proof CLI passes deployed bytes, contradicts calendar normalization,
   const defective = (await build({ stdin: { contents: invalidCalendar, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'esm', jsx: 'automatic' })).outputFiles[0].text;
   let mode = 'pass', reads = 0, assetReads = 0;
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     let decoded;
     try { decoded = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); return res.end(); }
     const resolved = resolve(process.cwd(), `.${decoded}`);

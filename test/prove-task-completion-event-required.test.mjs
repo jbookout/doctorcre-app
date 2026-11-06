@@ -24,6 +24,7 @@ async function fixture(t, mode) {
   if (mode === 'wrong-asset') files.set('js/ui-task-done.js', Buffer.from('export const wrong = true;'));
   if (mode === 'cross-origin') manifest.files.find(row => row.path === 'js/ui-task-done.js').path = 'https://other.test/js/ui-task-done.js';
   const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
     seen.push({ method: req.method, path: req.url });
     let path;
     try { path = resolve(root, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }

@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
@@ -101,14 +102,9 @@ export async function calendarAssertions(page, moduleURL) {
 export async function prove({ origin, timeout, revision }) {
   let browser, context, timer, expired = false;
   const work = async () => {
-    const response = await fetch(`${origin}/app-release`, { redirect: 'error', signal: AbortSignal.timeout(timeout), cache: 'no-store' });
-    assert.ok(response.ok, 'release unavailable or protected');
-    const release = await response.json();
-    assert.equal(release.service, 'doctorcre-app');
-    assert.match(release.source_commit, /^[0-9a-f]{40}$/);
-    assert.notEqual(release.source_commit, '0'.repeat(40), 'fixture identity cannot prove a deployed release');
+    const release = await readAppRelease(origin, { timeoutMs: timeout });
     if (release.source_commit !== revision) execFileSync('git', ['merge-base', '--is-ancestor', revision, release.source_commit], { timeout: 5000, stdio: 'pipe' });
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout });
     if (expired) { await browser.close(); throw Error('proof timeout'); }
     context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage(); page.setDefaultTimeout(timeout);
@@ -156,5 +152,5 @@ Verify deployed historical client fit with synthetic calendar evidence.
 Exits 0 on help or a successful proof. Exits 1 on invalid arguments or proof failure.`);
     else console.log(JSON.stringify(await prove(parsed)));
   }
-  catch (error) { console.error(`Historical fit proof failed: ${error.message}`); process.exitCode = 1; }
+  catch (error) { console.error(`Historical fit proof failed: ${error.message}`); process.exitCode = error.exitCode || 1; }
 }

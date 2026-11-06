@@ -18,6 +18,7 @@ async function fixture(t, mode) {
     files: [...fixtureAssets].map(([path, bytes]) => ({ path, bytes: bytes.length, sha256: hash(bytes) })) };
   if (mode === 'mismatch') manifest.source_commit = '2'.repeat(40);
   const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
     seen.push([req.method, req.url]);
     if (mode === 'timeout') return;
     if (req.url === '/app-release') return res.end(JSON.stringify(mode === 'release' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));

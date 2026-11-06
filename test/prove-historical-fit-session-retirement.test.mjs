@@ -35,6 +35,7 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
   let mode = 'pass';
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     try {
       requests.push(req.url);
       const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);

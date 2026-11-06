@@ -1,7 +1,7 @@
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -121,7 +121,7 @@ export async function prove({ origin, timeoutMs }) {
   const timer = setTimeout(() => { controller.abort(); void browser?.close(); }, timeoutMs);
   const get = async url => {
     try {
-      const response = await fetch(url, { signal: controller.signal, redirect: 'manual' });
+      const response = await proofFetch(url, { signal: controller.signal, redirect: 'manual' });
       if (!response.ok) throw unavailable(`Evidence unavailable: HTTP ${response.status}`);
       const body = Buffer.from(await response.arrayBuffer());
       bytes += body.length;
@@ -130,10 +130,9 @@ export async function prove({ origin, timeoutMs }) {
     } catch (error) { if (error.exitCode || error.message.includes('budget')) throw error; throw unavailable('Evidence unavailable or timed out'); }
   };
   try {
-    const initial = await get(`${origin}/app-release`);
-    const release = await readAppRelease(origin, async () => initial);
+    const release = await readAppRelease(origin, get);
     const { chromium } = await import('playwright');
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const assets = new Map();
     await context.route('**/*', async route => {
@@ -162,8 +161,8 @@ export async function prove({ origin, timeoutMs }) {
       finally { await page.close(); }
     }
     if (routeError) throw routeError;
-    const final = await get(`${origin}/app-release`);
-    if (!initial.body.equals(final.body)) throw Error('Release changed during proof');
+    const final = await readAppRelease(origin, get);
+    if (JSON.stringify(final) !== JSON.stringify(release)) throw Error('Release changed during proof');
     return { status: 'passed', release, assets: [...assets].map(([url, data]) => ({ url, sha256: createHash('sha256').update(data).digest('hex') })), assertions, business_network_writes: 0, limitation: 'Deployed synthetic interaction only. Natural signed-in customer journey unproven.' };
   } catch (error) { if (controller.signal.aborted) throw unavailable('Proof deadline exceeded'); throw error; }
   finally { clearTimeout(timer); await browser?.close(); }

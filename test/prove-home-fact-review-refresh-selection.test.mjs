@@ -14,6 +14,7 @@ async function fixture(t, mode) {
   const seen = [];
   let identities = 0;
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     seen.push({ method: req.method, path: req.url });
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {

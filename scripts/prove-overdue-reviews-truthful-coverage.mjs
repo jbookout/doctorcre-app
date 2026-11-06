@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -64,16 +65,16 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       const get = async url => {
         if (new URL(url).origin !== origin || ++receipt.requests > 10) throw unavailable('Ten-request same-origin cap exceeded');
         let response;
-        try { response = await fetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); } catch { throw unavailable('Evidence fetch unavailable'); }
+        try { response = await proofFetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); } catch { throw unavailable('Evidence fetch unavailable'); }
         if (!response.ok) throw unavailable('Evidence HTTP ' + response.status);
         const chunks = [];
         for await (const chunk of response.body) { bytes += chunk.length; if (bytes > 16 * 1024 * 1024) throw unavailable('Evidence byte cap exceeded'); chunks.push(chunk); }
         return Buffer.concat(chunks);
       };
       let manifest;
-      try { receipt.release = JSON.parse(await get(origin + '/app-release')); manifest = JSON.parse(await get(origin + '/artifact-manifest.json')); }
+      try { receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.href) })); manifest = JSON.parse(await get(origin + '/artifact-manifest.json')); }
       catch (error) { if (error.unavailable) throw error; throw unavailable('Malformed release or manifest'); }
-      if (receipt.release?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(receipt.release?.source_commit || '') || manifest?.schema !== 'doctorcre-static-artifact.v1' || manifest.source_commit !== receipt.release.source_commit || !Array.isArray(manifest.files)) throw unavailable('Release/manifest identity unavailable');
+      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || manifest.source_commit !== receipt.release.source_commit || !Array.isArray(manifest.files)) throw unavailable('Release/manifest identity unavailable');
       const files = new Map();
       for (const file of manifest.files) {
         if (!file || typeof file.path !== 'string' || file.path.startsWith('/') || file.path.split('/').some(p => p === '..' || p === '.') || !/^[a-f0-9]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.bytes) || file.bytes < 0 || files.has(file.path)) throw unavailable('Malformed manifest entry');
@@ -97,7 +98,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
           if (assets.size + pending.length > 8) throw unavailable('Asset graph exceeds ten-request cap');
         }
       }
-      browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeoutMs - (Date.now() - started)) });
+      browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeoutMs - (Date.now() - started)) });
       if (controller.signal.aborted) throw unavailable('Deadline exceeded');
       const context = await browser.newContext({ serviceWorkers: 'block' });
       await context.route('**/*', route => {
@@ -124,5 +125,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' } } });
     const receipt = await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms']) });
     process.stdout.write(JSON.stringify(receipt) + '\n'); process.exitCode = receipt.exitCode;
-  } catch (error) { process.stderr.write(error.message + '\n'); process.exitCode = 1; }
+  } catch (error) { process.stderr.write(error.message + '\n'); process.exitCode = error.exitCode || 1; }
 }

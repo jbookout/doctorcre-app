@@ -1,10 +1,10 @@
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { init, parse } from 'es-module-lexer';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
-import { readAppRelease } from './app-release-reader.mjs';
 
 export const zones = ['UTC', 'America/Chicago', 'America/Los_Angeles', 'Asia/Tokyo'];
 export const cases = [
@@ -82,7 +82,7 @@ export async function prove({ origin, timeoutMs }) {
     assert.equal(new URL(url).origin, origin, 'same-origin only');
     assert.ok(++requests <= 22, 'request cap');
     let response;
-    try { response = await fetch(url, { signal: controller.signal, redirect: 'manual', cache: 'no-store' }); }
+    try { response = await proofFetch(url, { signal: controller.signal, redirect: 'manual', cache: 'no-store' }); }
     catch { throw unavailable('Release or asset unavailable'); }
     if (!response.ok) throw unavailable(`HTTP ${response.status}`);
     const chunks = [];
@@ -113,7 +113,7 @@ export async function prove({ origin, timeoutMs }) {
     await init;
     const assetUrl = new URL('/js/deal-timeline.js', origin).href;
     await load(assetUrl);
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
     if (controller.signal.aborted) { await browser.close(); throw unavailable('Proof timeout'); }
     for (const timezoneId of zones) {
       const context = await browser.newContext({ timezoneId, serviceWorkers: 'block' });

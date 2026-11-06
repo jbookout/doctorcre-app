@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
@@ -18,7 +19,7 @@ try {
   let requests = 0, bytesLoaded = 0;
   const request = async url => {
     if (++requests > 64) throw Error('Request limit exceeded');
-    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(Math.min(timeout, 10000))]) });
+    const response = await proofFetch(url, { redirect: 'manual', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(Math.min(timeout, 10000))]) });
     if ([401, 403].includes(response.status) || response.status >= 300 && response.status < 400) throw new ProtectedAsset('Protected asset or sign-in');
     if (!response.ok) throw Object.assign(Error(`HTTP ${response.status}`), { status: response.status });
     const reader = response.body.getReader(), chunks = [];
@@ -32,17 +33,9 @@ try {
     return { body: Buffer.concat(chunks), type: response.headers.get('content-type') || '' };
   };
   const run = async () => {
-    let release, releaseUrl;
-    for (const path of ['/release', '/app-release']) {
-      releaseUrl = new URL(path, origin).href;
-      let response;
-      try { response = await request(releaseUrl); } catch (error) { if (error.status === 404) continue; throw error; }
-      try { release = JSON.parse(response.body.toString()); } catch { release = null; }
-      if (release?.service === 'doctorcre-app' && /^[0-9a-f]{40}$/.test(release.source_commit || '') && !/^0+$/.test(release.source_commit)) break;
-      release = null;
-    }
-    if (!release) throw new ProtectedAsset('Missing app release identity');
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeout - (Date.now() - started)) });
+    const releaseUrl = new URL('/app-release', origin).href;
+    const release = await readAppRelease(origin, request);
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeout - (Date.now() - started)) });
     abort.signal.throwIfAborted();
     const context = await browser.newContext({ serviceWorkers: 'block', storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
@@ -90,8 +83,8 @@ try {
     if (observed.rows !== 500 || observed.requests !== 11 || await page.getByRole('button', { name: 'Load more documents', exact: true }).count()) throw Error('Hard cap assertion failed');
     if (errors.length) throw errors[0];
     await page.evaluate(() => window.proofPanel.dispose());
-    const readback = await request(releaseUrl);
-    if (JSON.parse(readback.body.toString()).source_commit !== release.source_commit) throw Error('Release changed during proof');
+    const readback = await readAppRelease(origin, request);
+    if (readback.source_commit !== release.source_commit) throw Error('Release changed during proof');
     return { schema: 'deal-documents-hard-cap-proof.v1', origin: origin.origin, release_url: releaseUrl, release,
       assets: [...assets].map(([url, asset]) => ({ url, sha256: asset.hash, bytes: asset.body.length })),
       assertions: { passed: 4, failed: 0 }, observed, network_requests: requests,
@@ -101,7 +94,7 @@ try {
   console.log(JSON.stringify(await Promise.race([run(), deadline])));
 } catch (error) {
   console.error(JSON.stringify({ error: error.message }));
-  process.exitCode = error instanceof ProtectedAsset || errors.some(error => error instanceof ProtectedAsset) ? 78 : 1;
+  process.exitCode = error.exitCode || (error instanceof ProtectedAsset || errors.some(error => error instanceof ProtectedAsset) ? 78 : 1);
 } finally {
   clearTimeout(timer);
   await browser?.close();

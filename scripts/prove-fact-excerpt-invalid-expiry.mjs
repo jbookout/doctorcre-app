@@ -1,3 +1,4 @@
+import { proofFetch, launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
@@ -42,7 +43,7 @@ export async function prove({ origin, timeoutMs }) {
   const { chromium } = await import('playwright');
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(1, Math.min(10000, deadline - Date.now()));
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+  const browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
   const shutdown = setTimeout(() => { void browser.close(); }, Math.max(1, deadline - Date.now() - 100));
   const assets = [];
   let requests = 0, bytes = 0, routeError;
@@ -51,7 +52,8 @@ export async function prove({ origin, timeoutMs }) {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const get = async url => {
       if (++requests > 32 || Date.now() >= deadline) throw Error('Proof request budget exhausted');
-      const response = await context.request.get(url, { timeout: remaining(), maxRedirects: 0 });
+      const raw = await proofFetch(url, { signal: AbortSignal.timeout(remaining()) });
+      const response = { status: () => raw.status, headers: () => Object.fromEntries(raw.headers), body: async () => Buffer.from(await raw.arrayBuffer()) };
       if ([301, 302, 303, 307, 308, 401, 403].includes(response.status())) throw refusal('Protected asset or sign-in required');
       const body = await response.body();
       bytes += body.length;
@@ -59,10 +61,10 @@ export async function prove({ origin, timeoutMs }) {
       return { response, body };
     };
     const gateway = await get(`${origin}/release`);
-    const app = await get(`${origin}/app-release`);
-    let identity;
-    try { identity = JSON.parse(app.body); } catch { throw refusal('Missing app release identity'); }
-    if (app.response.status() !== 200 || identity.service !== 'doctorcre-app' || identity.environment !== 'production' || !/^[0-9a-f]{40}$/.test(identity.source_commit || '') || /^0+$/.test(identity.source_commit)) throw refusal('Missing app release identity');
+    const identity = await readAppRelease(origin, async url => {
+      const { response, body } = await get(url.href);
+      return { type: response.headers()['content-type'] || '', body };
+    });
     const page = await context.newPage();
     page.setDefaultTimeout(remaining());
     await context.route('**/*', async route => {
@@ -82,8 +84,11 @@ export async function prove({ origin, timeoutMs }) {
     try { observation = await observeExcerpts(page, `${origin}/js/ui-facts.js`); }
     catch (error) { throw routeError || error; }
     if (routeError) throw routeError;
-    const final = await get(`${origin}/app-release`);
-    if (!final.body.equals(app.body)) throw Error('Release changed during proof');
+    const final = await readAppRelease(origin, async url => {
+      const { response, body } = await get(url.href);
+      return { type: response.headers()['content-type'] || '', body };
+    });
+    if (JSON.stringify(final) !== JSON.stringify(identity)) throw Error('Release changed during proof');
     return { schema: 'fact-excerpt-expiry-proof.v1', status: 'passed', origin, release: identity, gateway_release_status: gateway.response.status(), gateway_release_sha256: createHash('sha256').update(gateway.body).digest('hex'), assets, requests, ...observation, limitation: 'Deployed synthetic resilience only; natural private-data coverage unproven.' };
   } finally { clearTimeout(shutdown); await browser.close(); }
 }
@@ -96,7 +101,6 @@ async function main() {
     const url = new URL(args[1]), timeoutMs = Number(args[3]);
     if (url.href !== `${url.origin}/` || url.username || url.password || !(url.protocol === 'https:' || url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) throw Error('Expected HTTPS origin or loopback fixture');
     if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 300000) throw Error('Invalid timeout');
-    timer = setTimeout(() => { console.log(JSON.stringify({ status: 'failed', error: 'Whole-run timeout' })); process.exit(1); }, timeoutMs);
     console.log(JSON.stringify(await prove({ origin: url.origin, timeoutMs })));
   } catch (error) {
     console.log(JSON.stringify({ status: error.exitCode === 78 ? 'unproven' : 'failed', error: error.message }));

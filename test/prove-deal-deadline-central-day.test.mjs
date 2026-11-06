@@ -27,6 +27,7 @@ test('proof rejects unsafe origins and unbounded arguments', () => {
 test('exact proof CLI passes deployed modules and refuses contradictions, unavailable identity and timeouts', {timeout:180000}, async t => {
  let mode = 'pass', identities = 0, assets = 0;
  const server = createServer(async (req,res) => {
+    res.setHeader('content-type', 'application/json');
   try {
    const pathname = decodeURIComponent(req.url.split('?')[0]);
    const target = path.resolve(root, `.${pathname}`);

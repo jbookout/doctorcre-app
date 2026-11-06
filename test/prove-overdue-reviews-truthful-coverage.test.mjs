@@ -19,12 +19,13 @@ test('declared CLI verifies deployed bytes and refuses contradictions or unavail
   const root = resolve(outDir, 'site'); let mode = 'valid', mutations = 0, requests = 0;
   const wrong = 'export function mountDealUpdateReviews() { return { refresh: async () => {}, dispose() {} }; }';
   const server = createServer(async (request, response) => {
+    response.setHeader('content-type', 'application/json');
     requests++; if (request.method !== 'GET') mutations++;
     if (mode === 'timeout') return;
     const path = decodeURIComponent(new URL(request.url, 'http://fixture').pathname);
     const file = resolve(root, '.' + path);
     if (!file.startsWith(root + sep)) { response.writeHead(403); response.end(); return; }
-    if (path === '/app-release') return response.end(JSON.stringify({ service: 'doctorcre-app', source_commit: built.manifest.source_commit }));
+    if (path === '/app-release') return response.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: built.manifest.source_commit }));
     if (path === '/artifact-manifest.json') {
       const manifest = structuredClone(built.manifest);
       if (mode === 'manifest') return response.end('{}');

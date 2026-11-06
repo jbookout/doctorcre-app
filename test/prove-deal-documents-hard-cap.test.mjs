@@ -17,15 +17,16 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
   let mode = 'success';
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     requests.push({ method: req.method, path: req.url });
     if (mode === 'timeout') return;
     if (mode === 'protected') { res.writeHead(403); return res.end(); }
     if (req.url === '/release') {
       if (mode === 'fallback') { res.writeHead(404); return res.end(); }
       res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40) }));
+      return res.end(JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
     }
-    if (req.url === '/app-release') return res.end(JSON.stringify(mode === 'fallback' ? { service: 'doctorcre-app', source_commit: '1'.repeat(40) } : {}));
+    if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(mode !== 'identity' ? { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) } : {})); }
     try {
       if (!/^\/js\/[\w/.-]+\.js$/.test(req.url) || /[%\\\0]/.test(req.url) || /(?:^|\/)\.\.?(?:\/|$)/.test(req.url)) throw Error('bad path');
       const assetPath = resolve(fixtureRoot, `.${req.url}`);

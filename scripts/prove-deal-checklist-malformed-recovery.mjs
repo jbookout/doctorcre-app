@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
@@ -14,7 +15,8 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     timer = setTimeout(() => { expired = true; reject(new Error('Proof timed out')); void browser?.close(); }, timeoutMs);
   });
   const run = async () => {
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
+    const release = await readAppRelease(origin, { timeoutMs: timeoutMs });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
     if (expired) { await browser.close(); throw new Error('Proof timed out'); }
     const context = await browser.newContext({ serviceWorkers: 'block' });
     let requests = 0;
@@ -24,7 +26,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       const url = new URL(request.url());
       if (request.method() !== 'GET' || url.origin !== origin || ++requests > 40) return route.abort();
       if (url.pathname === '/__checklist-proof__') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' });
-      if (url.pathname !== '/app-release' && !/\.(?:m?js)$/.test(url.pathname)) return route.abort();
+      if (!/\.(?:m?js)$/.test(url.pathname)) return route.abort();
       return route.continue();
     });
     context.on('response', response => {
@@ -34,10 +36,6 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     await page.goto(`${origin}/__checklist-proof__`, { timeout: timeoutMs });
     const result = await page.evaluate(async () => {
       const check = (value, message) => { if (!value) throw new Error(message); };
-      const response = await fetch('/app-release', { cache: 'no-store' });
-      check(response.ok, 'Release identity unavailable');
-      const release = await response.json();
-      check(release.service === 'doctorcre-app' && /^[a-f0-9]{40}$/.test(release.source_commit), 'Release identity invalid');
       const { renderDealChecklist } = await import('/js/deal-checklist.js');
       check(typeof renderDealChecklist === 'function', 'Missing renderDealChecklist export');
       const item = { id: 'lease', label: 'Synthetic lease', status: 'received', source: { document: 'synthetic-kit' } };
@@ -59,10 +57,10 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       document.querySelector('main').innerHTML = renderDealChecklist({ ...valid, phases: [{ label: 'Legal', items: [{ ...item, status: 'complete' }] }] });
       check(document.querySelector('[data-state="complete"] strong')?.textContent === 'Recorded complete', 'Complete semantics lost');
       assertions.push('valid-recovery-received-distinct-from-complete');
-      return { release, assertions };
+      return { assertions };
     });
     if (!loaded.has(`${origin}/js/deal-checklist.js`)) throw new Error('Deployed module was not loaded');
-    return { origin, ...result, loaded_module_urls: [...loaded].sort(), requests, synthetic: true };
+    return { origin, release, ...result, loaded_module_urls: [...loaded].sort(), requests, synthetic: true };
   };
   try { return await Promise.race([run(), deadline]); }
   finally { clearTimeout(timer); await browser?.close(); }
@@ -80,5 +78,5 @@ async function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch(error => {
   process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
+  process.exitCode = error.exitCode || 1;
 });

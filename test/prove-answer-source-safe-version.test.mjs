@@ -19,12 +19,13 @@ test('proof CLI executes fetched modules and refuses contradictions, unavailable
   let mode = 'pass';
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     requests.push(req.url);
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {
       if (mode === 'release') { res.writeHead(404).end(); return; }
       res.setHeader('Content-Type','application/json');
-      res.end(JSON.stringify(mode === 'identity' ? {} : {service:'doctorcre-app',source_commit:'a'.repeat(40)}));
+      res.end(JSON.stringify(mode === 'identity' ? {} : {service:'doctorcre-app', environment: 'production',source_commit:'a'.repeat(40)}));
       return;
     }
     if (mode === 'missing') { res.writeHead(404).end(); return; }

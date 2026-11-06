@@ -1,3 +1,4 @@
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -5,7 +6,6 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
-import { readAppRelease } from './app-release-reader.mjs';
 
 export function factCases() {
   const id = '00000000-0000-4000-8000-000000000001';
@@ -92,7 +92,7 @@ export async function prove({ origin, timeoutMs }) {
       const get = async url => {
         if (++requests > 22) throw unavailable('request cap exceeded');
         let response;
-        try { response = await fetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
+        try { response = await proofFetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
         catch { throw unavailable('release or asset unavailable'); }
         if (!response.ok) throw unavailable(`unavailable ${new URL(url).pathname}`);
         const chunks = [];
@@ -122,7 +122,7 @@ export async function prove({ origin, timeoutMs }) {
           if (!assets.has(dep.href) && !pending.includes(dep.href)) pending.push(dep.href);
         }
       }
-      browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, end - Date.now()) });
+      browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, end - Date.now()) });
       if (controller.signal.aborted) {
         await browser.close();
         throw unavailable('total deadline exceeded');
@@ -162,6 +162,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = result.exitCode;
   } catch (error) {
     console.log(JSON.stringify({ status: 'failed', error: error.message, exitCode: 1 }));
-    process.exitCode = 1;
+    process.exitCode = error.exitCode || 1;
   }
 }

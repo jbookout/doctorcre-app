@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { chromium } from 'playwright';
 import { context as buildContext } from 'esbuild';
 import { init, parse } from 'es-module-lexer';
@@ -87,7 +88,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
   const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
   const fetchBytes = async path => {
     let response;
-    try { response = await fetch(url.origin + path, { signal: controller.signal, redirect: 'error' }); }
+    try { response = await proofFetch(url.origin + path, { signal: controller.signal, redirect: 'error' }); }
     catch { throw unavailable(`Unavailable asset ${path}`); }
     if (!response.ok) throw unavailable(`Unavailable asset ${path}: ${response.status}`);
     const chunks = [];
@@ -117,14 +118,12 @@ export async function prove({ origin, timeoutMs = 30000 }) {
   const worker = (async () => {
     try {
       await init;
-      try { receipt.release = JSON.parse((await fetchBytes('/app-release')).toString()); }
-      catch { throw unavailable('Release identity unavailable'); }
-      if (receipt.release?.service !== 'doctorcre-app' || !/^[0-9a-f]{40}$/.test(receipt.release?.source_commit) || (receipt.release.source_commit === '0'.repeat(40) && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw unavailable('Release identity unavailable');
+      receipt.release = await readAppRelease(url, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
       controller.signal.throwIfAborted();
       const synthetic = await syntheticWaiting(controller.signal);
       controller.signal.throwIfAborted();
       const writes = []; let lost = false; let assetFailure; let rpcCount = 0;
-      browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, Math.ceil(deadline - performance.now())) });
+      browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, Math.ceil(deadline - performance.now())) });
       controller.signal.throwIfAborted();
       const context = await browser.newContext({ serviceWorkers: 'block' });
       context.setDefaultTimeout(Math.min(5000, Math.floor(timeoutMs / 2)));

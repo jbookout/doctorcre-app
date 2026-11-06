@@ -23,10 +23,11 @@ for (const [mode, guard] of [
 const exec = promisify(execFile);
 async function run(t, mode, timeout = '30000') {
   const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {
       res.setHeader('Content-Type', 'application/json');
-      return res.end(mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'fixture' }));
+      return res.end(mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'production' }));
     }
     let bytes = (disposalMutants.get(mode) || assets).get(req.url.slice(1));
     if (mode === 'unavailable' || (mode === 'chunk-missing' && req.url.includes('ui-shared-'))) bytes = undefined;

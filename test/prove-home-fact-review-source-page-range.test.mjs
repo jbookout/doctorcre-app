@@ -45,6 +45,7 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
   let mode = 'pass', releaseReads = 0;
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     requests.push(req.url);
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {
