@@ -1,0 +1,21 @@
+stateDiagram-v2
+    [*] --> Loading: mount
+    Loading --> All: parsed load succeeds
+    Loading --> Unavailable: read refuses
+    Unavailable --> Loading: refresh
+    All --> NeedsReview: choose needs review
+    NeedsReview --> Reviewed: choose reviewed
+    Reviewed --> All: clear status
+    NeedsReview --> Empty: refresh resolves last matching field
+    Empty --> All: clear status
+    All --> Locked: edit or save
+    Locked --> Locked: refuse status change or uncertain receipt
+    Locked --> Loading: confirmed receipt refreshes
+    All --> Loading: refresh
+    Loading --> Loading: ignore stale completion
+    All --> Retired: authorization expires
+    Retired --> Retired: ignore refresh
+    Loading --> Disposed: dispose
+    Locked --> Disposed: dispose
+    Empty --> Disposed: dispose
+    Disposed --> Disposed: ignore late completion
