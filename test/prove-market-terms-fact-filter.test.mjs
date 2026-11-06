@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from './proof-fixture-server.mjs';
 import { fixtureServer } from './browser-harness.mjs';
 import { chromium as realChromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { prove } from '../scripts/prove-market-terms-fact-filter.mjs';
 
 function cli(origin) {
@@ -66,7 +67,7 @@ test('real Chromium disconnects after late acquisition and stalled evaluation de
       let finishLaunch;
       const launched = new Promise(resolve => { finishLaunch = resolve; });
       const engine = { launch: async options => {
-        acquired = await realChromium.launch({...options,timeout:10000});
+        acquired = await realChromium.launch({...options,args:[...CHROMIUM_SAFETY_ARGS],timeout:10000});
         finishLaunch();
         if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve,1000));
         else {

@@ -2,20 +2,22 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
+import { marketTermsFixtures } from '../test/fixtures/market-terms.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function exerciseFilter(page, origin) {
-  await page.evaluate(async origin => {
+  const fixtures = marketTermsFixtures();
+  await page.evaluate(async ({origin, fixtures}) => {
     const { mountMarketTerms } = await import(`${origin}/js/ui-market.js`);
-    const row = (entity_ref, fact_key) => ({canonical_fact_id:`${entity_ref}-${fact_key}`,version:1,entity_ref,fact_key,value:'35',unit:'USD/sf/year',expense_basis:'NNN',confidence:'human_review',term_kind:'executed',term_date:'2025-01-01',effective_from:'2025-01-01',effective_to:null,submarket:'North',use_type:'Medical',context_source:{document_ref:'synthetic-context'},sources:[{document_ref:'synthetic-source',page_start:2,page_end:3}]});
-    window.filterRows = [row('synthetic-a','rent'),row('synthetic-b','rent'),row('synthetic-a','TI')];
+    window.filterFixtures = fixtures;
+    window.filterResponse = fixtures.full;
     window.filterCalls = [];
     window.filterMalformed = false;
     window.filterPanel = mountMarketTerms(document.querySelector('#comparison'), {entityRef:'synthetic-a',dealName:ref => ref,client:{readMarketTerms:async args => {
       window.filterCalls.push(args);
-      return {ok:true,schema_version:'market-terms.v1',rows:window.filterMalformed ? [null] : window.filterRows,coverage:{comparable_deals:99,canonical_receipts:100,recorded_documents:20,eligible_receipts:3,unsupported_receipts:2,unclassified_receipts:4}};
+      return window.filterMalformed ? {...window.filterResponse,rows:[null]} : window.filterResponse;
     }}});
-  }, origin);
+  }, {origin, fixtures});
   const root = page.locator('#comparison'), selector = root.getByLabel('Term', {exact:true});
   await selector.waitFor();
   assert.deepEqual(await selector.locator('option').allTextContents(), ['All terms','TI','rent']);
@@ -37,7 +39,7 @@ export async function exerciseFilter(page, origin) {
   await page.evaluate(() => window.filterPanel.refresh());
   await selector.waitFor();
   assert.equal(await selector.inputValue(), 'TI');
-  await page.evaluate(() => { window.filterRows = window.filterRows.filter(row => row.fact_key === 'rent'); window.filterPanel.refresh(); });
+  await page.evaluate(() => { window.filterResponse = window.filterFixtures.rent; window.filterPanel.refresh(); });
   await root.getByText('2 matching loaded terms across 2 deals.', {exact:true}).waitFor();
   assert.equal(await selector.inputValue(), '');
   assert.deepEqual(await selector.locator('option').allTextContents(), ['All terms','rent']);
@@ -45,7 +47,7 @@ export async function exerciseFilter(page, origin) {
   await page.evaluate(() => { window.filterMalformed = true; window.filterPanel.refresh(); });
   await root.getByText('Could not load comparable terms. Try again.').waitFor();
   assert.equal(await root.locator('table').count(), 0);
-  await page.evaluate(() => { window.filterMalformed = false; });
+  await page.evaluate(() => { window.filterMalformed = false; window.filterResponse = window.filterFixtures.south; });
   await root.locator('[name=submarket]').fill('South');
   await root.locator('[name=use_type]').fill('Medical');
   await root.locator('[name=as_of]').fill('2025-01-01');
@@ -54,7 +56,7 @@ export async function exerciseFilter(page, origin) {
   assert.equal(await selector.inputValue(), 'rent');
   assert.deepEqual(await page.evaluate(() => window.filterCalls.at(-1)), {submarket:'South',use_type:'Medical',as_of:'2025-01-01'});
   assert.match(await root.textContent(), /Terms as of 2025-01-01/);
-  await page.evaluate(() => { window.filterRows = []; window.filterPanel.refresh(); });
+  await page.evaluate(() => { window.filterResponse = window.filterFixtures.empty; window.filterPanel.refresh(); });
   await root.getByText('No comparable terms match these filters.').waitFor();
   assert.deepEqual(await selector.locator('option').allTextContents(), ['All terms']);
   assert.equal(await selector.inputValue(), '');
