@@ -629,7 +629,7 @@ async function deliverQueueProjection(page) {
   });
 }
 
-for (const outcome of ['success', 'failure', 'auth retirement']) test(`queue absence during held work refresh converges after ${outcome}`, async t => {
+for (const outcome of ['success', 'failure']) test(`queue absence during held work refresh converges after ${outcome}`, async t => {
   const held = fixtureScope(t).hold();
   let started = false, armed = false;
   const {page,state,errors} = await open(t, {rpcReply:async (rpc,payload) => {
@@ -649,17 +649,54 @@ for (const outcome of ['success', 'failure', 'auth retirement']) test(`queue abs
   state.queueEmpty = true;
   await deliverQueueProjection(page);
   await deliverQueueProjection(page);
-  if (outcome === 'auth retirement') await page.evaluate(async () => (await import('/js/progress-auth.js')).invalidateAuth());
   held.release();
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(() => !document.querySelector('#workMetadata').textContent.includes('Projected task'));
   assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Demo research/);
   assert.doesNotMatch(await page.locator('#workTitle').textContent(), /Demo research/);
-  if (outcome === 'auth retirement') {
-    assert.match(await page.locator('#workMetadata').textContent(), /Sign in/);
-  } else {
-    assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
-  }
+  assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
+  assert.deepEqual(errors, []);
+});
+
+test('queue reconciliation rejects an obsolete card before auth retirement and stays retired after release', async t => {
+  const cardRead = fixtureScope(t).hold(), publicationRead = fixtureScope(t).hold();
+  let cardStarted = false, holdPublication = false, publicationStarted = false;
+  const {page,state,calls,errors} = await open(t, {rpcReply:async (rpc,payload) => {
+    if (rpc.name === 'read-progress-board') {
+      if (holdPublication) { publicationStarted = true; await publicationRead.promise; }
+      return {...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}};
+    }
+    if (rpc.name === 'work-request-card') { cardStarted = true; await cardRead.promise; }
+    return payload;
+  }});
+  await page.waitForLoadState('networkidle');
+  state.queueCard = {title:'Retiring projected task',work_request:'WR-900',source_seq:88};
+  await deliverQueueProjection(page);
+  await resumeWorkPage(page);
+  await assertEventually(() => cardStarted);
+  state.queueEmpty = true;
+  holdPublication = true;
+  await deliverQueueProjection(page);
+  await deliverQueueProjection(page);
+  cardRead.release();
+  await settles(() => assert.equal(publicationStarted, true, 'Queue absence must schedule a follow-up publication read'), 3000);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Demo work request/,
+    'The obsolete request card cannot commit while queue absence is being reconciled');
+  state.queueEmpty = false;
+  state.queueCard = {title:'Pending protected task',work_request:'WR-901',source_seq:99};
+  await deliverQueueProjection(page);
+  await page.evaluate(async () => (await import('/js/progress-auth.js')).invalidateAuth());
+  assert.match(await page.locator('#workMetadata').textContent(), /Sign in/);
+  const readsAtRetirement = calls.length;
+  publicationRead.release();
+  await page.waitForLoadState('networkidle');
+  await deliverQueueProjection(page);
+  await page.waitForLoadState('networkidle');
+  assert.equal(calls.length, readsAtRetirement, 'Retirement must discard pending reconciliation and late queue updates');
+  assert.match(await page.locator('#workMetadata').textContent(), /Sign in/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Projected task|Demo work request|Retiring projected task|Pending protected task/);
+  assert.equal(await page.locator('#workTitle').textContent(), 'Work detail');
+  assert.doesNotMatch(await page.locator('#workCanonicalBody').textContent(), /Closure:/);
   assert.deepEqual(errors, []);
 });
 
