@@ -1,0 +1,109 @@
+{
+  "full": {
+    "schema_version": "ideal-client-profile.v1",
+    "coverage": "recorded_closed_won_only",
+    "profiles": [
+      {
+        "vertical": "Synthetic vertical 0",
+        "deal_type": "lease",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "00000000-0000-4000-8000-000000000001",
+            "closed_on": "2024-02-29"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      },
+      {
+        "vertical": null,
+        "deal_type": null,
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "00000000-0000-4000-8000-000000000002",
+            "closed_on": "2024-02-29"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      },
+      {
+        "vertical": "Synthetic vertical 2",
+        "deal_type": "Unrecorded",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "00000000-0000-4000-8000-000000000003",
+            "closed_on": "2024-02-29"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      },
+      {
+        "vertical": "Synthetic vertical 3",
+        "deal_type": "all",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "00000000-0000-4000-8000-000000000004",
+            "closed_on": "2024-02-29"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      },
+      {
+        "vertical": "Synthetic vertical 4",
+        "deal_type": "unfamiliar producer type",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "00000000-0000-4000-8000-000000000005",
+            "closed_on": "2024-02-29"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      }
+    ]
+  },
+  "subset": {
+    "schema_version": "ideal-client-profile.v1",
+    "coverage": "recorded_closed_won_only",
+    "profiles": [
+      {
+        "vertical": "Synthetic vertical 0",
+        "deal_type": "lease",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "00000000-0000-4000-8000-000000000001",
+            "closed_on": "2024-02-29"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      }
+    ]
+  },
+  "empty": {
+    "schema_version": "ideal-client-profile.v1",
+    "coverage": "recorded_closed_won_only",
+    "profiles": []
+  }
+}
