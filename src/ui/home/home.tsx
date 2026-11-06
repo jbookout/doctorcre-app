@@ -3,7 +3,7 @@ import { completionLabel } from './sections';
 import { BulkControls } from './bulk-controls';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
+import { BrowserRouter, Link, Route, Routes, useLocation, useParams } from 'react-router';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { command, taskCommand, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot, type TaskReceipt } from './inbox';
 import { recordRoutes } from './routes';
@@ -36,8 +36,10 @@ export function markHomeReady(host: HTMLElement) {
   host.dispatchEvent(new Event('doctorcre:home-ready'));
 }
 function Inbox({ client }: { client: InboxClient }) {
-  const { item_id } = useParams();
-  const home = location.pathname === '/';
+  const route = useLocation();
+  const home = route.pathname === '/';
+  const { item_id: inboxItemId } = useParams();
+  const item_id = home ? new URLSearchParams(route.search).get('card') || undefined : inboxItemId;
   const cache = useQueryClient();
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -52,6 +54,8 @@ function Inbox({ client }: { client: InboxClient }) {
   const [reviewing, setReviewing] = useState<InboxItem | null>(null);
   const reviewOpener = useRef<HTMLButtonElement | null>(null);
   useLayoutEffect(() => { if (!reviewing && reviewOpener.current) { if (reviewOpener.current.isConnected) reviewOpener.current.focus(); else root.current?.querySelector<HTMLElement>('[data-inbox-row] h3 a')?.focus(); } }, [reviewing]);
+  const [search, setSearch] = useState('');
+  const [searchNotice, setSearchNotice] = useState('');
   const [selected, select] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<Pending | null>(null);
   const [singleBusy, setBusy] = useState(false);
@@ -197,7 +201,12 @@ function Inbox({ client }: { client: InboxClient }) {
     {query.isPending ? <p className="inbox-empty" role="status">Loading your inbox…</p> : query.isError && !query.data ? <div className="inbox-empty" role="alert"><h2>Inbox unavailable</h2><p>{message(query.error)}</p><p>Refresh to try again.</p></div> : <>
       {item_id && !placed.current && <p role="status">This card is not in your current inbox snapshot.</p>}
       {query.data?.truncated && <p role="status">Showing the first 1,000 cards. More work is available.</p>}
-      {home ? <HomeSections items={items} pinned={reviewing} current={reviewing?.item_id || item_id} row={row} /> : <>
+      {searchNotice && <p role="status">{searchNotice}</p>}
+      {home ? <HomeSections items={items} pinned={reviewing} current={reviewing?.item_id || item_id} search={search} locked={busy || !!pending || !!reviewing || !!snooze} changeSearch={value => {
+        if (busy || pending || reviewing || snooze) return;
+        setSearch(value); select(new Set());
+        setSearchNotice(selected.size ? 'Selection cleared because the search changed.' : '');
+      }} row={row} /> : <>
       <section className="inbox-section" aria-label="Inbox"><div className="inbox-section-title"><h2>Needs your attention <span>{placed.inbox.length}</span></h2><p>Mark done finishes a task. Hide from inbox leaves the task open.</p></div>
         {placed.inbox.length ? placed.inbox.map(row) : <div className="inbox-empty"><h3>You’re all caught up.</h3><p>New work will appear here. Your shelves stay below.</p></div>}</section>
       {(['working', 'held', 'done', 'snoozed', 'settled'] as const).map(shelf => <details className="inbox-shelf" key={shelf} open={placed.current?.section === shelf || undefined}><summary><span>{shelf === 'working' ? 'Dr. CRE is working' : shelf === 'held' ? 'Held' : shelf === 'done' ? 'Done' : shelf === 'snoozed' ? 'Snoozed' : 'Settled'}</span><span>{placed[shelf].length}</span></summary>{placed[shelf].length ? placed[shelf].map(row) : <p className="inbox-shelf-empty">Nothing here right now.</p>}</details>)}
