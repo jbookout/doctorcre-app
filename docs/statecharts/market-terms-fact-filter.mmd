@@ -1,0 +1,18 @@
+stateDiagram-v2
+  [*] --> Loading: mount
+  Loading --> AllTerms: valid response without retained key
+  Loading --> SelectedTerm: valid response with retained key
+  Loading --> Error: rejected or malformed response
+  Error --> Loading: explicit retry
+  AllTerms --> SelectedTerm: choose existing key
+  SelectedTerm --> AllTerms: choose All terms
+  SelectedTerm --> Loading: refresh
+  AllTerms --> Loading: Compare or refresh
+  AllTerms --> AllTerms: open or close coverage
+  SelectedTerm --> SelectedTerm: open or close coverage
+  Loading --> Loading: ignore stale response
+  Loading --> Disposed: parent clears session
+  AllTerms --> Disposed: dispose
+  SelectedTerm --> Disposed: dispose
+  Error --> Disposed: dispose
+  Disposed --> [*]
