@@ -164,7 +164,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
   };
   try {
     const release = await readAppRelease(origin, url => get(url.href));
-    browser = await launchProofBrowser({ launch: options => { acquisition = engine.launch(options); return acquisition; } }, { ...launchOptions, args: [...CHROMIUM_SAFETY_ARGS, ...(launchOptions.args || [])], env: { ...process.env, TMPDIR: scratch, TEMP: scratch, TMP: scratch }, timeout: timeoutMs }, { signal: lifetime.signal });
+    browser = await launchProofBrowser({ launch: options => { acquisition = engine.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] }); return acquisition; } }, { ...launchOptions, args: [...CHROMIUM_SAFETY_ARGS, ...(launchOptions.args || [])], env: { ...process.env, TMPDIR: scratch, TEMP: scratch, TMP: scratch }, timeout: timeoutMs }, { signal: lifetime.signal });
     const page = await browser.newPage({ serviceWorkers: 'block' });
     await page.route('**/*', async route => {
       try {
