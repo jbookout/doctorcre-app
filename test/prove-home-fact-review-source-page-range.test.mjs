@@ -102,11 +102,12 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
         const session = await browser.newBrowserCDPSession();
         const { processInfo } = await session.send('SystemInfo.getProcessInfo');
         const pids = processInfo.map(info => info.id);
+        let evaluationStarted = false;
         await session.detach();
         setTimeout(async () => {
           const connected = browser.isConnected();
           const survivors = pids.filter(pid => { try { process.kill(pid, 0); return true; } catch { return false; } });
-          console.error(JSON.stringify({ connected, survivors }));
+          console.error(JSON.stringify({ connected, survivors, evaluationStarted }));
           await browser.close();
         }, 2200);
         if (${JSON.stringify(fault)} === 'late launch') await delay(1500);
@@ -118,6 +119,7 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
             context.newPage = async () => {
               const page = await newPage();
               page.evaluate = () => new Promise((_, reject) => {
+                evaluationStarted = true;
                 browser.once('disconnected', () => reject(Error('browser closed during stalled evaluation')));
               });
               return page;
@@ -132,7 +134,9 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     assert.equal(result.code, 78, JSON.stringify(result));
     assert.equal(result.receipt.status, 'unavailable');
     assert.match(result.receipt.error, /deadline/);
-    assert.deepEqual(JSON.parse(result.stderr.trim()), { connected: false, survivors: [] });
+    const resources = JSON.parse(result.stderr.trim());
+    assert.deepEqual(resources, { connected: false, survivors: [], evaluationStarted: fault === 'stalled evaluation' });
+    t.diagnostic(JSON.stringify({ fault, exitCode: result.code, ...resources }));
   });
   for (const args of [[], ['--origin', origin, '--timeout-ms', '30001'], ['--origin', origin + '/bad', '--timeout-ms', '30000'], ['--unknown']]) {
     assert.equal((await run(args)).code, 1);

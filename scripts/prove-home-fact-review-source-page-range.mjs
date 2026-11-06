@@ -123,7 +123,10 @@ export async function prove({ origin, timeoutMs }) {
         }
       }
       browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, end - Date.now()) });
-      if (controller.signal.aborted) throw unavailable('total deadline exceeded');
+      if (controller.signal.aborted) {
+        await browser.close();
+        throw unavailable('total deadline exceeded');
+      }
       const context = await browser.newContext({ serviceWorkers: 'block', baseURL: origin });
       context.setDefaultTimeout(Math.max(1, Math.min(5000, end - Date.now())));
       await context.route('**/*', route => {
