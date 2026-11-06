@@ -84,13 +84,14 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
   const routeKeys = new Set(routes.keys());
   const observations = [], sockets = new Set(), timers = new Set(), held = new Map();
   let state = 'preparing', count = 0, closing;
-  const headersFor = response => ({ 'cache-control':'no-store', ...response.headers, 'content-type':response.contentType });
+  const headersFor = response => ({ 'cache-control':'no-store', ...response.headers, 'content-type':response.contentType, connection:'close' });
   function send(res, response, method) {
     if (state !== 'listening' || res.destroyed) return;
     res.writeHead(response.status, { ...headersFor(response), 'content-length': response.body.length });
     res.end(method === 'HEAD' ? undefined : response.body);
   }
   const server = createServer(async (req, res) => {
+    res.shouldKeepAlive = false;
     const target = req.url || '';
     const path = target.split('?')[0];
     if (observations.length < budget.observations) observations.push(Object.freeze({ method: req.method, path, target, headers: Object.freeze({ ...req.headers }) }));
@@ -147,6 +148,9 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
         const body = Buffer.concat(bodyChunks);
         if (state !== 'listening' || res.destroyed) return;
         const outgoing = Object.fromEntries(response.headers);
+        outgoing.connection = 'close';
+        if (demo) for (const name of ['content-security-policy','permissions-policy','strict-transport-security',
+          'x-content-type-options','x-frame-options','referrer-policy','cross-origin-opener-policy','cross-origin-resource-policy']) delete outgoing[name];
         if (response.headers.getSetCookie().length) outgoing['set-cookie'] = response.headers.getSetCookie();
         res.writeHead(response.status, outgoing);
         res.end(req.method === 'HEAD' ? undefined : body);
