@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { readdir, mkdir, writeFile } from 'node:fs/promises';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { createServer } from './proof-fixture-server.mjs';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -113,8 +114,7 @@ test('pure modules and ordinary globals are outside transport enforcement', () =
 });
 
 for (const indirect of [false, true]) test(`local helper transport is refused, transitive=${indirect}`, async t => {
-  const root = await mkdtemp('/tmp/proof-import-');
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = temporaryDirectory('proof-import-', t);
   await mkdir(root + '/scripts');
   await writeFile(root + '/scripts/prove-regression.mjs', "import {read} from './helper.mjs'; await read('http://example.com/app-release');");
   await writeFile(root + '/scripts/helper.mjs', indirect ? "export { read } from './network-helper.mjs';" : "export async function read(url) { return (await fetch(url)).json(); }");
@@ -133,8 +133,7 @@ test('fixture refuses helper fetch and variable browser release navigation but a
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const root = await mkdtemp('/tmp/proof-helper-');
-  t.after(() => rm(root, { recursive: true, force: true }));
+  const root = temporaryDirectory('proof-helper-', t);
   await writeFile(root + '/network-helper.mjs', 'export async function read(url) { return (await fetch(url)).json(); }');
   const { read } = await import(pathToFileURL(root + '/network-helper.mjs'));
   await assert.rejects(read(origin + '/app-release'));
