@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
 type Document = { id: string; display_name: string; document_type: string | null; page_count: number | null; content_hash: string; stored_at: string };
+type TypeSelection = { kind: 'all' } | { kind: 'type'; value: string | null };
 type Page = { documents: Document[]; next: string | null };
 type State = { kind: 'expired' } | { kind: 'loading' | 'ready' | 'more' | 'unavailable'; page: Page; cursor: string | null };
 type Client = { listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }, options: { signal: AbortSignal }): Promise<unknown> };
@@ -27,29 +28,51 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
   if (!uuid.test(dealId)) throw Error('Invalid deal');
   const root = createRoot(element);
   let state: State = { kind: 'loading', page: { documents: [], next: null }, cursor: null }, disposed = false, generation = 0;
+  let search = '', selection: TypeSelection = { kind: 'all' };
+  let searchInput: HTMLInputElement | null = null;
+  function clearSelection() { search = ''; selection = { kind: 'all' }; }
   let controller = new AbortController();
   const cursors = new Set<string>();
   const view = element.ownerDocument.defaultView;
   function expire() {
-    ++generation; controller.abort(); state = { kind: 'expired' }; render();
+    ++generation; controller.abort(); clearSelection(); cursors.clear(); state = { kind: 'expired' }; render();
   }
   view?.addEventListener('doctorcre-session-invalidated', expire);
   function render() {
     if (disposed) return;
     const page = 'page' in state ? state.page : null;
+    const types = [...new Set(page?.documents.map(doc => doc.document_type) || [])];
+    let unrecordedLabel = 'Unrecorded';
+    while (types.includes(unrecordedLabel)) unrecordedLabel += ' (unrecorded)';
+    const query = search.trim().toLowerCase();
+    const matches = page?.documents.filter(doc => doc.display_name.toLowerCase().includes(query)
+      && (selection.kind === 'all' || doc.document_type === selection.value)) || [];
     const busy = state.kind === 'loading' || state.kind === 'more';
     flushSync(() => root.render(<section className="deal-documents" aria-label="Deal documents">
       <h2>Documents</h2>
       <p>Files filed for this deal. Downloads are not available here.</p>
       {state.kind !== 'expired' && <button className="btn" type="button" disabled={busy} onClick={() => void refresh()}>Refresh documents</button>}
+      {page && <div>
+        <label>Search loaded documents <input type="search" ref={input => { searchInput = input; }} value={search} onChange={event => { search = event.target.value; render(); }} /></label>
+        <label>Document type <select value={selection.kind === 'all' ? 'all' : selection.value === null ? 'null' : `type:${selection.value}`} onChange={event => {
+          const value = event.target.value;
+          selection = value === 'all' ? { kind: 'all' } : { kind: 'type', value: value === 'null' ? null : value.slice(5) }; render();
+        }}>
+          <option value="all">All types</option>
+          {types.map(type => <option key={type === null ? 'null' : `type:${type}`} value={type === null ? 'null' : `type:${type}`}>{type === null ? unrecordedLabel : type}</option>)}
+        </select></label>
+        <button className="btn" type="button" onClick={() => { clearSelection(); render(); searchInput?.focus(); }}>Clear</button>
+      </div>}
       <div role="status" aria-live="polite">
+        {page && <p>{matches.length} matching of {page.documents.length} loaded documents.</p>}
+        {page && !!page.documents.length && !matches.length && <p>No matching loaded documents. Search covers loaded documents only.{page.next ? ' More pages may exist. Use Load more documents to search additional documents.' : ''}</p>}
         {busy && <p>Loading documents…</p>}
         {(state.kind === 'loading' || state.kind === 'unavailable') && state.cursor === null && !!page?.documents.length && <p>Last successful read. Documents may be out of date.</p>}
         {state.kind === 'expired' && <p>Session expired. Sign in again to view documents.</p>}
         {state.kind === 'unavailable' && <p>Documents unavailable. <button className="btn" type="button" onClick={() => { if (state.kind === 'unavailable') void load(state.page, state.cursor); }}>Retry documents</button></p>}
         {state.kind === 'ready' && !state.page.documents.length && <p>No documents filed for this deal.</p>}
       </div>
-      {page && <ul className="deal-document-list">{page.documents.map(doc => <li key={doc.id} data-document-id={doc.id} data-content-hash={doc.content_hash}>
+      {page && <ul className="deal-document-list">{matches.map(doc => <li key={doc.id} data-document-id={doc.id} data-content-hash={doc.content_hash}>
         <h3>{doc.display_name}</h3><p>{doc.document_type || 'Document'} · Stored <time dateTime={doc.stored_at}>{new Date(doc.stored_at).toLocaleDateString()}</time>{doc.page_count === null ? '' : ` · ${doc.page_count} pages`}</p>
         <details><summary>Document identity</summary><dl><dt>Document UUID</dt><dd>{doc.id}</dd><dt>SHA-256</dt><dd>{doc.content_hash}</dd></dl></details>
       </li>)}</ul>}
@@ -74,7 +97,9 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
       }
       if (page.next && (page.next === cursor || cursors.has(page.next) || !page.documents.length)) throw Error('Repeated cursor');
       if (cursor) cursors.add(cursor);
-      state = { kind: 'ready', page: { documents: [...scanned, ...page.documents.slice(0, MAX_DOCUMENTS - scanned.length)], next: page.next }, cursor: null };
+      const documents = [...scanned, ...page.documents.slice(0, MAX_DOCUMENTS - scanned.length)];
+      if (selection.kind === 'type' && !documents.some(doc => selection.kind === 'type' && doc.document_type === selection.value)) selection = { kind: 'all' };
+      state = { kind: 'ready', page: { documents, next: page.next }, cursor: null };
     } catch (error) {
       if (disposed || ticket !== generation) return;
       if (record(error) && (error.status === 401 || error.status === 403)) { expire(); return; }
@@ -87,5 +112,5 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
     cursors.clear(); return load('page' in state ? state.page : { documents: [], next: null }, null);
   }
   void refresh();
-  return { refresh, dispose() { disposed = true; ++generation; controller.abort(); view?.removeEventListener('doctorcre-session-invalidated', expire); root.unmount(); } };
+  return { refresh, dispose() { disposed = true; clearSelection(); cursors.clear(); state = { kind: 'expired' }; searchInput = null; ++generation; controller.abort(); view?.removeEventListener('doctorcre-session-invalidated', expire); root.unmount(); } };
 }
