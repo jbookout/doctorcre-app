@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
@@ -118,9 +120,9 @@ jobs:
   live:
     # Live journeys: the built app against the real CARR Worker at the pinned
     # producer commit, on a disposable migrated PostgreSQL (tests/live).
-    # It runs producer code, so it saves no cache, and CI's only triggers are
-    # pull requests and pushes. ubuntu-24.04 is the image carr-system's own CI
-    # installs zsh and PostgreSQL on; 26.04 serves amd64v3 builds that
+    # It runs producer code, so it saves no cache. CI runs only for
+    # pull requests, main pushes and merge groups. ubuntu-24.04 matches the
+    # producer CI's zsh and PostgreSQL setup; 26.04 serves amd64v3 builds that
     # ops/ci-zsh.sh cannot verify against the plain amd64 index.
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-24.04
