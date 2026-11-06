@@ -5,6 +5,7 @@ import { resolve, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { createServer } from './proof-fixture-server.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -45,7 +46,7 @@ for (const late of [false, true]) test(`deadline closes owned browser during ${l
   let acquired;
   const acquisition = new Promise(resolve => { acquired = resolve; });
   const engine = { launch: async options => {
-    browser = await chromium.launch(options);
+    browser = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS] });
     acquired();
     if (late) await new Promise(resolve => setTimeout(resolve, 1500));
     return browser;
