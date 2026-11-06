@@ -71,7 +71,7 @@ test('proof CLI refuses invalid flags and origin', async () => {
 });
 
 test('proof closes a browser acquired after expiry without starting browser work', async t => {
-  const server = createServer((_req, res) => setTimeout(() => res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) })), 200));
+  const server = createServer((_req, res) => { res.setHeader('content-type', 'application/json'); setTimeout(() => res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) })), 200); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   let acquire, launchOptions, closed = false, browserWork = 0;
