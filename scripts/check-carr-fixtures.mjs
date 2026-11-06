@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseSync } from '@babel/core';
-import { validateCarrFixture, validateCarrRecordings } from '../test/support/carr-fixture-contract.mjs';
+import { validateCarrFixture, validateCarrRecordings, validateCarrProducerModules } from '../test/support/carr-fixture-contract.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const name = node => node?.name ?? node?.value;
@@ -80,9 +80,14 @@ export const literalInventoryDigest = literals => digest(JSON.stringify(literals
 export async function checkCarrFixtures(root,legacy) {
   root = root instanceof URL ? fileURLToPath(root) : root;
   const errors = [];
+  const producerModules = new Map(validateCarrProducerModules());
   for (const path of await fixtureFiles(root)) {
     if (path === 'test/fixtures/carr-legacy-literals.json') continue;
     const source = await readFile(join(root,path),'utf8');
+    if (producerModules.has(path)) {
+      if (source !== producerModules.get(path)) errors.push(`${path}: static producer module differs from pinned source`);
+      continue;
+    }
     if (path.startsWith('test/fixtures/carr/')) {
       try { validateCarrFixture(JSON.parse(source)); }
       catch (error) { errors.push(`${path}: ${error.message}`); }

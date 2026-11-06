@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile, cp, symlink } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { checkedCarrFixture, validateCarrFixture } from './support/carr-fixture-contract.mjs';
 import { checkCarrFixtures, responseLiterals, literalInventoryDigest } from '../scripts/check-carr-fixtures.mjs';
 
@@ -96,4 +97,27 @@ test('existing calendar and market replay formats are verified without an unchec
       assert.match((await checkCarrFixtures(root,{})).join('\n'),/producer response mismatch/);
     }
   } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+
+test('static producer artifacts are verified against pinned source before discovery or replay', async t => {
+  const root = temporaryDirectory('carr-static-producer-', t);
+  await mkdir(join(root, 'test/support'), {recursive:true});
+  await mkdir(join(root, 'test/fixtures'), {recursive:true});
+  await cp(new URL('./fixtures/carr-producers/', import.meta.url), join(root, 'test/fixtures/carr-producers'), {recursive:true});
+  await cp(new URL('./support/carr-fixture-contract.mjs', import.meta.url), join(root, 'test/support/carr-fixture-contract.mjs'));
+  await symlink(new URL('../node_modules/', import.meta.url).pathname, join(root, 'node_modules'), 'dir');
+  const helper = await import(pathToFileURL(join(root, 'test/support/carr-fixture-contract.mjs')));
+  assert.equal(helper.validateCarrProducerModules().length, 2);
+  const record = JSON.parse(await readFile(terms, 'utf8'));
+  for (const file of ['brief-calendar.mjs', 'market-terms.mjs']) {
+    const path = join(root, 'test/fixtures/carr-producers', file);
+    const original = await readFile(path, 'utf8');
+    await writeFile(path, original + '\nexport const unchecked = true;\n');
+    assert.throws(() => helper.validateCarrProducerModules(), /static producer module differs/);
+    assert.match((await checkCarrFixtures(root, {})).join('\n'), /static producer module differs/);
+    if (file === 'market-terms.mjs') assert.throws(() => helper.validateCarrFixture(record), /static producer module differs/);
+    await writeFile(path, original);
+  }
+  assert.deepEqual(helper.validateCarrFixture(record), checkedCarrFixture('market-terms-three-rows'));
 });

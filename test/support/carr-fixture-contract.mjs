@@ -4,15 +4,20 @@ import { createHash } from 'node:crypto';
 import { parseSync } from '@babel/core';
 import { transformSync } from 'esbuild';
 
+import { calendarSection } from '../fixtures/carr-producers/brief-calendar.mjs';
+import { rebuildMarketTerms } from '../fixtures/carr-producers/market-terms.mjs';
+
+const producers = { 'calendar-section': calendarSection, 'read-market-terms': rebuildMarketTerms };
 const ROOT = new URL('../fixtures/', import.meta.url);
 const pins = JSON.parse(readFileSync(new URL('carr-producers/pins.json', ROOT),'utf8'));
 const digest = source => createHash('sha256').update(source).digest('hex');
 
-function replay(record) {
-  const pin = pins[record.producer];
-  assert.ok(pin, `unknown producer ${record.producer}`);
+function producerModule(pin) {
+  return pin.file.replace(/\.(?:ts|js)\.txt$/, '.mjs');
+}
+
+function verifyProducer(pin) {
   const source = readFileSync(new URL(`carr-producers/${pin.file}`,ROOT),'utf8');
-  assert.equal(record.source_sha256, pin.sha256, 'fixture source pin differs from registered producer');
   assert.equal(digest(source), pin.sha256, 'producer source pin mismatch');
   const ast = parseSync(source, {configFile:false,babelrc:false,parserOpts:{sourceType:'module',plugins:['typescript']}});
   const declarations = ast.program.body.map(node => node.type === 'ExportNamedDeclaration' ? node.declaration : node).filter(Boolean);
@@ -20,7 +25,23 @@ function replay(record) {
     || (node.type === 'VariableDeclaration' && node.declarations.some(decl => pin.declarations.includes(decl.id.name))))
     .map(node => source.slice(node.start,node.end)).join('\n');
   const js = transformSync(selected, {loader:'ts',target:'es2022'}).code;
-  const produce = new Function(`${js}\nreturn ${pin.entry};`)();
+  const module = producerModule(pin);
+  const expected = `${js}\nexport { ${pin.entry} };\n`;
+  assert.equal(readFileSync(new URL(`carr-producers/${module}`, ROOT), 'utf8'),
+    expected, 'static producer module differs from pinned source');
+  return [`test/fixtures/carr-producers/${module}`, expected];
+}
+
+export function validateCarrProducerModules() {
+  return Object.values(pins).map(verifyProducer);
+}
+
+function replay(record) {
+  const pin = pins[record.producer];
+  assert.ok(pin, `unknown producer ${record.producer}`);
+  assert.equal(record.source_sha256, pin.sha256, 'fixture source pin differs from registered producer');
+  verifyProducer(pin);
+  const produce = producers[record.producer];
   if (record.producer === 'calendar-section') {
     assert.ok(typeof record.input.now === 'string' && Number.isFinite(Date.parse(record.input.now)), 'calendar replay needs a deterministic clock');
     return produce(record.input.snapshot,new Date(record.input.now));
