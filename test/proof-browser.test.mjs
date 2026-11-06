@@ -34,7 +34,7 @@ test('reserved switch spelling table cannot override mandatory flags', async t =
     for (const spelling of [name, name.toUpperCase(), name.replace(/^./, c => c.toUpperCase())]) {
       for (const prefix of ['-', '--', '/']) {
         for (const value of ['', '=', '=gnome', '=false', '=GNOME', '=gnome=extra']) {
-          for (const whitespace of ['', ' ', '\t\r\n']) {
+          for (const whitespace of ['', ...'\t\n\v\f\r \u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000']) {
             const argument = `${whitespace}${prefix}${spelling}${value}${whitespace}`;
             const browser = await chromium.launch({ args: [argument, '--disable-gpu', '-unrelated=value', '--password-store-extra=kept'] });
             try {

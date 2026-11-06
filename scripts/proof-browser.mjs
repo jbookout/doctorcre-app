@@ -5,9 +5,10 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 // Chromium base/command_line.cc: kSwitchPrefixes, IsSwitch,
 // AppendSwitchesAndArguments and AppendSwitchNative.
 // https://github.com/chromium/chromium/blob/main/base/command_line.cc
+// Whitespace: https://github.com/chromium/chromium/blob/main/base/strings/whitespace_constants.h
 // Reserve the union of platform spellings, including Windows slash/case forms.
 function switchName(argument) {
-  return argument.trim().match(/^(?:--?|\/)([^=]*)/)?.[1].replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return argument.replace(/^[\s\u0085]+|[\s\u0085]+$/g, '').match(/^(?:--?|\/)([^=]*)/)?.[1].replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 const mandatorySwitches = new Set(CHROMIUM_SAFETY_ARGS.map(switchName));
 
