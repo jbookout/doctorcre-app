@@ -13,6 +13,7 @@ async function setup(t, width = 1440, theme = 'light', review = false, card = nu
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
+  await page.clock.install({ time: new Date('2026-11-06T16:00:00Z') });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   const fixture = await syntheticCards();
   let snapshot = fixture.snapshot;
@@ -67,7 +68,7 @@ test('selection, refresh additions/removals, disclosure, current pin and session
   await page.getByText('Pinned outside search', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-inbox-row]').count(), 1);
   await page.getByRole('search').getByRole('button', { name: 'Clear', exact: true }).click();
-  const region = page.getByRole('region', { name: 'Needs your attention', exact: true });
+  const region = page.getByRole('region', { name: 'Overdue', exact: true });
   const disclosure = region.getByRole('button', { name: /See all/ });
   await disclosure.click();
   assert.equal(await region.locator('[data-inbox-row]').count(), 2);

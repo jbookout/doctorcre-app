@@ -51,12 +51,18 @@ export function HomeSections({ items: loaded, pinned, current, search, locked, c
   const renderRow = (item: InboxItem) => <div key={item.item_id}>{item.item_id === current && !matchesLoadedCard(item, search) && <p role="status">Pinned outside search</p>}{row(item)}</div>;
   const today = day(now);
   const completed = completionGroups(items.map(placement), now);
+  const overdue = (item: InboxItem) => {
+    const placed = placement(item);
+    return placed.section === 'inbox' && placed.source_state === 'needs_attention' && placed.action_id !== null && placed.due_on !== null && placed.due_on < today;
+  };
+  const overdueItems = items.filter(overdue);
   const dueToday = (item: InboxItem) => placement(item).section === 'inbox' && placement(item).due_on === today;
 
   return <div className="home-sections">
     {<div role="search" aria-label="Loaded Home cards"><label>Search loaded cards <input type="search" value={search} disabled={locked} onChange={event => changeSearch(event.target.value)} /></label><button type="button" disabled={locked || !search} onClick={() => changeSearch('')}>Clear</button><p role="status">{matching.length} matching loaded cards of {loaded.length} loaded</p>{search.trim() && !matching.length && <p role="status">No loaded cards match your search.</p>}</div>}
     <nav className="home-shortcuts" aria-label="Review workflows"><a href="/review-workflows#homeCallTasks">Call follow-ups ↗</a><a href="/review-workflows#homeEmailFollowups">Email and filings ↗</a><a href="/deals">Next steps ↗</a></nav>
-    <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => placement(item).section === 'inbox' && !dueToday(item))} current={current} row={renderRow} />
+    {overdueItems.length > 0 && <Slice title="Overdue" detail="Your tasks dated before today." items={overdueItems} current={current} row={renderRow} />}
+    <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => placement(item).section === 'inbox' && !dueToday(item) && !overdue(item))} current={current} row={renderRow} />
     <Slice title="Today" detail="Your tasks dated today." items={items.filter(dueToday)} current={current} row={renderRow} />
     <Slice title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(placement(item).section))} current={current} row={renderRow} />
     <Slice title="Done today" detail="Completed today in Chicago, with a recorded completion time." items={completed.today.map(done => items.find(item => item.item_id === done.item_id) ?? done)} current={current} row={renderRow} />

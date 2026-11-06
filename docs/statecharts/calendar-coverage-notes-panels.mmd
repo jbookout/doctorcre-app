@@ -1,0 +1,10 @@
+stateDiagram-v2
+  [*] --> Unavailable
+  Unavailable --> Closed: valid refresh
+  Closed --> Open: expand coverage
+  Open --> Closed: collapse coverage
+  Open --> Closed: refresh replaces notes
+  Closed --> Closed: refresh or owner filter preserves source coverage
+  Closed --> Unavailable: invalid refresh or session clear
+  Open --> Unavailable: session clear
+  Unavailable --> Unavailable: detached parent ignores late mount
