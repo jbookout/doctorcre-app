@@ -1,0 +1,1967 @@
+{
+  "records": {
+    "full": {
+      "snapshot": {
+        "receipts": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": []
+        }
+      },
+      "query": {},
+      "response": {
+        "ok": true,
+        "schema_version": "market-terms.v1",
+        "empty": false,
+        "rows": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 0
+            }
+          },
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": "2026-01-01",
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": [],
+          "coverage_scope": "tenant_all_recorded_sources",
+          "unclassified_receipts": 4,
+          "eligible_receipts": 6,
+          "unsupported_receipts": 0,
+          "superseded_without_context": 90,
+          "comparable_rows": 6,
+          "comparable_deals": 2
+        }
+      }
+    },
+    "before": {
+      "snapshot": {
+        "receipts": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": []
+        }
+      },
+      "query": {
+        "as_of": "2025-12-31"
+      },
+      "response": {
+        "ok": true,
+        "schema_version": "market-terms.v1",
+        "empty": false,
+        "rows": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 0
+            }
+          },
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": "2026-01-01",
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": [],
+          "coverage_scope": "tenant_all_recorded_sources",
+          "unclassified_receipts": 4,
+          "eligible_receipts": 6,
+          "unsupported_receipts": 0,
+          "superseded_without_context": 90,
+          "comparable_rows": 5,
+          "comparable_deals": 2
+        }
+      }
+    },
+    "boundary": {
+      "snapshot": {
+        "receipts": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": []
+        }
+      },
+      "query": {
+        "as_of": "2026-01-01"
+      },
+      "response": {
+        "ok": true,
+        "schema_version": "market-terms.v1",
+        "empty": false,
+        "rows": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 0
+            }
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": [],
+          "coverage_scope": "tenant_all_recorded_sources",
+          "unclassified_receipts": 4,
+          "eligible_receipts": 6,
+          "unsupported_receipts": 0,
+          "superseded_without_context": 90,
+          "comparable_rows": 5,
+          "comparable_deals": 2
+        }
+      }
+    },
+    "executed": {
+      "snapshot": {
+        "receipts": [
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": []
+        }
+      },
+      "query": {},
+      "response": {
+        "ok": true,
+        "schema_version": "market-terms.v1",
+        "empty": false,
+        "rows": [
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": "2026-01-01",
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ],
+            "source_coverage": {
+              "supporting_observations": 1,
+              "supporting_documents": 1,
+              "unaffected_observations": 1
+            }
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": [],
+          "coverage_scope": "tenant_all_recorded_sources",
+          "unclassified_receipts": 4,
+          "eligible_receipts": 4,
+          "unsupported_receipts": 0,
+          "superseded_without_context": 92,
+          "comparable_rows": 4,
+          "comparable_deals": 2
+        }
+      }
+    },
+    "empty": {
+      "snapshot": {
+        "receipts": [],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": []
+        }
+      },
+      "query": {},
+      "response": {
+        "ok": true,
+        "schema_version": "market-terms.v1",
+        "empty": true,
+        "rows": [],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": [],
+          "coverage_scope": "tenant_all_recorded_sources",
+          "unclassified_receipts": 4,
+          "eligible_receipts": 0,
+          "unsupported_receipts": 0,
+          "superseded_without_context": 96,
+          "comparable_rows": 0,
+          "comparable_deals": 0
+        }
+      }
+    },
+    "south": {
+      "snapshot": {
+        "receipts": [
+          {
+            "canonical_fact_id": "a-counter",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "counter",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": true
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-executed",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-amended",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2026-01-01",
+            "effective_from": "2026-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "b-executed",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "rent",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "a-TI",
+            "version": 1,
+            "entity_ref": "synthetic-a",
+            "fact_key": "TI",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "executed",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          },
+          {
+            "canonical_fact_id": "future",
+            "version": 1,
+            "entity_ref": "synthetic-b",
+            "fact_key": "fees",
+            "value": "35",
+            "unit": "USD/sf/year",
+            "expense_basis": "NNN",
+            "confidence": "human_review",
+            "term_kind": "reviewed future",
+            "term_date": "2025-01-01",
+            "effective_from": "2025-01-01",
+            "effective_to": null,
+            "eligible": true,
+            "submarket": "North",
+            "use_type": "Medical",
+            "context_source": {
+              "document_ref": "synthetic-context",
+              "reviewed_by_actor_id": "synthetic-reviewer",
+              "reviewed_at": "2025-01-02T00:00:00Z"
+            },
+            "sources": [
+              {
+                "observation_id": "synthetic-synthetic-a-rent",
+                "document_ref": "synthetic-source",
+                "content_hash": null,
+                "page_start": 2,
+                "page_end": 3,
+                "extractor_version": "synthetic-v1",
+                "confidence_tier": "human_review",
+                "quarantined": false
+              }
+            ]
+          }
+        ],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": []
+        }
+      },
+      "query": {
+        "submarket": "South",
+        "use_type": "Medical",
+        "as_of": "2026-01-01"
+      },
+      "response": {
+        "ok": true,
+        "schema_version": "market-terms.v1",
+        "empty": true,
+        "rows": [],
+        "coverage": {
+          "scope": "recorded_firm_history_only",
+          "history_coverage": "unknown",
+          "archive_documents": null,
+          "recorded_documents": 20,
+          "observations": 100,
+          "canonical_receipts": 100,
+          "classified_receipts": 96,
+          "quarantined_extractor_versions": [],
+          "coverage_scope": "tenant_all_recorded_sources",
+          "unclassified_receipts": 4,
+          "eligible_receipts": 6,
+          "unsupported_receipts": 0,
+          "superseded_without_context": 90,
+          "comparable_rows": 0,
+          "comparable_deals": 0
+        }
+      }
+    }
+  }
+}

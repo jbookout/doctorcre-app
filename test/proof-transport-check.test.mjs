@@ -31,6 +31,8 @@ for (const source of [
   "import { execFileSync } from 'node:child_process'; execFileSync('/usr/bin/curl', ['https://example.com'])",
   "import { spawn } from 'node:child_process'; spawn('sh', ['-c', 'curl https://example.com'])",
   "import { execFileSync as read } from 'node:child_process'; read('/usr/bin/curl', ['https://example.com'])",
+  "import { execFile } from 'node:child_process'; execFile('/usr/bin/curl', ['https://example.com'], () => {})",
+  "import { execFile } from 'node:child_process'; const run = execFile; run('curl', ['https://example.com'])",
   "process.getBuiltinModule('https').get('https://example.com')",
   "import net from 'node:net'",
   "import tls from 'tls'",
@@ -195,4 +197,8 @@ test('reader marks requests and preserves caller User-Agent and headers', async 
   assert.equal(seen['user-agent'], 'existing-proof-agent/1');
   assert.equal(seen['x-fixture'], 'retained');
   assert.equal(headers.has('x-doctorcre-release-reader'), false);
+});
+
+test('asynchronous read-only git ancestry remains admissible', () => {
+  assert.deepEqual(checkProofSource("import { execFile } from 'node:child_process'; execFile('git', ['merge-base', '--is-ancestor', required, released], { signal }, error => {});"), []);
 });

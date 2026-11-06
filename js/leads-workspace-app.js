@@ -625,7 +625,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   $("closeStage").addEventListener("click", () => $("stageDialog").close());
   for (const id of ["leadDetail", "stageDialog"]) onDialogClosed($(id), () => {
     if (id === "stageDialog") { ++state.reviewEpoch; state.reviewTarget = null; state.proposal = null; }
-    else { clearGuidance(); ++state.detailEpoch; state.detailId = null; state.detail = null; if (state.identityReady) state.resumeDetail = null; }
+    else { clearGuidance(); ++state.detailEpoch; if (state.detailId) state.resumeDetail = null; state.detailId = null; state.detail = null; }
     paintCommandFeedback();
     if (!$("leadDetail").open && !$("stageDialog").open) {
       selectDocRecord("lead", null);

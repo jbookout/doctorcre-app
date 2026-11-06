@@ -24,7 +24,7 @@ let sessionIds = new Set(), dispatchCursor = null, reading = false;
 let dispatchRows = [], dispatchPages = 0;
 let sessionQuery = '', sessionRequest = 0;
 let dispatchSelection = 0, dispatchPending = null;
-let bindingGeneration = 0;
+let bindingGeneration = 0, projectionRevision = 0, refreshPending = false;
 const signatures = new Map();
 function clearRequestEvidence(message) {
   engineering = null; card = null; turns = []; dotCards = [];
@@ -220,8 +220,8 @@ async function readDispatch(more = false) {
 }
 async function readSessions(query = sessionQuery) {
   sessionQuery = query;
-  const request = ++sessionRequest, epoch = authGeneration(), binding = bindingGeneration;
-  const current = () => authReadable(epoch) && binding === bindingGeneration && request === sessionRequest && query === sessionQuery;
+  const request = ++sessionRequest, epoch = authGeneration(), binding = bindingGeneration, projection = projectionRevision;
+  const current = () => authReadable(epoch) && binding === bindingGeneration && projection === projectionRevision && request === sessionRequest && query === sessionQuery;
   try {
     const read = await client.sessionIdentity({limit:50,include_closed:true,...(query ? {query} : {})});
     if (!current()) return;
@@ -240,7 +240,7 @@ async function readSessions(query = sessionQuery) {
       return nodes;
     });
     if (selectedSession) readDispatch();
-  } catch (error) { if (authCurrent(epoch) && binding === bindingGeneration && request === sessionRequest) fail(error, $('workSessionList'), 'Sessions'); }
+  } catch (error) { if (authCurrent(epoch) && binding === bindingGeneration && projection === projectionRevision && request === sessionRequest) fail(error, $('workSessionList'), 'Sessions'); }
 }
 function fail(error, host, label) {
   if (error.status === 401 || error.status === 403) {
@@ -254,7 +254,7 @@ function fail(error, host, label) {
   $('workReadState').dataset.state = 'stale';
 }
 document.addEventListener('progress-auth-lost', () => {
-    ++bindingGeneration; scope.workRequest = explicitWorkRequest; queueTask = null;
+    ++bindingGeneration; ++projectionRevision; refreshPending = false; scope.workRequest = explicitWorkRequest; queueTask = null;
     clearRequestEvidence('Sign in to read work evidence.'); scope.sourceSeqs = [];
     $('workTitle').textContent = 'Work detail'; document.title = 'Work detail · Progress';
     breadcrumbs('Progress', 'Sign in');
@@ -283,11 +283,13 @@ function renderMetadata(task, questions) {
   ]);
 }
 async function refresh() {
-  if (reading) return; reading = true;
-  const epoch = authGeneration();
+  if (reading) { refreshPending = true; return; }
+  reading = true; refreshPending = false;
+  const epoch = authGeneration(), projection = projectionRevision;
+  const currentProjection = () => authCurrent(epoch) && projection === projectionRevision;
   try {
     const read = await client.readProgressBoard({board_id:scope.board});
-    if (!authCurrent(epoch)) return;
+    if (!currentProjection()) return;
     establishAuth(epoch);
     const view = boardView(read);
     const tasks = new Map(view.stages.flatMap(stage => stage.tasks).map(task => [task.id, task]));
@@ -303,13 +305,13 @@ async function refresh() {
     if (!task && scope.board === 'carr-v5' && /^[a-z_]+:.+/.test(scope.task || '')) {
       const split = scope.task.indexOf(':'), kind = scope.task.slice(0,split), id = scope.task.slice(split+1);
       const census = validSystemWork(await client.unfinishedWork({kinds:kind,id,limit:1}));
-      if (!authReadable(epoch)) return;
+      if (!currentProjection() || !authReadable(epoch)) return;
       task = systemPipeline(census.items,[]).stages.flatMap(stage => stage.tasks).find(item => item.id === scope.task);
     }
     task ||= queueTask;
     reconcileWorkRequest(task);
     const workRequest = scope.workRequest, binding = bindingGeneration;
-    const currentBinding = () => authCurrent(epoch) && binding === bindingGeneration && workRequest === scope.workRequest;
+    const currentBinding = () => currentProjection() && binding === bindingGeneration && workRequest === scope.workRequest;
     const title = task?.title || card?.title || (scope.task ? 'Task work' : 'Project activity');
     $('workTitle').textContent = title; document.title = `${title} · Progress`; breadcrumbs(view.title, title);
     const age = read.ok === true && read.snapshot === null
@@ -332,20 +334,25 @@ async function refresh() {
     else empty($('workCanonicalBody'),'No canonical work-request reference is linked to this task.');
     if (!currentBinding() || !authReadable(epoch)) return;
     renderReviews(); await readSessions();
-    if (authReadable(epoch)) wire?.refreshScope();
-  } catch (error) { if (authCurrent(epoch)) fail(error,$('workMetadata'),'Publication'); }
-  finally { reading = false; }
+    if (currentBinding() && authReadable(epoch)) wire?.refreshScope();
+  } catch (error) { if (currentProjection()) fail(error,$('workMetadata'),'Publication'); }
+  finally {
+    reading = false;
+    if (refreshPending && authReadable(epoch)) refresh();
+  }
 }
 document.addEventListener('progress-queue', event => {
   if (!authReadable(authGeneration())) return;
   const cards = event.detail.cards;
   const task = cards.find(card => card.task_id === scope.task);
-  if (!task && event.detail.state === 'Live') {
-    const hadTask = queueTask !== null; queueTask = null; scope.sourceSeqs = [];
+  if (task || event.detail.state === 'Live') {
+    const next = task || null;
+    const changed = JSON.stringify(next) !== JSON.stringify(queueTask);
+    queueTask = next;
+    scope.sourceSeqs = sourceSequence(task?.source_seq) === null ? [] : [sourceSequence(task.source_seq)];
+    if (changed) { ++projectionRevision; refresh(); }
     wire?.refreshScope();
-    if (hadTask) refresh();
   }
-  if (task) { queueTask = task; scope.sourceSeqs = sourceSequence(task.source_seq) === null ? [] : [sourceSequence(task.source_seq)]; if (!$('workMetadata').querySelector('article')) $('workMetadata').append(taskRecord(task,[])); if ($('workTitle').textContent === 'Task work') $('workTitle').textContent = task.title; wire?.refreshScope(); }
   dotCards = cards.filter(card => card.target === 'dot' && scopedQueueCard(card,scope));
   queueState = event.detail.state || (event.detail.live === true ? 'Live' : 'Stale'); renderDot();
 });
