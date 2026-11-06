@@ -104,6 +104,7 @@ setTimeout(() => {}, 4000);
     if (mode === 'unsafe') manifest.files[0].path = '../private.js';
     const siteRoot = resolve(outDir, 'site');
     const server = createServer(async (req, res) => {
+      if (req.headers['x-doctorcre-release-reader'] !== '1') { res.writeHead(403); return res.end(); }
       seen.push({ method: req.method, path: req.url });
       let path;
       try { path = resolve(siteRoot, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
@@ -128,6 +129,7 @@ setTimeout(() => {}, 4000);
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     t.after(() => { server.closeAllConnections(); server.close(); });
+    if (mode === 'ancestry-timeout') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/`)).status, 403);
     const started = performance.now();
     const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : mode === 'ancestry-timeout' ? '2000' : '30000'], { cwd: history, env: { ...process.env, ...(mode === 'ancestry-timeout' ? { PATH: slowBin + ':' + process.env.PATH } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
@@ -154,7 +156,7 @@ setTimeout(() => {}, 4000);
     if (mode === 'descendant-identity') assert.match(receipt.error, /manifest commit mismatch/);
     assert.ok(seen.length <= requirement.safety.max_requests);
     assert.ok(seen.every(row => row.method === 'GET' && row.path !== '/business'));
-    if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`)).status, 403);
+    if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`, { headers: { 'x-doctorcre-release-reader': '1' } })).status, 403);
   });
 });
 
