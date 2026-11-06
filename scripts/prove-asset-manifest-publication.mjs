@@ -2,6 +2,7 @@ import { isAppRepository } from '../js/repository-identity.mjs';
 import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -31,14 +32,21 @@ export async function prove({ origin, commit, timeoutMs }) {
   };
   try {
     const release = await readAppRelease(origin, async url => { const { response, data } = await get(url.pathname); return { type: response.headers.get('content-type') || '', body: data }; });
-    assert.equal(release.source_commit, commit, 'release commit mismatch');
+    if (release.source_commit !== commit) {
+      try {
+        execFileSync('git', ['merge-base', '--is-ancestor', commit, release.source_commit], { timeout: Math.min(timeoutMs, 5000), stdio: 'pipe' });
+      } catch (error) {
+        if (error.status === 1) throw Error('release commit mismatch');
+        throw Object.assign(Error('Release ancestry evidence unavailable'), { exitCode: 78 });
+      }
+    }
     const { response, data } = await get('/artifact-manifest.json');
     assert.match(response.headers.get('content-type') || '', /^application\/json(?:;|$)/i);
     assert.equal(response.headers.get('cache-control'), 'no-store');
     const manifest = JSON.parse(data);
     assert.equal(manifest.schema, 'doctorcre-static-artifact.v1');
     assert.ok(isAppRepository(manifest.repository), 'manifest repository mismatch');
-    assert.equal(manifest.source_commit, commit, 'manifest commit mismatch');
+    assert.equal(manifest.source_commit, release.source_commit, 'manifest commit mismatch');
     assert.ok(Array.isArray(manifest.files) && manifest.files.length <= 10000, 'manifest file inventory required');
     const files = new Map();
     for (const row of manifest.files) {

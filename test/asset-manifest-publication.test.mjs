@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createServer } from './proof-fixture-server.mjs';
 import { once } from 'node:events';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { resolve, sep } from 'node:path';
 import { buildArtifact, verifyArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -68,8 +68,24 @@ test('declared production proof follows built and renamed assets and refuses con
   const requirement = JSON.parse(await readFile(join(root, 'proofs/requirements/asset-manifest-publication.json')));
   assert.ok(requirement.assertions[0].predicate.includes('scripts/prove-asset-manifest-publication.mjs'));
   const payload = new Map(await Promise.all(built.manifest.files.map(async row => [row.path, await readFile(join(outDir, 'site', row.path))])));
-  for (const mode of ['built', 'legacy', 'unrelated', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
+  const history = temporaryDirectory('doctorcre-manifest-history-', t);
+  const git = (...args) => execFileSync('git', args, { cwd: history, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init');
+  const record = async value => {
+    await writeFile(join(history, 'revision.txt'), value);
+    git('add', 'revision.txt');
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-m', value);
+    return git('rev-parse', 'HEAD');
+  };
+  const ancestor = await record('ancestor');
+  const descendant = await record('descendant');
+  git('checkout', '--orphan', 'unrelated');
+  const unrelated = await record('unrelated');
+  for (const mode of ['descendant', 'non-descendant', 'unknown', 'unknown-release', 'descendant-identity', 'built', 'legacy', 'unrelated', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
     const manifest = structuredClone(built.manifest), files = new Map(payload), seen = [];
+    const required = mode === 'unknown' ? 'f'.repeat(40) : ['descendant', 'non-descendant', 'unknown-release', 'descendant-identity'].includes(mode) ? ancestor : commit;
+    const released = mode === 'non-descendant' ? unrelated : mode === 'unknown-release' ? 'f'.repeat(40) : ['descendant', 'descendant-identity'].includes(mode) ? descendant : commit;
+    manifest.source_commit = mode === 'descendant-identity' ? ancestor : released;
     if (mode === 'renamed') for (const row of manifest.files.filter(row => row.path.startsWith('js/') && row.path.endsWith('.js'))) {
       const next = row.path.replace('js/', 'js/renamed-');
       files.set(next, files.get(row.path)); files.delete(row.path); row.path = next;
@@ -86,7 +102,7 @@ test('declared production proof follows built and renamed assets and refuses con
       if (!path.startsWith(siteRoot + sep)) { res.writeHead(403); return res.end(); }
       if (mode === 'timeout') return;
       const response = await handleDoctorcreRequest(new Request('https://app.example' + req.url), {
-        GIT_SHA: commit, APP_ENV: 'production',
+        GIT_SHA: released, APP_ENV: 'production',
         ASSETS: { fetch: async request => {
           const name = new URL(request.url).pathname.slice(1);
           if (name === 'artifact-manifest.json') return new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } });
@@ -103,19 +119,22 @@ test('declared production proof follows built and renamed assets and refuses con
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     t.after(() => { server.closeAllConnections(); server.close(); });
-    const child = spawn(process.execPath, ['scripts/prove-asset-manifest-publication.mjs', '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', commit, '--timeout-ms', mode === 'timeout' ? '100' : '30000'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : '30000'], { cwd: history, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const [code] = await once(child, 'close');
-    assert.equal(code, ['built', 'legacy', 'renamed'].includes(mode) ? 0 : mode === 'timeout' ? 78 : 1, stdout + stderr);
+    assert.equal(code, ['built', 'legacy', 'renamed', 'descendant'].includes(mode) ? 0 : ['timeout', 'unknown', 'unknown-release'].includes(mode) ? 78 : 1, stdout + stderr);
     const receipt = JSON.parse(stdout);
     assert.equal(receipt.status, code === 0 ? 'passed' : 'failed');
     if (!code) {
       assert.equal(receipt.assets.length, 2);
       assert.deepEqual(receipt.assets.map(row => row.path), manifest.files.map(row => row.path).filter(path => /^js\/.*\.js$/.test(path)).sort().slice(0, 2));
-      assert.equal(receipt.release.source_commit, commit);
+      assert.equal(receipt.release.source_commit, released);
       assert.equal(seen.length, requirement.safety.max_requests);
     }
+    if (mode === 'non-descendant') assert.match(receipt.error, /release commit mismatch/);
+    if (['unknown', 'unknown-release'].includes(mode)) assert.match(receipt.error, /ancestry evidence unavailable/);
+    if (mode === 'descendant-identity') assert.match(receipt.error, /manifest commit mismatch/);
     assert.ok(seen.length <= requirement.safety.max_requests);
     assert.ok(seen.every(row => row.method === 'GET' && row.path !== '/business'));
     if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`)).status, 403);
