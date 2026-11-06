@@ -102,3 +102,53 @@ test('disposal clears rendered dates and ignores a late detail response', async 
   await pending;
   assert.equal(w.document.querySelector('#sourcedResearch'), null);
 });
+
+for (const closeAt of ['before identity', 'after identity', 'after reopen']) {
+  test(`research resumes when the suspended dialog close arrives ${closeAt}`, async t => {
+    const { JSDOM } = await import('jsdom');
+    const { mountLeadsWorkspace } = await import('../js/leads-workspace-app.js');
+    const dom = new JSDOM(await readFile(new URL('../leads.html', import.meta.url), 'utf8'), { url: 'https://example.test/leads', pretendToBeVisual: true });
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    w.HTMLDialogElement.prototype.close = function () { this.open = false; };
+    let releaseBoard;
+    let boardStarted;
+    const readingBoard = new Promise(resolve => { boardStarted = resolve; });
+    let restoring = false;
+    const client = {
+      getActor: async () => 'example-partner',
+      getWorkspace: async () => {
+        if (restoring) {
+          const pending = new Promise(resolve => { releaseBoard = () => resolve(structuredClone(recording)); });
+          boardStarted();
+          return pending;
+        }
+        return structuredClone(recording);
+      },
+      getLeadDetail: async () => structuredClone(recording),
+    };
+    const app = mountLeadsWorkspace(w.document, client, { mapFactory: async () => ({ update() {}, dispose() {} }) });
+    t.after(() => { app.dispose(); w.close(); });
+    await app.refresh();
+    await app.readDetail(recording.detail.id);
+    assert.ok(w.document.querySelector('#sourcedResearch'));
+    const dialog = w.document.querySelector('#leadDetail');
+    w.dispatchEvent(new w.Event('doctorcre-session-invalidated'));
+    assert.equal(w.document.querySelector('#sourcedResearch'), null);
+    if (closeAt === 'before identity') dialog.dispatchEvent(new w.Event('close'));
+    restoring = true;
+    const pending = app.refresh();
+    await readingBoard;
+    if (closeAt === 'after identity') dialog.dispatchEvent(new w.Event('close'));
+    releaseBoard();
+    await pending;
+    if (closeAt === 'after reopen') dialog.dispatchEvent(new w.Event('close'));
+    assert.equal(dialog.open, true, 'restores the previously open lead');
+    assert.equal(w.document.querySelectorAll('#sourcedResearch li').length, 4, 'restores sourced research');
+    dialog.close();
+    dialog.dispatchEvent(new w.Event('close'));
+    restoring = false;
+    await app.refresh();
+    assert.equal(dialog.open, false, 'an explicit close stays closed');
+  });
+}
