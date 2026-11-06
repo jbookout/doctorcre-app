@@ -139,6 +139,9 @@ export async function prove({ origin, timeoutMs }) {
     return await Promise.race([run(), new Promise((_, reject) => {
       timer = setTimeout(() => { controller.abort(); reject(unavailable('Proof timeout')); }, timeoutMs);
     })]);
+  } catch (error) {
+    if (controller.signal.aborted || error.name === 'TimeoutError') throw unavailable('Proof timeout');
+    throw error;
   } finally { clearTimeout(timer); controller.abort(); await browser?.close(); }
 }
 
