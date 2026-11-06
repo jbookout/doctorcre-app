@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
 import { uiBundle } from '../scripts/ui-bundle.mjs';
 import { readFile, mkdir } from 'node:fs/promises';
 import { handleDoctorcreRequest } from '../src/worker.js';
@@ -115,7 +115,7 @@ test('selecting a tab preserves the untouched group scroll and fires no input bl
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
   await page.route('**/test/workspace-shell.js', route => route.fulfill({ contentType: 'text/javascript', body: workspaceBundle }));
-  await page.goto(`${server.origin}/ideas-events`);
+  await componentDocument(page, server.origin, { dispose: page => page.evaluate(() => window.workspaceFixture?.shell.unmount()) });
   await page.evaluate(async () => {
     const { mountWorkspace } = await import('/test/workspace-shell.js');
     document.body.innerHTML = '<main><section id="deals">Deals</section><section id="leads">Leads</section><section id="today"><input aria-label="Untouched draft"><div id="today-scroll" style="height:60px;overflow:auto"><div style="height:2000px">Today</div></div></section><div id="workspace" style="display:flex;height:400px"></div></main>';

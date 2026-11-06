@@ -7,7 +7,7 @@ import { createDocContext } from '../js/doc-context-model.js';
 import { createCallMode, CALL_MODE_URL } from '../js/call-mode.js';
 import { createServer } from 'node:http';
 import { extname } from 'node:path';
-import { chromium, animationsSettled, settles, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, animationsSettled, settles, fixtureServer } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { appShellMarkup } from '../js/navigation.js';
 import { mountGlobalCallMode } from '../js/global-call-mode.js';
@@ -294,7 +294,7 @@ test('touch targets are measured after their entry animation settles', async () 
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 820, height: 1180 } });
-    await page.setContent(`<style>${await read('css/tokens.css')}${await read('css/system.css')} .doc-chat { top: 986.5px; bottom: auto; display: block; }</style><div class="doc-chat"><button class="btn">Dictate with Quill</button></div>`);
+    await componentDocument(page, 'http://localhost', {html: `<style>${await read('css/tokens.css')}${await read('css/system.css')} .doc-chat { top: 986.5px; bottom: auto; display: block; }</style><div class="doc-chat"><button class="btn">Dictate with Quill</button></div>`});
     await page.locator('.doc-chat').evaluate(el => {
       el.getAnimations().forEach(animation => animation.cancel());
       el.animate([{ transform: 'translateY(4.6646px)' }, { transform: 'translateY(4.6646px)' }], { duration: 500 });

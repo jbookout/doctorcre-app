@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
-import { chromium } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
 
 const deal = '11111111-1111-4111-8111-111111111111';
 const other = '22222222-2222-4222-8222-222222222222';
@@ -93,6 +93,7 @@ test('Documents shows a canonical email PDF and follows the panel statechart', a
       await page.getByRole('tab',{name:'Documents',exact:true}).click();
       await page.getByText('Session expired. Sign in again to view documents.',{exact:true}).waitFor();
       assert.equal(await page.locator('[data-document-id]').count(),0);
+      await componentDocument(page, server.url, {owner:'documents cap', dispose: page => page.evaluate(() => window.documentCap?.dispose())});
       await page.evaluate(async document => {
         const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
         const target = window.document.createElement('div'); window.document.body.append(target);
@@ -132,8 +133,7 @@ test('Documents retries next pages and clears or disposes every in-flight state'
         try {
           const errors = []; page.on('pageerror', error => errors.push(error.message));
           await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
-          await page.route('**/documents-harness',route => route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'}));
-          await page.goto(`${server.url}/documents-harness`);
+          await componentDocument(page, server.url, {owner:'documents lifecycle', dispose: page => page.evaluate(() => window.documentsTest?.panel.dispose())});
           await page.evaluate(async ({deal,document}) => {
             const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
             const target = window.document.createElement('div');

@@ -60,9 +60,11 @@ function browserEngine(engine) {
         ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
       const browser = await launched.get(key);
       const contexts = new Set();
+      let closing;
       async function newContext(options = {}) {
           const context = await browser.newContext(options);
           contexts.add(context);
+          context.once('close', () => contexts.delete(context));
           context.setDefaultTimeout(WAIT_MS);
           // Tests never reach the network. A page's Google Fonts link held its
           // load event, and so page.goto, until an outside server answered. A
@@ -92,10 +94,12 @@ function browserEngine(engine) {
           }
           return page;
         },
-        async close() {
-          const open = [...contexts];
-          contexts.clear();
-          await Promise.all(open.map(context => context.close()));
+        close() {
+          return closing ??= (async () => {
+            const results = await Promise.allSettled([...contexts].map(context => context.close()));
+            const failed = results.find(result => result.status === 'rejected');
+            if (failed) throw failed.reason;
+          })();
         },
       };
     },
@@ -169,3 +173,5 @@ export async function pausedClock(page, time) {
     clock._currentRealTimeTimer = undefined;
   });
 }
+
+export { componentDocument } from './component-document.mjs';
