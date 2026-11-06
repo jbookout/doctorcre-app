@@ -101,6 +101,7 @@ export function openQuickSwitcher({ opener, pages, read }: Options) {
 function Switcher({ pages, read, close }: Omit<Options, 'opener'> & { close: () => void }) {
   const [state, setState] = useState<ReadState>({ kind: 'loading' });
   const [query, setQuery] = useState('');
+  const [kind, setKind] = useState<Destination['kind'] | 'All'>('All');
   const [active, setActive] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -108,7 +109,8 @@ function Switcher({ pages, read, close }: Omit<Options, 'opener'> & { close: () 
   const all = [...(state.kind === 'ready' ? state.items : []), ...pageItems];
   const normalized = query.trim().toLocaleLowerCase();
   const recents = recentIds().flatMap(id => all.find(item => item.id === id) || []);
-  const results = normalized ? all.filter(item => `${item.label} ${item.kind}`.toLocaleLowerCase().includes(normalized)) : [...recents, ...pageItems.filter(page => !recents.some(item => item.id === page.id))];
+  const candidates = normalized || kind !== 'All' ? all : [...recents, ...pageItems.filter(page => !recents.some(item => item.id === page.id))];
+  const results = candidates.filter(item => (kind === 'All' || item.kind === kind) && (!normalized || `${item.label} ${item.kind}`.toLocaleLowerCase().includes(normalized)));
   const activeIndex = Math.min(active, Math.max(0, results.length - 1));
   const selected = results[activeIndex];
   const unavailable = state.kind === 'error' ? unavailableMessage.none : state.kind === 'ready' ? unavailableMessage[state.availability] : '';
@@ -143,9 +145,17 @@ function Switcher({ pages, read, close }: Omit<Options, 'opener'> & { close: () 
           if (results.length) setActive(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length);
         } else if (event.key === 'Enter' && selected) { event.preventDefault(); navigate(selected); }
       }} />
-    <p role="status">{state.kind === 'loading' ? 'Loading accessible items…' : unavailable ? unavailable : normalized && results.length === 0 ? 'No matches. Try a deal, contact or page name.' : `${results.length} destinations`}</p>
+    <div role="group" aria-label="Destination kind" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+      {(['All', 'Deal', 'Contact', 'Task', 'Page'] satisfies (Destination['kind'] | 'All')[]).map(value =>
+        <button key={value} type="button" aria-pressed={kind === value} onClick={() => { setKind(value); setActive(0); }}>
+          {value === 'All' ? 'All destinations' : `${value}s`}
+        </button>)}
+    </div>
+    <p role="status">{state.kind === 'loading' ? 'Loading accessible items…' : unavailable ? unavailable : `${results.length} destinations` }</p>
+    {unavailable && <p>{results.length} destinations</p>}
+    {state.kind !== 'loading' && results.length === 0 && <p>No matches. Try a deal, contact or page name.</p>}
     {unavailable && <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry</button>}
-    {!normalized && <h3>{recents.length ? 'Recent' : 'Pages'}</h3>}
+    {!normalized && kind === 'All' && <h3>{recents.length ? 'Recent' : 'Pages'}</h3>}
     <ul id="quick-results" role="listbox" aria-label="Destinations">
       {results.map((item, index) => <li key={item.id} id={`quick-option-${index}`} role="option" aria-selected={index === activeIndex}
         onPointerMove={() => setActive(index)} onMouseDown={event => event.preventDefault()} onClick={() => navigate(item)}>

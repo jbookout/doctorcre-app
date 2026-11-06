@@ -1,0 +1,13 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+  "files": {
+    "email-proposals.js": "c7d88f4776f4b41350a010bbb853efe388efc4f933630874461629a9e5972752",
+    "email-next-step.ts": "e74d6e275de45c214e53b4b8709f15f8454ae48e440d14ac6ddd7dd7860fc635",
+    "sha256.ts": "b44f56644f0f214b3267c86a71861daffe315c67e8dcb1cd11f8383d4855a2bb",
+    "calendar-date.ts": "8dbfa61a3383062c8d0e13ebe1ccd2e3cd3386279a8f016ddf90cdc3cc94027f",
+    "untrusted-text.js": "11cc4a4f96ed6e138cbcffd465147bd03069570873fe26365e26850a6c66e3cb",
+    "partner-authority.js": "57d1e77b63f97b3880d9a22d01fdcdde6921b0f9886d9b1cfe5b30e07bf0985e",
+    "tool-error.ts": "560dd7d6509deb1ebe3cb42dcdb50254dd272383f34436c2558d8f53d9f6b57f"
+  }
+}

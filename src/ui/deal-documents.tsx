@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 
 type Document = { id: string; display_name: string; document_type: string | null; page_count: number | null; content_hash: string; stored_at: string };
 type Page = { documents: Document[]; next: string | null };
-type State = { kind: 'loading' } | { kind: 'expired' } | { kind: 'ready' | 'more' | 'unavailable'; page: Page; cursor: string | null };
+type State = { kind: 'expired' } | { kind: 'loading' | 'ready' | 'more' | 'unavailable'; page: Page; cursor: string | null };
 type Client = { listDealDocuments(args: { deal_id: string; limit: number; cursor?: string }, options: { signal: AbortSignal }): Promise<unknown> };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -26,7 +26,7 @@ function parsePage(value: unknown): Page {
 export function mountDealDocuments(element: Element, { dealId, client }: { dealId: string; client: Client }) {
   if (!uuid.test(dealId)) throw Error('Invalid deal');
   const root = createRoot(element);
-  let state: State = { kind: 'loading' }, disposed = false, generation = 0;
+  let state: State = { kind: 'loading', page: { documents: [], next: null }, cursor: null }, disposed = false, generation = 0;
   let controller = new AbortController();
   const cursors = new Set<string>();
   const view = element.ownerDocument.defaultView;
@@ -44,6 +44,7 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
       {state.kind !== 'expired' && <button className="btn" type="button" disabled={busy} onClick={() => void refresh()}>Refresh documents</button>}
       <div role="status" aria-live="polite">
         {busy && <p>Loading documents…</p>}
+        {(state.kind === 'loading' || state.kind === 'unavailable') && state.cursor === null && !!page?.documents.length && <p>Last successful read. Documents may be out of date.</p>}
         {state.kind === 'expired' && <p>Session expired. Sign in again to view documents.</p>}
         {state.kind === 'unavailable' && <p>Documents unavailable. <button className="btn" type="button" onClick={() => { if (state.kind === 'unavailable') void load(state.page, state.cursor); }}>Retry documents</button></p>}
         {state.kind === 'ready' && !state.page.documents.length && <p>No documents filed for this deal.</p>}
@@ -60,19 +61,20 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
   async function load(previous: Page, cursor: string | null) {
     if (disposed || state.kind === 'expired') return;
     const ticket = ++generation; controller.abort(); controller = new AbortController();
-    state = cursor ? { kind: 'more', page: previous, cursor } : { kind: 'loading' }; render();
+    state = cursor ? { kind: 'more', page: previous, cursor } : { kind: 'loading', page: previous, cursor: null }; render();
+    const scanned = cursor ? previous.documents : [];
     try {
       const value = await client.listDealDocuments({ deal_id: dealId, limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) }, { signal: controller.signal });
       if (disposed || ticket !== generation) return;
       const page = parsePage(value);
-      const ids = new Set(previous.documents.map(doc => doc.id.toLowerCase()));
+      const ids = new Set(scanned.map(doc => doc.id.toLowerCase()));
       for (const doc of page.documents) {
         if (ids.has(doc.id.toLowerCase())) throw Error('Repeated document');
         ids.add(doc.id.toLowerCase());
       }
       if (page.next && (page.next === cursor || cursors.has(page.next) || !page.documents.length)) throw Error('Repeated cursor');
       if (cursor) cursors.add(cursor);
-      state = { kind: 'ready', page: { documents: [...previous.documents, ...page.documents.slice(0, MAX_DOCUMENTS - previous.documents.length)], next: page.next }, cursor: null };
+      state = { kind: 'ready', page: { documents: [...scanned, ...page.documents.slice(0, MAX_DOCUMENTS - scanned.length)], next: page.next }, cursor: null };
     } catch (error) {
       if (disposed || ticket !== generation) return;
       if (record(error) && (error.status === 401 || error.status === 403)) { expire(); return; }
@@ -82,7 +84,7 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
   }
   function refresh() {
     if (state.kind === 'more' || state.kind === 'loading' && generation > 0) return;
-    cursors.clear(); return load({ documents: [], next: null }, null);
+    cursors.clear(); return load('page' in state ? state.page : { documents: [], next: null }, null);
   }
   void refresh();
   return { refresh, dispose() { disposed = true; ++generation; controller.abort(); view?.removeEventListener('doctorcre-session-invalidated', expire); root.unmount(); } };

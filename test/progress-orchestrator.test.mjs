@@ -121,3 +121,14 @@ test('missing orchestrator observation recovers automatically across three polls
     assert.equal(dom.window.document.querySelectorAll('[data-orchestrator-card]').length,1);
   }finally{board.dispose();dom.window.close();}
 });
+
+test('orchestrator links both app identities and refuses unrelated repositories', async () => {
+  const dom = new JSDOM(readFileSync(new URL('../progress-board.html', import.meta.url), 'utf8'), { url: 'https://app.doctorcre.com/control-room/progress/board/orchestrator', pretendToBeVisual: true });
+  const data = projection();
+  data.cards[0].prs = ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app', 'DoctorCRE/other'].map(repo => `https://github.com/${repo}/pull/12`);
+  const board = mountBoard({ window: dom.window, document: dom.window.document, client: { readProgressBoard: async () => ({ snapshot: { version: 1, snapshot_json: { tasks: {}, orchestrator: data } } }) } });
+  try {
+    await board.refresh();
+    assert.deepEqual([...dom.window.document.querySelectorAll('.orchestrator-links a')].map(link => link.href), data.cards[0].prs.slice(0, 2));
+  } finally { board.dispose(); dom.window.close(); }
+});
