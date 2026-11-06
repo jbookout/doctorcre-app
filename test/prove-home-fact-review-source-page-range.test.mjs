@@ -97,24 +97,43 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     const preload = `
       import { chromium } from ${JSON.stringify(pathToFileURL(resolve('node_modules/playwright/index.mjs')).href)};
       import { setTimeout as delay } from 'node:timers/promises';
+      import { mock } from 'node:test';
+      import { CHROMIUM_SAFETY_ARGS } from ${JSON.stringify(pathToFileURL(resolve('scripts/chromium-safety-args.mjs')).href)};
       const launch = chromium.launch.bind(chromium);
+      const nativeSetTimeout = globalThis.setTimeout;
+      const stalled = ${JSON.stringify(fault)} === 'stalled evaluation';
+      const ready = stalled ? await launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: 1000 }) : undefined;
+      if (stalled) {
+        // Setup may exceed the budget; expire the owner only after evaluation starts.
+        mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+        const controlledSetTimeout = globalThis.setTimeout;
+        let ownerScheduled = false;
+        globalThis.setTimeout = (callback, ms, ...args) => {
+          if (!ownerScheduled && ms === 1000) {
+            ownerScheduled = true;
+            return controlledSetTimeout(callback, ms, ...args);
+          }
+          return nativeSetTimeout(callback, ms, ...args);
+        };
+      }
       chromium.launch = async options => {
-        const browser = await launch(options);
+        const browser = ready || await launch(options);
         const session = await browser.newBrowserCDPSession();
         const { processInfo } = await session.send('SystemInfo.getProcessInfo');
         const pids = processInfo.map(info => info.id);
         let evaluationStarted = false;
         await session.detach();
-        setTimeout(async () => {
+        const reportResources = () => nativeSetTimeout(async () => {
           const connected = browser.isConnected();
           const survivors = pids.filter(pid => { try { process.kill(pid, 0); return true; } catch { return false; } });
           console.error(JSON.stringify({ connected, survivors, evaluationStarted }));
           await browser.close();
         }, 2200);
-        if (${JSON.stringify(fault)} === 'late launch') await delay(1500);
+        if (!stalled) { reportResources(); await delay(1500); }
         else {
           const newContext = browser.newContext.bind(browser);
           browser.newContext = async options => {
+            await delay(1100);
             const context = await newContext(options);
             const newPage = context.newPage.bind(context);
             context.newPage = async () => {
@@ -122,6 +141,9 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
               page.evaluate = () => new Promise((_, reject) => {
                 evaluationStarted = true;
                 browser.once('disconnected', () => reject(Error('browser closed during stalled evaluation')));
+                mock.timers.tick(1000);
+                mock.timers.reset();
+                reportResources();
               });
               return page;
             };
