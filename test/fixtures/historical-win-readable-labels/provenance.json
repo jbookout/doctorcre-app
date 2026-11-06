@@ -1,0 +1,9 @@
+{
+  "card": "WR647.S16.J1",
+  "baseline_carr": "eeb0e1b6558b1cc4440641c1e07434229da184a3",
+  "baseline_app": "798c33e2467705296b4821f2046eb0693d935e77",
+  "producer_source_sha256": "77e2dd9f426002031f4640c84ddd324bbe20f28d23d2537378a2da8423c1fd69",
+  "recordings_sha256": "10c5e5a77c82c1ffdc5dc198ba3263c2fd3bc9a78299dc9f00716b5c66022332",
+  "command": "CARR_CI_PYTHON=/Users/booko/carr-system/.venv/bin/python HISTORICAL_LABEL_RECORDING=/tmp/WR647.S16.J1-new.json node --test mcp-server/test/historical-win-readable-labels-postgres.test.mjs",
+  "producer_head": "e79ff6edf202e47684e719697be278c688b5eb1b"
+}
