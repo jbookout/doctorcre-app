@@ -1,0 +1,22 @@
+stateDiagram-v2
+  [*] --> Closed
+  Closed --> Editing: Open current recorded reason and evidence
+  Closed --> Closed: New recorded card arrives
+  Editing --> Editing: Type or receive background update
+  Editing --> Closed: Close and discard draft
+  Editing --> Sending: Save reviewed draft
+  Sending --> Closed: Confirmation and canonical readback
+  Sending --> Conflict: Card changed
+  Conflict --> Editing: Refresh card and review kept draft
+  Conflict --> Conflict: Refresh unavailable
+  Sending --> Uncertain: Reply or readback unavailable
+  Uncertain --> Sending: Retry identical request
+  Uncertain --> Uncertain: Opposing changes stay disabled
+  Editing --> Retired: Card completed
+  Closed --> Disposed: Unmount
+  Editing --> Disposed: Unmount
+  Sending --> Disposed: Unmount
+  Disposed --> [*]
+  %% never Replace an active draft during background refresh.
+  %% never Reuse old text with a fresh base when opening a closed editor.
+  %% never Change an unresolved request during recovery.
