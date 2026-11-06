@@ -1,0 +1,22 @@
+stateDiagram-v2
+  [*] --> Collapsed: Mount with board
+  Collapsed --> Expanded: Show all
+  Expanded --> Collapsed: Show less
+  Collapsed --> Collapsed: Change mine or team scope
+  Expanded --> Expanded: Refresh board or scope
+  Collapsed --> Empty: No matching deals
+  Expanded --> Empty: No matching deals
+  Empty --> Collapsed: Matching deals arrive
+  state Date_display {
+    [*] --> Valid: Exact real calendar day
+    [*] --> Missing: Explicit null
+    [*] --> Unavailable: Malformed or unsupported value
+    Valid --> Missing: Board refresh
+    Missing --> Unavailable: Board refresh
+    Unavailable --> Valid: Board refresh
+  }
+  Collapsed --> Disposed: Dispose
+  Expanded --> Disposed: Dispose
+  Empty --> Disposed: Dispose
+  %% never Impossible dates display a specific day.
+  %% never Scope or expansion changes the deal destination.
