@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
+import { readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function responseFixture() {
@@ -118,11 +119,11 @@ export async function prove({ origin, timeout }) {
   const work = async () => {
     let release;
     try {
-      const response = await fetch(`${origin}/app-release`, { redirect: 'error', signal, cache: 'no-store' });
-      assert.ok(response.ok, 'release unavailable'); release = await response.json();
-      assert.equal(release.service, 'doctorcre-app');
-      assert.match(release.source_commit, /^[0-9a-f]{40}$/);
-      assert.notEqual(release.source_commit, '0'.repeat(40));
+      release = await readAppRelease(origin, async url => {
+        const response = await fetch(url, { redirect: 'error', signal, cache: 'no-store' });
+        assert.ok(response.ok, 'release unavailable');
+        return { type: response.headers.get('content-type') || '', body: Buffer.from(await response.arrayBuffer()) };
+      });
     } catch (error) { unavailable = `release unavailable: ${error.message}`; throw error; }
     browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
     if (expired) { await browser.close(); throw Error('deadline exceeded'); }

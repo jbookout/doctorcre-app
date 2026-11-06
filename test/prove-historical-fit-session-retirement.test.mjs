@@ -44,7 +44,7 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
         if (mode === 'timeout') return;
         if (mode === 'unavailable') { res.writeHead(503); return res.end(); }
         res.setHeader('content-type', 'application/json');
-        return res.end(JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: 'synthetic-proof-test' }));
+        return res.end(JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: mode === 'staging' ? 'staging' : 'production' }));
       }
       if (mode === 'missing-asset') { res.writeHead(404); return res.end(); }
       if (!/^\/js\/(ui-ideal-client-profile\.js|ui-shared-[A-Z0-9]+\.generated\.js)$/.test(pathname)) { res.writeHead(403); return res.end(); }
@@ -56,10 +56,11 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
   t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
   const origin = `http://127.0.0.1:${server.address().port}`;
   const args = ['--origin', origin, '--timeout-ms', '30000'];
-  for (const [scenario, expected] of [['pass', 0], ['contradiction', 1], ['unavailable', 78], ['missing-asset', 78], ['timeout', 78]]) {
+  for (const [scenario, expected] of [['staging', 78], ['pass', 0], ['contradiction', 1], ['unavailable', 78], ['missing-asset', 78], ['timeout', 78]]) {
     mode = scenario; requests.length = 0;
     const result = await cli(args);
     assert.equal(result.code, expected, `${scenario}: ${result.stderr}`);
+    if (scenario === 'staging') assert.deepEqual(requests, ['/app-release'], 'refuse nonproduction release before acquiring assets');
     if (scenario === 'contradiction') assert.match(result.stderr, /idle removes private rows and controls/);
     if (scenario === 'pass') {
       const receipt = JSON.parse(result.stdout);
