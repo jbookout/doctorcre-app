@@ -1589,7 +1589,11 @@ for (const resolveFirst of [false, true]) test(`Shared preparation retires acros
   }
   await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
-  await dialog.evaluate(node => node.close());
+  if (resolveFirst) await settles(async () => assert.match(await dialog.textContent(), /Demo retired lazy preparation/));
+  await dialog.evaluate(node => new Promise(resolve => {
+    node.addEventListener('close', () => resolve(), { once: true });
+    node.close();
+  }));
   acquire();
   release({ state: 'partial', items: [], notes: ['Demo retired lazy preparation'] });
   await page.evaluate(() => window.pendingLayoutRefresh);
@@ -1602,25 +1606,40 @@ for (const resolveFirst of [false, true]) test(`Shared preparation retires acros
   assert.deepEqual(errors, []);
 });
 
-test('Preparation close-reopen ignores the old response and queued native close event', async t => {
-  const { page, errors } = await open(t, { calendar: prepCalendar });
+for (const retirement of ['native close', 'session clear']) test(`Shared preparation close-reopen retires the layout read after ${retirement}`, async t => {
+  const { page, responses, calls, errors } = await open(t, { calendar: prepCalendar });
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
   await page.evaluate(async () => {
     const { mountMeetingPreparation } = await import('/js/meeting-preparation.js');
-    const pending = [];
-    const owner = mountMeetingPreparation({ document, window, client: { calendarMeetingPrep: () => new Promise(resolve => pending.push(resolve)) } });
-    const oldRead = owner.open(null, 'America/Chicago');
-    const dialog = [...document.querySelectorAll('.meeting-preparation')].at(-1);
-    dialog.close();
-    const newRead = owner.open(null, 'America/Chicago');
-    pending[1]({ state: 'partial', items: [], notes: ['Demo current reopened preparation'] });
-    pending[0]({ state: 'partial', items: [], notes: ['Demo obsolete reopened preparation'] });
-    await Promise.all([oldRead, newRead]);
-    window.preparationReopenProbe = { owner, dialog };
+    const { createClient } = await import('/js/client.js');
+    const owner = mountMeetingPreparation({ document, window, client: await createClient('live') });
+    await owner.open(null, 'America/Chicago');
+    window.preparationReopenProbe = { owner, dialog: [...document.querySelectorAll('.meeting-preparation')].at(-1) };
   });
+  let release;
+  const obsolete = { state: 'partial', items: [], notes: ['Demo obsolete reopened preparation'] };
+  responses.set('calendar-meeting-prep', new Promise(resolve => { release = resolve; }));
+  t.after(() => release(obsolete));
+  const before = calls.filter(name => name === 'calendar-meeting-prep').length;
+  await page.evaluate(() => { window.pendingLayoutRefresh = document.getElementById('appTodayRetry').onclick(); });
+  await settles(() => assert.ok(calls.filter(name => name === 'calendar-meeting-prep').length > before));
+  responses.set('calendar-meeting-prep', { state: 'partial', items: [], notes: ['Demo current reopened preparation'] });
+  await page.evaluate(async retirement => {
+    const { owner, dialog } = window.preparationReopenProbe;
+    window.preparationClosed = new Promise(resolve => dialog.addEventListener('close', resolve, { once: true }));
+    if (retirement === 'session clear') owner.clear();
+    else dialog.close();
+    await owner.open(null, 'America/Chicago');
+  }, retirement);
   const dialog = page.locator('.meeting-preparation').last();
+  assert.match(await dialog.textContent(), /Demo current reopened preparation/);
+  release(obsolete);
+  await page.evaluate(async () => { await window.pendingLayoutRefresh; await window.preparationClosed; });
   assert.match(await dialog.textContent(), /Demo current reopened preparation/);
   assert.doesNotMatch(await page.locator('body').textContent(), /Demo obsolete reopened preparation/);
   assert.equal(await dialog.evaluate(node => node.open), true);
+  await page.evaluate(() => document.getElementById('appTodayRetry').onclick());
+  await settles(async () => assert.match(await page.locator('#appCalendarSlot').textContent(), /Demo current reopened preparation/));
   await page.evaluate(() => { window.preparationReopenProbe.owner.dispose(); delete window.preparationReopenProbe; });
   assert.deepEqual(errors, []);
 });
