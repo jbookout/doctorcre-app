@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
+import { syntheticBoard } from '../scripts/prove-home-next-step-touch-date-integrity.mjs';
 const { outputFiles } = await build({ entryPoints: ['src/ui/home/missing-next-step.tsx'], bundle: true, write: false, format: 'iife', globalName: 'Home', jsx: 'automatic', footer: { js: 'globalThis.Home = Home;' } });
 for (const [value, expected] of [
+  ['0000-01-01', 'Last touch unavailable'], ['10000-01-01', 'Last touch unavailable'],
   ['2026-02-31', 'Last touch unavailable'], ['2025-02-29', 'Last touch unavailable'],
   ['1900-02-29', 'Last touch unavailable'], ['2026-00-01', 'Last touch unavailable'],
   ['2026-01-00', 'Last touch unavailable'], ['2026-13-01', 'Last touch unavailable'],
@@ -20,9 +22,9 @@ for (const [value, expected] of [
   const host = dom.window.document.querySelector('main');
   const view = dom.window.Home.mountMissingNextStep(host, { joe: 'Joe' });
   t.after(() => { view.dispose(); dom.window.close(); });
-  view.update({ actor: 'joe', deals: [{ id: 'synthetic', name: 'Synthetic deal', last_touch: value, phase: 'Negotiation' }], missing_next_action: [{ owner: 'joe', deal_ids: ['synthetic'] }] }, 'mine');
+  view.update(await syntheticBoard({ last_touch: value }), 'mine');
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(host.querySelector('a div span')?.textContent, expected);
-  assert.equal(host.querySelector('a').getAttribute('href'), '/deals?deal=synthetic&focus=next-step');
-  assert.match(host.textContent, /Synthetic deal.*Negotiation/);
+  assert.equal(host.querySelector('a').getAttribute('href'), '/deals?deal=synthetic%2F0%3F&focus=next-step');
+  assert.match(host.textContent, /Synthetic deal 0.*Negotiation/);
 });

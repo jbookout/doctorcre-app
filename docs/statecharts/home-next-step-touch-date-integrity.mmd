@@ -6,7 +6,8 @@ stateDiagram-v2
   Expanded --> Expanded: Refresh board or scope
   Collapsed --> Empty: No matching deals
   Expanded --> Empty: No matching deals
-  Empty --> Collapsed: Matching deals arrive
+  Empty --> Collapsed: Matching deals arrive after collapsed
+  Empty --> Expanded: Matching deals arrive after expanded
   state Date_display {
     [*] --> Valid: Exact real calendar day
     [*] --> Missing: Explicit null
