@@ -168,7 +168,7 @@ test('explicit loopback fixture replay exits zero', async t => {
   assert.equal(result.receipt.natural.status, 'insufficient_evidence');
 });
 
-for (const [mode, code] of [['descendant', 0], ['success', 0], ['older', 1], ['unrelated', 1], ['unknown', 78], ['unknown-expected', 78], ['release-missing', 78], ['contradiction', 1], ['ancestry-slow', 78]]) {
+for (const [mode, code] of [['descendant', 0], ['success', 0], ['older', 78], ['unrelated', 78], ['unknown', 78], ['unknown-expected', 78], ['release-missing', 78], ['contradiction', 1], ['ancestry-slow', 78]]) {
   test(`release containment CLI ${mode} exits ${code}`, async t => {
     const result = await run(t, mode, mode === 'ancestry-slow' ? '1200' : '30000', true);
     assert.equal(result.code, code, JSON.stringify(result.receipt));

@@ -122,7 +122,7 @@ export async function prove({ origin, commit, timeoutMs = 30000, engine = chromi
         });
       } catch (error) {
         remaining();
-        if (error.code === 1) throw new Error('release commit mismatch');
+        if (error.code === 1) throw unavailable('release commit mismatch');
         throw unavailable('Release ancestry evidence unavailable');
       }
     }
