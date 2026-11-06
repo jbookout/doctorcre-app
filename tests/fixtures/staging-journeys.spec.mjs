@@ -105,3 +105,52 @@ test('Share acceptance rejects a server denying every shortlist write', async ({
     await local.close();
   }
 });
+
+test('Share lifecycle waits for the shell to place its submit control', async ({ browser }) => {
+  const local = await localFixture(browser);
+  let releaseShell;
+  const shellReady = new Promise(resolve => { releaseShell = resolve; });
+  await local.page.route('**/js/app-shell.js', async route => { await shellReady; await route.continue(); });
+  await local.page.exposeFunction('releaseShareShell', releaseShell);
+  await local.page.addInitScript(() => {
+    document.addEventListener('input', event => {
+      if (event.target.id === 'receipt-digest') setTimeout(() => { void window.releaseShareShell(); }, 200);
+    }, { once: true });
+  });
+  const locator = local.page.locator.bind(local.page);
+  local.page.locator = selector => {
+    const control = locator(selector);
+    if (selector === '#share-form button[type="submit"]') {
+      const click = control.click.bind(control);
+      control.click = options => click({ ...options, delay: 400 });
+    }
+    return control;
+  };
+  local.page.context().setDefaultTimeout(3000);
+  try { await shareLifecycle(local.page, fixture); }
+  finally { releaseShell(); await local.close(); }
+});
+
+test('Fixture cleanup releases its server when context disposal fails', async ({ browser }) => {
+  const local = await localFixture(browser);
+  const context = local.page.context();
+  const close = context.close.bind(context);
+  const failure = new Error('synthetic context disposal failure');
+  context.close = async () => { throw failure; };
+  try {
+    await assert.rejects(local.close(), failure);
+    assert.equal(local.server.listening, false, 'server disposal must survive context disposal failure');
+  } finally {
+    context.close = close;
+    await close();
+    local.server.closeAllConnections();
+    await new Promise(resolve => local.server.close(resolve));
+  }
+});
+
+test('Fixture cleanup tolerates an already closed context and repeated disposal', async ({ browser }) => {
+  const local = await localFixture(browser);
+  await local.page.context().close();
+  await Promise.all([local.close(), local.close()]);
+  assert.equal(local.server.listening, false);
+});
