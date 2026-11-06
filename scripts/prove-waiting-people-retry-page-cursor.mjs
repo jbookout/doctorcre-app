@@ -29,26 +29,39 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
   let browser, timer, requests = 0, bytes = 0, releasePending, rejectAsset;
   const assetFailure = new Promise((_, reject) => { rejectAsset = reject; });
   const abort = new AbortController();
+  const deadline = performance.now() + timeout;
+  const expired = new Unavailable('Proof deadline exceeded; release or behavior witness unavailable');
+  const remaining = () => {
+    if (performance.now() >= deadline) abort.abort(expired);
+    abort.signal.throwIfAborted();
+    return Math.max(1, Math.ceil(deadline - performance.now()));
+  };
   const assets = new Map(), errors = [], searches = [];
   let failure = true, hold = false, maxActive = 0, active = 0;
   const receipt = { release: null, assets: [], assertions: [], limitation: 'Deployed synthetic behavior only. No natural business journey or production writes.' };
   const get = async url => {
+    remaining();
     if (++requests > 31) throw Error('Fetch count exceeds release plus thirty assets');
     let response;
     try { response = await fetch(url, { signal: abort.signal, redirect: 'manual' }); } catch { throw new Unavailable(`Unavailable asset ${url}`); }
     if (!response.ok) throw new Unavailable(`Unavailable asset ${url}, HTTP ${response.status}`);
     const chunks = [];
     for await (const chunk of response.body) { bytes += chunk.length; if (bytes > 10 * 1024 * 1024) throw Error('Asset byte cap exceeded'); chunks.push(chunk); }
+    remaining();
     return Buffer.concat(chunks);
   };
   const run = async () => {
     const releaseBytes = await get(new URL('/app-release', origin));
     try { receipt.release = JSON.parse(releaseBytes); } catch { throw new Unavailable('Unreadable app-release'); }
     if (receipt.release?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(receipt.release?.source_commit || '') || /^0+$/.test(receipt.release.source_commit) && !['127.0.0.1', 'localhost'].includes(origin.hostname)) throw new Unavailable('Missing deployed release identity');
-    browser = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
+    const acquired = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    if (performance.now() >= deadline) abort.abort(expired);
+    if (abort.signal.aborted) { await acquired.close(); abort.signal.throwIfAborted(); }
+    browser = acquired;
     const context = await browser.newContext({ viewport, colorScheme: theme, serviceWorkers: 'block' });
+    remaining();
     const page = await context.newPage();
-    page.setDefaultTimeout(timeout);
+    page.setDefaultTimeout(remaining());
     await context.route('**/*', async route => {
       const req = route.request(), url = new URL(req.url());
       if (url.origin !== origin.origin) return route.abort();
@@ -121,9 +134,10 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
       return result;
     } catch (error) { throw errors[0] || error; }
   };
+  const deadlineFailure = new Promise((_, reject) => { timer = setTimeout(() => { abort.abort(expired); reject(expired); }, timeout); });
   try {
-    return await Promise.race([run(), assetFailure, new Promise((_, reject) => { timer = setTimeout(() => { abort.abort(); reject(new Unavailable('Proof deadline exceeded; release or behavior witness unavailable')); }, timeout); })]);
-  } finally { clearTimeout(timer); releasePending?.(); abort.abort(); await browser?.close(); }
+    return await Promise.race([run(), assetFailure, deadlineFailure]);
+  } finally { clearTimeout(timer); releasePending?.(); abort.abort(expired); await browser?.close(); }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {

@@ -23,3 +23,19 @@ stateDiagram-v2
   %% never Retry restarts an accepted page.
   %% never Late pages replace the current name's choices.
   %% never Retry removes the selected person or duplicates accepted choices.
+
+  state ProofLifecycle {
+    [*] --> Release
+    Release --> Launching: Release retrieved within deadline
+    Launching --> Browser: Browser acquired within deadline
+    Browser --> Witness: Context and page acquired within deadline
+    Witness --> Cleaned: Witness succeeds or fails, close browser
+    Release --> Expired: Deadline expires, abort fetch
+    Launching --> Expired: Deadline expires during launch
+    Browser --> Expired: Deadline expires, close browser
+    Witness --> Expired: Deadline expires, close browser
+    Expired --> Cleaned: Close any late acquired browser without starting work
+    Cleaned --> [*]
+  }
+  %% never An expired proof starts browser context work after late acquisition.
+  %% never A late acquired browser remains open.

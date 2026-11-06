@@ -23,7 +23,7 @@ async function fixture(t, mode) {
   const root = resolve(outDir, 'site'); const methods = [];
   const server = createServer(async (req, res) => {
     methods.push(req.method);
-    if (mode === 'timeout') return;
+    if (mode === 'timeout' || mode === 'timeout asset' && req.url !== '/app-release') return;
     if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(mode === 'unavailable' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: 'fixture' })); }
     try {
       const path = resolve(root, `.${decodeURIComponent(new URL(req.url, 'http://localhost').pathname)}`);
@@ -60,9 +60,9 @@ test('exact declared command and five assertions pass against fetched fixture by
   assert.ok(receipt.assets.every(asset => /^[a-f0-9]{64}$/.test(asset.sha256)));
   assert.ok(receipt.assets.length <= 30); assert.ok(receipt.bytes <= 10 * 1024 * 1024); assert.ok(fixtureOrigin.methods.every(method => method === 'GET'));
 });
-for (const [mode, expected] of [['unavailable', 78], ['unavailable asset', 78], ['timeout', 78], ['contradiction', 1]]) test(`proof CLI rejects ${mode}`, async t => {
+for (const [mode, expected] of [['unavailable', 78], ['unavailable asset', 78], ['timeout', 78], ['timeout asset', 78], ['contradiction', 1]]) test(`proof CLI rejects ${mode}`, async t => {
   const server = await fixture(t, mode);
-  const result = await cli(['--origin', server.origin, '--timeout-ms', mode === 'timeout' ? '100' : '30000']);
+  const result = await cli(['--origin', server.origin, '--timeout-ms', mode === 'timeout' ? '100' : mode === 'timeout asset' ? '2000' : '30000']);
   assert.equal(result.code, expected, result.stderr); assert.ok(server.methods.every(method => method === 'GET'));
 });
 test('proof CLI refuses invalid flags and origin', async () => {
@@ -84,4 +84,18 @@ test('proof closes a browser acquired after expiry without starting browser work
   assert.equal(closed, true, 'late browser must be closed');
   assert.equal(browserWork, 0, 'expired proof must not create a context');
   assert.ok(launchOptions.timeout > 0 && launchOptions.timeout <= 400, 'launch uses only the shared deadline remaining after release retrieval');
+});
+
+for (const stage of ['context', 'page']) test(`proof stops after expired ${stage} acquisition and closes its browser`, async t => {
+  const server = await fixture(t, 'passing');
+  let resume, closed = false, subsequentWork = 0;
+  const pending = new Promise(resolve => { resume = resolve; });
+  const page = { setDefaultTimeout() { subsequentWork++; } };
+  const context = { async newPage() { if (stage === 'context') subsequentWork++; return stage === 'page' ? pending : page; } };
+  const engine = { async launch() { return { async close() { closed = true; }, async newContext() { return stage === 'context' ? pending : context; } }; } };
+  await assert.rejects(runProof({ origin: server.origin, timeout: 150, engine }), /Proof deadline exceeded/);
+  assert.equal(closed, true);
+  resume(stage === 'context' ? context : page);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(subsequentWork, 0, 'expired acquisition must not advance browser work');
 });
