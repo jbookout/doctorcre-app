@@ -5,6 +5,8 @@ stateDiagram-v2
     Unavailable --> Loading: refresh
     All --> NeedsReview: choose needs review
     NeedsReview --> Reviewed: choose reviewed
+    Reviewed --> Reviewed: refresh with retained term hash preserves selection
+    Reviewed --> All: new term hash reveals linked target
     Reviewed --> All: clear status
     NeedsReview --> Empty: refresh resolves last matching field
     Empty --> All: clear status

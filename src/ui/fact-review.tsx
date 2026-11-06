@@ -219,11 +219,14 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       : 'Filters already loaded review items. Other terms may exist outside this loaded view.';
   }
   function revealTerm() { selectedTerm = ''; selectedStatus = ''; applyTermFilter(); }
+  let revealedHash: string | undefined;
   function focusLinkedTerm() {
     const hash = root.ownerDocument.defaultView?.location.hash || '';
-    if (!hash.startsWith('#term-')) return;
+    if (hash === revealedHash) return;
+    if (!hash.startsWith('#term-')) { revealedHash = hash; return; }
     const target = root.ownerDocument.getElementById(hash.slice(1));
     if (!target || !root.contains(target)) return;
+    revealedHash = hash;
     revealTerm();
     target.scrollIntoView?.({ block: 'start' });
     target.focus({ preventScroll: true });

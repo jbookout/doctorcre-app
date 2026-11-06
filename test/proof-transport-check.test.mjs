@@ -58,7 +58,7 @@ for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${
   for (const runner of runners) {
     await t.test(runner, async () => {
       const args = [`scripts/${runner}`, '--origin', origin];
-      if (runner === 'prove-asset-manifest-publication.mjs') args.push('--commit', '1'.repeat(40));
+      if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs'].includes(runner)) args.push('--commit', '1'.repeat(40));
       args.push('--timeout-ms', '3000');
       await assert.rejects(exec(process.execPath, args, { timeout: 15000 }), error => {
         assert.equal(error.code, 78, `${runner}: ${error.stdout} ${error.stderr}`);
