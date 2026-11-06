@@ -53,7 +53,7 @@ export async function exerciseSourceFilter(page, moduleUrl) {
     assert.equal(await host.locator('article').count(),1);
     assert.match(await host.locator('article').innerText(),/Demo Group Practice/);
     assert.equal(await host.locator('time').getAttribute('datetime'), '2026-10-21');
-    assert.match(await host.locator('article a').getAttribute('href'), /^https:\/\/data.cms.gov\//);
+    assert.equal(new URL(await host.locator('article a').getAttribute('href')).origin, 'https://data.cms.gov');
     await host.getByRole('button',{name:'Clear',exact:true}).click();
     assert.equal(await source.inputValue(),'');
     assert.equal(await host.getByLabel('Action category').inputValue(),'');

@@ -8,7 +8,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {chromium} from 'playwright';
 import {CHROMIUM_SAFETY_ARGS} from '../scripts/chromium-safety-args.mjs';
-import {prove} from '../scripts/prove-contact-reasons-source-filter.mjs';
+import {prove, exerciseSourceFilter} from '../scripts/prove-contact-reasons-source-filter.mjs';
 const exec=promisify(execFile);
 const root=fileURLToPath(new URL('../',import.meta.url));
 async function serverFor(t,mode='pass') {
@@ -57,4 +57,22 @@ for(const mode of ['late launch','stalled evaluation']) test(`deadline cleans ${
   await new Promise(resolve=>setTimeout(resolve,200));
   assert.equal(browsers.length,1);
   assert.equal(browsers.filter(browser=>browser.isConnected()).length,0,'zero owned browsers survive');
+});
+
+for (const hostname of ['dataXcms.gov', 'data.cmsXgov']) test(`source proof rejects lookalike citation host ${hostname}`, async t => {
+  const origin = await serverFor(t);
+  await assert.rejects(prove({origin, observe: async (page, moduleUrl) => {
+    await page.evaluate(hostname => {
+      new MutationObserver(() => {
+        for (const link of document.querySelectorAll('article a')) {
+          const url = new URL(link.href);
+          if (url.hostname === 'data.cms.gov') {
+            url.hostname = hostname;
+            link.href = url.href;
+          }
+        }
+      }).observe(document.body, {childList: true, subtree: true});
+    }, hostname);
+    return exerciseSourceFilter(page, moduleUrl);
+  }}), {code: 'ERR_ASSERTION', actual: `https://${hostname.toLowerCase()}`, expected: 'https://data.cms.gov'});
 });
