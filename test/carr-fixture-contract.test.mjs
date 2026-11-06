@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { join } from 'node:path';
 import { checkedCarrFixture, validateCarrFixture } from './support/carr-fixture-contract.mjs';
 import { checkCarrFixtures, responseLiterals, literalInventoryDigest } from '../scripts/check-carr-fixtures.mjs';
@@ -17,7 +17,7 @@ test('replay refuses 739 impossible deal count, while corrected producer respons
 });
 
 test('the check refuses an unregistered handwritten response, even with a helper import', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'carr-fixture-gate-'));
+  const root = temporaryDirectory('carr-fixture-gate-');
   try {
     await mkdir(join(root, 'test'), {recursive:true});
     await writeFile(join(root, 'test/example.test.mjs'), `import { checkedCarrFixture } from './helper.mjs';\nconst response = {ok:true, coverage:{comparable_deals:99}};`);
@@ -28,7 +28,7 @@ test('the check refuses an unregistered handwritten response, even with a helper
 });
 
 test('unregistered JSON responses and changed legacy literals fail closed', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'carr-fixture-gate-'));
+  const root = temporaryDirectory('carr-fixture-gate-');
   try {
     await mkdir(join(root, 'test/fixtures'), {recursive:true});
     const path = 'test/fixtures/old.json';
@@ -52,7 +52,7 @@ test('unknown producer, mismatched source pin and invalid calendar recording ref
 });
 
 test('repository check replays registered JSON instead of accepting registration alone', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'carr-fixture-replay-'));
+  const root = temporaryDirectory('carr-fixture-replay-');
   try {
     await mkdir(join(root,'test/fixtures/carr'), {recursive:true});
     const record = JSON.parse(await readFile(terms,'utf8'));
@@ -70,4 +70,30 @@ test('every committed registered recording is replayed by the repository check',
   const root = new URL('../',import.meta.url);
   const legacy = JSON.parse(await readFile(new URL('test/fixtures/carr-legacy-literals.json',root),'utf8'));
   assert.deepEqual(await checkCarrFixtures(root,legacy),[]);
+});
+
+
+test('certified responses refuse the positive 99-deal mutation before the real parser consumes it', () => {
+  const response = checkedCarrFixture('market-terms-three-rows');
+  assert.throws(() => { response.coverage.comparable_deals = 99; }, TypeError);
+  assert.throws(() => { response.rows.push(response.rows[0]); }, TypeError);
+  assert.equal(response.coverage.comparable_deals, 2);
+});
+
+test('existing calendar and market replay formats are verified without an unchecked exception', async () => {
+  const root = temporaryDirectory('carr-existing-replay-');
+  try {
+    await mkdir(join(root, 'test'), {recursive:true});
+    for (const [file,producer] of [['calendar-empty','calendar-section'],['market-terms-three-rows','read-market-terms']]) {
+      const record = JSON.parse(await readFile(new URL(`./fixtures/carr/${file}.json`,import.meta.url),'utf8'));
+      const provenance = {repository:'DoctorCRE/carr-system',path:producer === 'calendar-section' ? 'mcp-server/src/brief-calendar.js' : 'mcp-server/src/market-terms.ts',source_sha256:record.source_sha256};
+      const group = {provenance,records:[{...record.input,response:record.response}]};
+      const path = join(root,'test/recording.mjs');
+      await writeFile(path,`export const recording = ${JSON.stringify(group)};`);
+      assert.deepEqual(await checkCarrFixtures(root,{}),[]);
+      group.records[0].response = JSON.parse('{"ok":true}');
+      await writeFile(path,`export const recording = ${JSON.stringify(group)};`);
+      assert.match((await checkCarrFixtures(root,{})).join('\n'),/producer response mismatch/);
+    }
+  } finally { await rm(root,{recursive:true,force:true}); }
 });

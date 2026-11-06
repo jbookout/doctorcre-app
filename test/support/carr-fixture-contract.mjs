@@ -31,10 +31,33 @@ function replay(record) {
 export function validateCarrFixture(record) {
   const actual = JSON.parse(JSON.stringify(replay(record)));
   assert.deepEqual(record.response,actual,`producer response mismatch for ${record.producer}`);
-  return structuredClone(record.response);
+  return freeze(structuredClone(record.response));
 }
 
 export function checkedCarrFixture(name) {
   assert.match(name,/^[a-z0-9][a-z0-9-]*$/, 'fixture name must be a local slug');
   return validateCarrFixture(JSON.parse(readFileSync(new URL(`carr/${name}.json`,ROOT),'utf8')));
+}
+
+
+function freeze(value) {
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach(freeze);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+export function validateCarrRecordings(group) {
+  const provenance = group.provenance ?? group.producer;
+  const [producer,pin] = Object.entries(pins).find(([,pin]) =>
+    pin.repository === provenance?.repository && pin.path === provenance?.path
+    && pin.sha256 === (provenance.source_sha256 ?? provenance.sha256)) ?? [];
+  assert.ok(pin, 'unregistered producer recording source');
+  assert.ok(group.records && Object.keys(group.records).length, 'producer recording needs records');
+  for (const record of Object.values(group.records)) {
+    validateCarrFixture({producer,source_sha256:pin.sha256,
+      input:{snapshot:record.snapshot,query:record.query,now:record.now},response:record.response});
+  }
+  return freeze(structuredClone(group));
 }

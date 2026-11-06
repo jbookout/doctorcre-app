@@ -4,6 +4,7 @@
   "scripts/privacy/generate-synthetic-fixtures.mjs": "0a67240afe16d1cb013690a19af032c4fdf2528fee72f4c49161314ca5b4b0c9",
   "scripts/prove-action-link-schedule-strict-instant.mjs": "f95c22f56f7f9a0930a88c58dc4abd6f2c9c0dbde2a7c3e031c3f9daab4886b4",
   "scripts/prove-agenda-disabled-record-controls.mjs": "f8a438923dfe0fb028c2b5310e5709c80748867bace329ca98b7dc6bf32fdfbc",
+  "scripts/prove-calendar-meeting-end-time.mjs": "52e78cb76c39c02d91c363a080be2c8736918209c74a95d9cbd1b545677994b0",
   "scripts/prove-calendar-panels-offset-order.mjs": "1514c7cdbdad46ea089fc3f759fa6649c2472b4b6af2eab50912b35bfee96bdc",
   "scripts/prove-contact-reasons-own-taxonomy.mjs": "c04ec4b2c75073306092d417a32cb862ae087b121b1d1ab1fadb09e70b3cddbb",
   "scripts/prove-deal-checklist-malformed-recovery.mjs": "b392afce9f8eba54400aabfd57473d6b7596a031c4ad9ec06537c2853f8b8015",

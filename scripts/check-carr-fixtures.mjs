@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseSync } from '@babel/core';
-import { validateCarrFixture } from '../test/support/carr-fixture-contract.mjs';
+import { validateCarrFixture, validateCarrRecordings } from '../test/support/carr-fixture-contract.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const name = node => node?.name ?? node?.value;
@@ -11,11 +11,24 @@ const isResponse = keys => keys.has('ok') || keys.has('schema_version') || keys.
   || keys.has('filings') || keys.has('sections') || keys.has('coverage')
   || (keys.has('state') && keys.has('items'));
 
+function staticValue(node) {
+  if (node.type === 'ObjectExpression') return Object.fromEntries(node.properties.map(prop => {
+    if (prop.type !== 'ObjectProperty' || prop.computed) throw new Error('recordings must be static data');
+    return [name(prop.key),staticValue(prop.value)];
+  }));
+  if (node.type === 'ArrayExpression') return node.elements.map(staticValue);
+  if (['StringLiteral','NumericLiteral','BooleanLiteral'].includes(node.type)) return node.value;
+  if (node.type === 'NullLiteral') return null;
+  if (node.type === 'UnaryExpression' && node.operator === '-') return -staticValue(node.argument);
+  throw new Error('recordings must be static data');
+}
+
 export function responseLiterals(path,source) {
   const literals = [];
   if (path.endsWith('.json')) {
     const walk = value => {
       if (!value || typeof value !== 'object') return;
+      if (value.records && (value.producer || value.provenance)) { validateCarrRecordings(value); return; }
       if (!Array.isArray(value) && isResponse(new Set(Object.keys(value)))) literals.push({digest:digest(JSON.stringify(value)),line:1});
       for (const child of Object.values(value)) walk(child);
     };
@@ -25,6 +38,14 @@ export function responseLiterals(path,source) {
   const ast = parseSync(source,{configFile:false,babelrc:false,parserOpts:{sourceType:'unambiguous',plugins:['typescript','jsx']}});
   const walk = node => {
     if (!node || typeof node !== 'object') return;
+    if (node.type === 'ObjectExpression') {
+      const keys = new Set(node.properties.map(prop => name(prop.key)));
+      if (keys.has('records') && (keys.has('producer') || keys.has('provenance'))) {
+        let group;
+        try { group = staticValue(node); } catch { /* Dynamic test builders are scanned below. */ }
+        if (group) { validateCarrRecordings(group); return; }
+      }
+    }
     if (node.type === 'ObjectExpression' && isResponse(new Set(node.properties.map(prop => name(prop.key))))) {
       literals.push({digest:digest(source.slice(node.start,node.end)),line:node.loc.start.line});
     }
@@ -67,7 +88,9 @@ export async function checkCarrFixtures(root,legacy) {
       catch (error) { errors.push(`${path}: ${error.message}`); }
       continue;
     }
-    const literals = responseLiterals(path,source);
+    let literals;
+    try { literals = responseLiterals(path,source); }
+    catch (error) { errors.push(`${path}: ${error.message}`); continue; }
     if (literals.length && literalInventoryDigest(literals) !== legacy[path]) {
       errors.push(`${path}:${literals[0].line}: unchecked CARR response literal; use checkedCarrFixture and a producer replay record`);
     }
