@@ -1,0 +1,16 @@
+stateDiagram-v2
+  [*] --> Closed
+  Closed --> Loading: Open, reset query and kind
+  Loading --> Ready: Admit independent sections
+  Loading --> Unavailable: Read rejects
+  Ready --> Ready: Change kind or query, reset active index
+  Ready --> Ready: Arrow keys select current results
+  Unavailable --> Unavailable: Filter pages or show no matches
+  Unavailable --> Loading: Retry
+  Ready --> Loading: Retry partial snapshot, discard records
+  Loading --> Loading: Change query or kind
+  Ready --> Closed: Enter navigates or Escape closes
+  Unavailable --> Closed: Close
+  Loading --> Closed: Close before read settles
+  Closed --> Closed: Ignore late read completion
+  Ready --> Closed: Session invalidation clears recents
