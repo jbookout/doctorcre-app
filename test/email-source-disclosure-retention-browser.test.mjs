@@ -6,6 +6,20 @@ import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { checkedResponses, producerIdentity, recordings } from './fixtures/email-source-disclosure.mjs';
+
+test('every successful recording equals the pinned registered producer', async () => {
+  assert.equal(producerIdentity.revision, 'f08895ac514770f8ce6eb00a29159a6072da9c46');
+  assert.equal(producerIdentity.files['email-proposals.js'], 'c7d88f4776f4b41350a010bbb853efe388efc4f933630874461629a9e5972752');
+  assert.equal(Object.keys(await checkedResponses()).length, 8);
+  for (const name of Object.keys(recordings())) {
+    const record = recordings()[name];
+    if (record.verb === 'preview-email-next-step') delete record.response.proposal_digest;
+    else if (record.response.proposals.length) delete record.response.proposals[0].status;
+    else record.response.proposals.push({ id: 'invalid parser input' });
+    await assert.rejects(checkedResponses({ [name]: record }), /equals pinned producer/);
+  }
+});
 
 test('source disclosure lifecycle at phone and desktop widths in both themes', async t => {
   const outDir = temporaryDirectory('source-disclosure-');
@@ -21,6 +35,7 @@ test('source disclosure lifecycle at phone and desktop widths in both themes', a
       const receipt = await observe(page);
       assert.equal(receipt.checks.length, 21);
       assert.equal(receipt.fixture_contract, 'email-proposals.v1');
+      assert.equal(receipt.fixture_producer, producerIdentity.files['email-proposals.js']);
     } finally { await page.close(); }
   });
 });

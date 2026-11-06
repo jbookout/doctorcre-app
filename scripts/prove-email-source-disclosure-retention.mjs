@@ -2,22 +2,22 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
+import { checkedResponses, producerIdentity } from '../test/fixtures/email-source-disclosure.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function observe(page) {
-  return page.evaluate(async () => {
-    const { createClient } = await import('/js/client.js');
+  const responses = await checkedResponses();
+  return page.evaluate(async ({ responses, producerHash }) => {
     const { createLiveClient } = await import('/js/live-client.js');
     const { mountEmailFollowups } = await import('/js/email-followups.js');
-    const producer = await createClient('fixture');
-    const initial = await producer.listEmailProposals({ include_non_deal: true, limit: 50 });
+    const initial = responses.initial;
     if (initial.schema_version !== 'email-proposals.v1' || initial.send !== false || initial.proposals.length < 2) throw Error('Missing contract fixture');
     let result = structuredClone(initial), fail = false, pending;
     const reads = [];
     const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
       const request = JSON.parse(init.body);
       if (path === '/mcp' && request.params.name === 'preview-email-next-step') {
-        const preview = await producer.previewEmailNextStep(request.params.arguments);
+        const preview = responses.preview;
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: JSON.stringify(preview) }] } }));
       }
       if (path !== '/mcp' || request.params.name !== 'list-email-proposals' || request.params.arguments.limit !== 50) throw Error('Unexpected read');
@@ -60,16 +60,14 @@ export async function observe(page) {
       check(details(second).open, 'failed refresh retains stale disclosure');
       for (const field of ['activity_id', 'evidence_quote', 'sender', 'subject', 'occurred_at']) {
         details(second).open = true;
-        result = structuredClone(initial);
-        result.proposals[1].preview = null;
-        result.proposals[1].source[field] = field === 'activity_id' ? '30000000-0000-4000-8000-000000000099' : field === 'occurred_at' ? '2026-10-27T12:00:00Z' : result.proposals[1].source[field] + (field === 'evidence_quote' ? '<img src=x onerror=alert(1)>' : ' changed');
+        result = structuredClone(responses[field]);
         await view.refresh();
         check(!details(second).open, `changed ${field} resets disclosure`);
         if (field === 'evidence_quote') check(!details(second).querySelector('img') && details(second).querySelector('q').textContent === result.proposals[1].source.evidence_quote, 'source quote stays escaped');
         result = structuredClone(initial); await view.refresh();
       }
       details(first).open = true;
-      result = { ...structuredClone(initial), proposals: [] };
+      result = structuredClone(responses.empty);
       await view.refresh();
       check(!details(first) && !details(second), 'filtered row disappears');
       result = structuredClone(initial); await view.refresh();
@@ -82,9 +80,9 @@ export async function observe(page) {
       check(!details(first).open, 'new mount starts closed');
       details(first).open = true; view.dispose();
       check(!host.querySelector('details'), 'disposal clears source');
-      return { checks, read_count: reads.length, fixture_contract: initial.schema_version };
+      return { checks, read_count: reads.length, fixture_contract: initial.schema_version, fixture_producer: producerHash };
     } finally { view.dispose(); host.remove(); }
-  });
+  }, { responses, producerHash: producerIdentity.files['email-proposals.js'] });
 }
 
 export async function prove({ origin, fixture = false, timeoutMs = 30000, engine = chromium }) {

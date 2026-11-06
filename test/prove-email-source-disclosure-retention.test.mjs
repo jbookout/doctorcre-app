@@ -8,6 +8,7 @@ import { chromium } from 'playwright';
 import { fixtureServer } from './browser-harness.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { prove } from '../scripts/prove-email-source-disclosure-retention.mjs';
 const exec = promisify(execFile);
 
@@ -34,24 +35,37 @@ test('proof CLI working-tree pass and broken fixture', async t => {
   });
 });
 
-for (const mode of ['stalled evaluation', 'late launch']) test(`proof deadline closes owned browser after ${mode}`, async () => {
-  let owned, evaluated = false;
+for (const mode of ['stalled evaluation', 'late launch']) test(`proof deadline closes owned browser after ${mode}`, async t => {
+  let owned, server, evaluated = false, release;
+  let ownedPids = [];
+  const delivery = new Promise(resolve => { release = resolve; });
   const engine = { async launch(options) {
-    owned = await chromium.launch(options);
-    if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 150));
-    if (mode === 'late launch') return owned;
-    const page = await owned.newPage();
-    return { newPage: async () => ({ route: async () => {}, goto: async () => {}, evaluate: () => { evaluated = true; return new Promise(() => {}); } }),
-      close: () => owned.close(), page };
+    server = await chromium.launchServer({ ...options, args: [...CHROMIUM_SAFETY_ARGS], timeout: 10000 });
+    owned = await chromium.connect(server.wsEndpoint());
+    ownedPids = [server.process().pid];
+    const { stdout } = await exec('ps', ['-axo', 'pid=,ppid=']);
+    const processes = stdout.trim().split('\n').map(line => line.trim().split(/\s+/).map(Number));
+    for (let index = 0; index < ownedPids.length; index++) {
+      ownedPids.push(...processes.filter(([, parent]) => parent === ownedPids[index]).map(([pid]) => pid));
+    }
+    if (mode === 'late launch') await delivery;
+    return {
+      newPage: async () => ({ route: async () => {}, goto: async () => {}, evaluate: () => { evaluated = true; return new Promise(() => {}); } }),
+      close: async () => { await server.close(); await owned.close(); },
+    };
   } };
   try {
-    await assert.rejects(prove({ origin: 'http://127.0.0.1:1', fixture: true, timeoutMs: mode === 'stalled evaluation' ? 1000 : 100, engine }), error => {
-      assert.ok(error.name === 'TimeoutError' || error.exitCode === 78); return true;
+    await assert.rejects(prove({ origin: 'http://127.0.0.1:1', fixture: true, timeoutMs: mode === 'stalled evaluation' ? 5000 : 100, engine }), error => {
+      assert.equal(error.exitCode || (error.name === 'TimeoutError' ? 78 : 1), 78); return true;
     });
-    // The acquisition may settle after the caller's deadline; wait for its recorded browser to close.
-    const deadline = Date.now() + 10000;
-    while ((!owned || owned.isConnected()) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+    release();
+    const deadline = Date.now() + 15000;
+    while ((!owned || owned.isConnected() || (server.process().exitCode === null && server.process().signalCode === null)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
     if (mode === 'stalled evaluation') assert.equal(evaluated, true);
-    assert.ok(owned); assert.equal(owned.isConnected(), false, 'zero surviving owned browser connections');
-  } finally { await owned?.close(); }
+    assert.ok(owned, 'a real Chromium handle was acquired');
+    assert.equal(owned.isConnected(), false);
+    assert.ok(server.process().exitCode !== null || server.process().signalCode !== null, 'owned Chromium process exited');
+    for (const pid of ownedPids) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    t.diagnostic(`${mode}: exit 78; zero surviving owned browser processes (PID ${server.process().pid})`);
+  } finally { release(); await owned?.close(); await server?.close(); }
 });
