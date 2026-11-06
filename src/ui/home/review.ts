@@ -9,6 +9,7 @@ export const object = (v: unknown): v is Record<string, unknown> => !!v && typeo
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(text);
 const version = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+const page = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 1 && v <= 100000;
 const uuid = (v: unknown): v is string => text(v) && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v);
 export function parseReference(v: unknown): ReviewReference | null {
   if (!object(v) || (v.kind !== 'action' && v.kind !== 'reply_draft' && v.kind !== 'fact_review') || !text(v.item_id) || !text(v.source_version) || !strings(v.operations) || !v.operations.length || new Set(v.operations).size !== v.operations.length) return null;
@@ -56,7 +57,7 @@ export function parseReview(v: unknown, expected: ReviewReference): Review {
   }
   if (reference.kind === 'fact_review' && Array.isArray(d.observations) && operations.every((o): o is FactOperation => o.verb === 'resolve-fact-review')) {
     const observations = d.observations.map((o: unknown): Observation => {
-      if (!object(o) || !uuid(o.id) || !text(o.unit) || !object(o.source) || !uuid(o.source.document_ref) || !version(o.source.page_start) || !version(o.source.page_end) || !(o.source.cited_text === null || typeof o.source.cited_text === 'string')) return unreadable();
+      if (!object(o) || !uuid(o.id) || !text(o.unit) || !object(o.source) || !uuid(o.source.document_ref) || !page(o.source.page_start) || !page(o.source.page_end) || o.source.page_end < o.source.page_start || !(o.source.cited_text === null || typeof o.source.cited_text === 'string')) return unreadable();
       return { id: o.id, value: typeof o.value === 'string' ? o.value : JSON.stringify(o.value), unit: o.unit, source: { document_ref: o.source.document_ref, page_start: o.source.page_start, page_end: o.source.page_end, cited_text: o.source.cited_text } };
     });
     return { kind: 'fact_review', reference, observations, canonical: object(d.canonical_fact) ? `${d.canonical_fact.normalized_value ?? 'Schedule'} ${d.canonical_fact.canonical_unit ?? ''}` : 'No canonical value recorded', operations };

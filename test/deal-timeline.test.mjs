@@ -262,3 +262,71 @@ test('undated originals keep their identities, status and evidence alongside con
  assert.equal(root.querySelector('[data-date-id="dated"] strong').textContent,'Due today');
  assert.deepEqual(value,before);
 });
+
+test('Central day controls countdown and hold expiry regardless of host timezone', () => {
+ const instant = Date.parse('2026-11-06T02:00:00Z');
+ assert.deepEqual(countdown({day:'2026-11-05',deadline:true},instant),{state:'today',text:'Due today'});
+ const held = {deal:{phase:'Legal'},entries:[{id:'hold',source:'hold',holdUntil:'2026-11-06',when:'2026-11-05',summary:'Synthetic hold'}]};
+ assert.match(view.renderDealUpdates(held,instant), /Synthetic hold/);
+ assert.equal(view.renderDealUpdates(held,Date.parse('2026-11-06T06:00:00Z')), '');
+});
+
+test('Central disposition chart preserves precedence and calendar arithmetic', () => {
+ const instant = Date.parse('2026-11-06T02:00:00Z');
+ for (const [date,state,text] of [
+  [{day:'2026-02-30',status:'cleared'},'unknown','—'],
+  [{day:null,status:'passed'},'unknown','—'],
+  [{day:'2026-11-04',status:'cleared',deadline:true},'complete','Cleared'],
+  [{day:'2026-11-06',status:'passed',deadline:true},'past','Passed'],
+  [{day:'2026-11-04',deadline:true},'overdue','1 day overdue'],
+  [{day:'2026-11-04'},'past','1 day ago'],
+  [{day:'2026-11-05',deadline:true},'today','Due today'],
+  [{day:'2026-11-05'},'today','Today'],
+  [{day:'2026-11-12',deadline:true},'soon','7 days'],
+  [{day:'2026-11-13',deadline:true},'upcoming','8 days'],
+  [{day:'2026-11-06'},'upcoming','1 day'],
+ ]) assert.deepEqual(countdown(date,instant),{state,text});
+ for (const [at,day] of [
+  ['2026-03-08T07:59:59Z','2026-03-08'],['2026-03-08T08:00:00Z','2026-03-08'],
+  ['2026-11-01T06:59:59Z','2026-11-01'],['2026-11-01T07:00:00Z','2026-11-01'],
+ ]) assert.equal(countdown({day,deadline:true},Date.parse(at)).text,'Due today');
+ const date={day:'2026-11-06',deadline:true};
+ for (const [at,text] of [['2026-10-29T17:00:00Z','8 days'],['2026-10-30T17:00:00Z','7 days'],['2026-11-06T05:59:59Z','1 day'],['2026-11-06T06:00:00Z','Due today'],['2026-11-07T06:00:00Z','1 day overdue']]) assert.equal(countdown(date,Date.parse(at)).text,text);
+});
+
+test('registered Deal Room response passes production parser without shifting dates or evidence', async () => {
+ const contract=carrInterface.mcp_read_contracts['get-deal-room'];
+ const payload={deal_id:'synthetic-central',name:'Synthetic deadline',phase:'legal',schema_version:contract.response.schema_version,
+ phase_started_on:{legal:'2026-10-03'},critical_dates:[{id:'synthetic-date',kind:'loi_expiry',due_on:'2026-11-05',status:'open',source:'Synthetic contract clause'}],lease:null,thread:[],events:[]};
+ assert.equal(payload.schema_version,'deal-timeline.v1');
+ assert.ok(carrInterface.mcp_operations.includes('get-deal-room'));
+ const before=structuredClone(payload);
+ const client=createLiveClient({fetchImpl:async (_path,init)=>{
+  assert.equal(JSON.parse(init.body).params.name,'get-deal-room');
+  return Response.json({result:{content:[{type:'text',text:JSON.stringify(payload)}]}});
+ }});
+ const detail=prepareDealDetail(await client.getDeal(payload.deal_id));
+ const instant=Date.parse('2026-11-06T02:00:00Z');
+ const root=new JSDOM(renderCriticalDates(detail,instant)).window.document;
+ assert.equal(root.querySelector('[data-countdown]').textContent,'Due today');
+ assert.equal(root.querySelector('[data-countdown]').dataset.countdown,'2026-11-05');
+ assert.match(root.body.textContent,/Synthetic contract clause/);
+ assert.equal(view.dealTimeline(detail,instant).phases.find(p=>p.slug==='legal').day,'2026-10-03');
+ assert.deepEqual(payload,before);
+});
+
+test('countdown DOM follows upcoming to soon to today to overdue on Central days', () => {
+ const value={deal:{phase:'legal'},critical_dates:[{id:'transition',kind:'loi_expiry',due_on:'2026-11-06'}]};
+ const root=new JSDOM(renderCriticalDates(value,Date.parse('2026-10-29T17:00:00Z'))).window.document;
+ for(const [at,state,text] of [
+  ['2026-10-29T17:00:00Z','upcoming','8 days'],
+  ['2026-10-30T17:00:00Z','soon','7 days'],
+  ['2026-11-06T05:59:59Z','soon','1 day'],
+  ['2026-11-06T06:00:00Z','today','Due today'],
+  ['2026-11-07T06:00:00Z','overdue','1 day overdue'],
+ ]) {
+  updateCountdowns(root,Date.parse(at));
+  assert.equal(root.querySelector('.critical-date').dataset.state,state);
+  assert.equal(root.querySelector('[data-countdown]').textContent,text);
+ }
+});

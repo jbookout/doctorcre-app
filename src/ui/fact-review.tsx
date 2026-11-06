@@ -201,14 +201,17 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     render();
   }
   setDocuments(null);
-  async function documentLoad() {
+  function isCurrent(current: number) { return !disposed && current === generation && !writing && !pending.size && !dirty; }
+  async function documentLoad(current: number) {
     try {
       const loaded: Document[] = []; let cursor: string | undefined;
       const takePage = createPageBudget();
       // eslint-disable-next-line no-restricted-syntax -- Document pagination has a max of 100 iterations and consumes takePage before each read.
       for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+        if (!isCurrent(current)) return null;
         takePage();
         const page = await client.listDealDocuments({ deal_id: entityRef, limit: 100, ...(cursor ? { cursor } : {}) });
+        if (!isCurrent(current)) return null;
         if (page.ok !== true || page.schema_version !== 'deal-documents.v1' || !Array.isArray(page.documents)
           || page.documents.some(doc => !doc.id || !doc.display_name || typeof doc.stored_at !== 'string')
           || typeof page.has_more !== 'boolean') throw new Error('Documents unavailable');
@@ -228,15 +231,15 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     status.textContent = 'Loading terms…';
     try {
       const loaded: Item[] = []; let cursor: string | null | undefined;
-      const listedDocuments = await documentLoad();
-      if (disposed || current !== generation || writing || pending.size || dirty) return;
+      const listedDocuments = await documentLoad(current);
+      if (!isCurrent(current)) return;
       setDocuments(listedDocuments);
       const takePage = createPageBudget();
       // eslint-disable-next-line no-restricted-syntax -- Fact-review refresh calls takePage before each read; at most 100 pages and generation checks stop stale work.
       do {
         takePage();
         const page = await client.listFactReview({ entity_ref: entityRef, include_resolved: true, limit: 100, ...(cursor ? { cursor } : {}) });
-        if (disposed || current !== generation || writing || pending.size || dirty) return;
+        if (!isCurrent(current)) return;
         if (page.schema_version !== 'fact-review.v1' || !Array.isArray(page.items) || page.items.some(item => item.entity_ref !== entityRef)) throw new Error('Terms unavailable');
         loaded.push(...page.items);
         if (page.has_more && (!page.next_cursor || page.next_cursor === cursor)) throw new Error('Terms unavailable');

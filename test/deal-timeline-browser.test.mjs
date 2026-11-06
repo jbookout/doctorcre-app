@@ -150,3 +150,16 @@ test('update form offers the current next action and date at phone width', async
  for (let i=0; i<4 && !await form.getByRole('button',{name:'Add update'}).evaluate(e=>e===document.activeElement); i++) await page.keyboard.press('Tab');
  assert.equal(await form.getByRole('button',{name:'Add update'}).evaluate(e=>e===document.activeElement),true);
 });
+
+for (const timezoneId of ['UTC','America/Chicago','America/Los_Angeles','Asia/Tokyo']) test(`Central deadline browser boundaries in ${timezoneId}`, async t => {
+ const {fixtureServer}=await import('./browser-harness.mjs');
+ const {exercise}=await import('../scripts/prove-deal-deadline-central-day.mjs');
+ const fixture=await fixtureServer();t.after(()=>fixture.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage({timezoneId});
+ await page.clock.setFixedTime(new Date('2026-11-06T02:00:00Z'));
+ await page.goto(`${fixture.origin}/deals`);
+ const assertions=await exercise(page,`${fixture.origin}/js/deal-timeline.js`);
+ assert.equal(assertions.length,83);
+ assert.ok(assertions.every(result=>result.passed));
+});

@@ -38,7 +38,7 @@ export function WaitingEditor({ item, client, disabled, update, activity }: { it
   }
   return <div onTouchStart={event => event.stopPropagation()} onTouchEnd={event => event.stopPropagation()}>
     <p>{label}</p>{item.waiting_on && <p>{item.waiting_on.reason}</p>}
-    {!state ? <button ref={opener} type="button" disabled={disabled} onClick={() => { base.current = item; setPerson(null); setState({ kind: 'editing' }); setNotice(''); }}>{item.waiting_on ? 'Correct waiting person' : 'Set waiting person'}</button> : <form aria-label={`Waiting person for ${item.title}`} onSubmit={event => { event.preventDefault(); if (state.kind === 'editing') submit('set'); }}>
+    {!state ? <button ref={opener} type="button" disabled={disabled} onClick={() => { base.current = item; setPerson(null); setReason(item.waiting_on?.reason || ''); setEvidence(item.waiting_on?.evidence.join('\n') || ''); setState({ kind: 'editing' }); setNotice(''); }}>{item.waiting_on ? 'Correct waiting person' : 'Set waiting person'}</button> : <form aria-label={`Waiting person for ${item.title}`} onSubmit={event => { event.preventDefault(); if (state.kind === 'editing') submit('set'); }}>
       <fieldset disabled={busy || state.kind !== 'editing'} style={{ minWidth: 0 }}><legend>Who owes the next move?</legend>
         <WaitingPeople client={client} id={personId} selected={person} select={setPerson} />
         <label htmlFor={`${personId}-reason`} style={{ display: 'block' }}>Reason</label><textarea id={`${personId}-reason`} required maxLength={2000} value={reason} onChange={event => setReason(event.target.value)} style={{ width: '100%', boxSizing: 'border-box', minHeight: 72, font: 'inherit' }} />
