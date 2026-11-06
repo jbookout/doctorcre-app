@@ -70,11 +70,14 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
   assert.ok(url.origin === origin && ['http:','https:'].includes(url.protocol) && !url.username && !url.password, 'origin only');
   assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 30000, 'bounded timeout');
   const unavailable = message => Object.assign(new Error(message), {exitCode:78});
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => Math.max(1, deadline - Date.now());
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(unavailable('Proof timeout')), timeoutMs);
   let browser;
   try {
-    const before = await readAppRelease(origin, {timeoutMs});
+    const before = await readAppRelease(origin, {timeoutMs:remaining()});
+    controller.signal.throwIfAborted();
     if (!fixture || !['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw unavailable('insufficient_evidence: natural signed-in observation belongs to authorized proof worker');
     browser = await launchProofBrowser(engine, {args:[...CHROMIUM_SAFETY_ARGS],timeout:timeoutMs}, {signal:controller.signal});
     const page = await browser.newPage();
@@ -94,7 +97,8 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
     });
     await page.goto(`${origin}/__fact-filter-proof`);
     const assertions = await exerciseFilter(page, origin);
-    const after = await readAppRelease(origin, {timeoutMs});
+    const after = await readAppRelease(origin, {timeoutMs:remaining()});
+    controller.signal.throwIfAborted();
     assert.deepEqual(after, before, 'unchanged release identity');
     return {status:'fixture_only',production_acceptance:false,natural_observation:{status:'insufficient_evidence',reason:'No session-bound natural business read executed'},deployed_asset_fixture:{release:before,assertions},requests};
   } finally { clearTimeout(timer); await browser?.close(); }
