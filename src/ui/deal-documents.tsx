@@ -42,8 +42,8 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
     if (disposed) return;
     const page = 'page' in state ? state.page : null;
     const types = [...new Set(page?.documents.map(doc => doc.document_type) || [])];
-    let unrecordedLabel = 'Unrecorded';
-    while (types.includes(unrecordedLabel)) unrecordedLabel += ' (unrecorded)';
+    const unrecordedLabel = types.reduce<string>(label =>
+      types.includes(label) ? `${label} (unrecorded)` : label, 'Unrecorded');
     const query = search.trim().toLowerCase();
     const matches = page?.documents.filter(doc => doc.display_name.toLowerCase().includes(query)
       && (selection.kind === 'all' || doc.document_type === selection.value)) || [];

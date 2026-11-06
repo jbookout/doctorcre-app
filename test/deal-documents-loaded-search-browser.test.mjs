@@ -153,3 +153,35 @@ test('loaded search behavior and retirement', async t => {
     }
   }
 });
+
+
+test('null type remains distinct through a chain of literal Unrecorded labels', async t => {
+  const source = await readFile(new URL('producer.txt', fixture), 'utf8');
+  const producer = vm.runInNewContext(`({${source}})`, { organizationTenantForActor: () => 'carr-internal', ToolError: Error })['list-deal-documents'];
+  const types = [null, 'Unrecorded', 'Unrecorded (unrecorded)', 'Unrecorded (unrecorded) (unrecorded)'];
+  const rows = recordings.initial.rows.slice(0, types.length).map((row, index) => ({ ...row, document_type: types[index] }));
+  const response = JSON.parse(JSON.stringify(await producer.handler({ async query() { return { rows }; } }, {}, recordings.initial.request)));
+  const artifact = temporaryDirectory('loaded-search-collision-', t);
+  await buildArtifact({ root: process.cwd(), outDir: artifact, commit: '1'.repeat(40) });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: `${artifact}/site` } });
+  t.after(() => server.stop());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage(); t.after(() => page.close());
+  await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' }));
+  await page.goto(`${server.url}/harness`);
+  await page.evaluate(async ({ response, dealId }) => {
+    const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+    window.panel = mountDealDocuments(document.querySelector('main'), { dealId, client: { async listDealDocuments() { return response; } } });
+  }, { response, dealId: recordings.initial.request.deal_id });
+  const type = page.getByRole('combobox', { name: 'Document type', exact: true });
+  await page.getByText('4 matching of 4 loaded documents.', { exact: true }).waitFor();
+  const labels = await type.locator('option').allTextContents();
+  assert.equal(new Set(labels).size, labels.length);
+  assert.ok(labels.includes('Unrecorded (unrecorded) (unrecorded) (unrecorded)'));
+  for (const value of types) {
+    await type.selectOption(value === null ? 'null' : `type:${value}`);
+    assert.deepEqual(await page.locator('[data-document-id]').evaluateAll(rows => rows.map(row => row.dataset.documentId)),
+      response.documents.filter(doc => doc.document_type === value).map(doc => doc.id));
+  }
+  await page.evaluate(() => window.panel.dispose());
+});
