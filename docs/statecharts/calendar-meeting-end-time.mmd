@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> Unavailable: mount and clear
+  Unavailable --> Empty: empty snapshot
+  Empty --> Visible: ready snapshot
+  Visible --> Partial: partial refresh
+  Partial --> Visible: ready refresh
+  Visible --> Unavailable: invalid snapshot or session clear
+  Visible --> Filtered: clock advances and refresh
+  Filtered --> Visible: refreshed future meetings
+  Visible --> Fitted: rail shrinks
+  Fitted --> Visible: rail grows
+  Visible --> Calendar: activate day link
+  Visible --> Detached: parent removes panel and clears

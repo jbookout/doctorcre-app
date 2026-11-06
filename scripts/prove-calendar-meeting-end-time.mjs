@@ -1,0 +1,139 @@
+import assert from 'node:assert/strict';
+import { readFile, realpath } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { chromium } from 'playwright';
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
+import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
+
+export async function observe() {
+  const { mountCalendarPanels } = await import('/js/ui-calendar-panels.js');
+  const left = document.querySelector('#left'), right = document.querySelector('#right');
+  const panel = await mountCalendarPanels(left, right);
+  const labels = node => [...node.querySelectorAll('.calendar-panel-meeting time')].map(el => el.textContent);
+  const checks = [];
+  const check = (name, value) => checks.push({ name, pass: Boolean(value) });
+  panel.clear();
+  check('mount and clear', left.textContent.includes('Schedule unavailable'));
+  panel.render({ state: 'empty', items: [] });
+  check('empty snapshot', left.textContent.includes('No upcoming meetings returned'));
+  const cases = [
+    ['same day', '2026-11-05T14:00:00Z', '2026-11-05T15:30:00Z', 'Nov 5, 8:00 AM CST – 9:30 AM CST'],
+    ['overnight', '2026-11-06T05:30:00Z', '2026-11-06T07:00:00Z', 'Nov 5, 11:30 PM CST – Nov 6, 1:00 AM CST'],
+    ['spring DST', '2026-03-08T07:30:00Z', '2026-03-08T08:30:00Z', 'Mar 8, 1:30 AM CST – 3:30 AM CDT'],
+    ['fall DST', '2026-11-01T06:30:00Z', '2026-11-01T07:30:00Z', 'Nov 1, 1:30 AM CDT – 1:30 AM CST'],
+    ['year boundary', '2026-12-31T23:30:00-06:00', '2027-01-01T00:30:00-06:00', 'Dec 31, 2026, 11:30 PM CST – Jan 1, 2027, 12:30 AM CST'],
+  ];
+  for (const [title, start, end, expected] of cases) {
+    await window.proofSetTime(start);
+    const item = { title, start, end, time_changed: true, schedule_conflict: true };
+    panel.render({ state: 'ready', items: [item] });
+    check(title, labels(left)[0] === expected && labels(right)[0] === expected);
+    check(`${title} warning`, left.textContent.includes('Overlapping meetings. Check Outlook.'));
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(start));
+    check(`${title} day link`, left.querySelector('.calendar-panel-meeting a').getAttribute('href') === `/calendar?day=${day}&d=${day}`);
+    panel.render({ state: 'partial', items: [item] });
+    check(`${title} partial refresh`, left.textContent.includes('coverage is incomplete') && labels(left)[0] === expected);
+    panel.render({ state: 'ready', items: [item] });
+    check(`${title} ready refresh`, !left.querySelector('[role=status]'));
+    await window.proofSetTime(new Date(Date.parse(end) + 1).toISOString());
+    panel.render({ state: 'ready', items: [item] });
+    check(`${title} elapsed filter`, labels(left).length === 0);
+  }
+  await window.proofSetTime('2026-11-05T14:00:00Z');
+  const items = [{ title: 'Later', start: '2026-11-05T16:00:00Z', end: '2026-11-05T17:00:00Z' },
+    { title: 'Earlier', start: '2026-11-05T14:00:00Z', end: '2026-11-05T15:00:00Z', time_changed: true },
+    { title: 'All day', start: '2026-11-05', end: '2026-11-06', all_day: true }];
+  panel.render({ state: 'ready', items });
+  check('refreshed sorted rows and all day', labels(left)[0] === 'Nov 5 · All day' && left.querySelectorAll('.calendar-panel-meeting a')[1].textContent === 'Earlier');
+  check('changed warning', left.textContent.includes('Time changed. Check Outlook.'));
+  const rail = left.parentElement;
+  rail.style.height = '250px';
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  check('rail shrinks', left.querySelectorAll('.calendar-panel-meeting[hidden]').length > 0);
+  rail.style.height = '1600px';
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  check('rail grows', left.querySelectorAll('.calendar-panel-meeting[hidden]').length === 0);
+  panel.render({ state: 'ready', items: [{ title: 'bad', start: 'invalid', end: 'invalid' }] });
+  check('invalid snapshot', labels(left).length === 0 && left.textContent.includes('Schedule unavailable'));
+  panel.render({ state: 'ready', items });
+  panel.clear();
+  check('session clear', labels(left).length === 0 && labels(right).length === 0);
+  left.remove();
+  panel.clear();
+  check('detached clear', labels(right).length === 0);
+  panel.render({ state: 'ready', items });
+  return checks;
+}
+
+export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com', timeoutMs = 30000, engine = chromium }) {
+  assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 120000, 'bounded deadline');
+  assert.equal(new URL(origin).origin, origin, 'origin only');
+  const failure = Object.assign(new Error('insufficient_evidence: proof deadline exceeded'), { exitCode: 78 });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(failure), timeoutMs);
+  let browser, bytes = 0, requests = 0;
+  let root;
+  const assets = new Map();
+  async function read(path) {
+    assert.ok(++requests <= 64, 'request cap');
+    let body;
+    if (root) {
+      const file = await realpath(resolve(root, `.${path}`));
+      assert.ok(file.startsWith(root + sep), 'fixture path confined');
+      body = await readFile(file);
+    } else {
+      const response = await proofFetch(new URL(path, origin), { signal: controller.signal });
+      assert.ok(response.ok && /javascript|text\/css/.test(response.headers.get('content-type')), 'JavaScript asset available');
+      const chunks = [];
+      for await (const chunk of response.body) {
+        bytes += chunk.length;
+        assert.ok(bytes <= 16 * 1024 * 1024, 'byte cap');
+        chunks.push(chunk);
+      }
+      body = Buffer.concat(chunks);
+    }
+    if (root) { bytes += body.length; assert.ok(bytes <= 16 * 1024 * 1024, 'byte cap'); }
+    assets.set(path, body);
+    return body;
+  }
+  try {
+    root = fixtureRoot ? await realpath(fixtureRoot) : null;
+    const before = root ? null : await readAppRelease(origin, { timeoutMs });
+    await read('/js/ui-calendar-panels.js');
+    browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }, { signal: controller.signal });
+    const observations = [];
+    for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme, timezoneId: 'America/Chicago', serviceWorkers: 'block' });
+      await page.clock.setFixedTime(new Date('2026-11-05T14:00:00Z'));
+      await page.exposeFunction('proofSetTime', value => page.clock.setFixedTime(new Date(value)));
+      await page.route('**/*', async route => {
+        const url = new URL(route.request().url());
+        if (url.origin !== origin || route.request().method() !== 'GET') return route.abort();
+        if (url.pathname === '/calendar') return route.fulfill({ contentType: 'text/html', body: '<h1>Calendar</h1>' });
+        if (url.pathname === '/__meeting-proof') return route.fulfill({ contentType: 'text/html', body: `<html data-theme="${theme}"><head><link rel="stylesheet" href="/css/app-shell.css"></head><body><aside class="app-layout-sidebar" style="height:900px;width:300px"><div id="left"></div></aside><div id="right"></div></body></html>` });
+        if (!/^\/(?:js\/[a-zA-Z0-9._/-]+\.m?js|css\/[a-zA-Z0-9._/-]+\.css)$/.test(url.pathname)) return route.abort();
+        try { await route.fulfill({ contentType: url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript', body: assets.get(url.pathname) || await read(url.pathname) }); }
+        catch { await route.abort(); }
+      });
+      await page.goto(`${origin}/__meeting-proof`);
+      const checks = await page.evaluate(observe);
+      assert.deepEqual(checks.filter(check => !check.pass), [], `rendered endpoint checks at ${width} ${theme}`);
+      await page.locator('#right .calendar-panel-meeting a').first().click();
+      assert.equal(new URL(page.url()).searchParams.get('day'), '2026-11-05', 'calendar day navigation');
+      observations.push({ width, theme, checks });
+      await page.close();
+    }
+    const after = root ? null : await readAppRelease(origin, { timeoutMs });
+    assert.deepEqual(after, before, 'unchanged release');
+    return { ok: true, evidence: root ? 'local_fixture' : 'deployed_asset_fixture', natural_authenticated_observation: 'not_run', production_acceptance: 'insufficient_evidence', release: before, observations, requests };
+  } finally { clearTimeout(timer); await browser?.close(); }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const [flag, value] = process.argv.slice(2);
+    assert.ok(['--fixture-root', '--origin'].includes(flag) && value, 'usage: --fixture-root PATH | --origin URL');
+    console.log(JSON.stringify(await prove(flag === '--fixture-root' ? { fixtureRoot: value } : { origin: value })));
+  } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message })); process.exitCode = error.exitCode || 1; }
+}
