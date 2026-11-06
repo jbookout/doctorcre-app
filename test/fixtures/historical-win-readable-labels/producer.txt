@@ -1,0 +1,1 @@
+executeRegisteredTool(c, actor, ideal-client-profile, {vertical: Synthetic labels}) under carr_reader on disposable PostgreSQL. See mcp-server/test/historical-win-readable-labels-postgres.test.mjs. All subjects synthetic. Empty response was recorded with vertical No synthetic match.
