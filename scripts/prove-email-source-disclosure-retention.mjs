@@ -62,16 +62,16 @@ export async function observe(page) {
         details(second).open = true;
         result = structuredClone(initial);
         result.proposals[1].preview = null;
-        result.proposals[1].source[field] += field === 'evidence_quote' ? '<img src=x onerror=alert(1)>' : ' changed';
+        result.proposals[1].source[field] = field === 'activity_id' ? '30000000-0000-4000-8000-000000000099' : field === 'occurred_at' ? '2026-10-27T12:00:00Z' : result.proposals[1].source[field] + (field === 'evidence_quote' ? '<img src=x onerror=alert(1)>' : ' changed');
         await view.refresh();
         check(!details(second).open, `changed ${field} resets disclosure`);
         if (field === 'evidence_quote') check(!details(second).querySelector('img') && details(second).querySelector('q').textContent === result.proposals[1].source.evidence_quote, 'source quote stays escaped');
         result = structuredClone(initial); await view.refresh();
       }
       details(first).open = true;
-      result = { ...structuredClone(initial), proposals: [structuredClone(initial.proposals[1])] };
+      result = { ...structuredClone(initial), proposals: [] };
       await view.refresh();
-      check(!details(first), 'filtered row disappears');
+      check(!details(first) && !details(second), 'filtered row disappears');
       result = structuredClone(initial); await view.refresh();
       check(!details(first).open, 'returning row starts closed');
       details(first).open = true;
