@@ -9,7 +9,7 @@ import { syntheticCards, observeSearch } from '../scripts/prove-home-loaded-card
 let outDir;
 before(async () => { outDir = temporaryDirectory('loaded-search-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => rm(outDir, { recursive: true, force: true }));
-async function setup(t, width = 1440, theme = 'light', review = false) {
+async function setup(t, width = 1440, theme = 'light', review = false, card = null) {
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -34,7 +34,7 @@ async function setup(t, width = 1440, theme = 'light', review = false) {
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   page.setDefaultTimeout(5000);
-  await page.goto(`${server.origin}/?mode=live`);
+  await page.goto(`${server.origin}/?mode=live${card ? `&card=${encodeURIComponent(card)}` : ''}`);
   await page.getByRole('searchbox').waitFor();
   return { page, fixture, calls, update: value => { snapshot = fixture.parseSnapshot(value); } };
 }
@@ -49,7 +49,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`lo
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 });
 test('selection, refresh additions/removals, disclosure, current pin and session disposal', async t => {
-  const { page, fixture, update } = await setup(t);
+  const { page, fixture, update } = await setup(t, 1440, 'light', false, 'demo-call');
   const search = page.getByRole('searchbox');
   await page.getByRole('checkbox', { name: 'Select Review the practice tour follow-up', exact: true }).check();
   await search.fill('pipeline');
@@ -63,7 +63,6 @@ test('selection, refresh additions/removals, disclosure, current pin and session
   update(fixture.snapshot);
   await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
   await page.locator('[data-inbox-row="demo-call"]').waitFor();
-  await page.locator('[data-inbox-row="demo-call"] h3 a').click();
   await search.fill('not found');
   await page.getByText('Pinned outside search', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-inbox-row]').count(), 1);
@@ -143,4 +142,15 @@ test('uncertain server refusal locks query until dismissal and refresh', async t
   await page.getByRole('button', { name: 'Dismiss and refresh', exact: true }).click();
   assert.equal(await search.isDisabled(), false);
   assert.equal(await search.inputValue(), 'pipeline');
+});
+
+test('Home card navigation opens the full Inbox and Back restores the search', async t => {
+  const { page } = await setup(t);
+  await page.getByRole('searchbox').fill('pipeline');
+  await page.locator('[data-inbox-row="demo-call"] h3 a').click();
+  await page.getByRole('heading', { name: 'Inbox', level: 1, exact: true }).waitFor();
+  assert.equal(await page.getByRole('searchbox').count(), 0);
+  assert.equal(await page.locator('[data-inbox-row="demo-call"][data-current="true"]').count(), 1);
+  await page.goBack();
+  assert.equal(await page.getByRole('searchbox').inputValue(), 'pipeline');
 });
