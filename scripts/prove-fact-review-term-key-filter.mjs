@@ -6,7 +6,7 @@ import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-re
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
 
-export async function observe({ origin, recordings, document }) {
+export async function observe({ origin, recordings, document = globalThis.document }) {
   const { mountFactReview } = await import(`${origin}/js/ui-facts.js`);
   const { createLiveClient } = await import(`${origin}/js/live-client.js`);
   const { FACT_TERMS } = await import(`${origin}/js/client.js`);
@@ -142,7 +142,7 @@ export async function observe({ origin, recordings, document }) {
 }
 
 export async function observeOnPage(page, origin, recordings) {
-  return page.evaluate(`(${observe.toString()})({ origin: ${JSON.stringify(origin)}, recordings: ${JSON.stringify(recordings)}, document })`);
+  return page.evaluate(observe, { origin, recordings });
 }
 
 export async function prove({ origin, timeoutMs = 30000, fixture = false, engine = chromium, launchOptions = {} }) {

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { get } from 'node:http';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -14,9 +15,11 @@ async function fixture(t, mode = 'healthy') {
   const server = createServer((req, res) => {
     seen.push(req.url);
     let path;
-    try { path = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); return res.end(); }
+    if (/%(?:2e|5c|00)/i.test(req.url)) { res.writeHead(403); return res.end(); }
+    try { path = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(403); return res.end(); }
+    if (/[\\\0]/.test(path)) { res.writeHead(403); return res.end(); }
     const target = resolve(root, `.${path}`);
-    if (target !== root && !target.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
+    if (!target.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
     if (path === '/app-release') {
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
@@ -71,10 +74,21 @@ for (const mode of ['late launch', 'stalled evaluation']) {
     assert.equal(acquired, 1); assert.ok(closed >= acquired, 'zero owned browser survivors');
   });
 }
-test('fixture HTTP refuses encoded path traversal', async t => {
+test('fixture HTTP refuses raw and encoded traversal with an empty body', async t => {
   const f = await fixture(t);
-  for (const path of ['/%2e%2e%2fpackage.json', '/%2e%2e%2fwr39-s22-term-filter-sibling/file']) {
-    assert.equal((await fetch(f.origin + path)).status, 403);
+  for (const path of [
+    '/../package.json', '/%2e%2e/package.json', '/%2e%2e%2fpackage.json',
+    '/%2e%2e%2fWR39-S22-J4-sibling/file', '/js/%2e/client.js',
+    '/js/%5cclient.js', '/js/\\client.js', '/js/client.js%00', '/js/%zz',
+  ]) {
+    const response = await new Promise((resolve, reject) => {
+      get(f.origin, { path }, res => {
+        let body = '';
+        res.on('data', chunk => { body += chunk; });
+        res.on('end', () => resolve({ status: res.statusCode, body }));
+      }).on('error', reject);
+    });
+    assert.deepEqual(response, { status: 403, body: '' }, path);
   }
 });
 for (const mode of ['late launch', 'stalled evaluation']) {
