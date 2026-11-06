@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+const snapshot = await proofAssetSnapshot();
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -46,49 +48,35 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     const bytes = await readFile(resolve(root, path));
     return path === 'src/ui/home/review.ts' ? Buffer.from(bytes.toString().replace('v >= 1 && v <= 100000', 'v >= 0').replace(' || o.source.page_end < o.source.page_start', '')) : bytes;
   });
-  let mode = 'pass', releaseReads = 0;
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    res.setHeader('content-type', 'application/json');
-    requests.push(req.url);
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      releaseReads++;
-      const response = await handleDoctorcreRequest(new Request('https://fixture.test/app-release'), {
-        GIT_SHA: mode === 'drift' && releaseReads > 1 ? 'b'.repeat(40) : 'a'.repeat(40), APP_ENV: mode === 'identity' ? 'staging' : 'production' });
-      res.writeHead(response.status, Object.fromEntries(response.headers));
-      res.end(await response.text());
-      return;
-    }
-    if (mode === 'missing') return res.writeHead(404).end();
-    try {
-      const path = resolve(root, `.${decodeURIComponent(new URL(req.url, 'http://fixture.test').pathname)}`);
-      if (!path.startsWith(root + sep)) throw Error('outside fixture');
-      const key = path.slice(root.length + 1);
-      let body = (mode === 'fail' ? broken : assets).get(key) || await readFile(path);
-      if (mode === 'external' && key === 'js/ui-inbox.js') body = Buffer.concat([Buffer.from(body), Buffer.from('\nimport "https://example.invalid/evil.js";')]);
-      if (mode === 'cap' && key === 'js/ui-inbox.js') body = Buffer.concat([Buffer.from(body), Buffer.from(Array.from({length: 21}, (_, i) => `\nimport "./cap${i}.generated.js";`).join(''))]);
-      res.writeHead(200, { 'content-type': 'text/javascript' }).end(body);
-    } catch { res.writeHead(404).end(); }
-  });
-  await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolveClose => server.close(resolveClose)); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  let server, origin, requests;
+  async function prepare(mode) {
+    await server?.close();
+    const routes=new Map(snapshot);
+    for(const [key,body] of (mode==='fail'?broken:assets))routes.set('/'+key,{contentType:'text/javascript',body});
+    if(mode==='missing')for(const key of routes.keys())routes.set(key,{status:404});
+    const key='/js/ui-inbox.js';
+    if(mode==='external'||mode==='cap')routes.set(key,{contentType:'text/javascript',body:Buffer.concat([Buffer.from(routes.get(key).body),Buffer.from(mode==='external'?'\nimport "https://example.invalid/evil.js";':Array.from({length:21},(_,i)=>`\nimport "./cap${i}.generated.js";`).join(''))])});
+    const identity=async sha=>({contentType:'application/json',body:await(await handleDoctorcreRequest(new Request('https://fixture.test/app-release'),{GIT_SHA:sha.repeat(40),APP_ENV:mode==='identity'?'staging':'production'})).text(),...(mode==='timeout'?{hold:'timeout'}:{})});
+    routes.set('/app-release',{sequence:[await identity('a'),await identity(mode==='drift'?'b':'a')]});
+    server=await startFixture({routes});origin=server.origin;
+  }
+  t.after(()=>server?.close());
   for (const [scenario, code] of [['pass', 0], ['fail', 1], ['missing', 78], ['identity', 78], ['drift', 1], ['external', 78], ['cap', 78], ['timeout', 78]]) await t.test(scenario, async () => {
-    mode = scenario; requests.length = 0; releaseReads = 0;
+    await prepare(scenario);
     const result = await run(['--origin', origin, '--timeout-ms', '30000']);
     assert.equal(result.code, code, JSON.stringify(result.receipt));
+    requests=server.requests.map(req=>req.target);
     assert.ok(requests.filter(path => path !== '/app-release').length <= 20);
     const assetPaths = requests.filter(path => path !== '/app-release');
     assert.equal(new Set(assetPaths).size, assetPaths.length, 'no asset retries');
     if (scenario === 'pass') {
-      assert.equal(releaseReads, 2);
+      assert.equal(requests.filter(path=>path==='/app-release').length, 2);
       assert.deepEqual(result.receipt.release, result.receipt.releaseAfter);
       assert.ok(result.receipt.assertions.length >= 29);
       assert.ok(result.receipt.assertions.every(a => a.passed));
       for (const asset of result.receipt.assets) {
         const key = new URL(asset.url).pathname.slice(1);
-        const bytes = assets.get(key) || await readFile(resolve(root, key));
+        const bytes = assets.get(key) || snapshot.get('/'+key).body;
         assert.equal(asset.sha256, createHash('sha256').update(bytes).digest('hex'));
       }
     }
@@ -97,7 +85,7 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     if (scenario === 'timeout') assert.match(result.receipt.error, /deadline/);
   });
   for (const fault of ['late launch', 'stalled evaluation']) await t.test(`deadline cleans ${fault}`, async () => {
-    mode = 'pass';
+    await prepare('pass');
     const preload = `
       import { chromium } from ${JSON.stringify(pathToFileURL(resolve('node_modules/playwright/index.mjs')).href)};
       import { writeSync } from 'node:fs';

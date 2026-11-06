@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -16,46 +17,38 @@ const cli = args => new Promise((done, reject) => {
 test('declared CLI verifies deployed bytes and refuses contradictions or unavailable evidence', async t => {
   const outDir = temporaryDirectory('coverage-proof-', t);
   const built = await buildArtifact({ root: process.cwd(), outDir });
-  const root = resolve(outDir, 'site'); let mode = 'valid', mutations = 0, requests = 0;
+  const root = resolve(outDir, 'site');
+  const snapshot=await loadFixtureAssets({root,manifest:new Map(built.manifest.files.filter(row=>row.path.startsWith('js/')).map(row=>['/'+row.path,row.path]))});
   const wrong = 'export function mountDealUpdateReviews() { return { refresh: async () => {}, dispose() {} }; }';
-  const server = createServer(async (request, response) => {
-    response.setHeader('content-type', 'application/json');
-    requests++; if (request.method !== 'GET') mutations++;
-    if (mode === 'timeout') return;
-    const path = decodeURIComponent(new URL(request.url, 'http://fixture').pathname);
-    const file = resolve(root, '.' + path);
-    if (!file.startsWith(root + sep)) { response.writeHead(403); response.end(); return; }
-    if (path === '/app-release') return response.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: built.manifest.source_commit }));
-    if (path === '/artifact-manifest.json') {
-      const manifest = structuredClone(built.manifest);
-      if (mode === 'manifest') return response.end('{}');
-      if (mode === 'release') manifest.source_commit = 'f'.repeat(40);
-      if (mode === 'assertion') {
-        const entry = manifest.files.find(f => f.path === 'js/ui-deal-reviews.js');
-        entry.bytes = Buffer.byteLength(wrong); entry.sha256 = createHash('sha256').update(wrong).digest('hex');
-      }
-      return response.end(JSON.stringify(manifest));
+  const servers=[];
+  async function prepare(mode) {
+    await servers.at(-1)?.close();
+    const routes=new Map(snapshot),manifest=structuredClone(built.manifest);
+    if(mode==='release')manifest.source_commit='f'.repeat(40);
+    if(mode==='assertion') {
+      const entry=manifest.files.find(f=>f.path==='js/ui-deal-reviews.js');
+      entry.bytes=Buffer.byteLength(wrong);entry.sha256=createHash('sha256').update(wrong).digest('hex');
     }
-    if (path === '/js/ui-deal-reviews.js' && mode === 'asset') return response.end('export const wrong = true;');
-    if (path === '/js/ui-deal-reviews.js' && mode === 'assertion') return response.end(wrong);
-    try { response.end(await readFile(file)); } catch { response.writeHead(404); response.end(); }
-  });
-  await new Promise(done => server.listen(0, '127.0.0.1', done));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = 'http://127.0.0.1:' + server.address().port;
+    routes.set('/artifact-manifest.json',{contentType:'application/json',body:mode==='manifest'?'{}':JSON.stringify(manifest)});
+    routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:built.manifest.source_commit}),...(mode==='timeout'?{hold:'timeout'}:{})});
+    if(mode==='asset'||mode==='assertion')routes.set('/js/ui-deal-reviews.js',{contentType:'text/javascript',body:mode==='asset'?'export const wrong = true;':wrong});
+    const server=await startFixture({routes});servers.push(server);return server.origin;
+  }
+  t.after(()=>Promise.all(servers.map(server=>server.close())));
+  const origin=await prepare('valid');
   const declaration = JSON.parse(await readFile('proofs/requirements/overdue-reviews-truthful-coverage.json'));
   const args = declaration.assertions[0].predicate.match(/`([^`]+)`/)[1].split(' ').slice(2);
   args[args.indexOf('--origin') + 1] = origin;
   const passed = await cli(args); assert.equal(passed.code, 0, passed.stdout + passed.stderr);
   const receipt = JSON.parse(passed.stdout); assert.ok(receipt.assertions.length > 20);
   assert.deepEqual([...new Set(receipt.assertions.map(a => a.width))], [390, 1440]);
-  assert.ok(receipt.assets.length > 0); assert.ok(requests <= 10);
+  assert.ok(receipt.assets.length > 0); assert.ok(servers[0].requests.length <= 10);
   for (const [failure, code] of [['manifest', 78], ['release', 78], ['asset', 1], ['assertion', 1], ['timeout', 78]]) {
-    mode = failure;
+    const origin=await prepare(failure);
     const failed = await cli(['--origin', origin, '--timeout-ms', failure === 'timeout' ? '100' : '30000']);
     assert.equal(failed.code, code, failure + failed.stdout + failed.stderr);
   }
-  assert.equal(mutations, 0);
+  assert.ok(servers.every(server=>server.requests.every(req=>req.method==='GET')));
 });
 test('CLI rejects invalid origin and deadline', async () => {
   for (const args of [[], ['--origin', 'bad'], ['--origin', 'https://example.com/path'], ['--origin', 'https://example.com', '--timeout-ms', '0']]) assert.equal((await cli(args)).code, 1);

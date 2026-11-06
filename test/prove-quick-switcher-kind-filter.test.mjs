@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from './proof-fixture-server.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+const snapshot = await proofAssetSnapshot();
 import { prove } from '../scripts/prove-quick-switcher-kind-filter.mjs';
 function cli(origin) {
   return new Promise((resolve, reject) => {
@@ -15,20 +16,15 @@ function cli(origin) {
   });
 }
 async function fixture(t, upstream, fail = false) {
-  const server = createServer(async (request, response) => {
-    if (request.url === '/app-release') { response.setHeader('content-type', 'application/json'); return response.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) })); }
-    if (fail) { response.setHeader('content-type', 'text/javascript'); return response.end('export function openQuickSwitcher() { throw Error("Broken deployed fixture"); }'); }
-    const result = await fetch(upstream.url + request.url);
-    response.writeHead(result.status, { 'content-type': result.headers.get('content-type') });
-    response.end(Buffer.from(await result.arrayBuffer()));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  return `http://127.0.0.1:${server.address().port}`;
+  const routes=new Map(upstream?snapshot:[]);
+  routes.set('/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)})});
+  if(fail)routes.set('/js/ui-quick-switcher.js',{contentType:'text/javascript',body:'export function openQuickSwitcher() { throw Error("Broken deployed fixture"); }'});
+  const server=await startFixture({routes});
+  t.after(()=>server.close());
+  return server.origin;
 }
 test('CLI passing fixture proves module only and failing fixture fails assertions', async t => {
-  const upstream = await startFixtureServer();
-  t.after(upstream.stop);
+  const upstream = true;
   const passing = await cli(await fixture(t, upstream));
   assert.equal(passing.code, 78, passing.stdout + passing.stderr);
   const receipt = JSON.parse(passing.stdout);
