@@ -4,7 +4,7 @@ import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
-import { observeRefreshRetention } from '../scripts/prove-deal-documents-refresh-retention.mjs';
+import { observeRefreshRetention, refreshRecordings } from '../scripts/prove-deal-documents-refresh-retention.mjs';
 
 test('refresh retains last successful metadata and replaces scans', async t => {
   const artifact = await temporaryDirectory('documents-retention-', t);
@@ -18,13 +18,9 @@ test('refresh retains last successful metadata and replaces scans', async t => {
         try {
           await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><main></main></body>' }));
           await page.goto(`${server.url}/documents-harness`);
-          await page.evaluate(async transition => {
+          await page.evaluate(async ({ transition, response }) => {
             const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
             const target = document.querySelector('main'), pending = [], requests = [];
-            const response = { ok: true, schema_version: 'deal-documents.v1', documents: [{
-              id: '33333333-3333-4333-8333-333333333333', display_name: 'Retained document',
-              document_type: 'application/pdf', page_count: 2, content_hash: 'a'.repeat(64), stored_at: '2026-01-01T00:00:00Z',
-            }], has_more: false, next_cursor: null };
             const panel = mountDealDocuments(target, { dealId: '11111111-1111-4111-8111-111111111111', client: {
               listDealDocuments(args, { signal }) {
                 requests.push(args);
@@ -67,7 +63,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
               if (transition !== 'Stale -> Expired') check(target.innerHTML === '', 'disposed mount stays empty after late completion and invalidation');
               else check(target.textContent.includes('Session expired'), 'expired mount stays expired');
             } finally { panel.dispose(); }
-          }, transition);
+          }, { transition, response: refreshRecordings.single.response });
         } finally { await page.close(); }
       });
     }
@@ -78,7 +74,7 @@ test('refresh retains last successful metadata and replaces scans', async t => {
           try {
             await page.route('**/documents-harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }));
             await page.goto(`${server.url}/documents-harness`);
-            const result = await page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.js', failure, replacement });
+            const result = await page.evaluate(observeRefreshRetention, { assetUrl: '/js/ui-deal-documents.js', recordings: refreshRecordings, failure, replacement });
             assert.ok(result.retained || result.authorizationCleared);
           } finally { await page.close(); }
         });

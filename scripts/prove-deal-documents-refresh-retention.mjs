@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -6,62 +7,68 @@ import { chromium } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
-export async function observeRefreshRetention({ assetUrl, failure = 'network', replacement = 'nonempty' }) {
+export const refreshRecordings = JSON.parse(readFileSync(new URL('../test/fixtures/deal-documents-refresh-retention/recordings.json', import.meta.url), 'utf8'));
+
+export async function observeRefreshRetention({ assetUrl, recordings, failure = 'network', replacement = 'nonempty' }) {
   const { mountDealDocuments } = await import(assetUrl);
   const target = document.createElement('main'); document.body.replaceChildren(target);
   const pending = [], requests = [];
   const panel = mountDealDocuments(target, { dealId: '11111111-1111-4111-8111-111111111111', client: {
     listDealDocuments(args, { signal }) { requests.push(args); return new Promise((resolve, reject) => pending.push({ resolve, reject, signal })); },
   } });
-  const row = (id, name) => ({ id: `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`, display_name: name,
-    document_type: 'application/pdf', page_count: 2, content_hash: 'a'.repeat(64), stored_at: '2026-01-01T00:00:00Z' });
-  const response = (documents, next = null) => ({ ok: true, schema_version: 'deal-documents.v1', documents, has_more: next !== null, next_cursor: next });
+  const response = name => structuredClone(recordings[name].response);
+  const names = name => response(name).documents.map(row => row.display_name).join();
+  const oldNames = [names('initial'), names('second')].join();
   const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const rows = () => [...target.querySelectorAll('[data-document-id]')].map(node => node.querySelector('h3').textContent);
   const click = name => { const button = [...target.querySelectorAll('button')].find(node => node.textContent === name); if (!button) throw Error(`Missing ${name}`); button.click(); };
   const check = (condition, message) => { if (!condition) throw Error(message); };
+  const deliver = name => {
+    check(JSON.stringify(requests.at(-1)) === JSON.stringify(recordings[name].request), `recorded ${name} request matches production call`);
+    pending.shift().resolve(response(name));
+  };
   try {
-    pending.shift().resolve(response([row(1, 'Original')], 'old-next')); await settle();
-    check(rows().join() === 'Original', 'initial metadata validated');
+    deliver('initial'); await settle();
+    check(rows().join() === names('initial'), 'initial metadata validated');
     target.querySelector('summary').click(); check(target.querySelector('details').open, 'identity disclosure');
-    click('Load more documents'); pending.shift().resolve(response([row(2, 'Second')], 'old-third')); await settle();
+    click('Load more documents'); deliver('second'); await settle();
     click('Refresh documents'); await settle();
-    check(rows().join() === 'Original,Second', 'pending refresh retains last successful read');
+    check(rows().join() === oldNames, 'pending refresh retains last successful read');
     check(target.textContent.includes('Last successful read'), 'pending stale notice');
-    if (failure === 'malformed') pending.shift().resolve({ ...response([]), schema_version: 'wrong' });
+    if (failure === 'malformed') pending.shift().resolve({ ...response('empty'), schema_version: 'wrong' });
     else pending.shift().reject(Object.assign(Error('Synthetic outage'), failure === 'network' ? {} : { status: Number(failure) }));
     await settle();
     if (['401', '403'].includes(failure)) {
       check(rows().length === 0 && target.textContent.includes('Session expired'), 'authorization clears metadata');
       return { authorizationCleared: true };
     }
-    check(rows().join() === 'Original,Second' && target.textContent.includes('Last successful read'), 'failed refresh retains stale metadata');
+    check(rows().join() === oldNames && target.textContent.includes('Last successful read'), 'failed refresh retains stale metadata');
     click('Retry documents'); await settle();
     check(requests.at(-1).cursor === undefined, 'refresh retry starts at null');
-    check(rows().length === 2, 'retry retains display');
+    check(rows().length === 100, 'retry retains display');
     if (replacement === 'dispose' || replacement === 'invalidate') {
       const held = pending.shift();
       let nextPanel;
       if (replacement === 'dispose') {
         panel.dispose();
-        nextPanel = mountDealDocuments(target, { dealId: '22222222-2222-4222-8222-222222222222', client: { async listDealDocuments() { return response([]); } } });
+        nextPanel = mountDealDocuments(target, { dealId: '22222222-2222-4222-8222-222222222222', client: { async listDealDocuments() { return response('empty'); } } });
       }
       else window.dispatchEvent(new Event('doctorcre-session-invalidated'));
       check(held.signal.aborted, 'pending refresh aborted');
-      held.resolve(response([row(3, 'Late')])); await settle();
+      held.resolve(response('late')); await settle();
       check(rows().length === 0, 'late result cannot restore metadata');
       nextPanel?.dispose();
     } else {
-      pending.shift().resolve(response(replacement === 'empty' ? [] : [row(1, 'Replacement')], replacement === 'empty' ? null : 'old-next')); await settle();
-      check(rows().join() === (replacement === 'empty' ? '' : 'Replacement'), 'replacement is atomic, permits repeated old ID and cursor');
+      deliver(replacement === 'empty' ? 'empty' : 'replacement'); await settle();
+      check(rows().join() === (replacement === 'empty' ? '' : names('replacement')), 'replacement is atomic, permits repeated old ID and cursor');
       check(!target.textContent.includes('Last successful read'), 'successful refresh removes stale notice');
       if (replacement === 'empty') check(target.textContent.includes('No documents filed'), 'empty success clears listing');
       else {
         click('Load more documents'); pending.shift().reject(Error('Synthetic page outage')); await settle();
-        click('Retry documents'); check(requests.at(-1).cursor === 'old-next', 'failed load more retries same cursor');
-        check(rows().join() === 'Replacement', 'failed load more retains rows');
-        pending.shift().resolve(response([row(4, 'Next')])); await settle();
-        check(rows().join() === 'Replacement,Next', 'load more appends new scan only');
+        click('Retry documents'); check(requests.at(-1).cursor === recordings.replacement.response.next_cursor, 'failed load more retries same cursor');
+        check(rows().join() === names('replacement'), 'failed load more retains rows');
+        deliver('next'); await settle();
+        check(rows().join() === [names('replacement'), names('next')].join(), 'load more appends new scan only');
       }
     }
     return { retained: true, retryCursor: null, replacement, requestCount: requests.length };
@@ -104,7 +111,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
     });
     const page = await context.newPage();
     await page.goto(`${origin}/__documents-proof`);
-    const observed = await page.evaluate(observeRefreshRetention, { assetUrl: `${origin}/js/ui-deal-documents.js` });
+    const observed = await page.evaluate(observeRefreshRetention, { assetUrl: `${origin}/js/ui-deal-documents.js`, recordings: refreshRecordings });
     const after = await readAppRelease(base, read);
     assert.deepEqual(after, release, 'unchanged app release');
     return { ok: true, release, after, deployed_asset_fixture: observed, natural_authenticated_observation: 'insufficient_evidence',
