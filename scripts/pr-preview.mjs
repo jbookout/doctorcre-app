@@ -8,7 +8,6 @@ import { credentialFreeEnv } from './release-environment.mjs';
 
 // PR code runs only in hosted CI. Locally, download static assets and deploy
 // them with main's Worker, config and lockfile-pinned Wrangler.
-export const REPO = APP_REPOSITORY;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const MARK = '<!-- doctorcre-pr-preview -->';
 const SITE_LIMITS = { files: 5000, bytes: 200 * 1024 * 1024 };
@@ -86,26 +85,25 @@ export function checkedSiteFiles(siteDir, limits = SITE_LIMITS) {
 const run = (command, args, { cwd = root, env = process.env, capture = false } = {}) =>
   execFileSync(command, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', capture ? 'pipe' : 'inherit', 'inherit'] });
 const gh = (...args) => run('gh', [...args], { capture: true }).trim();
-const ghPr = (...args) => gh(...args, '-R', REPO);
+const ghPr = (repository, ...args) => gh(...args, '-R', repository);
 const git = (...args) => run('git', args, { capture: true }).trim();
 
-export function isAppRepositoryRemote(origin) {
+export function previewRepository(origin = git('config', '--get', 'remote.origin.url')) {
   const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(origin);
-  return Boolean(match && isAppRepository(match[1]));
+  if (!match || !isAppRepository(match[1])) throw new Error(`origin is ${origin}, not an admitted ${APP_REPOSITORY} remote`);
+  return match[1];
 }
 
 function assertRunningFromMain() {
   const origin = git('config', '--get', 'remote.origin.url');
-  if (!isAppRepositoryRemote(origin)) {
-    throw new Error(`origin is ${origin}, not ${REPO}; run this from a checkout of ${REPO}`);
-  }
+  const repository = previewRepository(origin);
   run('git', ['fetch', '--quiet', 'origin', 'main']);
   const head = git('rev-parse', 'HEAD');
   const main = git('rev-parse', 'origin/main');
   if (head !== main) throw new Error(`this checkout is at ${head.slice(0, 12)}, not origin/main ${main.slice(0, 12)}; check out main, pull, and run again`);
   // Untracked files cannot replace what runs here (the staging sources come from git, not the working tree).
   if (git('status', '--porcelain', '--untracked-files=no')) throw new Error('this checkout has uncommitted changes to tracked files; run from a clean main');
-  return head;
+  return { head, origin, repository };
 }
 
 export function pinnedWrangler(trustedRoot = root) {
@@ -120,18 +118,19 @@ export function pinnedWrangler(trustedRoot = root) {
 const wrangler = (args, { cwd = root, capture = false } = {}) => run(process.execPath,
   [pinnedWrangler(), ...args], { cwd, env: { ...credentialFreeEnv(), NO_COLOR: '1' }, capture });
 
-export function downloadPreview(number, sha, directory, ghCall = gh) {
-  const [run] = JSON.parse(ghCall('run', 'list', '--repo', REPO, '--workflow', 'ci.yml',
+export function downloadPreview(number, sha, directory, ghCall = gh, origin = git('config', '--get', 'remote.origin.url')) {
+  const repository = previewRepository(origin);
+  const [run] = JSON.parse(ghCall('run', 'list', '--repo', repository, '--workflow', 'ci.yml',
     '--commit', sha, '--event', 'pull_request', '--limit', '1', '--json', 'databaseId,headSha,status,conclusion'));
   if (!run || run.headSha !== sha || run.status !== 'completed' || run.conclusion !== 'success')
     throw new Error('preview needs the exact head SHA in a completed-success CI run');
-  ghCall('run', 'download', String(run.databaseId), '--repo', REPO,
+  ghCall('run', 'download', String(run.databaseId), '--repo', repository,
     '--name', `pr-preview-${number}-${sha}`, '--dir', directory);
 }
 
 function deploy(number, dryRun) {
-  const head = assertRunningFromMain();
-  const pr = JSON.parse(ghPr('pr', 'view', number, '--json', 'state,headRefOid,isCrossRepository'));
+  const { head, origin, repository } = assertRunningFromMain();
+  const pr = JSON.parse(ghPr(repository, 'pr', 'view', number, '--json', 'state,headRefOid,isCrossRepository'));
   if (pr.state !== 'OPEN') throw new Error(`PR ${number} is ${pr.state}; previews are for open PRs`);
   if (pr.isCrossRepository) throw new Error(`PR ${number} comes from a fork; previews require same-repository PRs`);
   const sha = pr.headRefOid;
@@ -141,7 +140,7 @@ function deploy(number, dryRun) {
   const site = join(stage, 'dist/site');
   mkdirSync(site, { recursive: true });
   try {
-    downloadPreview(number, sha, site);
+    downloadPreview(number, sha, site, gh, origin);
     checkedSiteFiles(site);
     execFileSync('tar', ['-x', '-C', stage], { input: execFileSync('git', ['archive', '--format=tar', head, 'src/preview-worker.js', 'src/worker.js', 'js', 'contracts'], { cwd: root, maxBuffer: 1 << 30 }) });
     const name = workerName(number);
@@ -153,35 +152,35 @@ function deploy(number, dryRun) {
     if (dryRun) { console.log(`\n[dry run] would post on PR ${number}:\n${liveComment(`https://${name}.<subdomain>.workers.dev`, sha)}`); return; }
     const url = out.match(new RegExp(`https://${name}\\.[a-z0-9-]+\\.workers\\.dev`))?.[0];
     if (!url) throw new Error('deployed, but Wrangler printed no workers.dev URL');
-    upsertComment(number, liveComment(url, sha));
+    upsertComment(repository, number, liveComment(url, sha));
     console.log(`\npreview: ${url}`);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
 }
 
-function ownComment(number) {
+function ownComment(repository, number) {
   const me = gh('api', 'user', '-q', '.login');
-  const found = gh('api', '--paginate', `repos/${REPO}/issues/${number}/comments`, '-q',
+  const found = gh('api', '--paginate', `repos/${repository}/issues/${number}/comments`, '-q',
     `.[] | select(.user.login == "${me}" and (.body | startswith("${MARK}"))) | [.id, (.body | contains("Preview removed"))] | @tsv`);
   const [id, removed] = found.split('\n')[0]?.split('\t') ?? [];
   return id ? { id, removed: removed === 'true' } : null;
 }
 
-function upsertComment(number, body) {
-  const own = ownComment(number);
-  if (own) gh('api', '-X', 'PATCH', `repos/${REPO}/issues/comments/${own.id}`, '-f', `body=${body}`);
-  else gh('api', `repos/${REPO}/issues/${number}/comments`, '-f', `body=${body}`);
+function upsertComment(repository, number, body) {
+  const own = ownComment(repository, number);
+  if (own) gh('api', '-X', 'PATCH', `repos/${repository}/issues/comments/${own.id}`, '-f', `body=${body}`);
+  else gh('api', `repos/${repository}/issues/${number}/comments`, '-f', `body=${body}`);
 }
 
 function clean(number, dryRun) {
-  assertRunningFromMain();
-  const prs = JSON.parse(ghPr('pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state'));
+  const { repository } = assertRunningFromMain();
+  const prs = JSON.parse(ghPr(repository, 'pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state'));
   for (const n of cleanTargets(prs, number)) {
-    const own = ownComment(n);
+    const own = ownComment(repository, n);
     if (!own || own.removed) { if (number) console.log(`PR ${n}: no live preview comment`); continue; }
     wrangler(['delete', workerName(n), '--force', ...(dryRun ? ['--dry-run'] : [])]);
-    if (!dryRun) gh('api', '-X', 'PATCH', `repos/${REPO}/issues/comments/${own.id}`, '-f', `body=${removedComment()}`);
+    if (!dryRun) gh('api', '-X', 'PATCH', `repos/${repository}/issues/comments/${own.id}`, '-f', `body=${removedComment()}`);
     console.log(`PR ${n}: ${dryRun ? 'would remove' : 'removed'} ${workerName(n)}`);
   }
 }

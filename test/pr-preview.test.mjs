@@ -1,11 +1,12 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAppRepositoryRemote, downloadPreview, checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
+import { previewRepository, downloadPreview, checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
 import preview from '../src/preview-worker.js';
 
 const base = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
@@ -98,14 +99,14 @@ test('local previews only download the exact successful head and never install o
   const run = { databaseId: 17, headSha: sha, status: 'completed', conclusion: 'success' };
   const calls = [];
   const gh = (...args) => { calls.push(args); return JSON.stringify([run]); };
-  downloadPreview('7', sha, '/synthetic-assets', gh);
+  downloadPreview('7', sha, '/synthetic-assets', gh, 'https://github.com/DoctorCRE/doctorcre-app.git');
   assert.deepEqual(calls.map(args => args.slice(0, 2)), [['run', 'list'], ['run', 'download']]);
   assert.deepEqual(calls[1], ['run', 'download', '17', '--repo', 'DoctorCRE/doctorcre-app', '--name', `pr-preview-7-${sha}`, '--dir', '/synthetic-assets']);
   for (const change of [{ headSha: 'b'.repeat(40) }, { status: 'in_progress' }, { conclusion: 'failure' }]) {
     calls.length = 0;
     assert.throws(() => downloadPreview('7', sha, '/synthetic-assets', (...args) => {
       calls.push(args); return JSON.stringify([{ ...run, ...change }]);
-    }), /exact head|completed-success/);
+    }, 'https://github.com/DoctorCRE/doctorcre-app.git'), /exact head|completed-success/);
     assert.equal(calls.length, 1, 'refuse before downloading or deploying');
   }
   const source = await readFile(new URL('../scripts/pr-preview.mjs', import.meta.url), 'utf8');
@@ -115,9 +116,57 @@ test('local previews only download the exact successful head and never install o
 test('preview checkout admits both app remotes and refuses unrelated repositories', () => {
   for (const prefix of ['https://github.com/', 'git@github.com:', 'ssh://git@github.com/'])
     for (const suffix of ['', '.git']) {
-      assert.equal(isAppRepositoryRemote(`${prefix}jbookout/doctorcre-app${suffix}`), true);
-      assert.equal(isAppRepositoryRemote(`${prefix}DoctorCRE/doctorcre-app${suffix}`), true);
-      assert.equal(isAppRepositoryRemote(`${prefix}DoctorCRE/other${suffix}`), false);
+      assert.equal(previewRepository(`${prefix}jbookout/doctorcre-app${suffix}`), 'jbookout/doctorcre-app');
+      assert.equal(previewRepository(`${prefix}DoctorCRE/doctorcre-app${suffix}`), 'DoctorCRE/doctorcre-app');
+      assert.throws(() => previewRepository(`${prefix}DoctorCRE/other${suffix}`), /origin/);
     }
-  assert.equal(isAppRepositoryRemote('https://github.com.evil/DoctorCRE/doctorcre-app'), false);
+  assert.throws(() => previewRepository('https://github.com.evil/DoctorCRE/doctorcre-app'), /origin/);
 });
+
+for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app']) {
+  test(`preview lookup and download use the current origin ${repository}`, () => {
+    const calls = [];
+    const gh = (...args) => {
+      calls.push(args);
+      assert.equal(args[args.indexOf('--repo') + 1], repository, 'only the current repository exists');
+      return JSON.stringify([{ databaseId: 17, headSha: sha, status: 'completed', conclusion: 'success' }]);
+    };
+    downloadPreview('7', sha, '/synthetic-assets', gh, `https://github.com/${repository}.git`);
+    assert.deepEqual(calls.map(args => args.slice(0, 2)), [['run', 'list'], ['run', 'download']]);
+  });
+}
+
+test('preview lookup refuses an unrelated origin before accessing GitHub', () => {
+  let calls = 0;
+  assert.throws(() => downloadPreview('7', sha, '/synthetic-assets', () => { calls++; }, 'https://github.com/DoctorCRE/other.git'), /origin/);
+  assert.equal(calls, 0);
+});
+
+for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app']) {
+  test(`preview cleanup reads PRs and comments from the current origin ${repository}`, t => {
+    const bin = temporaryDirectory('preview-commands-', t);
+    const log = join(bin, 'calls.jsonl');
+    writeFileSync(join(bin, 'git'), `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args[0] === 'config') console.log('git@github.com:${repository}.git');
+else if (args[0] === 'rev-parse') console.log('${sha}');
+else if (!['fetch', 'status'].includes(args[0])) process.exit(1);
+`, { mode: 0o755 });
+    writeFileSync(join(bin, 'gh'), String.raw`#!${process.execPath}
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\n');
+if (args[0] === 'pr') console.log(JSON.stringify([{ number: 7, state: 'CLOSED' }]));
+else if (args[1] === 'user') console.log('fixture-user');
+else console.log('17\ttrue');
+`, { mode: 0o755 });
+    const output = execFileSync(process.execPath, [new URL('../scripts/pr-preview.mjs', import.meta.url).pathname, 'clean', '7', '--dry-run'], {
+      env: { ...process.env, PATH: bin + ':' + process.env.PATH }, encoding: 'utf8', timeout: 10000,
+    });
+    assert.match(output, /no live preview comment/);
+    const calls = readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(calls[0], ['pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state', '-R', repository]);
+    assert.equal(calls[2][2], `repos/${repository}/issues/7/comments`);
+    assert.equal(calls.length, 3, 'read-only cleanup skips an already removed preview');
+  });
+}
