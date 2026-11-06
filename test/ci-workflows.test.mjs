@@ -31,6 +31,7 @@ test('merge groups run every required CI job on the group SHA and emit exactly t
     merge_group: { head_sha: 'a'.repeat(40), base_sha: 'b'.repeat(40) },
   } };
   const jobs = document.jobs;
+  assert.ok(eventCondition(jobs.test.if, github), 'test must run on merge groups');
   assert.equal(jobs.test.name ?? 'test', 'test');
   assert.equal(jobs.test.strategy, undefined, 'required check must not gain a matrix suffix');
   assert.deepEqual(jobs.test.needs, ['checks', 'shards', 'performance', 'live']);
@@ -40,7 +41,7 @@ test('merge groups run every required CI job on the group SHA and emit exactly t
   assert.ok(Object.hasOwn(reusable.on ?? reusable.true, 'workflow_call'));
   assert.equal((reusable.on ?? reusable.true).merge_group, undefined);
   for (const [name, job] of [
-    ...jobs.test.needs.map(name => [name, jobs[name]]), ['test', jobs.test],
+    ...jobs.test.needs.map(name => [name, jobs[name]]),
     ['reusable checks', reusable.jobs.checks],
   ]) {
     assert.ok(eventCondition(job.if, github), `${name} must run on merge groups`);
@@ -54,6 +55,7 @@ test('merge groups run every required CI job on the group SHA and emit exactly t
     }
   }
   const aggregate = jobs.test.steps.find(step => step.env?.CHECKS);
+  assert.ok(eventCondition(aggregate.if, github), 'test must enforce dependency results on merge groups');
   for (const name of jobs.test.needs) {
     assert.equal(aggregate.env[name.toUpperCase()], `\${{ needs.${name}.result }}`);
     const env = Object.fromEntries(jobs.test.needs.map(job => [job.toUpperCase(), 'success']));
