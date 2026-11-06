@@ -1,4 +1,4 @@
-import test, { before, after } from 'node:test';
+import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import axe from 'axe-core';
 import { rm } from 'node:fs/promises';
@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { scenario } from './browser-scenario.mjs';
+
+describe('test/home-sections-browser.test.mjs', () => {
 const NOW = new Date('2026-11-03T10:00:00-06:00');
 let outDir;
 before(async () => { outDir = temporaryDirectory('home-sections-'); await buildArtifact({ root: process.cwd(), outDir }); });
@@ -212,4 +214,6 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
   await page.clock.fastForward(1000);
   await today.locator('[data-inbox-row]').waitFor({ state: 'detached' });
   assert.equal(await today.locator('[data-inbox-row]').count(), 0);
+});
+
 });

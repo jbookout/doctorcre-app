@@ -203,9 +203,9 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.match(performance, /run: cat test-artifacts\/performance\/summary\.md >> "\$GITHUB_STEP_SUMMARY"/);
   assert.match(ci, /test "\$PERFORMANCE" = success/,
     'the aggregate consumes the successful job conclusion after a tolerated measurement failure');
-  assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
+  assert.match(ci, /node --test --test-shard=\$\{\{ matrix.shard \}\}\/4/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
-  assert.match(ci, /browser-results.py collect/);
+  assert.match(ci, /browser-results.py out\/browser-results\/junit.xml/);
   assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
@@ -463,14 +463,19 @@ test('required CI runs the strict no-emit UI typecheck', async () => {
 test('main and PR synthetic shards retain first attempts and gate critical execution', () => {
   const shards = ci.split(/^  shards:\n/m)[1].split(/^  performance:/m)[0];
   assert.doesNotMatch(shards, /if: \$\{\{ github.event_name == 'pull_request' \}\}/);
-  assert.match(shards, /python3 scripts\/browser-results.py run/);
+  assert.match(shards, /node --test --test-shard=/);
   assert.match(shards, /--shard \$\{\{ matrix.shard \}\}/);
-  assert.match(shards, /if: \$\{\{ always\(\) \}\}[\s\S]*browser-results.py collect/);
+  assert.match(shards, /if: \$\{\{ always\(\) \}\}[\s\S]*browser-results.py out\/browser-results\/junit.xml/);
   assert.match(shards, /retention-days: 14/);
   assert.match(shards, /browser-results-\$\{\{ github.sha \}\}-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}-\$\{\{ matrix.shard \}\}/);
   const gate = ci.split(/^  test:\n/m)[1].split(/^  preview:/m)[0];
-  assert.match(gate, /browser-results.py verify/);
-  assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
+  assert.doesNotMatch(gate, /download-artifact|browser-results.py|run_attempt/);
+  assert.match(shards, /annotate_only: true/);
+  for (const option of ['fail_on_failure', 'fail_on_parse_error', 'require_tests', 'require_passed_tests']) {
+    assert.ok(shards.includes(`${option}: true`));
+  }
+  assert.match(shards, /check_retries: false/);
+  assert.doesNotMatch(ci, /pull_request_target/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
   for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', 'PERFORMANCE']) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',

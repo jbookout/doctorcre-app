@@ -1,137 +1,211 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-PROGRAM = ROOT / 'scripts/browser-results.py'
-spec = importlib.util.spec_from_file_location('results', PROGRAM)
+spec = importlib.util.spec_from_file_location('results', ROOT / 'scripts/browser-results.py')
 results = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(results)
-FIXTURES = ROOT / 'test/fixtures/browser-results'
 
 
 class ResultsTest(unittest.TestCase):
-    def test_native_outcomes_and_nested_identity(self):
-        rows, complete = results.parse_junit((FIXTURES / 'outcomes.xml').read_text())
-        self.assertTrue(complete)
-        self.assertEqual([r['status'] for r in rows], ['pass', 'skip', 'fail', 'cancelled'])
-        self.assertEqual(rows[-1]['scenario_id'], 'test/demo-browser.test.mjs::parent::cancelled')
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / 'test').mkdir()
+        self.files = sorted({s.split('::')[0] for s in results.CRITICAL})
+        self.assertEqual(len(results.CRITICAL), 23)
 
-    def test_partial_output_keeps_completed_receipts(self):
-        rows, complete = results.parse_junit('<testsuites><testcase name="done" file="test/demo-browser.test.mjs"/><testcase')
-        self.assertFalse(complete)
-        self.assertEqual(rows[0]['status'], 'pass')
+    def produce(self, change=None):
+        for file in self.files:
+            names = [s.split('::', 1)[1] for s in results.CRITICAL if s.startswith(file + '::')]
+            source = "import test, {describe} from 'node:test';\n" + f"describe({json.dumps(file)},()=>{{\n"
+            for name in names:
+                parent, _, child = name.partition('::')
+                body = f"test({json.dumps(parent)}, async t => {{await t.test({json.dumps(child)},()=>{{}});}});" if child else f"test({json.dumps(name)},()=>{{}});"
+                source += (change(body) if change else body) + '\n'
+            (self.root / file).write_text(source + '\n});\n')
 
-    def reports(self):
-        reports = [dict(schema='browser-results.v1', sha='a'*40, run_id='42', attempt=1,
-                        shard=str(n), job_status='success', complete=True, receipts=[])
-                   for n in range(1, 5)]
-        reports[0]['receipts'] = [dict(scenario_id=s, status='pass') for s in results.CRITICAL]
-        return reports
+    def run_node(self, shard, timeout=60):
+        output = self.root / f'{shard}.xml'
+        env = dict(os.environ)
+        env.pop('NODE_TEST_CONTEXT', None)
+        run = subprocess.run(['node', '--test', f'--test-shard={shard}/4', '--test-concurrency=2',
+                              '--test-timeout=180000', '--test-reporter=junit',
+                              f'--test-reporter-destination={output}', *self.files],
+                             cwd=self.root, env=env, capture_output=True, timeout=timeout)
+        return run, output
 
-    def test_coverage_never_accepts_missing_duplicate_or_unsuccessful(self):
-        self.assertEqual(results.verify(self.reports(), 'a'*40, '42', 1), [])
-        for status in ['fail', 'skip', 'cancelled', 'never-executed']:
-            reports = self.reports()
-            reports[0]['receipts'][0]['status'] = status
-            self.assertTrue(results.verify(reports, 'a'*40, '42', 1), status)
-        for mutate in [lambda r: r.pop(), lambda r: r.append(r[0]),
-                       lambda r: r[0]['receipts'].pop(),
-                       lambda r: r[0]['receipts'].append(r[0]['receipts'][0]),
-                       lambda r: r[0].update(attempt=2),
-                       lambda r: r[0].update(sha='b'*40),
-                       lambda r: r[0].update(complete=False),
-                       lambda r: r[0].update(job_status='cancelled')]:
-            reports = self.reports()
-            mutate(reports)
-            self.assertTrue(results.verify(reports, 'a'*40, '42', 1))
+    def test_failure_annotations_use_real_test_file_and_line(self):
+        self.root = self.root / 'workspace/doctorcre-app'
+        (self.root / 'test').mkdir(parents=True)
+        file = self.root / 'test/failing.test.mjs'
+        file.write_text("import test from 'node:test';\nimport assert from 'node:assert/strict';\n"
+                        "test('failure case', () => {\n  assert.equal(1, 2);\n});\n"
+                        "test('later pass', () => {});\n")
+        self.files = ['test/failing.test.mjs']
+        run, output = self.run_node(1)
+        self.assertNotEqual(run.returncode, 0)
+        subprocess.run(['python3', str(ROOT / 'scripts/browser-results.py'), str(output),
+                        '--shard', '1'], cwd=self.root, capture_output=True, timeout=30)
+        case = next(results.ET.parse(output).iter('testcase'))
+        self.assertEqual(case.get('file'), 'test/failing.test.mjs')
+        self.assertEqual(case.get('line'), '4')
+        self.assertIsNotNone(case.find('failure'))
+        self.assertEqual(len(list(results.ET.parse(output).iter('testcase'))), 2)
+        action = os.environ.get('JUNIT_ACTION_DIST')
+        if action:
+            dependency = self.root / 'node_modules/teex/test.js'
+            dependency.parent.mkdir(parents=True)
+            dependency.write_text('')
+            event = self.root / 'event.json'
+            event.write_text('{}')
+            summary = self.root / 'summary.md'
+            summary.touch()
+            env = dict(PATH=os.environ['PATH'], GITHUB_WORKSPACE=str(self.root.parent),
+                       GITHUB_REPOSITORY='synthetic/fork', GITHUB_EVENT_PATH=str(event),
+                       GITHUB_STEP_SUMMARY=str(summary), INPUT_TOKEN='synthetic-no-api-token',
+                       INPUT_REPORT_PATHS=str(output), INPUT_ANNOTATE_ONLY='true',
+                       INPUT_COMMENT='false', INPUT_JOB_SUMMARY='true', INPUT_DETAILED_SUMMARY='true',
+                       INPUT_FAIL_ON_FAILURE='true', INPUT_FAIL_ON_PARSE_ERROR='true',
+                       INPUT_REQUIRE_TESTS='true', INPUT_REQUIRE_PASSED_TESTS='true',
+                       INPUT_CHECK_RETRIES='false', INPUT_GROUP_REPORTS='true',
+                       INPUT_RESOLVE_IGNORE_CLASSNAME='false', INPUT_UPDATE_CHECK='false',
+                       INPUT_INCLUDE_PASSED='false', INPUT_ANNOTATE_NOTICE='false',
+                       INPUT_FLAKY_SUMMARY='false', INPUT_SKIP_COMMENT_WITHOUT_TESTS='false',
+                       INPUT_FAILED_SUMMARY_LOGS='false', INPUT_UPDATECOMMENT='true',
+                       INPUT_CHECK_ANNOTATIONS='true', INPUT_INCLUDE_SKIPPED='true',
+                       INPUT_FAILED_SUMMARY='true', INPUT_FOLLOW_SYMLINK='false',
+                       INPUT_TRUNCATE_STACK_TRACES='true', INPUT_TRANSFORMERS='[]',
+                       INPUT_CHECK_NAME='JUnit Test Report')
+            workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+            publisher = workflow.split('      - name: Publish native JUnit')[1].split('      - name: Retain execution evidence')[0]
+            for key, value in re.findall(r'^          (\w+): (.+)$', publisher, re.M):
+                if key != 'report_paths':
+                    env['INPUT_' + key.upper()] = value
+            published = subprocess.run(['node', action], cwd=self.root.parent, env=env,
+                                       capture_output=True, text=True, timeout=30)
+            log = published.stdout + published.stderr
+            self.assertEqual(published.returncode, 1, log)
+            self.assertIn('::error title=', log, log)
+            annotation = next(line for line in log.splitlines() if '::error title=' in line)
+            self.assertIn(f'file={self.root.name}/test/failing.test.mjs,line=4,endLine=4', annotation)
+            print(annotation)
 
-    def test_shards_partition_the_full_suite_once(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / 'test').mkdir()
-            for n in range(9):
-                (root / f'test/{n}.test.mjs').write_text("import test from 'node:test'; test('pass',()=>{});")
-            planned = []
-            for shard in range(1, 5):
-                output = root / str(shard)
-                run = subprocess.run(['python3', str(PROGRAM), 'run', '--input', str(output), '--shard', str(shard)],
-                                     cwd=root, capture_output=True)
-                self.assertEqual(run.returncode, 0)
-                repeat = subprocess.run(['python3', str(PROGRAM), 'run', '--input', str(output), '--shard', str(shard)],
-                                        cwd=root, capture_output=True)
-                self.assertNotEqual(repeat.returncode, 0)
-                planned.extend(json.loads((output / 'planned.json').read_text()))
-                rows, complete = results.collect(output)
-                self.assertTrue(complete)
-                self.assertTrue(all(r['status'] == 'pass' for r in rows))
-            self.assertEqual(sorted(planned), [f'test/{n}.test.mjs' for n in range(9)])
+    def test_native_pass_and_nested_identity_all_23_once(self):
+        self.produce()
+        for shard in range(1, 5):
+            run, output = self.run_node(shard)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            results.verify(output, self.files, shard)
 
-    def test_real_node_reporter_contract(self):
-        with tempfile.TemporaryDirectory() as directory:
-            file = Path(directory) / 'native.test.mjs'
-            file.write_text("import test from 'node:test'; test('pass',()=>{}); test('skip',{skip:true},()=>{}); test('fail',()=>{throw Error('intentional')}); test('cancel',{timeout:20},async()=>new Promise(()=>{}));")
-            run = subprocess.run(['node', '--test', '--test-reporter=junit', str(file)],
-                                 capture_output=True, text=True, timeout=5)
-            rows, complete = results.parse_junit(run.stdout, 'test/native.test.mjs')
-            self.assertTrue(complete, run.stdout)
-            self.assertEqual([r['status'] for r in rows], ['pass', 'skip', 'fail', 'cancelled'])
+    def test_native_skipped_failed_omitted_duplicate_and_interrupted_critical(self):
+        changes = {
+            'skip': lambda s: s.replace(',()=>{}', ',{skip:true},()=>{}'),
+            'failure': lambda s: s.replace('()=>{}', "()=>{throw Error('seeded')}"),
+            'omission': lambda s: '',
+            'duplicate': lambda s: s + s,
+            'interrupted': lambda s: s.replace('()=>{}', ',{timeout:10},async()=>new Promise(()=>{})').replace(',,', ','),
+        }
+        for name, change in changes.items():
+            with self.subTest(name=name):
+                self.produce(change)
+                _, output = self.run_node(1)
+                with self.assertRaises(ValueError):
+                    results.verify(output, self.files, 1)
 
-    def test_native_failing_critical_test_keeps_required_gate_red(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / 'test').mkdir()
-            name = 'test/inbox-freshness-feedback-browser.test.mjs'
-            scenario = 'authentication loss during a refresh retires all private cards'
-            (root / name).write_text("import test from 'node:test'; test(" + json.dumps(scenario) + ", () => {throw Error('intentional critical failure')});")
-            for i in range(4):
-                (root / f'test/z{i}.test.mjs').write_text("import test from 'node:test'; test('later file',()=>{});")
-            output = root / 'results'
-            run = subprocess.run(['python3', str(PROGRAM), 'run', '--input', str(output), '--shard', '1'],
-                                 cwd=root, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
-            rows, complete = results.collect(output)
-            self.assertTrue(complete)
-            self.assertIn(dict(scenario_id=name + '::' + scenario, status='fail'), rows)
-            self.assertIn(dict(scenario_id='test/z3.test.mjs::later file', status='pass'), rows)
-            shell = (ROOT / '.github/workflows/ci.yml').read_text().split('      - name: Require all applicable jobs to pass')[1].split('        run: |\n')[1].split('\n  preview:')[0]
-            shell = '\n'.join(line[10:] for line in shell.splitlines())
-            for event in ['push', 'pull_request']:
-                import os
-                gate = subprocess.run(['bash', '-e', '-c', shell], capture_output=True,
-                                      env={**os.environ, 'CHECKS':'success', 'LIVE':'success',
-                                           'SHARDS':'failure', 'PERFORMANCE':'success',
-                                           'EVENT':event})
-                self.assertNotEqual(gate.returncode, 0)
+    def test_same_case_name_in_another_file_cannot_replace_critical_identity(self):
+        self.produce()
+        file = self.root / self.files[0]
+        file.write_text(file.read_text().replace(self.files[0], 'test/other.test.mjs'))
+        _, output = self.run_node(1)
+        with self.assertRaises(ValueError):
+            results.verify(output, self.files, 1)
 
-    def test_planned_unstarted_and_interrupted_files_are_distinct(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / 'planned.json').write_text(json.dumps(['test/never.test.mjs', 'test/interrupted.test.mjs']))
-            (root / 'interrupted.test.started').touch()
-            rows, complete = results.collect(root)
-            self.assertFalse(complete)
-            self.assertEqual([r['status'] for r in rows], ['never-executed', 'cancelled'])
+    def test_missing_truncated_empty_and_deleted_file_refused(self):
+        output = self.root / '1.xml'
+        with self.assertRaises(OSError):
+            results.verify(output, self.files, 1)
+        self.produce()
+        _, output = self.run_node(1)
+        native = output.read_text()
+        for data in [native[:-30], '<?xml version="1.0"?><testsuites/>']:
+            output.write_text(data)
+            with self.assertRaises((ValueError, results.ET.ParseError)):
+                results.verify(output, self.files, 1)
+        output.write_text(native)
+        with self.assertRaises(ValueError):
+            results.verify(output, self.files[1:], 1)
 
-    def test_cli_missing_output_is_visible_nonexecution(self):
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'receipt.json'
-            run = subprocess.run(['python3', str(PROGRAM), 'collect', '--input', str(output.with_suffix('.xml')),
-                                  '--output', str(output), '--sha', 'a'*40, '--run-id', '42',
-                                  '--attempt', '1', '--shard', '1', '--job-status', 'cancelled'], capture_output=True)
-            self.assertEqual(run.returncode, 1)
-            report = json.loads(output.read_text())
-            self.assertEqual(report['job_status'], 'cancelled')
-            self.assertFalse(report['complete'])
-            gate = subprocess.run(['python3', str(PROGRAM), 'verify', '--input', directory,
-                                   '--output', str(Path(directory) / 'coverage.json'), '--sha', 'a'*40,
-                                   '--run-id', '42', '--attempt', '1'], capture_output=True)
-            self.assertEqual(gate.returncode, 1)
-            coverage = json.loads((Path(directory) / 'coverage.json').read_text())
-            self.assertTrue(all(r['status'] == 'never-executed' for r in coverage['critical']))
+    def test_early_failure_later_pass_and_killed_runner_remain_red(self):
+        self.produce(lambda s: s + "test('later pass',()=>{});" if 'authentication loss' in s else s)
+        file = self.root / self.files[-1]
+        file.write_text(file.read_text().replace('()=>{}', "()=>{throw Error('early')} ", 1))
+        run, _ = self.run_node(4)
+        self.assertNotEqual(run.returncode, 0)
+        self.produce(lambda s: s.replace('()=>{}', '()=>{process.kill(process.pid,"SIGKILL")}'))
+        run, output = self.run_node(1)
+        self.assertNotEqual(run.returncode, 0)
+        with self.assertRaises(ValueError):
+            results.verify(output, self.files, 1)
+
+    def test_killed_shard_cannot_supply_complete_report(self):
+        self.produce(lambda s: s.replace('()=>{}', '()=>{process.kill(process.ppid,"SIGKILL")}'))
+        run, output = self.run_node(1)
+        self.assertNotEqual(run.returncode, 0)
+        with self.assertRaises((OSError, ValueError, results.ET.ParseError)):
+            results.verify(output, self.files, 1)
+
+    def test_native_shards_partition_working_tree_inventory_once(self):
+        self.files = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'test').glob('*.test.mjs'))
+        for file in self.files:
+            (self.root / file).write_text("import test from 'node:test'; test(" + json.dumps(file) + ",()=>{});")
+        union = []
+        for shard in range(1, 5):
+            run, output = self.run_node(shard)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            names = [e.get('name') for e in results.ET.parse(output).iter('testcase')]
+            self.assertEqual(names, self.files[shard - 1::4])
+            union.extend(names)
+        self.assertEqual(sorted(union), self.files)
+        self.assertEqual(len(set(union)), len(union))
+        print(f'native partition: {len(union)} files, no duplicates')
+
+    def test_first_attempt_proof_requires_only_produced_native_evidence(self):
+        plan = json.loads((ROOT / 'proofs/requirements/wr617-s1-ci-first-attempt-evidence.json').read_text())
+        observation = next(a for a in plan['assertions'] if a['id'] == 'main-first-attempt-evidence-retained')
+        requirement = json.dumps(observation)
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        unsupported = []
+        for obsolete, producer in [('browser-coverage', 'name: browser-coverage'),
+                                   ('planned manifests', 'planned'), ('start/exit evidence', 'started'),
+                                   ('per-file JUnit', 'per-file')]:
+            required, produced = obsolete in requirement, producer in workflow
+            print(f'{obsolete}: required={required} produced={produced}')
+            if required and not produced:
+                unsupported.append(obsolete)
+        self.assertEqual(unsupported, [], 'proof requires deleted evidence')
+        self.assertIn('per-shard native JUnit XML', requirement)
+        self.assertIn('required test aggregate', requirement)
+        self.assertIn('out/browser-results/junit.xml', workflow)
+        self.assertIn('retention-days: 14', workflow)
+        self.assertIn('needs: [checks, shards, performance, live]', workflow)
+
+    def test_required_aggregate_accepts_only_native_success_including_retained_shards(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        shell = workflow.split('      - name: Require all applicable jobs to pass')[1].split('        run: |\n')[1].split('\n  preview:')[0]
+        shell = '\n'.join(line[10:] for line in shell.splitlines())
+        env = dict(CHECKS='success', LIVE='success', SHARDS='success', PERFORMANCE='success')
+        self.assertEqual(subprocess.run(['bash', '-e', '-c', shell], env=env).returncode, 0)
+        for job in env:
+            for state in ['failure', 'cancelled', 'skipped', '']:
+                self.assertNotEqual(subprocess.run(['bash', '-e', '-c', shell], env={**env, job: state}).returncode, 0)
 
 
 if __name__ == '__main__':
