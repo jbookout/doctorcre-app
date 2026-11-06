@@ -7,7 +7,7 @@ stateDiagram-v2
       Filtered --> Filtered: edit query / recompute literal subset
       Filtered --> AllLoaded: Clear
       Filtered --> Filtered: refresh / retain query and replace snapshot
-      Filtered --> Filtered: route current / pin if unmatched
+      Filtered --> Filtered: Home card query / pin if unmatched
     }
     --
     state Availability {
@@ -24,5 +24,7 @@ stateDiagram-v2
       Expanded --> Collapsed: Show less
     }
   }
+  Mounted --> FullInbox: follow card title
+  FullInbox --> Mounted: browser Back / restore search
   Mounted --> Disposed: session clear or unmount
   Disposed --> [*]

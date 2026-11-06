@@ -3,7 +3,7 @@ import { completionLabel } from './sections';
 import { BulkControls } from './bulk-controls';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router';
+import { BrowserRouter, Link, Route, Routes, useLocation, useParams } from 'react-router';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { command, taskCommand, shelves, type Action, type Command, type InboxClient, type InboxItem, type ItemResult, type Snapshot, type TaskReceipt } from './inbox';
 import { recordRoutes } from './routes';
@@ -36,9 +36,10 @@ export function markHomeReady(host: HTMLElement) {
   host.dispatchEvent(new Event('doctorcre:home-ready'));
 }
 function Inbox({ client }: { client: InboxClient }) {
-  const { item_id } = useParams();
-  const openedOnHome = useRef(location.pathname === '/');
-  const home = location.pathname === '/' || !!item_id && openedOnHome.current;
+  const route = useLocation();
+  const home = route.pathname === '/';
+  const { item_id: inboxItemId } = useParams();
+  const item_id = home ? new URLSearchParams(route.search).get('card') || undefined : inboxItemId;
   const cache = useQueryClient();
   const inFlight = useRef(false);
   const mounted = useRef(true);
