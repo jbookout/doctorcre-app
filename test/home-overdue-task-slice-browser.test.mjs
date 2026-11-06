@@ -1,14 +1,14 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile, rm } from 'node:fs/promises';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { join } from 'node:path';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { overdueFixture } from '../scripts/prove-home-overdue-task-slice.mjs';
 let root;
 before(async () => {
-  root = await mkdtemp(join(tmpdir(), 'overdue-browser-'));
+  root = temporaryDirectory('overdue-browser-');
   await build({ stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {HomeSections} from './src/ui/home/sections'; import {parseSnapshot} from './src/ui/home/inbox'; const root=createRoot(document.getElementById('root')); window.render=(snapshot,extra={})=>root.render(React.createElement(HomeSections,{items:parseSnapshot(snapshot).items,current:undefined,...extra,row:item=>React.createElement('p',{'data-id':item.item_id},item.title)})); window.dispose=()=>root.unmount();`, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, jsx: 'automatic', format: 'esm', outfile: join(root, 'test.js') });
   await writeFile(join(root, 'overdue-test.html'), '<div id="root"></div><script type="module" src="/test.js"></script>');
 });
