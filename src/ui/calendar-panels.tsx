@@ -10,11 +10,24 @@ function meeting(value: unknown): value is Meeting {
 }
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
 const meetingDay = (item: Meeting) => item.all_day ? item.start.slice(0, 10) : dayFormat.format(new Date(item.start));
+const endpointFormat = (date: boolean, year: boolean) => new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Chicago', ...(date ? { month: 'short', day: 'numeric' } : {}),
+  ...(year ? { year: 'numeric' } : {}), hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
+});
+const rangeStart = endpointFormat(true, false), rangeEnd = endpointFormat(false, false), rangeYear = endpointFormat(true, true);
+function meetingRange(item: Meeting) {
+  const start = new Date(item.start), end = new Date(item.end);
+  const startDay = dayFormat.format(start), endDay = dayFormat.format(end);
+  const crossesYear = startDay.slice(0, 4) !== endDay.slice(0, 4);
+  const first = crossesYear ? rangeYear : rangeStart;
+  const last = crossesYear ? rangeYear : startDay === endDay ? rangeEnd : rangeStart;
+  return `${first.format(start)} – ${last.format(end)}`;
+}
 const sibling = (path: string) => import(new URL(path, import.meta.url).href);
 
 export async function mountCalendarPanels(left: HTMLElement, right: HTMLElement) {
   const { monthGrid, localToday } = await sibling('./calendar-model.js');
-  const { meetingTime, meetingDate } = await sibling('./home-week.js');
+  const { meetingDate } = await sibling('./home-week.js');
   const calendar = createRoot(left), schedule = createRoot(right);
   const rail = left.closest<HTMLElement>('.app-layout-sidebar');
   function fitMeetings() {
@@ -46,7 +59,7 @@ export async function mountCalendarPanels(left: HTMLElement, right: HTMLElement)
     const items = valid && Array.isArray(value.items) ? value.items.filter(meeting).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)) : [];
     const now = Date.now();
     const partial = valid && value.state === 'partial';
-    const rows = (list: Meeting[]) => list.map((item, index) => <p className="calendar-panel-meeting" key={`${item.start}:${index}`}><time dateTime={item.start}>{item.all_day ? `${meetingDate(item.start)} · All day` : meetingTime(item.start, 'America/Chicago', true)}</time><a href={`/calendar?day=${meetingDay(item)}&d=${meetingDay(item)}`}>{item.title}</a>{(item.schedule_conflict || item.time_changed) && <small>{item.schedule_conflict ? 'Overlapping meetings. Check Outlook.' : 'Time changed. Check Outlook.'}</small>}</p>);
+    const rows = (list: Meeting[]) => list.map((item, index) => <p className="calendar-panel-meeting" key={`${item.start}:${index}`}><time dateTime={item.start}>{item.all_day ? `${meetingDate(item.start)} · All day` : meetingRange(item)}</time><a href={`/calendar?day=${meetingDay(item)}&d=${meetingDay(item)}`}>{item.title}</a>{(item.schedule_conflict || item.time_changed) && <small>{item.schedule_conflict ? 'Overlapping meetings. Check Outlook.' : 'Time changed. Check Outlook.'}</small>}</p>);
     const status = !valid ? 'Schedule unavailable. Refresh to try again.' : partial ? 'Calendar coverage is incomplete. Check Outlook for changes.' : null;
     flushSync(() => {
       calendar.render(<section className="calendar-panel" aria-label="Your calendar"><h3>Your calendar</h3><p>{grid.title}</p><div className="calendar-panel-grid">{['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => <span key={day} aria-hidden="true">{day}</span>)}{grid.days.map(cell => <a key={cell.day} href={`/calendar?day=${cell.day}&d=${cell.day}`} aria-label={new Date(`${cell.day}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} aria-current={cell.day === today ? 'date' : undefined} data-muted={!cell.inMonth || undefined} data-meeting={items.some(item => meetingDay(item) === cell.day) || undefined}>{Number(cell.day.slice(-2))}</a>)}</div><h4>Upcoming meetings</h4>{status && <p role="status">{status}</p>}{rows(items.filter(item => Date.parse(item.end) >= now))}{valid && !items.length && <p>No upcoming meetings returned.</p>}<a href="/calendar">Open Calendar ↗</a></section>);
