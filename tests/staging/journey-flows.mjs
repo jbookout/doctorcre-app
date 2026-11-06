@@ -86,6 +86,7 @@ export async function shareLifecycle(page, fixture) {
   await page.locator('.projection-card > summary').click();
   await page.locator('#receipt-digest').fill('sha256:' + 'b'.repeat(64));
   await page.locator('input[name="scope"][value="shortlist"]').check();
+  await expect(page.locator('#appMainSlot #share-form')).toBeVisible();
   const issue = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tours/share/issue');
   await page.locator('#share-form button[type="submit"]').click();
   expect((await issue).ok()).toBe(true);

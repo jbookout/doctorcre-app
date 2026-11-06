@@ -1,7 +1,7 @@
 import { test } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { detail } from '../../test/fixtures/tour-day.synthetic.mjs';
 import { leaseRadarFixture } from '../../js/lease-radar-fixture.js';
@@ -74,7 +74,19 @@ export async function localFixture(browser) {
   const origin = `http://127.0.0.1:${server.address().port}`;
   const context = await browser.newContext({ baseURL: origin });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  return { page: await context.newPage(), server, close: async () => { await context.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } };
+  let contextClosed = false, closing;
+  context.once('close', () => { contextClosed = true; });
+  const close = () => closing ??= (async () => {
+    try {
+      if (!contextClosed) await context.close();
+    } catch (error) {
+      if (!/(?:^|: )Target page, context or browser has been closed(?:\n|$)/.test(error.message)) throw error;
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  })();
+  return { page: await context.newPage(), server, close };
 }
 
 for (const [name, flow] of Object.entries({ leaseDetails, tourDay, itinerary, shareLifecycle })) {
@@ -104,4 +116,92 @@ test('Share acceptance rejects a server denying every shortlist write', async ({
   } finally {
     await local.close();
   }
+});
+
+test('Share lifecycle waits for the shell to place its submit control', async ({ browser }) => {
+  const local = await localFixture(browser);
+  let releaseShell;
+  const shellReady = new Promise(resolve => { releaseShell = resolve; });
+  await local.page.route('**/js/app-shell.js', async route => { await shellReady; await route.continue(); });
+  await local.page.exposeFunction('releaseShareShell', releaseShell);
+  await local.page.addInitScript(() => {
+    document.addEventListener('input', event => {
+      if (event.target.id === 'receipt-digest') setTimeout(() => { void window.releaseShareShell(); }, 200);
+    }, { once: true });
+  });
+  const locator = local.page.locator.bind(local.page);
+  local.page.locator = selector => {
+    const control = locator(selector);
+    if (selector === '#share-form button[type="submit"]') {
+      const click = control.click.bind(control);
+      control.click = options => click({ ...options, delay: 400 });
+    }
+    return control;
+  };
+  local.page.context().setDefaultTimeout(3000);
+  try { await shareLifecycle(local.page, fixture); }
+  finally { releaseShell(); await local.close(); }
+});
+
+test('Fixture cleanup releases its server when context disposal fails', async ({ browser }) => {
+  const local = await localFixture(browser);
+  const context = local.page.context();
+  const close = context.close.bind(context);
+  const failure = new Error('synthetic context disposal failure');
+  context.close = async () => { throw failure; };
+  try {
+    await assert.rejects(local.close(), failure);
+    assert.equal(local.server.listening, false, 'server disposal must survive context disposal failure');
+  } finally {
+    context.close = close;
+    await close();
+    local.server.closeAllConnections();
+    await new Promise(resolve => local.server.close(resolve));
+  }
+});
+
+test('Fixture cleanup tolerates an already closed context and repeated disposal', async ({ browser }) => {
+  const local = await localFixture(browser);
+  await local.page.context().close();
+  await Promise.all([local.close(), local.close()]);
+  assert.equal(local.server.listening, false);
+});
+
+for (const connected of [true, false]) {
+  test(`Fixture cleanup preserves HAR failure after context closes with browser connected=${connected}`, async ({ browser }, testInfo) => {
+    const blocker = testInfo.outputPath('har-blocker');
+    await mkdir(testInfo.outputDir, { recursive: true });
+    await writeFile(blocker, 'This file prevents creating the HAR directory.');
+    const local = await localFixture({
+      newContext: options => browser.newContext({ ...options, recordHar: { path: `${blocker}/journey.har` } }),
+      isConnected: () => connected,
+    });
+    const context = local.page.context();
+    let closed = false;
+    context.once('close', () => { closed = true; });
+    try {
+      await assert.rejects(local.close(), error => {
+        assert.equal(closed, true, 'the real context close event precedes the HAR error');
+        assert.match(error.message, /EEXIST|ENOTDIR/);
+        return true;
+      });
+      assert.equal(local.server.listening, false);
+      await assert.rejects(local.close(), /EEXIST|ENOTDIR/);
+    } finally {
+      local.server.closeAllConnections();
+      await new Promise(resolve => local.server.close(resolve));
+    }
+  });
+}
+
+test('Fixture cleanup tolerates a target closing during disposal', async ({ browser }) => {
+  const local = await localFixture(browser);
+  const context = local.page.context();
+  const close = context.close.bind(context);
+  context.close = async () => {
+    await close();
+    await context.newPage();
+  };
+  await Promise.all([local.close(), local.close()]);
+  assert.equal(local.server.listening, false);
 });
