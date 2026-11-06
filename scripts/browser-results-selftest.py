@@ -98,6 +98,13 @@ class ResultsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             results.verify(output, self.files, 1)
 
+    def test_killed_shard_cannot_supply_complete_report(self):
+        self.produce(lambda s: s.replace('()=>{}', '()=>{process.kill(process.ppid,"SIGKILL")}'))
+        run, output = self.run_node(1)
+        self.assertNotEqual(run.returncode, 0)
+        with self.assertRaises((OSError, ValueError, results.ET.ParseError)):
+            results.verify(output, self.files, 1)
+
     def test_native_shards_partition_working_tree_inventory_once(self):
         self.files = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'test').glob('*.test.mjs'))
         for file in self.files:
