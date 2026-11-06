@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { resolve, sep } from 'node:path';
@@ -104,7 +104,7 @@ test('declared production proof follows built and renamed assets and refuses con
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const [code] = await once(child, 'close');
-    assert.equal(code, ['built', 'renamed'].includes(mode) ? 0 : 1, stdout + stderr);
+    assert.equal(code, ['built', 'renamed'].includes(mode) ? 0 : mode === 'timeout' ? 78 : 1, stdout + stderr);
     const receipt = JSON.parse(stdout);
     assert.equal(receipt.status, code === 0 ? 'passed' : 'failed');
     if (!code) {

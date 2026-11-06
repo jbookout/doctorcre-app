@@ -1,3 +1,4 @@
+import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -14,7 +15,7 @@ export async function prove({ origin, commit, timeoutMs }) {
     const url = new URL(path, origin);
     assert.equal(url.origin, origin, 'same-origin evidence only');
     assert.ok(++requests <= 4, 'four-request budget');
-    const response = await fetch(url, { signal: controller.signal, redirect: 'manual', credentials: 'omit' });
+    const response = await proofFetch(url, { signal: controller.signal, redirect: 'manual', credentials: 'omit' });
     assert.equal(response.status, 200, `HTTP 200 required for ${path}`);
     const chunks = [];
     for await (const chunk of response.body) {
@@ -28,9 +29,7 @@ export async function prove({ origin, commit, timeoutMs }) {
     return { response, data: Buffer.concat(chunks) };
   };
   try {
-    const release = JSON.parse((await get('/app-release')).data);
-    assert.equal(release.service, 'doctorcre-app');
-    assert.equal(release.environment, 'production');
+    const release = await readAppRelease(origin, async url => { const { response, data } = await get(url.pathname); return { type: response.headers.get('content-type') || '', body: data }; });
     assert.equal(release.source_commit, commit, 'release commit mismatch');
     const { response, data } = await get('/artifact-manifest.json');
     assert.match(response.headers.get('content-type') || '', /^application\/json(?:;|$)/i);
@@ -69,7 +68,7 @@ async function main() {
     console.log(JSON.stringify(await prove({ origin: url.origin, commit: args[3], timeoutMs })));
   } catch (error) {
     console.log(JSON.stringify({ status: 'failed', error: error.message }));
-    process.exitCode = 1;
+    process.exitCode = error.exitCode || 1;
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -43,7 +44,7 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
     remaining();
     if (++requests > 31) throw Error('Fetch count exceeds release plus thirty assets');
     let response;
-    try { response = await fetch(url, { signal: abort.signal, redirect: 'manual' }); } catch { throw new Unavailable(`Unavailable asset ${url}`); }
+    try { response = await proofFetch(url, { signal: abort.signal, redirect: 'manual' }); } catch { throw new Unavailable(`Unavailable asset ${url}`); }
     if (!response.ok) throw new Unavailable(`Unavailable asset ${url}, HTTP ${response.status}`);
     const chunks = [];
     for await (const chunk of response.body) { bytes += chunk.length; if (bytes > 10 * 1024 * 1024) throw Error('Asset byte cap exceeded'); chunks.push(chunk); }
@@ -51,10 +52,8 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
     return Buffer.concat(chunks);
   };
   const run = async () => {
-    const releaseBytes = await get(new URL('/app-release', origin));
-    try { receipt.release = JSON.parse(releaseBytes); } catch { throw new Unavailable('Unreadable app-release'); }
-    if (receipt.release?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(receipt.release?.source_commit || '') || /^0+$/.test(receipt.release.source_commit) && !['127.0.0.1', 'localhost'].includes(origin.hostname)) throw new Unavailable('Missing deployed release identity');
-    const acquired = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url) }));
+    const acquired = await launchProofBrowser(engine, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
     if (performance.now() >= deadline) abort.abort(expired);
     if (abort.signal.aborted) { await acquired.close(); abort.signal.throwIfAborted(); }
     browser = acquired;
@@ -143,5 +142,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' } } });
     console.log(JSON.stringify(await runProof({ origin: values.origin, timeout: Number(values['timeout-ms']) })));
-  } catch (error) { console.error(JSON.stringify({ error: error.message })); process.exitCode = error instanceof Unavailable ? 78 : 1; }
+  } catch (error) { console.error(JSON.stringify({ error: error.message })); process.exitCode = error.exitCode || (error instanceof Unavailable ? 78 : 1); }
 }

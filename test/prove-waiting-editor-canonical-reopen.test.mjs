@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile, rm } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -13,9 +13,10 @@ function cli(origin,timeout='30000',nodeArgs=[]) {return new Promise((resolve,re
 async function serve(mode) {
  const root=resolve(outDir,'site');const requests=[];
  const server=createServer(async(req,res)=>{
+    res.setHeader('content-type', 'application/json');
   requests.push({method:req.method,url:req.url});
   if(mode==='timeout')return;
-  if(req.url==='/app-release'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(mode==='unavailable'?{}:{service:'doctorcre-app',source_commit:'1'.repeat(40)}));}
+  if(req.url==='/app-release'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(mode==='unavailable'?{}:{service:'doctorcre-app', environment: 'production',source_commit:'1'.repeat(40)}));}
   if(mode==='observing-timeout')return;
   if(mode==='bytes'){res.setHeader('Content-Type','text/javascript');return res.end(' '.repeat(11*1024*1024));}
   if(mode==='assets'){const n=req.url==='/js/ui-inbox.js'?0:Number(req.url.match(/asset-(\d+)/)?.[1]);res.setHeader('Content-Type','text/javascript');return res.end(`import './asset-${n+1}.js';`);}

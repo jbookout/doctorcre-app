@@ -2,7 +2,7 @@ import { APP_RELEASE_PATH, readAppRelease } from '../scripts/app-release-reader.
 import { handleDoctorcreRequest } from '../src/worker.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -19,6 +19,7 @@ const broken = await uiAssets(async path => {
 async function fixture(t, mode = 'success') {
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     requests.push({ url: req.url, method: req.method });
     if (mode === 'timeout') return;
     if (req.url === APP_RELEASE_PATH) {
@@ -58,7 +59,7 @@ async function run(origin, timeout = 30000) {
 test('CLI imports the real fixture bundle and chunks with production flags', async t => {
   const { origin, requests } = await fixture(t);
   const { code, receipt } = await run(origin);
-  assert.equal(code, 0);
+  assert.equal(code, 0, JSON.stringify(receipt));
   assert.equal(receipt.ok, true);
   assert.equal(receipt.origin, origin);
   assert.equal(receipt.release.source_commit, 'a'.repeat(40));
@@ -71,7 +72,7 @@ test('CLI imports the real fixture bundle and chunks with production flags', asy
   assert.ok(requests.every(request => request.method === 'GET' && (request.url === APP_RELEASE_PATH || request.url.startsWith('/js/'))));
 });
 
-for (const [mode, code] of [['broken', 1], ['protected-release', 78], ['missing-identity', 78], ['invalid-identity', 78], ['protected-asset', 78], ['protected-chunk', 78], ['html-asset', 78], ['missing-chunk', 1], ['write-attempt', 1], ['oversized', 1], ['request-limit', 1], ['timeout', 1]]) {
+for (const [mode, code] of [['broken', 1], ['protected-release', 78], ['missing-identity', 78], ['invalid-identity', 78], ['protected-asset', 78], ['protected-chunk', 78], ['html-asset', 78], ['missing-chunk', 1], ['write-attempt', 1], ['oversized', 1], ['request-limit', 1], ['timeout', 78]]) {
   test('CLI refuses ' + mode, async t => {
     const { origin, requests } = await fixture(t, mode);
     const result = await run(origin, mode === 'timeout' ? 100 : 30000);

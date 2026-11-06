@@ -1,10 +1,10 @@
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
-import { readAppRelease } from './app-release-reader.mjs';
 
 export async function observeSourceClock(assetUrl) {
   const { sourceTime, relativeAge, waitingDays } = await import(assetUrl);
@@ -51,7 +51,7 @@ export async function prove({ origin, timeoutMs }) {
       const read = async url => {
         if (++receipt.requests > 22) throw unavailable('Request cap exceeded');
         let response;
-        try { response = await fetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
+        try { response = await proofFetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
         catch { throw unavailable('Evidence fetch unavailable'); }
         if (!response.ok) throw unavailable('Evidence unavailable');
         const chunks = [];
@@ -83,7 +83,7 @@ export async function prove({ origin, timeoutMs }) {
           if (assets.size + pending.length > 20) throw unavailable('Module cap exceeded');
         }
       }
-      try { browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }); }
+      try { browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }); }
       catch { throw unavailable('Isolated module environment unavailable'); }
       if (expired) { await browser.close(); throw unavailable('Total deadline exceeded'); }
       const context = await browser.newContext({ serviceWorkers: 'block' });
@@ -117,5 +117,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const result = await prove({ origin: url.origin, timeoutMs });
     console.log(JSON.stringify(result));
     process.exitCode = result.exitCode;
-  } catch (error) { console.log(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = 1; }
+  } catch (error) { console.log(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = error.exitCode || 1; }
 }

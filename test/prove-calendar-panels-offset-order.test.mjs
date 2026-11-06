@@ -2,7 +2,8 @@ import { APP_RELEASE_PATH } from '../scripts/app-release-reader.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, get } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
+import { get } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, rm } from 'node:fs/promises';
@@ -20,6 +21,7 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
     const requests = [];
     const siteRoot = resolve(outDir, 'site');
     const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
       requests.push({ method: req.method, path: req.url });
       if (mode === 'timeout') return;
       if (mode === 'protected') { res.writeHead(403).end(); return; }
@@ -76,7 +78,7 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
     try { result = { ...await exec(process.execPath, ['scripts/prove-calendar-panels-offset-order.mjs', ...flags], { timeout: 40000 }), code: 0 }; }
     catch (error) { result = error; }
     const receipt = JSON.parse(result.stdout.trim());
-    assert.equal(result.code, mode === 'success' ? 0 : ['protected', 'identity', 'signin', 'chunk-protected'].includes(mode) ? 78 : 1, result.stdout + result.stderr);
+    assert.equal(result.code, mode === 'success' ? 0 : ['protected', 'identity', 'signin', 'chunk-protected', 'timeout'].includes(mode) ? 78 : 1, result.stdout + result.stderr);
     assert.equal(receipt.ok, mode === 'success');
     assert.ok(requests.every(request => request.method === 'GET'));
     assert.ok(requests.length <= 64);

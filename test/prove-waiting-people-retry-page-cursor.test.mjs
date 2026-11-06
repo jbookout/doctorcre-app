@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile, rm } from 'node:fs/promises';
 import { resolve, sep, join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -22,9 +22,10 @@ function cli(args) {
 async function fixture(t, mode) {
   const root = resolve(outDir, 'site'); const methods = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     methods.push(req.method);
     if (mode === 'timeout' || mode === 'timeout asset' && req.url !== '/app-release') return;
-    if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(mode === 'unavailable' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: 'fixture' })); }
+    if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(mode === 'unavailable' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: 'production' })); }
     try {
       const path = resolve(root, `.${decodeURIComponent(new URL(req.url, 'http://localhost').pathname)}`);
       if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
@@ -70,7 +71,7 @@ test('proof CLI refuses invalid flags and origin', async () => {
 });
 
 test('proof closes a browser acquired after expiry without starting browser work', async t => {
-  const server = createServer((_req, res) => setTimeout(() => res.end(JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40) })), 200));
+  const server = createServer((_req, res) => { res.setHeader('content-type', 'application/json'); setTimeout(() => res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) })), 200); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   let acquire, launchOptions, closed = false, browserWork = 0;

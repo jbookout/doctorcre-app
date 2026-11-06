@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createServer} from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import {readFile} from 'node:fs/promises';
 import {execFile,execFileSync} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -10,9 +10,10 @@ const revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()
 for (const mode of ['valid','missing-export','protected','sign-in','timeout','bad-coverage','wrong-release','missing-revision','stale-release']) {
   test(`deployed taxonomy CLI ${mode}`,async t=>{
     const server=createServer(async(req,res)=>{
+    res.setHeader('content-type', 'application/json');
       if (req.url === '/app-release') {
         res.setHeader('content-type','application/json');
-        return res.end(JSON.stringify({service:mode==='wrong-release'?'other':'doctorcre-app',source_commit:mode==='missing-revision'?null:mode==='stale-release'?'1'.repeat(40):revision}));
+        return res.end(JSON.stringify({service:mode==='wrong-release'?'other':'doctorcre-app',environment:'production',source_commit:mode==='missing-revision'?null:mode==='stale-release'?'1'.repeat(40):revision}));
       }
       if (!/^\/js\/[\w.-]+\.(m?js)$/.test(req.url)) {res.writeHead(405);return res.end();}
       if (req.url === '/js/contact-reasons.mjs') {
@@ -41,7 +42,7 @@ for (const mode of ['valid','missing-export','protected','sign-in','timeout','ba
       assert.ok(receipt.requests<=40);
     } else {
       await assert.rejects(exec(process.execPath,command,{timeout:15000}),error=>{
-        assert.equal(error.code,1);
+        assert.equal(error.code,['wrong-release','missing-revision'].includes(mode)?78:1);
         assert.match(error.stderr,/Contact taxonomy proof failed/);
         return true;
       });

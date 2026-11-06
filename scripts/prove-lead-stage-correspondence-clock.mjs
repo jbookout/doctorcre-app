@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
-import { readAppRelease } from './app-release-reader.mjs';
+import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-reader.mjs';
 import { workspace, detail } from '../test/leads-workspace-fixture.mjs';
 
 export async function observeLeadClock({ origin, board, detail }) {
@@ -70,7 +70,7 @@ export async function prove({ origin, timeoutMs }) {
       const get = async path => {
         if (++receipt.requests > 35) throw unavailable('Thirty-five-request cap exceeded');
         let response;
-        try { response = await fetch(origin + path, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
+        try { response = await proofFetch(origin + path, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
         catch { throw unavailable('Evidence fetch unavailable'); }
         if (!response.ok) throw unavailable(`Evidence unavailable ${path}`);
         const chunks = [];
@@ -115,7 +115,7 @@ export async function prove({ origin, timeoutMs }) {
           if (assets.size + pending.length > 32) throw unavailable('32-module graph cap exceeded');
         }
       }
-      try { browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }); }
+      try { browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }); }
       catch { throw unavailable('Isolated browser unavailable'); }
       if (expired) { await browser.close(); throw unavailable('Total deadline exceeded'); }
       const context = await browser.newContext({ serviceWorkers: 'block' });

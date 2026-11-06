@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 const execute = promisify(execFile);
-const release = {service:'doctorcre-app',source_commit:'46bea5d02a9618952c48434a534af8d339de93e9',environment:'fixture'};
+const release = {service:'doctorcre-app',source_commit:'46bea5d02a9618952c48434a534af8d339de93e9',environment:'production'};
 const assets = await uiAssets(path=>readFile(path));
 const renderer = await readFile('src/ui/answer-blocks.tsx','utf8');
 const before = renderer.replace(/\{chart.kind === 'line' && segments\.map\([^\n]+/,"{chart.kind === 'line' && <polyline fill=\"none\" stroke=\"currentColor\" points={points.map(p => `${x(p.index)},${y(p.value)}`).join(' ')} />}");
@@ -17,6 +17,7 @@ const broken = await uiAssets(path=>path === 'src/ui/answer-blocks.tsx' ? before
 async function fixture(t, mode) {
   const requests = [];
   const server = createServer((request,response)=>{
+    response.setHeader('content-type', 'application/json');
     requests.push(request.url);
     if (mode === 'timeout') return;
     if (request.url === '/app-release') {

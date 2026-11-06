@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { readFile } from 'node:fs/promises';
@@ -20,7 +20,8 @@ function cli(args, nodeArgs = []) {
 }
 test('CLI help documents every flag without contacting the origin', async t => {
   let requests = 0;
-  const server = createServer((req, res) => { requests++; res.writeHead(500); res.end(); });
+  const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json'); requests++; res.writeHead(500); res.end(); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -48,13 +49,14 @@ test('proof command uses served modules and fails closed on unavailable assets a
   const invalidDates = await build({ stdin: { contents: source.replace(check, 'false'), loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
   let mode = 'valid';
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     if (!resolve(root, `.${pathname}`).startsWith(root + sep)) { res.writeHead(403); return res.end(); }
     if (req.url === '/app-release') {
       if (mode === 'timeout') return;
       if (mode === 'protected-release') { res.writeHead(401); return res.end(); }
       res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'synthetic-proof-test', source_commit: mode === 'stale' ? '0'.repeat(40) : revision }));
+      return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: mode === 'stale' ? '0'.repeat(40) : revision }));
     }
     if (mode === 'accepts-impossible-date' && pathname === '/js/ui-ideal-client-profile.js') {
       res.setHeader('content-type', 'text/javascript'); return res.end(invalidDates.outputFiles[0].text);

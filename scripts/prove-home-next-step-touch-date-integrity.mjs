@@ -1,3 +1,4 @@
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -6,7 +7,6 @@ import { parseArgs } from 'node:util';
 import { init, parse } from 'es-module-lexer';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
-import { readAppRelease } from './app-release-reader.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { createLiveClient } from '../js/live-client.js';
 
@@ -111,7 +111,7 @@ export async function prove({ origin, timeoutMs }) {
   const read = async url => {
     if (++requests > 22) throw unavailable('Request cap exceeded');
     let response;
-    try { response = await fetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
+    try { response = await proofFetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
     catch { throw unavailable('Release or asset unavailable'); }
     if (!response.ok) throw unavailable(`Unavailable ${new URL(url).pathname}`);
     const chunks = []; let size = 0;
@@ -142,7 +142,7 @@ export async function prove({ origin, timeoutMs }) {
       }
     }
     const board = await syntheticBoard();
-    const launched = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
+    const launched = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
     if (controller.signal.aborted) { await launched.close(); throw unavailable('Proof deadline exceeded'); }
     browser = launched;
     const context = await browser.newContext({ serviceWorkers: 'block', timezoneId: 'America/Los_Angeles' });

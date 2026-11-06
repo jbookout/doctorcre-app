@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
@@ -27,12 +27,13 @@ test('declaration command reaches real fixture assertions and refuses missing pr
   let mode = 'valid';
   let mutations = 0;
   const server = createServer(async (request, response) => {
+    response.setHeader('content-type', 'application/json');
     if (request.method !== 'GET') mutations++;
     const path = new URL(request.url, 'http://fixture').pathname;
     if (mode === 'timeout') return;
     if (path === '/app-release') {
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify(mode === 'release' ? {} : { service: 'doctorcre-app', environment: 'fixture', source_commit: '0'.repeat(40) }));
+      response.end(JSON.stringify(mode === 'release' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
       return;
     }
     response.setHeader('content-type', 'text/javascript');

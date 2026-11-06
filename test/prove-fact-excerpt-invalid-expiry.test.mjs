@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -11,6 +11,7 @@ const assets = await uiAssets(path => readFile(new URL('../' + path, import.meta
 async function fixture(t, mode) {
   const seen = [];
   const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
     seen.push({ method: req.method, path: req.url });
     if (mode === 'timeout') return;
     if (req.url === '/release') { res.writeHead(404); return res.end(); }
@@ -57,7 +58,7 @@ test('CLI observes real entry and imported chunks with production flags', async 
   assert.ok(f.seen.every(req => ['/release', '/app-release'].includes(req.path) || req.path.startsWith('/js/')));
 });
 
-for (const [mode, expected] of [['broken', 1], ['write', 1], ['network', 1], ['protected', 78], ['identity', 78], ['timeout', 1]]) {
+for (const [mode, expected] of [['broken', 1], ['write', 1], ['network', 1], ['protected', 78], ['identity', 78], ['timeout', 78]]) {
   test(`CLI refuses ${mode} without a passing receipt`, async t => {
     const f = await fixture(t, mode);
     const { code, receipt } = await cli(f.origin, mode === 'timeout' ? '500' : '30000');

@@ -1,7 +1,7 @@
 import { chromium } from './browser-harness.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';

@@ -1,4 +1,4 @@
-import { readAppRelease } from './app-release-reader.mjs';
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -95,7 +95,7 @@ export async function prove({ origin, timeoutMs }) {
   let requests = 0, browserLaunch, expired, routeFailure;
   const read = async (url, maxBytes = 5 * 1024 * 1024) => {
     if (++requests > 65) throw Error('Request limit exceeded');
-    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(Math.min(10000, remaining()))]) });
+    const response = await proofFetch(url, { redirect: 'manual', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(Math.min(10000, remaining()))]) });
     if ([301, 302, 303, 307, 308, 401, 403].includes(response.status)) throw new ProtectedAsset('Protected release or asset');
     if (!response.ok) throw Error('HTTP ' + response.status);
     const chunks = [];
@@ -112,7 +112,7 @@ export async function prove({ origin, timeoutMs }) {
       if (error.exitCode === 78) throw new ProtectedAsset(error.message);
       throw error;
     });
-    browserLaunch = chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browserLaunch = launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
     const browser = await browserLaunch;
     const context = await browser.newContext({ serviceWorkers: 'block' });
     context.setDefaultTimeout(remaining());
@@ -157,6 +157,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.stdout.write(JSON.stringify(receipt) + '\n');
   } catch (error) {
     process.stdout.write(JSON.stringify({ ok: false, error: error.message }) + '\n');
-    process.exitCode = error instanceof ProtectedAsset ? 78 : 1;
+    process.exitCode = error.exitCode || (error instanceof ProtectedAsset ? 78 : 1);
   }
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,7 @@ test('proof rejects unsafe origins and unbounded arguments', () => {
 test('exact proof CLI passes deployed modules and refuses contradictions, unavailable identity and timeouts', {timeout:180000}, async t => {
  let mode = 'pass', identities = 0, assets = 0;
  const server = createServer(async (req,res) => {
+    res.setHeader('content-type', 'application/json');
   try {
    const pathname = decodeURIComponent(req.url.split('?')[0]);
    const target = path.resolve(root, `.${pathname}`);
@@ -51,7 +52,7 @@ test('exact proof CLI passes deployed modules and refuses contradictions, unavai
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
  const origin=`http://127.0.0.1:${server.address().port}`;
- const release=await readAppRelease(origin, async url=>{const r=await fetch(url);return {type:r.headers.get('content-type'),body:Buffer.from(await r.arrayBuffer())};});
+ const release=await readAppRelease(origin);
  assert.equal(release.service,'doctorcre-app');assert.equal(release.environment,'production');
  for (const [scenario,code] of [['pass',0],['fail',1],['unavailable',78],['missing',78],['changed',1],['foreign',1],['cap',1],['bytes',1],['timeout',78]]) {
   mode=scenario;identities=0;assets=0;

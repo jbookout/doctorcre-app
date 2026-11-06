@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -45,6 +45,7 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
   let mode = 'pass', releaseReads = 0;
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     requests.push(req.url);
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {

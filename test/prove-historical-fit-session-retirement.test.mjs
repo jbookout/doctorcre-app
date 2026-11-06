@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { build } from 'esbuild';
@@ -35,6 +35,7 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
   let mode = 'pass';
   const requests = [];
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     try {
       requests.push(req.url);
       const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);

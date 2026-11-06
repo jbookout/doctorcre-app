@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -14,6 +14,7 @@ async function fixture(t, mode) {
   const seen = [];
   let identities = 0;
   const server = createServer(async (req, res) => {
+    res.setHeader('content-type', 'application/json');
     seen.push({ method: req.method, path: req.url });
     if (mode === 'timeout') return;
     if (req.url === '/app-release') {
