@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { transformSync } from 'esbuild';
@@ -37,7 +37,7 @@ test('fact selector filters locally, retains refresh selection, resets missing k
     for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
       try {
-        await page.goto(server.origin);
+        await componentDocument(page, server.origin, { dispose: page => page.evaluate(() => window.panel?.dispose()) });
         await page.evaluate(theme => { document.documentElement.dataset.theme = theme; document.body.innerHTML = '<main id="comparison"></main>'; }, theme);
         const result = await exerciseFilter(page, server.origin);
         assert.equal(result.reads, 6);
@@ -51,7 +51,7 @@ test('stale refresh cannot replace selected results and parent disposal clears p
   const server = await fixtureServer(), browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    await page.goto(server.origin);
+    await componentDocument(page, server.origin, { dispose: page => page.evaluate(() => window.panel?.dispose()) });
     await page.evaluate(async fixtures => {
       document.body.innerHTML = '<main id="comparison"></main>';
       const { mountMarketTerms } = await import('/js/ui-market.js');

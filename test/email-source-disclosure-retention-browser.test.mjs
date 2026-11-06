@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
 import { observe } from '../scripts/prove-email-source-disclosure-retention.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -34,7 +34,7 @@ test('source disclosure lifecycle at phone and desktop widths in both themes', a
   for (const width of [390, 1440]) for (const theme of ['light', 'dark']) await t.test(`${width} ${theme}`, async () => {
     const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
     try {
-      await page.goto(server.origin + '/review-workflows?mode=fixture');
+      await componentDocument(page, server.origin, {owner:'email source disclosure', html:'<script type="module" src="/js/doc-context.js"></script>'});
       await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
       const receipt = await observe(page);
       assert.equal(receipt.checks.length, 21);
