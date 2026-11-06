@@ -93,9 +93,11 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
       if (loaders.has(path.node.name) && !(path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node)) fail(path.node, 'Cannot alias module loader');
     },
     OptionalMemberExpression(path) {
+      if (!isTransport && constructors.has(property(path.node))) fail(path.node, 'Server construction belongs to scripts/fixture-http.mjs');
       if (property(path.node) === 'getBuiltinModule') fail(path.node, 'Optional builtin module capability is not verified');
     },
     MemberExpression(path) {
+      if (!isTransport && constructors.has(property(path.node))) fail(path.node, 'Server construction belongs to scripts/fixture-http.mjs');
       if (property(path.node) === 'getBuiltinModule' && !(path.parentPath.isCallExpression() && path.parentPath.node.callee === path.node)) fail(path.node, 'Cannot alias builtin module loader');
     },
     CallExpression(path) {
