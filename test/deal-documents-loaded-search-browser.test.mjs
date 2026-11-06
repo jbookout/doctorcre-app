@@ -37,7 +37,7 @@ test('loaded search behavior and retirement', async t => {
     await t.test(`local predicates, pagination, refresh and clear ${width} ${theme}`, async () => {
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
       try {
-        await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' }));
+        await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/pipeline.css"></head><body><main></main></body></html>` }));
         await page.goto(`${server.url}/harness`);
         await page.evaluate(async recordings => {
           const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
@@ -52,6 +52,7 @@ test('loaded search behavior and retirement', async t => {
         const rows = page.locator('[data-document-id]');
         const ids = () => rows.evaluateAll(rows => rows.map(row => row.dataset.documentId));
         const expected = (name, mime = undefined, docs = recordings.initial.response.documents) => docs.filter(doc => doc.display_name.toLowerCase().includes(name.trim().toLowerCase()) && (mime === undefined || doc.document_type === mime)).map(doc => doc.id);
+        assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
         await search.fill('lEaSe'); assert.deepEqual(await ids(), expected('lease'));
         await search.fill('   '); assert.equal(await rows.count(), 50);
         for (const mime of ['application/pdf', 'text/plain', null, 'Unrecorded']) {
@@ -106,7 +107,7 @@ test('loaded search behavior and retirement', async t => {
     await t.test(`initial empty response ${width} ${theme}`, async () => {
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
       try {
-        await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' }));
+        await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/pipeline.css"></head><body><main></main></body></html>` }));
         await page.goto(`${server.url}/harness`);
         await page.evaluate(async recording => {
           const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
@@ -122,7 +123,7 @@ test('loaded search behavior and retirement', async t => {
       await t.test(`${phase} ${retirement} ignores late completion ${width} ${theme}`, async () => {
         const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
         try {
-          await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' }));
+          await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/pipeline.css"></head><body><main></main></body></html>` }));
           await page.goto(`${server.url}/harness`);
           await page.evaluate(async ({ recordings, phase, retirement }) => {
             const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
