@@ -79,8 +79,8 @@ for(const width of [390,1280])test(`lead clock UI rejects malformed detail and r
  const {detail}=await import('./leads-workspace-fixture.mjs');
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce'});
- let malformed=true;const writes=[];
- await routeLeads(page,{onWrite:p=>writes.push(p),getDetail:row=>({...detail(row),correspondence:malformed?[{id:'synthetic',kind:'email_in',occurred_at:'2026-02-31T12:00:00Z'}]:[]})});
+ let mode='malformed';const writes=[];
+ await routeLeads(page,{onWrite:p=>writes.push(p),getDetail:row=>({...detail(row),correspondence:mode==='malformed'?[{id:'synthetic',kind:'email_in',occurred_at:'2026-02-31T12:00:00Z'}]:mode==='usable'?detail(row).correspondence:[]})});
  await page.goto('http://localhost/leads');
  await page.locator('#stageFilter').selectOption('outreach_active');
  const open=page.locator('.lead-open').first();await open.focus();await page.keyboard.press('Alt+ArrowRight');
@@ -88,11 +88,16 @@ for(const width of [390,1280])test(`lead clock UI rejects malformed detail and r
  assert.equal(await page.locator('#saveStage').isDisabled(),true);
  assert.equal(await page.locator('#stageQuestions textarea').count(),0);
  await page.locator('#closeStage').click();
- malformed=false;
+ mode='missing';
  await open.focus();await page.keyboard.press('Alt+ArrowRight');
  const answer=page.locator('#stageQuestions textarea');await answer.waitFor();
  assert.match(await page.locator('#stageQuestions').textContent(),/What contact has taken place/);
  assert.equal(await answer.evaluate(node=>node===document.activeElement),true);
+ assert.equal(await page.locator('#saveStage').isDisabled(),false);
+ await page.locator('#closeStage').click();
+ mode='usable';await open.focus();await page.keyboard.press('Alt+ArrowRight');
+ await page.locator('#stageContext .stage-evidence b').first().waitFor();
+ assert.equal(await page.locator('#stageQuestions textarea').count(),0);
  assert.equal(await page.locator('#saveStage').isDisabled(),false);
  await page.locator('#closeStage').click();assert.deepEqual(writes,[]);
 });
