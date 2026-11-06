@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { cellText, parseAnswerBlocks, tableRows } from './answer-block-model';
+import { downloadAnswerTable } from './answer-table-csv';
 import type { Answer, Cell, Chart, Sort, Table } from './answer-block-model';
 
 function SourcedCell({cell}: {cell: Cell | undefined}) {
@@ -11,11 +12,17 @@ function SourcedCell({cell}: {cell: Cell | undefined}) {
 function AnswerTable({table}: {table: Table}) {
   const [sort, setSort] = useState<Sort>(null);
   const [filter, setFilter] = useState('');
+  const [downloadStatus, setDownloadStatus] = useState('');
   const rows = tableRows(table, sort, filter);
   return <section className="answer-table" aria-label={`Answer table ${table.id}`}>
     <label>Filter rows <input type="search" value={filter} onChange={e => setFilter(e.target.value)} /></label>
     <button type="button" onClick={() => {setSort(null); setFilter('');}}>Reset table</button>
+    <button type="button" disabled={rows.length === 0} onClick={() => {
+      try { downloadAnswerTable(table, rows); setDownloadStatus(`Exported ${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`); }
+      catch { setDownloadStatus('Download unavailable. Try again.'); }
+    }}>Download visible rows</button>
     <p role="status">{rows.length} of {table.rows.length} rows</p>
+    <p role="status">{rows.length === 0 ? 'No visible rows to download' : downloadStatus}</p>
     {rows.length === 0 && <p>{table.rows.length === 0
       ? 'No recorded rows in this answer'
       : <>No loaded rows match this filter <button type="button" onClick={() => setFilter('')}>Clear filter</button></>}</p>}
