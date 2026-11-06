@@ -1,26 +1,12 @@
 import assert from 'node:assert/strict';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { chromium } from 'playwright';
-import { context as buildContext } from 'esbuild';
+import { overdueFixture } from './prove-home-overdue-task-slice.mjs';
 import { init, parse } from 'es-module-lexer';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
-
-export async function syntheticCards() {
-  const compiler = await buildContext({ stdin: { contents: "export {fixtureInboxRpc} from './src/ui/home/fixture'; export {createInboxClient,parseSnapshot} from './src/ui/home/inbox';", resolveDir: fileURLToPath(new URL('../', import.meta.url)) }, bundle: true, write: false, platform: 'node', format: 'esm' });
-  let compiled;
-  try { compiled = await compiler.rebuild(); } finally { await compiler.dispose(); }
-  const { fixtureInboxRpc, parseSnapshot } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
-  const raw = fixtureInboxRpc();
-  const snapshot = parseSnapshot(await raw('read-home-inbox-v5', {}));
-  return { snapshot, parseSnapshot, rpc: async (name, args) => {
-    const value = await raw(name, args);
-    if (name === 'read-home-inbox-v5') parseSnapshot(value);
-    return value;
-  } };
-}
 
 export async function observeSearch(page, snapshot, calls) {
   const search = page.getByRole('searchbox', { name: 'Search loaded cards' });
@@ -85,7 +71,8 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, obse
       await init;
       receipt.release = await readAppRelease(url, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
       controller.signal.throwIfAborted();
-      const synthetic = await syntheticCards();
+      const snapshot = overdueFixture();
+      snapshot.items[0].title = 'Synthetic pipeline follow-up';
       controller.signal.throwIfAborted();
       const calls = []; let assetFailure; let rpcCount = 0;
       browser = await launchProofBrowser(engine, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, Math.ceil(deadline - performance.now())) }, { signal: controller.signal });
@@ -101,8 +88,8 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, obse
           if (name !== 'read-home-inbox-v5') return route.abort();
           calls.push(name);
           try {
-            const value = await synthetic.rpc(name, args);
-            return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
+            assert.deepEqual(args, {}, 'read-home-inbox-v5 has no arguments');
+            return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(snapshot) }] } } });
           } catch { return route.abort(); }
         }
         if (request.method() !== 'GET') return route.abort();
@@ -116,7 +103,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, obse
       const page = await context.newPage();
       controller.signal.throwIfAborted();
       await page.goto(url.origin + '/?mode=live');
-      try { receipt.assertions = await observe(page, synthetic.snapshot, calls); }
+      try { receipt.assertions = await observe(page, snapshot, calls); }
       catch (error) { throw assetFailure || error; }
       if (!receipt.assets.some(entry => entry.path === '/js/ui-inbox.js')) throw unavailable('Inbox entry unavailable');
       receipt.fetched_bytes = bytes;

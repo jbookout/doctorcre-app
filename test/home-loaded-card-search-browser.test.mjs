@@ -5,7 +5,23 @@ import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium, fixtureServer } from './browser-harness.mjs';
-import { syntheticCards, observeSearch } from '../scripts/prove-home-loaded-card-search.mjs';
+import { observeSearch } from '../scripts/prove-home-loaded-card-search.mjs';
+import { context as buildContext } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+async function syntheticCards() {
+  const compiler = await buildContext({ stdin: { contents: "export {fixtureInboxRpc} from './src/ui/home/fixture'; export {createInboxClient,parseSnapshot} from './src/ui/home/inbox';", resolveDir: fileURLToPath(new URL('../', import.meta.url)) }, bundle: true, write: false, platform: 'node', format: 'esm' });
+  let compiled;
+  try { compiled = await compiler.rebuild(); } finally { await compiler.dispose(); }
+  const { fixtureInboxRpc, parseSnapshot } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
+  const raw = fixtureInboxRpc();
+  const snapshot = parseSnapshot(await raw('read-home-inbox-v5', {}));
+  return { snapshot, parseSnapshot, rpc: async (name, args) => {
+    const value = await raw(name, args);
+    if (name === 'read-home-inbox-v5') parseSnapshot(value);
+    return value;
+  } };
+}
+
 let outDir;
 before(async () => { outDir = temporaryDirectory('loaded-search-'); await buildArtifact({ root: process.cwd(), outDir }); });
 after(async () => rm(outDir, { recursive: true, force: true }));
