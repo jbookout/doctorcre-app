@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from './proof-fixture-server.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { chromium } from 'playwright';
 import { prove } from '../scripts/prove-inbox-snooze-exact-preview.mjs';
 let out;
 before(async () => { out = await temporaryDirectory('snooze-proof-'); await buildArtifact({ root: process.cwd(), outDir: out }); });
@@ -49,18 +50,51 @@ test('CLI broken deployed fixture cannot pass', async t => {
 });
 test('late launch closes its acquired browser after deadline with no survivor', async t => {
   const origin = await server(t);
-  let live = 0;
-  const engine = { async launch() { await new Promise(resolve => setTimeout(resolve, 100)); live++; return { async close() { live = 0; } }; } };
+  let browser;
+  let disposed;
+  const closed = new Promise(resolve => { disposed = resolve; });
+  const engine = { async launch(options) {
+    browser = await chromium.launch({ ...options, timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return new Proxy(browser, { get(target, key) {
+      if (key === 'close') return async () => { await target.close(); disposed(); };
+      const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  } };
+  t.after(async () => { await browser?.close(); });
   await assert.rejects(prove({ origin, timeoutMs: 30, engine }), error => error.name === 'TimeoutError' || error.exitCode === 78);
-  await new Promise(resolve => setTimeout(resolve, 150));
-  assert.equal(live, 0);
+  await closed;
+  assert.equal(browser.isConnected(), false);
 });
 test('stalled evaluation closes only the acquired browser on deadline', async t => {
   const origin = await server(t);
-  let live = 0;
-  const locator = { first() { return this; }, async click() {}, locator() { return this; }, evaluateAll() { return new Promise(() => {}); } };
-  const page = { setDefaultTimeout() {}, clock: { async setFixedTime() {} }, async route() {}, async goto() {}, getByRole() { return locator; } };
-  const engine = { async launch() { live++; return { async newContext() { return { async route() {}, async newPage() { return page; } }; }, async close() { live = 0; } }; } };
-  await assert.rejects(prove({ origin, timeoutMs: 100, engine }), error => error.name === 'TimeoutError' || error.exitCode === 78);
-  assert.equal(live, 0);
+  let browser, stalled = false;
+  const wrapLocator = locator => new Proxy(locator, { get(target, key) {
+    if (key === 'evaluateAll') return () => { stalled = true; return new Promise(() => {}); };
+    if (key === 'locator') return (...args) => wrapLocator(target.locator(...args));
+    const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+  } });
+  const engine = { async launch(options) {
+    browser = await chromium.launch(options);
+    return new Proxy(browser, { get(target, key) {
+      if (key === 'newContext') return async (...args) => {
+        const context = await target.newContext(...args);
+        return new Proxy(context, { get(target, key) {
+          if (key === 'newPage') return async () => {
+            const page = await target.newPage();
+            return new Proxy(page, { get(target, key) {
+              if (key === 'getByRole') return (...args) => args[0] === 'dialog' ? wrapLocator(target.getByRole(...args)) : target.getByRole(...args);
+              const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+            } });
+          };
+          const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+        } });
+      };
+      const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  } };
+  t.after(async () => { await browser?.close(); });
+  await assert.rejects(prove({ origin, timeoutMs: 3000, engine }), error => error.name === 'TimeoutError' || error.exitCode === 78);
+  assert.equal(stalled, true);
+  assert.equal(browser.isConnected(), false);
 });
