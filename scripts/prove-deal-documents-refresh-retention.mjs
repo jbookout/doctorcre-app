@@ -24,7 +24,8 @@ export async function observeRefreshRetention({ assetUrl, recordings, failure = 
   const click = name => { const button = [...target.querySelectorAll('button')].find(node => node.textContent === name); if (!button) throw Error(`Missing ${name}`); button.click(); };
   const check = (condition, message) => { if (!condition) throw Error(message); };
   const deliver = name => {
-    check(JSON.stringify(requests.at(-1)) === JSON.stringify(recordings[name].request), `recorded ${name} request matches production call`);
+    const { request: expectedRequest } = recordings[name];
+    check(JSON.stringify(requests.at(-1)) === JSON.stringify(expectedRequest), `recorded ${name} request matches production call`);
     pending.shift().resolve(response(name));
   };
   try {
