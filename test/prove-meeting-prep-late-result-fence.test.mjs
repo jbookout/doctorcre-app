@@ -1,3 +1,4 @@
+import { handleDoctorcreRequest } from '../src/worker.js';
 import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +23,8 @@ test('proof CLI passes working-tree Home and rejects a missing layout retirement
   const site = resolve(out, 'site');
   async function snapshot() {
     const assets = await loadFixtureAssets({ root: site, manifest: new Map(built.manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
-    assets.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+    const release = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: '1'.repeat(40) });
+    assets.set('/app-release', { contentType: release.headers.get('content-type'), status: release.status, body: await release.text() });
     const fixture = await startFixture({ assets }); t.after(() => fixture.close()); return fixture;
   }
   let server = await snapshot();
@@ -31,7 +33,7 @@ test('proof CLI passes working-tree Home and rejects a missing layout retirement
   for (const path of ['/js/%2e%2e/js/app-layout.js', '/../outside-marker.js', '/%2e%2e%2foutside-marker.js', '/..%2fsite-outside-marker.js', '/%2E%2E/outside-marker.js']) {
     await t.test(`fixture server refuses traversal ${path}`, async () => {
       const response = await new Promise((resolve, reject) => {
-        get({ ...new URL(server.origin), hostname: '127.0.0.1', port: new URL(server.origin).port, path }, res => {
+        get({ hostname: '127.0.0.1', port: new URL(server.origin).port, path }, res => {
           let body = '';
           res.setEncoding('utf8');
           res.on('data', chunk => { body += chunk; });

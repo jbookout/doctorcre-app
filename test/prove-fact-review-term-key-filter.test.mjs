@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';

@@ -1,3 +1,4 @@
+import { handleDoctorcreRequest } from '../src/worker.js';
 import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +20,8 @@ after(() => rm(outDir, { recursive: true, force: true }));
 async function fixture(t, mode) {
   const root = resolve(outDir, 'site');
   const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
-  responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+  const release = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: '1'.repeat(40) });
+  responses.set('/app-release', { contentType: release.headers.get('content-type'), status: release.status, body: await release.text() });
   if (mode === 'broken') responses.set('/js/ui-calendar-panels.js', { body: 'export async function mountCalendarPanels(left) {return {render(){left.textContent="old behavior"},clear(){}}}', contentType: 'text/javascript' });
   const fixture = await startFixture({ routes: responses });
   t.after(() => fixture.close());
