@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 type Filters = { vertical?: string; city?: string; state?: string };
 type Client = { getIdealClientProfile(filters: Filters): Promise<unknown> };
 type Profile = { vertical: string | null; deal_type: string | null; city: string | null; state: string | null;
-  won_deals: number; clients: number; hypothesis: string; evidence: { deal_id: string; closed_on: string }[] };
+  won_deals: number; clients: number; hypothesis: string; evidence: { deal_id: string; closed_on: string; deal_name: string | null }[] };
 type View = { kind: 'idle' } | { kind: 'loading' } | { kind: 'ready'; profiles: Profile[] } | { kind: 'error'; message: string };
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid historical fit');
@@ -30,7 +30,9 @@ function parse(value: unknown): Profile[] {
       const entry = object(value), deal_id = text(entry.deal_id), closed_on = text(entry.closed_on);
       const date = Date.parse(closed_on);
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deal_id) || !/^\d{4}-\d{2}-\d{2}$/.test(closed_on) || !Number.isFinite(date) || new Date(date).toISOString().slice(0, 10) !== closed_on) throw new Error('Invalid completed deal');
-      return { deal_id, closed_on };
+      if (entry.deal_name != null && typeof entry.deal_name !== 'string') throw new Error('Invalid deal name');
+      const deal_name = typeof entry.deal_name === 'string' ? entry.deal_name.trim() || null : null;
+      return { deal_id, closed_on, deal_name };
     });
     if (new Set(evidence.map(entry => entry.deal_id)).size !== won_deals) throw new Error('Duplicate historical evidence');
     return { vertical: dimension(row.vertical), deal_type: dimension(row.deal_type), city: dimension(row.city), state: dimension(row.state),
@@ -91,7 +93,7 @@ export function mountIdealClientProfile(host: HTMLElement, client: Client) {
               <td data-label="Vertical">{row.vertical || 'Unrecorded'}</td><td data-label="Deal type">{row.deal_type || 'Unrecorded'}</td><td data-label="Transaction city / client state">{row.city || 'Unrecorded'} / {row.state || 'Unrecorded'}</td>
               <td data-label="Wins">{row.won_deals} {row.won_deals === 1 ? 'deal' : 'deals'}</td><td data-label="Distinct clients">{row.clients} {row.clients === 1 ? 'client' : 'clients'}</td>
               <td data-label="Completed deal evidence"><details><summary>Wins ({row.evidence.length})</summary><ul>{row.evidence.map(entry => <li key={entry.deal_id}>
-                <a href={`/deals?deal=${encodeURIComponent(entry.deal_id)}`} title={`Deal ${entry.deal_id}`}>Won deal · <time dateTime={entry.closed_on}>{entry.closed_on}</time></a>
+                <a href={`/deals?deal=${encodeURIComponent(entry.deal_id)}`} title={`Deal ${entry.deal_id}`}>{entry.deal_name || 'Won deal'} · <time dateTime={entry.closed_on}>{entry.closed_on}</time></a>
               </li>)}</ul><p>{row.hypothesis}</p></details></td>
             </tr>)}</tbody>
           </table></div> : <p>No completed wins match these filters. No historical client profile can be inferred.</p>)}
