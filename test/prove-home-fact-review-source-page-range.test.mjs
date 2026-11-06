@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { factCases, factSnapshot } from '../scripts/prove-home-fact-review-source-page-range.mjs';
@@ -27,8 +28,8 @@ test('proof responses obey registered Home and fact field contracts and the prod
       base_version: c.response.detail.canonical_version, review_version: c.response.detail.review_version });
   }
 });
-const run = (args) => new Promise((resolveRun, reject) => {
-  const child = spawn(process.execPath, ['scripts/prove-home-fact-review-source-page-range.mjs', ...args]);
+const run = (args, preload) => new Promise((resolveRun, reject) => {
+  const child = spawn(process.execPath, [...(preload ? ['--import', `data:text/javascript,${encodeURIComponent(preload)}`] : []), 'scripts/prove-home-fact-review-source-page-range.mjs', ...args]);
   let stdout = '', stderr = '';
   child.stdout.on('data', data => { stdout += data; });
   child.stderr.on('data', data => { stderr += data; });
@@ -89,6 +90,49 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     if (scenario === 'fail') assert.match(result.receipt.error, /zero-start refuses approval/);
     if (scenario === 'drift') assert.match(result.receipt.error, /release changed/);
     if (scenario === 'timeout') assert.match(result.receipt.error, /deadline/);
+  });
+  for (const fault of ['late launch', 'stalled evaluation']) await t.test(`deadline cleans ${fault}`, async () => {
+    mode = 'pass';
+    const preload = `
+      import { chromium } from ${JSON.stringify(pathToFileURL(resolve('node_modules/playwright/index.mjs')).href)};
+      import { setTimeout as delay } from 'node:timers/promises';
+      const launch = chromium.launch.bind(chromium);
+      chromium.launch = async options => {
+        const browser = await launch(options);
+        const session = await browser.newBrowserCDPSession();
+        const { processInfo } = await session.send('SystemInfo.getProcessInfo');
+        const pids = processInfo.map(info => info.id);
+        await session.detach();
+        setTimeout(async () => {
+          const connected = browser.isConnected();
+          const survivors = pids.filter(pid => { try { process.kill(pid, 0); return true; } catch { return false; } });
+          console.error(JSON.stringify({ connected, survivors }));
+          await browser.close();
+        }, 2200);
+        if (${JSON.stringify(fault)} === 'late launch') await delay(1500);
+        else {
+          const newContext = browser.newContext.bind(browser);
+          browser.newContext = async options => {
+            const context = await newContext(options);
+            const newPage = context.newPage.bind(context);
+            context.newPage = async () => {
+              const page = await newPage();
+              page.evaluate = () => new Promise((_, reject) => {
+                browser.once('disconnected', () => reject(Error('browser closed during stalled evaluation')));
+              });
+              return page;
+            };
+            return context;
+          };
+        }
+        return browser;
+      };
+    `;
+    const result = await run(['--origin', origin, '--timeout-ms', '1000'], preload);
+    assert.equal(result.code, 78, JSON.stringify(result));
+    assert.equal(result.receipt.status, 'unavailable');
+    assert.match(result.receipt.error, /deadline/);
+    assert.deepEqual(JSON.parse(result.stderr.trim()), { connected: false, survivors: [] });
   });
   for (const args of [[], ['--origin', origin, '--timeout-ms', '30001'], ['--origin', origin + '/bad', '--timeout-ms', '30000'], ['--unknown']]) {
     assert.equal((await run(args)).code, 1);
