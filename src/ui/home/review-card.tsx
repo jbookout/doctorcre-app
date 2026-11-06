@@ -4,6 +4,7 @@ import { reviewError, type Operation, type Review, type ReviewRequest } from './
 
 type State = { phase: 'loading' } | { phase: 'ready' | 'editing'; review: Review } | { phase: 'submitting' | 'uncertain'; review: Review; request: ReviewRequest } | { phase: 'conflict'; review: Review; message: string } | { phase: 'refused' | 'done'; message: string };
 const labels: Record<Operation['verb'], string> = { 'complete-one-action': 'Mark done', 'edit-email-draft': 'Save draft', 'dismiss-email-proposal': 'Decline draft', 'submit-email-draft': 'Submit reply for sending', 'resolve-fact-review': 'Save review' };
+const availableDecisions = (op: Extract<Operation, { verb: 'resolve-fact-review' }>, review: Extract<Review, { kind: 'fact_review' }>) => op.decisions.filter(d => d === 'reject' || review.observations.length > 0 && (d !== 'correct' || op.args.fact_key !== 'rent_schedule'));
 type Props = { item: InboxItem; client: NonNullable<InboxClient['review']>; close(): void; busy(value: boolean): void; confirmed(item: InboxItem, receipt?: TaskReceipt): void };
 export function ReviewCard({ item, client, close, busy, confirmed }: Props) {
   const [state, setState] = useState<State>({ phase: 'loading' });
@@ -18,12 +19,18 @@ export function ReviewCard({ item, client, close, busy, confirmed }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const anchor = useRef(item);
+  function reconcileFacts(detail: Review) {
+    if (detail.kind !== 'fact_review') return;
+    const choices = detail.operations[0] ? availableDecisions(detail.operations[0], detail) : [];
+    setDecision(previous => choices.includes(previous) ? previous : choices.includes('approve') ? 'approve' : choices.includes('reject') ? 'reject' : choices[0] || '');
+    setObservation(previous => detail.observations.some(o => o.id === previous) ? previous : detail.observations[0]?.id || '');
+  }
   useEffect(() => {
     const controller = new AbortController(); alive.current = true;
     void client.load(anchor.current, controller.signal).then(review => {
       if (controller.signal.aborted) return;
       if (review.kind === 'reply_draft') { setSubject(review.subject); setBody(review.body); }
-      if (review.kind === 'fact_review') { setDecision(review.observations.length ? 'approve' : 'reject'); setObservation(review.observations[0]?.id || ''); }
+      reconcileFacts(review);
       setState({ phase: 'ready', review });
     }).catch(error => { if (!controller.signal.aborted) setState({ phase: 'refused', message: reviewError(error).kind === 'uncertain' ? 'Could not load this review. Close and try again.' : reviewError(error).message }); });
     host.current?.focus();
@@ -39,6 +46,7 @@ export function ReviewCard({ item, client, close, busy, confirmed }: Props) {
       const current = await client.current(anchor.current);
       const updated = await client.load(current);
       if (!alive.current) return;
+      reconcileFacts(updated);
       anchor.current = current;
       confirmed(current);
       setState({ phase: 'ready', review: updated });
@@ -79,6 +87,7 @@ export function ReviewCard({ item, client, close, busy, confirmed }: Props) {
       input = { reason };
     }
     if (op.verb === 'resolve-fact-review') {
+      if (review.kind !== 'fact_review' || !availableDecisions(op, review).includes(decision) || decision === 'approve' && !review.observations.some(o => o.id === observation)) { setMessage('Choose an available decision and current evidence before saving.'); return; }
       if (!reason.trim()) { setMessage('Give a reason for this review.'); return; }
       input = { decision, reason, ...(decision === 'approve' ? { observation_id: observation } : {}) };
       if (decision === 'correct') {
@@ -98,12 +107,12 @@ export function ReviewCard({ item, client, close, busy, confirmed }: Props) {
         {review.kind === 'action' && <p>{review.title}</p>}
         {review.kind === 'reply_draft' && <>{review.recipients ? <><p>To: {review.recipients.to.join(', ')}</p><p>CC: {review.recipients.cc.join(', ')}</p></> : <p>Send recipients are unavailable.</p>}{!review.operations.some(op => op.verb === 'submit-email-draft') && <p>Sending unavailable: {review.sendUnavailableReason || 'The source record does not allow sending this draft.'}</p>}<details><summary>Current saved reply</summary><p>{review.subject}</p><p>{review.body}</p></details><label>Subject<input value={subject} onChange={event => setSubject(event.target.value)} maxLength={998} required /></label><label>Message<textarea aria-label="Message" value={body} onChange={event => setBody(event.target.value)} rows={8} maxLength={20000} required /></label><p>Save draft sends nothing. Submit reply authorizes the existing sender to send this exact content to these recipients.</p><label>Reason for declining<input value={reason} maxLength={500} onChange={event => setReason(event.target.value)} /></label></>}
         {review.kind === 'fact_review' && <><p>Canonical value: {review.canonical}</p>{review.observations.map(o => <section key={o.id}><strong>{o.value} {o.unit}</strong><p>Document {o.source.document_ref}, pages {o.source.page_start} to {o.source.page_end}</p><blockquote>{o.source.cited_text || 'Excerpt no longer available'}</blockquote></section>)}
-          <label>Decision<select aria-label="Decision" value={decision} onChange={event => setDecision(event.target.value)}>{review.operations[0]?.decisions.map(d => <option key={d} value={d} disabled={d === 'approve' && !review.observations.length || d === 'correct' && (!review.observations.length || review.operations[0]?.args.fact_key === 'rent_schedule')}>{d === 'approve' ? 'Approve a sourced value' : d === 'correct' ? 'Correct with a source' : 'Reject this review'}</option>)}</select></label>
+          <label>Decision<select aria-label="Decision" value={decision} onChange={event => setDecision(event.target.value)}>{!decision && <option value="" disabled>No decision available</option>}{review.operations[0]?.decisions.map(d => <option key={d} value={d} disabled={!review.operations[0] || !availableDecisions(review.operations[0], review).includes(d)}>{d === 'approve' ? 'Approve a sourced value' : d === 'correct' ? 'Correct with a source' : 'Reject this review'}</option>)}</select></label>
           {decision === 'approve' && <label>Choose a sourced value<select aria-label="Choose a sourced value" value={observation} onChange={event => setObservation(event.target.value)} required>{review.observations.map(o => <option key={o.id} value={o.id}>{o.value} {o.unit}, pages {o.source.page_start} to {o.source.page_end}</option>)}</select></label>}
           {decision === 'correct' && <><label>Corrected value<input name="value" inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,29})(?:[.][0-9]{1,18})?" required /></label><label>Unit<select aria-label="Unit" name="unit">{[...new Set(review.observations.map(o => o.unit))].map(unit => <option key={unit}>{unit}</option>)}</select></label>{review.operations[0]?.args.fact_key === 'base_rent_per_sf' && <label>Expense basis<select aria-label="Expense basis" name="expense_basis"><option value="nnn">NNN</option><option value="modified_gross">Modified gross</option><option value="full_service_gross">Full service gross</option><option value="gross">Gross</option></select></label>}<label>Source document<select aria-label="Source document" name="document_ref">{[...new Set(review.observations.map(o => o.source.document_ref))].map(id => <option key={id} value={id}>Document {id}</option>)}</select></label><label>First page<input name="page_start" type="number" min={1} max={100000} defaultValue={1} required /></label><label>Last page<input name="page_end" type="number" min={1} max={100000} defaultValue={1} required /></label><label>Cited text<textarea name="cited_text" maxLength={4000} required /></label></>}
           <label>Reason<textarea aria-label="Reason" value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} required /></label></>}
       </fieldset>
-      <div className="inbox-actions">{review.operations.map(op => <button type="button" key={op.verb} disabled={!editable} onClick={() => choose(op)}>{labels[op.verb]}</button>)}</div>
+      <div className="inbox-actions">{review.operations.map(op => <button type="button" key={op.verb} disabled={!editable || op.verb === 'resolve-fact-review' && (review.kind !== 'fact_review' || !availableDecisions(op, review).includes(decision))} onClick={() => choose(op)}>{labels[op.verb]}</button>)}</div>
     </form>}
     {state.phase === 'conflict' && <><p role="alert">{state.message}</p><button type="button" onClick={() => void reload()}>Review updated card</button></>}
     {state.phase === 'uncertain' && <><p role="alert">The result is uncertain. Your exact request is kept. Nothing retries automatically.</p><button type="button" onClick={() => void run(state.request, state.review)}>Retry same review request</button></>}
