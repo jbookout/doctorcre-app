@@ -66,12 +66,17 @@ for (const mode of ['stalled evaluation', 'late launch', 'late launch with delay
       assert.equal(error.exitCode || (error.name === 'TimeoutError' ? 78 : 1), 78); return true;
     });
     release();
+    const survivingPids = () => ownedPids.filter(pid => {
+      try { process.kill(pid, 0); return true; }
+      catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+    });
     const deadline = Date.now() + 15000;
-    while ((!owned || owned.isConnected() || (server.process().exitCode === null && server.process().signalCode === null)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+    while ((!owned || owned.isConnected() || (server.process().exitCode === null && server.process().signalCode === null) || survivingPids().length > 0) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
     if (mode === 'stalled evaluation') assert.equal(evaluated, true);
     assert.ok(owned, 'a real Chromium handle was acquired');
     assert.equal(owned.isConnected(), false);
     assert.ok(server.process().exitCode !== null || server.process().signalCode !== null, 'owned Chromium process exited');
+    assert.deepEqual(survivingPids(), [], 'every recorded owned process exited before the cleanup bound');
     for (const pid of ownedPids) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
     t.diagnostic(`${mode}: exit 78; zero surviving owned browser processes (PID ${server.process().pid})`);
   } finally { release(); descendant?.kill(); await owned?.close(); await server?.close(); }
