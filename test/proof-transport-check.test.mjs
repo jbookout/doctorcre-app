@@ -199,6 +199,15 @@ test('reader marks requests and preserves caller User-Agent and headers', async 
   assert.equal(headers.has('x-doctorcre-release-reader'), false);
 });
 
+test('a local helper named proof-browser cannot bypass transport policy', async t => {
+  const root = temporaryDirectory('proof-fake-browser-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-fake.mjs', "import { read } from './proof-browser.mjs'; await read();");
+  await writeFile(root + '/scripts/proof-browser.mjs', "export const read = () => fetch('https://example.com');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('fetch')), errors.join('\n'));
+});
+
 test('asynchronous read-only git ancestry remains admissible', () => {
   assert.deepEqual(checkProofSource("import { execFile } from 'node:child_process'; execFile('git', ['merge-base', '--is-ancestor', required, released], { signal }, error => {});"), []);
 });
