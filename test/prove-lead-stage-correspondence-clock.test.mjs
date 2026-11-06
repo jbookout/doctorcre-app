@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
@@ -32,7 +32,12 @@ async function fixture(t, mode) {
   }
   assert.ok(assets.size <= 32);
  }
- if(mode==='assertion')for(const path of ['/js/leads-model.js','/js/leads-client.js'])assets.set(path,execFileSync('git',['show','5b6d1a76493913da5173513c9c129c3c3648ab68:'+path.slice(1)]));
+ if(mode==='assertion') {
+  const path='/js/leads-model.js',source=assets.get(path).toString();
+  const faulty=source.replace('export function leadTimestamp(value) {','export function leadTimestamp(value) { return Date.parse(value);');
+  assert.notEqual(faulty,source,'assertion fixture replaces timestamp admission');
+  assets.set(path,Buffer.from(faulty));
+ }
  if(mode==='foreign')assets.set('/js/leads-model.js',Buffer.from('import "https://foreign.invalid/module.js";'));
  const manifest={schema:'doctorcre-static-artifact.v1',repository:'jbookout/doctorcre-app',source_commit:'1'.repeat(40),files:[...assets].map(([path,bytes])=>({path:path.slice(1),bytes:bytes.length,sha256:hash(bytes)}))};
  const seen=[];let releases=0;
@@ -72,6 +77,7 @@ test('lead clock CLI proves exact deployed modules and contract-checked fixtures
 for(const [mode,expected] of [['assertion',1],['foreign',1],['hash',1],['identity',78],['unavailable',78],['auth',78],['timeout',78],['release-change',1]])test(`lead clock CLI refuses ${mode}`,async t=>{
  const f=await fixture(t,mode);const {code,receipt}=await cli(f.origin,mode==='timeout'?'100':'30000');
  assert.equal(code,expected,JSON.stringify(receipt));assert.notEqual(receipt.status,'passed');assert.ok(f.seen.length<=35);
+ if(mode==='assertion')assert.match(receipt.error,/invalid instant requires explanation 2026-02-31T12:00:00Z/);
 });
 
 for(const width of [390,1280])test(`lead clock UI rejects malformed detail and recovers with focused explanation at ${width}`,async t=>{
