@@ -1,0 +1,24 @@
+{
+  "producer": "calendar-section",
+  "source_sha256": "3926d5ce2d25312407ad3b4dad18f8443cfef75371e30bbb9ebb7cac65fc045c",
+  "input": {
+    "now": "2026-11-05T14:00:00Z",
+    "snapshot": {
+      "schema": "carr-calendar-agenda.v1",
+      "observed_at": "2026-11-05T14:00:00Z",
+      "items": []
+    }
+  },
+  "response": {
+    "state": "empty",
+    "source": "outlook_local_store",
+    "notes": [],
+    "observed_at": "2026-11-05T14:00:00.000Z",
+    "sources": {
+      "outlook_calendar": {
+        "state": "ready"
+      }
+    },
+    "items": []
+  }
+}

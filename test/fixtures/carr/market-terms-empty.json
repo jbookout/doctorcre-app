@@ -1,0 +1,43 @@
+{
+  "producer": "read-market-terms",
+  "source_sha256": "94c8f087cd7cfed71439f76445a3905ff441b28488b2037982b2e80fda53a0c2",
+  "input": {
+    "snapshot": {
+      "receipts": [],
+      "coverage": {
+        "scope": "recorded_firm_history_only",
+        "history_coverage": "unknown",
+        "archive_documents": null,
+        "recorded_documents": 0,
+        "observations": 0,
+        "canonical_receipts": 0,
+        "classified_receipts": 0,
+        "quarantined_extractor_versions": []
+      }
+    },
+    "query": {}
+  },
+  "response": {
+    "ok": true,
+    "schema_version": "market-terms.v1",
+    "empty": true,
+    "rows": [],
+    "coverage": {
+      "scope": "recorded_firm_history_only",
+      "history_coverage": "unknown",
+      "archive_documents": null,
+      "recorded_documents": 0,
+      "observations": 0,
+      "canonical_receipts": 0,
+      "classified_receipts": 0,
+      "quarantined_extractor_versions": [],
+      "coverage_scope": "tenant_all_recorded_sources",
+      "unclassified_receipts": 0,
+      "eligible_receipts": 0,
+      "unsupported_receipts": 0,
+      "superseded_without_context": 0,
+      "comparable_rows": 0,
+      "comparable_deals": 0
+    }
+  }
+}

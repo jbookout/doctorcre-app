@@ -1,0 +1,261 @@
+{
+  "producer": "read-market-terms",
+  "source_sha256": "94c8f087cd7cfed71439f76445a3905ff441b28488b2037982b2e80fda53a0c2",
+  "input": {
+    "snapshot": {
+      "receipts": [
+        {
+          "canonical_fact_id": "demo-0",
+          "entity_ref": "demo-a",
+          "fact_key": "rent",
+          "version": 1,
+          "value": "35",
+          "unit": "USD/sf/year",
+          "expense_basis": "NNN",
+          "confidence": "human_review",
+          "submarket": "North",
+          "use_type": "Office",
+          "term_kind": "executed",
+          "term_date": "2026-01-01",
+          "effective_from": "2026-01-01",
+          "effective_to": null,
+          "eligible": true,
+          "context_source": {
+            "document_ref": "demo-doc",
+            "reviewed_by_actor_id": "demo-reviewer",
+            "reviewed_at": "2026-01-01T00:00:00Z"
+          },
+          "sources": [
+            {
+              "observation_id": "demo-0",
+              "document_ref": "demo-doc",
+              "content_hash": null,
+              "page_start": 1,
+              "page_end": 2,
+              "extractor_version": "demo.v1",
+              "confidence_tier": "human_review",
+              "quarantined": false
+            }
+          ]
+        },
+        {
+          "canonical_fact_id": "demo-1",
+          "entity_ref": "demo-a",
+          "fact_key": "ti",
+          "version": 1,
+          "value": "35",
+          "unit": "USD/sf/year",
+          "expense_basis": "NNN",
+          "confidence": "human_review",
+          "submarket": "North",
+          "use_type": "Office",
+          "term_kind": "executed",
+          "term_date": "2026-01-01",
+          "effective_from": "2026-01-01",
+          "effective_to": null,
+          "eligible": true,
+          "context_source": {
+            "document_ref": "demo-doc",
+            "reviewed_by_actor_id": "demo-reviewer",
+            "reviewed_at": "2026-01-01T00:00:00Z"
+          },
+          "sources": [
+            {
+              "observation_id": "demo-1",
+              "document_ref": "demo-doc",
+              "content_hash": null,
+              "page_start": 1,
+              "page_end": 2,
+              "extractor_version": "demo.v1",
+              "confidence_tier": "human_review",
+              "quarantined": false
+            }
+          ]
+        },
+        {
+          "canonical_fact_id": "demo-2",
+          "entity_ref": "demo-b",
+          "fact_key": "rent",
+          "version": 1,
+          "value": "35",
+          "unit": "USD/sf/year",
+          "expense_basis": "NNN",
+          "confidence": "human_review",
+          "submarket": "North",
+          "use_type": "Office",
+          "term_kind": "executed",
+          "term_date": "2026-01-01",
+          "effective_from": "2026-01-01",
+          "effective_to": null,
+          "eligible": true,
+          "context_source": {
+            "document_ref": "demo-doc",
+            "reviewed_by_actor_id": "demo-reviewer",
+            "reviewed_at": "2026-01-01T00:00:00Z"
+          },
+          "sources": [
+            {
+              "observation_id": "demo-2",
+              "document_ref": "demo-doc",
+              "content_hash": null,
+              "page_start": 1,
+              "page_end": 2,
+              "extractor_version": "demo.v1",
+              "confidence_tier": "human_review",
+              "quarantined": false
+            }
+          ]
+        }
+      ],
+      "coverage": {
+        "scope": "recorded_firm_history_only",
+        "history_coverage": "unknown",
+        "archive_documents": null,
+        "recorded_documents": 1,
+        "observations": 3,
+        "canonical_receipts": 3,
+        "classified_receipts": 3,
+        "quarantined_extractor_versions": []
+      }
+    },
+    "query": {}
+  },
+  "response": {
+    "ok": true,
+    "schema_version": "market-terms.v1",
+    "empty": false,
+    "rows": [
+      {
+        "canonical_fact_id": "demo-0",
+        "entity_ref": "demo-a",
+        "fact_key": "rent",
+        "version": 1,
+        "value": "35",
+        "unit": "USD/sf/year",
+        "expense_basis": "NNN",
+        "confidence": "human_review",
+        "submarket": "North",
+        "use_type": "Office",
+        "term_kind": "executed",
+        "term_date": "2026-01-01",
+        "effective_from": "2026-01-01",
+        "effective_to": null,
+        "context_source": {
+          "document_ref": "demo-doc",
+          "reviewed_by_actor_id": "demo-reviewer",
+          "reviewed_at": "2026-01-01T00:00:00Z"
+        },
+        "sources": [
+          {
+            "observation_id": "demo-0",
+            "document_ref": "demo-doc",
+            "content_hash": null,
+            "page_start": 1,
+            "page_end": 2,
+            "extractor_version": "demo.v1",
+            "confidence_tier": "human_review",
+            "quarantined": false
+          }
+        ],
+        "source_coverage": {
+          "supporting_observations": 1,
+          "supporting_documents": 1,
+          "unaffected_observations": 1
+        }
+      },
+      {
+        "canonical_fact_id": "demo-1",
+        "entity_ref": "demo-a",
+        "fact_key": "ti",
+        "version": 1,
+        "value": "35",
+        "unit": "USD/sf/year",
+        "expense_basis": "NNN",
+        "confidence": "human_review",
+        "submarket": "North",
+        "use_type": "Office",
+        "term_kind": "executed",
+        "term_date": "2026-01-01",
+        "effective_from": "2026-01-01",
+        "effective_to": null,
+        "context_source": {
+          "document_ref": "demo-doc",
+          "reviewed_by_actor_id": "demo-reviewer",
+          "reviewed_at": "2026-01-01T00:00:00Z"
+        },
+        "sources": [
+          {
+            "observation_id": "demo-1",
+            "document_ref": "demo-doc",
+            "content_hash": null,
+            "page_start": 1,
+            "page_end": 2,
+            "extractor_version": "demo.v1",
+            "confidence_tier": "human_review",
+            "quarantined": false
+          }
+        ],
+        "source_coverage": {
+          "supporting_observations": 1,
+          "supporting_documents": 1,
+          "unaffected_observations": 1
+        }
+      },
+      {
+        "canonical_fact_id": "demo-2",
+        "entity_ref": "demo-b",
+        "fact_key": "rent",
+        "version": 1,
+        "value": "35",
+        "unit": "USD/sf/year",
+        "expense_basis": "NNN",
+        "confidence": "human_review",
+        "submarket": "North",
+        "use_type": "Office",
+        "term_kind": "executed",
+        "term_date": "2026-01-01",
+        "effective_from": "2026-01-01",
+        "effective_to": null,
+        "context_source": {
+          "document_ref": "demo-doc",
+          "reviewed_by_actor_id": "demo-reviewer",
+          "reviewed_at": "2026-01-01T00:00:00Z"
+        },
+        "sources": [
+          {
+            "observation_id": "demo-2",
+            "document_ref": "demo-doc",
+            "content_hash": null,
+            "page_start": 1,
+            "page_end": 2,
+            "extractor_version": "demo.v1",
+            "confidence_tier": "human_review",
+            "quarantined": false
+          }
+        ],
+        "source_coverage": {
+          "supporting_observations": 1,
+          "supporting_documents": 1,
+          "unaffected_observations": 1
+        }
+      }
+    ],
+    "coverage": {
+      "scope": "recorded_firm_history_only",
+      "history_coverage": "unknown",
+      "archive_documents": null,
+      "recorded_documents": 1,
+      "observations": 3,
+      "canonical_receipts": 3,
+      "classified_receipts": 3,
+      "quarantined_extractor_versions": [],
+      "coverage_scope": "tenant_all_recorded_sources",
+      "unclassified_receipts": 0,
+      "eligible_receipts": 3,
+      "unsupported_receipts": 0,
+      "superseded_without_context": 0,
+      "comparable_rows": 3,
+      "comparable_deals": 2
+    }
+  }
+}

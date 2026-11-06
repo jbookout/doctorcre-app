@@ -1,3 +1,4 @@
+import { checkedCarrFixture } from './support/carr-fixture-contract.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
@@ -90,7 +91,7 @@ test('quarantined citations are visibly distinguished from supporting sources', 
 test('selected business date reaches the read and clearing restores all history', async () => {
   const dom = new JSDOM('<div></div>'); setup(dom);
   const root = document.querySelector('div'), calls = [];
-  const response = {ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:0,canonical_receipts:0,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:0}};
+  const response = checkedCarrFixture('market-terms-empty');
   const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:async args => { calls.push(args); return response; }}});
   await new Promise(done => setTimeout(done, 30));
   const date = root.querySelector('[name=as_of]');
@@ -113,7 +114,7 @@ test('selected business date reaches the read and clearing restores all history'
 test('newer dates discard delayed replies and invalid dates issue no read', async () => {
   const dom = new JSDOM('<div></div>'); setup(dom);
   const root = document.querySelector('div'), pending = [];
-  const response = {ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:0,canonical_receipts:0,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:0}};
+  const response = checkedCarrFixture('market-terms-empty');
   const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:args => new Promise(resolve => pending.push({args,resolve}))}});
   const date = root.querySelector('[name=as_of]');
   const submit = () => root.querySelector('form').dispatchEvent(new dom.window.Event('submit', {bubbles:true,cancelable:true}));
@@ -198,7 +199,7 @@ test('stale malformed replies preserve Loading until the current valid response 
 test('stale malformed replies cannot replace ready results and stale valid replies cannot clear an error', async () => {
   const dom = new JSDOM('<div></div>'); setup(dom);
   const root = document.querySelector('div'), pending = [];
-  const valid = {ok:true,schema_version:'market-terms.v1',rows:[],coverage:{recorded_documents:0,canonical_receipts:0,unsupported_receipts:0,unclassified_receipts:0,comparable_deals:0}};
+  const valid = checkedCarrFixture('market-terms-empty');
   const panel = mountMarketTerms(root, {entityRef:'d1',client:{readMarketTerms:() => new Promise(resolve => pending.push(resolve))}});
   panel.refresh();
   pending[1](valid);
@@ -227,4 +228,15 @@ test('compatible optional fields remain absent or nullable without rejecting a v
   assert.match(root.textContent, /Source unavailable/);
   assert.doesNotMatch(root.textContent, /undefined|Could not load/);
   panel.dispose(); dom.window.close();
+});
+
+test('producer replay reaches the real market terms parser without reshaping', async () => {
+  const dom = new JSDOM('<div></div>'); setup(dom);
+  const root = document.querySelector('div');
+  const panel = mountMarketTerms(root, {entityRef:'demo-a',client:{readMarketTerms:async () => checkedCarrFixture('market-terms-three-rows')}});
+  try {
+    await new Promise(done => setTimeout(done,30));
+    assert.match(root.textContent,/3 comparable terms across 2 deals/);
+    assert.equal(root.querySelectorAll('tbody tr').length,3);
+  } finally { panel.dispose(); }
 });

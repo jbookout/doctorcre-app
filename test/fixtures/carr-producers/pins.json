@@ -1,0 +1,34 @@
+{
+  "read-market-terms": {
+    "file": "market-terms.ts.txt",
+    "entry": "rebuildMarketTerms",
+    "declarations": [
+      "rebuildMarketTerms"
+    ],
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+    "path": "mcp-server/src/market-terms.ts",
+    "sha256": "94c8f087cd7cfed71439f76445a3905ff441b28488b2037982b2e80fda53a0c2"
+  },
+  "calendar-section": {
+    "file": "brief-calendar.js.txt",
+    "entry": "calendarSection",
+    "declarations": [
+      "CALENDAR_AGENDA_SCHEMA",
+      "HORIZON_MS",
+      "STALE_MS",
+      "LIMIT",
+      "CONFLICT_DETAIL_LIMIT",
+      "plural",
+      "WARNINGS",
+      "instant",
+      "text",
+      "person",
+      "calendarSection"
+    ],
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+    "path": "mcp-server/src/brief-calendar.js",
+    "sha256": "3926d5ce2d25312407ad3b4dad18f8443cfef75371e30bbb9ebb7cac65fc045c"
+  }
+}
