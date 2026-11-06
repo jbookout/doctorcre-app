@@ -87,13 +87,16 @@ test('proof closes a browser acquired after expiry without starting browser work
   assert.ok(launchOptions.timeout > 0 && launchOptions.timeout <= 400, 'launch uses only the shared deadline remaining after release retrieval');
 });
 
-for (const stage of ['context', 'page']) test(`proof stops after expired ${stage} acquisition and closes its browser`, async t => {
+for (const shift of [0, 100]) for (const stage of ['context', 'page']) test(`proof stops after expired ${stage} acquisition and closes its browser (clock shift ${shift}ms)`, async t => {
   const server = await fixture(t, 'passing');
   let resume, closed = false, subsequentWork = 0;
   const pending = new Promise(resolve => { resume = resolve; });
   const page = { setDefaultTimeout() { subsequentWork++; } };
   const context = { async newPage() { if (stage === 'context') subsequentWork++; return stage === 'page' ? pending : page; } };
   const engine = { async launch() { return { async close() { closed = true; }, async newContext() { return stage === 'context' ? pending : context; } }; } };
+  const now = performance.now.bind(performance);
+  let reads = 0;
+  t.mock.method(performance, 'now', () => now() + (reads++ ? shift : 0));
   await assert.rejects(runProof({ origin: server.origin, timeout: 150, engine }), /Proof deadline exceeded/);
   assert.equal(closed, true);
   resume(stage === 'context' ? context : page);

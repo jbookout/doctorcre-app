@@ -84,7 +84,31 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`browser deadline
   assert.equal(alive, 0);
 });
 
-test('real Chromium closes after late acquisition and stalled evaluation', async () => {
+test('caller signal owns browser lifetime and exact refusal reason', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const owner = new AbortController();
+  const reason = Object.assign(Error('Owner proof deadline exceeded'), { exitCode: 78 });
+  let closed = false;
+  const engine = { async launch() { return {
+    async close() { closed = true; },
+    async newPage() { return { evaluate: () => new Promise(() => {}) }; },
+  }; } };
+  const browser = await launchProofBrowser(engine, { timeout: 1 }, { signal: owner.signal });
+  t.mock.timers.tick(100);
+  assert.equal(closed, false, 'relative launch budget must not become another lifetime deadline');
+  const observing = (await browser.newPage()).evaluate(() => {});
+  owner.abort(reason);
+  await assert.rejects(observing, error => error === reason);
+  assert.equal(closed, true);
+  await browser.close();
+});
+
+test('already expired proof refuses to launch a browser', async () => {
+  const reason = Error('Proof already expired');
+  await assert.rejects(launchProofBrowser({ launch() { assert.fail('must not launch'); } }, {}, { signal: AbortSignal.abort(reason) }), error => error === reason);
+});
+
+for (const borrowed of [false, true]) test(`real Chromium closes after late acquisition and stalled evaluation (caller deadline ${borrowed})`, async () => {
   const { chromium } = await import('playwright');
   const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
   for (const mode of ['late launch', 'stalled evaluation']) {
@@ -95,13 +119,16 @@ test('real Chromium closes after late acquisition and stalled evaluation', async
       return acquired;
     } };
     let browser;
+    const owner = new AbortController();
+    const reason = Object.assign(Error('Owner proof deadline exceeded'), { exitCode: 78 });
+    const timer = borrowed ? setTimeout(() => owner.abort(reason), 1000) : undefined;
     try {
       await assert.rejects(async () => {
-        browser = await launchProofBrowser(engine, { timeout: 1000 });
+        browser = await launchProofBrowser(engine, { timeout: 1000 }, borrowed ? { signal: owner.signal } : {});
         const page = await browser.newPage();
         await page.evaluate(() => new Promise(() => {}));
       }, { exitCode: 78 });
-    } finally { await browser?.close(); }
+    } finally { clearTimeout(timer); await browser?.close(); }
     const until = Date.now() + 12000;
     while ((!acquired || acquired.isConnected()) && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
     assert.ok(acquired, mode);

@@ -85,7 +85,7 @@ export async function prove({ origin, timeoutMs }) {
   const unavailable = message => Object.assign(new Error(message), { exitCode: 78 });
   const end = Date.now() + timeoutMs;
   let browser, timer;
-  const deadline = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(unavailable('total deadline exceeded')); }, timeoutMs); });
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(unavailable('total deadline exceeded')); reject(controller.signal.reason); }, timeoutMs); });
   try {
     await Promise.race([deadline, (async () => {
       let requests = 0, bytes = 0;
@@ -122,7 +122,7 @@ export async function prove({ origin, timeoutMs }) {
           if (!assets.has(dep.href) && !pending.includes(dep.href)) pending.push(dep.href);
         }
       }
-      browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, end - Date.now()) });
+      browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, end - Date.now()) }, { signal: controller.signal });
       if (controller.signal.aborted) {
         await browser.close();
         throw unavailable('total deadline exceeded');

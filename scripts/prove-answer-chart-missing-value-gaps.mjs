@@ -116,7 +116,7 @@ export async function prove({origin, timeoutMs}) {
           if (!assets.has(url.pathname)) pending.push(url.pathname);
         }
       }
-      browser = await launchProofBrowser(chromium, {headless:true,args: [...CHROMIUM_SAFETY_ARGS],timeout:Math.max(1,deadline-Date.now())});
+      browser = await launchProofBrowser(chromium, {headless:true,args: [...CHROMIUM_SAFETY_ARGS],timeout:Math.max(1,deadline-Date.now())}, { signal: controller.signal });
       if (controller.signal.aborted) {await browser.close();throw unavailable('total deadline exceeded');}
       const page = await browser.newPage({serviceWorkers:'block'});
       page.setDefaultTimeout(Math.max(1,deadline-Date.now()));
@@ -130,7 +130,7 @@ export async function prove({origin, timeoutMs}) {
       await page.goto(origin+'/__answer_gap_proof__');
       const assertions = await assertChartGaps(page);
       return {release,assets:[{path:'/app-release',sha256:createHash('sha256').update(releaseBytes).digest('hex')},...Array.from(assets,([path,bytes])=>({path,sha256:createHash('sha256').update(bytes).digest('hex')}))],requests,assertions};
-    })(), new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(unavailable('total deadline exceeded'));},timeoutMs);}) ]);
+    })(), new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort(unavailable('total deadline exceeded'));reject(controller.signal.reason);},timeoutMs);}) ]);
   } catch (error) {
     error.proof = {release,assets:[...(releaseBytes ? [{path:'/app-release',sha256:createHash('sha256').update(releaseBytes).digest('hex')}] : []),...Array.from(assets,([path,bytes])=>({path,sha256:createHash('sha256').update(bytes).digest('hex')}))],requests,assertions:[{name:error.message,passed:false}]};
     throw error;

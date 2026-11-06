@@ -112,7 +112,7 @@ export async function prove({ origin, timeoutMs }) {
       if (error.exitCode === 78) throw new ProtectedAsset(error.message);
       throw error;
     });
-    browserLaunch = launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browserLaunch = launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     const browser = await browserLaunch;
     const context = await browser.newContext({ serviceWorkers: 'block' });
     context.setDefaultTimeout(remaining());
@@ -140,7 +140,7 @@ export async function prove({ origin, timeoutMs }) {
     return { ok: true, origin: base.origin, release, assets: [...assets].map(([url, value]) => ({ url, sha256: createHash('sha256').update(value.body).digest('hex') })), ...observation, limitation: 'Deployed synthetic resilience only. Natural private-data coverage unproven.' };
   };
   try {
-    return await Promise.race([work(), new Promise((_, reject) => { expired = setTimeout(() => reject(Error('Overall deadline exceeded')), timeoutMs); })]);
+    return await Promise.race([work(), new Promise((_, reject) => { expired = setTimeout(() => { controller.abort(Error('Overall deadline exceeded')); reject(controller.signal.reason); }, timeoutMs); })]);
   } finally {
     clearTimeout(expired);
     controller.abort();

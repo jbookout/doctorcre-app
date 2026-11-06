@@ -51,12 +51,24 @@ export async function readAppRelease(origin, read = {}) {
   return parseRelease(response);
 }
 
-export async function launchProofBrowser(engine, options = {}) {
+// A supplied signal owns the whole proof deadline, including its refusal reason.
+// Without one, this helper owns a bounded standalone browser lifetime.
+export async function launchProofBrowser(engine, options = {}, { signal } = {}) {
+  signal?.throwIfAborted();
   const timeout = options.timeout || 30000;
   let browser, timer, expired = false;
-  const failure = unavailable('Proof browser deadline exceeded');
+  let failure = unavailable('Proof browser deadline exceeded');
+  let onAbort;
+  const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); };
   const deadline = new Promise((_, reject) => {
-    timer = setTimeout(() => { expired = true; void browser?.close(); reject(failure); }, timeout);
+    const expire = () => {
+      expired = true;
+      failure = signal?.reason || failure;
+      void browser?.close().catch(() => {});
+      reject(failure);
+    };
+    if (signal) { onAbort = expire; signal.addEventListener('abort', onAbort, { once: true }); }
+    else timer = setTimeout(expire, timeout);
   });
   const pending = Promise.resolve().then(() => engine.launch(options)).then(async acquired => {
     if (expired) { await acquired.close(); throw failure; }
@@ -70,7 +82,7 @@ export async function launchProofBrowser(engine, options = {}) {
     const proxy = new Proxy(target, { get(object, key) {
       const value = Reflect.get(object, key);
       if (typeof value !== 'function') return value;
-      if (key === 'close') return async (...args) => { if (object === browser) clearTimeout(timer); return value.apply(object, args); };
+      if (key === 'close') return async (...args) => { if (object === browser) cleanup(); return value.apply(object, args); };
       return (...args) => {
         if (expired) throw failure;
         const result = value.apply(object, args);
@@ -83,5 +95,5 @@ export async function launchProofBrowser(engine, options = {}) {
     return proxy;
   }
   try { return wrap(await Promise.race([pending, deadline])); }
-  catch (error) { clearTimeout(timer); throw error; }
+  catch (error) { cleanup(); throw error; }
 }

@@ -66,7 +66,7 @@ export async function prove({ origin, timeoutMs }) {
   const controller = new AbortController();
   const unavailable = message => Object.assign(new Error(message), { unavailable: true });
   const deadline = new Promise((_, reject) => {
-    timer = setTimeout(() => { controller.abort(); reject(unavailable('total deadline exceeded')); }, timeoutMs);
+    timer = setTimeout(() => { controller.abort(unavailable('total deadline exceeded')); reject(controller.signal.reason); }, timeoutMs);
   });
   try {
     await Promise.race([deadline, (async () => {
@@ -105,7 +105,7 @@ export async function prove({ origin, timeoutMs }) {
           if (assets.size + pending.length > 19) throw unavailable('twenty-fetch cap exceeded');
         }
       }
-      browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeoutMs - (Date.now() - started)) });
+      browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeoutMs - (Date.now() - started)) }, { signal: controller.signal });
       if (controller.signal.aborted) { await browser.close(); throw unavailable('total deadline exceeded'); }
       const context = await browser.newContext({ serviceWorkers: 'block' });
       await context.route('**/*', route => {
