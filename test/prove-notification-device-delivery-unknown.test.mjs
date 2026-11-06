@@ -3,7 +3,7 @@ import { chromium, fixtureServer } from './browser-harness.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -13,7 +13,12 @@ import { createFixtureClient } from '../js/fixture-client.js';
 import * as model from '../js/notifications-model.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const baseline = execFileSync('git', ['show', '5b6d1a76493913da5173513c9c129c3c3648ab68:js/notifications-model.js']);
+const modelSource = await readFile(resolve(root, 'js/notifications-model.js'), 'utf8');
+const falseAbsenceSource = modelSource.replace(
+  'const absent = Array.isArray(delivery) && rows.every(validRow);',
+  'const absent = true;',
+);
+assert.notEqual(falseAbsenceSource, modelSource, 'Fixture must inject an unvalidated device-absence claim');
 async function fixture(t, mode) {
   const seen = [], served = new Map();
   let identities = 0;
@@ -36,7 +41,7 @@ async function fixture(t, mode) {
       if (!req.url.startsWith('/js/') || !/\.(js|mjs)$/.test(path)) throw Error('Unexpected asset');
       let body = mode === 'cap' && /proof-cap-/.test(path) ? Buffer.from('export const x = 1;') : await readFile(path);
       if (req.url === '/js/notifications-model.js') {
-        if (mode === 'baseline') body = baseline;
+        if (mode === 'false-absence') body = Buffer.from(falseAbsenceSource);
         if (mode === 'network') body = Buffer.from('await fetch("/api/business");');
         if (mode === 'cap') body = Buffer.from(Array.from({ length: 21 }, (_, i) => `import "./proof-cap-${i}.js";`).join('\n'));
       }
@@ -74,12 +79,13 @@ test('proof CLI executes deployed module graph and binds exact hashes and Worker
   assert.ok(f.seen.every(req => req.method === 'GET'));
   console.log(JSON.stringify({ case: 'pass', code, receipt }));
 });
-for (const [mode, expected] of [['baseline', 1], ['protected', 78], ['missing-asset', 78], ['identity', 78], ['timeout', 78], ['release-change', 1], ['network', 1], ['cap', 78]]) {
+for (const [mode, expected] of [['false-absence', 1], ['protected', 78], ['missing-asset', 78], ['identity', 78], ['timeout', 78], ['release-change', 1], ['network', 1], ['cap', 78]]) {
   test(`proof CLI refuses ${mode} with the same origin and timeout flags`, async t => {
     const f = await fixture(t, mode);
     const { code, receipt } = await cli(f.origin);
     assert.equal(code, expected, JSON.stringify(receipt));
     assert.notEqual(receipt.status, 'passed');
+    if (mode === 'false-absence') assert.match(receipt.error, /null-unavailable/);
     assert.ok(!f.seen.some(req => req.path.startsWith('/api/') || req.path === '/sign-in'));
     console.log(JSON.stringify({ case: mode, code, receipt }));
   });
