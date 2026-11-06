@@ -228,7 +228,9 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     if (!pageOwnsMoves && !feed.caught_up) render('#appTodayMoves', unavailable);
     renderReadStatus();
   };
-  win.addEventListener('doctorcre-session-invalidated', () => { void calendarPanels.then(panel => panel?.clear()); });
+  let lifetime = new AbortController();
+  const retireRead = () => { lifetime.abort(); lifetime = new AbortController(); };
+  win.addEventListener('doctorcre:meeting-preparation-closed', retireRead);
   const unavailableRead = () => {
     todayItems = null; todayNeeds = null;
     resetFeed();
@@ -236,20 +238,26 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     failedRead();
   };
   const refresh = async ({ signal } = {}) => {
+    signal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
+    if (signal.aborted) return;
     if (win.navigator.onLine === false) { failedRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
-    catch { failedRead(); return; }
+    catch { if (!signal.aborted) failedRead(); return; }
+    if (signal.aborted) return;
     const [board, triage, meetings] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
         const brief = normalizeBrief(await client.morningBrief());
+        if (signal.aborted) return null;
         if (brief) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
       readWithDeadline(() => client.calendarMeetingPrep({ signal }), { signal }),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
-    (await calendarPanels)?.render(meetings.status === 'fulfilled' ? meetings.value : null);
+    const panels = await calendarPanels;
+    if (signal.aborted) return;
+    panels?.render(meetings.status === 'fulfilled' ? meetings.value : null);
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid && !failedReads.length);
@@ -333,7 +341,12 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
   void ready.then(() => auto.refresh());
   // Ages are relative to now, so the list repaints each minute; render() skips the DOM when the text is unchanged.
   const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
+  const invalidateSession = () => {
+    win.removeEventListener('doctorcre:meeting-preparation-closed', retireRead);
+    lifetime.abort(); auto.dispose(); ageTick.dispose(); unavailableRead();
+  };
+  win.addEventListener('doctorcre-session-invalidated', invalidateSession);
   win.addEventListener('pagehide', event => {
-    if (!event.persisted) { ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
+    if (!event.persisted) { lifetime.abort(); win.removeEventListener('doctorcre:meeting-preparation-closed', retireRead); win.removeEventListener('doctorcre-session-invalidated', invalidateSession); ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
   });
 }

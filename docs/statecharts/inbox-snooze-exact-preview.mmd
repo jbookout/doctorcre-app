@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> Closed
+  Closed --> Preview: Open row, swipe, or selected cards / capture clock once
+  Preview --> Preview: Refresh / retain endpoints
+  Preview --> Closed: Cancel or Escape / restore opener focus
+  Preview --> Expired: Select elapsed endpoint / refuse locally
+  Expired --> Closed: Cancel or Escape
+  Preview --> Pending: Select future endpoint / store exact command
+  Pending --> Pending: Offline or uncertain result / retain command
+  Pending --> Closed: Retry identical command / confirmed
+  Closed --> Preview: Reopen / fresh endpoints
+  Preview --> Retired: Session invalidated / unmount
+  Pending --> Retired: Session invalidated / unmount
