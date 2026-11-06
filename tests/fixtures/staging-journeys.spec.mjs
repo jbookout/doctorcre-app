@@ -74,7 +74,19 @@ export async function localFixture(browser) {
   const origin = `http://127.0.0.1:${server.address().port}`;
   const context = await browser.newContext({ baseURL: origin });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  return { page: await context.newPage(), server, close: async () => { await context.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } };
+  let contextClosed = false, closing;
+  context.once('close', () => { contextClosed = true; });
+  const close = () => closing ??= (async () => {
+    try {
+      if (!contextClosed) await context.close();
+    } catch (error) {
+      if (!contextClosed && browser.isConnected()) throw error;
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  })();
+  return { page: await context.newPage(), server, close };
 }
 
 for (const [name, flow] of Object.entries({ leaseDetails, tourDay, itinerary, shareLifecycle })) {
