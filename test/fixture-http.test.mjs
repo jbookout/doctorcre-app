@@ -260,3 +260,16 @@ test('demo profile preserves outage controls without replacing the Worker asset 
   assert.equal((await fetch(fixture.origin + '/api/v1/work-inventory')).status,200);
   assert.equal((await fetch(fixture.origin + '/api/v1/atlas-graph')).status,200);
 });
+
+test('Worker admits encoded identifiers only through declared application routes', async t => {
+  const { startWorkerFixture } = await import('../scripts/fixture-http.mjs');
+  const fixture = await startWorkerFixture({assets:new Map([['/inbox.html',{body:'admitted inbox',contentType:'text/html'}]]),
+    env:{CARR:{fetch:async () => new Response(null)}}});
+  t.after(() => fixture.close());
+  assert.equal(await (await fetch(fixture.origin + '/inbox/card/next_action%3At1')).text(),'admitted inbox');
+  for (const path of ['/js/module%3Aprivate.js','/inbox/card/%2e%2e','/inbox/card/next%2Faction','/inbox/card/next%252Faction','/inbox/card/next%5caction','/inbox/card/%00','/inbox/card/%zz'])
+    assert.equal((await raw(fixture.origin,path)).status,400,path);
+  const proof = await startFixture();
+  t.after(() => proof.close());
+  assert.equal((await raw(proof.origin,'/inbox/card/next_action%3At1')).status,400);
+});

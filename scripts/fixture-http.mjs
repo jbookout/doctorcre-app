@@ -1,3 +1,4 @@
+import { routeContract, routeKey, actionLinkRoute } from '../js/routes.js';
 import { censusResponse } from './work-inventory-fixture.mjs';
 import { atlasFixtureResponse } from './atlas-fixture.mjs';
 import { createQaDispatcher } from './qa-fixture-dispatch.mjs';
@@ -97,7 +98,15 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
     if (observations.length < budget.observations) observations.push(Object.freeze({ method: req.method, path, target, headers: Object.freeze({ ...req.headers }) }));
     const refuse = status => { res.writeHead(status, { 'cache-control': 'no-store' }); res.end(); };
     if (++count > budget.requests) return refuse(429);
-    try { fixtureKey(path); } catch { return refuse(400); }
+    try { fixtureKey(path); } catch {
+      if (!worker) return refuse(400);
+      try {
+        const decoded = decodeURIComponent(path);
+        fixtureKey(decoded);
+        const key = routeKey(actionLinkRoute(path));
+        if (key === path || key !== routeKey(actionLinkRoute(decoded)) || !Object.hasOwn(routeContract.routes,key)) return refuse(400);
+      } catch { return refuse(400); }
+    }
     if (worker && !(routeKeys.has(path) && ['GET', 'HEAD'].includes(req.method))) {
       const controller = new AbortController();
       const cancel = () => controller.abort();
