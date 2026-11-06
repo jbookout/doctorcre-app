@@ -12,14 +12,15 @@ const recordings = JSON.parse(await readFile(new URL('../test/fixtures/deal-docu
 export async function observeLoadedSearch(page, assetUrl) {
   await page.evaluate(async ({ assetUrl, recordings }) => {
     const { mountDealDocuments } = await import(assetUrl);
+    const { request: initialRequest } = recordings.initial;
     window.loadedSearchRequests = [];
     window.loadedSearchPanel = mountDealDocuments(document.querySelector('main'), {
-      dealId: recordings.initial.request.deal_id,
+      dealId: initialRequest.deal_id,
       client: { async listDealDocuments(args) {
         window.loadedSearchRequests.push(args);
-        const recording = args.cursor ? recordings.second : recordings.initial;
-        if (JSON.stringify(args) !== JSON.stringify(recording.request)) throw Error('Recorded request differs');
-        return recording.response;
+        const { request: expectedRequest, response } = args.cursor ? recordings.second : recordings.initial;
+        if (JSON.stringify(args) !== JSON.stringify(expectedRequest)) throw Error('Recorded request differs');
+        return response;
       } },
     });
   }, { assetUrl, recordings });

@@ -119,6 +119,43 @@ test('loaded search behavior and retirement', async t => {
         await page.evaluate(() => window.panel.dispose());
       } finally { await page.close(); }
     });
+    for (const retirement of ['invalidate', 'dispose']) {
+      await t.test(`filtered ready ${retirement} retires directly ${width} ${theme}`, async () => {
+        const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
+        try {
+          await page.route('**/harness', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-theme="${theme}"><main></main></html>` }));
+          await page.goto(`${server.url}/harness`);
+          await page.evaluate(async recording => {
+            const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
+            window.requests = [];
+            window.panel = mountDealDocuments(document.querySelector('main'), {
+              dealId: recording.request.deal_id,
+              client: { async listDealDocuments(args) { window.requests.push(args); return recording.response; } },
+            });
+          }, recordings.initial);
+          const search = page.getByRole('searchbox', { name: 'Search loaded documents', exact: true });
+          const type = page.getByRole('combobox', { name: 'Document type', exact: true });
+          await type.selectOption('type:application/pdf');
+          await search.fill('Document');
+          const expected = recordings.initial.response.documents.filter(doc => doc.document_type === 'application/pdf' && /document/i.test(doc.display_name)).map(doc => doc.id);
+          assert.ok(expected.length > 0 && expected.length < 50);
+          assert.deepEqual(await page.locator('[data-document-id]').evaluateAll(rows => rows.map(row => row.dataset.documentId)), expected);
+          assert.equal(await type.inputValue(), 'type:application/pdf');
+          assert.equal(await page.getByRole('button', { name: 'Refresh documents', exact: true }).isEnabled(), true);
+          await page.evaluate(retirement => {
+            if (retirement === 'dispose') window.panel.dispose();
+            else window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+          }, retirement);
+          if (retirement === 'invalidate') assert.match(await page.locator('main').innerText(), /Session expired/);
+          else assert.equal(await page.locator('main').innerHTML(), '');
+          assert.equal(await page.locator('main input,main select,[data-document-id]').count(), 0);
+          await page.evaluate(async () => { await window.panel.refresh(); });
+          assert.equal(await page.evaluate(() => window.requests.length), 1, 'retired ready panel must not fetch again');
+          assert.equal(await page.locator('main input,main select,[data-document-id]').count(), 0);
+          await page.evaluate(() => window.panel.dispose());
+        } finally { await page.close(); }
+      });
+    }
     for (const retirement of ['invalidate', '401', '403', 'dispose']) for (const phase of ['initial', 'filtered', 'refused']) {
       await t.test(`${phase} ${retirement} ignores late completion ${width} ${theme}`, async () => {
         const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
