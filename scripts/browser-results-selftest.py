@@ -41,6 +41,51 @@ class ResultsTest(unittest.TestCase):
                              cwd=self.root, env=env, capture_output=True, timeout=timeout)
         return run, output
 
+    def test_failure_annotations_use_real_test_file_and_line(self):
+        file = self.root / 'test/failing.test.mjs'
+        file.write_text("import test from 'node:test';\nimport assert from 'node:assert/strict';\n"
+                        "test('failure case', () => {\n  assert.equal(1, 2);\n});\n"
+                        "test('later pass', () => {});\n")
+        self.files = ['test/failing.test.mjs']
+        run, output = self.run_node(1)
+        self.assertNotEqual(run.returncode, 0)
+        subprocess.run(['python3', str(ROOT / 'scripts/browser-results.py'), str(output),
+                        '--shard', '1'], cwd=self.root, capture_output=True, timeout=30)
+        case = next(results.ET.parse(output).iter('testcase'))
+        self.assertEqual(case.get('file'), 'test/failing.test.mjs')
+        self.assertEqual(case.get('line'), '4')
+        self.assertIsNotNone(case.find('failure'))
+        self.assertEqual(len(list(results.ET.parse(output).iter('testcase'))), 2)
+        action = os.environ.get('JUNIT_ACTION_DIST')
+        if action:
+            dependency = self.root / 'node_modules/teex/test.js'
+            dependency.parent.mkdir(parents=True)
+            dependency.write_text('')
+            event = self.root / 'event.json'
+            event.write_text('{}')
+            summary = self.root / 'summary.md'
+            summary.touch()
+            env = dict(PATH=os.environ['PATH'], GITHUB_WORKSPACE=str(self.root.parent),
+                       GITHUB_REPOSITORY='synthetic/fork', GITHUB_EVENT_PATH=str(event),
+                       GITHUB_STEP_SUMMARY=str(summary), INPUT_TOKEN='synthetic-no-api-token',
+                       INPUT_REPORT_PATHS=str(output), INPUT_ANNOTATE_ONLY='true',
+                       INPUT_COMMENT='false', INPUT_JOB_SUMMARY='true', INPUT_DETAILED_SUMMARY='true',
+                       INPUT_FAIL_ON_FAILURE='true', INPUT_FAIL_ON_PARSE_ERROR='true',
+                       INPUT_REQUIRE_TESTS='true', INPUT_REQUIRE_PASSED_TESTS='true',
+                       INPUT_CHECK_RETRIES='false', INPUT_GROUP_REPORTS='true',
+                       INPUT_CHECK_ANNOTATIONS='true', INPUT_INCLUDE_SKIPPED='true',
+                       INPUT_FAILED_SUMMARY='true', INPUT_FOLLOW_SYMLINK='false',
+                       INPUT_TRUNCATE_STACK_TRACES='true', INPUT_TRANSFORMERS='[]',
+                       INPUT_CHECK_NAME='JUnit Test Report',
+                       INPUT_TEST_FILES_PREFIX=self.root.name + '/')
+            published = subprocess.run(['node', action], cwd=self.root.parent, env=env,
+                                       capture_output=True, text=True, timeout=30)
+            log = published.stdout + published.stderr
+            self.assertEqual(published.returncode, 1, log)
+            annotation = next(line for line in log.splitlines() if '::error title=' in line)
+            self.assertIn(f'file={self.root.name}/test/failing.test.mjs,line=4,endLine=4', annotation)
+            print(annotation)
+
     def test_native_pass_and_nested_identity_all_23_once(self):
         self.produce()
         for shard in range(1, 5):
