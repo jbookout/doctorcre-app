@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { resolve, sep } from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { build } from 'esbuild';
 import { options, responseFixture } from '../scripts/prove-historical-fit-session-retirement.mjs';
 const runner = 'scripts/prove-historical-fit-session-retirement.mjs';
@@ -26,9 +26,12 @@ test('declared command and assertions match CLI and registered response contract
   const help = await cli(['--help']); assert.equal(help.code, 0); assert.match(help.stdout, /78/);
   for (const args of [[], ['--origin', 'http://example.com'], ['--origin', 'https://example.com/path'], ['--origin', 'https://example.com', '--timeout-ms', '30001'], ['--origin', 'https://example.com', '--unknown', '1']]) assert.throws(() => options(args));
 });
-test('exact CLI flags prove fetched head and contradict merge-base; unavailable and timeout exit 78', async t => {
-  const baseline = execFileSync('git', ['show', '043e4b4f34c73663b84f06bf783f7c29fa2a05a3:src/ui/ideal-client-profile.tsx'], { encoding: 'utf8' });
-  const bundled = await build({ stdin: { contents: baseline, loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
+test('exact CLI flags prove fetched head and reject recoverable invalidation; unavailable and timeout exit 78', async t => {
+  const source = await readFile('src/ui/ideal-client-profile.tsx', 'utf8');
+  const listener = "addEventListener('doctorcre-session-invalidated', retire)";
+  assert.ok(source.includes(listener), 'mutation must replace the session retirement listener');
+  const recoverableInvalidation = source.replace(listener, "addEventListener('doctorcre-session-invalidated', clear)");
+  const bundled = await build({ stdin: { contents: recoverableInvalidation, loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
   let mode = 'pass';
   const requests = [];
   const server = createServer(async (req, res) => {
@@ -57,6 +60,7 @@ test('exact CLI flags prove fetched head and contradict merge-base; unavailable 
     mode = scenario; requests.length = 0;
     const result = await cli(args);
     assert.equal(result.code, expected, `${scenario}: ${result.stderr}`);
+    if (scenario === 'contradiction') assert.match(result.stderr, /idle removes private rows and controls/);
     if (scenario === 'pass') {
       const receipt = JSON.parse(result.stdout);
       assert.equal(receipt.assertions.length, 8); assert.equal(receipt.release.service, 'doctorcre-app');
