@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';

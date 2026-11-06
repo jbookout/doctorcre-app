@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { readFile, rm } from 'node:fs/promises';
 import { resolve, sep, join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';

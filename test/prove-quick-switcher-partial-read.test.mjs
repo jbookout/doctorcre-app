@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { readFileSync } from 'node:fs';
 const runner = 'scripts/prove-quick-switcher-partial-read.mjs';

@@ -1,3 +1,5 @@
+// Threat model: accidental bypass by our own builders, not a determined adversary.
+// Static checks catch obvious forms; proof fixtures enforce the reader marker at runtime.
 import { parseSync, traverse } from '@babel/core';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
@@ -85,13 +87,29 @@ export function checkProofSource(source, filename = 'proof.mjs') {
 export async function checkProofTransports(root = new URL('../', import.meta.url)) {
   const scripts = new URL('scripts/', root);
   const errors = [];
+  // These app clients are exercised with data: seeds and injected fixture transports.
+  const appFixtureClients = new Set(['../js/fixture-client.js', '../js/live-client.js'].map(path => new URL(path, scripts).href));
+  const visited = new Map();
+  async function inspect(url, depth) {
+    if (appFixtureClients.has(url.href) || url.href === new URL('app-release-reader.mjs', scripts).href || (visited.get(url.href) ?? -1) >= depth) return;
+    visited.set(url.href, depth);
+    const source = await readFile(url, 'utf8');
+    const filename = url.href.slice(root.href.length);
+    errors.push(...checkProofSource(source, filename.replace(/^scripts\//, '')));
+    if (depth === 0) return;
+    const ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false });
+    for (const node of ast.program.body) {
+      if (!['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type)) continue;
+      if (node.source?.value.startsWith('.')) await inspect(new URL(node.source.value, url), depth - 1);
+    }
+  }
   for (const file of (await readdir(scripts)).filter(name => /^prove-.*\.mjs$/.test(name))) {
     if (file === 'prove-loop-lint-coverage.mjs') {
       const source = await readFile(new URL(file, scripts));
       if (createHash('sha256').update(source).digest('hex') !== '195b8e915d2e15ebbd21c434a7906c6260d7f48d599a8de9e052c58017836cf2') errors.push(`${file}: historical lint test changed; re-review its capabilities`);
       continue;
     }
-    errors.push(...checkProofSource(await readFile(new URL(file, scripts), 'utf8'), file));
+    await inspect(new URL(file, scripts), 2);
   }
   return errors;
 }

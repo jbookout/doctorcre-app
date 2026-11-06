@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createServer} from 'node:http';
+import { createServer } from './proof-fixture-server.mjs';
 import {readFile} from 'node:fs/promises';
 import {execFile,execFileSync} from 'node:child_process';
 import {promisify} from 'node:util';

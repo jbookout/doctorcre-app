@@ -26,8 +26,10 @@ async function releaseBody(response) {
 export async function proofFetch(url, options = {}) {
   if (options.redirect && !['manual', 'error'].includes(options.redirect)) throw unavailable('Proof redirects are refused');
   if (options.method && options.method !== 'GET') throw unavailable('Proof HTTP is read-only');
+  const headers = new Headers(options.headers);
+  headers.set('x-doctorcre-release-reader', '1');
   let response;
-  try { response = await fetch(url, { ...options, redirect: options.redirect === 'manual' ? 'manual' : 'error', signal: options.signal || AbortSignal.timeout(30000) }); }
+  try { response = await fetch(url, { ...options, headers, redirect: options.redirect === 'manual' ? 'manual' : 'error', signal: options.signal || AbortSignal.timeout(30000) }); }
   catch { throw unavailable('Proof HTTP unavailable'); }
   if (new URL(url).pathname === APP_RELEASE_PATH && !response.ok) throw unavailable(`Proof HTTP unavailable (${response.status})`);
   if (new URL(url).pathname === APP_RELEASE_PATH) {
