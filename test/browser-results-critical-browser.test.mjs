@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
-test('J73 deliberate early failure', () => assert.fail('temporary hosted acceptance defect'));
-
 test('native JUnit critical assertion and failure propagation', () => {
   const result = spawnSync('python3', ['scripts/browser-results-selftest.py'], {
     encoding: 'utf8', timeout: 60000,

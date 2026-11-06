@@ -24,12 +24,12 @@ class ResultsTest(unittest.TestCase):
     def produce(self, change=None):
         for file in self.files:
             names = [s.split('::', 1)[1] for s in results.CRITICAL if s.startswith(file + '::')]
-            source = "import test from 'node:test';\n"
+            source = "import test, {describe} from 'node:test';\n" + f"describe({json.dumps(file)},()=>{{\n"
             for name in names:
                 parent, _, child = name.partition('::')
                 body = f"test({json.dumps(parent)}, async t => {{await t.test({json.dumps(child)},()=>{{}});}});" if child else f"test({json.dumps(name)},()=>{{}});"
                 source += (change(body) if change else body) + '\n'
-            (self.root / file).write_text(source)
+            (self.root / file).write_text(source + '\n});\n')
 
     def run_node(self, shard, timeout=10):
         output = self.root / f'{shard}.xml'

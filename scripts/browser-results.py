@@ -24,7 +24,7 @@ def verify(path, files, shard):
     if not required_files.issubset(files):
         raise ValueError('critical test file missing from inventory')
     owned = set(files[shard - 1::4])
-    required = {s.split('::', 1)[1]: s for s in CRITICAL if s.split('::')[0] in owned}
+    required = {s for s in CRITICAL if s.split('::')[0] in owned}
     cases = []
 
     def visit(element, names=()):
@@ -38,13 +38,13 @@ def verify(path, files, shard):
     visit(root)
     counts = Counter(name for name, _ in cases)
     errors = [f'critical must execute exactly once: {scenario}'
-              for name, scenario in required.items() if counts[name] != 1]
+              for scenario in sorted(required) if counts[scenario] != 1]
     for name, case in cases:
         if name in required and any(case.find(tag) is not None for tag in ('skipped', 'failure', 'error')):
-            errors.append(f'critical did not pass: {required[name]}')
+            errors.append(f'critical did not pass: {name}')
     if errors:
         raise ValueError('\n'.join(errors))
-    for scenario in required.values():
+    for scenario in sorted(required):
         print(f'PASS {scenario}')
 
 

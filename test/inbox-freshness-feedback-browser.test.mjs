@@ -1,10 +1,12 @@
-import test, { before, after } from 'node:test';
+import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium, fixtureServer } from './browser-harness.mjs';
+
+describe('test/inbox-freshness-feedback-browser.test.mjs', () => {
 
 let outDir;
 before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); });
@@ -203,4 +205,6 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`re
   assert.ok(undo.y + undo.height < bottom);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `/tmp/WR39.S1.J64-evidence/receipt-${width}-${theme}.png` });
+});
+
 });
