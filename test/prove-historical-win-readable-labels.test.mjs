@@ -1,10 +1,11 @@
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep, join } from 'node:path';
-import { createServer } from './proof-fixture-server.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { join } from 'node:path';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 
 const runner = 'scripts/prove-historical-win-readable-labels.mjs';
@@ -17,36 +18,29 @@ function cli(args, imports = []) {
   });
 }
 test('proof CLI passes fixtures, detects contradiction and reports insufficient evidence', async t => {
-  const fixture = await startFixtureServer(); t.after(() => fixture.stop());
-  const root = resolve('.'); let broken = false, protectedAsset = false;
-  const server = createServer(async (req, res) => {
-    let pathname;
-    try { pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); } catch { res.writeHead(400); return res.end(); }
-    if (!resolve(root, `.${pathname}`).startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    if (pathname === '/app-release') {
-      res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) }));
-    }
-    if (protectedAsset && pathname === '/js/ui-ideal-client-profile.js') { res.writeHead(403); return res.end(); }
-    if (broken && pathname === '/js/ui-ideal-client-profile.js') {
-      res.setHeader('content-type', 'text/javascript'); return res.end('export function mountIdealClientProfile(){throw Error("assertion fixture contradiction")}');
-    }
-    const upstream = await fetch(`${fixture.url}${pathname}`);
-    res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') }); res.end(Buffer.from(await upstream.arrayBuffer()));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  const origin = `http://127.0.0.1:${server.address().port}`, args = ['--origin', origin, '--timeout-ms', '30000'];
+  const out = temporaryDirectory('labels-snapshot-', t);
+  const built = await buildArtifact({ root: process.cwd(), outDir: out });
+  const assets = await loadFixtureAssets({ root: `${out}/site`, manifest: new Map(built.manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
+  async function snapshot(mode = 'pass') {
+    const responses = new Map(assets);
+    responses.set('/app-release', { body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) }), contentType: 'application/json' });
+    if (mode === 'protected') responses.set('/js/ui-ideal-client-profile.js', { status: 403 });
+    if (mode === 'broken') responses.set('/js/ui-ideal-client-profile.js', { body: 'export function mountIdealClientProfile(){throw Error("assertion fixture contradiction")}', contentType: 'text/javascript' });
+    const fixture = await startFixture({ routes: responses }); t.after(() => fixture.close()); return fixture;
+  }
+  let fixture = await snapshot(), origin = fixture.origin;
+  let args = ['--origin', origin, '--timeout-ms', '30000'];
   const passing = await cli([...args, '--fixture']); assert.equal(passing.code, 0, passing.stderr);
   assert.equal(JSON.parse(passing.stdout).assertions.length, 7);
   const insufficient = await cli(args); assert.equal(insufficient.code, 78, insufficient.stderr);
   assert.equal(JSON.parse(insufficient.stdout).status, 'insufficient_evidence');
-  broken = true; const failed = await cli([...args, '--fixture']); assert.equal(failed.code, 1, failed.stderr);
+  await fixture.close(); fixture = await snapshot('broken'); origin = fixture.origin; args[1] = origin;
+  const failed = await cli([...args, '--fixture']); assert.equal(failed.code, 1, failed.stderr);
   assert.match(failed.stderr, /contradiction/);
-  for (const path of ['/..%2foutside', '/%2e%2e%2foutside']) assert.equal((await fetch(origin + path)).status, 403);
-  broken = false; protectedAsset = true;
+  for (const path of ['/..%2foutside', '/%2e%2e%2foutside']) assert.equal((await fetch(origin + path)).status, 400);
+  await fixture.close(); fixture = await snapshot('protected'); origin = fixture.origin; args[1] = origin;
   const protectedResult = await cli(args); assert.equal(protectedResult.code, 78, protectedResult.stderr);
-  protectedAsset = false;
+  await fixture.close(); fixture = await snapshot(); origin = fixture.origin;
   for (const mode of ['stalled evaluation', 'late launch']) {
     const scratch = temporaryDirectory('labels-proof-timeout-');
     t.after(() => rm(scratch, { recursive: true, force: true }));

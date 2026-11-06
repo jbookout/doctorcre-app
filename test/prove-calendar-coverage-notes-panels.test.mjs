@@ -1,42 +1,29 @@
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { handleDoctorcreRequest } from '../src/worker.js';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { prove } from '../scripts/prove-calendar-coverage-notes-panels.mjs';
 
 const exec = promisify(execFile);
-let outDir;
-before(async () => { outDir = temporaryDirectory('coverage-proof-'); await buildArtifact({ root: process.cwd(), outDir }); });
+let outDir, manifest;
+before(async () => { outDir = temporaryDirectory('coverage-proof-'); ({ manifest } = await buildArtifact({ root: process.cwd(), outDir })); });
 after(() => rm(outDir, { recursive: true, force: true }));
 async function fixture(t, mode) {
   const root = resolve(outDir, 'site');
-  const server = createServer(async (req, res) => {
-    if (req.url === '/app-release') {
-      const release = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: '1'.repeat(40) });
-      res.writeHead(release.status, Object.fromEntries(release.headers)).end(await release.text());
-      return;
-    }
-    try {
-      const path = decodeURIComponent(req.url);
-      if (/%2e|%5c|%00/i.test(req.url) || path.includes('\\') || path.includes('\0')) throw Error('unsafe');
-      const file = resolve(root, path.slice(1));
-      if (!file.startsWith(root + sep)) throw Error('outside root');
-      const body = mode === 'broken' && path === '/js/ui-calendar-panels.js'
-        ? 'export async function mountCalendarPanels(left) {return {render(){left.textContent="old behavior"},clear(){}}}' : await readFile(file);
-      res.writeHead(200, { 'content-type': 'text/javascript' }).end(body);
-    } catch { res.writeHead(404).end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  return `http://127.0.0.1:${server.address().port}`;
+  const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
+  responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+  if (mode === 'broken') responses.set('/js/ui-calendar-panels.js', { body: 'export async function mountCalendarPanels(left) {return {render(){left.textContent="old behavior"},clear(){}}}', contentType: 'text/javascript' });
+  const fixture = await startFixture({ routes: responses });
+  t.after(() => fixture.close());
+  return fixture.origin;
 }
 for (const mode of ['pass', 'broken']) test(`proof CLI fixture ${mode}`, async t => {
   const origin = await fixture(t, mode);
