@@ -29,12 +29,16 @@ test('proof responses obey registered Home and fact field contracts and the prod
   }
 });
 const run = (args, preload) => new Promise((resolveRun, reject) => {
-  const child = spawn(process.execPath, [...(preload ? ['--import', `data:text/javascript,${encodeURIComponent(preload)}`] : []), 'scripts/prove-home-fact-review-source-page-range.mjs', ...args]);
-  let stdout = '', stderr = '';
+  const child = spawn(process.execPath, [...(preload ? ['--import', `data:text/javascript,${encodeURIComponent(preload)}`] : []), 'scripts/prove-home-fact-review-source-page-range.mjs', ...args], { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '', resources = '';
+  child.stdio[3].on('data', data => { resources += data; });
   child.stdout.on('data', data => { stdout += data; });
   child.stderr.on('data', data => { stderr += data; });
   child.on('error', reject);
-  child.on('exit', code => resolveRun({ code, receipt: JSON.parse(stdout), stderr }));
+  child.on('close', code => {
+    try { resolveRun({ code, receipt: JSON.parse(stdout), stderr, resources }); }
+    catch (error) { reject(error); }
+  });
 });
 test('proof CLI covers fetched boot, contradiction, unavailable, deadline and identity drift', async t => {
   const assets = await uiAssets(path => readFile(resolve(root, path)));
@@ -96,44 +100,45 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     mode = 'pass';
     const preload = `
       import { chromium } from ${JSON.stringify(pathToFileURL(resolve('node_modules/playwright/index.mjs')).href)};
-      import { setTimeout as delay } from 'node:timers/promises';
+      import { writeSync } from 'node:fs';
       import { mock } from 'node:test';
       import { CHROMIUM_SAFETY_ARGS } from ${JSON.stringify(pathToFileURL(resolve('scripts/chromium-safety-args.mjs')).href)};
+      process.emitWarning('resource diagnostics must not be parsed as JSON');
       const launch = chromium.launch.bind(chromium);
       const nativeSetTimeout = globalThis.setTimeout;
       const stalled = ${JSON.stringify(fault)} === 'stalled evaluation';
-      const ready = stalled ? await launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: 1000 }) : undefined;
-      if (stalled) {
-        // Setup may exceed the budget; expire the owner only after evaluation starts.
-        mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
-        const controlledSetTimeout = globalThis.setTimeout;
-        let ownerScheduled = false;
-        globalThis.setTimeout = (callback, ms, ...args) => {
-          if (!ownerScheduled && ms === 1000) {
-            ownerScheduled = true;
-            return controlledSetTimeout(callback, ms, ...args);
-          }
-          return nativeSetTimeout(callback, ms, ...args);
-        };
-      }
-      chromium.launch = async options => {
-        const browser = ready || await launch(options);
-        const session = await browser.newBrowserCDPSession();
-        const { processInfo } = await session.send('SystemInfo.getProcessInfo');
-        const pids = processInfo.map(info => info.id);
-        let evaluationStarted = false;
-        await session.detach();
-        const reportResources = () => nativeSetTimeout(async () => {
-          const connected = browser.isConnected();
-          const survivors = pids.filter(pid => { try { process.kill(pid, 0); return true; } catch { return false; } });
-          console.error(JSON.stringify({ connected, survivors, evaluationStarted }));
-          await browser.close();
-        }, 2200);
-        if (!stalled) { reportResources(); await delay(1500); }
+      const browser = await launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: 30000 });
+      const session = await browser.newBrowserCDPSession();
+      const { processInfo } = await session.send('SystemInfo.getProcessInfo');
+      const pids = processInfo.map(info => info.id);
+      await session.detach();
+      let evaluationStarted = false, closing;
+      const close = browser.close.bind(browser);
+      browser.close = () => closing ||= (async () => {
+        await close();
+        const connected = browser.isConnected();
+        const survivors = pids.filter(pid => { try { process.kill(pid, 0); return true; } catch { return false; } });
+        writeSync(3, JSON.stringify({ connected, survivors, evaluationStarted }));
+      })();
+      mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+      const controlledSetTimeout = globalThis.setTimeout;
+      let ownerScheduled = false;
+      globalThis.setTimeout = (callback, ms, ...args) => {
+        if (!ownerScheduled && ms === 1000) {
+          ownerScheduled = true;
+          return controlledSetTimeout(callback, ms, ...args);
+        }
+        return nativeSetTimeout(callback, ms, ...args);
+      };
+      const expire = () => {
+        mock.timers.tick(1000);
+        mock.timers.reset();
+      };
+      chromium.launch = async () => {
+        if (!stalled) expire();
         else {
           const newContext = browser.newContext.bind(browser);
           browser.newContext = async options => {
-            await delay(1100);
             const context = await newContext(options);
             const newPage = context.newPage.bind(context);
             context.newPage = async () => {
@@ -141,9 +146,7 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
               page.evaluate = () => new Promise((_, reject) => {
                 evaluationStarted = true;
                 browser.once('disconnected', () => reject(Error('browser closed during stalled evaluation')));
-                mock.timers.tick(1000);
-                mock.timers.reset();
-                reportResources();
+                expire();
               });
               return page;
             };
@@ -157,7 +160,8 @@ test('proof CLI covers fetched boot, contradiction, unavailable, deadline and id
     assert.equal(result.code, 78, JSON.stringify(result));
     assert.equal(result.receipt.status, 'unavailable');
     assert.match(result.receipt.error, /deadline/);
-    const resources = JSON.parse(result.stderr.trim());
+    assert.match(result.stderr, /resource diagnostics must not be parsed as JSON/);
+    const resources = JSON.parse(result.resources);
     assert.deepEqual(resources, { connected: false, survivors: [], evaluationStarted: fault === 'stalled evaluation' });
     t.diagnostic(JSON.stringify({ fault, exitCode: result.code, ...resources }));
   });
