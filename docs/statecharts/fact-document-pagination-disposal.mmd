@@ -1,0 +1,15 @@
+stateDiagram-v2
+    [*] --> Loading: Open terms
+    Loading --> Loading: Valid page has more documents
+    Loading --> Reviewing: Last document page and fact review resolve
+    Loading --> Fallback: Document failure or capacity or repeated cursor
+    Fallback --> Reviewing: Fact review resolves
+    Loading --> Retired: Refresh terms again
+    Retired --> Retired: Late response or rejection ignored
+    Loading --> Disposed: Close terms
+    Disposed --> Disposed: Late response or rejection ignored
+    Loading --> SignedOut: Session expires
+    SignedOut --> SignedOut: Late response or rejection ignored
+    Disposed --> Loading: Open an independent terms mount
+    Reviewing --> Loading: Refresh terms
+    %% never Retired, Disposed or SignedOut schedules another page or changes the view
