@@ -17,7 +17,7 @@ async function server() {
     const body = assets.get(req.url?.replace(/^\//, ''));
     if (!body) { res.writeHead(403); return res.end(); }
     res.setHeader('content-type', 'text/javascript');
-    res.end(broken ? 'export const missing = true;' : body);
+    res.end(broken ? `export function mountMarketTerms(root) { root.innerHTML = '<label>Recorded stage<select aria-label="Recorded stage"><option>Wrong stages</option></select></label>'; return { dispose() {} }; }` : body);
   });
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve));
   return { origin: `http://127.0.0.1:${http.address().port}`, break() { broken = true; }, async close() { http.closeAllConnections(); await new Promise(resolve => http.close(resolve)); } };
