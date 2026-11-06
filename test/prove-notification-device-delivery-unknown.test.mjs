@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { readAppRelease } from '../scripts/app-release-reader.mjs';
-import { observeDelivery } from '../scripts/prove-notification-device-delivery-unknown.mjs';
+import { observeDelivery, observeOnPage } from '../scripts/prove-notification-device-delivery-unknown.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import * as model from '../js/notifications-model.js';
 
@@ -64,6 +64,29 @@ async function cli(origin, timeout = '30000', extra = []) {
   const [code] = await once(child, 'close');
   return { code, receipt: JSON.parse(stdout.trim()), stderr };
 }
+
+test('page observation passes hostile asset URLs as data instead of executable source', async () => {
+  const assetUrl = 'https://example.invalid/js/notifications-model.js#</script>';
+  const expected = { assertions: ['structured-argument'] };
+  const result = await observeOnPage({ evaluate: async (observer, argument) => {
+    assert.equal(typeof observer, 'function', 'Browser receives a function, never generated source');
+    assert.equal(argument, assetUrl, 'Browser receives the unchanged URL as a separate argument');
+    assert.ok(!observer.toString().includes(assetUrl));
+    return expected;
+  } }, assetUrl);
+  assert.deepEqual(result, expected);
+});
+
+test('page observation imports a module with a hostile URL fragment', async t => {
+  const f = await fixture(t);
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(f.origin + '/app-release');
+  const result = await observeOnPage(page, f.origin + '/js/notifications-model.js#</script>');
+  assert.ok(result.assertions.includes('null-unavailable'));
+  assert.ok(result.assertions.includes('empty-confirmed-absence'));
+});
 
 test('proof CLI executes deployed module graph and binds exact hashes and Worker identity', async t => {
   const f = await fixture(t);

@@ -4,6 +4,7 @@ import { readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export function observeDelivery(model) {
+  if (typeof model === 'string') return import(model).then(observeDelivery);
   const { deliveryPhrases, notificationCards, validFeedPayload, acknowledgeArgs } = model;
   const assertions = [];
   const check = (condition, name) => { if (!condition) throw Error(name); assertions.push(name); };
@@ -46,7 +47,7 @@ export function observeDelivery(model) {
 }
 
 export async function observeOnPage(page, assetUrl) {
-  return page.evaluate(`(async () => (${observeDelivery.toString()})(await import(${JSON.stringify(assetUrl)})))()`);
+  return page.evaluate(observeDelivery, assetUrl);
 }
 
 export async function prove({ origin, timeoutMs }) {
