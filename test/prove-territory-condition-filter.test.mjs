@@ -60,6 +60,7 @@ test('proof rejects a missing condition selector', async t => {
 
 import { prove } from '../scripts/prove-territory-condition-filter.mjs';
 import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes owned browser after ${mode}`, async t => {
   const server = createServer((req, res) => {
     if (req.url === '/app-release') {
@@ -74,7 +75,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes 
   let owned, acquired;
   const acquisition = new Promise(resolve => acquired = resolve);
   const engine = { launch: async options => {
-    owned = await chromium.launch(options);
+    owned = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] });
     acquired();
     if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 1400));
     return owned;
