@@ -2,7 +2,7 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fixtureKey } from './fixture-http.mjs';
 
-const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css; charset=utf-8',
   '.html': 'text/html', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 
