@@ -71,7 +71,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(await region.getByRole('table').count(), 0);
     refuse = false; empty = true;
     await region.getByRole('button', { name: 'Refresh evidence' }).click();
-    await region.getByText('No recorded areas match these filters. No market condition can be inferred.').waitFor();
+    await region.getByText('No loaded areas match this condition. No market condition can be inferred.').waitFor();
     empty = false;
     await region.getByRole('button', { name: 'Refresh evidence' }).click();
     await region.getByRole('cell', { name: 'Soft', exact: true }).waitFor();

@@ -22,6 +22,7 @@ test('the public manifest identifies the built commit and every deployed payload
   assert.deepEqual(bytes, await readFile(join(outDir, 'doctorcre-app.manifest.json')));
   const manifest = JSON.parse(bytes);
   assert.equal(manifest.schema, 'doctorcre-static-artifact.v1');
+  assert.equal(manifest.repository, 'DoctorCRE/doctorcre-app');
   assert.equal(manifest.source_commit, commit);
   for (const file of manifest.files) {
     assert.ok(!file.path.endsWith('.map'), 'no source maps in the deployed inventory');
@@ -67,12 +68,14 @@ test('declared production proof follows built and renamed assets and refuses con
   const requirement = JSON.parse(await readFile(join(root, 'proofs/requirements/asset-manifest-publication.json')));
   assert.ok(requirement.assertions[0].predicate.includes('scripts/prove-asset-manifest-publication.mjs'));
   const payload = new Map(await Promise.all(built.manifest.files.map(async row => [row.path, await readFile(join(outDir, 'site', row.path))])));
-  for (const mode of ['built', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
+  for (const mode of ['built', 'legacy', 'unrelated', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
     const manifest = structuredClone(built.manifest), files = new Map(payload), seen = [];
     if (mode === 'renamed') for (const row of manifest.files.filter(row => row.path.startsWith('js/') && row.path.endsWith('.js'))) {
       const next = row.path.replace('js/', 'js/renamed-');
       files.set(next, files.get(row.path)); files.delete(row.path); row.path = next;
     }
+    if (mode === 'legacy') manifest.repository = 'jbookout/doctorcre-app';
+    if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
     if (mode === 'identity') manifest.source_commit = '2'.repeat(40);
     if (mode === 'unsafe') manifest.files[0].path = '../private.js';
     const siteRoot = resolve(outDir, 'site');
@@ -104,7 +107,7 @@ test('declared production proof follows built and renamed assets and refuses con
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const [code] = await once(child, 'close');
-    assert.equal(code, ['built', 'renamed'].includes(mode) ? 0 : mode === 'timeout' ? 78 : 1, stdout + stderr);
+    assert.equal(code, ['built', 'legacy', 'renamed'].includes(mode) ? 0 : mode === 'timeout' ? 78 : 1, stdout + stderr);
     const receipt = JSON.parse(stdout);
     assert.equal(receipt.status, code === 0 ? 'passed' : 'failed');
     if (!code) {
@@ -117,4 +120,25 @@ test('declared production proof follows built and renamed assets and refuses con
     assert.ok(seen.every(row => row.method === 'GET' && row.path !== '/business'));
     if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`)).status, 403);
   });
+});
+
+test('artifact verification preserves alias bytes and digest checks and refuses unrelated repositories', async () => {
+  const { default: tar } = await import('tar-stream');
+  for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app', 'DoctorCRE/other']) {
+    const payload = Buffer.from('export const fixture = true;\n');
+    const manifest = { schema: 'doctorcre-static-artifact.v1', repository, source_commit: commit,
+      files: [{ path: 'js/fixture.js', bytes: payload.length, sha256: createHash('sha256').update(payload).digest('hex') }] };
+    const pack = tar.pack(), chunks = [];
+    const reading = (async () => { for await (const chunk of pack) chunks.push(chunk); })();
+    for (const [name, bytes] of [['artifact-manifest.json', Buffer.from(JSON.stringify(manifest))], ['js/fixture.js', payload]])
+      await new Promise((resolve, reject) => pack.entry({ name, size: bytes.length }, bytes, error => error ? reject(error) : resolve()));
+    pack.finalize(); await reading;
+    const archive = Buffer.concat(chunks), before = Buffer.from(archive), digest = createHash('sha256').update(archive).digest('hex');
+    if (repository === 'DoctorCRE/other') await assert.rejects(verifyArtifact(archive, digest), /identity/);
+    else {
+      assert.deepEqual((await verifyArtifact(archive, digest)).manifest, manifest);
+      await assert.rejects(verifyArtifact(archive, '0'.repeat(64)), /digest|SHA|sha/);
+      assert.deepEqual(archive, before);
+    }
+  }
 });
