@@ -1,4 +1,5 @@
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
+import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -117,15 +118,84 @@ export async function assertSourcedCsv(recordings) {
   }
 }
 
-export async function prove({ origin, timeoutMs = 30000, fixture = false, engine = chromium }) {
+async function observeNaturalCsv(page) {
+  const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
+  if (!await page.locator('#accountSignOut').count()) throw unavailable('No signed-in session');
+  const table = page.locator('.answer-table:visible').filter({ has: page.locator('tbody tr') }).first();
+  if (!await table.count()) throw unavailable('No eligible recorded answer table');
+  const sorted = table.locator('th[aria-sort=ascending], th[aria-sort=descending]');
+  const column = await sorted.count() ? sorted.first() : table.locator('th').first();
+  const header = column.locator('button');
+  const before = await column.getAttribute('aria-sort');
+  const clicksToRestore = before === 'none' ? 0 : 1;
+  const originalFilter = await table.locator('input').inputValue();
+  const snapshot = () => table.locator('tbody tr').evaluateAll(rows => rows.map(row => [...row.querySelectorAll('td')].map(cell => ({
+    value: [...cell.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent).join(''),
+    source: cell.querySelector('.answer-source span')?.textContent || ''
+  }))));
+  let requests = 0;
+  const count = () => requests++;
+  page.on('request', count);
+  try {
+    await header.click();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const expected = await snapshot();
+    if (!expected.length || !expected.some(row => row.some(cell => cell.source))) throw unavailable('No sourced visible rows');
+    const [download] = await Promise.all([page.waitForEvent('download'), table.getByRole('button', { name: 'Download visible rows', exact: true }).click()]);
+    const stream = await download.createReadStream();
+    if (!stream) throw Error('CSV download unreadable');
+    const chunks = [];
+    let bytes = 0;
+    for await (const chunk of stream) {
+      bytes += chunk.length;
+      if (bytes > 4 * 1024 * 1024) throw Error('CSV download exceeds budget');
+      chunks.push(chunk);
+    }
+    const csv = Buffer.concat(chunks).toString();
+    const rows = []; let row = [], cell = '', quoted = false;
+    for (let i = 0; i < csv.length; i++) {
+      const c = csv[i];
+      if (c === '"') { if (quoted && csv[i + 1] === '"') { cell += '"'; i++; } else quoted = !quoted; }
+      else if (c === ',' && !quoted) { row.push(cell); cell = ''; }
+      else if (c === '\r' && csv[i + 1] === '\n' && !quoted) { row.push(cell); rows.push(row); row = []; cell = ''; i++; }
+      else cell += c;
+    }
+    if (quoted || cell || row.length || rows.length !== expected.length + 1) throw Error('CSV row count or framing mismatch');
+    for (const [ri, cells] of expected.entries()) {
+      if (rows[ri + 1].length !== cells.length * 6) throw Error('CSV column count mismatch');
+      for (const [ci, visible] of cells.entries()) {
+        const [value, isNull, kind, record, fact, version] = rows[ri + 1].slice(ci * 6, ci * 6 + 6);
+        const safeText = /^[\s\u0000-\u001f\u007f-\u009f]*[=+@-]/u.test(visible.value) ? "'" + visible.value : visible.value;
+        if (!(isNull === 'true' && value === '' && visible.value === '—') && !(isNull === 'false' && (value === visible.value || value === safeText))) throw Error('CSV ordered raw value mismatch');
+        const source = kind === 'record' && !fact && !version ? `Record ${record}` : kind === 'fact' && !record ? `Fact ${fact}, version ${version}` : kind === '' && !record && !fact && !version ? '' : null;
+        if (source !== visible.source) throw Error('CSV source identity mismatch');
+      }
+    }
+    if (requests) throw Error('Export added network calls');
+    return { rows: expected.length, columns: expected[0].length, added_requests: requests, passed: true };
+  } finally {
+    page.off('request', count);
+    if (before === 'none') await table.getByRole('button', { name: 'Reset table', exact: true }).click();
+    else for (let i = 0; i < clicksToRestore; i++) await header.click();
+    if (await table.locator('input').inputValue() !== originalFilter) await table.locator('input').fill(originalFilter);
+  }
+}
+
+export async function prove({ origin, timeoutMs = 30000, fixture = false, engine = chromium, commit, cdpUrl }) {
   const started = Date.now();
   const receipt = { release: null, assets: [], assertions: [] };
   let browser;
   let timer;
+  let naturalBrowser;
   const controller = new AbortController();
   const unavailable = message => Object.assign(new Error(message), { unavailable: true });
   const deadline = new Promise((_, reject) => {
     timer = setTimeout(() => { controller.abort(unavailable('total deadline exceeded')); reject(controller.signal.reason); }, timeoutMs);
+  });
+  const git = args => new Promise((resolve, reject) => {
+    let failure, output;
+    const child = execFile('git', args, { cwd: new URL('../', import.meta.url), timeout: Math.max(1, Math.min(5000, timeoutMs - (Date.now() - started))), signal: controller.signal, killSignal: 'SIGKILL' }, (error, stdout) => { failure = error; output = stdout; });
+    child.once('close', () => failure ? reject(failure) : resolve(output.trim()));
   });
   try {
     await Promise.race([deadline, (async () => {
@@ -146,6 +216,16 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
         return Buffer.concat(chunks);
       };
       receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.href) }));
+      if (!fixture || commit) {
+        try {
+          commit ||= await git(['log', 'origin/main', '-1', '--format=%H', '--fixed-strings', '--grep=(#767)']);
+          if (!/^[a-f0-9]{40}$/.test(commit || '')) throw unavailable('PR merge commit unknown');
+          await git(['cat-file', '-e', `${commit}^{commit}`]);
+          await git(['cat-file', '-e', `${receipt.release.source_commit}^{commit}`]);
+          if (commit !== receipt.release.source_commit) await git(['merge-base', '--is-ancestor', commit, receipt.release.source_commit]);
+          receipt.required_commit = commit;
+        } catch (error) { throw unavailable(error.code === 1 ? 'Release does not contain required commit' : 'Release ancestry evidence unavailable'); }
+      }
       const assets = new Map();
       const pending = [`${origin}/js/ui-answers.js`];
       await init;
@@ -176,28 +256,40 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       const page = await context.newPage();
       await page.goto(`${origin}/__answer-proof`);
       receipt.assertions = await page.evaluate(assertSourcedCsv, recordings);
+      if (!fixture) {
+        if (!cdpUrl) throw unavailable('No signed-in browser session supplied; deployed fixture assertions passed');
+        naturalBrowser = await launchProofBrowser({ launch: options => engine.connectOverCDP(cdpUrl, {...options, isLocal: true}) }, { timeout: Math.max(1, timeoutMs - (Date.now() - started)) }, { signal: controller.signal });
+        const pages = naturalBrowser.contexts().flatMap(context => context.pages()).filter(page => new URL(page.url()).origin === origin);
+        if (pages.length !== 1) throw unavailable('Exactly one existing same-origin signed-in page required');
+        receipt.natural = await observeNaturalCsv(pages[0]);
+      }
       receipt.releaseAfter = await readAppRelease(origin, async url => ({ type:'application/json', body:await get(url.href) }));
       if (receipt.release.source_commit !== receipt.releaseAfter.source_commit) throw unavailable('release changed during proof');
     })()]);
-    return { ...receipt, status: fixture ? 'fixture_passed' : 'insufficient_evidence', natural: 'Signed-in natural answer and read count require separate authorized audit', exitCode: fixture ? 0 : 78 };
+    return { ...receipt, status: fixture ? 'fixture_passed' : 'passed', exitCode: 0 };
   } catch (error) {
-    if (!error.unavailable) receipt.assertions.push({name:error.message,passed:false});
+    if (!error.unavailable && error.exitCode !== 78) receipt.assertions.push({name:error.message,passed:false});
     return { ...receipt, status: error.unavailable || error.exitCode === 78 ? 'insufficient_evidence' : 'failed', error: error.message, exitCode: error.unavailable || error.exitCode === 78 ? 78 : 1 };
   } finally {
     clearTimeout(timer);
     controller.abort();
+    await naturalBrowser?.close();
     await browser?.close();
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: {type:'string'}, 'timeout-ms': {type:'string',default:'30000'}, fixture: {type:'boolean',default:false} } });
+    const { values } = parseArgs({ options: { origin: {type:'string'}, 'timeout-ms': {type:'string',default:'30000'}, fixture: {type:'boolean',default:false}, commit: {type:'string'}, 'cdp-url': {type:'string'} } });
     const url = new URL(values.origin);
     const timeoutMs = Number(values['timeout-ms']);
     if (!['http:','https:'].includes(url.protocol) || url.username || url.password || url.href !== `${url.origin}/` || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw new Error('Use --origin <origin> --timeout-ms <1..30000>');
     if (values.fixture && !['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw new Error('Fixtures require loopback origin');
-    const result = await prove({origin:url.origin,timeoutMs,fixture:values.fixture});
+    if (values['cdp-url']) {
+      const cdp = new URL(values['cdp-url']);
+      if (cdp.protocol !== 'http:' || !['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) || cdp.username || cdp.password) throw Error('CDP requires a loopback HTTP endpoint');
+    }
+    const result = await prove({origin:url.origin,timeoutMs,fixture:values.fixture,commit:values.commit,cdpUrl:values['cdp-url']});
     console.log(JSON.stringify(result));
     process.exitCode = result.exitCode;
   } catch (error) {
