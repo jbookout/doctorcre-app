@@ -16,7 +16,19 @@ test('every production proof obeys the transport allowlist', async () => {
   assert.deepEqual(await checkProofTransports(), []);
 });
 
+test('calendar proof producer replay stays within declared proof interfaces', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const helper = await readFile(new URL('./support/carr-fixture-contract.mjs', import.meta.url), 'utf8');
+  assert.deepEqual(checkProofSource(helper, 'test/support/carr-fixture-contract.mjs'), []);
+  const { calendarRecordings } = await import('../scripts/prove-calendar-meeting-end-time.mjs');
+  assert.equal(calendarRecordings.records.length, 12);
+  assert.ok(Object.isFrozen(calendarRecordings.records[1].response.items));
+  assert.deepEqual(await checkProofTransports(), []);
+});
+
 for (const source of [
+  'new Function("return 1")()',
+  'eval("1")',
   "await fetch('https://example.com/app-release')",
   "await globalThis.fetch('https://example.com')",
   "const { fetch: read } = globalThis; await read('https://example.com')",
