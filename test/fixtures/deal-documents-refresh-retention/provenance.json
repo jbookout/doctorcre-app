@@ -1,0 +1,9 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "source_commit": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+  "module": "mcp-server/src/deal-files.js",
+  "module_sha256": "97b17764d89dfb44d86b42cc8e01a2210163b311a89f68b0606e943cca89ffe7",
+  "registered_read_sha256": "df3e1fc050a40875d2e05e01ee7bd72e760da7711f30a99977966356691390eb",
+  "view": "migrations/1086_deal_documents.sql",
+  "view_sha256": "fd9f28bf389b0592b99a6f276702003c863d14744aa3c71c20bca21bf8796dcc"
+}
