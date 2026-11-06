@@ -66,7 +66,7 @@ export async function proveLoadedSearch({ origin, timeout = 30000, syntheticOnly
   };
   const run = async () => {
     const before = await readAppRelease(url, read);
-    pendingBrowser = launchProofBrowser({ launch(options) { acquisition = engine.launch(options); return acquisition; } }, { args: [...CHROMIUM_SAFETY_ARGS], timeout }, { signal: abort.signal });
+    pendingBrowser = launchProofBrowser({ launch(options) { acquisition = engine.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] }); return acquisition; } }, { args: [...CHROMIUM_SAFETY_ARGS], timeout }, { signal: abort.signal });
     browser = await pendingBrowser;
     abort.signal.throwIfAborted();
     const context = await browser.newContext({ serviceWorkers: 'block', storageState: { cookies: [], origins: [] } });
