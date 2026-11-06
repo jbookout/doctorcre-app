@@ -123,7 +123,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       const synthetic = await syntheticWaiting(controller.signal);
       controller.signal.throwIfAborted();
       const writes = []; let lost = false; let assetFailure; let rpcCount = 0;
-      browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, Math.ceil(deadline - performance.now())) });
+      browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, Math.ceil(deadline - performance.now())) }, { signal: controller.signal });
       controller.signal.throwIfAborted();
       const context = await browser.newContext({ serviceWorkers: 'block' });
       context.setDefaultTimeout(Math.min(5000, Math.floor(timeoutMs / 2)));

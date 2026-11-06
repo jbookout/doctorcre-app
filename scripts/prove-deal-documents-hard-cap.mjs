@@ -35,7 +35,7 @@ try {
   const run = async () => {
     const releaseUrl = new URL('/app-release', origin).href;
     const release = await readAppRelease(origin, request);
-    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeout - (Date.now() - started)) });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeout - (Date.now() - started)) }, { signal: abort.signal });
     abort.signal.throwIfAborted();
     const context = await browser.newContext({ serviceWorkers: 'block', storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
@@ -90,7 +90,7 @@ try {
       assertions: { passed: 4, failed: 0 }, observed, network_requests: requests,
       limitation: 'Deployed synthetic resilience only. Natural private-data coverage remains unproven.' };
   };
-  const deadline = new Promise((_, reject) => { timer = setTimeout(() => { abort.abort(); reject(Error('Whole-run timeout')); }, timeout); });
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => { abort.abort(Error('Whole-run timeout')); reject(abort.signal.reason); }, timeout); });
   console.log(JSON.stringify(await Promise.race([run(), deadline])));
 } catch (error) {
   console.error(JSON.stringify({ error: error.message }));

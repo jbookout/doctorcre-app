@@ -118,7 +118,7 @@ export async function prove({ origin, timeoutMs }) {
   const fatal = new Promise((_, reject) => { rejectFatal = reject; });
   void fatal.catch(() => {});
   const remaining = () => Math.max(1, deadline - Date.now());
-  const timer = setTimeout(() => { controller.abort(); void browser?.close(); }, timeoutMs);
+  const timer = setTimeout(() => { controller.abort(unavailable('Proof deadline exceeded')); void browser?.close(); }, timeoutMs);
   const get = async url => {
     try {
       const response = await proofFetch(url, { signal: controller.signal, redirect: 'manual' });
@@ -132,7 +132,7 @@ export async function prove({ origin, timeoutMs }) {
   try {
     const release = await readAppRelease(origin, get);
     const { chromium } = await import('playwright');
-    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const assets = new Map();
     await context.route('**/*', async route => {

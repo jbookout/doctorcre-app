@@ -53,7 +53,7 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
   };
   const run = async () => {
     receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url) }));
-    const acquired = await launchProofBrowser(engine, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    const acquired = await launchProofBrowser(engine, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: abort.signal });
     if (performance.now() >= deadline) abort.abort(expired);
     if (abort.signal.aborted) { await acquired.close(); abort.signal.throwIfAborted(); }
     browser = acquired;

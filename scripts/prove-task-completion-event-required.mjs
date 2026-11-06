@@ -78,7 +78,7 @@ export async function prove({ origin, timeoutMs }) {
     }
     if (!files.has('js/ui-task-done.js')) throw Error('Manifest has no task module');
     const { chromium } = await import('playwright');
-    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     controller.signal.addEventListener('abort', () => { void browser.close(); }, { once: true });
     if (controller.signal.aborted) throw unavailable('Evidence timeout');
     const context = await browser.newContext({ serviceWorkers: 'block' });

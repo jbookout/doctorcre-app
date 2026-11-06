@@ -113,7 +113,7 @@ export async function prove({ origin, timeoutMs }) {
     await init;
     const assetUrl = new URL('/js/deal-timeline.js', origin).href;
     await load(assetUrl);
-    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     if (controller.signal.aborted) { await browser.close(); throw unavailable('Proof timeout'); }
     for (const timezoneId of zones) {
       const context = await browser.newContext({ timezoneId, serviceWorkers: 'block' });
@@ -137,7 +137,7 @@ export async function prove({ origin, timeoutMs }) {
   };
   try {
     return await Promise.race([run(), new Promise((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(unavailable('Proof timeout')); }, timeoutMs);
+      timer = setTimeout(() => { controller.abort(unavailable('Proof timeout')); reject(controller.signal.reason); }, timeoutMs);
     })]);
   } catch (error) {
     if (controller.signal.aborted || error.name === 'TimeoutError') throw unavailable('Proof timeout');
