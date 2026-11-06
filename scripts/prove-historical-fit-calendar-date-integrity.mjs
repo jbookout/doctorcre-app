@@ -28,21 +28,22 @@ export async function calendarAssertions(page, moduleURL) {
         hypothesis: 'Historical fit, not a prediction or qualification rule.', evidence: [{ deal_id: '00000000-0000-4000-8000-000000000001', closed_on: date }] },
     ] });
     window.calendarProof = { date: '2026-02-31', reads: [], hold: false, pending: [] };
-    window.calendarProof.mount = mountIdealClientProfile(host, { getIdealClientProfile(filters) {
+    window.calendarProof.createMount = () => mountIdealClientProfile(host, { getIdealClientProfile(filters) {
       const state = window.calendarProof;
       state.reads.push(filters);
       const result = profile(state.date);
       if (state.hold) return new Promise(resolve => state.pending.push(() => resolve(result)));
       return Promise.resolve(result);
     } });
+    window.calendarProof.mount = window.calendarProof.createMount();
   }, moduleURL);
   const region = page.getByRole('region', { name: 'Historical client fit', exact: true });
   await region.locator('summary').first().click();
   const refresh = () => region.getByRole('button', { name: 'Refresh history' }).click();
   const unavailable = async () => {
-    await region.getByRole('alert').waitFor();
-    assert.match(await region.getByRole('alert').innerText(), /Historical client fit unavailable/);
+    await region.locator('[role="alert"], table').first().waitFor();
     assert.equal(await region.getByRole('table').count(), 0, 'invalid evidence must not claim a completed win');
+    assert.match(await region.getByRole('alert').innerText(), /Historical client fit unavailable/);
   };
   await unavailable();
   for (const date of ['2025-02-29', '1900-02-29', '2026-13-01', '10000-01-01', '-001-01-01', '2026-04-31', '2026-00-01']) {
@@ -73,13 +74,28 @@ export async function calendarAssertions(page, moduleURL) {
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   await page.evaluate(() => window.calendarProof.pending.splice(0).forEach(resolve => resolve()));
   assert.equal(await region.getByRole('table').count(), 0, 'invalidation clears pending evidence');
-  await page.evaluate(() => { window.calendarProof.hold = false; });
+  await region.getByRole('status').waitFor();
+  assert.match(await region.getByRole('status').innerText(), /Sign in again/);
+  assert.equal(await region.locator('details, form, input, button, a, time').count(), 0, 'retired history exposes no controls or evidence');
+  const retiredReads = await page.evaluate(() => window.calendarProof.reads.length);
+  await page.evaluate(() => {
+    window.calendarProof.mount.clear();
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+  });
+  assert.equal(await page.evaluate(() => window.calendarProof.reads.length), retiredReads, 'retired history never reloads');
+  assert.equal(await region.getByRole('table').count(), 0, 'retired history stays empty');
+  await page.evaluate(() => {
+    window.calendarProof.mount.dispose();
+    window.calendarProof.hold = false;
+    window.calendarProof.mount = window.calendarProof.createMount();
+  });
   await region.locator('summary').first().click(); await region.getByRole('table').waitFor();
   await page.evaluate(() => { window.calendarProof.hold = true; });
   await refresh();
   await page.evaluate(() => { window.calendarProof.mount.dispose(); window.calendarProof.pending.splice(0).forEach(resolve => resolve()); });
   assert.equal(await region.count(), 0, 'dispose prevents late receipts');
-  return ['impossible dates refused without wins', 'valid leap day and supported years unchanged', 'deal links unchanged', 'filters preserved', 'stale receipt ignored', 'invalidation clears history', 'dispose ignores pending receipt'];
+  return ['impossible dates refused without wins', 'valid leap day and supported years unchanged', 'deal links unchanged', 'filters preserved', 'stale receipt ignored', 'invalidation terminally retires history', 'dispose ignores pending receipt'];
 }
 
 export async function prove({ origin, timeout, revision }) {

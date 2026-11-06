@@ -39,16 +39,18 @@ function parse(value: unknown): Profile[] {
 }
 export function mountIdealClientProfile(host: HTMLElement, client: Client) {
   const root = createRoot(host);
-  let view: View = { kind: 'idle' }, filters: Filters = {}, epoch = 0, generation = 0, disposed = false;
+  let view: View = { kind: 'idle' }, filters: Filters = {}, epoch = 0, generation = 0;
+  let lifecycle: 'active' | 'retired' | 'disposed' = 'active';
   async function load() {
+    if (lifecycle !== 'active') return;
     const request = ++epoch;
     view = { kind: 'loading' }; render();
     try {
       const profiles = parse(await client.getIdealClientProfile(filters));
-      if (disposed || request !== epoch) return;
+      if (lifecycle !== 'active' || request !== epoch) return;
       view = { kind: 'ready', profiles };
     } catch (error) {
-      if (disposed || request !== epoch) return;
+      if (lifecycle !== 'active' || request !== epoch) return;
       const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
       view = { kind: 'error', message: code === 'client_profile_limit_exceeded'
         ? 'Narrow vertical, city or state filters. The server refused more than 1000 groups; no partial history is shown.'
@@ -58,16 +60,20 @@ export function mountIdealClientProfile(host: HTMLElement, client: Client) {
     }
     render();
   }
-  function clear() { ++epoch; ++generation; filters = {}; view = { kind: 'idle' }; render(); }
+  function clear() { if (lifecycle !== 'active') return; ++epoch; ++generation; filters = {}; view = { kind: 'idle' }; render(); }
+  function retire() {
+    if (lifecycle !== 'active') return;
+    lifecycle = 'retired'; ++epoch; filters = {}; view = { kind: 'idle' }; render();
+  }
   function render() {
-    if (disposed) return;
+    if (lifecycle === 'disposed') return;
     flushSync(() => root.render(<section className="card glass historical-fit" aria-label="Historical client fit">
-      <details key={generation} onToggle={event => { if (event.currentTarget.open && view.kind === 'idle') void load(); }}>
+      {lifecycle === 'retired' ? <p role="status">Historical client fit unavailable. Sign in again to read history.</p> : <details key={generation} onToggle={event => { if (event.currentTarget.open && view.kind === 'idle') void load(); }}>
         <summary>Historical client fit</summary>
         <p>Recorded completed wins only, grouped by vertical, deal type, transaction city and client state. Missing dimensions are unrecorded.</p>
         <p>Historical fit, not a prediction or qualification rule.</p>
         <form onSubmit={event => {
-          event.preventDefault(); const data = new FormData(event.currentTarget); filters = {};
+          event.preventDefault(); if (lifecycle !== 'active') return; const data = new FormData(event.currentTarget); filters = {};
           for (const key of ['vertical', 'city', 'state'] as const) { const value = String(data.get(key) || ''); if (value) filters[key] = value; }
           void load();
         }}>
@@ -89,12 +95,12 @@ export function mountIdealClientProfile(host: HTMLElement, client: Client) {
               </li>)}</ul><p>{row.hypothesis}</p></details></td>
             </tr>)}</tbody>
           </table></div> : <p>No completed wins match these filters. No historical client profile can be inferred.</p>)}
-      </details>
+      </details>}
     </section>));
   }
   const win = host.ownerDocument.defaultView;
-  win?.addEventListener('doctorcre-session-invalidated', clear);
+  win?.addEventListener('doctorcre-session-invalidated', retire);
   win?.addEventListener('pagehide', clear);
   render();
-  return { clear, dispose() { disposed = true; ++epoch; win?.removeEventListener('doctorcre-session-invalidated', clear); win?.removeEventListener('pagehide', clear); flushSync(() => root.unmount()); } };
+  return { clear, dispose() { if (lifecycle === 'disposed') return; lifecycle = 'disposed'; filters = {}; view = { kind: 'idle' }; ++epoch; win?.removeEventListener('doctorcre-session-invalidated', retire); win?.removeEventListener('pagehide', clear); flushSync(() => root.unmount()); } };
 }

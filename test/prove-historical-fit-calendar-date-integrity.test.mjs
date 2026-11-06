@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { readFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
+import { build } from 'esbuild';
 import { options } from '../scripts/prove-historical-fit-calendar-date-integrity.mjs';
 
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -38,13 +41,23 @@ test('CLI refuses unsafe origin and invalid arguments', () => {
 });
 test('proof command uses served modules and fails closed on unavailable assets and releases', async t => {
   const fixture = await startFixtureServer(); t.after(() => fixture.stop());
+  const root = resolve('.');
+  const source = await readFile('src/ui/ideal-client-profile.tsx', 'utf8');
+  const check = 'new Date(date).toISOString().slice(0, 10) !== closed_on';
+  assert.ok(source.includes(check), 'mutation must remove the real calendar round-trip guard');
+  const invalidDates = await build({ stdin: { contents: source.replace(check, 'false'), loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
   let mode = 'valid';
   const server = createServer(async (req, res) => {
+    const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    if (!resolve(root, `.${pathname}`).startsWith(root + sep)) { res.writeHead(403); return res.end(); }
     if (req.url === '/app-release') {
       if (mode === 'timeout') return;
       if (mode === 'protected-release') { res.writeHead(401); return res.end(); }
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'synthetic-proof-test', source_commit: mode === 'stale' ? '0'.repeat(40) : revision }));
+    }
+    if (mode === 'accepts-impossible-date' && pathname === '/js/ui-ideal-client-profile.js') {
+      res.setHeader('content-type', 'text/javascript'); return res.end(invalidDates.outputFiles[0].text);
     }
     if (mode === 'protected-module') { res.writeHead(403); return res.end(); }
     if (mode === 'missing-export') { res.setHeader('content-type', 'text/javascript'); return res.end('export const missing = true;'); }
@@ -60,7 +73,13 @@ test('proof command uses served modules and fails closed on unavailable assets a
   assert.equal(passed.code, 0, passed.stderr);
   const receipt = JSON.parse(passed.stdout);
   assert.equal(receipt.origin, origin); assert.equal(receipt.release.source_commit, revision);
-  assert.equal(receipt.assertions.length, 7); assert.ok(receipt.module_urls.some(url => url.endsWith('/js/ui-ideal-client-profile.js')));
+  assert.equal(receipt.assertions.length, 7);
+  assert.ok(receipt.assertions.includes('invalidation terminally retires history')); assert.ok(receipt.module_urls.some(url => url.endsWith('/js/ui-ideal-client-profile.js')));
+  mode = 'accepts-impossible-date';
+  const contradiction = await cli([...args.slice(0, -1), '2000']);
+  assert.equal(contradiction.code, 1, 'proof refuses renderer accepting February 31');
+  assert.match(contradiction.stderr, /invalid evidence must not claim a completed win/);
+  console.log(JSON.stringify({ scenario: mode, exit: contradiction.code, error: contradiction.stderr.trim() }));
   for (const failure of ['stale', 'protected-release', 'protected-module', 'missing-export', 'timeout']) {
     mode = failure;
     const result = await cli(failure === 'timeout' ? [...args.slice(0, -1), '200'] : args);
