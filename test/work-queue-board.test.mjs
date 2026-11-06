@@ -64,3 +64,9 @@ test('incomplete GitHub evidence and unverified paired PRs stay merged', () => {
   assert.equal(queueBoard(read([{ ...merged, pr_evidence_complete: false }])).jobs[0].stage, 'merged');
   assert.equal(queueBoard(read([job('WR557.S4.J2', 'live')], [])).jobs[0].stage, 'merged');
 });
+
+for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app', 'DoctorCRE/other']) test(`queue completeness for ${repository}`, () => {
+  const github = complete.map(source => source.repo === 'jbookout/doctorcre-app' ? { ...source, repo: repository } : source);
+  const board = queueBoard(read([job('WR557.S4.J1', 'merged', { prs: [{ state: 'merged', production_live: true }] })], github));
+  assert.equal(board.jobs[0].stage, repository === 'DoctorCRE/other' ? 'merged' : 'live');
+});

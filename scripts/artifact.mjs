@@ -1,3 +1,4 @@
+import { APP_REPOSITORY, isAppRepository } from '../js/repository-identity.mjs';
 import { init, parse } from "es-module-lexer";
 import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
@@ -177,7 +178,7 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
   for (const [key, path] of Object.entries(CONTRACT_INPUTS)) contracts[key] = await contract(path);
   const manifest = {
     schema: "doctorcre-static-artifact.v1",
-    repository: "jbookout/doctorcre-app",
+    repository: APP_REPOSITORY,
     source_commit: commit,
     entrypoint: "workspace.html",
     ...contracts,
@@ -227,7 +228,7 @@ export async function verifyArtifact(archive, expectedSha256 = null) {
   const manifestContent = entries.get("artifact-manifest.json");
   if (!manifestContent) throw new Error("artifact manifest is missing");
   const manifest = JSON.parse(manifestContent);
-  if (manifest.schema !== "doctorcre-static-artifact.v1" || !/^[0-9a-f]{40}$/.test(manifest.source_commit)) throw new Error("artifact manifest identity is invalid");
+  if (!isAppRepository(manifest.repository) || manifest.schema !== "doctorcre-static-artifact.v1" || !/^[0-9a-f]{40}$/.test(manifest.source_commit)) throw new Error("artifact manifest identity is invalid");
   if (!Array.isArray(manifest.files) || manifest.files.length + 1 !== entries.size) throw new Error("artifact manifest file set is incomplete");
   const manifestPaths = new Set();
   for (const file of manifest.files) {

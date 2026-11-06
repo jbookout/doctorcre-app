@@ -1,3 +1,4 @@
+import { isAppRepository } from '../js/repository-identity.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -70,7 +71,7 @@ export async function prove({ origin, timeoutMs }) {
     const manifestBytes = await get('/artifact-manifest.json');
     let manifest;
     try { manifest = JSON.parse(manifestBytes); } catch { throw Error('Malformed asset manifest'); }
-    if (manifest.schema !== 'doctorcre-static-artifact.v1' || manifest.repository !== 'jbookout/doctorcre-app' || manifest.source_commit !== release.source_commit || !Array.isArray(manifest.files) || manifest.files.length > 10000) throw Error('Manifest release identity mismatch');
+    if (manifest.schema !== 'doctorcre-static-artifact.v1' || !isAppRepository(manifest.repository) || manifest.source_commit !== release.source_commit || !Array.isArray(manifest.files) || manifest.files.length > 10000) throw Error('Manifest release identity mismatch');
     const files = new Map();
     for (const row of manifest.files) {
       if (!row || typeof row.path !== 'string' || !/^[a-zA-Z0-9_./-]+$/.test(row.path) || row.path.startsWith('/') || row.path.split('/').some(part => !part || part === '.' || part === '..') || files.has(row.path) || !/^[a-f0-9]{64}$/.test(row.sha256 || '') || !Number.isSafeInteger(row.bytes) || row.bytes < 0) throw Error('Malformed asset manifest row');

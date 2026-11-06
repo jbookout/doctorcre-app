@@ -58,6 +58,7 @@ function parse(value: unknown): Market[] {
 export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuthorizationFailure: (error: unknown) => void) {
   const root = createRoot(host);
   let view: View = { kind: 'idle' }, filters: Filters = {}, epoch = 0, generation = 0, opened = false, disposed = false;
+  let selectedCondition: Condition | 'all' = 'all';
   async function load() {
     const request = ++epoch;
     view = { kind: 'loading' }; render();
@@ -78,10 +79,11 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
     render();
   }
   function clear() {
-    ++epoch; ++generation; opened = false; filters = {}; view = { kind: 'idle' }; render();
+    ++epoch; ++generation; opened = false; selectedCondition = 'all'; filters = {}; view = { kind: 'idle' }; render();
   }
   function render() {
     if (disposed) return;
+    const matching = view.kind === 'ready' ? view.rows.filter(row => selectedCondition === 'all' || row.condition === selectedCondition) : [];
     flushSync(() => root.render(<section className="territory-evidence" aria-label="Recorded territory conditions">
       <details key={generation} onToggle={event => {
         opened = event.currentTarget.open;
@@ -104,21 +106,26 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
           <button type="submit">Apply filters</button>
           <button type="button" onClick={() => void load()}>Refresh evidence</button>
         </form>
+        <label>Condition<select value={selectedCondition} onChange={event => {
+          selectedCondition = event.currentTarget.value === 'all' ? 'all' : condition(event.currentTarget.value);
+          render();
+        }}><option value="all">All conditions</option>{conditions.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
         {view.kind === 'loading' && <p role="status">Loading territory evidence…</p>}
         {view.kind === 'error' && <p role="alert">{view.message}</p>}
-        {view.kind === 'ready' && (view.rows.length ? <table><caption>Server-recorded conditions by city and state</caption>
+        {view.kind === 'ready' && <p role="status">{matching.length} matching loaded areas / {view.rows.length} total loaded areas</p>}
+        {view.kind === 'ready' && (matching.length ? <table><caption>Server-recorded conditions by city and state</caption>
           <thead><tr><th scope="col">Area</th><th scope="col">Condition</th><th scope="col">Sources</th></tr></thead>
-          <tbody>{view.rows.map(row => <tr key={JSON.stringify([row.city, row.state])}>
+          <tbody>{matching.map(row => <tr key={JSON.stringify([row.city, row.state])}>
             <th scope="row">{row.city}, {row.state}</th><td>{labels[row.condition]}</td>
             <td>{row.evidence.length ? <details><summary>Evidence ({row.evidence.length})</summary>
               <ul>{row.evidence.map(entry => <li key={entry.flag_id}>
                 <strong>{labels[entry.condition]} · {entry.current ? 'Current' : entry.expired ? 'Historical · expired' : 'Historical · not current'}</strong>
                 <p>Source: {entry.source}</p><p>Observed: {entry.observed_at}</p><p>Expires: {entry.expires_on || 'Unrecorded'}</p>
               </li>)}</ul></details> : 'No current evidence recorded.'}</td>
-          </tr>)}</tbody></table> : <p>No recorded areas match these filters. No market condition can be inferred.</p>)}
+          </tr>)}</tbody></table> : <p>No loaded areas match this condition. No market condition can be inferred.</p>)}
       </details>
     </section>));
   }
   render();
-  return { clear, refresh() { if (opened && view.kind !== 'idle') return load(); }, dispose() { disposed = true; ++epoch; flushSync(() => root.unmount()); } };
+  return { clear, refresh() { if (opened && view.kind !== 'idle') return load(); }, dispose() { disposed = true; selectedCondition = 'all'; ++epoch; flushSync(() => root.unmount()); } };
 }

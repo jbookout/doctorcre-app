@@ -16,6 +16,9 @@ function AnswerTable({table}: {table: Table}) {
     <label>Filter rows <input type="search" value={filter} onChange={e => setFilter(e.target.value)} /></label>
     <button type="button" onClick={() => {setSort(null); setFilter('');}}>Reset table</button>
     <p role="status">{rows.length} of {table.rows.length} rows</p>
+    {rows.length === 0 && <p>{table.rows.length === 0
+      ? 'No recorded rows in this answer'
+      : <>No loaded rows match this filter <button type="button" onClick={() => setFilter('')}>Clear filter</button></>}</p>}
     <div className="answer-scroll" tabIndex={0} role="region" aria-label="Scrollable answer table">
       <table><caption>{table.id === 'comps' ? 'Recorded proposed negotiation rents' : `Recorded answer data: ${table.id}`}</caption>
         <thead><tr>{table.columns.map(column => <th key={column.key} scope="col" aria-sort={sort?.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
