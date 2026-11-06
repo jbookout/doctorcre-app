@@ -269,7 +269,7 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
   const hashes=Object.values(files).map(bytes=>createHash('sha256').update(bytes).digest('hex'));
   const gh=join(directory,'bin','gh');
   await writeFile(gh,`#!${process.execPath}\nif (process.argv[2] === 'api') console.log(JSON.stringify({type:'commit',sha:process.env.FIXTURE_TAG_SHA || process.env.GITHUB_SHA})); else if (process.env.FIXTURE_WRITE_DENIED) process.exit(1); else require('node:fs').writeFileSync('published.json',JSON.stringify(process.argv.slice(2)));\n`); await chmod(gh,0o755);
-  const env={...process.env,PATH:`${join(directory,'bin')}:${process.env.PATH}`,GITHUB_SHA:sha,GITHUB_REPOSITORY:'jbookout/doctorcre-app',GITHUB_REF_NAME:'app-v$(touch marker)',TAR_SHA:hashes[0],MANIFEST_SHA:hashes[1],SIDECAR_SHA:hashes[2]};
+  const env={...process.env,PATH:`${join(directory,'bin')}:${process.env.PATH}`,GITHUB_SHA:sha,GITHUB_REPOSITORY:'jbookout/doctorcre-app',GITHUB_REF_NAME:'app-v$(touch marker)',MANIFEST_REPOSITORY:'jbookout/doctorcre-app',TAR_SHA:hashes[0],MANIFEST_SHA:hashes[1],SIDECAR_SHA:hashes[2]};
   const reset=async()=>{
     await rm(join(directory,'published.json'),{force:true});
     for(const [file,bytes] of Object.entries(files)) {await rm(join(directory,'dist',file),{force:true});await writeFile(join(directory,'dist',file),bytes);}
@@ -554,4 +554,21 @@ test('shard deadline admits the recorded main CI workload plus setup headroom', 
   assert.ok(deadlineMinutes * 60 > exhaustedSeconds + setupAndVarianceSeconds,
     'allow the recorded 15-minute workload plus five minutes of setup and runner variance');
   assert.ok(deadlineMinutes <= 30, 'keep the shard bounded');
+});
+
+test('release handoff admits both app identities through the source rule and refuses other repositories', async t => {
+  const bind = release.match(/        name: Bind handoff bytes[\s\S]*?        run: \|\n([\s\S]*?)      - id: artifact/)[1].replace(/^          /gm, '');
+  const directory = temporaryDirectory('release-repository-', t);
+  const { mkdir, copyFile } = await import('node:fs/promises');
+  await mkdir(join(directory, 'js')); await mkdir(join(directory, 'dist'));
+  await copyFile(new URL('../js/repository-identity.mjs', import.meta.url), join(directory, 'js/repository-identity.mjs'));
+  for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app', 'DoctorCRE/other']) {
+    await writeFile(join(directory, 'dist/doctorcre-app.manifest.json'), JSON.stringify({ repository }));
+    for (const file of ['doctorcre-app.tar', 'doctorcre-app.tar.sha256']) await writeFile(join(directory, 'dist', file), 'fixture');
+    const output = join(directory, 'output'); await writeFile(output, '');
+    const result = spawnSync('bash', ['-e', '-c', bind], { cwd: directory, env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' });
+    assert.equal(result.status === 0, repository !== 'DoctorCRE/other', result.stderr);
+    const text = await readFile(output, 'utf8');
+    assert.equal(text.includes(`manifest_repository=${repository}\n`), repository !== 'DoctorCRE/other');
+  }
 });

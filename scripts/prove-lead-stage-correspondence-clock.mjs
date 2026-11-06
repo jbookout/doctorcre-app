@@ -1,3 +1,4 @@
+import { isAppRepository } from '../js/repository-identity.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -87,7 +88,7 @@ export async function prove({ origin, timeoutMs }) {
       if (receipt.release?.service !== 'doctorcre-app' || receipt.release.environment !== 'production' || !/^[a-f0-9]{40}$/.test(receipt.release.source_commit || '') || /^0+$/.test(receipt.release.source_commit)) throw unavailable('Release identity unavailable');
       const manifestBytes = await get('/artifact-manifest.json');
       const manifest = json(manifestBytes);
-      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || manifest.repository !== 'jbookout/doctorcre-app' || !Array.isArray(manifest.files)) throw unavailable('Manifest unavailable');
+      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || !isAppRepository(manifest.repository) || !Array.isArray(manifest.files)) throw unavailable('Manifest unavailable');
       if (manifest.source_commit !== receipt.release.source_commit) throw Error('Manifest release mismatch');
       receipt.manifest_sha256 = hash(manifestBytes);
       const rows = new Map();

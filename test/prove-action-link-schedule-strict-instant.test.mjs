@@ -16,6 +16,8 @@ async function fixture(t, mode) {
   if (mode === 'foreign') fixtureAssets.set('js/ui-action.js', Buffer.from('import "https://foreign.invalid/code.js";'));
   const manifest = { schema: 'doctorcre-static-artifact.v1', repository: 'jbookout/doctorcre-app', source_commit: '1'.repeat(40),
     files: [...fixtureAssets].map(([path, bytes]) => ({ path, bytes: bytes.length, sha256: hash(bytes) })) };
+  if (mode === 'canonical') manifest.repository = 'DoctorCRE/doctorcre-app';
+  if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
   if (mode === 'mismatch') manifest.source_commit = '2'.repeat(40);
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
@@ -60,3 +62,8 @@ for (const [mode, expected] of [['manifest', 78], ['release', 78], ['unavailable
     assert.ok(f.seen.length <= 10);
   });
 }
+
+for (const [mode, expected] of [['canonical', 0], ['unrelated', 78]]) test(`manifest repository ${mode}`, async t => {
+  const f = await fixture(t, mode), result = await cli(f.origin);
+  assert.equal(result.code, expected, JSON.stringify(result));
+});
