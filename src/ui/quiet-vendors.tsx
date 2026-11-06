@@ -13,10 +13,35 @@ type Snapshot = { cadence: { vendor_days: number }; proposals: Proposal[] };
 type State = { kind: 'idle' } | { kind: 'loading' } | { kind: 'refused' }
   | { kind: 'ready'; snapshot: Snapshot; offset: number };
 type Options = {
-  load: () => Promise<Snapshot>;
+  load: () => Promise<unknown>;
   href: (id: string) => string;
   open: (href: string, returnFocusId: string) => void;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isProposal(value: unknown): value is Proposal {
+  if (!isRecord(value)) return false;
+  return typeof value.subject_type === 'string' && value.subject_type.trim().length > 0
+    && typeof value.subject_id === 'string' && value.subject_id.trim().length > 0
+    && typeof value.ref === 'string' && value.ref.trim().length > 0
+    && typeof value.name === 'string'
+    && (value.basis === 'created_at' || value.basis === 'last_contact')
+    && typeof value.anchor_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.anchor_on)
+    && typeof value.due_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.due_on)
+    && typeof value.days_overdue === 'number' && Number.isSafeInteger(value.days_overdue);
+}
+
+function parseSnapshot(value: unknown): Snapshot {
+  if (!isRecord(value) || !isRecord(value.cadence)
+    || typeof value.cadence.vendor_days !== 'number'
+    || !Number.isSafeInteger(value.cadence.vendor_days) || value.cadence.vendor_days < 1
+    || !Array.isArray(value.proposals) || value.proposals.length > 1000
+    || !value.proposals.every(isProposal)) throw new TypeError('Invalid quiet vendor snapshot');
+  return { cadence: { vendor_days: value.cadence.vendor_days }, proposals: value.proposals };
+}
 
 export function mountQuietVendors(host: HTMLElement, options: Options) {
   const root = createRoot(host);
@@ -24,15 +49,19 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
   function QuietVendors() {
     const [expanded, setExpanded] = useState(false);
     const action = useRef<HTMLButtonElement>(null);
+    const reading = useRef(false);
     const [state, setState] = useState<State>({ kind: 'idle' });
     async function read() {
-      if (state.kind === 'loading' || disposed) return;
+      if (reading.current || disposed) return;
+      reading.current = true;
       setState({ kind: 'loading' });
       try {
-        const snapshot = await options.load();
+        const snapshot = parseSnapshot(await options.load());
         if (!disposed) setState({ kind: 'ready', snapshot, offset: 0 });
       } catch {
         if (!disposed) setState({ kind: 'refused' });
+      } finally {
+        reading.current = false;
       }
     }
     const vendors = state.kind === 'ready' ? state.snapshot.proposals.filter(row => row.subject_type === 'vendor') : [];
