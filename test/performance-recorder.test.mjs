@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { collectScriptResponses } from '../scripts/measure-performance.mjs';
@@ -87,4 +88,43 @@ test('summary publication handles absent measurement output explicitly', t => {
     assert.equal(run.status, 0, run.stderr);
     assert.match(readFileSync(output, 'utf8'), /Measurement failed/);
   }
+});
+
+test('interrupted Home navigation publishes its screen and closes owned resources', t => {
+  const root = temporaryDirectory('perf-interrupted-', t);
+  mkdirSync(join(root, 'contracts'));
+  mkdirSync(join(root, 'dist'));
+  writeFileSync(join(root, 'contracts/performance-budget.v1.json'),
+    readFileSync(new URL('../contracts/performance-budget.v1.json', import.meta.url)));
+  const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const gitDir = execFileSync('git', ['rev-parse', '--absolute-git-dir'], { encoding: 'utf8' }).trim();
+  const archive = Buffer.from('synthetic build');
+  writeFileSync(join(root, 'dist/doctorcre-app.tar'), archive);
+  writeFileSync(join(root, 'dist/doctorcre-app.tar.sha256'),
+    `${createHash('sha256').update(archive).digest('hex')}  doctorcre-app.tar`);
+  writeFileSync(join(root, 'dist/doctorcre-app.manifest.json'), JSON.stringify({ source_commit: sourceCommit, files: [] }));
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { EventEmitter } from 'node:events';
+    import { measurePerformance } from ${JSON.stringify(new URL('../scripts/measure-performance.mjs', import.meta.url).href)};
+    const closed = [];
+    const page = Object.assign(new EventEmitter(), {
+      clock: { setFixedTime: async () => {} }, setDefaultTimeout() {}, addInitScript: async () => {},
+      goto: async () => { throw Error('navigation interrupted'); },
+    });
+    const context = { newPage: async () => page, newCDPSession: async () => ({ send: async () => {} }),
+      tracing: { start: async () => {}, stop: async () => { closed.push('trace'); } },
+      close: async () => { closed.push('context'); } };
+    await measurePerformance({ root: ${JSON.stringify(root)},
+      startServer: async () => ({ url: 'http://localhost', stop: async () => { closed.push('server'); } }),
+      launchBrowser: async () => ({ newContext: async () => context, close: async () => { closed.push('browser'); } }),
+    });
+    assert.deepEqual(closed, ['trace', 'context', 'browser', 'server']);
+    assert.equal(page.listenerCount('response'), 0);
+  `], { env: { ...process.env, GIT_DIR: gitDir }, encoding: 'utf8' });
+  assert.equal(run.status, 3, run.stderr);
+  const summary = readFileSync(join(root, 'test-artifacts/performance/summary.md'), 'utf8');
+  assert.match(summary, /Measurement failed/);
+  assert.match(summary, /Screen: home/);
+  assert.match(summary, /navigation interrupted/);
 });
