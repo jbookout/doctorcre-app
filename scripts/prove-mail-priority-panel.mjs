@@ -82,8 +82,8 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     throw error;
   } finally {
     clearTimeout(timer); expired = true;
+    await Promise.allSettled(pendingPages);
     try { await closePage(); } finally { await disconnect?.(); }
-    for (const acquisition of pendingPages) void acquisition.catch(() => {});
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

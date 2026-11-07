@@ -74,3 +74,42 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`real owned Chrom
     t.diagnostic(JSON.stringify({ mode, exit: 78, observed: observed.length, survivors: 0 }));
   } finally { await context?.close(); }
 });
+
+import { createServer } from 'node:http';
+test('real CDP closes a late-acquired page before disconnecting and preserves existing pages', async t => {
+  const root = temporaryDirectory('mail-proof-late-cdp-page-', t);
+  const portServer = createServer();
+  await new Promise(resolve => portServer.listen(0, '127.0.0.1', resolve));
+  const port = portServer.address().port;
+  await new Promise(resolve => portServer.close(resolve));
+  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const cdpUrl = `http://127.0.0.1:${port}`;
+  const existing = context.pages()[0];
+  let acquisition, inspection;
+  const fixture = setup();
+  fixture.options.engine = { async connectOverCDP(...args) {
+    const browser = await chromium.connectOverCDP(...args);
+    const sharedContext = browser.contexts()[0];
+    const newPage = sharedContext.newPage.bind(sharedContext);
+    sharedContext.newPage = () => acquisition = (async () => {
+      const page = await newPage();
+      await new Promise(resolve => setTimeout(resolve, 700));
+      return page;
+    })();
+    return browser;
+  } };
+  try {
+    await existing.goto('data:text/html,existing-user-page');
+    const originalUrls = context.pages().map(page => page.url());
+    await assert.rejects(prove({ ...fixture.options, cdpUrl, timeoutMs: 500 }), { exitCode: 78 });
+    assert.ok(acquisition, 'page acquisition started before the deadline');
+    await acquisition;
+    inspection = await chromium.connectOverCDP(cdpUrl);
+    assert.deepEqual(inspection.contexts()[0].pages().map(page => page.url()), originalUrls, 'zero surviving owned tabs and all existing pages preserved');
+    assert.equal(existing.isClosed(), false, 'borrowed browser remains usable');
+    t.diagnostic(JSON.stringify({ exit: 78, survivingOwnedPages: 0, preservedPages: originalUrls.length }));
+  } finally {
+    await inspection?.close();
+    await context.close();
+  }
+});
