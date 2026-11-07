@@ -83,7 +83,7 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
   }
   const qaDispatch = qaSeed === undefined ? null : createQaDispatcher({seed:qaSeed,assets:new Map([...entries].map(([key,entry]) => [key,entry.sequence[0]]))});
   const routeKeys = new Set(routes.keys());
-  const observations = [], sockets = new Set(), timers = new Set(), held = new Map();
+  const observations = [], rejectedObservations = [], sockets = new Set(), timers = new Set(), held = new Map();
   let state = 'preparing', count = 0, closing;
   const headersFor = response => ({ 'cache-control':'no-store', ...response.headers, 'content-type':response.contentType, connection:'close' });
   function send(res, response, method) {
@@ -95,7 +95,8 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
     res.shouldKeepAlive = false;
     const target = req.url || '';
     const path = target.split('?')[0];
-    if (observations.length < budget.observations) observations.push(Object.freeze({ method: req.method, path, target, headers: Object.freeze({ ...req.headers }) }));
+    const log = !worker && !entries.has(path) ? rejectedObservations : observations;
+    if (log.length < budget.observations) log.push(Object.freeze({ method: req.method, path, target, headers: Object.freeze({ ...req.headers }) }));
     const refuse = status => { res.writeHead(status, { 'cache-control': 'no-store' }); res.end(); };
     if (++count > budget.requests) return refuse(429);
     try { fixtureKey(path); } catch {
@@ -170,7 +171,10 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
     if (!['GET', 'HEAD'].includes(req.method)) { res.setHeader('allow', 'GET, HEAD'); return refuse(405); }
     if (path === '/app-release' && req.headers['x-doctorcre-release-reader'] !== '1') return refuse(403);
     const entry = entries.get(path);
-    if (!entry) return refuse(404);
+    if (!entry) {
+      res.writeHead(404, { 'cache-control': 'no-store', 'content-type': 'text/plain' });
+      return res.end(`Undeclared fixture path: ${path}`);
+    }
     const response = entry.sequence[Math.min(entry.cursor++, entry.sequence.length - 1)];
     const deliver = () => send(res, response, req.method);
     if (response.hold) {
@@ -232,7 +236,8 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
     state = 'listening';
   } catch (error) { await close(); throw error; }
   return Object.freeze({ origin: `http://127.0.0.1:${server.address().port}`,
-    get requests() { return observations.slice(); }, close,
+    get requests() { return observations.slice(); },
+    get rejectedRequests() { return rejectedObservations.slice(); }, close,
     release(token) {
       const responses = held.get(token);
       held.delete(token);
