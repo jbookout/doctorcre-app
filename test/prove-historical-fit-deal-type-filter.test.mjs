@@ -23,7 +23,9 @@ test('proof CLI passes fixtures, rejects contradictions and reports insufficient
   const upstream=await startFixtureServer();t.after(()=>upstream.stop());
   const root=resolve('.');let mode='pass';
   const source=await readFile('src/ui/ideal-client-profile.tsx','utf8');
-  const mutated=await build({stdin:{contents:source.replace('profiles.filter(row => row.deal_type === selectedType)','profiles'),loader:'tsx',resolveDir:root},bundle:true,write:false,format:'esm',jsx:'automatic'});
+  const check='selectedType === undefined || row.deal_type === selectedType';
+  assert.ok(source.includes(check),'mutation must remove the real deal type predicate');
+  const mutated=await build({stdin:{contents:source.replace(check,'true'),loader:'tsx',resolveDir:root},bundle:true,write:false,format:'esm',jsx:'automatic'});
   const server=createServer(async(req,res)=>{
     let pathname;
     try {pathname=decodeURIComponent(req.url.split('?')[0]);} catch {res.writeHead(403);return res.end();}
