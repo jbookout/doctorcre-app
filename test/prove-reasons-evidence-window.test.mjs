@@ -22,8 +22,12 @@ test('checked-in fixture satisfies producer contract and pinned production parse
   for(const row of recording.coverage){for(const key of contract.coverage_keys)assert.ok(Object.hasOwn(row,key));assert.ok(contract.coverage_statuses.includes(row.status));}
   const provenance=JSON.parse(await readFile(new URL('./fixtures/reasons-evidence-window/provenance.json',import.meta.url)));
   const bytes=await readFile(new URL('./fixtures/reasons-evidence-window/producer.txt',import.meta.url));
-  assert.equal(createHash('sha256').update(bytes).digest('hex'),provenance.parser.sha256);
-  assert.deepEqual(bytes,await readFile(new URL('../js/contact-reasons.mjs',import.meta.url)));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),provenance.dependency_snapshot_sha256);
+  const dependencies=JSON.parse(bytes);
+  assert.equal(createHash('sha256').update(dependencies.producer).digest('hex'),provenance.producer.sha256);
+  assert.equal(createHash('sha256').update(dependencies.parser).digest('hex'),provenance.parser.sha256);
+  assert.equal(dependencies.parser,await readFile(new URL('../js/contact-reasons.mjs',import.meta.url),'utf8'));
+  assert.equal(dependencies.contract,await readFile(new URL('../contracts/carr-interface.v1/mcp_read_contracts/list-practice-origination.json',import.meta.url),'utf8'));
 });
 async function fixture(t,mode='equal'){
   const history=temporaryDirectory('signal-window-history-',t);
