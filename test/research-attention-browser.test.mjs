@@ -56,9 +56,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       assert.deepEqual(await ids(), full.filter(predicate).map(e => e.flag_id));
       assert.equal(await panel.getByRole('status').innerText(), `${full.filter(predicate).length} of ${full.length} loaded findings`);
     }
+    const recordedGuidance = (await panel.locator(':scope > p').allTextContents()).slice(0, 2);
     await attention.selectOption('expired');
     await panel.getByLabel('Finding kind', { exact: true }).selectOption('discrepancy');
     assert.deepEqual(await ids(), []);
+    assert.deepEqual((await panel.locator(':scope > p').allTextContents()).slice(0, 2), recordedGuidance, 'zero matches preserve exact server state and next_step');
     assert.ok((await panel.innerText()).includes(recording.detail.research.next_step));
     await attention.selectOption('');
     assert.equal(await panel.getByLabel('Finding kind', { exact: true }).inputValue(), 'discrepancy');
@@ -173,3 +175,71 @@ test('attention disposal clears rendered dates and ignores a late detail respons
   assert.equal(w.document.querySelector('#sourcedResearch'), null);
 });
 
+for (const boundary of ['lead change', 'authorization retirement', 'disposal', 'disposal after authorization retirement']) {
+  test(`attention ${boundary} resets both selectors and rejects a late read`, async t => {
+    const { JSDOM } = await import('jsdom');
+    const { mountLeadsWorkspace } = await import('../js/leads-workspace-app.js');
+    const dom = new JSDOM(await readFile(new URL('../leads.html', import.meta.url), 'utf8'), { url: 'https://example.test/leads', pretendToBeVisual: true });
+    const w = dom.window;
+    w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    w.HTMLDialogElement.prototype.close = function () { this.open = false; };
+    let resolveLate;
+    let delayed = false;
+    const client = {
+      getActor: async () => 'example-partner',
+      getWorkspace: async () => structuredClone(recording),
+      getLeadDetail: async lead => {
+        const response = structuredClone(recording);
+        response.detail.id = lead.id;
+        validateLeadDetail(response.detail, lead.id);
+        if (delayed) return new Promise(resolve => { resolveLate = () => resolve(response); });
+        return response;
+      },
+      getQuietFollowUps: async () => ({ schema_version: 'quiet-follow-ups.v1', cadence: { lead_days: 45, vendor_days: 90 }, proposals: [], sent: false, tasks_created: false }),
+    };
+    const app = mountLeadsWorkspace(w.document, client, { mapFactory: async () => ({ update() {}, dispose() {} }) });
+    t.after(() => { app.dispose(); w.close(); });
+    await app.refresh();
+    await app.readDetail(recording.detail.id);
+    const selector = w.document.querySelector('#researchAttention');
+    selector.value = 'expired';
+    selector.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual([...w.document.querySelectorAll('#sourcedResearch li')].map(node => node.dataset.flagId), recording.detail.research.evidence.filter(e => e.expired).map(e => e.flag_id));
+    const kind = w.document.querySelector('#researchKind');
+    kind.value = recording.detail.research.evidence[0].kind;
+    kind.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual([...w.document.querySelectorAll('#sourcedResearch li')].map(node => node.dataset.flagId), recording.detail.research.evidence.filter(e => e.expired && e.kind === kind.value).map(e => e.flag_id));
+    delayed = true;
+    const pending = app.readDetail(recording.detail.id, false);
+    delayed = false;
+    if (boundary === 'lead change') {
+      await app.readDetail(recording.leads[1].id);
+      assert.equal(w.document.querySelector('#researchAttention').value, '');
+      assert.equal(w.document.querySelector('#researchKind').value, '');
+      const current = w.document.querySelector('#researchAttention');
+      current.value = 'nothing';
+      current.dispatchEvent(new w.Event('change', { bubbles: true }));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual([...w.document.querySelectorAll('#sourcedResearch li')].map(node => node.dataset.flagId), recording.detail.research.evidence.filter(e => !e.found).map(e => e.flag_id));
+    } else if (boundary === 'authorization retirement') {
+      w.dispatchEvent(new w.Event('doctorcre-session-invalidated'));
+      assert.equal(w.document.querySelector('#sourcedResearch'), null);
+    } else {
+      if (boundary === 'disposal after authorization retirement') w.dispatchEvent(new w.Event('doctorcre-session-invalidated'));
+      app.dispose();
+      assert.equal(w.document.querySelector('#sourcedResearch'), null);
+    }
+    const visible = w.document.querySelector('#detailBody').innerHTML;
+    resolveLate();
+    await pending;
+    assert.equal(w.document.querySelector('#detailBody').innerHTML, visible, 'late result cannot change the current subject');
+    if (boundary === 'authorization retirement') {
+      await app.refresh();
+      await app.readDetail(recording.detail.id);
+      assert.equal(w.document.querySelector('#researchAttention').value, '');
+      assert.equal(w.document.querySelector('#researchKind').value, '');
+    }
+  });
+}
