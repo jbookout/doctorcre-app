@@ -1,6 +1,6 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { rmSync } from 'node:fs';
-import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
+import { launchChromium } from '../scripts/browser-policy.mjs';
 // The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
 // Launching a fresh browser for every test and giving each file its own 1-7 s
@@ -17,7 +17,9 @@ import { after } from 'node:test';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium as playwrightChromium, webkit as playwrightWebkit } from 'playwright';
+import { webkit as playwrightWebkit } from 'playwright';
+
+const playwrightChromium = { launch: launchChromium };
 
 export const WAIT_MS = 30_000;
 const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
@@ -51,13 +53,14 @@ function browserEngine(engine) {
   pools.push(launched);
   return {
     async launch(options = {}) {
-      if (!browserTemp) {
+      if (engine !== playwrightChromium && !browserTemp) {
         browserTemp = temporaryDirectory('doctorcre-browser-');
       }
       const key = JSON.stringify(options);
-      if (!launched.has(key)) launched.set(key, engine.launch({ ...options,
-        env: { ...process.env, ...options.env, TMPDIR: browserTemp, TEMP: browserTemp, TMP: browserTemp },
-        ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
+      if (!launched.has(key)) launched.set(key, engine === playwrightChromium
+        ? engine.launch(options)
+        : engine.launch({ ...options,
+          env: { ...process.env, ...options.env, TMPDIR: browserTemp, TEMP: browserTemp, TMP: browserTemp } }));
       const browser = await launched.get(key);
       const contexts = new Set();
       let closing;
