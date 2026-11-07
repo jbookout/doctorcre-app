@@ -223,7 +223,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     }, error => {
       if (epoch !== state.quietEpoch || boardEpoch !== state.epoch) return;
       if (sessionDenied(error)) { authorizationFailure(error); return; }
-     
       section.setAttribute("aria-busy", "false");
       const unreachable = error?.code === "network_error" || error?.code === "read_timeout";
       quiet?.update({ kind: "refused", message: unreachable ? "The follow-up list could not reach the server." : "The follow-up list was refused." });
