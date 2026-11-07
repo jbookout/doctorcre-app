@@ -69,7 +69,7 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
       {state.kind === 'refused' && <p role="alert">The quiet vendor list is unavailable or was refused. Try refreshing.</p>}
       {state.kind === 'ready' && <>
         <p>Server cadence · {state.snapshot.cadence.vendor_days} days</p>
-        <label>Quiet vendor owner{' '}
+        <label className="field">Quiet vendor owner{' '}
           <select value={owner.current} onChange={event => {
             owner.current = event.currentTarget.value;
             setNotice(''); setState({ ...state, offset: 0 });
