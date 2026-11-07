@@ -24,8 +24,9 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   pkg.scripts.test = browser ? 'node --test --test-name-pattern="live brief opens on request" test/morning-brief-browser.test.mjs' : 'node -e ""';
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  // Reuse installed build and browser dependencies in the temporary clone.
-  for (const name of ['es-module-lexer', 'react-router', '@tanstack/react-query', 'esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
+  // Reuse declared dependencies; Wrangler is the simulated provider under test.
+  for (const name of new Set([...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})])) {
+    if (name === 'wrangler') continue;
     mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
   }
