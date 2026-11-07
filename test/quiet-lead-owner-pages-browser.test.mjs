@@ -63,6 +63,13 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`qu
   snapshot = { ...recording, proposals: [omitted] };
   await page.locator('#refreshBoard').click(); await owner.waitFor();
   await owner.selectOption('unrecorded'); assert.equal(await section.locator('li').count(), 1);
+  snapshot = { ...recording, proposals: [{ ...leads[0], owner: 'joe' }] };
+  await page.locator('#refreshBoard').click(); await owner.waitFor();
+  const beforeEmptyFilter = reads;
+  await owner.selectOption('unrecorded');
+  await section.getByText('No quiet leads match this owner.').waitFor();
+  assert.equal(await section.locator('li').count(), 0);
+  assert.equal(reads, beforeEmptyFilter);
   snapshot = { ...recording, proposals: [] };
   await page.locator('#refreshBoard').click(); await section.getByText('No quiet leads.').waitFor();
   denied = true;
