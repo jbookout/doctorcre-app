@@ -74,8 +74,9 @@ test('real CLI fixture passes, detects incorrect credit and preserves the suppli
   }
   if(path==='/deals'){
    res.setHeader('content-type','text/html');
-   return res.end(`<!doctype html><div class="kanban-card"><button class="card-open">Open synthetic deal</button></div><main hidden><form id="detailUpdateForm">Synthetic detail</form><div id="updates"></div></main><script type="module">
+   return res.end(`<!doctype html><div class="kanban-card" hidden><button class="card-open">Open synthetic deal</button></div><main hidden><form id="detailUpdateForm">Synthetic detail</form><div id="updates"></div></main><script type="module">
     import {renderDealUpdates,mountActivityAttribution} from '/js/deal-timeline.js';
+    setTimeout(()=>document.querySelector('.kanban-card').hidden=false,100);
     const id=${JSON.stringify(recording.activity_id)};
     updates.innerHTML=renderDealUpdates({entries:[{id,kind:'note',summary:'Synthetic fixture activity',when:'2026-11-01T12:00:00Z'}],activities:[{id}]});
     mountActivityAttribution(updates);

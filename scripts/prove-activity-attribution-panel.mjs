@@ -13,7 +13,8 @@ const unavailable = message => Object.assign(new Error(message), {exitCode:78});
 export async function observeNatural(page, origin) {
   await page.goto(new URL('/deals',origin).href);
   const card=page.locator('.kanban-card .card-open:visible').first();
-  if (!await card.count()) throw unavailable('No natural deal available');
+  try { await card.waitFor({state:'visible'}); }
+  catch { throw unavailable('No natural deal available'); }
   await card.click();
   await page.locator('#detailUpdateForm').waitFor();
   const history=page.locator('.updates-history > summary');
