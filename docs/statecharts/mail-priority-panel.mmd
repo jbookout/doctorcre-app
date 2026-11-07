@@ -1,13 +1,18 @@
 stateDiagram-v2
-  [*] --> Idle
-  Idle: Show mail priorities
+  [*] --> Loading: Home opens
+  Collapsed: Show mail priorities
   Loading: Loading mail priorities
   Ready: Ranked recorded decisions
   Empty: No recorded pending decisions
   Unavailable: Mail priorities unavailable, retry
   Retired: Sign in to view mail priorities
-  Disposed: Panel closed
-  Idle --> Loading: Choose Show mail priorities
+  Disposed: Home closed
+  Collapsed --> Loading: Choose Show mail priorities
+  Loading --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Ready --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Empty --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Unavailable --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Collapsed --> Collapsed: Ignore stale completion
   Loading --> Ready: Valid populated response
   Loading --> Empty: Valid empty response
   Loading --> Unavailable: Failure, unavailable or malformed response
@@ -16,13 +21,13 @@ stateDiagram-v2
   Empty --> Loading: Choose Refresh mail priorities
   Ready --> Ready: Choose existing card review
   Loading --> Retired: Authorization refused or session retired
-  Idle --> Retired: Session retired
+  Collapsed --> Retired: Session retired
   Ready --> Retired: Session retired
   Empty --> Retired: Session retired
   Unavailable --> Retired: Session retired
   Loading --> Disposed: Home unmounts, discard late completion
   Ready --> Disposed: Home unmounts
-  Idle --> Disposed: Home unmounts
+  Collapsed --> Disposed: Home unmounts
   Empty --> Disposed: Home unmounts
   Unavailable --> Disposed: Home unmounts
   Retired --> Disposed: Home unmounts
@@ -30,4 +35,5 @@ stateDiagram-v2
   Disposed --> Disposed: Ignore stale completion
   %% never Send, approve or dismiss from this panel
   %% never Reorder or infer dates
-  %% never Read before explicit choice or retry automatically
+  %% never Poll or automatically retry
+  %% never Commit a stale completion after collapse, hiding, retirement or disposal

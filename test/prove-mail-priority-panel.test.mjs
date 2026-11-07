@@ -174,3 +174,16 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
     } finally { await server.close(); }
   });
 });
+
+test('release reader failure retains its status and cause', async () => {
+  const cause = Error('upstream refused');
+  const failure = Object.assign(new Error('Proof HTTP unavailable (503)', { cause }), { exitCode: 78, status: 503 });
+  await assert.rejects(prove({ ...setup().options, releaseReader: async () => { throw failure; } }), error => error === failure && error.status === 503 && error.cause === cause);
+});
+test('CLI release reader reports its actual refusal', async t => {
+  const server = await startFixture({ routes: new Map([['/app-release', { status: 503, body: 'Unavailable' }]]) });
+  t.after(() => server.close());
+  const result = await cli(server.origin, 'http://127.0.0.1:1');
+  assert.equal(result.code, 78);
+  assert.equal(result.receipt.error, 'Proof HTTP unavailable (503)');
+});
