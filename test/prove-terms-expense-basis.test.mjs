@@ -4,8 +4,8 @@ import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -14,25 +14,20 @@ const exec = promisify(execFile);
 const commit = '1'.repeat(40);
 const records = JSON.parse(readFileSync(new URL('./fixtures/terms-expense-basis/recordings.json', import.meta.url))).records;
 
+const assets = await appAssetSnapshot();
+
 async function fixture(t, { broken = false, nearMiss = false, localRead = false, sourceCommit = commit } = {}) {
-  const root = resolve(new URL('../', import.meta.url).pathname);
-  const server = createServer(async (req, res) => {
-    const path = new URL(req.url, 'http://localhost').pathname;
-    if (path === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: sourceCommit })); }
-    if (path === '/api/v1/market-terms/read') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(records.full.response)); }
-    if (path === '/deals') {
-      res.setHeader('content-type', 'text/html');
-      return res.end(`<button class="kanban-card" data-id="synthetic-a">Synthetic deal</button><main id="workspace-market-terms"></main><script type="module">import {mountMarketTerms} from '/js/ui-market.js'; import {createLiveClient} from '/js/live-client.js'; const client=createLiveClient({fetchImpl:async(...args)=>{const response=await fetch(...args);${broken ? "const data=await response.json();data.rows=data.rows.slice(0,1);return new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});" : 'return response;'}}}); mountMarketTerms(document.querySelector('main'), {entityRef:'synthetic-a',client});${localRead ? "document.querySelector('main').addEventListener('change',()=>fetch('/api/v1/market-terms/read',{method:'POST',body:'{}'}));" : ''}${nearMiss ? `new MutationObserver(()=>{for(const e of document.querySelectorAll('p>strong')){if(${nearMiss === 'selected' ? '/^1 matching loaded/' : '/^6 matching loaded/'}.test(e.textContent))e.firstChild.data='1'+e.firstChild.data;}}).observe(document.querySelector('main'),{childList:true,subtree:true});` : ''}</script>`);
-    }
-    try {
-      const file = resolve(root, '.' + decodeURIComponent(path));
-      if (!file.startsWith(root + sep)) { res.statusCode = 403; return res.end(); }
-      res.setHeader('content-type', 'text/javascript'); res.end(readFileSync(file));
-    } catch { res.statusCode = 404; res.end(); }
+  const server = await startWorkerFixture({
+    assets,
+    routes: new Map([['/deals', { contentType: 'text/html', body: `<button class="kanban-card" data-id="synthetic-a">Synthetic deal</button><main id="workspace-market-terms"></main><script type="module">import {mountMarketTerms} from '/js/ui-market.js'; import {createLiveClient} from '/js/live-client.js'; const client=createLiveClient({fetchImpl:async(...args)=>{const response=await fetch(...args);${broken ? "const data=await response.json();data.rows=data.rows.slice(0,1);return new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});" : 'return response;'}}}); mountMarketTerms(document.querySelector('main'), {entityRef:'synthetic-a',client});${localRead ? "document.querySelector('main').addEventListener('change',()=>fetch('/api/v1/market-terms/read',{method:'POST',body:'{}'}));" : ''}${nearMiss ? `new MutationObserver(()=>{for(const e of document.querySelectorAll('p>strong')){if(${nearMiss === 'selected' ? '/^1 matching loaded/' : '/^6 matching loaded/'}.test(e.textContent))e.firstChild.data='1'+e.firstChild.data;}}).observe(document.querySelector('main'),{childList:true,subtree:true});` : ''}</script>` }]]),
+    env: {
+      APP_ENV: 'production', GIT_SHA: sourceCommit,
+      CARR: { fetch: async request => new URL(request.url).pathname === '/api/v1/market-terms/read'
+        ? Response.json(records.full.response) : new Response('signed in') },
+    },
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return `http://127.0.0.1:${server.address().port}`;
+  t.after(() => server.close());
+  return server.origin;
 }
 
 test('release containment accepts equal and descendant and refuses older unrelated and unknown without historical objects', async t => {
@@ -88,10 +83,9 @@ test('borrowed browser remains connected and late owned page closes', async () =
 
 for (const broken of [false, true]) test(`CLI fixture exits ${broken ? 1 : 0} and disconnects borrowed browser`, async t => {
   const origin = await fixture(t, { broken });
-  const socket = createServer();
-  await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
-  const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
+  const portFixture = await startFixture();
+  const port = new URL(portFixture.origin).port;
+  await portFixture.close();
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   try {
     const args = ['scripts/prove-terms-expense-basis.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '5000'];
@@ -113,10 +107,9 @@ test('closed browser and missing signed-in context are insufficient evidence', a
 
 for (const nearMiss of [false, 'baseline', 'selected', 'local-read']) test(`real typed transport CLI compares complete displayed counts, nearMiss=${nearMiss}`, async t => {
   const origin = await fixture(t, { nearMiss: nearMiss === 'local-read' ? false : nearMiss, localRead: nearMiss === 'local-read' });
-  const socket = createServer();
-  await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
-  const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
+  const portFixture = await startFixture();
+  const port = new URL(portFixture.origin).port;
+  await portFixture.close();
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   try {
     const args = ['scripts/prove-terms-expense-basis.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '3000'];
@@ -127,10 +120,9 @@ for (const nearMiss of [false, 'baseline', 'selected', 'local-read']) test(`real
 
 test('deadline drains a late real CDP page before disconnect and preserves sentinel tabs', async t => {
   const origin = await fixture(t);
-  const socket = createServer();
-  await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
-  const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
+  const portFixture = await startFixture();
+  const port = new URL(portFixture.origin).port;
+  await portFixture.close();
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   const endpoint = `http://127.0.0.1:${port}`;
   try {
