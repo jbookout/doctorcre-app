@@ -1,3 +1,4 @@
+import { MailPriorities } from './mail-priorities';
 import { ReviewCard } from './review-card';
 import { completionLabel } from './sections';
 import { BulkControls } from './bulk-controls';
@@ -199,7 +200,7 @@ function Inbox({ client }: { client: InboxClient }) {
     const index = links.indexOf(event.target); const next = links[index + (event.key === 'ArrowDown' ? 1 : -1)];
     if (next) { event.preventDefault(); next.focus(); }
   }}>
-    {home && <HomeWelcome />}
+    {home && <><HomeWelcome /><MailPriorities items={items} locked={busy || !!pending || !!reviewing} review={(item, opener) => { reviewOpener.current = opener; setReviewing(item); }} /></>}
     <header className="inbox-header"><div><p className="inbox-eyebrow">YOUR WORKSPACE</p>{home ? <h2>Your inbox</h2> : <h1>Inbox</h1>}<p>Your attention, updates and work in progress.</p></div><button type="button" disabled={query.isFetching || busy || !!pending || !online} onClick={() => void query.refetch()}>Refresh inbox</button></header>
     <div className="inbox-health" role="status">{!online ? 'Offline · Inbox changes unavailable. Nothing will replay automatically.' : query.isFetching ? 'Updating inbox…' : query.isError ? 'Update unavailable' : query.isStale ? 'Snapshot may be stale · Refresh before acting.' : 'Up to date'}<span>Partner inbox</span></div>
     {query.data && !query.data.auto_settle_enabled && <p role="status">Automatic settlement unavailable. Showing the earlier inbox; completed items may still need review.</p>}
