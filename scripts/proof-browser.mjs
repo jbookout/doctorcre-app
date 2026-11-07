@@ -41,7 +41,10 @@ const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
 
 export function proofCdpUrl(args = process.argv.slice(2)) {
   const index = args.indexOf('--cdp-url');
-  return index < 0 ? args.find(arg => arg.startsWith('--cdp-url='))?.slice(10) : args[index + 1];
+  const inline = args.find(arg => arg.startsWith('--cdp-url='));
+  const endpoint = index < 0 ? inline?.slice(10) : args[index + 1];
+  if ((index >= 0 || inline !== undefined) && (!endpoint || endpoint.startsWith('--'))) throw unavailable('CDP URL required');
+  return endpoint;
 }
 
 export function signedInEngine(endpoint, engine = rawChromium) {
@@ -57,7 +60,7 @@ async function borrowBrowser(endpoint, options = {}, engine = rawChromium) {
       if (!['http:', 'ws:'].includes(url.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password) throw Error();
     }
     connection = await engine.connectOverCDP(endpoint, { ...options, timeout: Math.min(30000, Math.max(1, options.timeout || 30000)), isLocal: true });
-  } catch { throw unavailable('Signed-in browser connection unavailable'); }
+  } catch (error) { throw unavailable(`Signed-in browser connection unavailable: ${error.message}`); }
   const pages = new Set(), pending = new Set();
   let state = 'active', closing;
   function ownedContext(settings = {}) {
@@ -74,6 +77,12 @@ async function borrowBrowser(endpoint, options = {}, engine = rawChromium) {
             page = await shared.newPage();
             pages.add(page);
             localPages.add(page);
+            const closePage = page.close.bind(page);
+            let closingPage;
+            page.close = (...args) => closingPage ||= Promise.resolve().then(() => closePage(...args)).then(() => {
+              pages.delete(page);
+              localPages.delete(page);
+            });
             if (state !== 'active') {
               await page.close();
               pages.delete(page);
@@ -122,7 +131,6 @@ chromium.connectOverCDP = (endpoint, options) => borrowBrowser(endpoint, options
 
 // Positional legacy CLIs share the same CDP option without changing their arguments.
 export function proofArgs(args = process.argv.slice(2)) {
-  const endpoint = proofCdpUrl(args);
-  if (args.some(arg => arg === '--cdp-url' || arg.startsWith('--cdp-url=')) && !endpoint) throw unavailable('CDP URL required');
+  proofCdpUrl(args);
   return args.filter((arg, index) => arg !== '--cdp-url' && args[index - 1] !== '--cdp-url' && !arg.startsWith('--cdp-url='));
 }
