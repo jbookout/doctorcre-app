@@ -32,3 +32,32 @@ The authentication flow is `no session -> human sign-in -> saved session -> isol
 Notification discovery waits for the feed state to become ready, empty or no_match. Unavailable, refused and stuck-loading feeds fail. Deal discovery waits for the rendered opening snapshot, and Tours discovery waits for a list or a successful empty state before counting prerequisites.
 
 Without a designated TEST deal, MCP POSTs are limited to the exact `readOnlyVerbs` names in `privacy.ts`. Other methods and envelopes are refused. Each name must exist with `write: false` in `test/fixtures/walk-verb-registry.json`, a name/write projection of the deployed list-verbs response recorded by J15 at the release SHA in that file. On a registry change, refresh that recorded response and release provenance together, then run the browser regression. It fails if any allowlisted name is absent or write-flagged. New names require explicit admission; naming prefixes grant no access. This snapshot check does not detect unrecorded deployment changes.
+
+The quiet lead proof uses this snapshot only with `--fixture`. In production,
+`scripts/prove-quiet-lead-owner-pages.mjs` reads `list-verbs` with `names_only`
+through the signed-in app MCP transport in its own tab. It buffers observed
+call names until that read supplies current write flags. The registry read
+shares the proof's single deadline and is itself included in classification.
+An unreadable, refused, incomplete or malformed registry exits 78 without a
+snapshot fallback. Unknown names fail with their names. Registered writes fail
+the no-writes assertion. This is one sequential metadata read, without retries,
+a cache, a queue or business mutations. At 10x traffic classification remains
+one map lookup per call; registry acquisition still shares the same deadline.
+
+The proof's registry transitions and regression tests are:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Observing: containing release and own tab
+    Observing --> Classifying: live registry read succeeds
+    Observing --> Insufficient: registry unreadable, malformed or deadline
+    Classifying --> Failed: current write flag or unknown name
+    Classifying --> Passed: reads only and all page assertions pass
+```
+
+`natural proof live registry read-only and borrowed browser cleanup` covers
+acquisition, classification and success. Its `stale write flag` and `unknown`
+variants cover failure. The `unreadable`, `malformed` and `deadline` variants
+cover insufficient evidence. Each also checks CDP disconnect and preservation
+of the borrowed browser. Existing release and late-acquisition cleanup tests
+remain applicable.
