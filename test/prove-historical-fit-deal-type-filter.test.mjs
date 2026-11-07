@@ -1,12 +1,12 @@
+import { uiAssets } from '../scripts/ui-bundle.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve, sep, join } from 'node:path';
+import { resolve, join } from 'node:path';
 import { build } from 'esbuild';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
 const runner='scripts/prove-historical-fit-deal-type-filter.mjs';
 const revision=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -20,38 +20,26 @@ function cli(args, preload) {
   });
 }
 test('proof CLI passes fixtures, rejects contradictions and reports insufficient evidence',async t=>{
-  const upstream=await startFixtureServer();t.after(()=>upstream.stop());
-  const root=resolve('.');let mode='pass';
+  const root=resolve('.');
   const source=await readFile('src/ui/ideal-client-profile.tsx','utf8');
   const mutated=await build({stdin:{contents:source.replace('profiles.filter(row => row.deal_type === selectedType)','profiles'),loader:'tsx',resolveDir:root},bundle:true,write:false,format:'esm',jsx:'automatic'});
-  const server=createServer(async(req,res)=>{
-    let pathname;
-    try {pathname=decodeURIComponent(req.url.split('?')[0]);} catch {res.writeHead(403);return res.end();}
-    const path=resolve(root,`.${pathname}`);
-    if(path!==root && !path.startsWith(root+sep)) {res.writeHead(403);return res.end();}
-    if(pathname==='/app-release') {
-      res.setHeader('content-type','application/json');
-      return res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:revision}));
-    }
-    if(!/^\/js\/[\w.-]+\.js$/.test(pathname)) {res.writeHead(403);return res.end();}
-    if(mode==='protected') {res.writeHead(403);return res.end();}
-    if(mode==='contradiction' && pathname==='/js/ui-ideal-client-profile.js') {
-      res.setHeader('content-type','text/javascript');return res.end(mutated.outputFiles[0].text);
-    }
-    const response=await fetch(upstream.url+pathname);
-    res.writeHead(response.status,{'content-type':response.headers.get('content-type')});res.end(Buffer.from(await response.arrayBuffer()));
-  });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
-  const origin=`http://127.0.0.1:${server.address().port}`;
+  const assets = await uiAssets(path => readFile(path));
+  async function snapshot(mode = 'pass') {
+    const responses = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
+    responses.set('/app-release', { body: JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:revision}), contentType: 'application/json' });
+    if (mode === 'protected') for (const path of assets.keys()) responses.set('/' + path, { status: 403 });
+    if (mode === 'contradiction') responses.set('/js/ui-ideal-client-profile.js', { body: mutated.outputFiles[0].text, contentType: 'text/javascript' });
+    const fixture = await startFixture({ routes: responses }); t.after(() => fixture.close()); return fixture;
+  }
+  let fixture = await snapshot(), origin = fixture.origin;
   const args=['--origin',origin,'--timeout-ms','30000','--fixture'];
   const pass=await cli(args);assert.equal(pass.code,0,pass.stderr);assert.equal(JSON.parse(pass.stdout).assertions.length,10);
-  mode='contradiction';const fail=await cli(args);assert.equal(fail.code,1,fail.stderr);
-  mode='pass';const natural=await cli(args.slice(0,-1));assert.equal(natural.code,78,natural.stderr);
-  mode='protected';const protectedResult=await cli(['--origin',origin,'--fixture','--timeout-ms','1500']);assert.equal(protectedResult.code,78,protectedResult.stderr);
-  mode='pass';
+  await fixture.close(); fixture = await snapshot('contradiction'); origin = fixture.origin; args[1] = origin;const fail=await cli(args);assert.equal(fail.code,1,fail.stderr);
+  await fixture.close(); fixture = await snapshot('pass'); origin = fixture.origin; args[1] = origin;const natural=await cli(args.slice(0,-1));assert.equal(natural.code,78,natural.stderr);
+  await fixture.close(); fixture = await snapshot('protected'); origin = fixture.origin; args[1] = origin;const protectedResult=await cli(['--origin',origin,'--fixture','--timeout-ms','1500']);assert.equal(protectedResult.code,78,protectedResult.stderr);
+  await fixture.close(); fixture = await snapshot('pass'); origin = fixture.origin; args[1] = origin;
   for(const pathname of ['/..%2f..%2fsecret','/%2e%2e%2fsecret','/%E0%A4%A']) {
-    const response=await fetch(origin+pathname);assert.equal(response.status,403);
+    const response=await fetch(origin+pathname);assert.equal(response.status,400);
   }
   for(const probe of ['stalled evaluation','late launch']) {
     const scratch=temporaryDirectory('historical-filter-cleanup-',t), marker=join(scratch,'closed.json');

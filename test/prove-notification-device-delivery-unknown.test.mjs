@@ -1,11 +1,11 @@
 import test from 'node:test';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { readAppRelease } from '../scripts/app-release-reader.mjs';
 import { observeDelivery, observeOnPage } from '../scripts/prove-notification-device-delivery-unknown.mjs';
@@ -19,42 +19,24 @@ const falseAbsenceSource = modelSource.replace(
   'const absent = true;',
 );
 assert.notEqual(falseAbsenceSource, modelSource, 'Fixture must inject an unvalidated device-absence claim');
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+const snapshot = await proofAssetSnapshot();
 async function fixture(t, mode) {
-  const seen = [], served = new Map();
-  let identities = 0;
-  const server = createServer(async (req, res) => {
-    seen.push({ method: req.method, path: req.url });
-    let path;
-    try { path = resolve(root, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
-    if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      const identity = { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) };
-      if (mode === 'release-change' && ++identities > 1) identity.source_commit = '2'.repeat(40);
-      const body = JSON.stringify(mode === 'identity' ? {} : identity);
-      res.setHeader('content-type', 'application/json');
-      return res.end(body);
-    }
-    if (mode === 'missing-asset') { res.writeHead(404); return res.end(); }
-    if (mode === 'protected') { res.writeHead(302, { location: '/sign-in' }); return res.end(); }
-    try {
-      if (!req.url.startsWith('/js/') || !/\.(js|mjs)$/.test(path)) throw Error('Unexpected asset');
-      let body = mode === 'cap' && /proof-cap-/.test(path) ? Buffer.from('export const x = 1;') : await readFile(path);
-      if (req.url === '/js/notifications-model.js') {
-        if (mode === 'false-absence') body = Buffer.from(falseAbsenceSource);
-        if (mode === 'network') body = Buffer.from('await fetch("/api/business");');
-        if (mode === 'cap') body = Buffer.from(Array.from({ length: 21 }, (_, i) => `import "./proof-cap-${i}.js";`).join('\n'));
-      }
-      if (mode === 'cap' && /proof-cap-/.test(path)) body = Buffer.from('export const x = 1;');
-      served.set(req.url, createHash('sha256').update(body).digest('hex'));
-      res.setHeader('content-type', 'text/javascript');
-      res.end(body);
-    } catch { res.writeHead(404); res.end(); }
-  });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: `http://127.0.0.1:${server.address().port}`, seen, served };
+  const routes = new Map(snapshot);
+  routes.set('/fixture.html', {contentType:'text/html',body:'<!doctype html><title>Module observation</title>'});
+  if (mode === 'missing-asset' || mode === 'protected') for (const path of routes.keys()) routes.set(path,
+    mode === 'protected' ? {status:302,headers:{location:'/sign-in'}} : {status:404});
+  const key = '/js/notifications-model.js';
+  if (mode === 'false-absence' || mode === 'network' || mode === 'cap') routes.set(key, {contentType:'text/javascript',
+    body:mode==='false-absence'?falseAbsenceSource:mode==='network'?'await fetch("/api/business");':Array.from({length:21},(_,i)=>`import "./proof-cap-${i}.js";`).join('\n')});
+  if (mode === 'cap') for (let i=0;i<21;i++) routes.set(`/js/proof-cap-${i}.js`,{contentType:'text/javascript',body:'export const x = 1;'});
+  const served = new Map([...routes].map(([path,response])=>[path,createHash('sha256').update(response.body || '').digest('hex')]));
+  const identity = sha => ({contentType:'application/json',body:JSON.stringify(mode==='identity'?{}:{service:'doctorcre-app',environment:'production',source_commit:sha.repeat(40)})});
+  routes.set('/app-release',{sequence:[identity('1'),identity(mode==='release-change'?'2':'1')]});
+  if(mode==='timeout')routes.set('/app-release',{hold:'timeout'});
+  const server=await startFixture({routes});
+  t.after(()=>server.close());
+  return {origin:server.origin,get seen(){return server.requests.map(req=>({method:req.method,path:req.target}));},served};
 }
 async function cli(origin, timeout = '30000', extra = []) {
   const child = spawn(process.execPath, ['scripts/prove-notification-device-delivery-unknown.mjs', '--origin', origin, '--timeout-ms', timeout, ...extra], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -82,7 +64,7 @@ test('page observation imports a module with a hostile URL fragment', async t =>
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await page.goto(f.origin + '/app-release');
+  await page.goto(f.origin + '/fixture.html');
   const result = await observeOnPage(page, f.origin + '/js/notifications-model.js#</script>');
   assert.ok(result.assertions.includes('null-unavailable'));
   assert.ok(result.assertions.includes('empty-confirmed-absence'));

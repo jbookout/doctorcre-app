@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
@@ -22,22 +22,13 @@ for (const [mode, guard] of [
 }
 const exec = promisify(execFile);
 async function run(t, mode, timeout = '30000') {
-  const server = createServer((req, res) => {
-    res.setHeader('content-type', 'application/json');
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      res.setHeader('Content-Type', 'application/json');
-      return res.end(mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'production' }));
-    }
-    let bytes = (disposalMutants.get(mode) || assets).get(req.url.slice(1));
-    if (mode === 'unavailable' || (mode === 'chunk-missing' && req.url.includes('ui-shared-'))) bytes = undefined;
-    if (mode === 'contradiction' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}');
-    if (mode === 'foreign-import' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('import "https://foreign.invalid/a.js";');
-    res.writeHead(bytes ? 200 : 404, { 'Content-Type': 'text/javascript' }); res.end(bytes);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const routes = new Map([...(disposalMutants.get(mode)||assets)].map(([key,body])=>['/'+key,
+    mode==='unavailable'||mode==='chunk-missing'&&key.includes('ui-shared-')?{status:404}:{contentType:'text/javascript',body}]));
+  if(mode==='contradiction'||mode==='foreign-import')routes.set('/js/ui-territory-evidence.js',{contentType:'text/javascript',body:mode==='contradiction'?'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}':'import "https://foreign.invalid/a.js";'});
+  routes.set('/app-release',{contentType:'application/json',body:mode==='release-missing'?'{}':JSON.stringify({service:'doctorcre-app',source_commit:'a'.repeat(40),environment:'production'}),...(mode==='timeout'?{hold:'timeout'}:{})});
+  const server=await startFixture({routes});
+  t.after(()=>server.close());
+  const origin=server.origin;
   const args = ['scripts/prove-territory-evidence-calendar-integrity.mjs', '--origin', origin, '--timeout-ms', timeout];
   try { const result = await exec(process.execPath, args, { timeout: 35000 }); return { code: 0, receipt: JSON.parse(result.stdout) }; }
   catch (error) { return { code: error.code, receipt: JSON.parse(error.stdout) }; }

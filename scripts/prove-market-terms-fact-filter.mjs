@@ -7,7 +7,7 @@ import { marketTermsFixtures } from '../test/fixtures/market-terms.mjs';
 export async function exerciseFilter(page, origin) {
   const fixtures = marketTermsFixtures();
   await page.evaluate(async ({origin, fixtures}) => {
-    const { mountMarketTerms } = await import(`${origin}/js/ui-market.js`);
+    const { mountMarketTerms } = await import('/js/ui-market.js');
     window.filterFixtures = fixtures;
     window.filterResponse = fixtures.full;
     window.filterCalls = [];
