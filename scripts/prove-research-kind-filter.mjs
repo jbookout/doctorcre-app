@@ -6,9 +6,10 @@ import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 const unavailable = message => Object.assign(new Error(message), { exitCode: 78 });
 
 export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000, engine = chromium, ancestryCwd } = {}) {
-  const base = new URL(origin || 'http://localhost');
-  assert.ok(base.href === `${base.origin}/` && !base.username && !base.password && (base.protocol === 'https:' || base.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(base.hostname)), 'origin required');
-  assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000, 'bounded deadline');
+  let base;
+  try { base = new URL(origin || 'http://localhost'); } catch { throw unavailable('Origin required'); }
+  if (!(base.href === `${base.origin}/` && !base.username && !base.password && (base.protocol === 'https:' || base.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(base.hostname)))) throw unavailable('Origin required');
+  if (!(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000)) throw unavailable('Bounded deadline required');
   const controller = new AbortController(), deadline = performance.now() + timeoutMs;
   const remaining = () => { const ms = Math.ceil(deadline - performance.now()); if (ms <= 0) throw unavailable('Total proof deadline exceeded'); return ms; };
   let page, connection, pendingConnection, pendingPage, timer;
