@@ -42,8 +42,9 @@ export async function readMailPriorities(signal: AbortSignal): Promise<MailPage>
 type MailOutcome = { page: MailPage; error?: never } | { error: unknown; page?: never };
 type EarlyMail = { controller: AbortController; outcome?: MailOutcome; stopped?: 'collapsed' | 'auth-retired'; result: Promise<MailOutcome>; detach(): void };
 let earlyMail: EarlyMail | undefined;
+let islandClaimed = false;
 export function startEarlyMailPriorities(read = readMailPriorities) {
-  if (earlyMail) return;
+  if (earlyMail || islandClaimed) return;
   const controller = new AbortController();
   const stop = (kind: 'collapsed' | 'auth-retired') => {
     if (entry.stopped === 'auth-retired') return;
@@ -66,6 +67,7 @@ export function startEarlyMailPriorities(read = readMailPriorities) {
   if (document.hidden) hide();
 }
 export function takeEarlyMailPriorities() {
+  islandClaimed = true;
   const entry = earlyMail;
   earlyMail = undefined;
   return entry;

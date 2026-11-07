@@ -256,3 +256,14 @@ test('pre-mount collapse reopens with a fresh read once', async t => {
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
   assert.equal(await page.evaluate(() => window.calls), 2);
 });
+
+test('late starter cannot duplicate the mounted island read', async t => {
+  const page = await open(t, { pending: true });
+  await page.evaluate(async () => {
+    const { startEarlyMailPriorities, parseMailPage } = await import('/panel.js');
+    startEarlyMailPriorities(async () => { window.calls++; return parseMailPage(window.response); });
+    window.release();
+  });
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});

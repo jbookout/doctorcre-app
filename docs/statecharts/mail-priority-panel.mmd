@@ -25,6 +25,7 @@ stateDiagram-v2
   Empty --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
   Unavailable --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
   Collapsed --> Collapsed: Ignore stale completion
+  Loading --> Loading: Late starter cannot duplicate adopted or island-owned request
   Loading --> Ready: Valid populated response
   Loading --> Empty: Valid empty response
   Loading --> Unavailable: Failure, unavailable or malformed response
