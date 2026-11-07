@@ -90,7 +90,9 @@ async function fixture(t, mode='equal') {
     routes.clear();
     if (mode === 'old-route') routes.set('/', { status: 302, headers: { location: '/leads' } });
   }
+  const session = JSON.parse(await readFile(new URL('./fixtures/fact-review-term-key-filter/recordings.json', import.meta.url))).session;
   const server = await startWorkerFixture({assets:snapshot,routes,env:{GIT_SHA:released,APP_ENV:'production',CARR:{fetch:async request=>{
+    if (new URL(request.url).pathname === '/auth/session') return Response.json(session);
     if (request.method === 'GET') return new Response(null, { status: 200 });
     const input=await request.json();
     assert.equal(input.params.name,'ideal-client-profile');
@@ -218,7 +220,9 @@ for (const mode of ['charts-route', 'old-route']) test(`CLI verifies real charts
   await socket.close();
   const browser = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   t.after(() => browser.close());
-  const context = await browser.newContext();
+  const setup = await rawChromium.connectOverCDP(endpoint);
+  t.after(() => setup.close());
+  const context = setup.contexts()[0];
   await context.addInitScript(() => {
     const url = new URL(location.href);
     url.searchParams.set('mode', 'live');

@@ -135,7 +135,10 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
         });
         payload.catch(() => {});
       });
-      try { await page.goto(`${origin}/leads`); } catch { throw insufficient('Signed-in page navigation unavailable'); }
+      try { await page.goto(`${origin}/?view=charts`); } catch { throw insufficient('Signed-in page navigation unavailable'); }
+      const observedRoute = new URL(page.url());
+      assert.equal(observedRoute.pathname, '/', 'charts route pathname');
+      assert.equal(observedRoute.searchParams.get('view'), 'charts', 'charts route view');
       const host = page.getByRole('region',{name:'Historical client fit',exact:true});
       if (!await host.count()) throw insufficient('Signed-in Historical client fit unavailable');
       await host.locator('summary').first().click();
