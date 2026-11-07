@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
-import { chromium } from './browser-harness.mjs';
+import { chromium, settles } from './browser-harness.mjs';
 
 let outDir, server, browser, origin;
 const deal = n => `20000000-0000-4000-8000-00000000000${n}`;
@@ -55,7 +55,10 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
       return route.continue();
     });
     await page.goto(`${origin}/review-workflows?mode=live`);
+    const filingsRead = page.waitForResponse(response => response.url() === `${origin}/mcp`
+      && response.request().postDataJSON()?.params?.name === 'list-email-thread-filings');
     await page.locator('#homeEmailActivity summary').click();
+    await filingsRead;
     const panel = page.locator('#homeEmailFilings'), first = panel.locator('article').first();
     await first.getByRole('link', { name: 'Open filed deal', exact: true }).waitFor({ timeout: 5000 }).catch(async error => { assert.fail(`${error.message}\n${await panel.innerHTML()}\n${JSON.stringify(calls)}\n${errors.join('\n')}`); });
     await first.locator('h3').evaluate(node => { node.textContent = 'LongSubject'.repeat(30); });
@@ -82,7 +85,13 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     assert.equal(calls.filter(call => call.name === 'list-email-thread-filings').length, 1);
     assert.equal(calls.filter(call => call.name === 'get-deal-room').length, 0);
     await first.getByRole('link', { name: 'Open filed deal' }).focus();
+    const dealRead = page.waitForResponse(response => {
+      if (response.url() !== `${origin}/mcp`) return false;
+      const { name, arguments: args } = response.request().postDataJSON().params;
+      return name === 'get-deal-room' && args.deal === deal(1);
+    });
     await page.keyboard.press('Enter');
+    await dealRead;
     await page.waitForURL(`**/deals?mode=live&deal=${deal(1)}`);
     await page.locator('#recordPanel').getByRole('button', { name: 'Back to deals', exact: true }).waitFor();
     assert.ok(calls.some(call => call.name === 'get-deal-room' && call.args.deal === deal(1)));
@@ -109,9 +118,10 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
     await page.reload();
     await page.locator('#homeEmailActivity summary').click();
     await panel.getByText('Loading filed emails…', { exact: true }).waitFor();
+    await settles(() => assert.equal(typeof releaseRead, 'function', 'the pending filings read is held'));
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('doctorcre-session-invalidated')));
     await panel.getByText('Sign in to review filed emails.', { exact: true }).waitFor();
-    releaseRead?.();
+    releaseRead();
     assert.equal(await panel.getByRole('link').count(), 0);
     assert.deepEqual(errors, []);
   });
