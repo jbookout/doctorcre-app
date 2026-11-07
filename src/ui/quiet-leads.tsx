@@ -17,7 +17,7 @@ export function mountQuietLeads(host: HTMLElement, reason: (row: Proposal) => st
   let page: Page = { owner: 'all', offset: 0, notice: '' };
   let disposed = false;
   const ownerKey = (row: Proposal) => row.owner == null ? 'unrecorded' : `owner:${row.owner}`;
-  const label = (owner: string) => owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : owner;
+  const label = (owner: string) => owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : `Recorded owner · ${owner}`;
   function render() {
     if (disposed) return;
     const leads = state.kind === 'ready' ? state.snapshot.proposals.filter(row => row.subject_type === 'lead') : [];
@@ -27,7 +27,7 @@ export function mountQuietLeads(host: HTMLElement, reason: (row: Proposal) => st
       {state.kind === 'loading' && <p role="status">Loading follow-ups…</p>}
       {state.kind === 'refused' && <p role="alert">{state.message}</p>}
       {state.kind === 'ready' && <>
-        <label>Quiet lead owner{' '}<select value={page.owner} onChange={event => {
+        <label>Quiet lead owner{' '}<select style={{ maxWidth: '100%' }} value={page.owner} onChange={event => {
           page = { owner: event.target.value, offset: 0, notice: '' }; render();
         }}>
           <option value="all">All owners</option>

@@ -39,7 +39,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`qu
   assert.equal(await section.locator('li').count(), leads.filter(row => row.owner == null).length);
   await owner.selectOption('owner:JOE');
   assert.equal(await section.locator('li').count(), leads.filter(row => row.owner === 'JOE').length);
-  assert.equal(await owner.getByRole('option', { name: 'JOE', exact: true }).count(), 1);
+  assert.equal(await owner.getByRole('option', { name: 'Recorded owner · JOE', exact: true }).count(), 1);
   await owner.selectOption('owner:dell');
   assert.equal(await section.locator('li').count(), leads.filter(row => row.owner === 'dell').length);
   await owner.selectOption('all');
