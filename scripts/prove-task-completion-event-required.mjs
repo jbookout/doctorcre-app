@@ -1,3 +1,4 @@
+import { proofArgs } from './proof-browser.mjs';
 import { isAppRepository } from '../js/repository-identity.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { createHash } from 'node:crypto';
@@ -78,7 +79,7 @@ export async function prove({ origin, timeoutMs }) {
       files.set(row.path, row);
     }
     if (!files.has('js/ui-task-done.js')) throw Error('Manifest has no task module');
-    const { chromium } = await import('playwright');
+    const { chromium } = await import('./proof-browser.mjs');
     browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     controller.signal.addEventListener('abort', () => { void browser.close(); }, { once: true });
     if (controller.signal.aborted) throw unavailable('Evidence timeout');
@@ -117,7 +118,7 @@ export async function prove({ origin, timeoutMs }) {
 
 async function main() {
   try {
-    const args = process.argv.slice(2), url = new URL(args[1]), timeoutMs = Number(args[3]);
+    const args = proofArgs(), url = new URL(args[1]), timeoutMs = Number(args[3]);
     if (args.length !== 4 || args[0] !== '--origin' || args[2] !== '--timeout-ms' || url.href !== `${url.origin}/` || url.username || url.password || !(url.protocol === 'https:' || url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw Error('Use --origin HTTPS_OR_LOOPBACK_ORIGIN --timeout-ms 1..30000');
     console.log(JSON.stringify(await prove({ origin: url.origin, timeoutMs })));
   } catch (error) {

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export function options(args) {
-  const { values } = parseArgs({ args, options: { help: { type: 'boolean' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, 'expected-revision': { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { 'cdp-url': { type: 'string' }, help: { type: 'boolean' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, 'expected-revision': { type: 'string' } } });
   if (values.help) return { help: true };
   const url = new URL(values.origin);
   assert.ok(url.protocol === 'https:' || (url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)), 'HTTPS or loopback origin required');

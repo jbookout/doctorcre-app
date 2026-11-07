@@ -1,9 +1,10 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
@@ -93,23 +94,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       await page.getByText('Historical client fit',{exact:true}).click();
     } else {
       if (!cdpUrl) throw insufficient('Signed-in CDP session required');
-      const cdp = new URL(cdpUrl);
-      assert.ok(cdp.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(cdp.hostname) && !cdp.username && !cdp.password);
-      const borrowed = { launch: async options => {
-        let connection;
-        try { connection = await engine.connectOverCDP(cdpUrl,{timeout:options.timeout}); }
-        catch { throw insufficient('Signed-in CDP session unavailable'); }
-        let pendingPage, cleanup;
-        return { newPage: async () => {
-          const context = connection.contexts()[0];
-          if (!context) throw insufficient('Signed-in context unavailable');
-          pendingPage = context.newPage().catch(() => { throw insufficient('Signed-in page unavailable'); });
-          return pendingPage;
-        }, close: () => cleanup ||= (async () => {
-          try { await pendingPage?.then(page => page.close()).catch(() => {}); }
-          finally { await connection.close(); }
-        })() };
-      } };
+      const borrowed = signedInEngine(cdpUrl, engine);
       browser = await launchProofBrowser(borrowed,{timeout:remaining()},{signal:controller.signal});
       page = await browser.newPage();
       await page.route('**/*', route => {

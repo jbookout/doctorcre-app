@@ -1,5 +1,6 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -181,7 +182,7 @@ export async function prove({ origin, timeoutMs }) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     if (args.length !== 4 || args[0] !== '--origin' || args[2] !== '--timeout-ms' || !/^\d+$/.test(args[3]) || Number(args[3]) < 1 || Number(args[3]) > 30000) throw new Error('Usage: --origin <origin> --timeout-ms <1..30000>');
     console.log(JSON.stringify(await prove({ origin: args[1], timeoutMs: Number(args[3]) })));
   } catch (error) { console.log(JSON.stringify(error.receipt || { error: error.message })); process.exitCode = error.exitCode || 1; }

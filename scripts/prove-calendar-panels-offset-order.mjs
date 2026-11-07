@@ -1,8 +1,9 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function prove({ origin, timeoutMs }) {
@@ -90,7 +91,7 @@ export async function prove({ origin, timeoutMs }) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     assert.equal(args.length, 4, 'usage: --origin URL --timeout-ms 30000');
     assert.equal(args[0], '--origin');
     assert.equal(args[2], '--timeout-ms');

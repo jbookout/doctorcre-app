@@ -1,5 +1,5 @@
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -167,7 +167,7 @@ export async function prove({ origin, commit, timeoutMs = 30000, engine = chromi
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, commit: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, fixture: { type: 'boolean' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, commit: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, fixture: { type: 'boolean' } } });
     if (!values.origin || !values.commit || !/^\d+$/.test(values['timeout-ms']) || Number(values['timeout-ms']) < 1 || Number(values['timeout-ms']) > 30000) throw new Error('Usage: --origin <origin> --commit <expected-merge> [--timeout-ms <1..30000>] [--fixture]');
     const base = new URL(values.origin);
     if (values.fixture && (base.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname))) throw new Error('Fixture success requires a loopback origin');

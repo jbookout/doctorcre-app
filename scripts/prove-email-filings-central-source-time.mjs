@@ -1,6 +1,7 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { proofFetch, readAppRelease, launchProofBrowser } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 

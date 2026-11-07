@@ -1,7 +1,8 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -153,7 +154,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2), options = {};
+    const args = proofArgs(), options = {};
     for (let i = 0; i < args.length; i++) {
       if (args[i] === '--fixture') options.fixture = true;
       else if (args[i] === '--origin') options.origin = args[++i];

@@ -1,12 +1,12 @@
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 let browser;
 let timer;
 try {
-  const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+  const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
   if (values.help) {
     console.log('Usage: node scripts/prove-quick-add-draft-date-integrity.mjs --origin https://app.doctorcre.com --timeout-ms 30000');
   } else {

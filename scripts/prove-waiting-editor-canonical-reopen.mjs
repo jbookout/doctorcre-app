@@ -1,5 +1,5 @@
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { context as buildContext } from 'esbuild';
 import { init, parse } from 'es-module-lexer';
 import { createHash } from 'node:crypto';
@@ -180,7 +180,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
     if (values.help) console.log('node scripts/prove-waiting-editor-canonical-reopen.mjs --origin https://app.doctorcre.com --timeout-ms 30000');
     else console.log(JSON.stringify(await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms']) })));
   } catch (error) { console.error(error.message); process.exitCode = error.exitCode || 1; }

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -77,7 +77,7 @@ export async function labelAssertions(page, moduleURL) {
 }
 
 export function options(args) {
-  const { values } = parseArgs({ args, options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, fixture: { type: 'boolean', default: false } } });
+  const { values } = parseArgs({ args, options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, fixture: { type: 'boolean', default: false } } });
   const url = new URL(values.origin);
   assert.ok(url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname)));
   assert.equal(url.href, `${url.origin}/`);

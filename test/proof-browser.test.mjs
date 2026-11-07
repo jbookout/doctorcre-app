@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { ownedBrowserProcesses } from './proof-browser-harness.mjs';
 import { launchProofBrowser } from '../scripts/app-release-reader.mjs';
-import { chromium } from '../scripts/proof-browser.mjs';
+import { chromium, signedInEngine } from '../scripts/proof-browser.mjs';
 
 const required = ['--use-mock-keychain', '--password-store=basic'];
 async function stubLaunch(t, launch) {
@@ -138,4 +138,87 @@ for (const mode of ['success', 'rejection', 'abort', 'setup exception']) test(`r
     else await observe();
   }
   assertNoOwnedProcesses(root, pids);
+});
+
+test('borrowed acquisition rejection is insufficient evidence', async () => {
+  await assert.rejects(chromium.connectOverCDP('http://127.0.0.1:1', { timeout: 100 }), { exitCode: 78 });
+});
+
+test('borrowed page rejection is insufficient evidence and close drains late pages', async t => {
+  const { chromium: raw } = await import('playwright');
+  let resolvePage, closed = 0, disconnected = 0;
+  const page = { close: async () => { closed++; } };
+  t.mock.method(raw, 'connectOverCDP', async () => ({ contexts: () => [{ newPage: () => new Promise(resolve => { resolvePage = resolve; }) }], close: async () => { disconnected++; } }));
+  const borrowed = await chromium.connectOverCDP('http://127.0.0.1:1234');
+  const pending = borrowed.newPage();
+  await new Promise(resolve => setImmediate(resolve));
+  const closing = borrowed.close();
+  assert.equal(disconnected, 0);
+  resolvePage(page);
+  await assert.rejects(pending, { exitCode: 78 });
+  await closing;
+  assert.equal(closed, 1);
+  assert.equal(disconnected, 1);
+  await borrowed.close();
+  assert.equal(disconnected, 1);
+});
+
+for (const late of [false, true]) test(`real CDP preserves borrowed browser and existing tabs${late ? ' after late page' : ''}`, async t => {
+  const { startFixture } = await import('../scripts/fixture-http.mjs');
+  const portFixture = await startFixture();
+  const port = new URL(portFixture.origin).port;
+  await portFixture.close();
+  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  const { chromium: raw } = await import('playwright');
+  const connect = raw.connectOverCDP.bind(raw);
+  const endpoint = `http://127.0.0.1:${port}`;
+  let observer, borrowed;
+  try {
+    observer = await connect(endpoint);
+    const existing = await observer.contexts()[0].newPage();
+    await existing.goto('data:text/html,original');
+    const before = observer.contexts()[0].pages().length;
+    await observer.close(); observer = undefined;
+    if (late) t.mock.method(raw, 'connectOverCDP', async (...args) => {
+      const connection = await connect(...args);
+      const context = connection.contexts()[0];
+      const newPage = context.newPage.bind(context);
+      context.newPage = async () => {
+        const page = await newPage();
+        await new Promise(resolve => setTimeout(resolve, 150));
+        return page;
+      };
+      return connection;
+    });
+    borrowed = await launchProofBrowser(signedInEngine(endpoint), { timeout: late ? 100 : 10000 });
+    if (late) await assert.rejects(borrowed.newPage(), { exitCode: 78 });
+    else await (await borrowed.newPage()).goto('data:text/html,owned');
+    await borrowed.close(); borrowed = undefined;
+    observer = await connect(endpoint);
+    assert.equal(observer.contexts()[0].pages().length, before, 'fresh connection counts zero added tabs');
+    assert.ok(observer.contexts()[0].pages().some(page => page.url() === 'data:text/html,original'));
+    assert.equal(owner.isConnected(), true);
+  } finally { await borrowed?.close(); await observer?.close(); await owner.close(); }
+});
+
+test('rejected page and missing context are insufficient evidence', async t => {
+  const { chromium: raw } = await import('playwright');
+  for (const contexts of [[], [{ newPage: async () => { throw Error('Target closed'); } }]]) {
+    let disconnected = false;
+    t.mock.method(raw, 'connectOverCDP', async () => ({ contexts: () => contexts, close: async () => { disconnected = true; } }));
+    const browser = await chromium.connectOverCDP('http://127.0.0.1:1234');
+    await assert.rejects(browser.newPage(), { exitCode: 78 });
+    await browser.close();
+    assert.equal(disconnected, true);
+  }
+});
+
+test('CLI with containing release and unreachable CDP exits 78', async t => {
+  const { startFixture } = await import('../scripts/fixture-http.mjs');
+  const { execFile } = await import('node:child_process');
+  const commit = '1'.repeat(40);
+  const fixture = await startFixture({ routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: commit }) }]]) });
+  t.after(() => fixture.close());
+  const result = await new Promise(resolve => execFile(process.execPath, ['scripts/prove-client-anniversary-panel.mjs', '--origin', fixture.origin, '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1'], { timeout: 15000 }, (error, stdout, stderr) => resolve({ code: error?.code || 0, stdout, stderr })));
+  assert.equal(result.code, 78, JSON.stringify(result));
 });

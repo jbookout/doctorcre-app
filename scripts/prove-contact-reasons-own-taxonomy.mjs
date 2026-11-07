@@ -1,6 +1,7 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
-import {chromium} from 'playwright';
+import {chromium} from './proof-browser.mjs';
 import {CHROMIUM_SAFETY_ARGS} from './chromium-safety-args.mjs';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -170,7 +171,7 @@ export async function prove({origin,timeoutMs=30000,requiredRevision}) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    const args=process.argv.slice(2), options={};
+    const args=proofArgs(), options={};
     for (let i=0;i<args.length;i+=2) {
       assert.ok(['--origin','--timeout-ms','--required-revision'].includes(args[i]) && args[i+1],'unknown or missing argument');
       options[args[i]]=args[i+1];

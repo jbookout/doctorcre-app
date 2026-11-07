@@ -1,9 +1,10 @@
+import { signedInEngine } from './proof-browser.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -264,10 +265,10 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
       } finally { page.off('request', countExportRequest); }
       if (!fixture) {
         if (!cdpUrl) throw unavailable('No signed-in browser session supplied; deployed fixture assertions passed');
-        naturalBrowser = await launchProofBrowser({ launch: options => engine.connectOverCDP(cdpUrl, {...options, isLocal: true}) }, { timeout: Math.max(1, timeoutMs - (Date.now() - started)) }, { signal: controller.signal });
-        const pages = naturalBrowser.contexts().flatMap(context => context.pages()).filter(page => new URL(page.url()).origin === origin);
-        if (pages.length !== 1) throw unavailable('Exactly one existing same-origin signed-in page required');
-        receipt.natural = await observeNaturalCsv(pages[0]);
+        naturalBrowser = await launchProofBrowser(signedInEngine(cdpUrl, engine), { timeout: Math.max(1, timeoutMs - (Date.now() - started)) }, { signal: controller.signal });
+        const naturalPage = await naturalBrowser.newPage();
+        await naturalPage.goto(origin + '/');
+        receipt.natural = await observeNaturalCsv(naturalPage);
       }
       receipt.releaseAfter = await readAppRelease(origin, async url => ({ type:'application/json', body:await get(url.href) }));
       if (receipt.release.source_commit !== receipt.releaseAfter.source_commit) throw unavailable('release changed during proof');

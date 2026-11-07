@@ -1,3 +1,4 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
@@ -5,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { chromium } from './proof-browser.mjs';
-import { chromium as cdpChromium } from 'playwright';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { workspace, detail } from '../test/leads-workspace-fixture.mjs';
 
@@ -25,8 +25,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   const timer = setTimeout(expire, timeoutMs);
   const bounded = promise => Promise.race([promise, expired]);
   const remaining = () => Math.max(1, deadline - Date.now());
-  let browser, page, pendingBrowser;
-  const pendingPages = [];
+  let browser, page;
   const release = async () => fixture && readRelease === readAppRelease ? { source_commit: expectedCommit } : bounded(readRelease(base, { timeoutMs: remaining() }));
   async function contains(source) {
     if (!/^[a-f0-9]{40}$/.test(source || '') || /^0+$/.test(source)) throw unavailable('Unknown release');
@@ -43,22 +42,8 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     if (!fixture && !cdpUrl) throw unavailable('Existing signed-in browser session required');
     const recording = fixture ? JSON.parse(await readFile(recordingUrl)) : null;
     try {
-      // Playwright's CDP browser.close disconnects this connection without closing the remote browser.
-      if (fixture) browser = await launchProofBrowser(engine, { timeout: remaining() }, { signal: controller.signal });
-      else {
-        pendingBrowser = Promise.resolve().then(() => (engine.connectOverCDP ? engine : cdpChromium).connectOverCDP(cdpUrl, { timeout: remaining() })).then(async acquired => {
-          if (controller.signal.aborted) { await acquired.close(); throw controller.signal.reason; }
-          return acquired;
-        });
-        browser = await bounded(pendingBrowser);
-      }
-      if (!fixture && !browser.contexts()[0]) throw unavailable('Signed-in context unavailable');
-      const acquisition = (fixture ? browser.newPage({ viewport: { width: 390, height: 844 } }) : browser.contexts()[0].newPage()).then(async acquired => {
-        if (controller.signal.aborted) { await acquired.close(); throw controller.signal.reason; }
-        return acquired;
-      });
-      pendingPages.push(acquisition);
-      page = await bounded(acquisition);
+      browser = await launchProofBrowser(fixture ? engine : signedInEngine(cdpUrl, engine.connectOverCDP ? engine : chromium), { timeout: remaining() }, { signal: controller.signal });
+      page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     } catch (error) { throw unavailable(`Browser session unavailable: ${error.message}`); }
     if (fixture) {
       const root = fileURLToPath(new URL('../', import.meta.url));
@@ -146,9 +131,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   finally {
     clearTimeout(timer);
     await page?.close().catch(() => {});
-    await Promise.allSettled(pendingPages.map(pending => pending.then(acquired => acquired.close())));
     await browser?.close().catch(() => {});
-    if (!browser && pendingBrowser) void pendingBrowser.then(acquired => acquired.close()).catch(() => {});
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

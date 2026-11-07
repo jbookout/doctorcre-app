@@ -1,9 +1,9 @@
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { parseArgs } from 'node:util';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
-const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
 if (values.help) {
   console.log('Usage: node scripts/prove-quick-switcher-partial-read.mjs --origin <http(s)-origin> --timeout-ms 30000\nUses a fresh unauthenticated browser. Protected assets block the proof. Emits a JSON receipt; fixture releases do not prove deployment.');
 } else {

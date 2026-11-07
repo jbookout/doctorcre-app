@@ -70,7 +70,7 @@ export async function launchProofBrowser(engine, options = {}, { signal } = {}) 
     if (signal) { onAbort = expire; signal.addEventListener('abort', onAbort, { once: true }); }
     else timer = setTimeout(expire, timeout);
   });
-  const pending = Promise.resolve().then(() => engine.launch(options)).then(async acquired => {
+  const pending = Promise.resolve().then(() => engine.launch(options)).catch(error => { error.exitCode = 78; throw error; }).then(async acquired => {
     if (expired) { await acquired.close(); throw failure; }
     browser = acquired;
     return acquired;

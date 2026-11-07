@@ -1,3 +1,4 @@
+import { proofArgs } from './proof-browser.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-reader.mjs';
@@ -51,7 +52,7 @@ export async function observeOnPage(page, assetUrl) {
 }
 
 export async function prove({ origin, timeoutMs }) {
-  const { chromium } = await import('playwright');
+  const { chromium } = await import('./proof-browser.mjs');
   const deadline = Date.now() + timeoutMs;
   const remaining = () => Math.max(1, Math.min(10000, deadline - Date.now()));
   let browser;
@@ -113,7 +114,7 @@ export async function prove({ origin, timeoutMs }) {
 async function main() {
   let timer;
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     if (args.length !== 4 || args[0] !== '--origin' || args[2] !== '--timeout-ms') throw Error('Use --origin URL --timeout-ms MILLISECONDS');
     const url = new URL(args[1]), timeoutMs = Number(args[3]);
     if (url.href !== `${url.origin}/` || url.username || url.password || !(url.protocol === 'https:' || url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) throw Error('Expected HTTPS origin or loopback fixture');

@@ -1,9 +1,10 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { readFile, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
@@ -130,7 +131,7 @@ export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com',
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     assert.ok(args.length === 4 && ['--fixture-root', '--origin'].includes(args[0]) && args[2] === '--timeout-ms', 'usage: --origin URL | --fixture-root PATH, followed by --timeout-ms 30000');
     console.log(JSON.stringify(await prove({ [args[0] === '--origin' ? 'origin' : 'fixtureRoot']: args[1], timeoutMs: Number(args[3]) })));
   } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message, ...error.receipt })); process.exitCode = error.exitCode || 1; }

@@ -1,7 +1,8 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
@@ -190,7 +191,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
 
 async function main() {
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     const fixture = args.includes('--fixture');
     const origin = args[args.indexOf('--origin') + 1];
     const timeoutMs = args.includes('--timeout-ms') ? Number(args[args.indexOf('--timeout-ms') + 1]) : 30000;

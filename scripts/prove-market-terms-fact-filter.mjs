@@ -1,3 +1,4 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { chromium } from './proof-browser.mjs';
@@ -107,7 +108,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2), fixture = args.includes('--fixture');
+    const args = proofArgs(), fixture = args.includes('--fixture');
     if (fixture) args.splice(args.indexOf('--fixture'),1);
     assert.equal(args.length,4,'usage: --origin URL --timeout-ms 30000 [--fixture]');
     assert.equal(args[0],'--origin'); assert.equal(args[2],'--timeout-ms');

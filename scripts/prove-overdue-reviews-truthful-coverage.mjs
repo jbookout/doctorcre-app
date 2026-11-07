@@ -2,7 +2,7 @@ import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-re
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -122,7 +122,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' } } });
     const receipt = await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms']) });
     process.stdout.write(JSON.stringify(receipt) + '\n'); process.exitCode = receipt.exitCode;
   } catch (error) { process.stderr.write(error.message + '\n'); process.exitCode = error.exitCode || 1; }

@@ -1,8 +1,9 @@
+import { signedInEngine } from './proof-browser.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
-import { chromium } from 'playwright';
-import { readAppRelease } from './app-release-reader.mjs';
+import { chromium } from './proof-browser.mjs';
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
 
 export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000, engine = chromium, releaseReader = readAppRelease, ancestry }) {
@@ -12,7 +13,6 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
   const remaining = () => { const ms = Math.ceil(end - performance.now()); if (ms <= 0) throw unavailable('Total proof deadline exceeded'); return ms; };
   let timer, page, closing, disconnect, expired = false, release;
   const closePage = () => closing ||= page?.close();
-  const pendingPages = new Set();
   const deadline = new Promise((_, reject) => { timer = setTimeout(() => { expired = true; void closePage()?.catch(() => {}); reject(unavailable('Total proof deadline exceeded')); }, timeoutMs); });
   const bounded = operation => Promise.race([operation, deadline]);
   try {
@@ -25,24 +25,9 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       if (!await bounded(ancestor(expectedCommit, release.source_commit))) throw unavailable('Release does not contain expected merge, or ancestry is unknown');
     }
     if (!cdpUrl) throw unavailable('Existing signed-in browser session required');
-    const endpoint = new URL(cdpUrl);
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname) || !['http:', 'ws:'].includes(endpoint.protocol)) throw unavailable('CDP endpoint must be local');
-    const connection = Promise.resolve().then(() => engine.connectOverCDP(cdpUrl, { timeout: remaining() })).catch(() => { throw unavailable('Existing browser connection unavailable'); }).then(async browser => {
-      // Playwright CDP close disconnects its transport; it does not terminate the shared browser.
-      if (expired) { await browser.close(); throw unavailable('Total proof deadline exceeded'); }
-      disconnect = () => browser.close();
-      return browser;
-    });
-    const browser = await bounded(connection);
-    let context;
-    try { context = browser.contexts()[0]; } catch { throw unavailable('Existing browser context unavailable'); }
-    if (!context) throw unavailable('Existing signed-in browser context required');
-    const acquire = Promise.resolve().then(() => context.newPage()).catch(() => { throw unavailable('Existing browser page unavailable'); }).then(async acquired => {
-      if (expired) { await acquired.close(); throw unavailable('Total proof deadline exceeded'); }
-      page = acquired; return acquired;
-    });
-    pendingPages.add(acquire); acquire.finally(() => pendingPages.delete(acquire)).catch(() => {});
-    await bounded(acquire);
+    const browser = await bounded(launchProofBrowser(signedInEngine(cdpUrl, engine), { timeout: remaining() }));
+    disconnect = () => browser.close();
+    page = await browser.newPage();
     await bounded(page.goto(base.origin + '/', { timeout: remaining(), waitUntil: 'domcontentloaded' }));
     if (new URL(page.url()).origin !== base.origin || new URL(page.url()).pathname !== '/') throw unavailable('Home requires an existing signed-in session');
     const show = page.getByRole('button', { name: 'Show mail priorities', exact: true });
@@ -92,7 +77,6 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     throw error;
   } finally {
     clearTimeout(timer); expired = true;
-    await Promise.allSettled(pendingPages);
     try { await closePage(); } finally { await disconnect?.(); }
   }
 }

@@ -1,7 +1,8 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export function parseArgs(args) {
@@ -79,7 +80,7 @@ export async function prove({ origin, timeoutMs = 30000 }) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const options = parseArgs(process.argv.slice(2));
+    const options = parseArgs(proofArgs());
     if (options.help) console.log('Usage: node scripts/prove-market-terms-response-recovery.mjs --origin https://app.doctorcre.com --timeout-ms 30000');
     else console.log(JSON.stringify(await prove(options), null, 2));
   } catch (error) { console.error(error.message); process.exitCode = error.exitCode || 1; }

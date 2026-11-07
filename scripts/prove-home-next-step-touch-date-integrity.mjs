@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { init, parse } from 'es-module-lexer';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { createLiveClient } from '../js/live-client.js';
@@ -94,7 +94,7 @@ export async function exerciseHomeDates(board) {
 
 const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
 export function options(args) {
-  const { values } = parseArgs({ args, options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+  const { values } = parseArgs({ args, options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
   if (values.help) return { help: true };
   const base = new URL(values.origin);
   assert.ok(base.protocol === 'https:' || base.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname));

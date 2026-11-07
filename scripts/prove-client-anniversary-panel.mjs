@@ -1,8 +1,8 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { chromium } from './proof-browser.mjs';
-import { chromium as driver } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
 const insufficient = message => Object.assign(Error(message),{exitCode:78});
@@ -34,17 +34,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000}) {
       } catch { throw insufficient('Release ancestry is insufficient'); }
     }
     containing = true;
-    let pendingPage, closing;
-    const selected = cdpUrl ? {async launch(options) {
-      const connection = await driver.connectOverCDP(cdpUrl,{timeout:options.timeout});
-      return {
-        newPage() { return pendingPage=connection.contexts()[0].newPage(); },
-        close() { return closing ||= (async () => {
-          try { const ownedPage=await pendingPage; await ownedPage?.close(); }
-          finally { await connection.close(); }
-        })(); },
-      };
-    }} : chromium;
+    const selected = cdpUrl ? signedInEngine(cdpUrl, chromium) : chromium;
     browser=await launchProofBrowser(selected,{timeout:remaining()},{signal:controller.signal});
     page=await browser.newPage();
     await page.goto(origin+'/leases?mode=live',{timeout:remaining()});

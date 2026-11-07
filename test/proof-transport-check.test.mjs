@@ -56,6 +56,7 @@ for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${
       const args = [`scripts/${runner}`, '--origin', origin];
       if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs', 'prove-territory-evidence-current-history-view.mjs'].includes(runner)) args.push('--commit', '1'.repeat(40));
       args.push('--timeout-ms', '3000');
+      if (environment === 'staging') args.push('--cdp-url', 'http://127.0.0.1:1');
       await assert.rejects(exec(process.execPath, args, { timeout: 15000 }), error => {
         assert.equal(error.code, 78, `${runner}: ${error.stdout} ${error.stderr}`);
         return true;

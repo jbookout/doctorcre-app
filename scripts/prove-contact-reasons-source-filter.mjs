@@ -1,7 +1,8 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {chromium} from 'playwright';
+import {chromium} from './proof-browser.mjs';
 import {practiceOriginationFixture} from '../data/fixtures/practice-origination.mjs';
 import {launchProofBrowser, proofFetch, readAppRelease} from './app-release-reader.mjs';
 import {CHROMIUM_SAFETY_ARGS} from './chromium-safety-args.mjs';
@@ -149,7 +150,7 @@ export async function prove({origin,timeoutMs=30000,engine=chromium,observe=exer
 
 if(process.argv[1]===fileURLToPath(import.meta.url)) {
   try {
-    const args=process.argv.slice(2),options={};
+    const args=proofArgs(),options={};
     for(let i=0;i<args.length;i+=2) {
       assert.ok(['--origin','--timeout-ms'].includes(args[i]) && args[i+1],'Usage: node scripts/prove-contact-reasons-source-filter.mjs --origin https://app.doctorcre.com --timeout-ms 30000');
       options[args[i]]=args[i+1];

@@ -1,8 +1,8 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { chromium as driver } from 'playwright';
 import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 
@@ -18,8 +18,7 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     if (ms <= 0 || controller.signal.aborted) throw unavailable('Total proof deadline expired');
     return ms;
   };
-  let browser, page, release, borrowed;
-  const pendingPages = new Set();
+  let browser, page, release;
   const work = async () => {
     release = await readAppRelease(base, { timeoutMs: remaining() });
     if (!/^[a-f0-9]{40}$/.test(expectedCommit || '') || /^0+$/.test(expectedCommit)) throw unavailable('Expected merge commit required');
@@ -31,24 +30,8 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
       } catch { throw unavailable('Release does not demonstrably contain the expected commit'); }
     }
     if (!fixture && !cdpUrl) throw unavailable('Existing signed-in browser session required');
-    if (fixture) {
-      browser = await launchProofBrowser(engine, { timeout: remaining() }, { signal: controller.signal });
-      page = await browser.newPage();
-    } else {
-      const connected = await driver.connectOverCDP(cdpUrl, { timeout: remaining() }).then(async acquired => {
-        if (controller.signal.aborted) { await acquired.close(); throw unavailable('Total proof deadline expired'); }
-        borrowed = acquired;
-        return acquired;
-      });
-      const context = connected.contexts()[0];
-      if (!context) throw unavailable('Existing browser context required');
-      const pending = context.newPage().then(async acquired => {
-        if (controller.signal.aborted) { await acquired.close(); throw unavailable('Total proof deadline expired'); }
-        return acquired;
-      });
-      pendingPages.add(pending);
-      try { page = await pending; } finally { pendingPages.delete(pending); }
-    }
+    browser = await launchProofBrowser(fixture ? engine : signedInEngine(cdpUrl, chromium), { timeout: remaining() }, { signal: controller.signal });
+    page = await browser.newPage();
     page.setDefaultTimeout(remaining());
     await page.route('**/*', route => {
       const request = route.request(), url = new URL(request.url());
@@ -110,8 +93,6 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     clearTimeout(timer); controller.abort();
     await page?.close().catch(() => {});
     await browser?.close().catch(() => {});
-    await Promise.allSettled(pendingPages);
-    await borrowed?.close().catch(() => {});
   }
 }
 

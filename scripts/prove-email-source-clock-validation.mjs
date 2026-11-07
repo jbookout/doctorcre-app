@@ -2,7 +2,7 @@ import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-re
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { init, parse } from 'es-module-lexer';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -111,7 +111,7 @@ export async function prove({ origin, timeoutMs }) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string' } } });
     const url = new URL(values.origin), timeoutMs = Number(values['timeout-ms']);
     if (url.href !== url.origin + '/' || url.username || url.password || !(url.protocol === 'https:' || url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw Error('Use --origin ORIGIN --timeout-ms 1..30000');
     const result = await prove({ origin: url.origin, timeoutMs });

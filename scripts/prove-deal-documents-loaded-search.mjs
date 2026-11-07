@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -112,7 +112,7 @@ export async function proveLoadedSearch({ origin, timeout = 30000, syntheticOnly
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string' }, 'synthetic-only': { type: 'boolean', default: false } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string' }, 'synthetic-only': { type: 'boolean', default: false } } });
     const result = await proveLoadedSearch({ origin: values.origin, timeout: Number(values['timeout-ms'] || 30000), syntheticOnly: values['synthetic-only'] });
     console.log(JSON.stringify(result.receipt)); process.exitCode = result.code;
   } catch (error) { console.error(JSON.stringify({ error: error.message })); process.exitCode = error.exitCode || 1; }

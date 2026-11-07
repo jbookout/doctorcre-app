@@ -1,9 +1,10 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { init, parse } from 'es-module-lexer';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export const zones = ['UTC', 'America/Chicago', 'America/Los_Angeles', 'Asia/Tokyo'];
@@ -146,6 +147,6 @@ export async function prove({ origin, timeoutMs }) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { console.log(JSON.stringify(await prove(options(process.argv.slice(2))))); }
+  try { console.log(JSON.stringify(await prove(options(proofArgs())))); }
   catch (error) { console.log(JSON.stringify({ok:false,error:error.message})); process.exitCode = error.exitCode || 1; }
 }

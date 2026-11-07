@@ -1,3 +1,4 @@
+import { proofArgs } from './proof-browser.mjs';
 import { isAppRepository } from '../js/repository-identity.mjs';
 import { readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
@@ -85,7 +86,7 @@ export async function prove({ origin, commit, timeoutMs }) {
 
 async function main() {
   try {
-    const args = process.argv.slice(2), url = new URL(args[1]), timeoutMs = Number(args[5]);
+    const args = proofArgs(), url = new URL(args[1]), timeoutMs = Number(args[5]);
     assert.ok(args.length === 6 && args[0] === '--origin' && args[2] === '--commit' && args[4] === '--timeout-ms' && url.href === `${url.origin}/` && !url.username && !url.password && (url.protocol === 'https:' || url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) && Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 30000, 'Use --origin HTTPS_OR_LOOPBACK_ORIGIN --commit DEPLOYED_COMMIT --timeout-ms 1..30000');
     console.log(JSON.stringify(await prove({ origin: url.origin, commit: args[3], timeoutMs })));
   } catch (error) {

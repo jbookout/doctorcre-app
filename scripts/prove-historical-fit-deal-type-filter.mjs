@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
@@ -157,7 +157,7 @@ export async function prove({ origin, timeoutMs = 30000, fixture = false, engine
 
 if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {
   try {
-    const {values}=parseArgs({options:{origin:{type:'string'},'timeout-ms':{type:'string',default:'30000'},fixture:{type:'boolean'},help:{type:'boolean'}}});
+    const {values}=parseArgs({options: { 'cdp-url': { type: 'string' },origin:{type:'string'},'timeout-ms':{type:'string',default:'30000'},fixture:{type:'boolean'},help:{type:'boolean'}}});
     if(values.help) console.log('Usage: --origin URL [--timeout-ms 30000] [--fixture]. Exit 0 fixture pass, 1 contradiction, 78 insufficient_evidence. Natural production proof requires a separate signed-in walk.');
     else console.log(JSON.stringify(await prove({origin:values.origin,timeoutMs:Number(values['timeout-ms']),fixture:values.fixture})));
   } catch(error) { console.error(JSON.stringify({status:error.exitCode===78?'insufficient_evidence':'failed',error:error.message}));process.exitCode=error.exitCode||1; }

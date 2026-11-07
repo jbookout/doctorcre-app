@@ -106,7 +106,7 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
   for (const file of (await readdir(scripts)).filter(name => /^prove-.*\.mjs$/.test(name))) {
     if (file === 'prove-loop-lint-coverage.mjs') {
       const source = await readFile(new URL(file, scripts));
-      if (createHash('sha256').update(source).digest('hex') !== '195b8e915d2e15ebbd21c434a7906c6260d7f48d599a8de9e052c58017836cf2') errors.push(`${file}: historical lint test changed; re-review its capabilities`);
+      if (createHash('sha256').update(source).digest('hex') !== '7440b7a6c6a0f89ea5e8fa301faee59547229028238232a8c2a0efe7d7fb10ff') errors.push(`${file}: historical lint test changed; re-review its capabilities`);
       continue;
     }
     await inspect(new URL(file, scripts), 2);

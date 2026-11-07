@@ -1,8 +1,9 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
-import { readAppRelease, proofFetch } from './app-release-reader.mjs';
+import { chromium } from './proof-browser.mjs';
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 const unavailable = message => Object.assign(new Error(message), { exitCode: 78 });
 
 export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000, engine = chromium, ancestryCwd } = {}) {
@@ -12,7 +13,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
   if (!(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000)) throw unavailable('Bounded deadline required');
   const controller = new AbortController(), deadline = performance.now() + timeoutMs;
   const remaining = () => { const ms = Math.ceil(deadline - performance.now()); if (ms <= 0) throw unavailable('Total proof deadline exceeded'); return ms; };
-  let page, connection, pendingConnection, pendingPage, timer;
+  let page, connection, timer;
   const release = () => readAppRelease(base, async url => {
     const response = await proofFetch(url, { signal: controller.signal });
     return { type: response.headers.get('content-type') || '', body: Buffer.from(await response.arrayBuffer()) };
@@ -29,11 +30,8 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       } catch { throw unavailable('Release containment is unproved'); }
     }
     if (!cdpUrl) throw unavailable('Existing signed-in browser required');
-    pendingConnection = Promise.resolve().then(() => engine.connectOverCDP(cdpUrl, { timeout: remaining() })).catch(() => { throw unavailable('Existing signed-in browser unavailable'); });
-    connection = await pendingConnection; controller.signal.throwIfAborted();
-    const context = connection.contexts()[0];
-    if (!context) throw unavailable('Existing signed-in context required');
-    pendingPage = Promise.resolve().then(() => context.newPage()).catch(() => { throw unavailable('Existing signed-in page unavailable'); }); page = await pendingPage; controller.signal.throwIfAborted();
+    connection = await launchProofBrowser(signedInEngine(cdpUrl, engine), { timeout: remaining() }, { signal: controller.signal });
+    page = await connection.newPage();
     page.setDefaultTimeout(remaining());
     let calls = 0;
     await page.route('**/*', route => {
@@ -81,10 +79,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
   } catch (error) { if (controller.signal.aborted) throw unavailable('Total proof deadline exceeded'); throw error; }
   finally {
     clearTimeout(timer); controller.abort();
-    const acquiredPage = page || await pendingPage?.catch(() => undefined);
-    await acquiredPage?.close().catch(() => {});
-    const acquiredConnection = connection || await pendingConnection?.catch(() => undefined);
-    await acquiredConnection?.close().catch(() => {});
+    await connection?.close();
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

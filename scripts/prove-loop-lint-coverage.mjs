@@ -1,3 +1,4 @@
+import { proofArgs } from './proof-browser.mjs';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -9,7 +10,7 @@ import { JSDOM } from 'jsdom';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 
-const baseline = git('rev-parse', process.argv[2] || '6d4304d50eac728695074febf513235e2b84eeb6').trim();
+const baseline = git('rev-parse', proofArgs()[0] || '6d4304d50eac728695074febf513235e2b84eeb6').trim();
 
 test('direct sites are linted; historical indirect sites receive no origin credit', async () => {
   const scanner = git('show', `${baseline}:scripts/client-loop-guard.mjs`)

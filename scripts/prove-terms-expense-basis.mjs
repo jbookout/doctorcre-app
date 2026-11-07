@@ -1,7 +1,8 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { readAppRelease, launchProofBrowser } from './app-release-reader.mjs';
 
 const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
@@ -16,43 +17,7 @@ export async function requireContainingRelease(expected, observed, { signal, cwd
   } catch { throw unavailable('Containing release evidence unavailable'); }
 }
 
-export function signedInEngine(endpoint, engine = chromium) {
-  const url = new URL(endpoint);
-  assert.ok(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && !url.username && !url.password, 'loopback CDP endpoint required');
-  return { async launch(options) {
-    let connection;
-    try { connection = await engine.connectOverCDP(endpoint, { timeout: options.timeout, isLocal: true }); }
-    catch { throw unavailable('Signed-in browser connection unavailable'); }
-    let closed = false, closing;
-    const pages = new Set(), acquisitions = new Set();
-    return {
-      newPage() {
-        if (closed) throw unavailable('Proof expired');
-        const context = connection.contexts()[0];
-        if (!context) throw unavailable('Signed-in browser context unavailable');
-        const pending = context.newPage().then(async page => {
-          if (closed) { await page.close(); throw unavailable('Proof expired'); }
-          pages.add(page);
-          return page;
-        });
-        acquisitions.add(pending);
-        pending.then(() => acquisitions.delete(pending), () => acquisitions.delete(pending));
-        return pending;
-      },
-      close() {
-        if (!closing) {
-          closed = true;
-          closing = (async () => {
-            await Promise.allSettled([...acquisitions]);
-            await Promise.allSettled([...pages].map(page => page.close()));
-            await connection.close();
-          })();
-        }
-        return closing;
-      },
-    };
-  } };
-}
+export { signedInEngine };
 
 export async function observeNaturalBasis(page, origin) {
   const root = page.locator('#workspace-market-terms');

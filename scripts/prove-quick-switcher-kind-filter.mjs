@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -95,7 +95,7 @@ export async function prove({ origin, timeout = 30000, engine = chromium }) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
     if (values.help) console.log('Usage: node scripts/prove-quick-switcher-kind-filter.mjs --origin https://app.doctorcre.com --timeout-ms 30000. GET only, 64 requests maximum. JSON receipt. Exit 1 assertion failure, 78 insufficient natural session evidence, including when deployed fixture assertions pass.');
     else {
       const origin = new URL(values.origin);

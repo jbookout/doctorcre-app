@@ -1,8 +1,9 @@
+import { signedInEngine } from './proof-browser.mjs';
 import { execFile } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
@@ -197,30 +198,7 @@ export async function observeOnPage(page, origin, recordings) {
   return page.evaluate(observe, { origin, recordings });
 }
 
-export function signedInEngine(endpoint, engine = chromium) {
-  const url = new URL(endpoint);
-  assert.ok(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname) && !url.username && !url.password, 'loopback CDP endpoint required');
-  return { launch: async options => {
-    const connection = await engine.connectOverCDP(endpoint, { timeout: options.timeout });
-    const pages = [], acquisitions = [];
-    let closing = false;
-    return {
-      newPage: async () => {
-        const context = connection.contexts()[0];
-        if (!context) throw Object.assign(Error('Existing signed-in context unavailable'), { exitCode: 78 });
-        const acquisition = context.newPage(); acquisitions.push(acquisition);
-        const page = await acquisition;
-        if (closing) await page.close(); else pages.push(page);
-        return page;
-      },
-      close: async () => {
-        closing = true;
-        try { await Promise.all(pages.map(page => page.close())); }
-        finally { await connection.close(); await Promise.allSettled(acquisitions); }
-      },
-    };
-  } };
-}
+export { signedInEngine };
 
 export async function requireContainingRelease(commit, observed, { signal, cwd } = {}) {
   if (commit === observed) return;

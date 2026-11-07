@@ -1,5 +1,5 @@
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -140,7 +140,7 @@ export async function runProof({ origin: originText, timeout = 30000, engine = c
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' } } });
     console.log(JSON.stringify(await runProof({ origin: values.origin, timeout: Number(values['timeout-ms']) })));
   } catch (error) { console.error(JSON.stringify({ error: error.message })); process.exitCode = error.exitCode || (error instanceof Unavailable ? 78 : 1); }
 }

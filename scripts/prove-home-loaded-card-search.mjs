@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { overdueFixture } from './prove-home-overdue-task-slice.mjs';
 import { init, parse } from 'es-module-lexer';
 import { createHash } from 'node:crypto';
@@ -131,7 +131,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium, obse
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
     if (values.help) console.log('node scripts/prove-home-loaded-card-search.mjs --origin https://app.doctorcre.com --timeout-ms 30000');
     else { const receipt = await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms']) }); console.log(JSON.stringify(receipt)); process.exitCode = 78; }
   } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message, natural_acceptance: 'insufficient_evidence' })); process.exitCode = error.exitCode || 1; }

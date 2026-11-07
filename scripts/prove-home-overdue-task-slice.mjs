@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createHash } from 'node:crypto';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -78,7 +78,7 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
+    const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
     if (values.help) console.log('node scripts/prove-home-overdue-task-slice.mjs --origin https://app.doctorcre.com [--timeout-ms 30000]. Bounded GET-only asset observation with synthetic v5 responses. Exit 1 assertion failure; 78 unavailable or natural acceptance insufficient. Fixture success remains natural acceptance insufficient.');
     else { const receipt = await prove({ origin: values.origin, timeoutMs: Number(values['timeout-ms']) }); console.log(JSON.stringify(receipt)); process.exitCode = 78; }
   } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message, natural_acceptance: { status: 'insufficient_evidence' } })); process.exitCode = error.exitCode || 1; }

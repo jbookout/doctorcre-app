@@ -1,8 +1,9 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { resolve, sep } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
@@ -90,7 +91,7 @@ export async function prove({ origin, fixture = false, timeoutMs = 30000, engine
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     assert.ok(args.every((arg, i) => ['--fixture', '--origin', '--timeout-ms', '--recording'].includes(arg) || i > 0 && ['--origin', '--timeout-ms', '--recording'].includes(args[i - 1])), 'usage: --fixture | --origin URL [--timeout-ms N]');
     const value = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
     const result = await prove({ origin: value('--origin'), fixture: args.includes('--fixture'), timeoutMs: Number(value('--timeout-ms') || 30000), recordingUrl: value('--recording') });

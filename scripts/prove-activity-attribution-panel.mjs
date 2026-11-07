@@ -1,14 +1,9 @@
-import { chromium as proofChromium } from './proof-browser.mjs';
-import { chromium } from 'playwright';
-import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
+import { signedInEngine } from './proof-browser.mjs';
+import { chromium } from './proof-browser.mjs';
 import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-reader.mjs';
 import { requireContainingRelease } from './prove-fact-review-pending-status-view.mjs';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-const defaultEngine = {
-  launch: options => proofChromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] }),
-  connectOverCDP: (endpoint, options) => chromium.connectOverCDP(endpoint, options),
-};
 const unavailable = message => Object.assign(new Error(message), {exitCode:78});
 export async function observeNatural(page, origin) {
   await page.goto(new URL('/deals',origin).href);
@@ -56,10 +51,9 @@ export async function observeNatural(page, origin) {
   if(JSON.stringify(evidence)!==JSON.stringify(expectedEvidence))throw Error('Rendered version evidence disagrees');
   return {activity_id:activityId,state:response.state,attribution:response.attribution,credited_activity_count:response.credited_activity_count,assertions:['state','credit','coverage','recorded links','version evidence']};
 }
-export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=defaultEngine,readRelease,contains=requireContainingRelease,observe=observeNatural}={}) {
+export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=chromium,readRelease,contains=requireContainingRelease,observe=observeNatural}={}) {
   const receipt={status:'insufficient_evidence',exitCode:78};
   let browser,timer,containing=false;
-  const pages=[],acquisitions=[];
   const controller=new AbortController();
   const deadline=Date.now()+timeoutMs;
   const remaining=()=>{const value=deadline-Date.now();if(value<=0 || controller.signal.aborted)throw unavailable('Total proof deadline exceeded');return value;};
@@ -75,27 +69,8 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
     await contains(expectedCommit,receipt.release.source_commit,{signal:controller.signal});remaining();containing=true;
     let page;
     try {
-      if(cdpUrl){
-        const endpoint=new URL(cdpUrl);
-        if(endpoint.protocol!=='http:' || !['localhost','127.0.0.1'].includes(endpoint.hostname) || endpoint.username || endpoint.password)throw unavailable('Loopback CDP endpoint required');
-      }
-      if(cdpUrl){
-        const connection=engine.connectOverCDP(cdpUrl,{timeout:remaining()}).then(async acquired=>{
-          if(controller.signal.aborted){await acquired.close();throw unavailable('Total proof deadline exceeded');}
-          return acquired;
-        });
-        acquisitions.push(connection);
-        browser=await connection;
-      }else browser=await launchProofBrowser(engine,{headless:true,timeout:remaining()},{signal:controller.signal});
-      const context=cdpUrl?browser.contexts()[0]:browser;
-      if(!context)throw unavailable('Existing signed-in context unavailable');
-      const acquisition=context.newPage().then(async acquired=>{
-        if(controller.signal.aborted){await acquired.close();throw unavailable('Total proof deadline exceeded');}
-        if(cdpUrl)pages.push(acquired);
-        return acquired;
-      });
-      acquisitions.push(acquisition);
-      page=await acquisition;
+      browser=await launchProofBrowser(cdpUrl ? signedInEngine(cdpUrl, engine) : engine,{headless:true,timeout:remaining()},{signal:controller.signal});
+      page=await browser.newPage();
       remaining();
     }catch(error){throw unavailable(`Browser session unavailable: ${error.message}`);}
     if(!cdpUrl && observe===observeNatural)throw unavailable('Existing signed-in browser session required');
@@ -109,9 +84,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
   }catch(error){return {...receipt,status:containing && error.exitCode!==78?'failed':'insufficient_evidence',exitCode:containing && error.exitCode!==78?1:78,error:error.message};}
   finally{
     clearTimeout(timer);controller.abort();
-    await Promise.allSettled(acquisitions);
-    try{await Promise.all(pages.map(page=>page.close()));}
-    finally{await browser?.close();}
+    await browser?.close();
   }
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){

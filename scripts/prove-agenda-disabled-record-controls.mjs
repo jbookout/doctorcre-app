@@ -1,8 +1,9 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export async function exerciseAgenda(page, assetUrl) {
@@ -151,7 +152,7 @@ export async function prove({ origin, timeoutMs }) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2);
+    const args = proofArgs();
     if (args.length !== 4 || args[0] !== '--origin' || args[2] !== '--timeout-ms') throw Error('Usage: --origin <origin> --timeout-ms <milliseconds>');
     const receipt = await prove({ origin: args[1], timeoutMs: Number(args[3]) });
     process.stdout.write(JSON.stringify(receipt) + '\n');

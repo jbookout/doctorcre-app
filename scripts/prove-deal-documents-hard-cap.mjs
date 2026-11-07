@@ -1,5 +1,5 @@
 import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
@@ -8,7 +8,7 @@ class ProtectedAsset extends Error {}
 let browser, timer;
 const errors = [];
 try {
-  const { values } = parseArgs({ options: { origin: { type: 'string' }, 'timeout-ms': { type: 'string' } } });
+  const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string' } } });
   const origin = new URL(values.origin);
   const timeout = Number(values['timeout-ms'] ?? 30000);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash

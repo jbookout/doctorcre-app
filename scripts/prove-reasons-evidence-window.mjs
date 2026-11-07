@@ -1,8 +1,9 @@
+import { signedInEngine } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {chromium} from 'playwright';
-import {readAppRelease} from './app-release-reader.mjs';
+import {chromium} from './proof-browser.mjs';
+import {launchProofBrowser,readAppRelease} from './app-release-reader.mjs';
 
 const insufficient = message => Object.assign(Error(message), {exitCode:78});
 
@@ -68,7 +69,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
   assert.ok(Number.isInteger(timeoutMs)&&timeoutMs>0&&timeoutMs<=300000);
   const controller=new AbortController(), end=performance.now()+timeoutMs;
   const remaining=()=>{const ms=Math.ceil(end-performance.now());if(ms<=0||controller.signal.aborted)throw insufficient('Proof deadline exceeded');return ms;};
-  let browser,page,pendingBrowser,pendingPage,timer,closing=false;
+  let browser,page,timer;
   const release=()=>readAppRelease(origin,{timeoutMs:remaining()});
   const contains=async actual=>{
     if(actual===expectedCommit)return;
@@ -81,18 +82,8 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
     if(!/^[a-f0-9]{40}$/.test(expectedCommit||''))throw insufficient('Expected commit required');
     await contains(before.source_commit);
     if(!cdpUrl)throw insufficient('Existing signed-in browser endpoint required');
-    try {
-      pendingBrowser=engine.connectOverCDP(cdpUrl,{timeout:remaining()}).then(async acquired=>{
-        if(closing){await acquired.close();throw insufficient('Browser acquired after deadline');}browser=acquired;return acquired;
-      });
-      await pendingBrowser;
-      const context=browser.contexts()[0];
-      if(!context)throw insufficient('Signed-in browser context unavailable');
-      pendingPage=context.newPage().then(async acquired=>{
-        if(closing){await acquired.close();throw insufficient('Page acquired after deadline');}page=acquired;return acquired;
-      });
-      await pendingPage;
-    } catch {throw insufficient('Signed-in browser acquisition unavailable');}
+    browser=await launchProofBrowser(signedInEngine(cdpUrl,engine),{timeout:remaining()},{signal:controller.signal});
+    page=await browser.newPage();
     page.setDefaultTimeout(remaining());page.setDefaultNavigationTimeout(remaining());
     const observation=await observe(page,origin);
     const after=await release();await contains(after.source_commit);
@@ -102,11 +93,8 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
   try {
     return await Promise.race([work(),new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(insufficient('Proof deadline exceeded'));},timeoutMs);})]);
   } finally {
-    closing=true;clearTimeout(timer);controller.abort();
-    // Keep the borrowed transport alive until late page acquisitions can be closed.
-    await Promise.allSettled([pendingPage]);
+    clearTimeout(timer);controller.abort();
     await page?.close().catch(()=>{});
-    await Promise.allSettled([pendingBrowser]);
     await browser?.close().catch(()=>{});
   }
 }

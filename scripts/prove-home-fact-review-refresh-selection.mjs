@@ -1,3 +1,4 @@
+import { proofArgs } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -131,7 +132,7 @@ export async function prove({ origin, timeoutMs }) {
   };
   try {
     const release = await readAppRelease(origin, get);
-    const { chromium } = await import('playwright');
+    const { chromium } = await import('./proof-browser.mjs');
     browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const assets = new Map();
@@ -170,7 +171,7 @@ export async function prove({ origin, timeoutMs }) {
 
 async function main() {
   try {
-    const args = process.argv.slice(2), url = new URL(args[1]), timeoutMs = Number(args[3]);
+    const args = proofArgs(), url = new URL(args[1]), timeoutMs = Number(args[3]);
     if (args.length !== 4 || args[0] !== '--origin' || args[2] !== '--timeout-ms' || url.href !== `${url.origin}/` || url.username || url.password || !(url.protocol === 'https:' || url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw Error('Use --origin HTTPS_OR_LOOPBACK_ORIGIN --timeout-ms 1..30000');
     console.log(JSON.stringify(await prove({ origin: url.origin, timeoutMs })));
   } catch (error) {

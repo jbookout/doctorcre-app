@@ -1,10 +1,11 @@
+import { proofArgs } from './proof-browser.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './proof-browser.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
@@ -176,7 +177,7 @@ export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com',
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2), options = {};
+    const args = proofArgs(), options = {};
     const flags = new Map([['--fixture-root', 'fixtureRoot'], ['--origin', 'origin'], ['--expected-commit', 'expectedCommit'], ['--timeout-ms', 'timeoutMs']]);
     for (let index = 0; index < args.length; index += 2) {
       const key = flags.get(args[index]), value = args[index + 1];
