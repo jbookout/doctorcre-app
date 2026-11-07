@@ -21,8 +21,8 @@ export type BriefQueueName = keyof typeof briefQueueLabels;
 
 const todayKinds = ['next_action', 'post_call_action', 'critical_date', 'ingest'] as const;
 type Row = { [key: string]: unknown };
-type QueueSection = { state?: string; items: unknown[]; total?: number; total_scope?: string };
-type BriefFacts = { sponsor?: unknown; sections: Partial<Record<BriefQueueName, QueueSection>> };
+type QueueSection = { state?: string; items?: unknown; total?: unknown; total_scope?: string };
+type BriefFacts = { sponsor?: unknown; sections?: Partial<Record<BriefQueueName, QueueSection | null>> | null };
 type QueuePage = { total: number; has_more: boolean; total_scope?: string; state?: string };
 type ListState = { active: BriefQueueName; items: Row[]; page: QueuePage | null; busy: boolean; error: boolean };
 
@@ -51,12 +51,13 @@ export function briefQueueTitle(queue: string, row: Row): unknown {
   return row.reason || `Alert ${String(row.subject_ref || row.notification_id)}`;
 }
 
-function coverageLine(section: QueueSection | undefined): string {
-  if (!section || !Number.isInteger(section.total)) return 'coverage unknown';
+function coverageLine(section: QueueSection | null | undefined): string {
+  if (!section || !Array.isArray(section.items) || typeof section.total !== 'number'
+    || !Number.isSafeInteger(section.total) || section.total < section.items.length) return 'coverage unknown';
   const scope = section.total_scope === 'available_sources' ? ' from available sources' : '';
   return `${section.items.length} of ${section.total}${scope}`;
 }
-function statusLine(section: QueueSection | undefined): string {
+function statusLine(section: QueueSection | null | undefined): string {
   if (section?.state === 'partial') return ' · Some sources are unavailable';
   if (section?.state === 'unavailable') return ' · Unavailable';
   return '';
@@ -79,7 +80,7 @@ function QueueMenu({ facts, active }: { facts: BriefFacts | null; active: BriefQ
   return <>
     <p>Selected priorities. Open a queue for all eligible work.</p>
     {queues.map(queue => {
-      const section = facts.sections[queue];
+      const section = facts.sections?.[queue];
       return <button key={queue} type="button" data-brief-queue={queue}>{`${briefQueueLabels[queue]} · ${coverageLine(section)}${statusLine(section)}`}</button>;
     })}
   </>;
