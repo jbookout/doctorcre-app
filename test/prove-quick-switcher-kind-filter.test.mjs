@@ -50,36 +50,63 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`deadline dispose
   await new Promise(resolve => setTimeout(resolve, 200));
   assert.equal(open, 0);
 });
+test('deadline before launch refuses without waiting for an acquisition', async t => {
+  const server = await startFixture({ routes: new Map([
+    ['/app-release', { contentType: 'application/json', body: '{}', hold: 'release' }],
+  ]) });
+  t.after(() => server.close());
+  let launches = 0;
+  const result = await prove({ origin: new URL(server.origin), timeout: 75,
+    engine: { launch: async () => { launches++; throw Error('Unexpected launch'); } } });
+  assert.equal(result.code, 78);
+  assert.equal(result.receipt.deployed_module, 'unverified');
+  assert.equal(launches, 0);
+});
 for (const mode of ['late launch', 'stalled evaluation']) test(`real browser closes after ${mode}`, async t => {
   const { chromium } = await import('playwright');
+  const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
   const origin = new URL(await fixture(t));
-  let acquired;
-  let launched;
-  const launchSettled = new Promise(resolve => launched = resolve);
-  const engine = { launch: async options => {
-    acquired = await chromium.launch(options);
-    if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 400));
-    else {
+  const acquired = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  const disconnected = new Promise(resolve => acquired.once('disconnected', resolve));
+  const reached = Promise.withResolvers();
+  const launch = Promise.withResolvers();
+  const engine = { launch: async () => {
+    if (mode === 'late launch') {
+      reached.resolve();
+      await launch.promise;
+    } else {
       const newContext = acquired.newContext.bind(acquired);
       acquired.newContext = async options => {
         const context = await newContext(options);
         const newPage = context.newPage.bind(context);
         context.newPage = async () => {
           const page = await newPage();
-          page.evaluate = async () => new Promise(() => {});
+          page.evaluate = () => { reached.resolve(); return new Promise(() => {}); };
           return page;
         };
         return context;
       };
     }
-    launched();
     return acquired;
   } };
   try {
-    const result = await prove({ origin, timeout: mode === 'late launch' ? 200 : 1000, engine });
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.method(AbortSignal, 'timeout', () => t.signal);
+    const pending = prove({ origin, timeout: 200, engine });
+    await Promise.race([reached.promise, pending.then(result => {
+      assert.fail(`Proof finished before ${mode}: ${JSON.stringify(result.receipt)}`);
+    })]);
+    assert.equal(acquired.isConnected(), true);
+    t.mock.timers.tick(200);
+    const result = await pending;
     assert.equal(result.code, 78);
-    await launchSettled;
-    for (let i = 0; i < 20 && acquired.isConnected(); i++) await new Promise(resolve => setTimeout(resolve, 25));
+    t.mock.timers.reset();
+    launch.resolve();
+    await disconnected;
     assert.equal(acquired.isConnected(), false);
-  } finally { await acquired?.close(); }
+  } finally {
+    t.mock.timers.reset();
+    launch.resolve();
+    await acquired.close();
+  }
 });
