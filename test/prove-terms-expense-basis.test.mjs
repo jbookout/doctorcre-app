@@ -101,3 +101,12 @@ for (const broken of [false, true]) test(`CLI fixture exits ${broken ? 1 : 0} an
     const page = await browser.newPage(); await page.close();
   } finally { await browser.close(); }
 });
+
+test('closed browser and missing signed-in context are insufficient evidence', async t => {
+  const origin = await fixture(t);
+  await assert.rejects(prove({ origin, expectedCommit: commit, engine: { launch: async () => { throw Error('Browser has been closed'); } } }), { exitCode: 78 });
+  let disconnected = false;
+  const engine = signedInEngine('http://127.0.0.1:9222', { connectOverCDP: async () => ({ contexts: () => [], close: async () => { disconnected = true; } }) });
+  await assert.rejects(prove({ origin, expectedCommit: commit, engine }), { exitCode: 78 });
+  assert.equal(disconnected, true);
+});

@@ -114,6 +114,9 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     lifetime.signal.throwIfAborted();
     if (after.source_commit !== release.source_commit) throw unavailable('Release changed during proof');
     return { status: 'passed', release, assertions };
+  } catch (error) {
+    if (error instanceof assert.AssertionError || error.exitCode === 78) throw error;
+    throw unavailable(error.message);
   } finally { clearTimeout(timer); await browser?.close(); }
 }
 
