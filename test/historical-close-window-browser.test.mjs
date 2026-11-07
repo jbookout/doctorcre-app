@@ -68,7 +68,9 @@ for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
     await through.fill('2019-01-01'); await apply(); assert.equal(await rows.count(),1);
     await host.getByRole('button',{name:'Clear date window',exact:true}).click(); assert.equal(await rows.count(),1);
     await host.getByLabel('Deal type',{exact:true}).selectOption(''); assert.equal(await rows.count(),3);
-    await through.fill('2020-02-28'); await apply(); assert.equal(await rows.count(),1);
+    await from.fill('2020-03-01'); await apply(); assert.equal(await rows.count(),3);
+    assert.deepEqual(await host.locator('tbody time').allTextContents(),['2020-03-01','2021-05-01','2022-06-01']);
+    await from.fill(''); await through.fill('2020-02-28'); await apply(); assert.equal(await rows.count(),1);
     await from.fill('2022-01-01'); await through.fill('2022-12-31'); await apply(); assert.equal(await rows.count(),1);
     await from.fill('2023-01-01'); await through.fill('2023-12-31'); await apply(); assert.equal(await rows.count(),0);
     await host.getByRole('button',{name:'Clear date window',exact:true}).click(); assert.equal(await rows.count(),3);
