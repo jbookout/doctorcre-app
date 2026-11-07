@@ -32,8 +32,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const reasons = $("contactReasons") && client.listPracticeOrigination ? mountContactReasons({host:$("contactReasons"),window:win,client}) : null;
   const territory = $("territoryEvidence") && client.getTerritoryStateBoard ? mountTerritoryEvidence($("territoryEvidence"), client, authorizationFailure) : null;
   const engagement = engagementWriterFor(client, engagementStorage(win));
-  let researchView = null, researchSubject = null, researchKind = '';
-  function clearResearch() { researchView?.dispose(); researchView = null; researchSubject = null; researchKind = ''; }
+  let researchView = null, researchSubject = null, researchKind = '', researchAttention = '';
+  function clearResearch() { researchView?.dispose(); researchView = null; researchSubject = null; researchKind = ''; researchAttention = ''; }
   let guidance = null;
   function clearGuidance() { guidance?.dispose(); guidance = null; clearResearch(); }
   const engagementChecks = new Set();
@@ -327,6 +327,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("detailTitle").textContent = leadTitle(detail);
     const contact = (kind, value) => value ? `<a href="${kind === "Email" ? "mailto:" : "tel:"}${esc(value)}">${esc(value)}</a>` : "—";
     const selectedKind = researchSubject === detail.id ? researchKind : '';
+    const selectedAttention = researchSubject === detail.id ? researchAttention : '';
     clearGuidance();
     $("detailBody").innerHTML = `<section class="detail-summary"><div><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section>
       <div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd></dl></section>
@@ -338,7 +339,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       <div class="detail-columns"><section class="detail-panel"><h3>Captured correspondence</h3><p>Other communication may not have been captured.</p>${historySummary(detail, "correspondence")}<ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No captured correspondence</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3>${historySummary(detail, "stage_history")}<ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
     researchSubject = detail.id;
     researchKind = detail.research?.evidence.some(item => item.kind === selectedKind) ? selectedKind : '';
-    researchView = mountLeadResearch($("leadResearch"), detail.research, researchKind, kind => { researchKind = kind; });
+    researchAttention = selectedAttention;
+    researchView = mountLeadResearch($("leadResearch"), detail.research, researchKind, kind => { researchKind = kind; }, { attention: researchAttention, onAttention: attention => { researchAttention = attention; } });
     guidance = mountLeadGuidance($("leadGuidance"), detail);
     for (const button of $("detailBody").querySelectorAll("[data-load-history]")) button.addEventListener("click", () => loadHistory(button.dataset.loadHistory));
     $("detailStage").addEventListener("change", event => openReview(detail.id, event.target.value));
