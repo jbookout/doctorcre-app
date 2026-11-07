@@ -81,6 +81,33 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`evid
   assert.equal(await host.innerText(),'');
 });
 
+test('invalid evidence window corrects both bounds without Clear or another business read', async t => {
+  const browser=await chromium.launch(); t.after(()=>browser.close());
+  const page=await browser.newPage({timezoneId:'Pacific/Honolulu'});
+  let reads=0;
+  await routeLeads(page,{getReasons:()=>{reads++;return practiceOriginationFixture();}});
+  await page.goto('http://localhost/leads#contactReasons');
+  const host=page.locator('#contactReasons');
+  const from=host.getByLabel('Evidence from',{exact:true});
+  const through=host.getByLabel('Evidence through',{exact:true});
+  const apply=host.getByRole('button',{name:'Apply evidence window',exact:true});
+  await from.waitFor();
+  await from.fill('2026-10-21'); await through.fill('2026-10-22'); await apply.click();
+  assert.deepEqual(await host.locator('article [data-reason-key^="source:"]').evaluateAll(rows=>rows.map(row=>row.dataset.reasonKey)),['source:2','source:1']);
+  assert.deepEqual(await host.locator('time').evaluateAll(rows=>rows.map(row=>row.dateTime)),['2026-10-22','2026-10-21']);
+  assert.equal(reads,1);
+  await from.fill('2026-10-26'); await through.fill('2026-10-23'); await apply.click();
+  await host.getByRole('alert').waitFor();
+  assert.deepEqual(await host.locator('time').evaluateAll(rows=>rows.map(row=>row.dateTime)),['2026-10-22','2026-10-21']);
+  await from.fill('2026-10-24'); await through.fill('2026-10-25'); await apply.click();
+  assert.equal(await host.getByRole('alert').count(),0);
+  assert.equal(await from.inputValue(),'2026-10-24');
+  assert.equal(await through.inputValue(),'2026-10-25');
+  assert.deepEqual(await host.locator('article [data-reason-key^="source:"]').evaluateAll(rows=>rows.map(row=>row.dataset.reasonKey)),['source:5','source:4']);
+  assert.deepEqual(await host.locator('time').evaluateAll(rows=>rows.map(row=>row.dateTime)),['2026-10-25','2026-10-24']);
+  assert.equal(reads,1,'applying, rejecting and correcting dates never reads business data');
+});
+
 test('initial failure, malformed rows, empty refresh, auth denial and disposed completion',async t=>{
   const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();await routeLeads(page);
   await componentDocument(page,'http://localhost',{owner:'evidence lifecycle'});
