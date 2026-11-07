@@ -25,7 +25,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   const timer = setTimeout(expire, timeoutMs);
   const bounded = promise => Promise.race([promise, expired]);
   const remaining = () => Math.max(1, deadline - Date.now());
-  let browser, page;
+  let browser, page, pendingBrowser;
   const pendingPages = [];
   const release = async () => fixture && readRelease === readAppRelease ? { source_commit: expectedCommit } : bounded(readRelease(base, { timeoutMs: remaining() }));
   async function contains(source) {
@@ -44,7 +44,14 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     const recording = fixture ? JSON.parse(await readFile(recordingUrl)) : null;
     try {
       // Playwright's CDP browser.close disconnects this connection without closing the remote browser.
-      browser = await launchProofBrowser(fixture ? engine : { launch: options => (engine.connectOverCDP ? engine : cdpChromium).connectOverCDP(cdpUrl, { timeout: options.timeout }) }, { timeout: remaining() }, { signal: controller.signal });
+      if (fixture) browser = await launchProofBrowser(engine, { timeout: remaining() }, { signal: controller.signal });
+      else {
+        pendingBrowser = Promise.resolve().then(() => (engine.connectOverCDP ? engine : cdpChromium).connectOverCDP(cdpUrl, { timeout: remaining() })).then(async acquired => {
+          if (controller.signal.aborted) { await acquired.close(); throw controller.signal.reason; }
+          return acquired;
+        });
+        browser = await bounded(pendingBrowser);
+      }
       if (!fixture && !browser.contexts()[0]) throw unavailable('Signed-in context unavailable');
       const acquisition = (fixture ? browser.newPage({ viewport: { width: 390, height: 844 } }) : browser.contexts()[0].newPage()).then(async acquired => {
         if (controller.signal.aborted) { await acquired.close(); throw controller.signal.reason; }
@@ -97,6 +104,28 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     if (!leads.length) throw unavailable('No natural quiet leads');
     const section = page.locator('#quietFollowUps'), select = section.getByRole('combobox', { name: 'Quiet lead owner' });
     await bounded(select.waitFor({ timeout: remaining() }));
+    const owners = [...new Set(leads.flatMap(row => row.owner == null ? [] : [row.owner]))].sort();
+    assert.deepEqual(await bounded(select.locator('option').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent]))), [
+      ['all', 'All owners'], ...owners.map(owner => [`owner:${owner}`, owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : `Recorded owner · ${owner}`]),
+      ['unrecorded', 'Owner not recorded'],
+    ]);
+    const date = value => new Date(`${value.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric' });
+    async function checkPage(rows, offset) {
+      const visible = rows.slice(offset, offset + 10);
+      const expected = visible.map(row => ({ id: row.subject_id, name: row.name,
+        href: `/leads?lead=${encodeURIComponent(row.ref)}`,
+        reason: (row.basis === 'created_at' ? `No contact recorded. Added ${date(row.anchor_on)}.` : `Last contact ${date(row.anchor_on)}.`)
+          + ` Follow-up due ${date(row.due_on)}`
+          + (row.days_overdue > 0 ? ` · ${row.days_overdue} ${row.days_overdue === 1 ? 'day' : 'days'} overdue` : ''),
+      }));
+      assert.deepEqual(await bounded(section.locator('a[data-quiet-lead]').evaluateAll(nodes => nodes.map(node => ({
+        id: node.dataset.quietLead, name: node.querySelector('span').textContent,
+        href: node.getAttribute('href'), reason: node.querySelector('p').textContent,
+      })))), expected);
+      assert.equal(await bounded(section.getByRole('status').innerText()), `Showing ${offset + 1}–${Math.min(offset + 10, rows.length)} of ${rows.length} matching loaded leads (${leads.length} loaded).`);
+      assert.equal(await bounded(section.getByRole('button', { name: 'Previous leads', exact: true }).getAttribute('aria-disabled')), String(offset === 0));
+      assert.equal(await bounded(section.getByRole('button', { name: 'Next leads', exact: true }).getAttribute('aria-disabled')), String(offset + 10 >= rows.length));
+    }
     const key = leads[0].owner == null ? 'unrecorded' : `owner:${leads[0].owner}`;
     const matching = leads.filter(row => row.owner == null ? key === 'unrecorded' : `owner:${row.owner}` === key);
     await bounded(page.waitForLoadState('networkidle', { timeout: remaining() }));
@@ -104,12 +133,11 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     await bounded(select.selectOption(key));
     for (let offset = 0; offset < matching.length; offset += 10) {
       assert.ok(offset < 1000, 'bounded loaded list');
-      assert.deepEqual(await bounded(section.locator('a[data-quiet-lead]').evaluateAll(nodes => nodes.map(node => node.dataset.quietLead))), matching.slice(offset, offset + 10).map(row => row.subject_id));
-      assert.match(await bounded(section.innerText()), new RegExp(`of ${matching.length} matching loaded leads`));
+      await checkPage(matching, offset);
       if (offset + 10 < matching.length) await bounded(section.getByRole('button', { name: 'Next leads', exact: true }).click());
     }
     await bounded(select.selectOption('all'));
-    assert.equal(await bounded(section.locator('li').count()), Math.min(10, leads.length));
+    await checkPage(leads, 0);
     assert.equal(rpc, beforeLocal, 'no local selection/page RPC');
     assert.equal(writes, 0, 'no writes');
     const after = await release(); await contains(after.source_commit); assert.deepEqual(after, before, 'stable release');
@@ -118,8 +146,9 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   finally {
     clearTimeout(timer);
     await page?.close().catch(() => {});
+    await Promise.allSettled(pendingPages.map(pending => pending.then(acquired => acquired.close())));
     await browser?.close().catch(() => {});
-    for (const pending of pendingPages) void pending.then(acquired => acquired.close()).catch(() => {});
+    if (!browser && pendingBrowser) void pendingBrowser.then(acquired => acquired.close()).catch(() => {});
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
