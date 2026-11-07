@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,writeFile} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {temporaryDirectory} from '../scripts/temp-directory.mjs';
 import {resolve,sep} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -37,13 +39,25 @@ test('proof CLI passes equal containing release and fails mismatched visible lab
   const wrong=await server(t,{wrong:true});
   await assert.rejects(exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',wrong,'--expected-commit',expected,'--timeout-ms','15000']),e=>e.code===1);
 });
-test('descendant containing release passes',async t=>{
-  const origin=await server(t,{commit:'b'.repeat(40)});
-  assert.equal((await prove({origin,expectedCommit:expected,ancestry:async()=>true})).status,'passed');
-});
-for(const kind of ['older','unrelated','unknown'])test(`${kind} release is insufficient evidence`,async t=>{
-  const origin=await server(t,{commit:kind==='unknown'?'unknown':'b'.repeat(40)});
-  await assert.rejects(prove({origin,expectedCommit:expected,ancestry:async()=>false}),{exitCode:78});
+test('CLI release ancestry uses only freshly constructed synthetic git objects',async t=>{
+  const repository=temporaryDirectory('anniversary-ancestry-',t);
+  const git=(args,options={})=>execFileSync('git',args,{cwd:repository,encoding:'utf8',...options}).trim();
+  git(['init','-q']);
+  const tree=git(['hash-object','-t','tree','-w','--stdin'],{input:''});
+  async function commit(message,parent) {
+    const file=resolve(repository,'message.txt');await writeFile(file,message);
+    return git(['-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit-tree',tree,...(parent?['-p',parent]:[]),'-F',file]);
+  }
+  const older=await commit('Synthetic older');
+  const merge=await commit('Synthetic merge',older);
+  const descendant=await commit('Synthetic descendant',merge);
+  const unrelated=await commit('Synthetic unrelated');
+  for(const [name,observed,code] of [['equal',merge,0],['descendant',descendant,0],['older',older,78],['unrelated',unrelated,78],['unknown','f'.repeat(40),78]])await t.test(name,async t=>{
+    const origin=await server(t,{commit:observed});
+    const args=[resolve(root,'scripts/prove-client-anniversary-panel.mjs'),'--origin',origin,'--expected-commit',merge,'--timeout-ms','15000'];
+    if(code===0)assert.equal(JSON.parse((await exec(process.execPath,args,{cwd:repository})).stdout).status,'passed');
+    else await assert.rejects(exec(process.execPath,args,{cwd:repository}),error=>error.code===78);
+  });
 });
 for(const options of [{state:'unavailable'},{auth:true},{unavailableAfter:true}])test(`unavailable natural session ${JSON.stringify(options)} exits 78`,async t=>{
   const origin=await server(t,options);

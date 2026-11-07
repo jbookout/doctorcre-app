@@ -6,7 +6,7 @@ import { chromium as driver } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
 const insufficient = message => Object.assign(Error(message),{exitCode:78});
-export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=chromium,ancestry}) {
+export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=chromium}) {
   const controller = new AbortController();
   const deadline = performance.now()+timeoutMs;
   const remaining = () => { const ms=Math.ceil(deadline-performance.now()); if(ms<=0)throw insufficient('Total proof deadline expired'); return ms; };
@@ -27,8 +27,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
     if(!/^[a-f0-9]{40}$/.test(expectedCommit||''))throw insufficient('Expected merge commit required');
     if(before.source_commit !== expectedCommit) {
       try {
-        if(ancestry) { if(!await ancestry(expectedCommit,before.source_commit))throw insufficient('Release does not contain merge'); }
-        else await new Promise((resolve,reject)=>{
+        await new Promise((resolve,reject)=>{
           const child=execFile('git',['merge-base','--is-ancestor',expectedCommit,before.source_commit],{timeout:remaining(),signal:controller.signal},error=>error?reject(error):resolve());
           child.on('error',reject);
         });
