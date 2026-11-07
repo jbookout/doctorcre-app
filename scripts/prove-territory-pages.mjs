@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { chromium } from './proof-browser.mjs';
+import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { chromium as cdpChromium } from 'playwright';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { workspace, detail } from '../test/leads-workspace-fixture.mjs';
@@ -43,7 +44,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     const recording = fixture ? (recordingUrl ? JSON.parse(await readFile(recordingUrl)) : territoryFixture()) : null;
     try {
       if (fixture) {
-        pendingLaunch = engine.launch({ timeout: remaining() });
+        pendingLaunch = engine.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() });
         browser = await launchProofBrowser({ launch: () => pendingLaunch }, { timeout: remaining() }, { signal: controller.signal });
       }
       else {

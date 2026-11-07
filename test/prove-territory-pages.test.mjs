@@ -9,6 +9,7 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { prove } from '../scripts/prove-territory-pages.mjs';
 import { chromium } from '../scripts/proof-browser.mjs';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { territoryFixture } from './fixtures/territory-pages/fixture.mjs';
 const exec=promisify(execFile), sha='a'.repeat(40);
 async function setup(t, {count=45, release=sha, after=release, mismatch=false}={}) {
@@ -18,7 +19,7 @@ async function setup(t, {count=45, release=sha, after=release, mismatch=false}={
   await writeFile(recording,JSON.stringify(territoryFixture(count)));
   let engine=chromium;
   if(mismatch)engine={launch:async options=>{
-    const browser=await chromium.launch(options), create=browser.newPage.bind(browser);
+    const browser=await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] }), create=browser.newPage.bind(browser);
     browser.newPage=async options=>{const page=await create(options);await page.addInitScript(()=>{new MutationObserver(()=>{const status=document.querySelector('.territory-evidence [role="status"]');if(status?.textContent.startsWith('Showing ')&&!status.textContent.includes('999'))status.textContent=status.textContent.replace('45 total','999 total');}).observe(document,{subtree:true,childList:true,characterData:true});});return page;};return browser;
   }};
   return {origin:server.origin,expectedCommit:sha,fixture:true,recordingUrl:recording,engine};
@@ -35,7 +36,7 @@ test('containing release and unreachable CDP exit 78',async t=>{const options=aw
 for(const mode of ['stalled evaluation','late launch'])test(`timeout drains ${mode}`,async t=>{
   const options=await setup(t);let owned;
   const engine={launch:async args=>{
-    owned=await chromium.launch(args);
+    owned=await chromium.launch({ ...args, args: [...CHROMIUM_SAFETY_ARGS, ...(args.args || [])] });
     if(mode==='late launch')await new Promise(r=>setTimeout(r,1800));
     else {const create=owned.newPage.bind(owned);owned.newPage=async options=>{const page=await create(options);page.goto=()=>new Promise(()=>{});return page;};}
     return owned;
@@ -52,7 +53,7 @@ for(const [mode,count,code]of [['pass',45,0],['insufficient',1,78]])test(`CLI ${
 import { chromium as cdpChromium } from 'playwright';
 test('real CDP late page closes before disconnect and preserves borrowed tabs',async t=>{
   const reservation=await startFixture();const port=Number(new URL(reservation.origin).port);await reservation.close();
-  const owned=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>owned.close());
+  const owned=await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});t.after(()=>owned.close());
   const url=`http://127.0.0.1:${port}`, original=await cdpChromium.connectOverCDP(url);t.after(()=>original.close());
   const borrowed=await original.contexts()[0].newPage();await borrowed.goto('about:blank');
   const count=original.contexts()[0].pages().length;
