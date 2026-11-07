@@ -177,3 +177,39 @@ test('newPage rejection exits 78 through the CLI', async t => {
     return true;
   });
 });
+
+for (const kind of ['read-only', 'write', 'unknown']) test(`registry ${kind} MCP calls through the CLI`, async t => {
+  const registry = JSON.parse(await readFile(new URL('./fixtures/walk-verb-registry.json', import.meta.url))).response.verbs;
+  const names = kind === 'read-only' ? registry.filter(verb => verb.write === false).map(verb => verb.name)
+    : [kind === 'write' ? registry.find(verb => verb.write === true).name : 'unregistered-proof-verb'];
+  const root = temporaryDirectory('quiet-registry-', t), preload = join(root, 'preload.mjs');
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+    const launch = chromium.launch.bind(chromium);
+    chromium.launch = async options => {
+      const browser = await launch(options), newPage = browser.newPage.bind(browser);
+      browser.newPage = async (...args) => {
+        const page = await newPage(...args);
+        await page.addInitScript(names => {
+          document.addEventListener('DOMContentLoaded', () => {
+            for (const name of names) void fetch('/mcp', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: name, method: 'tools/call', params: { name, arguments: {} } }),
+            });
+          });
+        }, ${JSON.stringify(names)});
+        return page;
+      };
+      return browser;
+    };
+  `);
+  const execution = run(process.execPath, ['--import', preload, ...args]);
+  if (kind === 'read-only') assert.equal(JSON.parse((await execution).stdout).ok, true);
+  else await assert.rejects(execution, error => {
+    assert.equal(error.code, 1);
+    const result = JSON.parse(error.stdout);
+    assert.equal(result.status, 'assertion_failure');
+    assert.match(result.error, kind === 'unknown' ? /Unknown MCP verbs: unregistered-proof-verb/ : /no writes/);
+    return true;
+  });
+});
