@@ -36,5 +36,6 @@ export { mountDealDocuments } from './deal-documents';
 
 export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
 
+export { mountClientAnniversaries } from './client-anniversaries';
 export { mountLeadResearch } from './lead-research';
 export { mountActivityAttributionView, parseActivityDealAttribution } from './activity-attribution';
