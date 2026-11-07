@@ -99,10 +99,11 @@ export function validNetwork(value) {
 }
 export function filterNetwork(
   snapshot,
-  { territory = "", vertical = "", q = "", kind = "" } = {},
+  { territory = "", vertical = "", q = "", kind = "", owner = "" } = {},
 ) {
   const nodes = snapshot.nodes.filter(
     (n) =>
+      (!owner || JSON.stringify([n.owner?.trim() ? n.owner : null]) === owner) &&
       (!kind || n.kind === kind) &&
       (!territory || n.territory === territory) &&
       (!vertical || n.verticals.includes(vertical)) &&

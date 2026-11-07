@@ -37,6 +37,7 @@ test('only emitted UI entries and shared chunks bypass source checks', async () 
   assert.ok(assets.has('js/ui-checklist.js'));
   assert.ok(assets.has('js/ui-activity-attribution.js'));
   assert.ok(assets.has('js/ui-relationship-kind-filter.js'));
+  assert.ok(assets.has('js/ui-relationship-owner-filter.js'));
   assert.ok(assets.has('js/ui-ideal-client-profile.js'));
   assert.ok(!assets.has('js/ui-workspace.js'));
   const lint = new ESLint();

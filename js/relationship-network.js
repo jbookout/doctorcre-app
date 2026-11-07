@@ -1,3 +1,4 @@
+import { mountRelationshipOwnerFilter } from "./ui-relationship-owner-filter.js";
 import { mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { dealName } from "./pipeline-model.js";
@@ -41,6 +42,7 @@ export function mountRelationshipNetwork({
     territory: params.get("territory") || "",
     vertical: params.get("vertical") || "",
     kind: relationshipKind(params.get("kind")),
+    owner: params.get("owner") || "",
   };
   $("networkSearch").value = currentFilters.q;
   focus = params.get("node");
@@ -251,6 +253,12 @@ export function mountRelationshipNetwork({
     }
   };
   const facets = () => {
+    const previousOwner = currentFilters.owner;
+    currentFilters.owner = ownerControl.update(snapshot?.nodes || null, previousOwner);
+    if (snapshot && previousOwner !== currentFilters.owner) {
+      $("networkOwnerNotice").textContent = "The selected recorded owner is no longer available. Showing all owners.";
+      address();
+    }
     for (const [id, field, label] of [
       ["networkTerritory", "territory", "All territories"],
       ["networkVertical", "verticals", "All verticals"],
@@ -296,6 +304,7 @@ export function mountRelationshipNetwork({
       snapshot = { ...next, nodes: next.nodes.map(node => node.kind === "deal" ? { ...node, name: dealName(node.name) } : node) };
       facets();
       $("networkNotice").hidden = true;
+      address();
       $("networkUpdated").textContent = updatedLabel(next.observed_at);
       render();
       dialog.update(next);
@@ -356,6 +365,14 @@ export function mountRelationshipNetwork({
     render();
     address();
   };
+  const ownerControl = mountRelationshipOwnerFilter($("networkOwnerFilter"), {
+    value: currentFilters.owner,
+    onChange(owner) {
+      currentFilters.owner = owner;
+      $("networkOwnerNotice").textContent = "";
+      applyFilters();
+    },
+  });
   const kindControl = mountRelationshipKindFilter($("networkKindFilter"), {
     value: currentFilters.kind,
     onChange(kind) {
@@ -374,8 +391,10 @@ export function mountRelationshipNetwork({
   $("networkReset").onclick = () => {
     for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
       $(id).value = "";
-    Object.assign(currentFilters, { q: "", territory: "", vertical: "", kind: "" });
+    Object.assign(currentFilters, { q: "", territory: "", vertical: "", kind: "", owner: "" });
     kindControl.setValue("");
+    ownerControl.update(snapshot?.nodes || null, "");
+    $("networkOwnerNotice").textContent = "";
     applyFilters();
   };
   $("networkRefresh").onclick = auto.refresh;
@@ -413,6 +432,7 @@ export function mountRelationshipNetwork({
       disposed = true;
       localEvents.abort();
       kindControl.dispose();
+      ownerControl.dispose();
       epoch++;
       auto.dispose();
       dialog.dispose();

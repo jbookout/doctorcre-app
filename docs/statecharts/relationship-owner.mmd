@@ -1,0 +1,31 @@
+stateDiagram-v2
+state Page {
+state Data {
+[*] --> Hidden
+Hidden --> Ready: snapshot arrives
+Ready --> Hidden: snapshot expires
+Ready --> Ready: refresh succeeds
+Ready --> Closed: dispose
+Hidden --> Closed: dispose
+}
+--
+state Selector {
+[*] --> All
+All --> Selected: choose owner
+Selected --> Selected: choose owner
+Selected --> All: reset
+Selected --> All: owner disappears
+All --> Retired: dispose
+Selected --> Retired: dispose
+}
+--
+state Proof {
+[*] --> Unchecked
+Unchecked --> Checking: begin proof
+Checking --> Passed: exact observations
+Checking --> Failed: wrong observations
+Checking --> Insufficient: deadline or unavailable
+}
+}
+%% never DisposedControl: Closed & Selected -- A disposed page has no active selector.
+%% never LiveControl: Ready & Retired -- A live page retains its selector.
