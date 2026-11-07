@@ -6,7 +6,7 @@ import { chromium as driver } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
 const insufficient = message => Object.assign(Error(message),{exitCode:78});
-export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=chromium}) {
+export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000}) {
   const controller = new AbortController();
   const deadline = performance.now()+timeoutMs;
   const remaining = () => { const ms=Math.ceil(deadline-performance.now()); if(ms<=0)throw insufficient('Total proof deadline expired'); return ms; };
@@ -41,7 +41,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
         async newPage() { ownedPage=await connection.contexts()[0].newPage(); return ownedPage; },
         async close() { await ownedPage?.close(); await connection.close(); },
       };
-    }} : engine;
+    }} : chromium;
     browser=await launchProofBrowser(selected,{timeout:remaining()},{signal:controller.signal});
     page=await browser.newPage();
     await page.goto(origin+'/leases?mode=live',{timeout:remaining()});
