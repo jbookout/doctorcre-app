@@ -13,7 +13,7 @@ export async function observe({ origin, recordings, document = globalThis.docume
   const assertions = [];
   const check = (value, name) => { if (!value) throw Error(name); assertions.push(name); };
   let current = recordings.initial, reads = 0, documentsRead = 0, writes = [], finishWrite;
-  let outcome = 'unknown';
+  let outcome = 'unknown', retryArrived;
   const client = createLiveClient({ online: () => true, fetchImpl: async (_url, init) => {
     if (_url === '/auth/session') return Response.json(recordings.session);
     const request = JSON.parse(init.body), verb = request.params.name;
@@ -22,7 +22,7 @@ export async function observe({ origin, recordings, document = globalThis.docume
     else if (verb === 'list-deal-documents') { documentsRead++; payload = recordings.documents; }
     else if (verb === 'resolve-fact-review') {
       writes.push(request.params.arguments);
-      await new Promise(resolve => { finishWrite = resolve; });
+      await new Promise(resolve => { finishWrite = resolve; if (writes.length === 2) retryArrived(); });
       if (outcome === 'unknown') return Response.json({ error: { code: -32000, message: 'offline', data: { error: 'internal_error' } } });
       payload = recordings.receipt;
     } else throw Error(`Unexpected verb ${verb}`);
@@ -94,8 +94,9 @@ export async function observe({ origin, recordings, document = globalThis.docume
     check([...root.querySelector('[data-term-filter]').options].find(option => option.value === second.fact_key).disabled, 'pending-option-disabled');
     select(second.fact_key); check(!article.hidden, 'pending-selection-refused');
     select(''); check(!article.hidden, 'pending-all-allowed');
+    const retryWrite = new Promise(resolve => { retryArrived = resolve; });
     outcome = 'confirmed'; form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await tick(); finishWrite(); await until(() => root.textContent.includes('Review saved.'));
+    await tick(); await retryWrite; finishWrite(); await until(() => root.textContent.includes('Review saved.'));
     check(JSON.stringify(writes[0]) === JSON.stringify(writes[1]), 'retry-preserves-idempotency-and-versions');
     check(writes[0].base_version === first.canonical_version && writes[0].review_version === first.review_version, 'recorded-versions-preserved');
     check(root.textContent.includes('Review saved.'), 'confirmed-retry-refreshes');
