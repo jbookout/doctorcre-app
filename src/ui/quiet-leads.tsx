@@ -9,12 +9,12 @@ type Proposal = {
 type Snapshot = { proposals: Proposal[] };
 type Update = { kind: 'idle' } | { kind: 'loading' } | { kind: 'refused'; message: string }
   | { kind: 'ready'; snapshot: Snapshot };
-type Page = { query: string; owner: string; offset: number; notice: string };
+type Page = { query: string; owner: string; history: 'all' | Proposal['basis']; offset: number; notice: string };
 
 export function mountQuietLeads(host: HTMLElement, reason: (row: Proposal) => string) {
   const root = createRoot(host);
   let state: Update = { kind: 'idle' };
-  let page: Page = { query: '', owner: 'all', offset: 0, notice: '' };
+  let page: Page = { query: '', owner: 'all', history: 'all', offset: 0, notice: '' };
   let disposed = false;
   let searchInput: HTMLInputElement | null = null;
   const ownerKey = (row: Proposal) => row.owner == null ? 'unrecorded' : `owner:${row.owner}`;
@@ -25,11 +25,22 @@ export function mountQuietLeads(host: HTMLElement, reason: (row: Proposal) => st
     const owners = [...new Set(leads.flatMap(row => row.owner == null ? [] : [row.owner]))].sort();
     const query = page.query.trim().toLowerCase();
     const matches = leads.filter(row => (page.owner === 'all' || ownerKey(row) === page.owner)
+      && (page.history === 'all' || row.basis === page.history)
       && (row.name.toLowerCase().includes(query) || row.ref.toLowerCase().includes(query)));
     flushSync(() => root.render(<>
       {state.kind === 'loading' && <p role="status">Loading follow-ups…</p>}
       {state.kind === 'refused' && <p role="alert">{state.message}</p>}
       {state.kind === 'ready' && <>
+        <label>Contact history{' '}<select style={{ maxWidth: '100%' }} value={page.history} onChange={event => {
+          const history = event.target.value;
+          if (history === 'all' || history === 'created_at' || history === 'last_contact') {
+            page = { ...page, history, offset: 0 }; render();
+          }
+        }}>
+          <option value="all">All contact history</option>
+          <option value="created_at">No contact recorded</option>
+          <option value="last_contact">Contact recorded</option>
+        </select></label>
         <label>Quiet lead owner{' '}<select style={{ maxWidth: '100%' }} value={page.owner} onChange={event => {
           page = { ...page, owner: event.target.value, offset: 0, notice: '' }; render();
         }}>
@@ -46,7 +57,7 @@ export function mountQuietLeads(host: HTMLElement, reason: (row: Proposal) => st
         }}>Clear search</button>
         {page.notice && <p role="status">{page.notice}</p>}
         <p role="status">{matches.length ? `Showing ${page.offset + 1}–${Math.min(page.offset + 10, matches.length)} of ${matches.length} matching loaded leads (${leads.length} loaded).` : `0 matching loaded leads (${leads.length} loaded).`}</p>
-        {!leads.length ? <p>No quiet leads.</p> : !matches.length ? <p>{query ? 'No quiet leads match this search and owner.' : 'No quiet leads match this owner.'}</p> : <>
+        {!leads.length ? <p>No quiet leads.</p> : !matches.length ? <p>{page.history !== 'all' ? 'No quiet leads match this contact history, search and owner.' : query ? 'No quiet leads match this search and owner.' : 'No quiet leads match this owner.'}</p> : <>
           <div role="group" aria-label="Quiet lead pages">
             <button type="button" aria-disabled={page.offset === 0} onClick={() => {
               if (page.offset > 0) { page = { ...page, offset: page.offset - 10 }; render(); }
@@ -68,13 +79,13 @@ export function mountQuietLeads(host: HTMLElement, reason: (row: Proposal) => st
   return {
     update(next: Update) {
       if (disposed) return;
-      if (next.kind === 'idle') page = { query: '', owner: 'all', offset: 0, notice: '' };
+      if (next.kind === 'idle') page = { query: '', owner: 'all', history: 'all', offset: 0, notice: '' };
       if (next.kind === 'ready') {
         const valid = page.owner === 'all' || next.snapshot.proposals.some(row => row.subject_type === 'lead' && ownerKey(row) === page.owner);
         page = { ...page, owner: valid ? page.owner : 'all', offset: 0, notice: valid ? '' : 'The selected owner is no longer in this snapshot. Showing all owners.' };
       }
       state = next; render();
     },
-    dispose() { if (disposed) return; disposed = true; state = { kind: 'idle' }; page = { query: '', owner: 'all', offset: 0, notice: '' }; flushSync(() => root.unmount()); },
+    dispose() { if (disposed) return; disposed = true; state = { kind: 'idle' }; page = { query: '', owner: 'all', history: 'all', offset: 0, notice: '' }; flushSync(() => root.unmount()); },
   };
 }

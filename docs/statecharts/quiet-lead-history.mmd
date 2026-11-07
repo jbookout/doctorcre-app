@@ -1,0 +1,54 @@
+stateDiagram-v2
+  state "Quiet leads" as Quiet {
+    state Availability {
+      [*] --> Hidden
+      Hidden --> Loading: Open or refresh
+      Loading --> Loaded: Read succeeds
+      Loaded --> Loading: Refresh
+      Loading --> Refused: Read refused
+      Refused --> Loading: Retry
+      Loaded --> Hidden: Session invalidated
+      Loading --> Hidden: Session invalidated
+      Refused --> Hidden: Session invalidated
+      Hidden --> Closed: Dispose
+      Loaded --> Closed: Dispose
+      Loading --> Closed: Dispose
+      Refused --> Closed: Dispose
+      Closed --> Closed: Late update
+    }
+    --
+    state Rows {
+      [*] --> NoRows
+      NoRows --> Visible: Read succeeds
+      Visible --> Visible: Change history owner or search
+      Visible --> Visible: Clear search
+      Visible --> Visible: Next or previous page
+      Visible --> NoRows: Refresh
+      NoRows --> NoRows: Read refused
+      NoRows --> NoRows: Open or refresh
+      NoRows --> NoRows: Retry
+      Visible --> NoRows: Session invalidated
+      NoRows --> NoRows: Session invalidated
+      Visible --> NoRows: Dispose
+      NoRows --> NoRows: Dispose
+      NoRows --> NoRows: Late update
+    }
+    --
+    state Proof {
+      [*] --> Unchecked
+      Unchecked --> Acquiring: Containing release read
+      Unchecked --> Insufficient: Release unavailable
+      Acquiring --> Checking: Registry and subjects available
+      Acquiring --> Insufficient: Session registry or subjects unavailable
+      Checking --> Passed: Exact rows and stable release
+      Checking --> Failed: Visible mismatch
+      Checking --> Insufficient: Deadline or changing release
+      Acquiring --> Cleaned: Acquisition deadline
+      Insufficient --> Cleaned: Close acquired resources
+      Passed --> Cleaned: Close acquired resources
+      Failed --> Cleaned: Close acquired resources
+    }
+  }
+  %% never LoadingRows: Loading & Visible -- Loading never exposes old rows.
+  %% never RefusedRows: Refused & Visible -- Refusal never exposes old rows.
+  %% never ClosedRows: Closed & Visible -- Disposal never permits late rows.
