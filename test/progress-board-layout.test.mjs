@@ -91,15 +91,18 @@ function withoutScripts(html) {
     const document = dom.window.document;
     for (const script of document.querySelectorAll('script')) script.remove();
     assert.equal(document.scripts.length, 0);
-    return document.documentElement.outerHTML;
+    return dom.serialize();
   } finally { dom.window.close(); }
 }
 
-for (const html of ['<script>throw Error(1)</script>', '<SCRIPT>throw Error(1)</SCRIPT>',
+for (const html of ['<!doctype html><script>throw Error(1)</script>', '<SCRIPT>throw Error(1)</SCRIPT>',
   '<script type="module" src="/app.js"></script>', '<scr<script>ipt>text</scr</script>ipt>']) {
   test(`layout shell removes parsed script elements: ${html}`, () => {
     const dom = new JSDOM(withoutScripts(html));
-    try { assert.equal(dom.window.document.scripts.length, 0); }
+    try {
+      assert.equal(dom.window.document.scripts.length, 0);
+      assert.equal(dom.window.document.compatMode, html.startsWith('<!doctype') ? 'CSS1Compat' : 'BackCompat');
+    }
     finally { dom.window.close(); }
   });
 }
