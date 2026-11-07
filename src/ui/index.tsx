@@ -36,4 +36,4 @@ export { mountDealDocuments } from './deal-documents';
 
 export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
 
-export { mountClientAnniversaries, parseClientAnniversaries } from './client-anniversaries';
+export { mountClientAnniversaries } from './client-anniversaries';

@@ -14,9 +14,7 @@ const source=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-pa
 const provenance=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/provenance.json',import.meta.url),'utf8'));
 const transformed=await transform(source['calendar-date.ts']+source['client-anniversary-read.ts'].replace(/^import .*$/mg,''),{loader:'ts',format:'esm'});
 const producer=await import('data:text/javascript;base64,'+Buffer.from(transformed.code).toString('base64'));
-const parserSource=(await readFile(new URL('../src/ui/client-anniversaries.tsx',import.meta.url),'utf8')).split('export function mountClientAnniversaries')[0].replace(/^import .*$/mg,'');
-const parser=await transform(parserSource,{loader:'ts',format:'esm'});
-const ui=await import('data:text/javascript;base64,'+Buffer.from(parser.code).toString('base64'));
+const ui=await import('../js/client-anniversaries-client.js');
 test('pinned registered producer and parser replay every recording through app parser',async()=>{
   for(const [name,text] of Object.entries(source))assert.equal(createHash('sha256').update(text).digest('hex'),provenance.files[name]);
   for(const fixture of Object.values(fixtures)) {
@@ -39,8 +37,9 @@ async function open(t,{width=1440,theme='light'}={}) {
   await page.goto('http://localhost/island');
   await page.evaluate(async()=>{
     const {mountClientAnniversaries}=await import('/js/ui-client-anniversaries.js');
+    const {parseClientAnniversaries}=await import('/js/client-anniversaries-client.js');
     window.reads=0;window.pending=[];
-    window.panel=mountClientAnniversaries(document.getElementById('host'),{load:signal=>{window.reads++;window.signal=signal;return new Promise((resolve,reject)=>window.pending.push({resolve,reject}));}});
+    window.panel=mountClientAnniversaries(document.getElementById('host'),{load:signal=>{window.reads++;window.signal=signal;return new Promise((resolve,reject)=>window.pending.push({resolve:value=>{try{resolve(parseClientAnniversaries(value));}catch(error){reject(error);}},reject}));}});
   });
   return page;
 }
