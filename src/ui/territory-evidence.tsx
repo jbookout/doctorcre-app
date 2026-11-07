@@ -64,6 +64,7 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
   let selectedEvidence: EvidenceView = 'all';
   let selectedCondition: Condition | 'all' = 'all';
   async function load() {
+    if (disposed) return;
     const request = ++epoch;
     view = { kind: 'loading' }; render();
     try {

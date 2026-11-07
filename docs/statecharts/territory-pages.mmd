@@ -1,19 +1,244 @@
+%% Finite model of the contract-checked 45-area fixture; conflicting selects 23 and tight selects zero.
+%% First/Middle/Last mean offsets 0/20/40 for all conditions; filtered Last means offset 20.
+%% Matches describes the selected fixture population even while rows are hidden.
+%% Most recent control records the page before evidence selection, so retention is an invariant.
+%% Request ownership abstracts epoch equality, not transport cancellation. Superseded responses stutter.
+%% Screen maps view.kind/open/disposed at src/ui/territory-evidence.tsx:61,69,74,81,88,150.
+%% Page and counts map filter/slice and guards at src/ui/territory-evidence.tsx:92,127,129,130,134.
+%% Conditions reset at src/ui/territory-evidence.tsx:115; evidence changes at :120 preserve offset.
+%% Successful refresh resets at src/ui/territory-evidence.tsx:72; clear resets at :88; disposal at :150.
+%% Request guards map src/ui/territory-evidence.tsx:67,72,76; open/refresh entry points map :96,113,150.
+%% Omits arbitrary payload sizes, evidence dates/content, network timing and CSS; executed browser/parser tests cover them.
 stateDiagram-v2
-  [*] --> Idle
-  Idle --> Loading: open
-  Loading --> Ready: latestSuccess / page=0
-  Loading --> Error: latestRefusal
-  Ready --> Loading: refreshOrServerFilter
-  Error --> Loading: retry
-  Ready --> Ready: next [offset+20<matching] / offset+=20
-  Ready --> Ready: previous [offset>0] / offset-=20
-  Ready --> Ready: condition / offset=0
-  Ready --> Ready: evidenceView / preserveOffset
-  Loading --> Loading: supersede / epoch++
-  Ready --> Ready: staleCompletion / ignore
-  Ready --> Idle: clearOrSignOut / offset=0, epoch++
-  Loading --> Idle: clearOrAuthorizationFailure / offset=0, epoch++
-  Idle --> Idle: staleCompletion / ignore
-  Ready --> Disposed: dispose / offset=0, epoch++
-  Loading --> Disposed: dispose / offset=0, epoch++
-  Disposed --> Disposed: lateCompletion / ignore
+state Territory {
+  state Screen {
+    [*] --> ScreenStates
+    state "Panel visibility" as ScreenStates {
+      state "Panel cleared" as Idle
+      state "Loading territory evidence" as Loading
+      state "Recorded areas visible" as Ready
+      state "Refresh refused" as Error
+      state "Panel removed" as Disposed
+      [*] --> Idle
+    }
+    Idle --> Loading: open panel
+    Ready --> Loading: refresh evidence
+    Error --> Loading: retry refresh
+    Loading --> Loading: supersede refresh
+    Ready --> Loading: apply server filters
+    Loading --> Ready: latest board arrives [current request owns the panel]
+    %% when Current
+    Loading --> Error: latest request refused [current request owns the panel]
+    %% when Current
+    Loading --> Idle: authorization fails
+    Idle --> Idle: clear panel
+    Loading --> Idle: clear panel
+    Ready --> Idle: clear panel
+    Error --> Idle: clear panel
+    Idle --> Disposed: dispose panel
+    Loading --> Disposed: dispose panel
+    Ready --> Disposed: dispose panel
+    Error --> Disposed: dispose panel
+    Idle --> Idle: stale request arrives
+    Loading --> Loading: stale request arrives
+    Ready --> Ready: stale request arrives
+    Error --> Error: stale request arrives
+    Disposed --> Disposed: stale request arrives
+  }
+  --
+  state Page {
+    [*] --> PageStates
+    state "Area position" as PageStates {
+      state "First area page" as First
+      state "Middle area page" as Middle
+      state "Last area page" as Last
+      [*] --> First
+    }
+    First --> Middle: next areas [areas visible and 45 matches]
+    %% when Ready, Full
+    First --> Last: next areas [areas visible and 23 matches]
+    %% when Ready, Few
+    Middle --> Last: next areas [areas visible and 45 matches]
+    %% when Ready, Full
+    Last --> Middle: previous areas [areas visible and 45 matches]
+    %% when Ready, Full
+    Last --> First: previous areas [areas visible and 23 matches]
+    %% when Ready, Few
+    Middle --> First: previous areas [areas visible and 45 matches]
+    %% when Ready, Full
+    First --> First: previous boundary [areas visible]
+    %% when Ready
+    Last --> Last: next boundary [areas visible]
+    %% when Ready
+    First --> First: empty boundary [areas visible and zero matches]
+    %% when Ready, Empty
+    PageStates --> First: select all conditions [areas visible]
+    %% when Ready
+    PageStates --> First: select conflicting condition [areas visible]
+    %% when Ready
+    PageStates --> First: select empty condition [areas visible]
+    %% when Ready
+    PageStates --> First: latest board arrives [loading the current request]
+    %% when Loading, Current
+    PageStates --> First: clear panel
+    PageStates --> First: authorization fails [loading]
+    %% when Loading
+    PageStates --> First: dispose panel
+  }
+  --
+  state Condition {
+    [*] --> ConditionStates
+    state "Condition selection" as ConditionStates {
+      state "All conditions selected" as All
+      state "Conflicting condition selected" as Conflict
+      state "Empty condition selected" as Tight
+      [*] --> All
+    }
+    ConditionStates --> All: select all conditions [areas visible]
+    %% when Ready
+    ConditionStates --> Conflict: select conflicting condition [areas visible]
+    %% when Ready
+    ConditionStates --> Tight: select empty condition [areas visible]
+    %% when Ready
+    ConditionStates --> All: clear panel
+    ConditionStates --> All: authorization fails [loading]
+    %% when Loading
+    ConditionStates --> All: dispose panel
+  }
+  --
+  state Matches {
+    [*] --> MatchesStates
+    state "Matching count" as MatchesStates {
+      state "45 matching loaded areas" as Full
+      state "23 matching loaded areas" as Few
+      state "Zero matching loaded areas" as Empty
+      [*] --> Full
+    }
+    MatchesStates --> Full: select all conditions [areas visible]
+    %% when Ready
+    MatchesStates --> Few: select conflicting condition [areas visible]
+    %% when Ready
+    MatchesStates --> Empty: select empty condition [areas visible]
+    %% when Ready
+    MatchesStates --> Full: clear panel
+    MatchesStates --> Full: authorization fails [loading]
+    %% when Loading
+    MatchesStates --> Full: dispose panel
+  }
+  --
+  state Evidence {
+    [*] --> EvidenceStates
+    state "Evidence selection" as EvidenceStates {
+      state "All evidence selected" as Every
+      state "Historical evidence selected" as History
+      state "Current evidence selected" as CurrentEvidence
+      [*] --> Every
+    }
+    EvidenceStates --> Every: select all evidence [areas visible]
+    %% when Ready
+    EvidenceStates --> History: select historical evidence [areas visible]
+    %% when Ready
+    EvidenceStates --> CurrentEvidence: select current evidence [areas visible]
+    %% when Ready
+    EvidenceStates --> Every: clear panel
+    EvidenceStates --> Every: authorization fails [loading]
+    %% when Loading
+    EvidenceStates --> Every: dispose panel
+  }
+  --
+  state Request {
+    [*] --> RequestStates
+    state "Request ownership" as RequestStates {
+      state "Current request owns the panel" as Current
+      state "Prior requests invalidated" as Retired
+      [*] --> Retired
+    }
+    RequestStates --> Current: open panel [panel cleared]
+    %% when Idle
+    RequestStates --> Current: refresh evidence [areas visible]
+    %% when Ready
+    RequestStates --> Current: retry refresh [refresh refused]
+    %% when Error
+    RequestStates --> Current: supersede refresh [loading]
+    %% when Loading
+    RequestStates --> Current: apply server filters [areas visible]
+    %% when Ready
+    RequestStates --> Retired: clear panel
+    RequestStates --> Retired: authorization fails [loading]
+    %% when Loading
+    RequestStates --> Retired: dispose panel
+  }
+  --
+  state LastAction {
+    [*] --> LastActionStates
+    state "Most recent control" as LastActionStates {
+      state "Other action" as Neutral
+      state "Page reset requested" as Reset
+      state "Evidence changed on first page" as KeepFirst
+      state "Evidence changed on middle page" as KeepMiddle
+      state "Evidence changed on last page" as KeepLast
+      [*] --> Neutral
+    }
+    LastActionStates --> Reset: select all conditions [areas visible]
+    %% when Ready
+    LastActionStates --> Reset: select conflicting condition [areas visible]
+    %% when Ready
+    LastActionStates --> Reset: select empty condition [areas visible]
+    %% when Ready
+    LastActionStates --> Reset: latest board arrives [loading the current request]
+    %% when Loading, Current
+    LastActionStates --> Reset: clear panel
+    LastActionStates --> Reset: authorization fails [loading]
+    %% when Loading
+    LastActionStates --> Reset: dispose panel
+    LastActionStates --> Neutral: next areas [areas visible]
+    %% when Ready
+    LastActionStates --> Neutral: previous areas [areas visible]
+    %% when Ready
+    LastActionStates --> Neutral: open panel [panel cleared]
+    %% when Idle
+    LastActionStates --> Neutral: refresh evidence [areas visible]
+    %% when Ready
+    LastActionStates --> Neutral: retry refresh [refresh refused]
+    %% when Error
+    LastActionStates --> Neutral: supersede refresh [loading]
+    %% when Loading
+    LastActionStates --> Neutral: apply server filters [areas visible]
+    %% when Ready
+    LastActionStates --> KeepFirst: select all evidence [areas visible on first page]
+    %% when Ready, First
+    LastActionStates --> KeepMiddle: select all evidence [areas visible on middle page]
+    %% when Ready, Middle
+    LastActionStates --> KeepLast: select all evidence [areas visible on last page]
+    %% when Ready, Last
+    LastActionStates --> KeepFirst: select historical evidence [areas visible on first page]
+    %% when Ready, First
+    LastActionStates --> KeepMiddle: select historical evidence [areas visible on middle page]
+    %% when Ready, Middle
+    LastActionStates --> KeepLast: select historical evidence [areas visible on last page]
+    %% when Ready, Last
+    LastActionStates --> KeepFirst: select current evidence [areas visible on first page]
+    %% when Ready, First
+    LastActionStates --> KeepMiddle: select current evidence [areas visible on middle page]
+    %% when Ready, Middle
+    LastActionStates --> KeepLast: select current evidence [areas visible on last page]
+    %% when Ready, Last
+  }
+}
+%% never EmptyFirst: Matching count.Zero matching loaded areas & Area position.Middle area page -- An empty result never has a middle page.
+%% never EmptyLast: Matching count.Zero matching loaded areas & Area position.Last area page -- An empty result never has a last page.
+%% never FewMiddle: Matching count.23 matching loaded areas & Area position.Middle area page -- A 23-area result never has a third page.
+%% never IdleFirst: Panel visibility.Panel cleared & Area position.Middle area page -- Clearing never retains the middle page.
+%% never IdleLast: Panel visibility.Panel cleared & Area position.Last area page -- Clearing never retains the last page.
+%% never DisposedFirst: Panel visibility.Panel removed & Area position.Middle area page -- Disposal never retains the middle page.
+%% never DisposedLast: Panel visibility.Panel removed & Area position.Last area page -- Disposal never retains the last page.
+%% never ResetMiddle: Most recent control.Page reset requested & Area position.Middle area page -- A condition change or successful refresh resets the page.
+%% never ResetLast: Most recent control.Page reset requested & Area position.Last area page -- A condition change or successful refresh resets even the last page.
+%% never KeepFirstMiddle: Most recent control.Evidence changed on first page & Area position.Middle area page -- Evidence selection preserves the first page.
+%% never KeepFirstLast: Most recent control.Evidence changed on first page & Area position.Last area page -- Evidence selection cannot jump from first to last.
+%% never KeepMiddleFirst: Most recent control.Evidence changed on middle page & Area position.First area page -- Evidence selection preserves the middle page.
+%% never KeepMiddleLast: Most recent control.Evidence changed on middle page & Area position.Last area page -- Evidence selection cannot advance the middle page.
+%% never KeepLastFirst: Most recent control.Evidence changed on last page & Area position.First area page -- Evidence selection preserves the last page.
+%% never KeepLastMiddle: Most recent control.Evidence changed on last page & Area position.Middle area page -- Evidence selection cannot retreat the last page.
+%% never RetiredReady: Request ownership.Prior requests invalidated & Panel visibility.Recorded areas visible -- An invalidated request cannot restore visible areas.
+%% never RetiredLoading: Request ownership.Prior requests invalidated & Panel visibility.Loading territory evidence -- Loading requires a current request owner.
