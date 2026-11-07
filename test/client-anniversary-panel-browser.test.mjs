@@ -56,6 +56,7 @@ for(const width of [390,1440])for(const theme of ['light','dark'])test(`keyboard
   await complete(page,fixtures.more.output);
   await page.getByText('More anniversary rows exist.',{exact:false}).waitFor();
   assert.equal(await page.locator('li').count(),20);
+  assert.deepEqual(await page.locator('li a:nth-of-type(2)').evaluateAll(links=>links.map(link=>link.getAttribute('href'))),fixtures.more.output.rows.map(row=>`/deals?deal=${encodeURIComponent(row.deal_id)}`));
   assert.equal(await page.evaluate(()=>window.reads),1);
   assert.equal(await page.locator('li a').first().getAttribute('href'),'/clients?record=synthetic-client');
   assert.ok((await page.locator('li').first().innerText()).includes('2020-11-12'));
@@ -119,4 +120,20 @@ test('hide invalidates late completion while idle',async t=>{
   await complete(page,fixtures.ready.output);
   assert.equal(await page.locator('li').count(),0);
   assert.equal(await page.getByRole('button',{name:'Show closing anniversaries'}).count(),1);
+});
+test('boundary refuses oversized slices, changed query, invalid coverage, dates, ordering and row types',()=>{
+  const ready=fixtures.ready.output, more=fixtures.more.output;
+  for(const payload of [
+    {...more,rows:[...more.rows,more.rows[0]]},
+    {...ready,query:{...ready.query,horizon_days:31}},
+    {...ready,query:{...ready.query,limit:21}},
+    {...ready,query:{...ready.query,offset:20}},
+    {...ready,coverage:{...ready.coverage,complete:false}},
+    {...ready,coverage:{...ready.coverage,scanned:1002}},
+    {...ready,timezone:'UTC'},
+    {...ready,rows:[{...ready.rows[0],closed_on:'2020-02-30'}]},
+    {...ready,rows:[{...ready.rows[0],years:'6'}]},
+    {...ready,rows:[ready.rows[0],ready.rows[0]]},
+    {...more,rows:[...more.rows].reverse()},
+  ])assert.throws(()=>ui.parseClientAnniversaries(payload));
 });

@@ -40,6 +40,11 @@ test('proof CLI passes equal containing release and fails mismatched visible lab
   const origin=await server(t);
   const result=await exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',origin,'--expected-commit',expected,'--timeout-ms','15000']);
   assert.equal(JSON.parse(result.stdout).status,'passed');
+  for(const state of ['empty','more']){
+    const origin=await server(t,{state});
+    const result=await exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',origin,'--expected-commit',expected,'--timeout-ms','15000']);
+    assert.equal(JSON.parse(result.stdout).status,'passed');
+  }
   const wrong=await server(t,{wrong:true});
   await assert.rejects(exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',wrong,'--expected-commit',expected,'--timeout-ms','15000']),e=>e.code===1);
 });
