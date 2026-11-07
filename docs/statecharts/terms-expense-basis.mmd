@@ -14,3 +14,16 @@ stateDiagram-v2
   Ready --> Disposed: auth retirement or dispose
   Failed --> Disposed: dispose
   Disposed --> Disposed: late completion ignored
+
+  state "Proof browser lifetime" as Proof {
+    [*] --> Connected: borrow signed-in browser
+    Connected --> Acquiring: request proof page
+    Acquiring --> Owned: page acquired before deadline
+    Acquiring --> Draining: deadline expires
+    Connected --> Draining: context unavailable
+    Acquiring --> Draining: acquisition rejected
+    Owned --> Draining: observation ends or deadline expires
+    Draining --> Draining: pending page arrives and closes
+    Draining --> Disconnected: acquisitions settle and owned pages close
+    Disconnected --> Disconnected: repeated close
+  }

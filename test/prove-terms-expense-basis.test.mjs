@@ -14,7 +14,7 @@ const exec = promisify(execFile);
 const commit = '1'.repeat(40);
 const records = JSON.parse(readFileSync(new URL('./fixtures/terms-expense-basis/recordings.json', import.meta.url))).records;
 
-async function fixture(t, { broken = false, nearMiss = false, sourceCommit = commit } = {}) {
+async function fixture(t, { broken = false, nearMiss = false, localRead = false, sourceCommit = commit } = {}) {
   const root = resolve(new URL('../', import.meta.url).pathname);
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://localhost').pathname;
@@ -22,7 +22,7 @@ async function fixture(t, { broken = false, nearMiss = false, sourceCommit = com
     if (path === '/api/v1/market-terms/read') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(records.full.response)); }
     if (path === '/deals') {
       res.setHeader('content-type', 'text/html');
-      return res.end(`<button class="kanban-card" data-id="synthetic-a">Synthetic deal</button><main id="workspace-market-terms"></main><script type="module">import {mountMarketTerms} from '/js/ui-market.js'; import {createLiveClient} from '/js/live-client.js'; const client=createLiveClient({fetchImpl:async(...args)=>{const response=await fetch(...args);${broken ? "const data=await response.json();data.rows=data.rows.slice(0,1);return new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});" : 'return response;'}}}); mountMarketTerms(document.querySelector('main'), {entityRef:'synthetic-a',client});${nearMiss ? "new MutationObserver(()=>{for(const e of document.querySelectorAll('p>strong')){if(/^\\d+ matching loaded/.test(e.textContent))e.firstChild.data='1'+e.firstChild.data;}}).observe(document.querySelector('main'),{childList:true,subtree:true});" : ''}</script>`);
+      return res.end(`<button class="kanban-card" data-id="synthetic-a">Synthetic deal</button><main id="workspace-market-terms"></main><script type="module">import {mountMarketTerms} from '/js/ui-market.js'; import {createLiveClient} from '/js/live-client.js'; const client=createLiveClient({fetchImpl:async(...args)=>{const response=await fetch(...args);${broken ? "const data=await response.json();data.rows=data.rows.slice(0,1);return new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});" : 'return response;'}}}); mountMarketTerms(document.querySelector('main'), {entityRef:'synthetic-a',client});${localRead ? "document.querySelector('main').addEventListener('change',()=>fetch('/api/v1/market-terms/read',{method:'POST',body:'{}'}));" : ''}${nearMiss ? `new MutationObserver(()=>{for(const e of document.querySelectorAll('p>strong')){if(${nearMiss === 'selected' ? '/^1 matching loaded/' : '/^6 matching loaded/'}.test(e.textContent))e.firstChild.data='1'+e.firstChild.data;}}).observe(document.querySelector('main'),{childList:true,subtree:true});` : ''}</script>`);
     }
     try {
       const file = resolve(root, '.' + decodeURIComponent(path));
@@ -82,7 +82,7 @@ test('borrowed browser remains connected and late owned page closes', async () =
   const engine = signedInEngine('http://127.0.0.1:9222', { connectOverCDP: async () => ({ close() { browserClosed++; }, contexts: () => [{ newPage: () => new Promise(resolve => { finish = resolve; }) }] }) });
   const browser = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: 1000 });
   const pending = browser.newPage(); const closing = browser.close(); finish({ close: async () => { closed++; } });
-  await assert.rejects(pending, { exitCode: 78 }); await closing;
+  await assert.rejects(pending, { exitCode: 78 }); await closing; await browser.close();
   assert.equal(closed, 1); assert.equal(browserClosed, 1);
 });
 
@@ -111,8 +111,8 @@ test('closed browser and missing signed-in context are insufficient evidence', a
   assert.equal(disconnected, true);
 });
 
-for (const nearMiss of [false, true]) test(`real typed transport CLI compares complete displayed counts, nearMiss=${nearMiss}`, async t => {
-  const origin = await fixture(t, { nearMiss });
+for (const nearMiss of [false, 'baseline', 'selected', 'local-read']) test(`real typed transport CLI compares complete displayed counts, nearMiss=${nearMiss}`, async t => {
+  const origin = await fixture(t, { nearMiss: nearMiss === 'local-read' ? false : nearMiss, localRead: nearMiss === 'local-read' });
   const socket = createServer();
   await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port;

@@ -23,18 +23,33 @@ export function signedInEngine(endpoint, engine = chromium) {
     let connection;
     try { connection = await engine.connectOverCDP(endpoint, { timeout: options.timeout, isLocal: true }); }
     catch { throw unavailable('Signed-in browser connection unavailable'); }
-    let closed = false;
-    const pages = new Set();
+    let closed = false, closing;
+    const pages = new Set(), acquisitions = new Set();
     return {
-      async newPage() {
+      newPage() {
+        if (closed) throw unavailable('Proof expired');
         const context = connection.contexts()[0];
         if (!context) throw unavailable('Signed-in browser context unavailable');
-        const page = await context.newPage();
-        if (closed) { await page.close(); throw unavailable('Proof expired'); }
-        pages.add(page);
-        return page;
+        const pending = context.newPage().then(async page => {
+          if (closed) { await page.close(); throw unavailable('Proof expired'); }
+          pages.add(page);
+          return page;
+        });
+        acquisitions.add(pending);
+        pending.then(() => acquisitions.delete(pending), () => acquisitions.delete(pending));
+        return pending;
       },
-      async close() { closed = true; await Promise.allSettled([...pages].map(page => page.close())); await connection.close(); },
+      close() {
+        if (!closing) {
+          closed = true;
+          closing = (async () => {
+            await Promise.allSettled([...acquisitions]);
+            await Promise.allSettled([...pages].map(page => page.close()));
+            await connection.close();
+          })();
+        }
+        return closing;
+      },
     };
   } };
 }
@@ -47,15 +62,14 @@ export async function observeNaturalBasis(page, origin) {
     await tab.click();
   }
   const loaded = page.waitForResponse(response => {
-    try { const rpc = response.request().postDataJSON(); return new URL(response.url()).origin === origin && new URL(response.url()).pathname === '/mcp' && rpc?.params?.name === 'read-market-terms'; }
+    try { return new URL(response.url()).origin === origin && new URL(response.url()).pathname === '/api/v1/market-terms/read' && response.request().method() === 'POST'; }
     catch { return false; }
   });
   await root.getByRole('button', { name: 'Compare', exact: true }).click();
   const response = await loaded;
   if ([401, 403].includes(response.status())) throw unavailable('Signed-in session unavailable');
-  const envelope = await response.json();
   let data;
-  try { data = JSON.parse(envelope.result.content.find(item => item.type === 'text').text); }
+  try { data = await response.json(); }
   catch { throw unavailable('Comparable response unavailable'); }
   const basis = root.getByLabel('Expense basis', { exact: true });
   await basis.waitFor();
@@ -69,17 +83,24 @@ export async function observeNaturalBasis(page, origin) {
   await basis.selectOption('');
   const baseline = await identities();
   assert.equal(baseline.length, subset.length, 'loaded subset count');
+  const checkCount = async rows => {
+    const deals = new Set(rows.map(row => row.entity_ref)).size;
+    const expected = `${rows.length} matching loaded ${rows.length === 1 ? 'term' : 'terms'} across ${deals} ${deals === 1 ? 'deal' : 'deals'}.`;
+    assert.equal(await root.locator('[data-market-results] > p > strong').filter({ hasText: 'matching loaded' }).textContent(), expected, 'exact matching loaded count');
+  };
+  await checkCount(subset);
   let requests = 0;
-  const count = request => { if (new URL(request.url()).pathname === '/mcp') requests++; };
+  const count = request => { if (new URL(request.url()).origin === origin && new URL(request.url()).pathname === '/api/v1/market-terms/read' && request.method() === 'POST') requests++; };
   page.on('request', count);
   try {
     await basis.selectOption(JSON.stringify(chosen));
     const selected = subset.filter(row => row.expense_basis === chosen);
     assert.deepEqual(await identities(), baseline.filter(row => row[4] === chosen), 'exact expense basis row identities');
     assert.equal((await identities()).length, selected.length);
-    assert.match(await root.textContent(), new RegExp(`${selected.length} matching loaded terms? across ${new Set(selected.map(row => row.entity_ref)).size} deals?`));
+    await checkCount(selected);
     await basis.selectOption('');
     assert.deepEqual(await identities(), baseline, 'clear restores all matching loaded rows');
+    await checkCount(subset);
     assert.equal(requests, 0, 'local selection issues no business read');
     return { natural_rows: data.rows.length, selected_rows: selected.length, basis: chosen, local_reads: requests };
   } finally { page.off('request', count); }
