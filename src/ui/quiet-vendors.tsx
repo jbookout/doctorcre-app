@@ -27,6 +27,7 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
   let reading = false;
   function QuietVendors() {
     const owner = useRef('all');
+    const history = useRef<'all' | Proposal['basis']>('all');
     const [notice, setNotice] = useState('');
     const [expanded, setExpanded] = useState(false);
     const action = useRef<HTMLButtonElement>(null);
@@ -50,7 +51,8 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
     }
     const vendors = state.kind === 'ready' ? state.snapshot.proposals.filter(row => row.subject_type === 'vendor') : [];
     const owners = [...new Set(vendors.map(row => ownerKey(row.owner)))];
-    const matching = vendors.filter(row => owner.current === 'all' || ownerKey(row.owner) === owner.current);
+    const matching = vendors.filter(row => (owner.current === 'all' || ownerKey(row.owner) === owner.current)
+      && (history.current === 'all' || row.basis === history.current));
     return <section className={expanded ? 'quiet-vendors module-card glass' : 'quiet-vendors quiet-vendors-idle'} aria-label="Quiet vendor follow-ups">
       <h2 hidden={!expanded}>Quiet vendor follow-ups</h2>
       <p hidden={!expanded}>Review vendor relationships that CARR has marked due for attention.</p>
@@ -79,9 +81,24 @@ export function mountQuietVendors(host: HTMLElement, options: Options) {
             {owners.includes('missing') && <option value="missing">Owner not recorded</option>}
           </select>
         </label>
+        <label className="field">Contact history{' '}
+          <select value={history.current} onChange={event => {
+            const value = event.currentTarget.value;
+            if (value !== 'all' && value !== 'created_at' && value !== 'last_contact') return;
+            history.current = value;
+            setState({ ...state, offset: 0 });
+          }}>
+            <option value="all">All contact history</option>
+            <option value="created_at">Never contacted</option>
+            <option value="last_contact">Previously contacted</option>
+          </select>
+        </label>
         {notice && <p role="status">{notice}</p>}
         {vendors.length === 0 ? <p>No quiet vendors in this server snapshot.</p> : <>
-          <p role="status">Showing {state.offset + 1}–{Math.min(state.offset + PAGE_SIZE, matching.length)} of {matching.length} {owner.current === 'all' ? 'quiet vendors' : 'matching loaded vendors'}.</p>
+          {matching.length === 0 ? <>
+            <p role="status">0 matching loaded vendors.</p>
+            <p>No loaded vendors match these filters.</p>
+          </> : <p role="status">Showing {state.offset + 1}–{Math.min(state.offset + PAGE_SIZE, matching.length)} of {matching.length} {owner.current === 'all' && history.current === 'all' ? 'quiet vendors' : 'matching loaded vendors'}.</p>}
           {owner.current === 'all' && <p>Counts describe loaded vendors only.</p>}
           <div role="group" aria-label="Quiet vendor pages">
             <button type="button" className="action" aria-disabled={state.offset === 0} onClick={() => {
