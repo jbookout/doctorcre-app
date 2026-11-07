@@ -46,7 +46,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000}) {
     page=await browser.newPage();
     await page.goto(origin+'/leases?mode=live',{timeout:remaining()});
     const snapshot = await page.evaluate(async () => {
-      const {createClientAnniversariesClient}=await import('/js/client-anniversaries-client.js');
+      const {createClientAnniversariesClient}=await import('/js/ui-client-anniversaries.js');
       return createClientAnniversariesClient().read();
     });
     if(!['ready','empty'].includes(snapshot.state))throw insufficient('Natural anniversary snapshot unavailable');

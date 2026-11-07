@@ -25,7 +25,7 @@ async function server(t,{commit=expected,wrong=false,state='ready',auth=false,un
       return json(fixtures[name].output);
     }
     if(url.pathname==='/leases'){
-      res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/client-anniversaries-client.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}return value;}});</script>`);
+      res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}return value;}});</script>`);
     }
     let path;
     try{path=resolve(root,'.'+decodeURIComponent(url.pathname));}catch{res.statusCode=400;return res.end();}

@@ -6,7 +6,7 @@ test('leases publishes an opt-in anniversary island', async () => {
 });
 import { transformSync, stop } from 'esbuild';
 import { readFileSync } from 'node:fs';
-import * as ui from '../js/client-anniversaries-client.js';
+import * as ui from '../js/ui-client-anniversaries.js';
 after(() => stop());
 import { createHash } from 'node:crypto';
 import { chromium } from './browser-harness.mjs';
@@ -41,7 +41,7 @@ async function open(t,{width=1440,theme='light'}={}) {
   await page.goto('http://localhost/island');
   await page.evaluate(async()=>{
     const {mountClientAnniversaries}=await import('/js/ui-client-anniversaries.js');
-    const {parseClientAnniversaries}=await import('/js/client-anniversaries-client.js');
+    const {parseClientAnniversaries}=await import('/js/ui-client-anniversaries.js');
     window.reads=0;window.pending=[];
     window.panel=mountClientAnniversaries(document.getElementById('host'),{load:signal=>{window.reads++;window.signal=signal;return new Promise((resolve,reject)=>window.pending.push({resolve:value=>{try{resolve(parseClientAnniversaries(value));}catch(error){reject(error);}},reject}));}});
   });
@@ -101,7 +101,7 @@ for(const action of ['dispose','pagehide','doctorcre-session-invalidated'])for(c
   assert.equal(await page.locator('#host').innerText(),'');
 });
 test('read adapter preserves query and signal, refuses auth and malformed bodies',async()=>{
-  const {createClientAnniversariesClient}=await import('../js/client-anniversaries-client.js');
+  const {createClientAnniversariesClient}=await import('../js/ui-client-anniversaries.js');
   let count=0;
   const client=createClientAnniversariesClient({fetchImpl:async(path,init)=>{
     count++;assert.equal(path,'/api/v1/intelligence/client-anniversary-read?horizon_days=30&limit=20&offset=0');assert.equal(init.credentials,'same-origin');

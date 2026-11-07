@@ -8,7 +8,7 @@ const radar=mountLeaseRadar({document,window,client});
 window.addEventListener('pagehide',event=>{if(!event.persisted)radar.dispose();});
 
 import { mountClientAnniversaries } from './ui-client-anniversaries.js';
-import { createClientAnniversariesClient } from './client-anniversaries-client.js';
+import { createClientAnniversariesClient } from './ui-client-anniversaries.js';
 const anniversaries = createClientAnniversariesClient();
 const anniversaryHost = document.getElementById('clientAnniversaries');
 if (anniversaryHost) mountClientAnniversaries(anniversaryHost, {load:signal=>anniversaries.read({signal})});
