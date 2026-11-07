@@ -59,15 +59,15 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     page.on('request', request => {
       if (new URL(request.url()).pathname === '/mcp' && request.postData()?.includes('quiet-follow-ups')) reads++;
     });
-    await page.goto(new URL('/vendors', base).href, { timeout: remaining() });
+    try { await page.goto(new URL('/vendors', base).href, { timeout: remaining() }); } catch { throw unavailable('Vendor page unavailable'); }
     const section = page.getByRole('region', { name: 'Quiet vendor follow-ups' });
     const show = page.getByRole('button', { name: 'Show quiet vendors' });
     try { await show.waitFor({ timeout: remaining() }); } catch { throw unavailable('Quiet vendor surface or signed-in session unavailable'); }
     const response = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postData()?.includes('quiet-follow-ups'), { timeout: remaining() });
     response.catch(() => {});
     await show.click();
-    const payload = await (await response).json();
     try {
+      const payload = await (await response).json();
       snapshot = JSON.parse(payload.result.content.find(item => item.type === 'text').text);
       await page.evaluate(async snapshot => {
         const { validateQuietFollowUps } = await import('/js/leads-client.js');
