@@ -137,3 +137,18 @@ test('boundary refuses oversized slices, changed query, invalid coverage, dates,
     {...more,rows:[...more.rows].reverse()},
   ])assert.throws(()=>ui.parseClientAnniversaries(payload));
 });
+for(const state of ['idle','loading','success','empty','refusal'])test(`persisted pagehide resets ${state} and permits a fresh opt-in`,async t=>{
+  const page=await open(t);
+  if(state!=='idle')await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+  if(['success','empty','refusal'].includes(state)){
+    await complete(page,state==='success'?fixtures.ready.output:state==='empty'?fixtures.empty.output:{});
+    await page.locator('[aria-busy="false"]').waitFor();
+  }
+  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
+  assert.equal(await page.getByRole('button',{name:'Show closing anniversaries'}).count(),1);
+  if(state==='loading')await complete(page,fixtures.ready.output);
+  assert.equal(await page.locator('li').count(),0);
+  await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+  await complete(page,fixtures.empty.output);
+  await page.getByText('No closing anniversaries in this slice.').waitFor();
+});

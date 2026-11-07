@@ -51,11 +51,14 @@ export function mountClientAnniversaries(host:HTMLElement, {load}:{load:(signal:
   const dispose = () => {
     if (terminal) return;
     terminal = true; invalidate();
-    win?.removeEventListener('pagehide',dispose);
+    win?.removeEventListener('pagehide',onPagehide);
     win?.removeEventListener('doctorcre-session-invalidated',dispose);
     flushSync(()=>root.unmount());
   };
-  win?.addEventListener('pagehide',dispose);
+  const onPagehide = (event:PageTransitionEvent) => {
+    if (event.persisted) flushSync(() => invalidate()); else dispose();
+  };
+  win?.addEventListener('pagehide',onPagehide);
   win?.addEventListener('doctorcre-session-invalidated',dispose);
   flushSync(()=>root.render(<Panel/>));
   return {dispose};

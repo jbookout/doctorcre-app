@@ -21,3 +21,8 @@ stateDiagram-v2
   empty --> disposed: Dispose or pagehide
   refusal --> disposed: Dispose or pagehide
   idle --> disposed: Dispose or pagehide
+  idle --> idle: Persisted pagehide clears snapshot
+  loading --> idle: Persisted pagehide clears snapshot
+  success --> idle: Persisted pagehide clears snapshot
+  empty --> idle: Persisted pagehide clears snapshot
+  refusal --> idle: Persisted pagehide clears snapshot
