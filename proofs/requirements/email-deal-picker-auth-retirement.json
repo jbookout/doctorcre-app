@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "email-deal-picker-auth-retirement",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "deployed-email-editor-authorization-retirement",
+    "predicate": "Run node scripts/prove-email-deal-picker-auth-retirement.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Match receipt source_commit to the merged build. Execute manifest-hash-verified ui-email-actions and its required graph through public mountEmailActions with synthetic ports. Prove board 401, 403 and session_changed retirement before notification even after canceling the pending read and opening a new editor, no new client call after denial, network recovery, late-result isolation, retained-handler refusal, exact-target search and preview, identical pending replay and created-deal recovery. No business writes. Synthetic deployed-code evidence only.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, asset hashes and each assertion. Exit 1 on contradiction and 78 when release or asset evidence is unavailable.",
+    "input_class": "synthetic-read-only-deployed-module",
+    "deadline_seconds": 30
+  }],
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 10, "max_records": 2, "max_runtime_seconds": 30, "max_artifact_bytes": 65536 }
+}
