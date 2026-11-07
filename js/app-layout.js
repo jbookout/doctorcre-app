@@ -1,4 +1,4 @@
-import { meetingPreparationLifetime } from './meeting-preparation.js';
+import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { todayMove } from './today-moves.mjs';
