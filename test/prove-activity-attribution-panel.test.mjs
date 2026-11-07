@@ -99,3 +99,47 @@ test('real CLI fixture passes, detects incorrect credit and preserves the suppli
  incorrect=true;const failing=await run();assert.equal(failing.code,1,JSON.stringify(failing));assert.match(failing.receipt.error,/credit/);assert.equal(browser.isConnected(),true);assert.equal(existing.isClosed(),false);
  assert.equal(browser.contexts().flatMap(c=>c.pages()).length,1);
 });
+
+test('CLI acquisition failures refuse evidence and late CDP pages are closed before disconnect',async t=>{
+ const {createServer}=await import('./proof-fixture-server.mjs');
+ const {writeFile}=await import('node:fs/promises');
+ const {pathToFileURL,fileURLToPath}=await import('node:url');
+ const {execFile}=await import('node:child_process');
+ const {temporaryDirectory}=await import('../scripts/temp-directory.mjs');
+ const {chromium}=await import('../scripts/proof-browser.mjs');
+ const {chromium:cdp}=await import('playwright');
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ const commit=await new Promise((yes,no)=>execFile('git',['rev-parse','HEAD'],{cwd:root},(error,out)=>error?no(error):yes(out.trim())));
+ const server=createServer((req,res)=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:commit}));});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>new Promise(r=>{server.closeAllConnections();server.close(r);}));
+ const origin=`http://127.0.0.1:${server.address().port}`;
+ const reserve=createServer(()=>{});await new Promise(r=>reserve.listen(0,'127.0.0.1',r));
+ const port=reserve.address().port;await new Promise(r=>reserve.close(r));
+ const endpoint=`http://127.0.0.1:${port}`;
+ const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
+ const existing=await browser.newPage();
+ const scratch=temporaryDirectory('attribution-acquisition-',t);
+ const playwrightURL=import.meta.resolve('playwright');
+ for(const mode of ['unreachable','retired-context','missing-context','late-page'])await t.test(mode,async()=>{
+  const preload=`${scratch}/${mode}.mjs`;
+  await writeFile(preload,`
+   import {chromium} from ${JSON.stringify(playwrightURL)};
+   const connect=chromium.connectOverCDP.bind(chromium);
+   chromium.connectOverCDP=async(...args)=>{
+    const browser=await connect(...args);
+    const context=browser.contexts()[0];
+    const newPage=context.newPage.bind(context);
+    if(${JSON.stringify(mode)}==='retired-context')context.newPage=async()=>{throw Error('Target page, context or browser has been closed');};
+    if(${JSON.stringify(mode)}==='missing-context')browser.contexts=()=>[];
+    if(${JSON.stringify(mode)}==='late-page')context.newPage=async()=>{const page=await newPage();await new Promise(r=>setTimeout(r,2000));return page;};
+    return browser;
+   };
+  `);
+  const result=await new Promise(resolve=>execFile(process.execPath,['--import',pathToFileURL(preload).href,'scripts/prove-activity-attribution-panel.mjs','--origin',origin,'--expected-commit',commit,'--cdp-url',mode==='unreachable'?'http://127.0.0.1:1':endpoint,'--timeout-ms','1500'],{cwd:root,timeout:10000},(error,stdout,stderr)=>resolve({code:error?.code||0,receipt:stdout.trim()?JSON.parse(stdout.trim()):null,stderr})));
+  assert.equal(result.code,78,JSON.stringify(result));assert.equal(result.receipt.status,'insufficient_evidence');
+  const fresh=await cdp.connectOverCDP(endpoint);
+  try{assert.equal(fresh.contexts().flatMap(c=>c.pages()).length,1,'only the pre-existing tab survives');}finally{await fresh.close();}
+  assert.equal(existing.isClosed(),false);assert.equal(browser.isConnected(),true);
+ });
+});
