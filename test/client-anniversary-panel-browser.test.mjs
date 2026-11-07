@@ -4,19 +4,22 @@ import { readFile } from 'node:fs/promises';
 test('leases publishes an opt-in anniversary island', async () => {
   assert.match(await readFile(new URL('../lease-radar.html',import.meta.url),'utf8'), /id="clientAnniversaries"/);
 });
-import { transform, stop } from 'esbuild';
+import { transformSync, stop } from 'esbuild';
+import { readFileSync } from 'node:fs';
+import * as ui from '../js/client-anniversaries-client.js';
 after(() => stop());
 import { createHash } from 'node:crypto';
 import { chromium } from './browser-harness.mjs';
 import { resolve, sep } from 'node:path';
 const root=resolve(new URL('../',import.meta.url).pathname);
-const fixtures=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/recordings.json',import.meta.url),'utf8'));
-const source=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/producer.txt',import.meta.url),'utf8'));
-const provenance=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/provenance.json',import.meta.url),'utf8'));
-const transformed=await transform(source['calendar-date.ts']+source['client-anniversary-read.ts'].replace(/^import .*$/mg,''),{loader:'ts',format:'esm'});
-const producer=await import('data:text/javascript;base64,'+Buffer.from(transformed.code).toString('base64'));
-const ui=await import('../js/client-anniversaries-client.js');
+const fixtures=JSON.parse(readFileSync(new URL('./fixtures/client-anniversary-panel/recordings.json',import.meta.url),'utf8'));
+const source=JSON.parse(readFileSync(new URL('./fixtures/client-anniversary-panel/producer.txt',import.meta.url),'utf8'));
+const provenance=JSON.parse(readFileSync(new URL('./fixtures/client-anniversary-panel/provenance.json',import.meta.url),'utf8'));
+const transformed=transformSync(source['calendar-date.ts']+source['client-anniversary-read.ts'].replace(/^import .*$/mg,''),{loader:'ts',format:'esm'});
+const producerPromise=import('data:text/javascript;base64,'+Buffer.from(transformed.code).toString('base64'));
+
 test('pinned registered producer and parser replay every recording through app parser',async()=>{
+  const producer=await producerPromise;
   for(const [name,text] of Object.entries(source))assert.equal(createHash('sha256').update(text).digest('hex'),provenance.files[name]);
   for(const fixture of Object.values(fixtures)) {
     const output=await producer.readClientAnniversaries({client:{query:async()=>{if(fixture.input===null)throw Error('synthetic');return {rows:fixture.input};}},actor:{slug:'joe'},args:{horizon_days:30,limit:20,offset:0},now:()=>new Date('2026-11-06T18:00:00Z')});

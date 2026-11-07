@@ -2,7 +2,7 @@ import { sessionFetch } from './private-session.js';
 import { fetchRead } from './auto-refresh.mjs';
 const object = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const integer = (v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
-const date = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && (/* @__PURE__ */ new Date(v + "T00:00:00Z")).toISOString().slice(0, 10) === v;
+const date = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v + "T00:00:00Z")) && (new Date(v + "T00:00:00Z")).toISOString().slice(0, 10) === v;
 const label = (v) => typeof v === "string" && v.trim().length > 0;
 function parseClientAnniversaries(v) {
   if (!object(v) || v.schema_version !== "client-anniversary-read.v1" || v.timezone !== "America/Chicago" || !date(v.as_of) || !object(v.query) || v.query.horizon_days !== 30 || v.query.limit !== 20 || v.query.offset !== 0 || !Array.isArray(v.rows) || v.rows.length > 20 || !object(v.coverage)) throw Error("Anniversary response unavailable");
