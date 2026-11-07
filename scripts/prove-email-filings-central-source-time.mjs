@@ -202,7 +202,8 @@ export async function prove({ origin, timeoutMs = 30000, engine = chromium }) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    assert.deepEqual([process.argv[2], process.argv[4]], ['--origin', '--timeout-ms']);
-    console.log(JSON.stringify(await prove({ origin: process.argv[3], timeoutMs: Number(process.argv[5]) })));
+    const args = proofArgs();
+    assert.deepEqual([args[0], args[2]], ['--origin', '--timeout-ms']);
+    console.log(JSON.stringify(await prove({ origin: args[1], timeoutMs: Number(args[3]) })));
   } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message, production_acceptance: 'insufficient_evidence' })); process.exitCode = error.exitCode || 1; }
 }

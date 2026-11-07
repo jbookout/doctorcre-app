@@ -5,7 +5,7 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 const { values } = parseArgs({ options: { 'cdp-url': { type: 'string' }, origin: { type: 'string' }, 'timeout-ms': { type: 'string', default: '30000' }, help: { type: 'boolean' } } });
 if (values.help) {
-  console.log('Usage: node scripts/prove-quick-switcher-partial-read.mjs --origin <http(s)-origin> --timeout-ms 30000\nUses a fresh unauthenticated browser. Protected assets block the proof. Emits a JSON receipt; fixture releases do not prove deployment.');
+  console.log('Usage: node scripts/prove-quick-switcher-partial-read.mjs --origin <http(s)-origin> --timeout-ms 30000\nUses the supplied --cdp-url session or launches a fresh browser. Protected assets block the proof. Emits a JSON receipt; fixture releases do not prove deployment.');
 } else {
   let browser;
   let timer;
