@@ -53,7 +53,7 @@ async function open(t, { width = 1280, theme = 'light', response = recordings.re
 for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`automatic ranked rows, exact join and keyboard review ${width} ${theme}`, async t => {
   const page = await open(t, { width, theme });
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
-  assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(nodes => nodes.map(n => n.dataset.mailProposal)), recordings.ready.items.map(row => row.proposal_id));
+  assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(nodes => nodes.map(n => n.dataset.mailProposal)), recordings.ready.items.slice(0, 5).map(row => row.proposal_id));
   const text = await page.getByRole('region', { name: 'Mail priorities' }).textContent();
   assert.match(text, /Mailbox joe.*Recorded inbound pending proposals.*As of 2026-11-06.*Recorded next date in UTC/);
   assert.match(text, /Recorded overdue.*2026-10-01/); assert.match(text, /Recorded upcoming.*2026-12-01/); assert.match(text, /Decision date unknown/); assert.match(text, /Source time unknown/);
@@ -145,7 +145,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
   await page.screenshot({ path: `test-artifacts/mail-priorities/${width}-${theme}.png`, fullPage: true });
   assert.equal(requests[0].method, 'GET');
   assert.equal(new URL(requests[0].url).search, '?limit=25');
-  assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(rows => rows.map(row => row.dataset.mailProposal)), recordings.ready.items.map(row => row.proposal_id));
+  assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(rows => rows.map(row => row.dataset.mailProposal)), recordings.ready.items.slice(0, 5).map(row => row.proposal_id));
 });
 
 test('collapse cancels pending reads, reopening reads once and rerenders do not read', async t => {
@@ -190,8 +190,9 @@ test('parent rerender preserves the automatic read and collapsed choice', async 
   });
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
   await page.evaluate(() => window.rerender(true));
-  await page.getByRole('button', { name: 'Hide mail priorities' }).click();
+  assert.equal(await page.getByRole('button', { name: 'Hide mail priorities' }).isDisabled(), true);
   await page.evaluate(() => window.rerender(false));
+  await page.getByRole('button', { name: 'Hide mail priorities' }).click();
   await page.getByRole('button', { name: 'Show mail priorities' }).waitFor();
   assert.equal(await page.evaluate(() => window.calls), 1);
   await page.getByRole('button', { name: 'Show mail priorities' }).click();

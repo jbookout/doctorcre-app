@@ -1,0 +1,32 @@
+stateDiagram-v2
+  [*] --> Loading: Open Home
+  Loading --> First: Read succeeds with decisions
+  Loading --> Empty: Read succeeds without decisions
+  Loading --> Unavailable: Read fails
+  Unavailable --> Loading: Retry
+  First --> Later: Next mail
+  Later --> Later: Next or Previous mail
+  Later --> First: Previous mail reaches first page
+  First --> Review: Open review
+  Later --> Review: Open review
+  Review --> First: Close review on first page
+  Review --> Later: Close review on later page
+  First --> Loading: Refresh
+  Later --> Loading: Refresh
+  Empty --> Loading: Refresh
+  First --> Hidden: Hide or page hidden
+  Later --> Hidden: Hide or page hidden
+  Loading --> Hidden: Hide or page hidden
+  Hidden --> Loading: Show
+  Loading --> Retired: Authorization refused or sign out
+  First --> Retired: Sign out
+  Later --> Retired: Sign out
+  Review --> Retired: Sign out
+  Retired --> Retired: Late read completes
+  Hidden --> Hidden: Late read completes
+  Loading --> [*]: Unmount
+  First --> [*]: Unmount
+  Later --> [*]: Unmount
+  %% never: Paging submits a decision or starts a read.
+  %% never: Review loses its opener through paging, refresh or hide controls.
+  %% never: Retirement or unmount restores rows after late completion.

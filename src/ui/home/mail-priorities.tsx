@@ -2,12 +2,12 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { readMailPriorities, takeEarlyMailPriorities, type MailPage } from './mail-priorities-client';
 import type { InboxItem } from './inbox';
-type State = { kind: 'collapsed' | 'loading' | 'unavailable' | 'auth-retired' } | { kind: 'ready' | 'empty'; page: MailPage };
+type State = { kind: 'collapsed' | 'loading' | 'unavailable' | 'auth-retired' } | { kind: 'ready' | 'empty'; page: MailPage; pageOffset: number };
 type Props = { items: readonly InboxItem[]; review(item: InboxItem, opener: HTMLButtonElement): void; locked?: boolean; read?: typeof readMailPriorities };
 export function MailPriorities({ items, review, locked = false, read = readMailPriorities }: Props) {
   const [early] = useState(takeEarlyMailPriorities);
   const fromOutcome = (outcome: { page?: MailPage; error?: unknown }): State => {
-    if (outcome.page) return outcome.page.state === 'unavailable' ? { kind: 'unavailable' } : { kind: outcome.page.state === 'empty' ? 'empty' : 'ready', page: outcome.page };
+    if (outcome.page) return outcome.page.state === 'unavailable' ? { kind: 'unavailable' } : { kind: outcome.page.state === 'empty' ? 'empty' : 'ready', page: outcome.page, pageOffset: 0 };
     const error = outcome.error;
     const denied = error && typeof error === 'object' && (('status' in error && [401, 403].includes(Number(error.status))) || ('code' in error && error.code === 'session_changed'));
     return { kind: denied ? 'auth-retired' : 'unavailable' };
@@ -46,7 +46,7 @@ export function MailPriorities({ items, review, locked = false, read = readMailP
       if ('error' in outcome) throw outcome.error;
       const page = outcome.page;
       if (current.disposed || current.retired || current.pending !== controller) return;
-      setState(page.state === 'unavailable' ? { kind: 'unavailable' } : { kind: page.state === 'empty' ? 'empty' : 'ready', page });
+      setState(page.state === 'unavailable' ? { kind: 'unavailable' } : { kind: page.state === 'empty' ? 'empty' : 'ready', page, pageOffset: 0 });
     } catch (error) {
       if (current.disposed || current.retired || current.pending !== controller) return;
       const next = fromOutcome({ error });
@@ -56,7 +56,7 @@ export function MailPriorities({ items, review, locked = false, read = readMailP
   }
   return <section className="home-panel" aria-label="Mail priorities" aria-busy={state.kind === 'loading'}>
     <h2>Mail priorities</h2>
-    {state.kind !== 'auth-retired' && <button type="button" aria-expanded={state.kind !== 'collapsed'} aria-controls={bodyId} onClick={() => state.kind === 'collapsed' ? void load() : collapse()}>{state.kind === 'collapsed' ? 'Show mail priorities' : 'Hide mail priorities'}</button>}
+    {state.kind !== 'auth-retired' && <button type="button" disabled={locked} aria-expanded={state.kind !== 'collapsed'} aria-controls={bodyId} onClick={() => state.kind === 'collapsed' ? void load() : collapse()}>{state.kind === 'collapsed' ? 'Show mail priorities' : 'Hide mail priorities'}</button>}
     <div id={bodyId} hidden={state.kind === 'collapsed'}>
       {state.kind === 'loading' && <p role="status">Loading mail priorities…</p>}
       {state.kind === 'auth-retired' && <p role="status">Sign in to view mail priorities.</p>}
@@ -65,7 +65,12 @@ export function MailPriorities({ items, review, locked = false, read = readMailP
         <p>Mailbox {state.page.coverage.mailbox} · Recorded inbound pending proposals · As of {state.page.coverage.as_of_day} · Recorded next date in UTC</p>
         {state.kind === 'empty' && <p role="status">No recorded pending mail decisions.</p>}
         {state.page.more && <p>Only the first 25 ranked decisions are shown.</p>}
-        <ol>{state.page.items.map(row => {
+        {state.page.items.length > 0 && <nav aria-label="Mail pages">
+          <p data-mail-range aria-live="polite">Decisions {state.pageOffset + 1}–{Math.min(state.pageOffset + 5, state.page.items.length)} of {state.page.items.length} loaded</p>
+          <button type="button" disabled={locked || state.pageOffset === 0} onClick={() => { if (!locked) setState({ ...state, pageOffset: Math.max(0, state.pageOffset - 5) }); }}>Previous mail</button>
+          <button type="button" disabled={locked || state.pageOffset + 5 >= state.page.items.length} onClick={() => { if (!locked) setState({ ...state, pageOffset: Math.min(state.pageOffset + 5, Math.floor((state.page.items.length - 1) / 5) * 5) }); }}>Next mail</button>
+        </nav>}
+        <ol start={state.pageOffset + 1}>{state.page.items.slice(state.pageOffset, state.pageOffset + 5).map(row => {
           const matched = items.find(item => item.source_type === 'email_proposal' && item.source_id === row.proposal_id);
           return <li key={row.proposal_id} data-mail-proposal={row.proposal_id} style={{ overflowWrap: 'anywhere' }}>
             <h3>{matched?.title || row.kindLabel}</h3><p>{row.reasonLabel} · {row.decision_date ? <time dateTime={row.decision_date}>{row.decision_date}</time> : 'Decision date unknown'}</p>
@@ -73,7 +78,7 @@ export function MailPriorities({ items, review, locked = false, read = readMailP
             {matched?.review_reference ? <button type="button" disabled={locked} onClick={event => review(matched, event.currentTarget)}>Review {matched.title}</button> : <a href={matched ? `/?card=${encodeURIComponent(matched.item_id)}` : '/inbox'}>Review in inbox</a>}
           </li>;
         })}</ol>
-        <button type="button" onClick={() => void load()}>Refresh mail priorities</button>
+        <button type="button" disabled={locked} onClick={() => void load()}>Refresh mail priorities</button>
       </>}
     </div>
   </section>;
