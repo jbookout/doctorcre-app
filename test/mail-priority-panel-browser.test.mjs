@@ -57,6 +57,9 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`op
   assert.deepEqual(await page.evaluate(() => window.reviews), ['existing-home-id']);
   assert.equal(await page.evaluate(() => window.calls), 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole('button', { name: 'Refresh mail priorities' }).click();
+  await page.getByRole('button', { name: 'Review Existing Home title' }).waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 2);
 });
 for (const kind of ['empty', 'unavailable', 'malformed', 'network', 'auth']) test(`manual retry and retirement ${kind}`, async t => {
   const page = await open(t);
