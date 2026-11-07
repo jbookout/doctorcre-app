@@ -56,7 +56,9 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
     const section=page.getByRole('region',{name:'Closing anniversaries',exact:true});
     await section.locator('[aria-busy="false"]').waitFor({timeout:remaining()});
     const text=await section.innerText();
+    if(await section.getByRole('alert').count())throw insufficient('Anniversary panel read unavailable');
     assert.ok(text.includes('America/Chicago'));
+    assert.ok(text.includes(snapshot.as_of));
     assert.ok(text.includes(`Skipped invalid ${snapshot.coverage.skipped_invalid}`));
     assert.ok(text.includes(`Scanned ${snapshot.coverage.scanned}`));
     const rows=section.locator('ol > li');
@@ -67,7 +69,7 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine
       assert.equal(await row.locator('a').nth(0).getAttribute('href'),`/clients?record=${encodeURIComponent(r.client_id)}`);
       assert.equal(await row.locator('a').nth(1).getAttribute('href'),`/deals?deal=${encodeURIComponent(r.deal_id)}`);
     }
-    if(snapshot.next_offset!==null)assert.ok(text.includes('More anniversary rows exist'));
+    assert.equal(text.includes('More anniversary rows exist'),snapshot.next_offset!==null);
     if(snapshot.state==='empty')assert.ok(text.includes('No closing anniversaries in this slice.'));
     const after=await bounded(release());
     if(after.source_commit!==before.source_commit)throw insufficient('Release changed during observation');

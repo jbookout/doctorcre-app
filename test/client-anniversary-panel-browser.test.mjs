@@ -110,3 +110,11 @@ test('read adapter preserves query and signal, refuses auth and malformed bodies
   for(const status of [401,403,503])await assert.rejects(createClientAnniversariesClient({fetchImpl:async()=>new Response('{}',{status})}).read());
   await assert.rejects(createClientAnniversariesClient({fetchImpl:async()=>new Response('{}')}).read());
 });
+test('hide invalidates late completion while idle',async t=>{
+  const page=await open(t);
+  await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+  await page.getByRole('button',{name:'Hide closing anniversaries'}).click();
+  await complete(page,fixtures.ready.output);
+  assert.equal(await page.locator('li').count(),0);
+  assert.equal(await page.getByRole('button',{name:'Show closing anniversaries'}).count(),1);
+});

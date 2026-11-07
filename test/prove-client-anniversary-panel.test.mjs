@@ -10,13 +10,14 @@ import {assertProofDeadlineCleanup} from './proof-browser-harness.mjs';
 const exec=promisify(execFile), expected='a'.repeat(40);
 const root=resolve(new URL('../',import.meta.url).pathname);
 const fixtures=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/recordings.json',import.meta.url),'utf8'));
-async function server(t,{commit=expected,wrong=false,state='ready',auth=false}={}) {
+async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false}={}) {
+  let businessReads=0;
   const server=createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
     const json=value=>{res.setHeader('content-type','application/json');res.end(JSON.stringify(value));};
     if(url.pathname==='/app-release')return json({service:'doctorcre-app',environment:'production',source_commit:commit});
     if(url.pathname==='/auth/session') {if(auth){res.statusCode=401;return json({error:'unauthorized'});}return json({actor:{slug:'joe'},csrf_token:'synthetic'});}
-    if(url.pathname==='/api/v1/intelligence/client-anniversary-read')return json(fixtures[state].output);
+    if(url.pathname==='/api/v1/intelligence/client-anniversary-read')return json(fixtures[unavailableAfter&&++businessReads>1?'unavailable':state].output);
     if(url.pathname==='/leases'){
       res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/client-anniversaries-client.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}return value;}});</script>`);
     }
@@ -44,11 +45,29 @@ for(const kind of ['older','unrelated','unknown'])test(`${kind} release is insuf
   const origin=await server(t,{commit:kind==='unknown'?'unknown':'b'.repeat(40)});
   await assert.rejects(prove({origin,expectedCommit:expected,ancestry:async()=>false}),{exitCode:78});
 });
-for(const options of [{state:'unavailable'},{auth:true}])test(`unavailable natural session ${JSON.stringify(options)} exits 78`,async t=>{
+for(const options of [{state:'unavailable'},{auth:true},{unavailableAfter:true}])test(`unavailable natural session ${JSON.stringify(options)} exits 78`,async t=>{
   const origin=await server(t,options);
   await assert.rejects(prove({origin,expectedCommit:expected,timeoutMs:1500}),{exitCode:78});
 });
 for(const mode of ['late launch','stalled evaluation'])test(`total deadline cleans ${mode}`,async t=>{
   const origin=await server(t);
   await assertProofDeadlineCleanup(t,{entry:'scripts/prove-client-anniversary-panel.mjs',args:['--origin',origin,'--expected-commit',expected],mode,timeoutMs:3000});
+});
+test('CDP proof closes its acquired page and preserves the shared browser and existing page',async t=>{
+  const {chromium}=await import('../scripts/proof-browser.mjs');
+  const browser=await chromium.launch({args:['--remote-debugging-port=0','--enable-automation']});
+  t.after(()=>browser.close());
+  const sentinel=await browser.newPage();
+  await sentinel.setContent('<title>Owned synthetic shared page</title>');
+  const session=await browser.newBrowserCDPSession();
+  const {arguments:args}=await session.send('Browser.getBrowserCommandLine');
+  await session.detach();
+  const profile=args.find(arg=>arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
+  const [port]=String(await readFile(resolve(profile,'DevToolsActivePort'))).split('\n');
+  const origin=await server(t);
+  const before=browser.contexts()[0].pages().length;
+  assert.equal((await prove({origin,expectedCommit:expected,cdpUrl:`http://127.0.0.1:${port}`})).status,'passed');
+  assert.equal(browser.isConnected(),true);
+  assert.equal(await sentinel.title(),'Owned synthetic shared page');
+  assert.equal(browser.contexts()[0].pages().length,before);
 });
