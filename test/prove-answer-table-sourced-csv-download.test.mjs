@@ -113,7 +113,7 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
   const portFixture = await startFixture();
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
-  const context = await chromium.launchPersistentContext(temporaryDirectory('sourced-csv-browser-',t),{headless:true,acceptDownloads:true,args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
+  const context = await chromium.launchPersistentContext(temporaryDirectory('sourced-csv-browser-',t),{headless:true,acceptDownloads:true,args:[...CHROMIUM_SAFETY_ARGS,'--enable-automation',`--remote-debugging-port=${port}`]});
   t.after(()=>context.close());
   page = await context.newPage();
   await page.goto(origin);

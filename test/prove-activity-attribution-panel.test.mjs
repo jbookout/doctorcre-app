@@ -103,7 +103,7 @@ test('real CLI fixture passes, detects incorrect credit and preserves the suppli
  t.after(()=>server?.close());
  await start();
  const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
+ const browser=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
  const existing=await browser.newPage();await existing.goto('about:blank');
  const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-activity-attribution-panel.mjs','--origin',server.origin,'--expected-commit',commit,'--cdp-url',`http://127.0.0.1:${port}`],{cwd:root,timeout:35000},(error,stdout,stderr)=>resolve({code:error?.code||0,receipt:stdout.trim()?JSON.parse(stdout.trim()):null,stderr})));
  const passing=await run();assert.equal(passing.code,0,JSON.stringify(passing));assert.equal(passing.receipt.status,'passed');assert.equal(browser.isConnected(),true);assert.equal(existing.isClosed(),false);
@@ -142,7 +142,7 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const origin=server.origin;
  const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
  const endpoint=`http://127.0.0.1:${port}`;
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
+ const browser=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
  const existing=await browser.newPage();
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');
