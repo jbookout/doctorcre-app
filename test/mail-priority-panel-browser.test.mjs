@@ -108,3 +108,30 @@ for (const phase of ['idle', 'empty', 'unavailable']) for (const end of ['retire
   else await page.waitForFunction(() => document.getElementById('panel').childElementCount === 0);
   assert.equal(await page.getByRole('button').count(), 0);
 });
+
+test('published Home uses same-origin transport with limit 25 once', async t => {
+  const { buildArtifact } = await import('../scripts/artifact.mjs');
+  const { temporaryDirectory } = await import('../scripts/temp-directory.mjs');
+  const { fixtureServer } = await import('./browser-harness.mjs');
+  const { join } = await import('node:path');
+  const outDir = temporaryDirectory('mail-priority-home-', t);
+  await buildArtifact({ root: process.cwd(), outDir });
+  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  const requests = [];
+  await page.route('**/api/v1/intelligence/mail-needs-partner*', route => {
+    requests.push({ method: route.request().method(), url: route.request().url() });
+    return route.fulfill({ json: recordings.ready });
+  });
+  await page.goto(server.origin + '/?mode=fixture');
+  const button = page.getByRole('button', { name: 'Show mail priorities' }); await button.waitFor();
+  assert.equal(requests.length, 0);
+  await button.click();
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].method, 'GET');
+  assert.equal(new URL(requests[0].url).search, '?limit=25');
+  assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(rows => rows.map(row => row.dataset.mailProposal)), recordings.ready.items.map(row => row.proposal_id));
+});
