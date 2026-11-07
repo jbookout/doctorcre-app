@@ -93,7 +93,9 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
       if (url.origin !== base.origin || url.pathname !== '/mcp') { blocked++; return route.abort(); }
       const name = request.postDataJSON()?.params?.name;
       rpc++; observedVerbs.push(name);
-      if (name !== 'list-verbs') await bounded(admitted);
+      if (name !== 'list-verbs') {
+        try { await bounded(admitted); } catch { return route.abort().catch(() => {}); }
+      }
       if (name !== 'list-verbs' && (!verbWrites?.has(name) || verbWrites.get(name))) {
         blocked++; return route.abort();
       }
