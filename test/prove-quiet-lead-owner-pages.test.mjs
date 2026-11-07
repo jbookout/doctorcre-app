@@ -65,6 +65,7 @@ for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreada
   assert.equal(registry.verbs.find(verb => verb.name === 'quiet-follow-ups').write, false);
   if (registryMode === 'stale write flag') registry.verbs.find(verb => verb.name === 'quiet-follow-ups').write = true;
   if (registryMode === 'unknown') registry.verbs = registry.verbs.filter(verb => verb.name !== 'quiet-follow-ups');
+  registry.count = registry.verbs.length;
   if (registryMode === 'malformed') delete registry.verbs[0].write;
   let borrowed, registryReads = 0;
   const engine = { connectOverCDP: async (endpoint, options) => {
