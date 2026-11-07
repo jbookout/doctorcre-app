@@ -290,4 +290,3 @@ test('CLI with containing release and unreachable CDP exits 78', async t => {
   const result = await new Promise(resolve => execFile(process.execPath, ['scripts/prove-client-anniversary-panel.mjs', '--origin', fixture.origin, '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1'], { timeout: 15000 }, (error, stdout, stderr) => resolve({ code: error?.code || 0, stdout, stderr })));
   assert.equal(result.code, 78, JSON.stringify(result));
 });
-
