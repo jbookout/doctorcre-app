@@ -20,6 +20,7 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     return ms;
   };
   let browser, page, release, borrowed, pendingConnection;
+  let assertionsStarted = false;
   const pendingPages = new Set();
   const work = async () => {
     release = await readRelease(base, { timeoutMs: remaining() });
@@ -82,6 +83,7 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     const select = section.getByRole('combobox', { name: 'Quiet vendor owner' });
     const history = section.getByRole('combobox', { name: 'Contact history', exact: true });
     await select.waitFor();
+    assertionsStarted = true;
     assert.equal(await history.count(), 1, 'Contact history selector present');
     await page.waitForLoadState('networkidle', { timeout: remaining() });
     const before = reads, assertions = [];
@@ -121,7 +123,7 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
       timer = setTimeout(() => { controller.abort(); void page?.close().catch(() => {}); reject(unavailable('Total proof deadline expired')); }, timeoutMs);
     })]);
   } catch (error) {
-    if (!error.exitCode && !release) error.exitCode = 78;
+    if (!assertionsStarted) error.exitCode = 78;
     if (/Timeout|Target closed|Session closed|connectOverCDP/.test(error.message)) error.exitCode = 78;
     if (!error.exitCode && release) {
       const after = await readRelease(base, { timeoutMs: remaining() });
