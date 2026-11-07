@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createServer } from 'node:http';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { promisify } from 'node:util';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -25,23 +25,18 @@ for (const kind of ['equal', 'descendant', 'older', 'unrelated', 'unknown']) tes
   else await assert.rejects(prove(options), { exitCode: 78 });
 });
 test('unreachable CDP session exits 78 after verifying a containing release', async t => {
-  let releaseReads = 0;
-  const server = createServer((request, response) => {
-    assert.equal(request.url, '/app-release');
-    releaseReads++;
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: commit }));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
-  await assert.rejects(run(process.execPath, [args[0], '--origin', `http://127.0.0.1:${server.address().port}`,
+  const server = await startFixture({ routes: new Map([['/app-release', {
+    contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: commit }),
+  }]]) });
+  t.after(() => server.close());
+  await assert.rejects(run(process.execPath, [args[0], '--origin', server.origin,
     '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1', '--timeout-ms', '5000']), error => {
     assert.equal(error.code, 78);
     assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence');
     assert.match(JSON.parse(error.stdout).error, /ECONNREFUSED/);
     return true;
   });
-  assert.equal(releaseReads, 1);
+  assert.deepEqual(server.requests.map(request => request.path), ['/app-release']);
 });
 test('missing session is insufficient evidence', async () => {
   await assert.rejects(prove({ expectedCommit: commit, readRelease: async () => ({ source_commit: commit }) }), { exitCode: 78 });
@@ -57,14 +52,12 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`deadline cleanup
 });
 
 test('natural proof borrows a CDP session and leaves its browser running', async t => {
-  const { createServer } = await import('node:net');
   const { chromium } = await import('playwright');
   const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
   const { routeLeads } = await import('./leads-browser-fixture.mjs');
-  const listener = createServer();
-  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
-  const port = listener.address().port;
-  await new Promise(resolve => listener.close(resolve));
+  const listener = await startFixture();
+  const port = new URL(listener.origin).port;
+  await listener.close();
   const owned = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   t.after(() => owned.close());
   const recording = JSON.parse(await readFile(new URL('./fixtures/quiet-lead-owner-pages/recordings.json', import.meta.url)));
@@ -93,4 +86,94 @@ test('missing expected commit remains insufficient evidence regardless of argume
   for (const options of [['--fixture'], ['--origin', 'http://localhost', '--timeout-ms', '1']]) {
     await assert.rejects(run(process.execPath, [args[0], ...options]), error => error.code === 78 && /Expected merge commit required/.test(error.stdout));
   }
+});
+
+for (const stage of ['connectOverCDP', 'newPage']) test(`rejected ${stage} is insufficient evidence`, async () => {
+  let closed = false;
+  const engine = { connectOverCDP: async () => {
+    if (stage === 'connectOverCDP') throw Error('connection unavailable');
+    return { contexts: () => [{ newPage: async () => { throw Error('page unavailable'); } }], close: async () => { closed = true; } };
+  } };
+  await assert.rejects(prove({ expectedCommit: commit, cdpUrl: 'http://localhost', engine,
+    readRelease: async () => ({ source_commit: commit }) }), { exitCode: 78 });
+  assert.equal(closed, stage === 'newPage');
+});
+
+test('late newPage closes before CDP disconnect and fresh connection sees no added tab', async t => {
+  const { chromium } = await import('playwright');
+  const { chromium: ownedEngine } = await import('../scripts/proof-browser.mjs');
+  const listener = await startFixture();
+  const endpoint = listener.origin, port = new URL(endpoint).port;
+  await listener.close();
+  const owned = await ownedEngine.launch({ args: [`--remote-debugging-port=${port}`] });
+  t.after(() => owned.close());
+  const existing = await owned.newPage();
+  let created;
+  const engine = { connectOverCDP: async () => {
+    const browser = await chromium.connectOverCDP(endpoint);
+    const context = browser.contexts()[0], newPage = context.newPage.bind(context);
+    context.newPage = async () => {
+      created = await newPage();
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return created;
+    };
+    return browser;
+  } };
+  await assert.rejects(prove({ expectedCommit: commit, cdpUrl: endpoint, engine, timeoutMs: 1000,
+    readRelease: async () => ({ source_commit: commit }) }), { exitCode: 78 });
+  await new Promise(resolve => setTimeout(resolve, 1700));
+  const fresh = await chromium.connectOverCDP(endpoint);
+  try {
+    assert.ok(created, 'page creation actually executed');
+    assert.equal(fresh.contexts()[0].pages().length, 1);
+    assert.equal(existing.isClosed(), false);
+  } finally { await fresh.close(); }
+});
+
+test('leading-digit near miss in displayed matching count fails the CLI', async t => {
+  const root = temporaryDirectory('quiet-count-near-miss-', t), preload = join(root, 'preload.mjs');
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+    const launch = chromium.launch.bind(chromium);
+    chromium.launch = async options => {
+      const browser = await launch(options), newPage = browser.newPage.bind(browser);
+      browser.newPage = async (...args) => {
+        const page = await newPage(...args);
+        await page.addInitScript(() => {
+          new MutationObserver(() => {
+            for (const status of document.querySelectorAll('#quietFollowUps p[role="status"]')) {
+              if (status.textContent.startsWith('Showing 1–')) status.textContent = status.textContent.replace('Showing 1–', 'Showing 11–');
+            }
+          }).observe(document, { subtree: true, childList: true, characterData: true });
+        });
+        return page;
+      };
+      return browser;
+    };
+  `);
+  await assert.rejects(run(process.execPath, ['--import', preload, ...args]), error => {
+    assert.equal(error.code, 1);
+    assert.equal(JSON.parse(error.stdout).status, 'assertion_failure');
+    return true;
+  });
+});
+
+
+test('newPage rejection exits 78 through the CLI', async t => {
+  const root = temporaryDirectory('quiet-page-rejection-', t), preload = join(root, 'preload.mjs');
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+    const launch = chromium.launch.bind(chromium);
+    chromium.launch = async options => {
+      const browser = await launch(options);
+      browser.newPage = async () => { throw Error('page unavailable'); };
+      return browser;
+    };
+  `);
+  await assert.rejects(run(process.execPath, ['--import', preload, ...args]), error => {
+    assert.equal(error.code, 78);
+    assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence');
+    assert.match(JSON.parse(error.stdout).error, /page unavailable/);
+    return true;
+  });
 });
