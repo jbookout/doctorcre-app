@@ -23,7 +23,8 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`cont
   await reasons.getByRole('button',{name:`Show ${width === 390 ? 5 : 4} more`}).click();
   assert.equal(await reasons.locator('.work-card').count(),6);
   assert.equal(await reasons.getByRole('link',{name:'Follow up with DEMO-CLIENT',exact:true}).getAttribute('href'),'/clients?record=demo-client');
-  assert.equal(await reasons.locator('button').count(),0);
+  assert.equal(await reasons.getByRole('button',{name:'Apply evidence window',exact:true}).count(),1);
+  assert.equal(await reasons.locator('button').count(),1);
   assert.match(await reasons.innerText(),/Needs review/);
   assert.match(await reasons.innerText(),/Florida formations · Not yet covered/);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
