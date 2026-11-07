@@ -8,10 +8,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { transform } from 'esbuild';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
-import { handleDoctorcreRequest } from '../src/worker.js';
 import { chromium as rawChromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { prove } from '../scripts/prove-historical-close-window.mjs';
@@ -59,33 +58,22 @@ async function fixture(t, mode='equal') {
   await git('checkout','--orphan','unrelated'); const unrelated = await commit('unrelated');
   const released = ({older,descendant,unrelated,unknown:'f'.repeat(40)})[mode] || expected;
   const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
-  const server = createServer(async (req,res) => {
-    if (req.url === '/leads') {
-      res.setHeader('content-type','text/html');
-      return res.end(`<!doctype html><title>Natural fixture</title><main></main><script type="module">
-        import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.js';
-        mountIdealClientProfile(document.querySelector('main'),{ async getIdealClientProfile(){
-          const response=await fetch('/__recorded',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ideal-client-profile',arguments:{}}})});
-          return JSON.parse((await response.json()).result.content[0].text);
-        }});
-      </script>`);
-    }
-    if (req.url === '/__recorded') {
-      res.setHeader('content-type','application/json');
-      return res.end(JSON.stringify({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(mode==='empty'?recorded.empty:recorded.full)}]}}));
-    }
-    if (req.url === '/app-release') {
-      const response = await handleDoctorcreRequest(new Request('http://fixture.test/app-release'),{GIT_SHA:released,APP_ENV:'production'});
-      res.setHeader('content-type','application/json'); return res.end(Buffer.from(await response.arrayBuffer()));
-    }
-    const path = decodeURIComponent(new URL(req.url,'http://fixture.test').pathname).slice(1);
-    let asset = assets.get(path);
-    if (mode === 'assertion' && path === 'js/ui-ideal-client-profile.js') asset = Buffer.from(asset.toString().replaceAll('Full-history wins','Wrong heading'));
-    res.writeHead(asset ? 200:404,{'content-type':'text/javascript'}); res.end(asset);
-  });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(()=>{server.closeAllConnections();server.close();});
-  return {origin:`http://127.0.0.1:${server.address().port}`,expected:mode==='unknown-expected'?'e'.repeat(40):expected,history};
+  const snapshot = new Map([...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}]));
+  if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.js',{body:assets.get('js/ui-ideal-client-profile.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
+  const routes = new Map([['/leads',{contentType:'text/html',body:`<!doctype html><title>Natural fixture</title><main></main><script type="module">
+    import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.js';
+    mountIdealClientProfile(document.querySelector('main'),{ async getIdealClientProfile(){
+      const response=await fetch('/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ideal-client-profile',arguments:{}}})});
+      return JSON.parse((await response.json()).result.content[0].text);
+    }});
+  </script>`}]]);
+  const server = await startWorkerFixture({assets:snapshot,routes,env:{GIT_SHA:released,APP_ENV:'production',CARR:{fetch:async request=>{
+    const input=await request.json();
+    assert.equal(input.params.name,'ideal-client-profile');
+    return Response.json({jsonrpc:'2.0',id:input.id,result:{content:[{type:'text',text:JSON.stringify(mode==='empty'?recorded.empty:recorded.full)}]}});
+  }}}});
+  t.after(()=>server.close());
+  return {origin:server.origin,expected:mode==='unknown-expected'?'e'.repeat(40):expected,history};
 }
 async function cli(t, mode, extra=[]) {
   const f = await fixture(t,mode);
@@ -134,9 +122,8 @@ for (const mode of ['late launch','stalled evaluation']) test(`real browser is d
 
 test('signed-in natural fixture passes while borrowed browser survives',async t=>{
   const f=await fixture(t);
-  const socket=createServer((_req,res)=>res.end());
-  await new Promise(resolve=>socket.listen(0,'127.0.0.1',resolve));
-  const port=socket.address().port; await new Promise(resolve=>socket.close(resolve));
+  const socket=await startFixture();
+  const port=new URL(socket.origin).port; await socket.close();
   const borrowed=await rawChromium.launch({args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
   t.after(()=>borrowed.close());
   const context=await borrowed.newContext(); const keeper=await context.newPage();

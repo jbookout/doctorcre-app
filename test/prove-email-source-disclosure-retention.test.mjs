@@ -16,7 +16,7 @@ test('proof CLI working-tree pass and broken fixture', async t => {
   const outDir = temporaryDirectory('disclosure-proof-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: process.cwd(), outDir });
-  const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
+  let server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const args = ['scripts/prove-email-source-disclosure-retention.mjs', '--origin', server.origin, '--timeout-ms', '30000', '--fixture'];
   const passed = await exec(process.execPath, args, { timeout: 40000 });
   const receipt = JSON.parse(passed.stdout);
@@ -26,10 +26,16 @@ test('proof CLI working-tree pass and broken fixture', async t => {
   const asset = join(outDir, 'site/js/email-followups.js');
   const original = await readFile(asset);
   await writeFile(asset, 'export function mountEmailFollowups(){throw Error("Broken fixture behavior")}');
+  await server.close();
+  server = await fixtureServer({ root: join(outDir, 'site') });
+  args[2] = server.origin;
   await assert.rejects(exec(process.execPath, args, { timeout: 40000 }), error => {
     assert.equal(error.code, 1); assert.equal(JSON.parse(error.stdout).status, 'failed'); return true;
   });
+  await server.close();
   await writeFile(asset, original);
+  server = await fixtureServer({ root: join(outDir, 'site') });
+  args[2] = server.origin;
   await assert.rejects(exec(process.execPath, args.map(value => value === '30000' ? '1' : value), { timeout: 10000 }), error => {
     assert.equal(error.code, 78); assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence'); return true;
   });

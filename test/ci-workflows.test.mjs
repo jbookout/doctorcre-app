@@ -170,6 +170,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
   const archive = join(workspace, "app.tar");
   execFileSync("git", ["archive", "-o", archive, "HEAD"], { cwd: root });
   execFileSync("tar", ["-xf", archive, "-C", app]);
+  execFileSync("git", ["init", "-q"], { cwd: app });
   await symlink(join(root, "node_modules"), join(app, "node_modules"), "dir");
   await mkdir(join(producer, ".github/workflows"), { recursive: true });
   // Synthetic external source reproduces the scanner refusal without reading

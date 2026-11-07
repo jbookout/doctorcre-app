@@ -1,16 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 const assets = await uiAssets(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
-const root = resolve('test/fixtures');
 async function fixture(t, mode) {
-  const seen = [];
   const files = new Map(assets);
   if (mode === 'assertion') files.set('js/ui-task-done.js', Buffer.from('export async function completeAction(){return {}}'));
   if (mode === 'network') files.set('js/ui-task-done.js', Buffer.from("await fetch('/business', {method:'POST'});"));
@@ -25,25 +22,15 @@ async function fixture(t, mode) {
   if (mode === 'identity') manifest.source_commit = '2'.repeat(40);
   if (mode === 'wrong-asset') files.set('js/ui-task-done.js', Buffer.from('export const wrong = true;'));
   if (mode === 'cross-origin') manifest.files.find(row => row.path === 'js/ui-task-done.js').path = 'https://other.test/js/ui-task-done.js';
-  const server = createServer((req, res) => {
-    res.setHeader('content-type', 'application/json');
-    seen.push({ method: req.method, path: req.url });
-    let path;
-    try { path = resolve(root, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
-    if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
-    if (req.url === '/artifact-manifest.json') return res.end(mode === 'manifest' ? '{' : JSON.stringify(manifest));
-    if (mode === 'unavailable') { res.writeHead(404); return res.end(); }
-    const data = files.get(req.url.slice(1));
-    if (!data) { res.writeHead(404); return res.end(); }
-    res.setHeader('content-type', 'text/javascript');
-    res.end(data);
-  });
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: `http://127.0.0.1:${server.address().port}`, seen };
+  const responses = new Map([...files].map(([path, body]) => ['/' + path, mode === 'unavailable' ? { status: 404 } : { body, contentType: 'text/javascript' }]));
+  responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+  responses.set('/artifact-manifest.json', { contentType: 'application/json', body: mode === 'manifest' ? '{' : JSON.stringify(manifest) });
+  if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+  const server = await startFixture({ routes: responses });
+  t.after(() => server.close());
+  return { origin: server.origin, get seen() { return server.requests; } };
 }
+
 async function cli(origin, timeout = '30000') {
   const child = spawn(process.execPath, ['scripts/prove-task-completion-event-required.mjs', '--origin', origin, '--timeout-ms', timeout], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
@@ -73,7 +60,7 @@ for (const [mode, code] of [['manifest', 1], ['identity', 1], ['budget', 1], ['n
 test('fixture refuses encoded traversal outside its root', async t => {
   const f = await fixture(t);
   const response = await fetch(f.origin + '/%2e%2e%2fprivate');
-  assert.equal(response.status, 403);
+  assert.equal(response.status, 400);
 });
 
 for (const [mode, expected] of [['canonical', 0], ['unrelated', 1]]) test(`manifest repository ${mode}`, async t => {

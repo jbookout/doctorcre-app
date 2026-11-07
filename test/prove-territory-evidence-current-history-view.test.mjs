@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -36,28 +36,22 @@ fs.writeFileSync(${JSON.stringify(slowPid)}, String(process.pid));
 setTimeout(() => {}, 10000);
 `, { mode: 0o755 });
   }
-  const seen = [];
-  const server = createServer(async (req, res) => {
-    seen.push(req.url);
-    res.setHeader('content-type', 'application/json');
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      res.setHeader('Content-Type', 'application/json');
-      if (mode === 'release-missing') return res.end('{}');
-      if (mode === 'ancestry-slow') await new Promise(resolve => setTimeout(resolve, 700));
-      const response = await handleDoctorcreRequest(new Request('http://fixture.test/app-release'), { GIT_SHA: released, APP_ENV: 'production' });
-      return res.end(Buffer.from(await response.arrayBuffer()));
-    }
-    let bytes = assets.get(req.url.slice(1));
-    if (mode === 'unavailable' || (mode === 'chunk-missing' && req.url.includes('ui-shared-'))) bytes = undefined;
-    if (mode === 'missing-selector' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}');
-    if (mode === 'contradiction' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}');
-    if (mode === 'foreign-import' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('import "https://foreign.invalid/a.js";');
-    res.writeHead(bytes ? 200 : 404, { 'Content-Type': 'text/javascript' }); res.end(bytes);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const routes = new Map();
+  for (const [path, bytes] of assets) {
+    if (mode !== 'unavailable' && !(mode === 'chunk-missing' && path.includes('ui-shared-')))
+      routes.set('/' + path, { body: bytes, contentType: 'text/javascript' });
+  }
+  for (const [scenario, body] of [
+    ['missing-selector', 'export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}'],
+    ['contradiction', 'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}'],
+    ['foreign-import', 'import "https://foreign.invalid/a.js";'],
+  ]) if (mode === scenario) routes.set('/js/ui-territory-evidence.js', { body, contentType: 'text/javascript' });
+  const response = await handleDoctorcreRequest(new Request('http://fixture.test/app-release'), { GIT_SHA: released, APP_ENV: 'production' });
+  routes.set('/app-release', { body: mode === 'release-missing' ? '{}' : Buffer.from(await response.arrayBuffer()), contentType: 'application/json',
+    ...(mode === 'ancestry-slow' ? { delayMs: 700 } : {}), ...(mode === 'timeout' ? { hold: 'timeout' } : {}) });
+  const server = await startFixture({ routes });
+  t.after(() => server.close());
+  const origin = server.origin;
   const args = [fileURLToPath(new URL('../scripts/prove-territory-evidence-current-history-view.mjs', import.meta.url)), '--origin', origin, '--commit', commit, '--timeout-ms', timeout];
   if (fixture) args.push('--fixture');
   const started = performance.now();
@@ -66,7 +60,7 @@ setTimeout(() => {}, 10000);
   catch (error) { result = { code: error.code, receipt: JSON.parse(error.stdout) }; }
   if (mode === 'ancestry-slow') {
     assert.ok(performance.now() - started < 2200, 'ancestry shares the 1200 ms total deadline');
-    assert.deepEqual(seen, ['/app-release'], 'expired ancestry cannot download assets or launch a browser');
+    assert.deepEqual(server.requests.map(request => request.path), ['/app-release'], 'expired ancestry cannot download assets or launch a browser');
     const pid = Number(await readFile(slowPid, 'utf8'));
     assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
   }
@@ -104,16 +98,10 @@ import { prove } from '../scripts/prove-territory-evidence-current-history-view.
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes owned browser after ${mode}`, async t => {
-  const server = createServer((req, res) => {
-    if (req.url === '/app-release') {
-      res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}));
-    }
-    const bytes = assets.get(req.url.slice(1));
-    res.writeHead(bytes ? 200 : 404, {'content-type':'text/javascript'}); res.end(bytes);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  const routes = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
+  routes.set('/app-release', { contentType: 'application/json', body: JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}) });
+  const server = await startFixture({ routes });
+  t.after(() => server.close());
   let owned, acquired;
   const acquisition = new Promise(resolve => acquired = resolve);
   const engine = { launch: async options => {
@@ -122,7 +110,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes 
     if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 1400));
     return owned;
   } };
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const origin = server.origin;
   try {
     await assert.rejects(prove({origin, commit:'a'.repeat(40), timeoutMs:1200, engine,
       exercise: mode === 'stalled evaluation' ? () => new Promise(() => {}) : undefined}), error => error.exitCode === 78);
