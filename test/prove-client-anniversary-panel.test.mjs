@@ -12,7 +12,7 @@ import {assertProofDeadlineCleanup} from './proof-browser-harness.mjs';
 const exec=promisify(execFile), expected='a'.repeat(40);
 const root=resolve(new URL('../',import.meta.url).pathname);
 const fixtures=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/recordings.json',import.meta.url),'utf8'));
-async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false}={}) {
+async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false,mutate='' }={}) {
   let businessReads=0;
   const server=createServer(async(req,res)=>{
     const url=new URL(req.url,'http://localhost');
@@ -25,7 +25,7 @@ async function server(t,{commit=expected,wrong=false,state='ready',auth=false,un
       return json(fixtures[name].output);
     }
     if(url.pathname==='/leases'){
-      res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}return value;}});</script>`);
+      res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`);
     }
     let path;
     try{path=resolve(root,'.'+decodeURIComponent(url.pathname));}catch{res.statusCode=400;return res.end();}
@@ -93,4 +93,55 @@ test('CDP proof closes its acquired page and preserves the shared browser and ex
   assert.equal(browser.isConnected(),true);
   assert.equal(await sentinel.title(),'Owned synthetic shared page');
   assert.equal(browser.contexts()[0].pages().length,before);
+});
+
+for (const [field,mutate] of [
+  ['years', 'value.rows[0].years=16;'],
+  ['days until', 'value.rows[0].days_until=16;'],
+  ['scanned', 'value.coverage.scanned=Number(String(value.coverage.scanned)+"0");'],
+  ['skipped invalid', 'value.coverage.skipped_invalid=10+value.coverage.skipped_invalid;'],
+  ['client name', "value.rows[0].client_name='Prefix '+value.rows[0].client_name;"],
+  ['deal name', "value.rows[0].deal_name='Prefix '+value.rows[0].deal_name;"],
+]) test(`proof CLI refuses near-miss ${field} on a containing release`,async t=>{
+  const origin=await server(t,{mutate});
+  await assert.rejects(exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',origin,'--expected-commit',expected,'--timeout-ms','15000']),error=>error.code===1);
+});
+
+test('CDP deadline waits for a late page before disconnecting and leaves no borrowed tabs',async t=>{
+  const {chromium}=await import('../scripts/proof-browser.mjs');
+  const {chromium:driver}=await import('playwright');
+  const browser=await chromium.launch({args:['--remote-debugging-port=0','--enable-automation']});
+  t.after(()=>browser.close());
+  const sentinel=await browser.newPage();
+  await sentinel.setContent('<title>Preserved shared page</title>');
+  const session=await browser.newBrowserCDPSession();
+  const {arguments:args}=await session.send('Browser.getBrowserCommandLine');
+  await session.detach();
+  const profile=args.find(arg=>arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
+  const [port]=String(await readFile(resolve(profile,'DevToolsActivePort'))).split('\n');
+  const cdpUrl=`http://127.0.0.1:${port}`;
+  const connect=driver.connectOverCDP.bind(driver);
+  const baseline=browser.contexts()[0].pages().length;
+  let acquired=false;
+  driver.connectOverCDP=async (...args)=>{
+    const connection=await connect(...args);
+    const context=connection.contexts()[0],newPage=context.newPage.bind(context);
+    context.newPage=async (...args)=>{
+      const page=await newPage(...args);
+      acquired=true;
+      await new Promise(resolve=>setTimeout(resolve,1800));
+      return page;
+    };
+    return connection;
+  };
+  t.after(()=>{driver.connectOverCDP=connect;});
+  const origin=await server(t);
+  await assert.rejects(prove({origin,expectedCommit:expected,cdpUrl,timeoutMs:1500}),{exitCode:78});
+  assert.equal(acquired,true);
+  const observer=await connect(cdpUrl);
+  try {
+    assert.equal(observer.contexts()[0].pages().length,baseline);
+    assert.equal(await sentinel.title(),'Preserved shared page');
+    assert.equal(browser.isConnected(),true);
+  } finally { await observer.close(); }
 });

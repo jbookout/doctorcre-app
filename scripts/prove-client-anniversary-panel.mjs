@@ -34,12 +34,15 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000}) {
       } catch { throw insufficient('Release ancestry is insufficient'); }
     }
     containing = true;
-    let ownedPage;
+    let pendingPage, closing;
     const selected = cdpUrl ? {async launch(options) {
       const connection = await driver.connectOverCDP(cdpUrl,{timeout:options.timeout});
       return {
-        async newPage() { ownedPage=await connection.contexts()[0].newPage(); return ownedPage; },
-        async close() { await ownedPage?.close(); await connection.close(); },
+        newPage() { return pendingPage=connection.contexts()[0].newPage(); },
+        close() { return closing ||= (async () => {
+          try { const ownedPage=await pendingPage; await ownedPage?.close(); }
+          finally { await connection.close(); }
+        })(); },
       };
     }} : chromium;
     browser=await launchProofBrowser(selected,{timeout:remaining()},{signal:controller.signal});
@@ -57,14 +60,14 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000}) {
     const text=await section.innerText();
     if(await section.getByRole('alert').count())throw insufficient('Anniversary panel read unavailable');
     assert.ok(text.includes('America/Chicago'));
-    assert.ok(text.includes(snapshot.as_of));
-    assert.ok(text.includes(`Skipped invalid ${snapshot.coverage.skipped_invalid}`));
-    assert.ok(text.includes(`Scanned ${snapshot.coverage.scanned}`));
+    assert.equal(await section.locator('#anniversaryContent > p').filter({hasText:'As of '}).innerText(),`As of ${snapshot.as_of}. Scanned ${snapshot.coverage.scanned}. Skipped invalid ${snapshot.coverage.skipped_invalid}.`);
     const rows=section.locator('ol > li');
     assert.equal(await rows.count(),snapshot.rows.length);
     for(let i=0;i<snapshot.rows.length;i++) {
-      const r=snapshot.rows[i],row=rows.nth(i),content=await row.innerText();
-      for(const value of [r.client_name,r.deal_name,r.closed_on,r.anniversary_on,`${r.years} years`,`${r.days_until} days until`])assert.ok(content.includes(value));
+      const r=snapshot.rows[i],row=rows.nth(i);
+      assert.equal(await row.locator('a').nth(0).innerText(),r.client_name);
+      assert.equal(await row.locator('a').nth(1).innerText(),r.deal_name);
+      assert.equal(await row.locator('p').innerText(),`Closed ${r.closed_on} · Anniversary ${r.anniversary_on} · ${r.years} years · ${r.days_until} days until`);
       assert.equal(await row.locator('a').nth(0).getAttribute('href'),`/clients?record=${encodeURIComponent(r.client_id)}`);
       assert.equal(await row.locator('a').nth(1).getAttribute('href'),`/deals?deal=${encodeURIComponent(r.deal_id)}`);
     }
