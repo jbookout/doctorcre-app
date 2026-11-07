@@ -8,7 +8,7 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 
 const insufficient = message => Object.assign(Error(message), { exitCode: 78 });
-export async function windowAssertions(page, payload) {
+async function windowAssertions(page, payload) {
   assert.equal(payload.schema_version, 'ideal-client-profile.v1');
   assert.equal(payload.coverage, 'recorded_closed_won_only');
   const date = payload.profiles.flatMap(row => row.evidence)[0]?.closed_on;
