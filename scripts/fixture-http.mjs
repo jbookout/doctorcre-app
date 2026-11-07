@@ -95,7 +95,10 @@ async function start(options, worker, port = 0, qaSeed, demo = false) {
     res.shouldKeepAlive = false;
     const target = req.url || '';
     const path = target.split('?')[0];
-    const log = !worker && !entries.has(path) ? rejectedObservations : observations;
+    // Only an undeclared root read is a host probe. Application paths and all
+    // write attempts remain visible to the owning test's request assertions.
+    const hostProbe = !worker && !entries.has(path) && path === '/' && ['GET', 'HEAD'].includes(req.method);
+    const log = hostProbe ? rejectedObservations : observations;
     if (log.length < budget.observations) log.push(Object.freeze({ method: req.method, path, target, headers: Object.freeze({ ...req.headers }) }));
     const refuse = status => { res.writeHead(status, { 'cache-control': 'no-store' }); res.end(); };
     if (++count > budget.requests) return refuse(429);
