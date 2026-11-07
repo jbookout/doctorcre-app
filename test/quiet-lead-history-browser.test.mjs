@@ -98,4 +98,13 @@ test('history lifecycle clears idle and disposal, hides loading and refusal, ret
   await page.evaluate(() => view.update({ kind: 'ready', snapshot })); assert.equal(await history.inputValue(), 'last_contact');
   await page.evaluate(() => { view.dispose(); view.dispose(); view.update({ kind: 'ready', snapshot }); });
   assert.equal(await page.locator('#host').innerText(), '');
+  for (const kind of ['idle', 'loading', 'refused']) {
+    await page.evaluate(kind => {
+      window.view = Quiet.mountQuietLeads(document.getElementById('host'), row => row.basis);
+      view.update({ kind: 'ready', snapshot });
+      view.update(kind === 'refused' ? { kind, message: 'Unavailable' } : { kind });
+      view.dispose(); view.update({ kind: 'ready', snapshot });
+    }, kind);
+    assert.equal(await page.locator('#host').innerText(), '', `disposal from ${kind} rejects late rows`);
+  }
 });
