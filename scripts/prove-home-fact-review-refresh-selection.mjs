@@ -1,9 +1,11 @@
-import mailRecordings from '../test/fixtures/mail-priority-panel/recordings.json' with { type: 'json' };
+import { readFile } from 'node:fs/promises';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
+
+const mailRecordings = JSON.parse(await readFile(new URL('../test/fixtures/mail-priority-panel/recordings.json', import.meta.url)));
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 export function factFixture(mode = 'replaced', fresh = false) {
