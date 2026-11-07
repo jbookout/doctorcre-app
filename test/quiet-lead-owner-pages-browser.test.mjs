@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { validateQuietFollowUps } from '../js/leads-client.js';
@@ -38,7 +39,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`qu
   assert.equal(await section.locator('li').count(), leads.filter(row => row.owner == null).length);
   await owner.selectOption('owner:JOE');
   assert.equal(await section.locator('li').count(), leads.filter(row => row.owner === 'JOE').length);
-  assert.equal(await owner.locator('option', { hasText: 'JOE' }).count(), 1);
+  assert.equal(await owner.getByRole('option', { name: 'JOE', exact: true }).count(), 1);
   await owner.selectOption('owner:dell');
   assert.equal(await section.locator('li').count(), leads.filter(row => row.owner === 'dell').length);
   await owner.selectOption('all');
@@ -112,4 +113,16 @@ test('retirement, suspension, stale board completion, refusal retry and disposal
   assert.equal(section.querySelector('select'), null, 'disposal ignores completion');
   await app.refresh(); await settle();
   assert.equal(section.querySelector('select'), null, 'disposed page cannot revive');
+});
+
+
+test('registered producer recording retains its pinned source and app parser contract', async () => {
+  const root = new URL('./fixtures/quiet-lead-owner-pages/', import.meta.url);
+  const provenance = JSON.parse(await readFile(new URL('provenance.json', root)));
+  assert.equal(createHash('sha256').update(await readFile(new URL('producer.txt', root))).digest('hex'), provenance.sha256);
+  assert.equal(provenance.revision, 'd2ca440d318e75f85f49c60b83700979cac57d51');
+  validateQuietFollowUps(recording);
+  assert.ok(recording.proposals.some(row => row.subject_type === 'vendor'));
+  assert.equal(recording.sent, false);
+  assert.equal(recording.tasks_created, false);
 });
