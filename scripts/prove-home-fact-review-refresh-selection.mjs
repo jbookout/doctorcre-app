@@ -1,3 +1,4 @@
+import mailRecordings from '../test/fixtures/mail-priority-panel/recordings.json' with { type: 'json' };
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -21,6 +22,10 @@ export async function observeRefresh(page, origin, mode = 'replaced') {
   const check = (condition, name) => { assert.ok(condition, `${mode}: ${name}`); assertions.push(`${mode}: ${name}`); };
   const envelope = (payload, isError = false) => ({ result: { isError, content: [{ type: 'text', text: JSON.stringify(payload) }] } });
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-proof' } }));
+  await page.route(`${origin}/api/v1/intelligence/mail-needs-partner?limit=25`, async route => {
+    assert.equal(route.request().method(), 'GET', 'Mail priorities stays read-only');
+    await route.fulfill({ json: mailRecordings.empty });
+  });
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
     calls.push({ name, args });
