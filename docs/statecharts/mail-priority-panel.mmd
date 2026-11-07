@@ -1,5 +1,17 @@
 stateDiagram-v2
-  [*] --> Loading: Home opens
+  [*] --> EarlyLoading: Home opens, session transport starts read
+  EarlyLoading: Home bundle loading, mail read in flight
+  EarlySettled: Home bundle loading, mail result held
+  EarlyLoading --> EarlySettled: Response or failure
+  EarlyLoading --> Loading: Island mounts, adopt same request
+  EarlySettled --> Ready: Island mounts with populated response
+  EarlySettled --> Empty: Island mounts with empty response
+  EarlySettled --> Unavailable: Island mounts with failure
+  EarlySettled --> Retired: Island mounts after authorization refusal
+  EarlyLoading --> Collapsed: Page hidden or pagehide before mount
+  EarlySettled --> Collapsed: Page hidden or pagehide before mount
+  EarlyLoading --> Retired: Session retired before mount
+  EarlySettled --> Retired: Session retired before mount
   Collapsed: Show mail priorities
   Loading: Loading mail priorities
   Ready: Ranked recorded decisions

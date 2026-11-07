@@ -1,13 +1,20 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { readMailPriorities, type MailPage } from './mail-priorities-client';
+import { readMailPriorities, takeEarlyMailPriorities, type MailPage } from './mail-priorities-client';
 import type { InboxItem } from './inbox';
 type State = { kind: 'collapsed' | 'loading' | 'unavailable' | 'auth-retired' } | { kind: 'ready' | 'empty'; page: MailPage };
 type Props = { items: readonly InboxItem[]; review(item: InboxItem, opener: HTMLButtonElement): void; locked?: boolean; read?: typeof readMailPriorities };
 export function MailPriorities({ items, review, locked = false, read = readMailPriorities }: Props) {
-  const [state, setState] = useState<State>({ kind: 'loading' });
+  const [early] = useState(takeEarlyMailPriorities);
+  const fromOutcome = (outcome: { page?: MailPage; error?: unknown }): State => {
+    if (outcome.page) return outcome.page.state === 'unavailable' ? { kind: 'unavailable' } : { kind: outcome.page.state === 'empty' ? 'empty' : 'ready', page: outcome.page };
+    const error = outcome.error;
+    const denied = error && typeof error === 'object' && (('status' in error && [401, 403].includes(Number(error.status))) || ('code' in error && error.code === 'session_changed'));
+    return { kind: denied ? 'auth-retired' : 'unavailable' };
+  };
+  const [state, setState] = useState<State>(() => early?.stopped ? { kind: early.stopped } : early?.outcome ? fromOutcome(early.outcome) : { kind: 'loading' });
   const bodyId = useId();
-  const life = useRef<{ retired: boolean; disposed: boolean; pending: AbortController | null }>({ retired: false, disposed: false, pending: null });
+  const life = useRef<{ retired: boolean; disposed: boolean; pending: AbortController | null }>({ retired: state.kind === 'auth-retired', disposed: false, pending: null });
   useEffect(() => {
     const current = life.current;
     current.disposed = false;
@@ -18,7 +25,10 @@ export function MailPriorities({ items, review, locked = false, read = readMailP
     // eslint-disable-next-line no-restricted-syntax -- Hiding aborts the single limit=25 read; visibility never starts a read.
     document.addEventListener('visibilitychange', visibility);
     addEventListener('doctorcre-session-invalidated', retire);
-    void load();
+    early?.detach();
+    if (early?.stopped) { current.retired = early.stopped === 'auth-retired'; setState({ kind: early.stopped }); }
+    else if (early?.outcome) { const next = fromOutcome(early.outcome); current.retired = next.kind === 'auth-retired'; setState(next); }
+    else void load(early);
     return () => { current.disposed = true; current.pending?.abort(); current.pending = null; removeEventListener('doctorcre-session-invalidated', retire); removeEventListener('pagehide', hide); document.removeEventListener('visibilitychange', visibility); };
   }, []);
   function collapse() {
@@ -26,20 +36,22 @@ export function MailPriorities({ items, review, locked = false, read = readMailP
     const pending = current.pending; current.pending = null; pending?.abort();
     if (!current.disposed && !current.retired) setState({ kind: 'collapsed' });
   }
-  async function load() {
+  async function load(initial?: typeof early) {
     const current = life.current;
     if (current.disposed || current.retired || current.pending) return;
-    const controller = new AbortController(); current.pending = controller;
+    const controller = initial?.controller || new AbortController(); current.pending = controller;
     setState({ kind: 'loading' });
     try {
-      const page = await read(controller.signal);
+      const outcome = initial ? await initial.result : { page: await read(controller.signal) };
+      if ('error' in outcome) throw outcome.error;
+      const page = outcome.page;
       if (current.disposed || current.retired || current.pending !== controller) return;
       setState(page.state === 'unavailable' ? { kind: 'unavailable' } : { kind: page.state === 'empty' ? 'empty' : 'ready', page });
     } catch (error) {
       if (current.disposed || current.retired || current.pending !== controller) return;
-      const denied = error && typeof error === 'object' && (('status' in error && [401, 403].includes(Number(error.status))) || ('code' in error && error.code === 'session_changed'));
-      if (denied) current.retired = true;
-      setState({ kind: denied ? 'auth-retired' : 'unavailable' });
+      const next = fromOutcome({ error });
+      if (next.kind === 'auth-retired') current.retired = true;
+      setState(next);
     } finally { if (current.pending === controller) current.pending = null; }
   }
   return <section className="home-panel" aria-label="Mail priorities" aria-busy={state.kind === 'loading'}>

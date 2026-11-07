@@ -43,6 +43,7 @@ const UI_ENTRIES = {
   'ui-checklist': 'deal-checklist',
   'ui-deal-tours': 'deal-tours',
   'ui-inbox': 'inbox-entry',
+  'ui-home-mail-start': 'home/mail-priorities-start',
   'ui-mail-priorities': 'home/mail-priorities',
   'ui-next-step': 'home/missing-next-step',
   'ui-task-done': 'home/task-done',

@@ -19,26 +19,34 @@ import { createHash } from 'node:crypto';
 let bundle;
 const recordings = JSON.parse(await readFile('test/fixtures/mail-priority-panel/recordings.json'));
 before(async () => {
-  const result = await build({ stdin: { contents: `export {createRoot} from 'react-dom/client'; export {createElement} from 'react'; export {MailPriorities} from './src/ui/home/mail-priorities'; export {mountMailPriorities} from './src/ui/home/mail-priorities'; export {parseMailPage} from './src/ui/home/mail-priorities-client';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
+  const result = await build({ stdin: { contents: `export {createRoot} from 'react-dom/client'; export {createElement} from 'react'; export {MailPriorities} from './src/ui/home/mail-priorities'; export {mountMailPriorities} from './src/ui/home/mail-priorities'; export {parseMailPage, startEarlyMailPriorities} from './src/ui/home/mail-priorities-client';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
   bundle = result.outputFiles[0].text;
 });
-async function open(t, { width = 1280, theme = 'light', response = recordings.ready, failure, pending = false } = {}) {
+async function open(t, { width = 1280, theme = 'light', response = recordings.ready, failure, pending = false, early = false, beforeMount } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await componentDocument(page, 'http://localhost', { html: '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mail panel</title><body><div id="panel"></div>', dispose: p => p.evaluate(() => window.view?.dispose()) });
   await page.route('http://localhost/panel.js', route => route.fulfill({ contentType: 'text/javascript', body: bundle }));
-  await page.evaluate(async ({ response, theme, failure, pending, joinItems }) => {
+  await page.evaluate(async ({ response, theme, failure, pending, joinItems, early, beforeMount }) => {
     document.documentElement.style.colorScheme = theme;
-    const { mountMailPriorities, parseMailPage } = await import('/panel.js');
+    const { mountMailPriorities, parseMailPage, startEarlyMailPriorities } = await import('/panel.js');
     window.response = response; window.failure = failure; window.pending = pending; window.calls = 0; window.reviews = [];
     const items = [{ source_type: 'email_proposal', source_id: joinItems[0].proposal_id, item_id: 'existing-home-id', title: 'Existing Home title', review_reference: { kind: 'next_step' } }, { source_type: 'next_action', source_id: joinItems[1].proposal_id, item_id: 'wrong-source', title: 'Must not match' }];
-    window.view = mountMailPriorities(document.getElementById('panel'), { items, review: item => window.reviews.push(item.item_id), read: async signal => {
+    const read = async signal => {
       window.calls++; window.signal = signal;
       if (window.pending) await new Promise(resolve => window.release = resolve);
       if (window.failure) throw window.failure;
       return parseMailPage(window.response);
-    } });
-  }, { response, theme, failure, pending, joinItems: recordings.ready.items });
+    };
+    if (early) {
+      startEarlyMailPriorities(read);
+      if (!pending) await new Promise(resolve => requestAnimationFrame(resolve));
+      if (beforeMount === 'retire') dispatchEvent(new Event('doctorcre-session-invalidated'));
+      if (beforeMount === 'pagehide') dispatchEvent(new Event('pagehide'));
+      if (beforeMount === 'hidden') { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); }
+    }
+    window.view = mountMailPriorities(document.getElementById('panel'), { items, review: item => window.reviews.push(item.item_id), read });
+  }, { response, theme, failure, pending, early, beforeMount, joinItems: recordings.ready.items });
   await page.waitForFunction(() => window.calls === 1, null, { timeout: 2000 });
   return page;
 }
@@ -111,8 +119,12 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   const requests = [];
+  let releaseInbox;
+  const earlyRequest = new Promise(resolve => releaseInbox = resolve);
+  await page.route('**/js/ui-inbox.js', async route => { await earlyRequest; await route.continue(); });
   await page.route('**/api/v1/intelligence/mail-needs-partner*', route => {
     requests.push({ method: route.request().method(), url: route.request().url() });
+    releaseInbox();
     return route.fulfill({ json: recordings.ready });
   });
   await page.goto(server.origin + '/?mode=fixture');
@@ -195,4 +207,52 @@ test('retired panel can dispose without restarting', async t => {
   await page.evaluate(() => window.view.dispose());
   await page.waitForFunction(() => document.getElementById('panel').childElementCount === 0);
   assert.equal(await page.evaluate(() => window.calls), 1);
+});
+
+for (const pending of [false, true]) test(`early ${pending ? 'in-flight' : 'settled'} read is adopted once`, async t => {
+  const page = await open(t, { early: true, pending });
+  if (pending) await page.evaluate(() => window.release());
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});
+for (const beforeMount of ['pagehide', 'hidden', 'retire']) for (const pending of [false, true]) test(`early ${pending ? 'in-flight' : 'settled'} ${beforeMount} never paints`, async t => {
+  const page = await open(t, { early: true, pending, beforeMount });
+  await page.evaluate(() => window.release?.());
+  await page.getByText(beforeMount === 'retire' ? 'Sign in to view mail priorities.' : 'Show mail priorities', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-mail-proposal]').count(), 0);
+  assert.equal(await page.evaluate(() => window.calls), 1);
+  assert.equal(await page.evaluate(() => window.signal.aborted), true);
+});
+for (const response of ['empty', 'unavailable']) test(`early settled ${response} is adopted once`, async t => {
+  const page = await open(t, { early: true, response: recordings[response] });
+  await page.getByText(response === 'empty' ? 'No recorded pending mail decisions.' : 'Mail priorities unavailable.', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});
+
+for (const end of ['collapse', 'retire', 'dispose', 'pagehide']) test(`adopted early request ${end} fences late completion`, async t => {
+  const page = await open(t, { early: true, pending: true });
+  await page.getByText('Loading mail priorities…').waitFor();
+  if (end === 'collapse') await page.getByRole('button', { name: 'Hide mail priorities' }).click();
+  else await page.evaluate(end => { if (end === 'dispose') window.view.dispose(); else dispatchEvent(new Event(end === 'retire' ? 'doctorcre-session-invalidated' : 'pagehide')); }, end);
+  await page.evaluate(() => window.release());
+  if (end === 'dispose') await page.waitForFunction(() => document.getElementById('panel').childElementCount === 0);
+  else await page.getByText(end === 'retire' ? 'Sign in to view mail priorities.' : 'Show mail priorities', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-mail-proposal]').count(), 0);
+  assert.equal(await page.evaluate(() => window.signal.aborted), true);
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});
+
+test('early settled authorization refusal retires on mount', async t => {
+  const page = await open(t, { early: true, failure: { status: 403 } });
+  await page.getByText('Sign in to view mail priorities.').waitFor();
+  assert.equal(await page.getByRole('button').count(), 0);
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});
+test('pre-mount collapse reopens with a fresh read once', async t => {
+  const page = await open(t, { early: true, pending: true, beforeMount: 'pagehide' });
+  await page.getByRole('button', { name: 'Show mail priorities' }).waitFor();
+  await page.evaluate(() => { window.pending = false; window.release(); });
+  await page.getByRole('button', { name: 'Show mail priorities' }).click();
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 2);
 });

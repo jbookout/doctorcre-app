@@ -38,3 +38,35 @@ export async function readMailPriorities(signal: AbortSignal): Promise<MailPage>
     return parseMailPage(await response.json());
   }, { signal, timeoutMs: 10000 });
 }
+
+type MailOutcome = { page: MailPage; error?: never } | { error: unknown; page?: never };
+type EarlyMail = { controller: AbortController; outcome?: MailOutcome; stopped?: 'collapsed' | 'auth-retired'; result: Promise<MailOutcome>; detach(): void };
+let earlyMail: EarlyMail | undefined;
+export function startEarlyMailPriorities(read = readMailPriorities) {
+  if (earlyMail) return;
+  const controller = new AbortController();
+  const stop = (kind: 'collapsed' | 'auth-retired') => {
+    if (entry.stopped === 'auth-retired') return;
+    entry.stopped = kind; delete entry.outcome; controller.abort();
+  };
+  const hide = () => stop('collapsed');
+  const visibility = () => { if (document.hidden) hide(); };
+  const retire = () => stop('auth-retired');
+  const entry: EarlyMail = {
+    controller,
+    result: read(controller.signal).then(page => ({ page }), error => ({ error })),
+    detach() { removeEventListener('pagehide', hide); document.removeEventListener('visibilitychange', visibility); removeEventListener('doctorcre-session-invalidated', retire); },
+  };
+  earlyMail = entry;
+  void entry.result.then(outcome => { if (!entry.stopped) entry.outcome = outcome; });
+  addEventListener('pagehide', hide);
+  // eslint-disable-next-line no-restricted-syntax -- Pre-mount hiding cancels the single bounded read and never restarts it.
+  document.addEventListener('visibilitychange', visibility);
+  addEventListener('doctorcre-session-invalidated', retire);
+  if (document.hidden) hide();
+}
+export function takeEarlyMailPriorities() {
+  const entry = earlyMail;
+  earlyMail = undefined;
+  return entry;
+}
