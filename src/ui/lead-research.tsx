@@ -8,7 +8,7 @@ const labels = { needs_research: 'Needs research', needs_review: 'Needs review',
 function factText(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(factText).join(', ')}]`;
   if (value && typeof value === 'object') return `{${Object.entries(value).map(([key, item]) => `${key}: ${factText(item)}`).join('; ')}}`;
-  return String(value);
+  return value == null ? 'null' : String(value);
 }
 function instant(value: string) {
   const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
