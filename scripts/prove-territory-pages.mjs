@@ -16,6 +16,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
   cdpUrl, engine = chromium, readRelease = readAppRelease, ancestry, recordingUrl } = {}) {
   if (!/^[a-f0-9]{40}$/.test(expectedCommit || '') || /^0+$/.test(expectedCommit)) throw unavailable('Expected merge commit required');
   const base = new URL(origin);
+  if (fixture && !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)) throw unavailable('Fixture mode requires a loopback origin');
   assert.ok(base.href === `${base.origin}/` && !base.username && !base.password && ['https:', 'http:'].includes(base.protocol), 'origin only');
   assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 300000, 'bounded deadline');
   const controller = new AbortController(), deadline = Date.now() + timeoutMs;
@@ -130,7 +131,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     assert.equal(rpc,beforeLocal,'local page and filter controls issue no business reads');
     const after = await release(); await contains(after.source_commit);
     if (JSON.stringify(after) !== JSON.stringify(before)) throw unavailable('Release changed during observation');
-    return {release:before,counts:{loaded:rows.length,matching:matching.length},assertions,business_reads:rpc,local_reads:rpc-beforeLocal};
+    return {mode:fixture?'local-fixture':'natural',release:before,counts:{loaded:rows.length,matching:matching.length},assertions,business_reads:rpc,local_reads:rpc-beforeLocal};
   } catch (error) { if (controller.signal.aborted) throw controller.signal.reason; throw error; }
   finally {
     clearTimeout(timer);

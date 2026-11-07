@@ -74,3 +74,5 @@ chromium.launch=async options=>{const browser=await launch(options),create=brows
   let result;try{result=await exec(process.execPath,['--import',injection,fileURLToPath(new URL('../scripts/prove-territory-pages.mjs',import.meta.url)),'--origin',options.origin,'--expected-commit',sha,'--fixture','--recording',options.recordingUrl],{timeout:35000});}catch(e){result=e;}
   assert.equal(result.code,1,result.stdout+result.stderr);console.log(`near-miss: exit ${result.code} ${result.stdout.trim()}`);
 });
+
+test('fixture mode refuses nonloopback origins before any read',async()=>{await assert.rejects(prove({origin:'https://example.invalid',expectedCommit:sha,fixture:true,readRelease:()=>{throw Error('must not read');}}),e=>e.exitCode===78);});
