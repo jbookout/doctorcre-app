@@ -28,7 +28,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       } catch { throw unavailable('Release containment is unproved'); }
     }
     if (!cdpUrl) throw unavailable('Existing signed-in browser required');
-    pendingConnection = engine.connectOverCDP(cdpUrl, { timeout: remaining() });
+    pendingConnection = engine.connectOverCDP(cdpUrl, { timeout: remaining() }).catch(() => { throw unavailable('Existing signed-in browser unavailable'); });
     connection = await pendingConnection; controller.signal.throwIfAborted();
     const context = connection.contexts()[0];
     if (!context) throw unavailable('Existing signed-in context required');
@@ -45,7 +45,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       } else if (req.method() !== 'GET') return route.abort();
       return route.continue();
     });
-    await page.goto(new URL('/leads', base).href, { timeout: remaining() });
+    await page.goto(new URL('/leads', base).href, { timeout: remaining() }).catch(() => { throw unavailable('Natural lead page unavailable'); });
     const detail = await page.evaluate(async () => {
       const { createLeadBoardClient } = await import('/js/leads-client.js');
       const client = createLeadBoardClient();
