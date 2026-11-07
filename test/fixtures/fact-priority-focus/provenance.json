@@ -1,0 +1,36 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "a344bab42fbac3e2457bc4a016e50f8ee98008ec",
+  "producer": "mcp-server/src/fact-review.ts",
+  "verb": "list-fact-review",
+  "source": "Disposable migrated Postgres synthetic fixtures; registered handler executed directly",
+  "args": {
+    "entity_ref": "00000000-0000-4000-8000-000000000022",
+    "include_resolved": true,
+    "limit": 100
+  },
+  "queries": [
+    "ops.record_fact_observations",
+    "ops.list_fact_review",
+    "public.v_deal_documents"
+  ],
+  "production_calls": 0,
+  "producer_sha256": "6fb4a66cdb2d75c2aba31f6eb3f333c53b7aa1d4cbc3e15d9158e62e01a5b7e9",
+  "recordings_sha256": "47d7afb1599c9e2b7f9a339561bdb1bf22378cf7172e2b9560ce1e150129a56d",
+  "pagination_queries": [
+    {
+      "limit": 1
+    },
+    {
+      "limit": 1,
+      "cursor": "recordings.page1.next_cursor"
+    }
+  ],
+  "parser": "createLiveClient rawRpc production fact-review response parser",
+  "procedure": "producer.txt contains exact producer bytes and executed recipe",
+  "reused_from": "test/fixtures/fact-review-pending-status-view",
+  "parser_revision": "350951eb88b486e2d636fe4e22ea2fdf21156794",
+  "parser_sha256": "457218553a93cdd737058111d5acdb9550b02e15ba5f34ea9bb48a6f9192323f",
+  "producer_file_sha256": "057ec5840a6b30f6ce6ad1a4e0579d3a4fef93f5f08928a82cd5245dd4b1b768",
+  "priority_cases": "Recorded normal values are unchanged. Browser tests vary priority and add a competing observation through createLiveClient rawRpc, the exact production parser. Cases include high, null, omitted, blank and future values. These are parser-contract cases, not producer replays."
+}
