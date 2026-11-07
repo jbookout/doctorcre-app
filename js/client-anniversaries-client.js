@@ -24,8 +24,7 @@ export function createClientAnniversariesClient({fetchImpl = sessionFetch} = {})
   return { async read({signal} = {}) {
     const response = await fetchRead('/api/v1/intelligence/client-anniversary-read?horizon_days=30&limit=20&offset=0', {credentials:'same-origin',cache:'no-store',signal,headers:{accept:'application/json'}}, {fetchImpl});
     if (!response.ok && response.status !== 503) throw Error('Closing anniversaries unavailable');
-    const envelope = await response.json();
-    const payload = envelope.data ?? envelope;
+    const payload = await response.json();
     if (!response.ok && payload.state !== 'unavailable') throw Error('Closing anniversaries unavailable');
     parseClientAnniversaries(payload);
     return payload;
