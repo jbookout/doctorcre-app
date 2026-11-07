@@ -75,7 +75,7 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`total proof dead
 test('borrowed browser remains connected and late owned page closes', async () => {
   let finish, closed = 0, browserClosed = 0;
   const engine = signedInEngine('http://127.0.0.1:9222', { connectOverCDP: async () => ({ close() { browserClosed++; }, contexts: () => [{ newPage: () => new Promise(resolve => { finish = resolve; }) }] }) });
-  const browser = await engine.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: 1000 });
+  const browser = await engine.launch({ timeout: 1000 });
   const pending = browser.newPage(); const closing = browser.close(); finish({ close: async () => { closed++; } });
   await assert.rejects(pending, { exitCode: 78 }); await closing; await browser.close();
   assert.equal(closed, 1); assert.equal(browserClosed, 1);
