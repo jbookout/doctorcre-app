@@ -1,7 +1,7 @@
 import { chromium } from './browser-harness.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -42,25 +42,14 @@ async function fixture(t, mode) {
  const manifest={schema:'doctorcre-static-artifact.v1',repository:'jbookout/doctorcre-app',source_commit:'1'.repeat(40),files:[...assets].map(([path,bytes])=>({path:path.slice(1),bytes:bytes.length,sha256:hash(bytes)}))};
   if (mode === 'canonical') manifest.repository = 'DoctorCRE/doctorcre-app';
   if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
- const seen=[];let releases=0;
- const server=createServer(async(req,res)=>{
-  seen.push([req.method,req.url]);
-  if(mode==='timeout')return;
-  if(req.url==='/app-release') {
-   const response=await handleDoctorcreRequest(new Request('http://localhost/app-release'),{APP_ENV:'production',GIT_SHA:mode==='release-change' && ++releases>1?'2'.repeat(40):'1'.repeat(40)});
-   res.setHeader('content-type','application/json');
-   return res.end(mode==='identity'?'{}':await response.text());
-  }
-  if(req.url==='/artifact-manifest.json')return res.end(JSON.stringify(manifest));
-  const bytes=assets.get(req.url);
-  if(!bytes || mode==='unavailable'){res.writeHead(404);return res.end();}
-  if(mode==='auth'){res.writeHead(401);return res.end();}
-  res.setHeader('content-type','text/javascript');
-  res.end(mode==='hash'?Buffer.from('export const wrong=true'):bytes);
- });
- server.listen(0,'127.0.0.1');await once(server,'listening');
- t.after(()=>{server.closeAllConnections();server.close();});
- return {origin:`http://127.0.0.1:${server.address().port}`,seen,assets};
+ const routes = new Map([...assets].map(([path, body]) => [path, mode==='unavailable'?{status:404}:mode==='auth'?{status:401}:{contentType:'text/javascript',body:mode==='hash'?'export const wrong=true':body}]));
+ routes.set('/artifact-manifest.json',{contentType:'application/json',body:JSON.stringify(manifest)});
+ const identity = async sha => ({contentType:'application/json',body:mode==='identity'?'{}':await (await handleDoctorcreRequest(new Request('http://localhost/app-release'),{APP_ENV:'production',GIT_SHA:sha.repeat(40)})).text()});
+ routes.set('/app-release',{sequence:[await identity('1'),await identity(mode==='release-change'?'2':'1')]});
+ if(mode==='timeout')routes.set('/app-release',{hold:'timeout'});
+ const server=await startFixture({routes});
+ t.after(()=>server.close());
+ return {origin:server.origin,get seen(){return server.requests.map(req=>[req.method,req.target]);},assets};
 }
 async function cli(origin,timeout='30000') {
  const child=spawn(process.execPath,['scripts/prove-lead-stage-correspondence-clock.mjs','--origin',origin,'--timeout-ms',timeout],{stdio:['ignore','pipe','pipe']});

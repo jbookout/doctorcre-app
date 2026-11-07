@@ -1,10 +1,11 @@
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { carrInterface } from './carr-contract.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -13,26 +14,17 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import * as filingProof from '../scripts/prove-email-filings-central-source-time.mjs';
 const { prove } = filingProof;
 const exec = promisify(execFile);
-let outDir;
-before(async () => { outDir = temporaryDirectory('filings-cli-'); await buildArtifact({ root: process.cwd(), outDir }); });
+let outDir, manifest;
+before(async () => { outDir = temporaryDirectory('filings-cli-'); ({ manifest } = await buildArtifact({ root: process.cwd(), outDir })); });
 after(async () => rm(outDir, { recursive: true, force: true }));
 async function fixture(t, broken = false) {
   const root = resolve(outDir, 'site');
-  const server = createServer(async (req, res) => {
-    if (req.url === '/app-release') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
-    try {
-      const path = decodeURIComponent(req.url);
-      const file = resolve(root, path.slice(1));
-      if (/%2e|%5c|%00/i.test(req.url) || path.includes('\\') || path.includes('\0') || !file.startsWith(root + sep)) return res.writeHead(404).end();
-      const body = broken && path === '/js/email-filings.js'
-        ? 'export function mountEmailFilings({container}) {return {async refresh(){container.innerHTML="<article><p>wrong time</p></article>"},dispose(){}}}'
-        : await readFile(file);
-      res.writeHead(200, { 'content-type': 'text/javascript' }).end(body);
-    } catch { res.writeHead(404).end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  return `http://127.0.0.1:${server.address().port}`;
+  const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
+  if (broken) responses.set('/js/email-filings.js', { contentType: 'text/javascript', body: 'export function mountEmailFilings({container}) {return {async refresh(){container.innerHTML="<article><p>wrong time</p></article>"},dispose(){}}}' });
+  responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+  const server = await startFixture({ routes: responses });
+  t.after(() => server.close());
+  return server.origin;
 }
 for (const broken of [false, true]) test(`CLI working-tree fixture ${broken ? 'fails' : 'passes'}`, async t => {
   const origin = await fixture(t, broken);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, mkdir, writeFile } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -48,13 +48,9 @@ test('the reader and declared browser driver remain admissible', () => {
 });
 
 for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${environment ?? 'missing'} environment through the real reader`, async t => {
-  const server = createServer((_req, res) => {
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ service: 'doctorcre-app', environment, source_commit: '1'.repeat(40) }));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await startFixture({ routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment, source_commit: '1'.repeat(40) }) }]]) });
+  t.after(() => server.close());
+  const origin = server.origin;
   for (const runner of runners) {
     await t.test(runner, async () => {
       const args = [`scripts/${runner}`, '--origin', origin];
@@ -155,16 +151,13 @@ for (const indirect of [false, true]) test(`local helper transport is refused, t
 });
 
 test('fixture refuses helper fetch and variable browser release navigation but admits the reader', async t => {
-  const server = createServer((_req, res) => {
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const root = temporaryDirectory('proof-helper-', t);
-  await writeFile(root + '/network-helper.mjs', 'export async function read(url) { return (await fetch(url)).json(); }');
-  const { read } = await import(pathToFileURL(root + '/network-helper.mjs'));
+  const server = await startFixture({ routes: new Map([
+    ['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) }],
+    ['/asset.js', { contentType: 'text/javascript', body: 'export {};' }],
+  ]) });
+  t.after(() => server.close());
+  const origin = server.origin;
+  const { read } = await import('./fixtures/unmarked-network-helper.mjs');
   await assert.rejects(read(origin + '/app-release'));
   assert.equal((await fetch(origin + '/app-release')).status, 403);
   assert.equal((await fetch(origin + '/app-release?probe=1')).status, 403);
@@ -183,16 +176,11 @@ test('fixture refuses helper fetch and variable browser release navigation but a
 });
 
 test('reader marks requests and preserves caller User-Agent and headers', async t => {
-  let seen;
-  const server = createServer((req, res) => {
-    seen = req.headers;
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  const server = await startFixture({ routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) }]]) });
+  t.after(() => server.close());
   const headers = new Headers({ 'user-agent': 'existing-proof-agent/1', 'x-fixture': 'retained' });
-  await proofFetch(`http://127.0.0.1:${server.address().port}/app-release`, { headers });
+  await proofFetch(server.origin + '/app-release', { headers });
+  const seen = server.requests[0].headers;
   assert.equal(seen['x-doctorcre-release-reader'], '1');
   assert.equal(seen['user-agent'], 'existing-proof-agent/1');
   assert.equal(seen['x-fixture'], 'retained');

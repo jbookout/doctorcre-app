@@ -1,10 +1,12 @@
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { writeFile, rm } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { join } from 'node:path';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
 import { overdueFixture } from '../scripts/prove-home-overdue-task-slice.mjs';
 let root;
 before(async () => {
@@ -13,8 +15,15 @@ before(async () => {
   await writeFile(join(root, 'overdue-test.html'), '<div id="root"></div><script type="module" src="/test.js"></script>');
 });
 after(async () => rm(root, { recursive: true, force: true }));
+async function fixture(t) {
+  const assets = await loadFixtureAssets({root,manifest:new Map([['/test.js','test.js'],['/overdue-test.html','overdue-test.html']])});
+  const server = await startFixture({assets});
+  t.after(() => server.close());
+  return server;
+}
+
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`overdue placement disclosure refresh and cleanup ${width} ${theme}`, async t => {
-  const server = await fixtureServer({ root }); t.after(() => server.close());
+  const server = await fixture(t);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
   await page.clock.install({ time: new Date('2026-11-05T16:00:00Z') });
@@ -73,7 +82,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ov
   assert.equal(await page.locator('section').count(), 0);
 });
 for (const timezoneId of ['UTC', 'Pacific/Kiritimati', 'America/Los_Angeles']) for (const midnight of ['2026-03-08T06:00:00Z', '2026-11-01T05:00:00Z']) test(`Central rollover ${midnight} in ${timezoneId}`, async t => {
-  const server = await fixtureServer({ root }); t.after(() => server.close());
+  const server = await fixture(t);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ timezoneId });
   const at = new Date(midnight), today = new Date(at.getTime() - 86400000).toISOString().slice(0, 10);

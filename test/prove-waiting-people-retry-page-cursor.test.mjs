@@ -1,17 +1,13 @@
-import test, { before, after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createServer } from './proof-fixture-server.mjs';
-import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep, join } from 'node:path';
-import { buildArtifact } from '../scripts/artifact.mjs';
-import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+const snapshot = await proofAssetSnapshot();
+import { readFile } from 'node:fs/promises';
 import { assertions, checkedDirectory, inboxFixture, runProof } from '../scripts/prove-waiting-people-retry-page-cursor.mjs';
 import { build } from 'esbuild';
 const runner = 'scripts/prove-waiting-people-retry-page-cursor.mjs';
-let outDir;
-before(async () => { outDir = temporaryDirectory('waiting-retry-cli-'); await buildArtifact({ root: process.cwd(), outDir }); });
-after(async () => { await rm(outDir, { recursive: true, force: true }); });
 function cli(args) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [runner, ...args]); let stdout = '', stderr = '';
@@ -20,25 +16,16 @@ function cli(args) {
   });
 }
 async function fixture(t, mode) {
-  const root = resolve(outDir, 'site'); const methods = [];
-  const server = createServer(async (req, res) => {
-    res.setHeader('content-type', 'application/json');
-    methods.push(req.method);
-    if (mode === 'timeout' || mode === 'timeout asset' && req.url !== '/app-release') return;
-    if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(mode === 'unavailable' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: 'production' })); }
-    try {
-      const path = resolve(root, `.${decodeURIComponent(new URL(req.url, 'http://localhost').pathname)}`);
-      if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-      let body = await readFile(path);
-      if (mode === 'contradiction' && /\.(m?js)$/.test(path)) body = Buffer.from(body.toString().replaceAll('limit:25', 'limit:24'));
-      if (mode === 'unavailable asset') { res.writeHead(404); return res.end(); }
-      res.setHeader('content-type', path.endsWith('.mjs') || path.endsWith('.js') ? 'text/javascript' : 'application/octet-stream');
-      res.end(body);
-    } catch { res.writeHead(404); res.end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
-  return { origin: `http://127.0.0.1:${server.address().port}`, methods };
+  const routes = new Map(snapshot);
+  for(const [key,value] of routes) {
+    if(mode==='contradiction')routes.set(key,{...value,body:value.body.toString().replaceAll('limit:25','limit:24')});
+    if(mode==='unavailable asset')routes.set(key,{status:404});
+    if(mode==='timeout asset')routes.set(key,{hold:'timeout'});
+  }
+  routes.set('/app-release',{contentType:'application/json',body:JSON.stringify(mode==='unavailable'?{}:{service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)}),...(mode==='timeout'?{hold:'timeout'}:{})});
+  const server=await startFixture({routes});
+  t.after(()=>server.close());
+  return {origin:server.origin,get methods(){return server.requests.map(req=>req.method);}};
 }
 test('proof fixture uses the production inbox parser and registered directory contract', async () => {
   const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
@@ -71,14 +58,13 @@ test('proof CLI refuses invalid flags and origin', async () => {
 });
 
 test('proof closes a browser acquired after expiry without starting browser work', async t => {
-  const server = createServer((_req, res) => { res.setHeader('content-type', 'application/json'); setTimeout(() => res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) })), 200); });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const server=await startFixture({routes:new Map([['/app-release',{contentType:'application/json',body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'1'.repeat(40)}),delayMs:200}]])});
+  t.after(()=>server.close());
   let acquire, launchOptions, closed = false, browserWork = 0;
   const acquired = new Promise(resolve => { acquire = resolve; });
   const engine = { launch(options) { launchOptions = options; return acquired; } };
   const browser = { async close() { closed = true; }, async newContext() { browserWork++; throw Error('Expired proof started browser work'); } };
-  await assert.rejects(runProof({ origin: `http://127.0.0.1:${server.address().port}`, timeout: 600, engine }), /Proof deadline exceeded/);
+  await assert.rejects(runProof({ origin: server.origin, timeout: 600, engine }), /Proof deadline exceeded/);
   assert.ok(launchOptions, 'release completed before launch');
   acquire(browser);
   await new Promise(resolve => setImmediate(resolve));

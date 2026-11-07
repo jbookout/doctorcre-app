@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { readFile, readdir } from 'node:fs/promises';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -13,36 +14,28 @@ const run = (origin, fixture = true) => new Promise((resolve, reject) => {
   child.on('error', reject); child.on('exit', code => resolve({code, receipt:JSON.parse(output)}));
 });
 test('proof uses checked-out assets, distinguishes fixture evidence and cleans owned browsers', async t => {
-  let mode = 'pass';
-  const assets = new Map();
-  for (const name of await readdir('js')) if (/^[\w.-]+\.js$/.test(name)) assets.set('/js/' + name, await readFile('js/' + name,'utf8'));
-  const server = createServer((req, res) => {
-    const pathname = new URL(req.url, 'http://fixture.invalid').pathname;
-    if (pathname === '/app-release') {
-      res.setHeader('content-type','application/json');
-      res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'c962c060e2b1aa2cc1f4a4a0a6dd4e3c868d44af'})); return;
-    }
-    if (mode === 'missing') { res.writeHead(404).end(); return; }
-    const body = assets.get(pathname);
-    if (!body) { res.writeHead(403).end(); return; }
-    res.setHeader('content-type','text/javascript');
-    res.end(mode === 'fail' ? body.replaceAll('Download visible rows','Broken action') : body);
-  });
-  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const assets = await proofAssetSnapshot();
+  const release = { service:'doctorcre-app', environment:'production', source_commit:'c962c060e2b1aa2cc1f4a4a0a6dd4e3c868d44af' };
+  let server;
+  const start = async mode => {
+    await server?.close();
+    const snapshot = new Map([...assets].map(([key, value]) => [key, mode === 'missing' ? { status:404 }
+      : { ...value, body: mode === 'fail' ? value.body.toString().replaceAll('Download visible rows','Broken action') : value.body }]));
+    server = await startFixture({ assets:snapshot, routes:new Map([['/app-release', {body:JSON.stringify(release),contentType:'application/json'}]]) });
+    return server.origin;
+  };
+  t.after(() => server?.close());
   for (const [name, fixture, expected] of [['pass',true,0],['fail',true,1],['missing',true,78],['pass',false,78]]) await t.test(`${name} fixture=${fixture}`,async () => {
-    mode = name;
-    const result = await run(origin,fixture);
+    const result = await run(await start(name),fixture);
     assert.equal(result.code,expected,JSON.stringify(result.receipt));
     if (expected === 0) assert.ok(result.receipt.assertions.length > 30);
     if (!fixture) { assert.equal(result.receipt.status,'insufficient_evidence'); console.log(`reviewed release, no session: exit ${result.code}, assertions ${result.receipt.assertions.filter(a=>a.passed).length}`); }
   });
   for (const path of ['/..%2fpackage.json','/%2e%2e%2fpackage.json']) {
-    const response = await fetch(origin + path);
-    assert.equal(response.status,403,'encoded traversal is refused');
+    const response = await fetch(server.origin + path);
+    assert.equal(response.status,400,'encoded traversal is refused');
   }
-  mode = 'pass';
+  const origin = await start('pass');
   for (const scenario of ['stalled evaluation','late launch']) await t.test(`${scenario} exits 78 without owned survivors`,async () => {
     let acquired;
     let started;
@@ -96,45 +89,46 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
   await mkdir(resolve(root,'bin'));
   await writeFile(resolve(root,'bin/git'), `#!/bin/sh\nif [ "$PROOF_SLOW_GIT" = 1 ]; then exec /bin/sleep 10; fi\nexec /usr/bin/git -C '${root}' "$@"\n`);
   await chmod(resolve(root,'bin/git'),0o755);
-  let release = equal, mode = 'pass', releaseReads = 0;
-  const assets = new Map();
-  for (const name of await readdir('js')) if (/^[\w.-]+\.js$/.test(name)) assets.set('/js/'+name,await readFile('js/'+name));
+  let release = equal, mode = 'pass';
+  const assets = await proofAssetSnapshot();
   const blocks = JSON.parse(await readFile('test/fixtures/answer-table-sourced-csv-download/recordings.json'));
-  const server = createServer((req,res) => {
-    const path = new URL(req.url,'http://fixture.invalid').pathname;
-    if (path === '/app-release') {
-      if (mode === 'unreadable') return res.writeHead(503).end();
-      res.setHeader('content-type','application/json');
-      return res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:mode === 'changed' && ++releaseReads > 1 ? descendant : release}));
-    }
-    if (path === '/') {
-      res.setHeader('content-type','text/html');
-      return res.end(`<!doctype html><button id="accountSignOut">Sign out</button><main></main><script type="module">import {mountAnswerBlocks} from '/js/ui-answers.js';mountAnswerBlocks(document.querySelector('main'),${JSON.stringify(blocks.populated)},'recorded');</script>`);
-    }
-    const body = assets.get(path);
-    if (!body) return res.writeHead(403).end();
-    res.setHeader('content-type','text/javascript');
-    res.end(mode === 'fail' ? body.toString().replaceAll('Download visible rows','Broken action') : body);
-  });
-  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-  t.after(() => {server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const portServer = createServer();
-  await new Promise(resolve=>portServer.listen(0,'127.0.0.1',resolve));
-  const port = portServer.address().port;
-  await new Promise(resolve=>portServer.close(resolve));
+  let server, origin, snapshotKey, page;
+  const prepare = async () => {
+    const key = `${release}:${mode}`;
+    if (snapshotKey === key) return;
+    await server?.close();
+    const snapshot = new Map([...assets].map(([path, value]) => [path, { ...value,
+      body: mode === 'fail' ? value.body.toString().replaceAll('Download visible rows','Broken action') : value.body }]));
+    const identity = sha => ({ body:JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:sha}),contentType:'application/json' });
+    const routes = new Map([
+      ['/app-release', mode === 'unreadable' ? {status:503} : mode === 'changed'
+        ? {sequence:[identity(release),identity(descendant)]} : identity(release)],
+      ['/', { contentType:'text/html', body:`<!doctype html><button id="accountSignOut">Sign out</button><main></main><script type="module">import {mountAnswerBlocks} from '/js/ui-answers.js';mountAnswerBlocks(document.querySelector('main'),${JSON.stringify(blocks.populated)},'recorded');</script>` }],
+    ]);
+    server = await startFixture({assets:snapshot,routes});
+    origin = server.origin; snapshotKey = key;
+    if (page) { await page.goto(origin); await page.locator('.answer-table tbody tr').first().waitFor(); }
+  };
+  await prepare();
+  t.after(() => server?.close());
+  const portFixture = await startFixture();
+  const port = new URL(portFixture.origin).port;
+  await portFixture.close();
   const context = await chromium.launchPersistentContext(temporaryDirectory('sourced-csv-browser-',t),{headless:true,acceptDownloads:true,args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
   t.after(()=>context.close());
-  const page = await context.newPage();
+  page = await context.newPage();
   await page.goto(origin);
   await page.locator('.answer-table tbody tr').first().waitFor();
-  const runNatural = (options = {}) => new Promise((resolve,reject) => {
-    const child = spawn(process.execPath,['scripts/prove-answer-table-sourced-csv-download.mjs','--origin',origin,...(options.defaultCommit ? [] : ['--commit',equal]),'--timeout-ms',String(options.timeout || 10000),...(options.noSession ? [] : ['--cdp-url',`http://127.0.0.1:${port}`])],{env:{...process.env,PATH:`${root}/bin:${process.env.PATH}`,PROOF_SLOW_GIT:options.slow ? '1' : '0'}});
-    let output = '';
-    child.stdout.on('data',data=>output+=data);
-    child.on('error',reject);
-    child.on('close',code=>resolve({code,receipt:JSON.parse(output)}));
-  });
+  const runNatural = async (options = {}) => {
+    await prepare();
+    return new Promise((resolve,reject) => {
+      const child = spawn(process.execPath,['scripts/prove-answer-table-sourced-csv-download.mjs','--origin',origin,...(options.defaultCommit ? [] : ['--commit',equal]),'--timeout-ms',String(options.timeout || 10000),...(options.noSession ? [] : ['--cdp-url',`http://127.0.0.1:${port}`])],{env:{...process.env,PATH:`${root}/bin:${process.env.PATH}`,PROOF_SLOW_GIT:options.slow ? '1' : '0'}});
+      let output = '';
+      child.stdout.on('data',data=>output+=data);
+      child.on('error',reject);
+      child.on('close',code=>resolve({code,receipt:JSON.parse(output)}));
+    });
+  };
   for (const [name,sha,state,expected] of [['equal',equal,'pass',0],['descendant',descendant,'pass',0],['older',older,'pass',78],['unrelated',unrelated,'pass',78],['unknown','b'.repeat(40),'pass',78],['unreadable',equal,'unreadable',78],['assertion failure',equal,'fail',1]]) await t.test(name,async()=>{
     release=sha;mode=state;
     const result=await runNatural();
@@ -144,7 +138,7 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
   });
   release=equal;mode='pass';
   await t.test('default resolves the PR merge commit',async()=>assert.equal((await runNatural({defaultCommit:true})).code,0));
-  await t.test('release changes during proof',async()=>{mode='changed';releaseReads=0;try{assert.equal((await runNatural()).code,78);}finally{mode='pass';}});
+  await t.test('release changes during proof',async()=>{mode='changed';try{assert.equal((await runNatural()).code,78);}finally{mode='pass';await prepare();}});
   await t.test('signed-out session',async()=>{await page.locator('#accountSignOut').evaluate(node=>node.id='signedOut');try{assert.equal((await runNatural()).code,78);}finally{await page.locator('#signedOut').evaluate(node=>node.id='accountSignOut');}});
   await t.test('no session',async()=>assert.equal((await runNatural({noSession:true})).code,78));
   await t.test('no eligible table',async()=>{
