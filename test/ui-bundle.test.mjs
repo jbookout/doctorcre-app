@@ -51,3 +51,26 @@ test('only emitted UI entries and shared chunks bypass source checks', async () 
     assert.equal(gitIgnored.has(path), generated, `git classification ${path}`);
   }
 });
+
+test('Home critical imports keep preparation rendering behind the lazy boundary', async () => {
+  const assets = await uiAssets(readSource);
+  await init;
+  const found = new Set();
+  async function visit(path) {
+    if (found.has(path)) return;
+    found.add(path);
+    const source = (assets.get(path) ?? await readSource(path)).toString();
+    const [imports] = parse(source);
+    for (const reference of imports.filter(row => row.d === -1 && row.n?.startsWith('.'))) {
+      await visit(new URL(reference.n, `https://fixture.invalid/${path}`).pathname.slice(1));
+    }
+  }
+  await visit('js/app-shell.js');
+  await visit('js/ui-inbox.js');
+  const lifetime = 'js/ui-meeting-preparation-lifetime.js';
+  assert.ok(found.has(lifetime), 'Home and preparation share the emitted lifetime');
+  assert.equal(parse(assets.get(lifetime).toString())[0].length, 0, 'lifetime has no runtime imports');
+  for (const path of ['js/meeting-preparation.js', 'js/home-dashboard-model.js', 'js/home-call-tasks.js']) {
+    assert.ok(!found.has(path), `${path} must load only when its UI is requested`);
+  }
+});

@@ -1,3 +1,4 @@
+import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.js';
 import { createCurrentRead } from './current-read.mjs';
 import { onDialogClosed } from './dialog-lifecycle.js';
 import { dealHref } from './home-dashboard-model.js';
@@ -34,27 +35,6 @@ function preparationHtml(section, timeZone) {
     return `<article class="meeting-prep-meeting"><h3>${E(meeting.title)}</h3><p><time datetime="${E(meeting.start)}">${E(meeting.all_day ? meetingDate(meeting.start) : time(meeting.start))}</time> to <time datetime="${E(meeting.end)}">${E(meeting.all_day ? meetingDate(meeting.end) : time(meeting.end))}</time></p><p>${E(meeting.location || 'Place not provided')}</p>${flags.map(flag => `<p class="home-meeting-warning">${E(flag)}</p>`).join('')}<h4>Possible deals</h4>${deals || `<p>${noDeals}</p>`}</article>`;
   }).join('');
   return `${warnings}${observed}${sources ? `<p>${sources}</p>` : ''}${section.state === 'partial' ? '<p>Some meeting preparation is incomplete.</p>' : ''}${section.state === 'unavailable' ? '<p role="status">Meeting preparation unavailable</p>' : rows || `<p>${section.state === 'empty' ? 'No upcoming meetings' : 'No meetings returned'}</p>`}`;
-}
-
-const preparationLifetimes = new WeakMap();
-
-export function meetingPreparationLifetime(document) {
-  if (!preparationLifetimes.has(document)) {
-    let controller = new AbortController(), dialog = null;
-    const retire = ownerDialog => {
-      if (ownerDialog && dialog !== ownerDialog) return;
-      controller.abort(); controller = new AbortController(); dialog = null;
-    };
-    preparationLifetimes.set(document, {
-      retire,
-      open(nextDialog) { if (dialog) retire(); dialog = nextDialog; },
-      capture() {
-        const signal = controller.signal;
-        return { signal, current: () => !signal.aborted && (!dialog || dialog.open) };
-      },
-    });
-  }
-  return preparationLifetimes.get(document);
 }
 
 export function mountMeetingPreparation({ document, window, client }) {
