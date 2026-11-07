@@ -49,10 +49,9 @@ for(const [mode,count,code]of [['pass',45,0],['insufficient',1,78]])test(`CLI ${
   let result;try{result=await exec(process.execPath,args,{timeout:35000});result.code=0;}catch(e){result=e;}
   assert.equal(result.code,code,result.stdout+result.stderr);console.log(`${mode}: exit ${result.code} ${result.stdout.trim()}`);
 });
-import { createServer } from 'node:net';
 import { chromium as cdpChromium } from 'playwright';
 test('real CDP late page closes before disconnect and preserves borrowed tabs',async t=>{
-  const listener=createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
+  const reservation=await startFixture();const port=Number(new URL(reservation.origin).port);await reservation.close();
   const owned=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>owned.close());
   const url=`http://127.0.0.1:${port}`, original=await cdpChromium.connectOverCDP(url);t.after(()=>original.close());
   const borrowed=await original.contexts()[0].newPage();await borrowed.goto('about:blank');
