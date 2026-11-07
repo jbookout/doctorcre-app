@@ -67,6 +67,7 @@ test('live getDeal preserves the runtime checklist without deriving it in the br
 
 test('empty recorded requirements and absent snapshots remain distinct', () => {
   assert.match(renderDealChecklist(undefined), /Checklist unavailable/);
+  assert.equal(new JSDOM(renderDealChecklist(undefined)).window.document.querySelector('[data-refresh-detail]'), null, 'absent snapshots use the existing workspace refresh');
   assert.match(renderDealChecklist({...checklist, phases:[]}), /No requirements recorded/);
 });
 

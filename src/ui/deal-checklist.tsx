@@ -37,7 +37,7 @@ function Checklist({ checklist }: Props) {
   const changed = object(checklist) && checklist.template_state === 'source_changed';
   if (unavailable || unsupported || changed || !snapshot(checklist)) {
     const message = unavailable ? 'Requirements could not be read.' : changed && !unsupported ? 'Checklist needs a doctrine review.' : 'Checklist unavailable.';
-    return <section className="deal-checklist" aria-label="Deal checklist"><h3>Deal checklist</h3><p role="status">{message}</p>{!changed || unavailable || unsupported ? <button className="btn" type="button" data-refresh-detail data-detail-focus="checklist">Refresh deal</button> : null}</section>;
+    return <section className="deal-checklist" aria-label="Deal checklist"><h3>Deal checklist</h3><p role="status">{message}</p>{checklist != null && (!changed || unavailable || unsupported) ? <button className="btn" type="button" data-refresh-detail data-detail-focus="checklist">Refresh deal</button> : null}</section>;
   }
   const total = checklist.phases.reduce((n,p) => n + p.items.length, 0);
   const phases = checklist.phases.map(p => ({...p, items:p.items.filter(i => selection === 'all' || ['not_recorded','due','overdue','upcoming'].includes(i.status))})).filter(p => p.items.length);
