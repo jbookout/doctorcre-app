@@ -209,11 +209,11 @@ export async function observeNaturalOnPage(page, origin) {
   const count = () => requests++;
   page.on('request', count);
   try {
-    for (const priority of [...new Set(result.map(item => item.priority))]) {
-      const value = !priority?.trim() ? 'unrecorded' : ['high', 'normal'].includes(priority) ? priority : `other:${priority}`;
+    const priorityValue = priority => typeof priority !== 'string' || !priority.trim() ? 'unrecorded' : ['high', 'normal'].includes(priority) ? priority : `other:${priority}`;
+    for (const value of [...new Set(result.map(item => priorityValue(item.priority)))]) {
       await selector.selectOption(value);
-      assert.deepEqual(await visible(), result.filter(item => item.priority === priority).map(item => item.fact_key).sort(), 'natural priority subset');
-      assert.equal(await page.locator('[data-term-count]').textContent(), `${result.filter(item => item.priority === priority).length} matching of ${result.length} loaded terms`);
+      assert.deepEqual(await visible(), result.filter(item => priorityValue(item.priority) === value).map(item => item.fact_key).sort(), 'natural priority subset');
+      assert.equal(await page.locator('[data-term-count]').textContent(), `${result.filter(item => priorityValue(item.priority) === value).length} matching of ${result.length} loaded terms`);
     }
     await page.locator('[data-clear-priority]').click();
     assert.deepEqual(await visible(), result.map(item => item.fact_key).sort(), 'natural clear subset');
