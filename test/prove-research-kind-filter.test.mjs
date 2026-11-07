@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,11 +52,24 @@ for (const mode of ['equal','descendant','older','unrelated','unknown','failure'
   if (['older','unrelated','unknown','session'].includes(mode)) {
     await assert.rejects(prove(options), error=>error.exitCode===78);return;
   }
+  if (mode === 'equal' || mode === 'failure') {
+    const portServer = createServer(() => {});
+    await new Promise(resolve => portServer.listen(0, '127.0.0.1', resolve));
+    const port = portServer.address().port;
+    await new Promise(resolve => portServer.close(resolve));
+    const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+    t.after(() => browser.close());
+    const args = ['scripts/prove-research-kind-filter.mjs', '--origin', options.origin, '--expected-commit', options.expectedCommit, '--cdp-url', `http://127.0.0.1:${port}`];
+    if (mode === 'failure') await assert.rejects(promisify(execFile)(process.execPath, args), error => error.code === 1);
+    else assert.equal(JSON.parse((await promisify(execFile)(process.execPath, args)).stdout).status, 'passed');
+    assert.ok(browser.isConnected(), 'proof disconnect preserves acquired test browser');
+    assert.equal((await browser.newContext()).pages().length, 0);
+    return;
+  }
   const browser=await chromium.launch(); t.after(()=>browser.close());
   await browser.newContext();
   const engine={connectOverCDP:async()=>browser};
-  if(mode==='failure') await assert.rejects(prove({...options,engine,cdpUrl:'fixture'}),error=>!error.exitCode);
-  else assert.equal((await prove({...options,engine,cdpUrl:'fixture'})).status,'passed');
+  assert.equal((await prove({...options,engine,cdpUrl:'fixture'})).status,'passed');
 });
 for(const mode of ['late connection','stalled evaluation']) test(`proof deadline cleans ${mode}`,async t=>{
   const options=await fixture(t,'equal');let closed=0,pageClosed=0;
