@@ -273,11 +273,12 @@ test('rejected page and missing context are insufficient evidence', async t => {
   const { chromium: raw } = await import('playwright');
   for (const contexts of [[], [{ newPage: async () => { throw Error('Target closed'); } }]]) {
     let disconnected = false;
-    t.mock.method(raw, 'connectOverCDP', async () => ({ contexts: () => contexts, close: async () => { disconnected = true; } }));
+    const connect = t.mock.method(raw, 'connectOverCDP', async () => ({ contexts: () => contexts, close: async () => { disconnected = true; } }));
     const browser = await chromium.connectOverCDP('http://127.0.0.1:1234');
     await assert.rejects(browser.newPage(), { exitCode: 78 });
     await browser.close();
     assert.equal(disconnected, true);
+    connect.mock.restore();
   }
 });
 
