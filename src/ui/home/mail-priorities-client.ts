@@ -29,12 +29,46 @@ export function parseMailPage(value: unknown) {
 }
 export type MailPage = ReturnType<typeof parseMailPage>;
 const sibling = (path: string) => import(/* shared session transport */ new URL(path, import.meta.url).href);
-export async function readMailPriorities(signal: AbortSignal): Promise<MailPage> {
+export async function readMailPriorities(signal: AbortSignal, priority: RequestPriority = 'auto'): Promise<MailPage> {
   const [{ sessionFetch }, { readWithDeadline }] = await Promise.all([sibling('./private-session.js'), sibling('./current-read.mjs')]);
   return readWithDeadline(async (bounded: AbortSignal) => {
-    const response = await sessionFetch('/api/v1/intelligence/mail-needs-partner?limit=25', { signal: bounded, credentials: 'same-origin' });
+    const response = await sessionFetch('/api/v1/intelligence/mail-needs-partner?limit=25', { signal: bounded, credentials: 'same-origin', priority });
     if ([401, 403].includes(response.status)) throw Object.assign(Error('Sign in to view mail priorities'), { status: response.status });
     if (!response.ok) throw Error('Mail priorities unavailable');
     return parseMailPage(await response.json());
   }, { signal, timeoutMs: 10000 });
+}
+
+type MailOutcome = { page: MailPage; error?: never } | { error: unknown; page?: never };
+type EarlyMail = { controller: AbortController; outcome?: MailOutcome; stopped?: 'collapsed' | 'auth-retired'; result: Promise<MailOutcome>; detach(): void };
+let earlyMail: EarlyMail | undefined;
+let islandClaimed = false;
+export function startEarlyMailPriorities(read = readMailPriorities) {
+  if (earlyMail || islandClaimed) return;
+  const controller = new AbortController();
+  const stop = (kind: 'collapsed' | 'auth-retired') => {
+    if (entry.stopped === 'auth-retired') return;
+    entry.stopped = kind; delete entry.outcome; controller.abort();
+  };
+  const hide = () => stop('collapsed');
+  const visibility = () => { if (document.hidden) hide(); };
+  const retire = () => stop('auth-retired');
+  const entry: EarlyMail = {
+    controller,
+    result: read(controller.signal).then(page => ({ page }), error => ({ error })),
+    detach() { removeEventListener('pagehide', hide); document.removeEventListener('visibilitychange', visibility); removeEventListener('doctorcre-session-invalidated', retire); },
+  };
+  earlyMail = entry;
+  void entry.result.then(outcome => { if (!entry.stopped) entry.outcome = outcome; });
+  addEventListener('pagehide', hide);
+  // eslint-disable-next-line no-restricted-syntax -- Pre-mount hiding cancels the single bounded read and never restarts it.
+  document.addEventListener('visibilitychange', visibility);
+  addEventListener('doctorcre-session-invalidated', retire);
+  if (document.hidden) hide();
+}
+export function takeEarlyMailPriorities() {
+  islandClaimed = true;
+  const entry = earlyMail;
+  earlyMail = undefined;
+  return entry;
 }

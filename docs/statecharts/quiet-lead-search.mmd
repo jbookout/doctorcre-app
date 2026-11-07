@@ -1,0 +1,24 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle: No snapshot or search
+  Loading: Loading follow-ups, query retained
+  Ready: Matching loaded leads, count and current page
+  Refused: Read unavailable, controls hidden
+  Disposed: Panel removed permanently
+  Idle --> Loading: Read snapshot
+  Idle --> Ready: Mount receives snapshot
+  Ready --> Loading: Refresh
+  Loading --> Ready: Snapshot arrives, retain query, reset page
+  Loading --> Refused: Read fails
+  Refused --> Loading: Retry
+  Ready --> Ready: Change query or owner, reset page
+  Ready --> Ready: Clear search, reset page, focus input
+  Ready --> Ready: Next or previous page in server order
+  Ready --> Idle: Idle or session retires, clear query
+  Loading --> Idle: Session retires, reject late read
+  Ready --> Disposed: Dispose
+  Loading --> Disposed: Dispose during read
+  Disposed --> Disposed: Late update or repeated dispose
+  %% never Search performs a business read.
+  %% never Render reasons as search subjects.
+  %% never Restore a disposed panel.
