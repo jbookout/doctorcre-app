@@ -58,9 +58,9 @@ export async function observe({ recordings, document = globalThis.document }) {
     root.querySelector('[data-clear-priority]').click();
     check(priority.value === '' && root.querySelector('[data-term-filter]').value === current.items[0].fact_key && root.querySelector('[data-status-filter]').value === 'pending', 'clear-retains-other-filters');
     select('term', ''); select('status', '');
-    for (const value of ['high', '', null, undefined, '  ', 'future-priority', 'normal']) {
+    for (const value of ['high', '', null, undefined, '  ', 42, {}, 'future-priority', 'normal']) {
       current = structuredClone(recordings.initial); current.items[0].priority = value;
-      await panel.refresh(); select('priority', !value?.trim() ? 'unrecorded' : value === 'future-priority' ? `other:${value}` : value);
+      await panel.refresh(); select('priority', value == null || typeof value === 'string' && !value.trim() ? 'unrecorded' : typeof value !== 'string' ? 'unavailable' : value === 'future-priority' ? `other:${value}` : value);
       check(visible().includes(current.items[0].fact_key), 'refresh-priority-and-unknown-preserved');
       const article = root.querySelector(`[data-fact-key="${current.items[0].fact_key}"]`);
       check(article.querySelectorAll('.fact-observation').length === current.items[0].observations.length, 'all-observations-retained');
@@ -209,7 +209,7 @@ export async function observeNaturalOnPage(page, origin) {
   const count = () => requests++;
   page.on('request', count);
   try {
-    const priorityValue = priority => typeof priority !== 'string' || !priority.trim() ? 'unrecorded' : ['high', 'normal'].includes(priority) ? priority : `other:${priority}`;
+    const priorityValue = priority => priority == null || typeof priority === 'string' && !priority.trim() ? 'unrecorded' : typeof priority !== 'string' ? 'unavailable' : ['high', 'normal'].includes(priority) ? priority : `other:${priority}`;
     for (const value of [...new Set(result.map(item => priorityValue(item.priority)))]) {
       await selector.selectOption(value);
       assert.deepEqual(await visible(), result.filter(item => priorityValue(item.priority) === value).map(item => item.fact_key).sort(), 'natural priority subset');
