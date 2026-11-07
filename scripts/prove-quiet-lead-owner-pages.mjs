@@ -67,12 +67,17 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
         } catch { return route.abort(); }
       }));
     }
+    const observedVerbs = [];
     let snapshot, rpc = 0, writes = 0;
     page.on('request', request => {
       const url = new URL(request.url());
       if (request.method() !== 'GET' && request.method() !== 'HEAD') {
         if (url.pathname !== '/mcp') writes++;
-        else { rpc++; if (!['quiet-follow-ups', 'lead-board', 'territory-state-board', 'list-practice-origination', 'read-home-agenda', 'deal-room-board'].includes(request.postDataJSON()?.params?.name)) writes++; }
+        else {
+          rpc++;
+          const name = request.postDataJSON()?.params?.name;
+          observedVerbs.push(name);
+        }
       }
     });
     const response = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === 'quiet-follow-ups', { timeout: remaining() });
@@ -82,6 +87,23 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     const envelope = await bounded(observed.json());
     if (envelope.result?.isError || envelope.error) throw unavailable('Quiet snapshot refused');
     try { snapshot = JSON.parse(envelope.result.content.find(item => item.type === 'text').text); } catch { throw unavailable('Quiet snapshot unavailable'); }
+    let registry;
+    try {
+      if (fixture) registry = JSON.parse(await bounded(readFile(new URL('../test/fixtures/walk-verb-registry.json', import.meta.url)))).response;
+      else {
+        const outcome = await bounded(page.evaluate(async timeoutMs => {
+          const { createMcpRequests } = await import('/js/mcp-requests.mjs');
+          return createMcpRequests()('list-verbs', { names_only: true }, { timeoutMs });
+        }, remaining()));
+        if (outcome.kind !== 'payload' || outcome.isError) throw Error('Registry read refused');
+        registry = outcome.payload;
+      }
+      if (registry?.ok !== true || !Array.isArray(registry.verbs) || !registry.verbs.length
+        || registry.count !== registry.verbs.length
+        || !registry.verbs.every(verb => typeof verb?.name === 'string' && verb.name.length > 0 && typeof verb.write === 'boolean')
+        || new Set(registry.verbs.map(verb => verb.name)).size !== registry.verbs.length) throw Error('Invalid registry response');
+    } catch (error) { throw unavailable(`Verb registry unavailable: ${error.message}`); }
+    const verbWrites = new Map(registry.verbs.map(verb => [verb.name, verb.write]));
     const leads = await bounded(page.evaluate(async snapshot => {
       const { validateQuietFollowUps } = await import('/js/leads-client.js');
       return validateQuietFollowUps(snapshot).proposals.filter(row => row.subject_type === 'lead');
@@ -124,6 +146,12 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     await bounded(select.selectOption('all'));
     await checkPage(leads, 0);
     assert.equal(rpc, beforeLocal, 'no local selection/page RPC');
+    const unknownVerbs = new Set();
+    for (const name of observedVerbs) {
+      if (!verbWrites.has(name)) unknownVerbs.add(String(name));
+      else if (verbWrites.get(name)) writes++;
+    }
+    assert.equal(unknownVerbs.size, 0, `Unknown MCP verbs: ${[...unknownVerbs].sort().join(', ')}`);
     assert.equal(writes, 0, 'no writes');
     const after = await release(); await contains(after.source_commit); assert.deepEqual(after, before, 'stable release');
     return { ok: true, mode: fixture ? 'local-fixture' : 'natural', release: before, leads: leads.length, matching: matching.length, writes };
