@@ -133,7 +133,12 @@ jobs:
           retention-days: 7
       - name: Publish performance summary
         if: ${{ !cancelled() }}
-        run: cat test-artifacts/performance/summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          if [ -f test-artifacts/performance/summary.md ]; then
+            cat test-artifacts/performance/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '### Mobile performance budget\n\nMeasurement failed.\nScreen: unavailable (measurement did not produce a summary).\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   live:
     # Live journeys: the built app against the real CARR Worker at the pinned
