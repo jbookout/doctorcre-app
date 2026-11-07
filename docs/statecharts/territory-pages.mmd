@@ -43,6 +43,7 @@ state Territory {
     Loading --> Loading: stale request arrives
     Ready --> Ready: stale request arrives
     Error --> Error: stale request arrives
+    Disposed --> Disposed: refresh removed panel
     Disposed --> Disposed: stale request arrives
   }
   --
@@ -167,6 +168,8 @@ state Territory {
     RequestStates --> Retired: authorization fails [loading]
     %% when Loading
     RequestStates --> Retired: dispose panel
+    Retired --> Retired: refresh removed panel [panel removed]
+    %% when Disposed
   }
   --
   state LastAction {
@@ -242,3 +245,4 @@ state Territory {
 %% never KeepLastMiddle: Most recent control.Evidence changed on last page & Area position.Middle area page -- Evidence selection cannot retreat the last page.
 %% never RetiredReady: Request ownership.Prior requests invalidated & Panel visibility.Recorded areas visible -- An invalidated request cannot restore visible areas.
 %% never RetiredLoading: Request ownership.Prior requests invalidated & Panel visibility.Loading territory evidence -- Loading requires a current request owner.
+%% never DisposedOwner: Panel visibility.Panel removed & Request ownership.Current request owns the panel -- A removed panel never acquires another board request.

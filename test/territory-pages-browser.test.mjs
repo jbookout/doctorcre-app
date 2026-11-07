@@ -167,7 +167,7 @@ test('invariant RetiredReady: stale completion never restores a cleared panel', 
   assert.equal(await page.locator('tbody tr').count(), 0);
   assert.equal(await page.getByRole('status').count(), 0);
 });
-test('invariant RetiredLoading: disposed panel never starts another read', async t => {
+test('invariant DisposedOwner: disposed panel never starts another read', async t => {
   const page = await setup(t, 45);
   await page.evaluate(async () => { window.view.dispose(); await window.view.refresh(); });
   assert.equal(await page.evaluate(() => window.calls), 1);
@@ -253,4 +253,11 @@ test('transitions: condition and evidence remain usable during loading and refus
   await page.getByRole('button', {name:'Refresh evidence', exact:true}).click();
   assert.equal(await page.getByRole('status').first().textContent(), 'Showing 0–0 of 0 matching loaded areas / 45 total loaded areas');
   assert.equal(await page.getByLabel('Evidence view', { exact: true }).inputValue(), 'current');
+});
+
+test('invariant RetiredLoading: cleared panel refresh cannot start an unowned load', async t => {
+  const page = await setup(t, 45);
+  await page.evaluate(async () => { window.view.clear(); await window.view.refresh(); });
+  assert.equal(await page.evaluate(() => window.calls), 1);
+  assert.equal(await page.getByRole('status').count(), 0);
 });
