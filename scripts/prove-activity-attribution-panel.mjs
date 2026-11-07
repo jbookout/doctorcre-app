@@ -1,8 +1,13 @@
-import { chromium } from './proof-browser.mjs';
+import { chromium as proofChromium } from './proof-browser.mjs';
+import { chromium } from 'playwright';
 import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-reader.mjs';
 import { signedInEngine, requireContainingRelease } from './prove-fact-review-pending-status-view.mjs';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+const defaultEngine = {
+  launch: options => proofChromium.launch(options),
+  connectOverCDP: (endpoint, options) => chromium.connectOverCDP(endpoint, options),
+};
 const unavailable = message => Object.assign(new Error(message), {exitCode:78});
 export async function observeNatural(page, origin) {
   await page.goto(new URL('/deals',origin).href);
@@ -40,7 +45,7 @@ export async function observeNatural(page, origin) {
   }
   return {activity_id:activityId,state:response.state,attribution:response.attribution,credited_activity_count:response.credited_activity_count,assertions:['state','credit','coverage','recorded links','version evidence']};
 }
-export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=chromium,readRelease,contains=requireContainingRelease,observe=observeNatural}={}) {
+export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=defaultEngine,readRelease,contains=requireContainingRelease,observe=observeNatural}={}) {
   const receipt={status:'insufficient_evidence',exitCode:78};
   let browser,timer,containing=false;
   const controller=new AbortController();
