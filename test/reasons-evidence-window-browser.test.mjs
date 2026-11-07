@@ -36,6 +36,8 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`evid
     await host.getByRole('alert').waitFor();
     assert.equal(await host.locator('time').getAttribute('datetime'),'2026-10-21');
   }
+  await host.getByRole('button',{name:'Clear',exact:true}).click();
+  assert.equal(await host.getByRole('searchbox').evaluate(el=>el===document.activeElement),true);
   await from.fill('2024-02-29');await through.fill('2024-02-29');await apply();
   assert.equal(await host.locator('article').count(),0);
   await page.evaluate(async()=>{const p=window.windowProbe;p.payload.cards[0].evidence_date='2024-02-29';p.payload.next_cursor='1';await p.mount.refresh();});
@@ -98,14 +100,21 @@ test('initial failure, malformed rows, empty refresh, auth denial and disposed c
   await page.evaluate(async()=>{const p=window.windowProbe;p.payload.cards=[];await p.mount.refresh();});
   assert.equal(await host.getByLabel('Evidence from',{exact:true}).inputValue(),'2026-10-26');
   assert.equal(await host.locator('article').count(),0);
+  await host.getByRole('button',{name:'Clear',exact:true}).click();
+  assert.equal(await host.getByLabel('Evidence from',{exact:true}).inputValue(),'');
+  assert.equal(await host.getByRole('searchbox').evaluate(el=>el===document.activeElement),true);
   await page.evaluate(async()=>{const p=window.windowProbe;p.mode='denied';await p.mount.refresh();});
   await host.getByText('Sign in to view contact reasons.',{exact:true}).waitFor();
   assert.equal(await host.locator('input,article').count(),0);
   await page.evaluate(async fixture=>{
-    const p=window.windowProbe;p.mount.dispose();p.mode='held';
+    const p=window.windowProbe;p.mount.dispose();p.mode='payload';p.resolve=null;
     const {mountContactReasons}=await import('/js/contact-reasons.mjs');
-    p.mount=mountContactReasons({host:document.querySelector('section'),window,client:{listPracticeOrigination:()=>{p.reads++;return new Promise(resolve=>{p.resolve=()=>resolve(fixture);});}}});
+    p.mount=mountContactReasons({host:document.querySelector('section'),window,client:{listPracticeOrigination:()=>{p.reads++;return p.mode==='payload'?structuredClone(fixture):new Promise(resolve=>{p.resolve=()=>resolve(fixture);});}}});
   },practiceOriginationFixture());
+  await host.locator('article').first().waitFor();
+  await host.getByLabel('Evidence from',{exact:true}).fill('2026-10-26');
+  await host.getByRole('button',{name:'Apply evidence window'}).click();
+  await page.evaluate(()=>{const p=window.windowProbe;p.mode='held';p.mount.refresh();});
   await page.waitForFunction(()=>Boolean(window.windowProbe.resolve));
   const reads=await page.evaluate(()=>{const p=window.windowProbe;p.mount.dispose();p.resolve();p.mount.refresh();return p.reads;});
   assert.equal(await host.innerText(),'');assert.equal(await page.evaluate(()=>window.windowProbe.reads),reads);

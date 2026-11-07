@@ -52,6 +52,8 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
   const hasWindow = Boolean(window.from || window.through);
   const hasDraft = Boolean(draft.from || draft.through);
 
+  const [filtersVisible, setFiltersVisible] = useState(Boolean(payload?.cards.length || payload?.next_cursor));
+  if (!filtersVisible && (payload?.cards.length || payload?.next_cursor)) setFiltersVisible(true);
   const [previousPayload, setPreviousPayload] = useState(payload);
   const availableSources = [...new Set((payload?.cards || []).map(row => row.source))].sort();
   if (previousPayload !== payload) {
@@ -69,7 +71,7 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
   return <><header className={home ? 'home-panel-head' : 'section-heading'}><h2>Reasons to reach out</h2>{home && <a className="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>}</header>
     {retired ? <p role="status">Sign in to view contact reasons.</p> : <>
       {error && <p role="status">Contact reasons unavailable.{payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>}
-      {payload ? <>{!home && Boolean(payload.cards.length || payload.next_cursor || search || category || selectedSource || hasDraft || hasWindow) && <>
+      {payload ? <>{!home && filtersVisible && <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 'var(--space-3)', marginBlock: 'var(--space-3)' }}>
           <label className="search" style={filterLabelStyle}>Search loaded reasons<input ref={searchInput} type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
           <label style={filterLabelStyle}>Source<select aria-label="Source" value={selectedSource} onChange={event => setSource(event.target.value)}>
