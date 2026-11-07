@@ -35,7 +35,7 @@ import {
 import { isClosedDeal, localDeals, needsAttention, overdueLabel, overdueSince } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, prepareDealDetail, PHASE_TRIGGERS } from './local-deals-model.js';
 import { sourceTime } from './email-source-line.js';
-import { renderDealTimeline, renderDealUpdates, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
+import { mountActivityAttribution, renderDealTimeline, renderDealUpdates, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
 import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -348,6 +348,7 @@ function applyBoardSnapshot(board) {
     ++panelReadSequence; ++contextReadSequence;
     state.panelDetail = null;
     disposeEvidence?.(); disposeEvidence = null;
+    disposeActivityAttribution();
     disposePanelEmailFollowups();
     $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
     $('panelTitle').textContent = 'Deal';
@@ -813,6 +814,13 @@ async function settleConflictChoice(conflictId, result) {
 }
 
 
+let activityAttribution = null;
+function disposeActivityAttribution() { activityAttribution?.dispose(); activityAttribution = null; }
+function mountPanelActivityAttribution() {
+  disposeActivityAttribution();
+  const root = $('panelBody').querySelector('.deal-updates');
+  if (root) activityAttribution = mountActivityAttribution(root, { onDenied: refusePanelDetail });
+}
 let disposeEvidence = null;
 let panelEmailFollowups = null;
 let emailMountSequence = 0;
@@ -865,6 +873,7 @@ function refusePanelDetail(error) {
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
   $('contextDrawer').close();
@@ -1179,7 +1188,9 @@ async function readPanel(id) {
           const historyOpen = current.querySelector('.updates-history')?.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
           const oldScroll = current.scrollLeft;
+          if (fresh.dataset.detailRead === 'updates') disposeActivityAttribution();
           current.replaceWith(fresh);
+          if (fresh.dataset.detailRead === 'updates') mountPanelActivityAttribution();
           fresh.scrollLeft = oldScroll;
           if (wasOpen) {
             const disclosure = fresh.querySelector('.deal-checklist') || fresh;
@@ -1267,6 +1278,7 @@ function paintPanel(detail) {
     dispose() { disposed = true; observer.disconnect(); mounted?.dispose(); },
   };
   disposeEvidence?.(); disposeEvidence = null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
@@ -1343,6 +1355,7 @@ function paintPanel(detail) {
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
+  mountPanelActivityAttribution();
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
@@ -1356,6 +1369,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
   if (!state.panelDeal) boardScroll = history.state?.boardScroll ?? scrollY;
@@ -1413,6 +1427,7 @@ async function closeWorkspace({ fromHistory = false } = {}) {
   $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); writeWorkspaceHistory({},url); }
   $('recordPanel').hidden = true; $('main').hidden = false;
