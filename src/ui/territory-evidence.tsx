@@ -59,6 +59,8 @@ function parse(value: unknown): Market[] {
 export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuthorizationFailure: (error: unknown) => void) {
   const root = createRoot(host);
   let view: View = { kind: 'idle' }, filters: Filters = {}, epoch = 0, generation = 0, opened = false, disposed = false;
+  let pageOffset = 0;
+  const pageSize = 20;
   let selectedEvidence: EvidenceView = 'all';
   let selectedCondition: Condition | 'all' = 'all';
   async function load() {
@@ -67,6 +69,7 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
     try {
       const rows = parse(await client.getTerritoryStateBoard(filters));
       if (disposed || request !== epoch) return;
+      pageOffset = 0;
       view = { kind: 'ready', rows };
     } catch (error) {
       if (disposed || request !== epoch) return;
@@ -81,7 +84,7 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
     render();
   }
   function clear() {
-    ++epoch; ++generation; opened = false; selectedCondition = 'all'; selectedEvidence = 'all'; filters = {}; view = { kind: 'idle' }; render();
+    ++epoch; ++generation; pageOffset = 0; opened = false; selectedCondition = 'all'; selectedEvidence = 'all'; filters = {}; view = { kind: 'idle' }; render();
   }
   function render() {
     if (disposed) return;
@@ -110,6 +113,7 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
         </form>
         <label>Condition<select value={selectedCondition} onChange={event => {
           selectedCondition = event.currentTarget.value === 'all' ? 'all' : condition(event.currentTarget.value);
+          pageOffset = 0;
           render();
         }}><option value="all">All conditions</option>{conditions.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
         <label>Evidence view<select aria-label="Evidence view" value={selectedEvidence} onChange={event => {
@@ -119,10 +123,14 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
         }}><option value="all">All evidence</option><option value="current">Current evidence</option><option value="historical">Historical evidence</option></select></label>
         {view.kind === 'loading' && <p role="status">Loading territory evidence…</p>}
         {view.kind === 'error' && <p role="alert">{view.message}</p>}
-        {view.kind === 'ready' && <p role="status">{matching.length} matching loaded areas / {view.rows.length} total loaded areas</p>}
+        {view.kind === 'ready' && <p role="status">Showing {matching.length ? pageOffset + 1 : 0}–{Math.min(pageOffset + pageSize, matching.length)} of {matching.length} matching loaded areas / {view.rows.length} total loaded areas</p>}
+        {view.kind === 'ready' && <nav aria-label="Territory area pages">
+          <button type="button" aria-disabled={pageOffset === 0} onClick={() => { if (pageOffset > 0) { pageOffset -= pageSize; render(); } }}>Previous areas</button>
+          <button type="button" aria-disabled={pageOffset + pageSize >= matching.length} onClick={() => { if (pageOffset + pageSize < matching.length) { pageOffset += pageSize; render(); } }}>Next areas</button>
+        </nav>}
         {view.kind === 'ready' && (matching.length ? <table><caption>Server-recorded conditions by city and state</caption>
           <thead><tr><th scope="col">Area</th><th scope="col">Condition</th><th scope="col">Sources</th></tr></thead>
-          <tbody>{matching.map(row => {
+          <tbody>{matching.slice(pageOffset, pageOffset + pageSize).map(row => {
             const evidence = row.evidence.filter(entry => selectedEvidence === 'all' || entry.current === (selectedEvidence === 'current'));
             return <tr key={JSON.stringify([row.city, row.state])}>
             <th scope="row">{row.city}, {row.state}</th><td>{labels[row.condition]}</td>
@@ -138,5 +146,5 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
     </section>));
   }
   render();
-  return { clear, refresh() { if (opened && view.kind !== 'idle') return load(); }, dispose() { disposed = true; selectedCondition = 'all'; selectedEvidence = 'all'; ++epoch; flushSync(() => root.unmount()); } };
+  return { clear, refresh() { if (opened && view.kind !== 'idle') return load(); }, dispose() { disposed = true; pageOffset = 0; selectedCondition = 'all'; selectedEvidence = 'all'; ++epoch; flushSync(() => root.unmount()); } };
 }

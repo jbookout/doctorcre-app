@@ -1,0 +1,19 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Loading: open
+  Loading --> Ready: latestSuccess / page=0
+  Loading --> Error: latestRefusal
+  Ready --> Loading: refreshOrServerFilter
+  Error --> Loading: retry
+  Ready --> Ready: next [offset+20<matching] / offset+=20
+  Ready --> Ready: previous [offset>0] / offset-=20
+  Ready --> Ready: condition / offset=0
+  Ready --> Ready: evidenceView / preserveOffset
+  Loading --> Loading: supersede / epoch++
+  Loading --> Ready: staleCompletion / ignore
+  Ready --> Idle: clearOrSignOut / offset=0, epoch++
+  Loading --> Idle: clearOrAuthorizationFailure / offset=0, epoch++
+  Idle --> Idle: staleCompletion / ignore
+  Ready --> Disposed: dispose / offset=0, epoch++
+  Loading --> Disposed: dispose / offset=0, epoch++
+  Disposed --> Disposed: lateCompletion / ignore
