@@ -82,6 +82,10 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   await page.keyboard.press('Tab');
   assert.equal(await category.evaluate(node => node === document.activeElement),true);
   await page.keyboard.press('Tab');
+  assert.equal(await reasons.getByLabel('Evidence from',{exact:true}).evaluate(node=>node===document.activeElement),true);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   assert.equal(await search.inputValue(),'');
   await reasons.getByRole('button',{name:/^Show/}).click();
