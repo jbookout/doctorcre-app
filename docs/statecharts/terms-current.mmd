@@ -1,0 +1,27 @@
+stateDiagram-v2
+  [*] --> Loading: Open Compare terms
+  Loading --> History: Valid response with focus off
+  Loading --> Focused: Valid response with focus on
+  Loading --> Error: Failed or malformed response
+  History --> Focused: Check Hide superseded terms
+  Focused --> History: Clear Hide superseded terms
+  History --> History: Change term, stage, or expense basis
+  Focused --> Focused: Change term, stage, or expense basis
+  History --> Loading: Compare again
+  Focused --> Loading: Compare again
+  Error --> Loading: Retry Compare
+  Loading --> Closed: Close panel
+  History --> Closed: Close panel
+  Focused --> Closed: Close panel
+  Error --> Closed: Close panel
+  Closed --> Loading: Reopen with focus off
+  %% never Hide a term without an independently matching successor in the complete response.
+  %% never Change firm-wide coverage or issue a read when changing local controls.
+  %% System design: Comparison owns the boolean and validated response; Results owns the local projection.
+  %% Use one successor predicate for styling and visibility. Keep the mount interface unchanged except an additive parser export for proof admission.
+  %% Capacity: existing rows.some is quadratic; reuse its result once per row before filtering. At 10x the response, rendering and this scan grow first. No new infrastructure.
+  %% Load spread, storage, N+1, cache and invalidation: n/a, one existing read and no persistent cache or storage access. Successful reads replace the response.
+  %% Consistency: project only the latest validated response. Malformed and failed reads refuse; stale reads cannot replace the latest view.
+  %% Async: existing Compare sequence guards responses. No queue, new calls, fan-out, retries, circuit breaker, rate limit, write or idempotency key is added.
+  %% External failures use existing explicit retry behavior. Local controls make zero requests.
+  %% Throughput checkpoint: test projection and refresh first, then bounded proof and full verification; 60-minute build budget.
