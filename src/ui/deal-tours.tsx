@@ -24,11 +24,16 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
   if (!uuid.test(dealId)) throw Error('Invalid deal');
   const root = createRoot(element);
   let library: Library = { kind: 'loading' }, selection: Selection = { kind: 'none' };
-  let disposed = false, generation = 0, detailGeneration = 0;
+  let lifecycle: 'active' | 'retired' | 'disposed' = 'active';
+  let generation = 0, detailGeneration = 0;
+  const active = () => lifecycle === 'active';
   let controller = new AbortController();
   let requested = initialTourId;
   let scope = client.scope;
   function invalidate() {
+    if (!active()) return;
+    lifecycle = 'retired';
+    requested = null;
     departure?.finish(false);
     ++generation; ++detailGeneration; controller.abort();
     library = { kind: 'unavailable' }; selection = { kind: 'none' }; render();
@@ -43,7 +48,7 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     scope = next;
   });
   function setUrl(id?: string, push = false) {
-    if (!view || view.location.pathname !== '/deals') return;
+    if (!active() || !view || view.location.pathname !== '/deals') return;
     const url = new URL(view.location.href);
     url.searchParams.set('tab', 'tours');
     if (push && !url.searchParams.has('tour')) {
@@ -56,7 +61,7 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
   }
   let departureApproved = false;
   function hasUnsavedChanges() {
-    if (departureApproved) return false;
+    if (!active() || departureApproved) return false;
     const frame = element.querySelector('iframe');
     if (frame?.contentWindow) {
       const leaving = element.ownerDocument.createEvent('Event');
@@ -67,6 +72,7 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
   }
   let departure: { promise: Promise<boolean>; finish(leave: boolean): void } | null = null;
   function confirmLeave(): Promise<boolean> {
+    if (!active()) return Promise.resolve(true);
     if (departure) return departure.promise;
     if (!hasUnsavedChanges()) return Promise.resolve(true);
     const dialog = element.ownerDocument.createElement('dialog');
@@ -89,13 +95,13 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     return promise;
   }
   async function back() {
-    if (!await confirmLeave() || disposed) return;
+    if (!active() || !await confirmLeave() || !active()) return;
     if (view?.history.state?.doctorcreTourWorkspace === dealId) { view.history.back(); return; }
     departureApproved = false; ++detailGeneration; selection = { kind: 'none' }; setUrl(); render(); void refresh();
   }
   function receive(event: MessageEvent) {
     const frame = element.querySelector('iframe');
-    if (!view || event.origin !== view.location.origin || !frame || event.source !== frame.contentWindow || !record(event.data) || event.data.generation !== detailGeneration) return;
+    if (!active() || !view || event.origin !== view.location.origin || !frame || event.source !== frame.contentWindow || !record(event.data) || event.data.generation !== detailGeneration) return;
     if (event.data.type === 'deal-tour-size' && typeof event.data.height === 'number' && Number.isFinite(event.data.height)) {
       frame.style.height = `${Math.max(700, Math.min(30000, event.data.height))}px`;
     }
@@ -104,11 +110,11 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
   }
   view?.addEventListener('message', receive);
   function render() {
-    if (disposed) return;
+    if (lifecycle === 'disposed') return;
     flushSync(() => root.render(<section className="deal-tours" aria-label="Deal tours">
       <h2>Properties &amp; tours</h2>
       <p>Plan and review the shortlist, route and packet for this deal.</p>
-      {(selection.kind === 'ready' || selection.kind === 'creating') ? <>
+      {lifecycle === 'retired' ? <p role="status">Your session has changed. Reload this deal to continue.</p> : (selection.kind === 'ready' || selection.kind === 'creating') ? <>
         <button type="button" className="btn btn-quiet" data-back-tours onClick={back}>Back to deal tours</button>
         <iframe title="Tour shortlist, route and packet" src={`/tours/route-editor.html?embedded=1&deal=${encodeURIComponent(dealId)}&generation=${detailGeneration}${selection.kind === 'ready' ? `&tour=${encodeURIComponent(selection.tour.id)}` : ''}`}
           style={{ width: '100%', minHeight: 700, border: 0, display: 'block' }} />
@@ -126,18 +132,20 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     </section>));
   }
   function startCreation() {
+    if (!active()) return;
     departureApproved = false; ++detailGeneration; requested = null; selection = { kind: 'creating' }; setUrl('new',true); render();
   }
   async function refresh() {
+    if (!active()) return;
     if (selection.kind === 'ready' || selection.kind === 'creating') return;
     const ticket = ++generation; ++detailGeneration; controller.abort(); controller = new AbortController();
     library = { kind: 'loading' }; selection = { kind: 'none' }; render();
     try {
       const rows = await client.library({ signal: controller.signal });
-      if (disposed || ticket !== generation) return;
+      if (!active() || ticket !== generation) return;
       if (!Array.isArray(rows)) throw Error('Invalid library');
       library = { kind: 'ready', tours: rows.map(parseTour).filter(tour => tour.deal_id === dealId) };
-    } catch { if (disposed || ticket !== generation) return; library = { kind: 'unavailable' }; }
+    } catch { if (!active() || ticket !== generation) return; library = { kind: 'unavailable' }; }
     render();
     if (library.kind === 'ready' && requested) {
       const id = requested; requested = null;
@@ -147,17 +155,18 @@ export function mountDealTours(element: Element, { dealId, client, initialTourId
     }
   }
   async function open(id: string) {
+    if (!active()) return;
     const ticket = ++detailGeneration;
     selection = { kind: 'loading', id }; render();
     try {
       const value = await client.tour(id, { signal: controller.signal });
-      if (disposed || ticket !== detailGeneration) return;
+      if (!active() || ticket !== detailGeneration) return;
       const tour = parseTour(value);
       if (tour.id !== id || tour.deal_id !== dealId || !record(value) || !Array.isArray(value.stops)) throw Error('Unavailable tour');
       selection = { kind: 'ready', tour }; setUrl(id,true);
-    } catch { if (disposed || ticket !== detailGeneration) return; selection = { kind: 'unavailable', id }; }
+    } catch { if (!active() || ticket !== detailGeneration) return; selection = { kind: 'unavailable', id }; }
     render();
   }
   void refresh();
-  return { refresh, hasUnsavedChanges, confirmLeave, dispose() { departure?.finish(false); disposed = true; ++generation; ++detailGeneration; controller.abort(); unsubscribe?.(); view?.removeEventListener('message', receive); view?.removeEventListener('doctorcre-session-invalidated', invalidate); root.unmount(); } };
+  return { refresh, hasUnsavedChanges, confirmLeave, dispose() { departure?.finish(false); lifecycle = 'disposed'; ++generation; ++detailGeneration; controller.abort(); unsubscribe?.(); view?.removeEventListener('message', receive); view?.removeEventListener('doctorcre-session-invalidated', invalidate); root.unmount(); } };
 }
