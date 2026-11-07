@@ -129,6 +129,6 @@ function validateResearch(research) {
 }
 export function validateQuietFollowUps(payload) {
   projection(object(payload) && payload.schema_version === "quiet-follow-ups.v1" && object(payload.cadence) && Number.isSafeInteger(payload.cadence.lead_days) && payload.cadence.lead_days >= 1 && Number.isSafeInteger(payload.cadence.vendor_days) && payload.cadence.vendor_days >= 1 && Array.isArray(payload.proposals) && payload.proposals.length <= 1000 && payload.sent === false && payload.tasks_created === false);
-  for (const row of payload.proposals) projection(object(row) && text(row.subject_type) && text(row.subject_id) && text(row.ref) && typeof row.name === "string" && (row.basis === "created_at" || row.basis === "last_contact") && DAY.test(row.anchor_on) && DAY.test(row.due_on) && Number.isSafeInteger(row.days_overdue));
+  for (const row of payload.proposals) projection(object(row) && (row.owner == null || text(row.owner)) && text(row.subject_type) && text(row.subject_id) && text(row.ref) && typeof row.name === "string" && (row.basis === "created_at" || row.basis === "last_contact") && DAY.test(row.anchor_on) && DAY.test(row.due_on) && Number.isSafeInteger(row.days_overdue));
   return payload;
 }

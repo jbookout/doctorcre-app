@@ -32,6 +32,7 @@ const UI_ENTRIES = {
   'ui-lead': 'lead-guidance',
   'ui-ideal-client-profile': 'ideal-client-profile',
   'ui-territory-evidence': 'territory-evidence',
+  'ui-quiet-leads': 'quiet-leads',
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-documents': 'deal-documents',

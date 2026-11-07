@@ -1,0 +1,21 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Loading: Open Leads
+    Loading --> Ready: Receive current snapshot
+    Loading --> Empty: Receive no leads
+    Loading --> Refused: Read fails
+    Refused --> Loading: Refresh
+    Ready --> Ready: Select owner or change page locally
+    Ready --> Loading: Refresh
+    Empty --> Loading: Refresh
+    Loading --> Loading: Ignore superseded response
+    Ready --> Idle: Session retires or page suspends
+    Loading --> Idle: Session retires or page suspends
+    Refused --> Idle: Session retires
+    Idle --> Disposed: Dispose page
+    Loading --> Disposed: Dispose page
+    Ready --> Disposed: Dispose page
+    Disposed --> Disposed: Ignore late completion
+    %% never render vendor proposals
+    %% never make an RPC for owner or page selection
+    %% never revive retired data from a late completion
