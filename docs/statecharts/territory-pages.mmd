@@ -1,5 +1,5 @@
 %% Finite model of the contract-checked 45-area fixture; conflicting selects 23 and tight selects zero.
-%% First/Middle/Last mean offsets 0/20/40 for all conditions; filtered Last means offset 20.
+%% First/Middle/Last always mean offsets 0/20/40, independent of matching count.
 %% Matches describes the selected fixture population even while rows are hidden.
 %% Most recent control records the page before evidence selection, so retention is an invariant.
 %% Request ownership abstracts epoch equality, not transport cancellation. Superseded responses stutter.
@@ -51,26 +51,28 @@ state Territory {
     [*] --> PageStates
     state "Area position" as PageStates {
       state "First area page" as First
-      state "Middle area page" as Middle
-      state "Last area page" as Last
+      state "Second area page" as Middle
+      state "Third area page" as Last
       [*] --> First
     }
     First --> Middle: next areas [areas visible and 45 matches]
     %% when Ready, Full
-    First --> Last: next areas [areas visible and 23 matches]
+    First --> Middle: next areas [areas visible and 23 matches]
     %% when Ready, Few
     Middle --> Last: next areas [areas visible and 45 matches]
     %% when Ready, Full
     Last --> Middle: previous areas [areas visible and 45 matches]
     %% when Ready, Full
-    Last --> First: previous areas [areas visible and 23 matches]
+    Middle --> First: previous areas [areas visible and 23 matches]
     %% when Ready, Few
     Middle --> First: previous areas [areas visible and 45 matches]
     %% when Ready, Full
     First --> First: previous boundary [areas visible]
     %% when Ready
-    Last --> Last: next boundary [areas visible]
-    %% when Ready
+    Last --> Last: next boundary [areas visible and 45 matches]
+    %% when Ready, Full
+    Middle --> Middle: next boundary [areas visible and 23 matches]
+    %% when Ready, Few
     First --> First: empty boundary [areas visible and zero matches]
     %% when Ready, Empty
     PageStates --> First: select all conditions [panel mounted]
@@ -178,8 +180,8 @@ state Territory {
       state "Other action" as Neutral
       state "Page reset requested" as Reset
       state "Evidence changed on first page" as KeepFirst
-      state "Evidence changed on middle page" as KeepMiddle
-      state "Evidence changed on last page" as KeepLast
+      state "Evidence changed on second page" as KeepMiddle
+      state "Evidence changed on third page" as KeepLast
       [*] --> Neutral
     }
     LastActionStates --> Reset: select all conditions [panel mounted]
@@ -210,39 +212,39 @@ state Territory {
     %% when Ready
     LastActionStates --> KeepFirst: select all evidence [panel mounted on first page]
     %% when First, Idle, Loading, Ready, Error
-    LastActionStates --> KeepMiddle: select all evidence [panel mounted on middle page]
+    LastActionStates --> KeepMiddle: select all evidence [panel mounted on second page]
     %% when Middle, Idle, Loading, Ready, Error
-    LastActionStates --> KeepLast: select all evidence [panel mounted on last page]
+    LastActionStates --> KeepLast: select all evidence [panel mounted on third page]
     %% when Last, Idle, Loading, Ready, Error
     LastActionStates --> KeepFirst: select historical evidence [panel mounted on first page]
     %% when First, Idle, Loading, Ready, Error
-    LastActionStates --> KeepMiddle: select historical evidence [panel mounted on middle page]
+    LastActionStates --> KeepMiddle: select historical evidence [panel mounted on second page]
     %% when Middle, Idle, Loading, Ready, Error
-    LastActionStates --> KeepLast: select historical evidence [panel mounted on last page]
+    LastActionStates --> KeepLast: select historical evidence [panel mounted on third page]
     %% when Last, Idle, Loading, Ready, Error
     LastActionStates --> KeepFirst: select current evidence [panel mounted on first page]
     %% when First, Idle, Loading, Ready, Error
-    LastActionStates --> KeepMiddle: select current evidence [panel mounted on middle page]
+    LastActionStates --> KeepMiddle: select current evidence [panel mounted on second page]
     %% when Middle, Idle, Loading, Ready, Error
-    LastActionStates --> KeepLast: select current evidence [panel mounted on last page]
+    LastActionStates --> KeepLast: select current evidence [panel mounted on third page]
     %% when Last, Idle, Loading, Ready, Error
   }
 }
-%% never EmptyFirst: Matching count.Zero matching loaded areas & Area position.Middle area page -- An empty result never has a middle page.
-%% never EmptyLast: Matching count.Zero matching loaded areas & Area position.Last area page -- An empty result never has a last page.
-%% never FewMiddle: Matching count.23 matching loaded areas & Area position.Middle area page -- A 23-area result never has a third page.
-%% never IdleFirst: Panel visibility.Panel cleared & Area position.Middle area page -- Clearing never retains the middle page.
-%% never IdleLast: Panel visibility.Panel cleared & Area position.Last area page -- Clearing never retains the last page.
-%% never DisposedFirst: Panel visibility.Panel removed & Area position.Middle area page -- Disposal never retains the middle page.
-%% never DisposedLast: Panel visibility.Panel removed & Area position.Last area page -- Disposal never retains the last page.
-%% never ResetMiddle: Most recent control.Page reset requested & Area position.Middle area page -- A condition change or successful refresh resets the page.
-%% never ResetLast: Most recent control.Page reset requested & Area position.Last area page -- A condition change or successful refresh resets even the last page.
-%% never KeepFirstMiddle: Most recent control.Evidence changed on first page & Area position.Middle area page -- Evidence selection preserves the first page.
-%% never KeepFirstLast: Most recent control.Evidence changed on first page & Area position.Last area page -- Evidence selection cannot jump from first to last.
-%% never KeepMiddleFirst: Most recent control.Evidence changed on middle page & Area position.First area page -- Evidence selection preserves the middle page.
-%% never KeepMiddleLast: Most recent control.Evidence changed on middle page & Area position.Last area page -- Evidence selection cannot advance the middle page.
-%% never KeepLastFirst: Most recent control.Evidence changed on last page & Area position.First area page -- Evidence selection preserves the last page.
-%% never KeepLastMiddle: Most recent control.Evidence changed on last page & Area position.Middle area page -- Evidence selection cannot retreat the last page.
+%% never EmptyFirst: Matching count.Zero matching loaded areas & Area position.Second area page -- An empty result never has a second page.
+%% never EmptyLast: Matching count.Zero matching loaded areas & Area position.Third area page -- An empty result never has a third page.
+%% never FewThird: Matching count.23 matching loaded areas & Area position.Third area page -- A 23-area result never has a third page.
+%% never IdleFirst: Panel visibility.Panel cleared & Area position.Second area page -- Clearing never retains the second page.
+%% never IdleLast: Panel visibility.Panel cleared & Area position.Third area page -- Clearing never retains the third page.
+%% never DisposedFirst: Panel visibility.Panel removed & Area position.Second area page -- Disposal never retains the second page.
+%% never DisposedLast: Panel visibility.Panel removed & Area position.Third area page -- Disposal never retains the third page.
+%% never ResetMiddle: Most recent control.Page reset requested & Area position.Second area page -- A condition change or successful refresh resets the page.
+%% never ResetLast: Most recent control.Page reset requested & Area position.Third area page -- A condition change or successful refresh resets even the third page.
+%% never KeepFirstMiddle: Most recent control.Evidence changed on first page & Area position.Second area page -- Evidence selection preserves the first page.
+%% never KeepFirstLast: Most recent control.Evidence changed on first page & Area position.Third area page -- Evidence selection cannot jump from first to last.
+%% never KeepMiddleFirst: Most recent control.Evidence changed on second page & Area position.First area page -- Evidence selection preserves the second page.
+%% never KeepMiddleLast: Most recent control.Evidence changed on second page & Area position.Third area page -- Evidence selection cannot advance the second page.
+%% never KeepLastFirst: Most recent control.Evidence changed on third page & Area position.First area page -- Evidence selection preserves the third page.
+%% never KeepLastMiddle: Most recent control.Evidence changed on third page & Area position.Second area page -- Evidence selection cannot retreat the third page.
 %% never RetiredReady: Request ownership.Prior requests invalidated & Panel visibility.Recorded areas visible -- An invalidated request cannot restore visible areas.
 %% never RetiredLoading: Request ownership.Prior requests invalidated & Panel visibility.Loading territory evidence -- Loading requires a current request owner.
 %% never DisposedOwner: Panel visibility.Panel removed & Request ownership.Current request owns the panel -- A removed panel never acquires another board request.

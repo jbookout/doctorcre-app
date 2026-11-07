@@ -103,7 +103,7 @@ for (const [rule, position] of [['EmptyFirst', 1], ['EmptyLast', 2]]) {
     assert.equal(await page.getByRole('status').first().textContent(), 'Showing 0–0 of 0 matching loaded areas / 45 total loaded areas');
   });
 }
-test('invariant FewMiddle: 23 matching areas have exactly two pages', async t => {
+test('invariant FewThird: 23 matching areas have exactly two pages', async t => {
   const page = await setup(t, 45);
   await moveTo(page, 2);
   await page.locator('select').first().selectOption('conflicting');
