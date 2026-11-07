@@ -83,9 +83,13 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     await select.waitFor();
     const before = reads;
     await select.selectOption(key);
-    assert.deepEqual(await section.locator('li[data-vendor-id]').evaluateAll(rows => rows.map(row => row.dataset.vendorId)), expected.slice(0, 5).map(row => row.subject_id));
-    const count = `Showing 1–${Math.min(5, expected.length)} of ${expected.length} matching loaded vendors.`;
-    assert.ok((await section.innerText()).includes(count), 'Matching loaded count');
+    for (let offset = 0; offset < expected.length; offset += 5) {
+      remaining();
+      assert.deepEqual(await section.locator('li[data-vendor-id]').evaluateAll(rows => rows.map(row => row.dataset.vendorId)), expected.slice(offset, offset + 5).map(row => row.subject_id));
+      const count = `Showing ${offset + 1}–${Math.min(offset + 5, expected.length)} of ${expected.length} matching loaded vendors.`;
+      assert.ok((await section.innerText()).includes(count), 'Matching loaded count');
+      if (offset + 5 < expected.length) await section.getByRole('button', { name: 'Next vendors' }).click();
+    }
     await select.selectOption('all');
     assert.equal(reads, before, 'Filter and clear perform no business reads');
     assert.deepEqual(await section.locator('li[data-vendor-id]').evaluateAll(rows => rows.map(row => row.dataset.vendorId)), vendors.slice(0, 5).map(row => row.subject_id));
