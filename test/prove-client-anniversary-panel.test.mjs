@@ -14,10 +14,10 @@ const exec=promisify(execFile), expected='a'.repeat(40);
 const root=resolve(new URL('../',import.meta.url).pathname);
 const fixtures=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/recordings.json',import.meta.url),'utf8'));
 const assets=await appAssetSnapshot();
-async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false,mutate='' }={}) {
+async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false,mutate='',collapsed=false }={}) {
   const json=(value,status=200)=>({body:JSON.stringify(value),contentType:'application/json',status});
   const snapshot=new Map(assets);
-  snapshot.set('/leases',{contentType:'text/html',body:`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`});
+  snapshot.set('/leases',{contentType:'text/html',body:`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();${collapsed?"new MutationObserver((_,observer)=>{const button=document.querySelector('button[aria-expanded=true]');if(button){observer.disconnect();button.click();}}).observe(document.getElementById('host'),{childList:true,subtree:true,attributes:true});":''}mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`});
   const response=json(fixtures[state].output,state==='unavailable'?503:200);
   const fixture=await startFixture({assets:snapshot,routes:new Map([
     ['/app-release',json({service:'doctorcre-app',environment:'production',source_commit:commit})],
@@ -144,4 +144,9 @@ test('CLI refuses an unreachable borrowed CDP endpoint on a containing release',
   const cdpUrl=endpoint.origin;
   await endpoint.close();
   await assert.rejects(exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',origin,'--expected-commit',expected,'--cdp-url',cdpUrl,'--timeout-ms','3000']),error=>error.code===78);
+});
+
+test('proof CLI refuses a section that requires opening on a containing release',async t=>{
+  const origin=await server(t,{collapsed:true});
+  await assert.rejects(exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',origin,'--expected-commit',expected,'--timeout-ms','15000']),error=>error.code===1);
 });

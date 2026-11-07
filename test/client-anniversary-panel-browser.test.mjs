@@ -1,7 +1,7 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-test('leases publishes an opt-in anniversary island', async () => {
+import { readFile, mkdir } from 'node:fs/promises';
+test('leases publishes an automatically opened anniversary island', async () => {
   assert.match(await readFile(new URL('../lease-radar.html',import.meta.url),'utf8'), /id="clientAnniversaries"/);
 });
 import { transformSync, stop } from 'esbuild';
@@ -48,28 +48,40 @@ async function open(t,{width=1440,theme='light'}={}) {
   return page;
 }
 const complete=(page,payload)=>page.evaluate(payload=>window.pending.shift().resolve(payload),payload);
-for(const width of [390,1440])for(const theme of ['light','dark'])test(`keyboard opt-in bounded snapshot at ${width} ${theme}`,async t=>{
+for(const width of [390,1440])for(const theme of ['light','dark'])test(`automatic bounded snapshot with keyboard collapse at ${width} ${theme}`,async t=>{
   const page=await open(t,{width,theme});
-  assert.equal(await page.evaluate(()=>window.reads),0);
-  const button=page.getByRole('button',{name:'Show closing anniversaries'});await button.focus();await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(()=>window.reads),1);
+  assert.equal(await page.getByRole('button',{name:'Hide closing anniversaries'}).getAttribute('aria-expanded'),'true');
   await page.getByText('Loading closing anniversaries…').waitFor();
   await complete(page,fixtures.more.output);
   await page.getByText('More anniversary rows exist.',{exact:false}).waitFor();
   assert.equal(await page.locator('li').count(),20);
   assert.deepEqual(await page.locator('li a:nth-of-type(2)').evaluateAll(links=>links.map(link=>link.getAttribute('href'))),fixtures.more.output.rows.map(row=>`/deals?deal=${encodeURIComponent(row.deal_id)}`));
+  await page.clock.install();
+  await page.clock.fastForward(120000);
   assert.equal(await page.evaluate(()=>window.reads),1);
   assert.equal(await page.locator('li a').first().getAttribute('href'),'/clients?record=synthetic-client');
   assert.ok((await page.locator('li').first().innerText()).includes('2020-11-12'));
   assert.ok((await page.locator('li').first().innerText()).includes('2026-11-12'));
   assert.ok((await page.locator('li').first().innerText()).includes('6 days until'));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  await page.getByRole('button',{name:'Hide closing anniversaries'}).click();
+  if(process.env.ANNIVERSARY_SCREENSHOT_DIR){
+    await mkdir(process.env.ANNIVERSARY_SCREENSHOT_DIR,{recursive:true});
+    await page.screenshot({path:process.env.ANNIVERSARY_SCREENSHOT_DIR+'/'+width+'-'+theme+'.png',fullPage:true});
+  }
+  await page.getByRole('button',{name:'Hide closing anniversaries'}).focus();
+  await page.keyboard.press('Enter');
   assert.equal(await page.locator('li').count(),0);
+  await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+  await complete(page,fixtures.ready.output);
+  await page.getByText('Skipped invalid 1.',{exact:false}).waitFor();
+  assert.equal(await page.evaluate(()=>window.reads),2);
 });
 test('empty, unavailable, needs input and malformed data are distinct and explicitly retry',async t=>{
   const page=await open(t);
   for(const [value,text] of [[fixtures.empty.output,'No closing anniversaries in this slice.'],[fixtures.unavailable.output,'Closing anniversaries are unavailable.'],[fixtures.needs_input.output,'Closing anniversaries need input.'],[{},'Closing anniversaries could not be loaded. Try again.']]){
-    await page.getByRole('button',{name:'Show closing anniversaries'}).click();await complete(page,value);
+    if(await page.getByRole('button',{name:'Show closing anniversaries'}).count())await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+    await complete(page,value);
     await page.getByText(text,{exact:true}).waitFor();
     if(!text.startsWith('No ')){
       await page.getByRole('button',{name:'Retry closing anniversaries'}).click();await complete(page,fixtures.ready.output);
@@ -80,7 +92,6 @@ test('empty, unavailable, needs input and malformed data are distinct and explic
 });
 test('hide invalidates late completion and new loading ignores the older response',async t=>{
   const page=await open(t);
-  await page.getByRole('button',{name:'Show closing anniversaries'}).click();
   await page.getByRole('button',{name:'Hide closing anniversaries'}).click();
   assert.equal(await page.evaluate(()=>window.signal.aborted),true);
   await page.getByRole('button',{name:'Show closing anniversaries'}).click();
@@ -91,7 +102,10 @@ test('hide invalidates late completion and new loading ignores the older respons
 });
 for(const action of ['dispose','pagehide','doctorcre-session-invalidated'])for(const state of ['idle','loading','success','empty','refusal'])test(`${action} retires ${state} and ignores late completion`,async t=>{
   const page=await open(t);
-  if(state!=='idle')await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+  if(state==='idle'){
+    await page.getByRole('button',{name:'Hide closing anniversaries'}).click();
+    await complete(page,fixtures.ready.output);
+  }
   if(['success','empty','refusal'].includes(state)){
     await complete(page,state==='success'?fixtures.ready.output:state==='empty'?fixtures.empty.output:{});
     await page.locator('[aria-busy="false"]').waitFor();
@@ -115,7 +129,6 @@ test('read adapter preserves query and signal, refuses auth and malformed bodies
 });
 test('hide invalidates late completion while idle',async t=>{
   const page=await open(t);
-  await page.getByRole('button',{name:'Show closing anniversaries'}).click();
   await page.getByRole('button',{name:'Hide closing anniversaries'}).click();
   await complete(page,fixtures.ready.output);
   assert.equal(await page.locator('li').count(),0);
@@ -137,9 +150,12 @@ test('boundary refuses oversized slices, changed query, invalid coverage, dates,
     {...more,rows:[...more.rows].reverse()},
   ])assert.throws(()=>ui.parseClientAnniversaries(payload));
 });
-for(const state of ['idle','loading','success','empty','refusal'])test(`persisted pagehide resets ${state} and permits a fresh opt-in`,async t=>{
+for(const state of ['idle','loading','success','empty','refusal'])test(`persisted pagehide resets ${state} and permits a fresh read`,async t=>{
   const page=await open(t);
-  if(state!=='idle')await page.getByRole('button',{name:'Show closing anniversaries'}).click();
+  if(state==='idle'){
+    await page.getByRole('button',{name:'Hide closing anniversaries'}).click();
+    await complete(page,fixtures.ready.output);
+  }
   if(['success','empty','refusal'].includes(state)){
     await complete(page,state==='success'?fixtures.ready.output:state==='empty'?fixtures.empty.output:{});
     await page.locator('[aria-busy="false"]').waitFor();
@@ -151,4 +167,11 @@ for(const state of ['idle','loading','success','empty','refusal'])test(`persiste
   await page.getByRole('button',{name:'Show closing anniversaries'}).click();
   await complete(page,fixtures.empty.output);
   await page.getByText('No closing anniversaries in this slice.').waitFor();
+});
+
+for(const [value,text] of [[fixtures.empty.output,'No closing anniversaries in this slice.'],[fixtures.unavailable.output,'Closing anniversaries are unavailable.'],[fixtures.needs_input.output,'Closing anniversaries need input.'],[{},'Closing anniversaries could not be loaded. Try again.']])test(`page opens directly into ${text}`,async t=>{
+  const page=await open(t);
+  await complete(page,value);
+  await page.getByText(text,{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.reads),1);
 });
