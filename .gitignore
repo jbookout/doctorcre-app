@@ -58,3 +58,5 @@ mobile-a11y-evidence/
 /js/ui-client-anniversaries.js
 /js/ui-lead-research.js
 /js/ui-activity-attribution.js
+
+/js/ui-relationship-kind-filter.js
