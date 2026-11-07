@@ -1,0 +1,16 @@
+stateDiagram-v2
+  [*] --> Loading: mount
+  Loading --> Ready: current valid response
+  Ready --> Ready: select or clear basis locally
+  Ready --> Loading: explicit refresh
+  Failed --> Loading: explicit retry
+  Loading --> Ready: basis survives refresh
+  Loading --> Ready: vanished basis resets with status
+  Loading --> Failed: rejected or malformed response
+  Loading --> Loading: stale completion ignored
+  Ready --> Ready: stale completion ignored
+  Failed --> Failed: stale completion ignored
+  Loading --> Disposed: auth retirement or dispose
+  Ready --> Disposed: auth retirement or dispose
+  Failed --> Disposed: dispose
+  Disposed --> Disposed: late completion ignored
