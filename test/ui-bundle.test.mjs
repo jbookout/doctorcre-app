@@ -34,6 +34,7 @@ test('lead guidance loads without unrelated page UI and shares the React runtime
 test('only emitted UI entries and shared chunks bypass source checks', async () => {
   const assets = await uiAssets(readSource);
   assert.ok(assets.has('js/ui-facts.js'));
+  assert.ok(assets.has('js/ui-checklist.js'));
   assert.ok(assets.has('js/ui-activity-attribution.js'));
   assert.ok(assets.has('js/ui-ideal-client-profile.js'));
   assert.ok(!assets.has('js/ui-workspace.js'));

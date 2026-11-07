@@ -38,3 +38,5 @@ export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
 
 export { mountLeadResearch } from './lead-research';
 export { mountActivityAttributionView, parseActivityDealAttribution } from './activity-attribution';
+
+export { mountDealChecklist } from './deal-checklist';

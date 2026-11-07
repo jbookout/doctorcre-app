@@ -36,8 +36,9 @@ export async function prove({ origin, timeoutMs = 30000 }) {
     await page.goto(`${origin}/__checklist-proof__`, { timeout: timeoutMs });
     const result = await page.evaluate(async () => {
       const check = (value, message) => { if (!value) throw new Error(message); };
-      const { renderDealChecklist } = await import('/js/deal-checklist.js');
-      check(typeof renderDealChecklist === 'function', 'Missing renderDealChecklist export');
+      const { mountDealChecklist } = await import('/js/ui-checklist.js');
+      check(typeof mountDealChecklist === 'function', 'Missing mountDealChecklist export');
+      const panel = mountDealChecklist(document.querySelector('main'), {dealId:'synthetic',checklist:null});
       const item = { id: 'lease', label: 'Synthetic lease', status: 'received', source: { document: 'synthetic-kit' } };
       const valid = { schema_version: 'deal-checklist.v1', template_state: 'current', phases: [{ label: 'Legal', items: [item] }], due_items: [] };
       const assertions = [];
@@ -45,21 +46,22 @@ export async function prove({ origin, timeoutMs = 30000 }) {
         ['malformed-phases', { ...valid, phases: null }],
         ['missing-source', { ...valid, phases: [{ label: 'Legal', items: [{ ...item, source: undefined }] }] }],
       ]) {
-        document.querySelector('main').innerHTML = renderDealChecklist(value);
+        panel.update({dealId:'synthetic',checklist:value});
         check(document.querySelector('[role="status"]')?.textContent === 'Checklist unavailable.', `${id} unavailable`);
         check(document.querySelector('[data-refresh-detail]')?.textContent === 'Refresh deal', `${id} refresh`);
         check(!document.querySelector('[data-checklist-item]'), `${id} must not claim completion`);
         assertions.push(id);
       }
-      document.querySelector('main').innerHTML = renderDealChecklist(valid);
+      panel.update({dealId:'synthetic',checklist:valid});
       check(document.querySelector('[data-state="received"] strong')?.textContent === 'Received', 'Received semantics lost');
       check(!document.querySelector('main').textContent.includes('Recorded complete'), 'Received claimed complete');
-      document.querySelector('main').innerHTML = renderDealChecklist({ ...valid, phases: [{ label: 'Legal', items: [{ ...item, status: 'complete' }] }] });
+      panel.update({dealId:'synthetic',checklist:{ ...valid, phases: [{ label: 'Legal', items: [{ ...item, status: 'complete' }] }] }});
       check(document.querySelector('[data-state="complete"] strong')?.textContent === 'Recorded complete', 'Complete semantics lost');
       assertions.push('valid-recovery-received-distinct-from-complete');
+      panel.dispose();
       return { assertions };
     });
-    if (!loaded.has(`${origin}/js/deal-checklist.js`)) throw new Error('Deployed module was not loaded');
+    if (!loaded.has(`${origin}/js/ui-checklist.js`)) throw new Error('Deployed module was not loaded');
     return { origin, release, ...result, loaded_module_urls: [...loaded].sort(), requests, synthetic: true };
   };
   try { return await Promise.race([run(), deadline]); }

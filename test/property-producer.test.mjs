@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
-import { renderDealChecklist } from "../js/deal-checklist.js";
+
 import { carrInterface } from "./carr-contract.mjs";
 
 const contract = carrInterface;
@@ -86,7 +86,17 @@ test("the same advertised producer derives the versioned checklist consumed by t
   assert.deepEqual(checklist.phases.map(phase => phase.id), seam.phase_keys);
   assert.ok(checklist.phases.flatMap(phase => phase.items).every(item => seam.statuses.includes(item.status)));
   assert.equal(checklist.due_items[0].status, "due");
-  assert.match(renderDealChecklist(checklist), /data-checklist-item="critical-date:synthetic-review"/);
+  const { uiBundle } = await import('../scripts/ui-bundle.mjs');
+  const { readFile } = await import('node:fs/promises');
+  const { JSDOM } = await import('jsdom');
+  const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
+  const { mountDealChecklist } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
+  const dom = new JSDOM('<main></main>');
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const host = document.querySelector('main');
+  const panel = mountDealChecklist(host, {dealId:'synthetic',checklist});
+  assert.ok(host.querySelector('[data-checklist-item="critical-date:synthetic-review"]'));
+  panel.dispose(); dom.window.close();
 
 });
 

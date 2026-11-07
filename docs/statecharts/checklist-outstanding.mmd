@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> All: Open deal
+    All --> Outstanding: Select Outstanding requirements
+    Outstanding --> All: Select All requirements
+    All --> All: Refresh same deal succeeds
+    Outstanding --> Outstanding: Refresh same deal succeeds
+    All --> Unavailable: Malformed or unavailable snapshot
+    Outstanding --> Unavailable: Malformed or unavailable snapshot
+    Unavailable --> All: Explicit refresh succeeds with retained All selection
+    Unavailable --> Outstanding: Explicit refresh succeeds with retained Outstanding selection
+    All --> All: Refresh fails and shows failure status
+    Outstanding --> Outstanding: Refresh fails and shows failure status
+    All --> Closed: Close or switch deal
+    Outstanding --> Closed: Close or switch deal
+    Unavailable --> Closed: Close or switch deal
+    All --> Retired: Access denied
+    Outstanding --> Retired: Access denied
+    Closed --> Closed: Old request completes
+    Retired --> Retired: Old request completes
+    %% never: Filtering changes canonical status or the full due summary.
+    %% never: A retired request changes another workspace or its editor.
+    %% never: Same deal refresh resets selection or expanded evidence.
