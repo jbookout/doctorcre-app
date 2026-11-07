@@ -33,7 +33,9 @@ test('recordings use pinned registered producer and exact production parser',asy
   const producer = await transform('const tools={'+pinned[0]+'}; tools["ideal-client-profile"].handler;',{loader:'ts'});
   const handler = vm.runInNewContext(producer.code,{marketFilters:{}});
   const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/mcp_read_contracts/ideal-client-profile.json',import.meta.url)));
-  const data = JSON.parse(await readFile(new URL('recordings.json',fixture)));
+  const recordingBytes = await readFile(new URL('recordings.json',fixture));
+  assert.equal(sha(recordingBytes),provenance.recordings_sha256);
+  const data = JSON.parse(recordingBytes);
   for (const payload of Object.values(data)) {
     assert.equal(payload.schema_version,contract.schema_version); assert.equal(payload.coverage,contract.coverage);
     assert.ok(payload.profiles.length <= contract.limit);
@@ -70,7 +72,7 @@ async function fixture(t, mode='equal') {
     }
     if (req.url === '/__recorded') {
       res.setHeader('content-type','application/json');
-      return res.end(JSON.stringify({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(recorded.full)}]}}));
+      return res.end(JSON.stringify({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(mode==='empty'?recorded.empty:recorded.full)}]}}));
     }
     if (req.url === '/app-release') {
       const response = await handleDoctorcreRequest(new Request('http://fixture.test/app-release'),{GIT_SHA:released,APP_ENV:'production'});
@@ -140,4 +142,7 @@ test('signed-in natural fixture passes while borrowed browser survives',async t=
   const context=await borrowed.newContext(); const keeper=await context.newPage();
   const result=await prove({origin:f.origin,expectedCommit:f.expected,cdpUrl:`http://127.0.0.1:${port}`,timeoutMs:15000});
   assert.equal(result.status,'passed'); assert.equal(borrowed.isConnected(),true); assert.equal(keeper.isClosed(),false);
+  const empty=await fixture(t,'empty');
+  await assert.rejects(prove({origin:empty.origin,expectedCommit:empty.expected,cdpUrl:`http://127.0.0.1:${port}`,timeoutMs:1200}),{exitCode:78});
+  assert.equal(borrowed.isConnected(),true); assert.equal(keeper.isClosed(),false);
 });

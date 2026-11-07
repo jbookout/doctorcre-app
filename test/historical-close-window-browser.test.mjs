@@ -84,7 +84,10 @@ for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
     await page.evaluate(payload=>window.windowProof.payload=payload,recorded.full); await refresh(); await host.getByRole('table').waitFor();
     await page.evaluate(()=>{window.windowProof.error='forbidden';}); await refresh(); await host.getByRole('alert').waitFor(); assert.match(await host.getByRole('alert').innerText(),/Sign in again/);
     await page.evaluate(()=>{const p=window.windowProof;p.error=null;p.hold=true;}); await refresh();
-    await page.evaluate(()=>{const p=window.windowProof;p.mount.clear();p.pending.splice(0).forEach(f=>f());p.hold=false;}); await settle(); assert.equal(await rows.count(),0);
+    await page.evaluate(()=>{const p=window.windowProof;window.dispatchEvent(new Event('pagehide'));p.pending.splice(0).forEach(f=>f());p.hold=false;}); await settle(); assert.equal(await rows.count(),0);
+    await expand(); await host.getByRole('table').waitFor(); assert.equal(await from.inputValue(),'');
+    await from.fill('2020-02-29'); await through.fill('2020-02-29'); await apply();
+    await page.evaluate(()=>window.dispatchEvent(new Event('pagehide'))); await settle(); assert.equal(await rows.count(),0);
     await expand(); await host.getByRole('table').waitFor(); assert.equal(await from.inputValue(),'');
     await page.evaluate(()=>{window.windowProof.hold=true;}); await refresh();
     await page.evaluate(()=>{window.dispatchEvent(new Event('doctorcre-session-invalidated'));window.windowProof.pending.splice(0).forEach(f=>f());window.windowProof.mount.clear();}); await settle();

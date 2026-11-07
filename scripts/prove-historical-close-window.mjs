@@ -114,12 +114,15 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
         let body; try { body = request.postDataJSON(); } catch { return route.abort(); }
         return body?.method === 'tools/call' && ['ideal-client-profile','lead-board'].includes(body.params?.name) ? route.continue() : route.abort();
       });
+      page.on('request', request => {
+        if (new URL(request.url()).origin !== origin) return;
+        try { if (request.postDataJSON()?.params?.name === 'ideal-client-profile') reads++; } catch {}
+      });
       page.on('response', response => {
         const request = response.request();
         if (new URL(response.url()).origin !== origin) return;
         let body; try { body = request.postDataJSON(); } catch { return; }
         if (body?.params?.name !== 'ideal-client-profile') return;
-        reads++;
         payload = response.json().then(envelope => {
           const text = envelope.result?.content?.find(item => item.type === 'text')?.text;
           if (!text) throw insufficient('Historical response unavailable');
@@ -141,6 +144,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     if (fixture) assert.equal(await page.evaluate(() => window.closeProofReads),1,'local edits cause no read');
     else assert.equal(reads,beforeReads,'local edits cause no read');
     const after = await readAppRelease(origin,read);
+    if (!fixture) assert.equal(reads,beforeReads,'local edits cause no request');
     if (after.source_commit !== release.source_commit) throw insufficient('Release changed during proof');
     return {status:fixture?'fixture_pass':'passed',release,observation,requests};
   } catch (error) {
