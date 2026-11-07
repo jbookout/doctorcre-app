@@ -1,0 +1,20 @@
+stateDiagram-v2
+  [*] --> Hidden
+  Hidden --> Loading: Show for the first time
+  Loading --> Visible: Valid snapshot with vendors
+  Loading --> Empty: Valid snapshot without vendors
+  Loading --> Refused: Refusal or malformed snapshot
+  Refused --> Loading: Explicit refresh retry
+  Visible --> Visible: Select owner or page without a read
+  Visible --> Hidden: Hide without a read
+  Empty --> Hidden: Hide without a read
+  Hidden --> Visible: Show retained snapshot and selection
+  Visible --> Loading: Explicit refresh
+  Empty --> Loading: Explicit refresh
+  Loading --> Visible: Retain existing owner or reset disappeared owner with status
+  Loading --> Retired: Session invalidation or disposal
+  Visible --> Retired: Session invalidation or disposal
+  Retired --> Retired: Ignore late completion
+  %% never Local selection, pagination, hide, or show of retained data performs a business read.
+  %% never A retired session republishes a snapshot.
+  %% never Malformed owners join the missing-owner group.

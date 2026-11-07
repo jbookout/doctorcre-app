@@ -1,3 +1,5 @@
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {componentDocument, chromium, fixtureServer} from './browser-harness.mjs';
@@ -128,6 +130,10 @@ for (const width of [390, 1440]) {
 
   test(`Tour Day preserves reopened note audio until a true native close at ${width}px`, async t => {
     const page = await open(t, width);
+    const assets = await loadFixtureAssets({root:fileURLToPath(new URL('../',import.meta.url)),
+      manifest:new Map([['/test/fixtures/tour-day.synthetic.mjs','test/fixtures/tour-day.synthetic.mjs']])});
+    const asset = assets.get('/test/fixtures/tour-day.synthetic.mjs');
+    await page.route('**/test/fixtures/tour-day.synthetic.mjs',route => route.fulfill({body:asset.body,contentType:asset.contentType}));
     await page.evaluate(async () => {
       const {mountTourDay} = await import('/tours/day.js');
       const {detail} = await import('/test/fixtures/tour-day.synthetic.mjs');

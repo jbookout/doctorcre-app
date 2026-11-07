@@ -1,42 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 
 const assets = await uiAssets(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
 
 async function fixture(t, mode) {
-  const seen = [];
-  const server = createServer((req, res) => {
-    res.setHeader('content-type', 'application/json');
-    seen.push({ method: req.method, path: req.url });
-    const root = resolve('/virtual-proof-assets');
-    let path;
-    try { path = resolve(root, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
-    if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
-    }
-    if (mode === 'protected') { res.writeHead(302, { location: '/sign-in' }); return res.end(); }
-    if (req.url === '/js/ui-facts.js' && ['broken', 'write', 'network'].includes(mode)) {
-      res.setHeader('content-type', 'text/javascript');
-      return res.end(mode === 'broken' ? 'export function mountFactReview(){throw Error("fixture broken")}' : mode === 'write' ? 'export function mountFactReview(root, {client}){client.recordHumanFact();return {refresh:async()=>{},dispose(){}}}' : 'await fetch("/api/business", {method:"POST"}); export function mountFactReview(){}');
-    }
-    const bytes = assets.get(req.url.slice(1));
-    if (!bytes) { res.writeHead(404); return res.end(); }
-    res.setHeader('content-type', 'text/javascript');
-    res.end(bytes);
-  });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: `http://127.0.0.1:${server.address().port}`, seen };
+  const responses = new Map([...assets].map(([path, body]) => ['/' + path,
+    mode === 'protected' ? { status: 302, headers: { location: '/sign-in' } } : { body, contentType: 'text/javascript' }]));
+  responses.set('/app-release', { body: JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }), contentType: 'application/json' });
+  if (['broken', 'write', 'network'].includes(mode)) responses.set('/js/ui-facts.js', { contentType: 'text/javascript',
+    body: mode === 'broken' ? 'export function mountFactReview(){throw Error("fixture broken")}' : mode === 'write' ? 'export function mountFactReview(root, {client}){client.recordHumanFact();return {refresh:async()=>{},dispose(){}}}' : 'await fetch("/api/business", {method:"POST"}); export function mountFactReview(){}' });
+  if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+  const server = await startFixture({ routes: responses });
+  t.after(() => server.close());
+  return { origin: server.origin, get seen() { return server.requests; } };
 }
 
 async function cli(origin, timeout = '30000') {

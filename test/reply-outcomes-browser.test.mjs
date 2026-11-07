@@ -12,14 +12,13 @@ let outDir, server, browser, origin;
 before(async () => {
   outDir = await temporaryDirectory('reply-outcomes-');
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
-  ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${server.address().port}`;
+  server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  origin = server.origin;
   browser = await chromium.launch();
 });
 after(async () => {
   await browser?.close();
-  if (server) await new Promise(resolve => server.close(resolve));
+  if (server) await server.close();
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 const sent = { id: '10000000-0000-4000-8000-000000000001', deal: 'demo-deal', subject: 'Demo sent reply', outcome: 'sent', result_recorded_at: '2026-10-28T12:00:00Z', failure_reason_code: null };
