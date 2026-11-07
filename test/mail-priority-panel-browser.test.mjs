@@ -129,12 +129,15 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
   });
   await page.goto(server.origin + '/?mode=fixture', { waitUntil: 'commit' });
   await inboxRequested;
-  await page.waitForTimeout(250);
+  try {
+    await page.waitForFunction(() => performance.getEntriesByType('resource').some(entry => entry.name.includes('/api/v1/intelligence/mail-needs-partner')));
+  } finally {
+    releaseInbox();
+  }
   const earlyReads = requests.length;
-  releaseInbox();
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
   await page.waitForLoadState('networkidle');
-  assert.equal(earlyReads, 0, 'mail waits for the UI entry instead of competing with its bundle');
+  assert.equal(earlyReads, 1, 'mail starts before the UI entry loads');
   assert.equal(requests.length, 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   const { mkdir } = await import('node:fs/promises');

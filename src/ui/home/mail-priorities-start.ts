@@ -1,3 +1,3 @@
-import { startEarlyMailPriorities } from './mail-priorities-client';
+import { startEarlyMailPriorities, readMailPriorities } from './mail-priorities-client';
 
-if (location.pathname === '/') startEarlyMailPriorities();
+if (location.pathname === '/') startEarlyMailPriorities(signal => readMailPriorities(signal, 'low'));

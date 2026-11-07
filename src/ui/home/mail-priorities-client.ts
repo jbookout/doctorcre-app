@@ -29,10 +29,10 @@ export function parseMailPage(value: unknown) {
 }
 export type MailPage = ReturnType<typeof parseMailPage>;
 const sibling = (path: string) => import(/* shared session transport */ new URL(path, import.meta.url).href);
-export async function readMailPriorities(signal: AbortSignal): Promise<MailPage> {
+export async function readMailPriorities(signal: AbortSignal, priority: RequestPriority = 'auto'): Promise<MailPage> {
   const [{ sessionFetch }, { readWithDeadline }] = await Promise.all([sibling('./private-session.js'), sibling('./current-read.mjs')]);
   return readWithDeadline(async (bounded: AbortSignal) => {
-    const response = await sessionFetch('/api/v1/intelligence/mail-needs-partner?limit=25', { signal: bounded, credentials: 'same-origin' });
+    const response = await sessionFetch('/api/v1/intelligence/mail-needs-partner?limit=25', { signal: bounded, credentials: 'same-origin', priority });
     if ([401, 403].includes(response.status)) throw Object.assign(Error('Sign in to view mail priorities'), { status: response.status });
     if (!response.ok) throw Error('Mail priorities unavailable');
     return parseMailPage(await response.json());
