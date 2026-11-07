@@ -35,14 +35,17 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { ownedBrowserProcesses } from './proof-browser-harness.mjs';
 for (const mode of ['late launch', 'stalled evaluation']) test(`real owned Chromium cleanup ${mode}`, async t => {
   const root = temporaryDirectory('mail-proof-timeout-', t);
-  let context, acquisition, disconnected, observed = [];
+  let context, acquisition, closed, observed = [];
   const fixture = setup({ stall: mode === 'stalled evaluation' });
   fixture.options.engine = { connectOverCDP() {
     acquisition = (async () => {
       context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
       observed = ownedBrowserProcesses(root);
       const browser = context.browser();
-      disconnected = new Promise(resolve => browser.once('disconnected', resolve));
+      const close = browser.close.bind(browser);
+      let finishClose;
+      closed = new Promise(resolve => finishClose = resolve);
+      browser.close = async () => { try { await close(); } finally { finishClose(); } };
       if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 2200));
       else {
         const newPage = context.newPage.bind(context);
@@ -65,7 +68,7 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`real owned Chrom
   try {
     await assert.rejects(prove({ ...fixture.options, timeoutMs: 2000 }), { exitCode: 78 });
     await acquisition;
-    await disconnected;
+    await closed;
     assert.ok(observed.length > 0, 'real owned browser processes observed');
     assert.deepEqual(ownedBrowserProcesses(root), [], 'zero surviving owned browser processes');
     t.diagnostic(JSON.stringify({ mode, exit: 78, observed: observed.length, survivors: 0 }));
