@@ -1,0 +1,229 @@
+{
+  "response": {
+    "schema_version": "quiet-follow-ups.v1",
+    "cadence": {
+      "lead_days": 45,
+      "vendor_days": 90
+    },
+    "proposals": [
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000001",
+        "ref": "V-DEMO-1",
+        "name": "Synthetic quiet vendor 1",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 0
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000002",
+        "ref": "V-DEMO-2",
+        "name": "Synthetic quiet vendor 2",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 1
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000003",
+        "ref": "V-DEMO-3",
+        "name": "Synthetic quiet vendor 3",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 2
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000004",
+        "ref": "V-DEMO-4",
+        "name": "Synthetic quiet vendor 4",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 0
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000005",
+        "ref": "V-DEMO-5",
+        "name": "Synthetic quiet vendor 5",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 1
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000006",
+        "ref": "V-DEMO-6",
+        "name": "Synthetic quiet vendor 6",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 2
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000007",
+        "ref": "V-DEMO-7",
+        "name": "Synthetic quiet vendor 7",
+        "owner": "joe",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 0
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000008",
+        "ref": "V-DEMO-8",
+        "name": "Synthetic quiet vendor 8",
+        "owner": "dell",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 1
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000009",
+        "ref": "V-DEMO-9",
+        "name": "Synthetic quiet vendor 9",
+        "owner": "dell",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 2
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000010",
+        "ref": "V-DEMO-10",
+        "name": "Synthetic quiet vendor 10",
+        "owner": "dell",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 0
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000011",
+        "ref": "V-DEMO-11",
+        "name": "Synthetic quiet vendor 11",
+        "owner": "dell",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 1
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000012",
+        "ref": "V-DEMO-12",
+        "name": "Synthetic quiet vendor 12",
+        "owner": "dell",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 2
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000013",
+        "ref": "V-DEMO-13",
+        "name": "Synthetic quiet vendor 13",
+        "owner": "dell",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 0
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000014",
+        "ref": "V-DEMO-14",
+        "name": "Synthetic quiet vendor 14",
+        "owner": "outside:all",
+        "owner_id": "00000000-0000-4000-8000-000000000099",
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 1
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000015",
+        "ref": "V-DEMO-15",
+        "name": "Synthetic quiet vendor 15",
+        "owner": null,
+        "owner_id": null,
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 2
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000016",
+        "ref": "V-DEMO-16",
+        "name": "Synthetic quiet vendor 16",
+        "owner": null,
+        "owner_id": null,
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 0
+      },
+      {
+        "subject_type": "vendor",
+        "subject_id": "00000000-0000-4000-8000-000000000017",
+        "ref": "V-DEMO-17",
+        "name": "Synthetic quiet vendor 17",
+        "owner": null,
+        "owner_id": null,
+        "basis": "created_at",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 1
+      },
+      {
+        "subject_type": "lead",
+        "subject_id": "00000000-0000-4000-8000-000000000018",
+        "ref": "V-DEMO-18",
+        "name": "Synthetic quiet vendor 18",
+        "owner": null,
+        "owner_id": null,
+        "basis": "last_contact",
+        "anchor_on": "2028-01-01",
+        "due_on": "2028-03-31",
+        "days_overdue": 2
+      }
+    ],
+    "sent": false,
+    "tasks_created": false
+  }
+}
