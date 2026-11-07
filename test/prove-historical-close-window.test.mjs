@@ -10,6 +10,8 @@ import vm from 'node:vm';
 import { build, transform } from 'esbuild';
 import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 import { chromium as rawChromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -73,14 +75,23 @@ async function fixture(t, mode='equal') {
     const output = await build({ stdin: { contents: source.replace(before, after), loader: 'tsx', resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
     snapshot.set('/js/ui-ideal-client-profile.js', { body: output.outputFiles[0].contents, contentType: 'text/javascript' });
   }
-  const routes = new Map([['/leads',{contentType:'text/html',body:`<!doctype html><title>Natural fixture</title><main></main><script type="module">
+  const routes = new Map([['/',{contentType:'text/html',body:`<!doctype html><title>Natural fixture</title><main></main><script type="module">
     import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.js';
     mountIdealClientProfile(document.querySelector('main'),{ async getIdealClientProfile(){
       const response=await fetch('/mcp',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ideal-client-profile',arguments:{}}})});
       return JSON.parse((await response.json()).result.content[0].text);
     }});
   </script>`}]]);
+  if (mode === 'charts-route' || mode === 'old-route') {
+    const root = temporaryDirectory('close-window-charts-', t);
+    const { manifest } = await buildArtifact({ root: process.cwd(), outDir: root });
+    const built = await loadFixtureAssets({ root: join(root, 'site'), manifest: new Map(manifest.files.map(row => ['/' + row.path, row.path])) });
+    for (const [path, asset] of built) snapshot.set(path, asset);
+    routes.clear();
+    if (mode === 'old-route') routes.set('/', { status: 302, headers: { location: '/leads' } });
+  }
   const server = await startWorkerFixture({assets:snapshot,routes,env:{GIT_SHA:released,APP_ENV:'production',CARR:{fetch:async request=>{
+    if (request.method === 'GET') return new Response(null, { status: 200 });
     const input=await request.json();
     assert.equal(input.params.name,'ideal-client-profile');
     return Response.json({jsonrpc:'2.0',id:input.id,result:{content:[{type:'text',text:JSON.stringify(mode==='empty'?recorded.empty:recorded.full)}]}});
@@ -198,4 +209,27 @@ test('late borrowed CDP page closes before disconnect, preserving existing tabs'
   } finally { await fresh.close(); }
   assert.equal(borrowed.isConnected(), true);
   assert.equal(keeper.isClosed(), false);
+});
+
+for (const mode of ['charts-route', 'old-route']) test(`CLI verifies real charts wiring against ${mode}`, async t => {
+  const f = await fixture(t, mode);
+  const socket = await startFixture();
+  const endpoint = socket.origin, port = new URL(endpoint).port;
+  await socket.close();
+  const browser = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  t.after(() => browser.close());
+  const context = await browser.newContext();
+  await context.addInitScript(() => {
+    const url = new URL(location.href);
+    url.searchParams.set('mode', 'live');
+    history.replaceState(null, '', url);
+  });
+  let result;
+  try {
+    const output = await exec(process.execPath, [runner, '--origin', f.origin, '--expected-commit', f.expected, '--cdp-url', endpoint, '--timeout-ms', '15000'], { cwd: f.history, timeout: 25000 });
+    result = { code: 0, receipt: JSON.parse(output.stdout) };
+  } catch (error) { result = { code: error.code, receipt: JSON.parse(error.stdout) }; }
+  assert.equal(result.code, mode === 'charts-route' ? 0 : 1, JSON.stringify(result));
+  assert.equal(result.receipt.status, mode === 'charts-route' ? 'passed' : 'assertion_failure');
+  if (mode === 'charts-route') assert.equal(result.receipt.observation.evidence, 1);
 });
