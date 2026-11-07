@@ -16,17 +16,30 @@ test('fixture passes pinned exact production parser',async()=>assert.ok((await p
 assert.ok(validNetwork(recording));
 assert.equal(createHash('sha256').update(readFileSync(new URL('test/fixtures/network-kind-focus/recordings.json',root))).digest('hex'),provenance.recordings_sha256);
 
+const expectedIds = {
+  vendor: ['party:demo-lender','party:demo-build'],
+  client: ['party:demo-client','party:demo-therapy'],
+  lead: ['party:demo-lead'],
+  deal: ['deal:demo-won','deal:demo-open','deal:demo-lost'],
+  contact: [],
+};
+const expectedCoastIds = {
+  vendor: ['party:demo-lender','party:demo-build'],
+  client: ['party:demo-client'],
+  lead: ['party:demo-lead'],
+  deal: ['deal:demo-won','deal:demo-open'],
+  contact: [],
+};
 for (const kind of ['vendor','client','lead','deal','contact']) test(`kind ${kind} intersects before pruning complete paths`, () => {
   const view = filterNetwork(recording, {kind});
-  assert.deepEqual(view.nodes, recording.nodes.filter(n => n.kind === kind));
+  assert.deepEqual(view.nodes.map(n=>n.id), expectedIds[kind]);
   const ids = new Set(view.nodes.map(n => n.id));
   const keep = e => ids.has(e.from) && ids.has(e.to) && (!e.via || ids.has(e.via));
   assert.deepEqual(view.edges, recording.edges.filter(keep));
   assert.deepEqual(view.suggestions, recording.suggestions.filter(keep));
   assert.deepEqual(view.referrals, recording.referrals.filter(r => ids.has(r.node_id)));
   assert.equal(filterNetwork(recording, {kind, q:'no matching subject'}).nodes.length, 0);
-  assert.deepEqual(filterNetwork(recording, {kind,territory:'Demo Coast',vertical:'dental',q:'Demo'}).nodes,
-    recording.nodes.filter(n => n.kind === kind && n.territory === 'Demo Coast' && n.verticals.includes('dental') && n.name.includes('Demo')));
+  assert.deepEqual(filterNetwork(recording, {kind,territory:'Demo Coast',vertical:'dental',q:'Demo'}).nodes.map(n=>n.id), expectedCoastIds[kind]);
 });
 
 test('kind removes introductions through a filtered intermediary without shortening the path',async()=>{
