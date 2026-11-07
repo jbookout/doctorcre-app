@@ -249,3 +249,57 @@ test('reviewed recovery cleanup preserves newer typing from another tab', async 
   await card.getByRole('button', { name: 'Review reply', exact: true }).click();
   assert.equal(await card.getByRole('textbox', { name: 'Message', exact: true }).inputValue(), 'Newer typing from another tab');
 });
+
+for (const field of ['to', 'cc']) for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+  test(`late save preserves ${field}-only edit at ${width}px ${theme}`, async t => {
+    const { page, card, row, writes } = await openEditor(t, { width, theme });
+    let release, started;
+    const pending = new Promise(resolve => { release = resolve; });
+    const saving = new Promise(resolve => { started = resolve; });
+    t.after(() => release());
+    await page.route('**/mcp', async route => {
+      if (route.request().postDataJSON().params.name === 'edit-email-draft') {
+        started();
+        await pending;
+      }
+      await route.fallback();
+    });
+    await card.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await saving;
+    const other = await page.context().newPage();
+    t.after(() => other.close());
+    await other.goto(origin + '/review-workflows');
+    await other.evaluate(({ field, id }) => {
+      const key = `doctorcre:reply-device:v1:joe:${encodeURIComponent(id)}`;
+      const saved = JSON.parse(localStorage.getItem(key));
+      localStorage.setItem(key, JSON.stringify({ ...saved, [field]: ['newer@example.test'] }));
+    }, { field, id: row.id });
+    release();
+    await card.getByText('Saved as a draft. Nothing was sent.', { exact: true }).waitFor();
+    assert.equal(await deviceDraftCount(page), 1);
+    await page.reload();
+    await card.getByRole('button', { name: 'Review reply', exact: true }).click();
+    await card.getByText('Device draft restored. The saved reply changed. Reload draft to review it before saving or submitting.', { exact: true }).waitFor();
+    const restored = await page.evaluate(id => JSON.parse(localStorage.getItem(`doctorcre:reply-device:v1:joe:${encodeURIComponent(id)}`)), row.id);
+    assert.deepEqual(restored[field], ['newer@example.test']);
+    assert.equal(writes.length, 1);
+    assert.equal('to' in writes[0].args, false);
+    assert.equal('cc' in writes[0].args, false);
+    await mkdir('test-artifacts/WR617.S16.J1', { recursive: true });
+    await card.evaluate(node => node.scrollIntoView());
+    await page.screenshot({ path: `test-artifacts/WR617.S16.J1/${field}-${width}-${theme}.png` });
+    await card.getByRole('button', { name: 'Discard device draft', exact: true }).click();
+    assert.equal(await deviceDraftCount(page), 0);
+  });
+}
+
+test('saving without a device snapshot leaves another tab draft intact', async t => {
+  const { page, card, row } = await openEditor(t);
+  await card.getByRole('button', { name: 'Discard device draft', exact: true }).click();
+  await page.evaluate(row => {
+    localStorage.setItem(`doctorcre:reply-device:v1:joe:${encodeURIComponent(row.id)}`, JSON.stringify({ baseVersion: row.version, ...row.reply_draft }));
+  }, row);
+  await card.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await card.getByText('Saved as a draft. Nothing was sent.', { exact: true }).waitFor();
+  assert.equal(await deviceDraftCount(page), 1);
+});
