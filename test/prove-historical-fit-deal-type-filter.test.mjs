@@ -22,7 +22,9 @@ function cli(args, preload) {
 test('proof CLI passes fixtures, rejects contradictions and reports insufficient evidence',async t=>{
   const root=resolve('.');
   const source=await readFile('src/ui/ideal-client-profile.tsx','utf8');
-  const mutated=await build({stdin:{contents:source.replace('profiles.filter(row => row.deal_type === selectedType)','profiles'),loader:'tsx',resolveDir:root},bundle:true,write:false,format:'esm',jsx:'automatic'});
+  const check='selectedType === undefined || row.deal_type === selectedType';
+  assert.ok(source.includes(check),'mutation must remove the real deal type predicate');
+  const mutated=await build({stdin:{contents:source.replace(check,'true'),loader:'tsx',resolveDir:root},bundle:true,write:false,format:'esm',jsx:'automatic'});
   const assets = await uiAssets(path => readFile(path));
   async function snapshot(mode = 'pass') {
     const responses = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
