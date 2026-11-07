@@ -48,6 +48,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     const show = page.getByRole('button', { name: 'Show mail priorities', exact: true });
     try { await bounded(show.waitFor({ timeout: remaining() })); } catch { throw unavailable('Mail priorities or signed-in Home unavailable'); }
     const responsePending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/intelligence/mail-needs-partner', { timeout: remaining() });
+    responsePending.catch(() => {});
     await bounded(show.click({ timeout: remaining() }));
     const response = await bounded(responsePending);
     if ([401, 403].includes(response.status()) || !response.ok()) throw unavailable('Signed-in mailbox read unavailable');
@@ -81,8 +82,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     throw error;
   } finally {
     clearTimeout(timer); expired = true;
-    await closePage();
-    await disconnect?.();
+    try { await closePage(); } finally { await disconnect?.(); }
     for (const acquisition of pendingPages) void acquisition.catch(() => {});
   }
 }

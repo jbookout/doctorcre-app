@@ -109,7 +109,7 @@ for (const phase of ['idle', 'empty', 'unavailable']) for (const end of ['retire
   assert.equal(await page.getByRole('button').count(), 0);
 });
 
-test('published Home uses same-origin transport with limit 25 once', async t => {
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`published Home transport and layout ${width} ${theme}`, async t => {
   const { buildArtifact } = await import('../scripts/artifact.mjs');
   const { temporaryDirectory } = await import('../scripts/temp-directory.mjs');
   const { fixtureServer } = await import('./browser-harness.mjs');
@@ -118,7 +118,8 @@ test('published Home uses same-origin transport with limit 25 once', async t => 
   await buildArtifact({ root: process.cwd(), outDir });
   const server = await fixtureServer({ root: join(outDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage();
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   const requests = [];
   await page.route('**/api/v1/intelligence/mail-needs-partner*', route => {
@@ -131,6 +132,10 @@ test('published Home uses same-origin transport with limit 25 once', async t => 
   await button.click();
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
   assert.equal(requests.length, 1);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir('test-artifacts/mail-priorities', { recursive: true });
+  await page.screenshot({ path: `test-artifacts/mail-priorities/${width}-${theme}.png`, fullPage: true });
   assert.equal(requests[0].method, 'GET');
   assert.equal(new URL(requests[0].url).search, '?limit=25');
   assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(rows => rows.map(row => row.dataset.mailProposal)), recordings.ready.items.map(row => row.proposal_id));
