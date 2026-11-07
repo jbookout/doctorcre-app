@@ -6,7 +6,7 @@ import { chromium } from './browser-harness.mjs';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { territoryFixture } from './fixtures/territory-pages/fixture.mjs';
 const assets = await uiAssets(path => readFile(path, 'utf8'));
-async function setup(t, count) {
+async function setup(t, count, holdInitial = false) {
   const server = await startFixture({ routes: new Map([['/', { body: '<body></body>', contentType: 'text/html' }], ...[...assets].map(([p,body])=>['/'+p,{body,contentType:'text/javascript'}])]) });
   t.after(()=>server.close());
   const browser = await chromium.launch(); t.after(()=>browser.close());
@@ -18,6 +18,7 @@ async function setup(t, count) {
     const host=document.createElement('div'); document.body.append(host);
     window.view=mountTerritoryEvidence(host,{getTerritoryStateBoard:async()=>{window.calls++;if(window.failure)throw window.failure;return window.pending||window.payload;}},()=>{});
   }, territoryFixture(count));
+  if (holdInitial) await page.evaluate(() => { window.pending = new Promise(resolve => { window.release = resolve; }); });
   await page.getByText('Recorded territory conditions',{exact:true}).press('Enter');
   await page.locator('.territory-evidence > details').evaluate(el=>{el.open=true;el.dispatchEvent(new Event('toggle'));});
   await page.getByRole('status').first().waitFor();
@@ -260,4 +261,13 @@ test('invariant RetiredLoading: cleared panel refresh cannot start an unowned lo
   await page.evaluate(async () => { window.view.clear(); await window.view.refresh(); });
   assert.equal(await page.evaluate(() => window.calls), 1);
   assert.equal(await page.getByRole('status').count(), 0);
+});
+
+test('model bug DisposedOwner: open, dispose, then refresh cannot acquire a second request', async t => {
+  const page = await setup(t, 45, true);
+  assert.equal(await page.getByRole('status').first().textContent(), 'Loading territory evidence…');
+  await page.evaluate(() => { window.view.dispose(); window.retiredRefresh = window.view.refresh(); });
+  assert.equal(await page.evaluate(() => window.calls), 1);
+  await page.evaluate(async () => { window.release(window.payload); await window.retiredRefresh; });
+  assert.equal(await page.locator('.territory-evidence').count(), 0);
 });
