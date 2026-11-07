@@ -236,3 +236,21 @@ test('transitions: superseded completion during loading, ready, error and idle n
     }, state);
   }
 });
+
+test('transitions: condition and evidence remain usable during loading and refusal', async t => {
+  const page = await setup(t, 45);
+  await moveTo(page, 2);
+  await deferredRefresh(page);
+  await page.getByLabel('Evidence view', { exact: true }).selectOption('historical');
+  await page.locator('select').first().selectOption('conflicting');
+  await finishRefresh(page);
+  assert.equal(await firstArea(page), 'Recorded area 0000, TX');
+  assert.equal(await page.locator('tbody tr').count(), 20);
+  assert.equal(await page.getByLabel('Evidence view', { exact: true }).inputValue(), 'historical');
+  await page.evaluate(async () => { window.failure = {code:'territory_board_limit_exceeded'}; await window.view.refresh(); window.failure=null; });
+  await page.locator('select').first().selectOption('tight');
+  await page.getByLabel('Evidence view', { exact: true }).selectOption('current');
+  await page.getByRole('button', {name:'Refresh evidence', exact:true}).click();
+  assert.equal(await page.getByRole('status').first().textContent(), 'Showing 0–0 of 0 matching loaded areas / 45 total loaded areas');
+  assert.equal(await page.getByLabel('Evidence view', { exact: true }).inputValue(), 'current');
+});

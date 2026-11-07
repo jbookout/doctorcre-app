@@ -72,12 +72,12 @@ state Territory {
     %% when Ready
     First --> First: empty boundary [areas visible and zero matches]
     %% when Ready, Empty
-    PageStates --> First: select all conditions [areas visible]
-    %% when Ready
-    PageStates --> First: select conflicting condition [areas visible]
-    %% when Ready
-    PageStates --> First: select empty condition [areas visible]
-    %% when Ready
+    PageStates --> First: select all conditions [panel mounted]
+    %% when not Disposed
+    PageStates --> First: select conflicting condition [panel mounted]
+    %% when not Disposed
+    PageStates --> First: select empty condition [panel mounted]
+    %% when not Disposed
     PageStates --> First: latest board arrives [loading the current request]
     %% when Loading, Current
     PageStates --> First: clear panel
@@ -94,12 +94,12 @@ state Territory {
       state "Empty condition selected" as Tight
       [*] --> All
     }
-    ConditionStates --> All: select all conditions [areas visible]
-    %% when Ready
-    ConditionStates --> Conflict: select conflicting condition [areas visible]
-    %% when Ready
-    ConditionStates --> Tight: select empty condition [areas visible]
-    %% when Ready
+    ConditionStates --> All: select all conditions [panel mounted]
+    %% when not Disposed
+    ConditionStates --> Conflict: select conflicting condition [panel mounted]
+    %% when not Disposed
+    ConditionStates --> Tight: select empty condition [panel mounted]
+    %% when not Disposed
     ConditionStates --> All: clear panel
     ConditionStates --> All: authorization fails [loading]
     %% when Loading
@@ -114,12 +114,12 @@ state Territory {
       state "Zero matching loaded areas" as Empty
       [*] --> Full
     }
-    MatchesStates --> Full: select all conditions [areas visible]
-    %% when Ready
-    MatchesStates --> Few: select conflicting condition [areas visible]
-    %% when Ready
-    MatchesStates --> Empty: select empty condition [areas visible]
-    %% when Ready
+    MatchesStates --> Full: select all conditions [panel mounted]
+    %% when not Disposed
+    MatchesStates --> Few: select conflicting condition [panel mounted]
+    %% when not Disposed
+    MatchesStates --> Empty: select empty condition [panel mounted]
+    %% when not Disposed
     MatchesStates --> Full: clear panel
     MatchesStates --> Full: authorization fails [loading]
     %% when Loading
@@ -134,12 +134,12 @@ state Territory {
       state "Current evidence selected" as CurrentEvidence
       [*] --> Every
     }
-    EvidenceStates --> Every: select all evidence [areas visible]
-    %% when Ready
-    EvidenceStates --> History: select historical evidence [areas visible]
-    %% when Ready
-    EvidenceStates --> CurrentEvidence: select current evidence [areas visible]
-    %% when Ready
+    EvidenceStates --> Every: select all evidence [panel mounted]
+    %% when not Disposed
+    EvidenceStates --> History: select historical evidence [panel mounted]
+    %% when not Disposed
+    EvidenceStates --> CurrentEvidence: select current evidence [panel mounted]
+    %% when not Disposed
     EvidenceStates --> Every: clear panel
     EvidenceStates --> Every: authorization fails [loading]
     %% when Loading
@@ -179,12 +179,12 @@ state Territory {
       state "Evidence changed on last page" as KeepLast
       [*] --> Neutral
     }
-    LastActionStates --> Reset: select all conditions [areas visible]
-    %% when Ready
-    LastActionStates --> Reset: select conflicting condition [areas visible]
-    %% when Ready
-    LastActionStates --> Reset: select empty condition [areas visible]
-    %% when Ready
+    LastActionStates --> Reset: select all conditions [panel mounted]
+    %% when not Disposed
+    LastActionStates --> Reset: select conflicting condition [panel mounted]
+    %% when not Disposed
+    LastActionStates --> Reset: select empty condition [panel mounted]
+    %% when not Disposed
     LastActionStates --> Reset: latest board arrives [loading the current request]
     %% when Loading, Current
     LastActionStates --> Reset: clear panel
@@ -205,24 +205,24 @@ state Territory {
     %% when Loading
     LastActionStates --> Neutral: apply server filters [areas visible]
     %% when Ready
-    LastActionStates --> KeepFirst: select all evidence [areas visible on first page]
-    %% when Ready, First
-    LastActionStates --> KeepMiddle: select all evidence [areas visible on middle page]
-    %% when Ready, Middle
-    LastActionStates --> KeepLast: select all evidence [areas visible on last page]
-    %% when Ready, Last
-    LastActionStates --> KeepFirst: select historical evidence [areas visible on first page]
-    %% when Ready, First
-    LastActionStates --> KeepMiddle: select historical evidence [areas visible on middle page]
-    %% when Ready, Middle
-    LastActionStates --> KeepLast: select historical evidence [areas visible on last page]
-    %% when Ready, Last
-    LastActionStates --> KeepFirst: select current evidence [areas visible on first page]
-    %% when Ready, First
-    LastActionStates --> KeepMiddle: select current evidence [areas visible on middle page]
-    %% when Ready, Middle
-    LastActionStates --> KeepLast: select current evidence [areas visible on last page]
-    %% when Ready, Last
+    LastActionStates --> KeepFirst: select all evidence [panel mounted on first page]
+    %% when First, Idle, Loading, Ready, Error
+    LastActionStates --> KeepMiddle: select all evidence [panel mounted on middle page]
+    %% when Middle, Idle, Loading, Ready, Error
+    LastActionStates --> KeepLast: select all evidence [panel mounted on last page]
+    %% when Last, Idle, Loading, Ready, Error
+    LastActionStates --> KeepFirst: select historical evidence [panel mounted on first page]
+    %% when First, Idle, Loading, Ready, Error
+    LastActionStates --> KeepMiddle: select historical evidence [panel mounted on middle page]
+    %% when Middle, Idle, Loading, Ready, Error
+    LastActionStates --> KeepLast: select historical evidence [panel mounted on last page]
+    %% when Last, Idle, Loading, Ready, Error
+    LastActionStates --> KeepFirst: select current evidence [panel mounted on first page]
+    %% when First, Idle, Loading, Ready, Error
+    LastActionStates --> KeepMiddle: select current evidence [panel mounted on middle page]
+    %% when Middle, Idle, Loading, Ready, Error
+    LastActionStates --> KeepLast: select current evidence [panel mounted on last page]
+    %% when Last, Idle, Loading, Ready, Error
   }
 }
 %% never EmptyFirst: Matching count.Zero matching loaded areas & Area position.Middle area page -- An empty result never has a middle page.
