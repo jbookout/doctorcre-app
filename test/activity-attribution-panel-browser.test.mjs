@@ -135,3 +135,19 @@ test('Deal Room integrates click-only reads and retires the panel on refresh, cl
  await page.locator('.kanban-card .card-open:visible').first().click();await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.locator('[aria-label="Activity deal attribution"]').count(),0);
 });
+test('every settled state clears on session retirement and a failed explanation closes',async t=>{
+ const page=await open(t);
+ for(const row of recordings.cases){
+  await page.evaluate(response=>{window.view.dispose();window.probe.payload=response;window.probe.failure=null;window.view=window.makeView();},row.response);
+  await page.getByRole('button',{name:'Show deal attribution'}).first().click();await page.locator('[aria-label="Activity deal attribution"] h4').waitFor();
+  await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('[aria-label="Activity deal attribution"]').count(),0);
+ }
+ await page.evaluate(()=>{window.view=window.makeView();window.probe.failure=new Error('synthetic unavailable');});
+ await page.getByRole('button',{name:'Show deal attribution'}).first().click();await page.getByRole('alert').waitFor();
+ await page.getByRole('button',{name:'Close attribution'}).click();assert.equal(await page.locator('[aria-label="Activity deal attribution"]').count(),0);
+ await page.evaluate(()=>{window.probe.failure=null;window.probe.payload=window.recordings.cases[0].response;});
+ await page.getByRole('button',{name:'Show deal attribution'}).first().click();await page.getByRole('heading',{name:'Direct deal attribution'}).waitFor();
+ await page.getByRole('button',{name:'Show deal attribution'}).nth(1).click();await page.getByRole('alert').waitFor();
+ assert.equal(await page.locator('[aria-label="Activity deal attribution"] a').count(),0,'selection cannot adopt the wrong activity response');
+});
