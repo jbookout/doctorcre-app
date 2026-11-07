@@ -19,33 +19,31 @@ import { createHash } from 'node:crypto';
 let bundle;
 const recordings = JSON.parse(await readFile('test/fixtures/mail-priority-panel/recordings.json'));
 before(async () => {
-  const result = await build({ stdin: { contents: `export {mountMailPriorities} from './src/ui/home/mail-priorities'; export {parseMailPage} from './src/ui/home/mail-priorities-client';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
+  const result = await build({ stdin: { contents: `export {createRoot} from 'react-dom/client'; export {createElement} from 'react'; export {MailPriorities} from './src/ui/home/mail-priorities'; export {mountMailPriorities} from './src/ui/home/mail-priorities'; export {parseMailPage} from './src/ui/home/mail-priorities-client';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
   bundle = result.outputFiles[0].text;
 });
-async function open(t, { width = 1280, theme = 'light' } = {}) {
+async function open(t, { width = 1280, theme = 'light', response = recordings.ready, failure, pending = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await componentDocument(page, 'http://localhost', { html: '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mail panel</title><body><div id="panel"></div>', dispose: p => p.evaluate(() => window.view?.dispose()) });
   await page.route('http://localhost/panel.js', route => route.fulfill({ contentType: 'text/javascript', body: bundle }));
-  await page.evaluate(async ({ response, theme }) => {
+  await page.evaluate(async ({ response, theme, failure, pending, joinItems }) => {
     document.documentElement.style.colorScheme = theme;
     const { mountMailPriorities, parseMailPage } = await import('/panel.js');
-    window.response = response; window.calls = 0; window.reviews = [];
-    const items = [{ source_type: 'email_proposal', source_id: response.items[0].proposal_id, item_id: 'existing-home-id', title: 'Existing Home title', review_reference: { kind: 'next_step' } }, { source_type: 'next_action', source_id: response.items[1].proposal_id, item_id: 'wrong-source', title: 'Must not match' }];
+    window.response = response; window.failure = failure; window.pending = pending; window.calls = 0; window.reviews = [];
+    const items = [{ source_type: 'email_proposal', source_id: joinItems[0].proposal_id, item_id: 'existing-home-id', title: 'Existing Home title', review_reference: { kind: 'next_step' } }, { source_type: 'next_action', source_id: joinItems[1].proposal_id, item_id: 'wrong-source', title: 'Must not match' }];
     window.view = mountMailPriorities(document.getElementById('panel'), { items, review: item => window.reviews.push(item.item_id), read: async signal => {
       window.calls++; window.signal = signal;
       if (window.pending) await new Promise(resolve => window.release = resolve);
       if (window.failure) throw window.failure;
       return parseMailPage(window.response);
     } });
-  }, { response: recordings.ready, theme });
-  await page.getByRole('button', { name: 'Show mail priorities' }).waitFor();
+  }, { response, theme, failure, pending, joinItems: recordings.ready.items });
+  await page.waitForFunction(() => window.calls === 1, null, { timeout: 2000 });
   return page;
 }
-for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`opt-in ranked rows, exact join and keyboard review ${width} ${theme}`, async t => {
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`automatic ranked rows, exact join and keyboard review ${width} ${theme}`, async t => {
   const page = await open(t, { width, theme });
-  assert.equal(await page.evaluate(() => window.calls), 0);
-  await page.getByRole('button', { name: 'Show mail priorities' }).focus(); await page.keyboard.press('Enter');
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
   assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(nodes => nodes.map(n => n.dataset.mailProposal)), recordings.ready.items.map(row => row.proposal_id));
   const text = await page.getByRole('region', { name: 'Mail priorities' }).textContent();
@@ -62,14 +60,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`op
   assert.equal(await page.evaluate(() => window.calls), 2);
 });
 for (const kind of ['empty', 'unavailable', 'malformed', 'network', 'auth']) test(`manual retry and retirement ${kind}`, async t => {
-  const page = await open(t);
-  await page.evaluate(({ kind, recordings }) => {
-    if (kind === 'empty' || kind === 'unavailable') window.response = recordings[kind];
-    if (kind === 'malformed') window.response = { ...recordings.ready, send: true };
-    if (kind === 'network') window.failure = Error('Synthetic network failure');
-    if (kind === 'auth') window.failure = { status: 403 };
-  }, { kind, recordings });
-  await page.getByRole('button', { name: 'Show mail priorities' }).click();
+  const page = await open(t, { response: kind === 'malformed' ? { ...recordings.ready, send: true } : recordings[kind] || recordings.ready, failure: kind === 'auth' ? { status: 403 } : kind === 'network' ? { message: 'Network unavailable' } : undefined });
   await page.getByText(kind === 'empty' ? 'No recorded pending mail decisions.' : kind === 'auth' ? 'Sign in to view mail priorities.' : 'Mail priorities unavailable.', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-mail-proposal]').count(), 0);
   assert.equal(await page.evaluate(() => window.calls), 1);
@@ -80,9 +71,7 @@ for (const kind of ['empty', 'unavailable', 'malformed', 'network', 'auth']) tes
   assert.equal(await page.evaluate(() => window.calls), 2);
 });
 for (const pending of [false, true]) for (const end of ['retire', 'dispose']) test(`${pending ? 'loading' : 'ready'} ${end} fences late completion`, async t => {
-  const page = await open(t);
-  await page.evaluate(pending => window.pending = pending, pending);
-  await page.getByRole('button', { name: 'Show mail priorities' }).click();
+  const page = await open(t, { pending });
   await page.getByText(pending ? 'Loading mail priorities…' : 'Only the first 25 ranked decisions are shown.').waitFor();
   await page.evaluate(end => { if (end === 'dispose') window.view.dispose(); else dispatchEvent(new Event('doctorcre-session-invalidated')); window.release?.(); }, end);
   if (end === 'dispose') await page.waitForFunction(() => document.getElementById('panel').childElementCount === 0);
@@ -99,13 +88,10 @@ test('pinned producer replay and hash provenance are self-contained', async () =
   const empty = await producer.family.createTools()['read-mail-needs-partner'].handler({ query: async () => ({ rows: [] }) }, { id: '11111111-1111-4111-8111-111111111111', slug: 'joe', human: true }, { limit: 25 }, new Date('2026-11-06T12:00:00Z'));
   assert.deepEqual(empty, recordings.empty);
 });
-for (const phase of ['idle', 'empty', 'unavailable']) for (const end of ['retire', 'dispose']) test(`${phase} ${end} releases the panel`, async t => {
-  const page = await open(t);
-  if (phase !== 'idle') {
-    await page.evaluate(response => window.response = response, recordings[phase]);
-    await page.getByRole('button', { name: 'Show mail priorities' }).click();
-    await page.getByText(phase === 'empty' ? 'No recorded pending mail decisions.' : 'Mail priorities unavailable.', { exact: true }).waitFor();
-  }
+for (const phase of ['collapsed', 'empty', 'unavailable']) for (const end of ['retire', 'dispose']) test(`${phase} ${end} releases the panel`, async t => {
+  const page = await open(t, { response: recordings[phase] || recordings.ready });
+  if (phase === 'collapsed') await page.getByRole('button', { name: 'Hide mail priorities' }).click();
+  else await page.getByText(phase === 'empty' ? 'No recorded pending mail decisions.' : 'Mail priorities unavailable.', { exact: true }).waitFor();
   await page.evaluate(end => { if (end === 'dispose') window.view.dispose(); else dispatchEvent(new Event('doctorcre-session-invalidated')); }, end);
   if (end === 'retire') await page.getByText('Sign in to view mail priorities.').waitFor();
   else await page.waitForFunction(() => document.getElementById('panel').childElementCount === 0);
@@ -130,9 +116,6 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
     return route.fulfill({ json: recordings.ready });
   });
   await page.goto(server.origin + '/?mode=fixture');
-  const button = page.getByRole('button', { name: 'Show mail priorities' }); await button.waitFor();
-  assert.equal(requests.length, 0);
-  await button.click();
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
   assert.equal(requests.length, 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -142,4 +125,74 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
   assert.equal(requests[0].method, 'GET');
   assert.equal(new URL(requests[0].url).search, '?limit=25');
   assert.deepEqual(await page.locator('[data-mail-proposal]').evaluateAll(rows => rows.map(row => row.dataset.mailProposal)), recordings.ready.items.map(row => row.proposal_id));
+});
+
+test('collapse cancels pending reads, reopening reads once and rerenders do not read', async t => {
+  const page = await open(t, { pending: true });
+  await page.getByText('Loading mail priorities…').waitFor();
+  await page.getByRole('button', { name: 'Hide mail priorities' }).click();
+  assert.equal(await page.evaluate(() => window.signal.aborted), true);
+  await page.evaluate(() => { window.pending = false; window.release(); });
+  assert.equal(await page.locator('[data-mail-proposal]').count(), 0);
+  await page.getByRole('button', { name: 'Show mail priorities' }).click();
+  await page.getByRole('button', { name: 'Review Existing Home title' }).waitFor();
+  await page.getByRole('button', { name: 'Review Existing Home title' }).click();
+  assert.equal(await page.evaluate(() => window.calls), 2);
+});
+for (const event of ['pagehide', 'hidden']) test(`${event} cancels loading and requires explicit reopen`, async t => {
+  const page = await open(t, { pending: true });
+  await page.getByText('Loading mail priorities…').waitFor();
+  await page.evaluate(event => {
+    if (event === 'hidden') {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    } else dispatchEvent(new Event('pagehide'));
+    window.pending = false; window.release();
+  }, event);
+  await page.getByRole('button', { name: 'Show mail priorities' }).waitFor();
+  assert.equal(await page.evaluate(() => window.signal.aborted), true);
+  assert.equal(await page.locator('[data-mail-proposal]').count(), 0);
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});
+
+test('parent rerender preserves the automatic read and collapsed choice', async t => {
+  const page = await open(t);
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  await page.evaluate(async () => {
+    window.view.dispose();
+    const { createRoot, createElement, MailPriorities, parseMailPage } = await import('/panel.js');
+    window.root = createRoot(document.getElementById('panel'));
+    window.props = { items: [], review() {}, read: async () => { window.calls++; return parseMailPage(window.response); } };
+    window.rerender = locked => window.root.render(createElement(MailPriorities, { ...window.props, locked }));
+    window.view = { dispose: () => window.root.unmount() };
+    window.calls = 0; window.rerender(false);
+  });
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  await page.evaluate(() => window.rerender(true));
+  await page.getByRole('button', { name: 'Hide mail priorities' }).click();
+  await page.evaluate(() => window.rerender(false));
+  await page.getByRole('button', { name: 'Show mail priorities' }).waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 1);
+  await page.getByRole('button', { name: 'Show mail priorities' }).click();
+  await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  assert.equal(await page.evaluate(() => window.calls), 2);
+});
+for (const phase of ['ready', 'empty', 'unavailable']) for (const event of ['collapse', 'pagehide', 'hidden']) test(`${phase} ${event} drops the snapshot`, async t => {
+  const page = await open(t, { response: recordings[phase] });
+  await page.getByText(phase === 'ready' ? 'Only the first 25 ranked decisions are shown.' : phase === 'empty' ? 'No recorded pending mail decisions.' : 'Mail priorities unavailable.', { exact: true }).waitFor();
+  if (event === 'collapse') await page.getByRole('button', { name: 'Hide mail priorities' }).click();
+  else await page.evaluate(event => {
+    if (event === 'hidden') { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); }
+    else dispatchEvent(new Event('pagehide'));
+  }, event);
+  await page.getByRole('button', { name: 'Show mail priorities' }).waitFor();
+  assert.equal(await page.locator('[data-mail-proposal]').count(), 0);
+  assert.equal(await page.evaluate(() => window.calls), 1);
+});
+test('retired panel can dispose without restarting', async t => {
+  const page = await open(t, { failure: { status: 401 } });
+  await page.getByText('Sign in to view mail priorities.').waitFor();
+  await page.evaluate(() => window.view.dispose());
+  await page.waitForFunction(() => document.getElementById('panel').childElementCount === 0);
+  assert.equal(await page.evaluate(() => window.calls), 1);
 });

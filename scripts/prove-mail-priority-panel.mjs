@@ -43,13 +43,10 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     });
     pendingPages.add(acquire); acquire.finally(() => pendingPages.delete(acquire)).catch(() => {});
     await bounded(acquire);
-    await bounded(page.goto(base.origin + '/', { timeout: remaining(), waitUntil: 'domcontentloaded' }));
-    if (new URL(page.url()).origin !== base.origin || new URL(page.url()).pathname !== '/') throw unavailable('Home requires an existing signed-in session');
-    const show = page.getByRole('button', { name: 'Show mail priorities', exact: true });
-    try { await bounded(show.waitFor({ timeout: remaining() })); } catch { throw unavailable('Mail priorities or signed-in Home unavailable'); }
     const responsePending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/intelligence/mail-needs-partner', { timeout: remaining() });
     responsePending.catch(() => {});
-    await bounded(show.click({ timeout: remaining() }));
+    await bounded(page.goto(base.origin + '/', { timeout: remaining(), waitUntil: 'domcontentloaded' }));
+    if (new URL(page.url()).origin !== base.origin || new URL(page.url()).pathname !== '/') throw unavailable('Home requires an existing signed-in session');
     const response = await bounded(responsePending);
     if ([401, 403].includes(response.status()) || !response.ok()) throw unavailable('Signed-in mailbox read unavailable');
     const raw = await bounded(response.json());
@@ -60,6 +57,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       const snapshot = parseMailPage(raw);
       const host = document.querySelector('section[aria-label="Mail priorities"]');
       if (!host) throw Error('Mail priorities panel missing');
+      if (host.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded') !== 'true') throw Error('Mail priorities must open automatically');
       const rows = [...host.querySelectorAll('[data-mail-proposal]')];
       const expected = snapshot.items;
       if (rows.length !== expected.length || rows.some((row, index) => {
@@ -73,7 +71,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       const expectedParagraphs = [coverage,
         ...(snapshot.state === 'empty' ? ['No recorded pending mail decisions.'] : []),
         ...(snapshot.more ? ['Only the first 25 ranked decisions are shown.'] : [])];
-      const paragraphs = [...host.querySelectorAll(':scope > p')].map(node => node.textContent);
+      const paragraphs = [...host.querySelectorAll(':scope > div > p')].map(node => node.textContent);
       if (JSON.stringify(paragraphs) !== JSON.stringify(expectedParagraphs)) throw Error('Mailbox coverage, empty state or page limit differs from registered read');
       return { count: rows.length, populated: rows.length ? 'observed' : 'unobserved', order_reasons_dates: true };
     }, raw));
@@ -88,7 +86,6 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     return { status: 'passed', release, after, assertions, scope: 'natural_signed_in_read_only' };
   } catch (error) {
     if (expired) throw unavailable('Total proof deadline exceeded');
-    if (!release) throw unavailable('Release identity unavailable');
     throw error;
   } finally {
     clearTimeout(timer); expired = true;
