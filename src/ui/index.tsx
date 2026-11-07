@@ -38,6 +38,8 @@ export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
 
 export { mountClientAnniversaries } from './client-anniversaries';
 export { mountLeadResearch } from './lead-research';
+export { mountMailPriorities } from './home/mail-priorities';
 export { mountActivityAttributionView, parseActivityDealAttribution } from './activity-attribution';
 
 export { mountDealChecklist } from './deal-checklist';
+export { mountRelationshipKindFilter, relationshipKind } from './relationship-kind-filter';

@@ -1,0 +1,29 @@
+stateDiagram-v2
+  [*] --> Loading
+  Loading --> Ready: Current refresh succeeds
+  Loading --> Retry: Read fails or malformed response
+  Retry --> Loading: Explicit refresh
+  Ready --> Filtered: Select priority, term or status
+  Filtered --> Ready: Clear priority, retain other selections
+  Filtered --> Filtered: Refresh replaces recorded priority
+  Filtered --> Ready: Follow term or comparison link, clear hiding filters
+  Ready --> Editing: Change review input
+  Filtered --> Editing: Change review input
+  Editing --> Editing: Refuse hiding filters and refresh
+  Editing --> Saving: Submit valid review
+  Saving --> Saving: Refuse hiding filters
+  Saving --> Unconfirmed: Receipt unavailable
+  Unconfirmed --> Unconfirmed: Refuse hiding filters and refresh
+  Unconfirmed --> Saving: Check outcome with identical request
+  Saving --> Loading: Receipt confirmed
+  Saving --> Editing: Version conflict refresh retains reason
+  Loading --> Loading: Ignore stale completion
+  Ready --> Retired: Session invalidated or auth refused
+  Editing --> Retired: Session invalidated
+  Unconfirmed --> Retired: Session invalidated
+  Loading --> Disposed: Dispose panel
+  Retired --> Retired: Ignore late work
+  Disposed --> Disposed: Ignore late work
+  %% never hide an unsaved or unconfirmed review
+  %% never change canonical data through local filters
+  %% never apply a stale response after refresh, retirement or disposal

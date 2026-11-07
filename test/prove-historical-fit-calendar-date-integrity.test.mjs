@@ -41,9 +41,9 @@ test('CLI refuses unsafe origin and invalid arguments', () => {
 test('proof command uses served modules and fails closed on unavailable assets and releases', async t => {
   const root = resolve('.');
   const source = await readFile('src/ui/ideal-client-profile.tsx', 'utf8');
-  const check = 'new Date(date).toISOString().slice(0, 10) !== closed_on';
+  const check = 'new Date(date).toISOString().slice(0, 10) === value';
   assert.ok(source.includes(check), 'mutation must remove the real calendar round-trip guard');
-  const invalidDates = await build({ stdin: { contents: source.replace(check, 'false'), loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
+  const invalidDates = await build({ stdin: { contents: source.replace(check, 'true'), loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
   let server;
   async function prepare(mode) {
     await server?.close();

@@ -1,0 +1,16 @@
+{
+  "contract": "market-terms.v1",
+  "synthetic": true,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+    "path": "mcp-server/src/market-terms.ts",
+    "sha256": "94c8f087cd7cfed71439f76445a3905ff441b28488b2037982b2e80fda53a0c2"
+  },
+  "parser": {
+    "path": "src/ui/market-terms.tsx",
+    "bytes": "(value: unknown): value is Record<string, unknown> {\n  return typeof value === 'object' && value !== null && !Array.isArray(value);\n}\nfunction isCount(value: unknown): value is number {\n  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;\n}\nfunction isResponse(value: unknown): value is Response {\n  if (!isRecord(value) || value.ok !== true || value.schema_version !== 'market-terms.v1' || !Array.isArray(value.rows) || !isRecord(value.coverage)) return false;\n  const coverage = value.coverage;\n  if (!['comparable_deals', 'canonical_receipts', 'recorded_documents', 'unsupported_receipts', 'unclassified_receipts'].every(key => isCount(coverage[key]))) return false;\n  if (!['eligible_receipts', 'superseded_without_context'].every(key => coverage[key] == null || isCount(coverage[key]))) return false;\n  return value.rows.every(row => {\n    if (!isRecord(row)) return false;\n    if (!['entity_ref', 'fact_key', 'value', 'term_kind', 'term_date', 'effective_from'].every(key => typeof row[key] === 'string')) return false;\n    if (!['unit', 'effective_to', 'expense_basis', 'confidence'].every(key => row[key] == null || typeof row[key] === 'string')) return false;\n    if (row.context_source != null && (!isRecord(row.context_source) || typeof row.context_source.document_ref !== 'string')) return false;\n    if (row.sources === undefined) return true;\n    return Array.isArray(row.sources) && row.sources.every(source => isRecord(source)\n      && typeof source.document_ref === 'string'\n      && ['page_start', 'page_end'].every(key => source[key] == null || isCount(source[key]))\n      && (source.quarantined === undefined || typeof source.quarantined === 'boolean'));\n  });\n}\n"
+  },
+  "recordings_sha256": "67f952b1a0212cdbb85ebb87429bf3b056556fe74d2483ab5dce6a2bb7c0f7f9",
+  "method": "Execute unchanged registered rebuildMarketTerms projection with synthetic snapshots. Missing and future basis values are forward-compatible parser probes."
+}

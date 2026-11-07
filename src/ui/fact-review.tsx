@@ -9,7 +9,7 @@ type SourcedPeriod = { [K in keyof Period]: { value: Period[K] } };
 type Value = { value: string | SourcedPeriod[]; normalized_schedule?: Period[]; unit: string; normalized_value?: string; canonical_unit?: string; expense_basis?: string | null; observation_ids?: string[] };
 type CanonicalFact = Omit<Value, 'value' | 'unit' | 'normalized_value'> & { version: number; normalized_value: string | null; canonical_unit: string; promoted_at?: string; basis?: string };
 type Observation = Value & { id: string; method: string; confidence_tier: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null; cited_text_expires_at?: string | null } };
-type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: string; reasons: string[]; canonical_fact: CanonicalFact | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; canonical_history: CanonicalFact[]; review_version: string };
+type Item = { entity_ref: string; fact_key: string; pending: boolean; priority?: unknown; reasons: string[]; canonical_fact: CanonicalFact | null; observations: Observation[]; review_history: { decision: string; reason: string }[]; canonical_version: number; canonical_history: CanonicalFact[]; review_version: string };
 type HumanFact = { fact_key: string; value: string; unit: string; expense_basis?: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string } };
 type Args = { idempotency_key: string; entity_ref: string } & ({ observation: HumanFact } | { fact_key: string; base_version: number; review_version: string; decision: string; reason: string; observation_id?: string; correction?: HumanFact });
 type Receipt = { ok: boolean; schema_version: string };
@@ -189,6 +189,13 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   let listContent: ReactNode = null;
   let recordRevision = 0;
   let selectedTerm = '';
+  let selectedPriority = '';
+  function priorityValue(item: Item) {
+    const value = item.priority;
+    if (value == null || typeof value === 'string' && !value.trim()) return 'unrecorded';
+    if (typeof value !== 'string') return 'unavailable';
+    return value === 'high' || value === 'normal' ? value : `other:${value}`;
+  }
   let selectedStatus: '' | 'pending' | 'reviewed' = '';
   const filterHintId = `term-filter-${crypto.randomUUID()}`;
   function applyTermFilter() {
@@ -199,11 +206,19 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     const byKey = new Map(items.map(item => [item.fact_key, item]));
     for (const article of root.querySelectorAll<HTMLElement>('[data-fact-key]')) {
       const item = byKey.get(article.dataset.factKey || '');
-      article.hidden = !!selectedTerm && article.dataset.factKey !== selectedTerm || !!selectedStatus && (!item || item.pending !== (selectedStatus === 'pending'));
+      article.hidden = !!selectedTerm && article.dataset.factKey !== selectedTerm || !!selectedStatus && (!item || item.pending !== (selectedStatus === 'pending')) || !!selectedPriority && (!item || priorityValue(item) !== selectedPriority);
       if (!article.hidden) matching++;
     }
-    for (const placeholder of root.querySelectorAll<HTMLElement>('.fact-empty[id]')) placeholder.hidden = !!selectedStatus;
+    for (const placeholder of root.querySelectorAll<HTMLElement>('.fact-empty[id]')) placeholder.hidden = !!selectedStatus || !!selectedPriority;
     const statusSelector = root.querySelector<HTMLSelectElement>('[data-status-filter]')!;
+    const prioritySelector = root.querySelector<HTMLSelectElement>('[data-priority-filter]')!;
+    prioritySelector.value = selectedPriority;
+    prioritySelector.disabled = dirty || writing || pending.size > 0;
+    selector.disabled = dirty || writing || pending.size > 0;
+    root.querySelector<HTMLButtonElement>('[data-clear-priority]')!.disabled = prioritySelector.disabled || !selectedPriority;
+    root.querySelector<HTMLElement>('[data-priority-filter-hint]')!.textContent = prioritySelector.disabled
+      ? 'Finish the current edit or confirm its save before changing review priority.'
+      : 'Priority filters recorded terms already loaded. Priority comes from the recorded review item.';
     statusSelector.value = selectedStatus;
     statusSelector.disabled = dirty || writing || pending.size > 0;
     root.querySelector<HTMLButtonElement>('[data-clear-status]')!.disabled = statusSelector.disabled || !selectedStatus;
@@ -211,14 +226,14 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
       ? 'Finish the current edit or confirm its save before changing review status.'
       : 'Review status filters recorded terms already loaded.';
     root.querySelector<HTMLElement>('[data-term-count]')!.textContent = `${matching} matching of ${items.length} loaded terms`;
-    root.querySelector<HTMLElement>('[data-term-empty]')!.hidden = matching !== 0 || !selectedTerm && !selectedStatus;
+    root.querySelector<HTMLElement>('[data-term-empty]')!.hidden = matching !== 0 || !selectedTerm && !selectedStatus && !selectedPriority;
     const lockedKeys = [...pending.keys()].map(form => items[Number(form.dataset.factReview)]?.fact_key).filter(Boolean);
     for (const option of selector.options) option.disabled = !!option.value && lockedKeys.some(key => key !== option.value);
     root.querySelector<HTMLElement>('[data-term-filter-hint]')!.textContent = writing || pending.size
       ? 'A review is saving or its outcome is unconfirmed. Keep that term visible until its outcome is confirmed.'
       : 'Filters already loaded review items. Other terms may exist outside this loaded view.';
   }
-  function revealTerm() { selectedTerm = ''; selectedStatus = ''; applyTermFilter(); }
+  function revealTerm() { selectedTerm = ''; selectedStatus = ''; selectedPriority = ''; applyTermFilter(); }
   let revealedHash: string | undefined;
   function focusLinkedTerm() {
     const hash = root.ownerDocument.defaultView?.location.hash || '';
@@ -233,7 +248,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   }
   let documentSignature: string | undefined;
   function render() {
-    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} signal={lifetime.signal} revealTerm={revealTerm} /><label>Filter by term<select aria-label="Filter by term" data-term-filter aria-describedby={filterHintId}><option value="">All loaded terms</option>{[...new Set([...items.map(item => item.fact_key), ...(selectedTerm ? [selectedTerm] : [])])].map(key => <option key={key} value={key}>{FACT_TERMS[key]?.label || key.replaceAll('_', ' ')}</option>)}</select></label><p id={filterHintId} data-term-filter-hint /><label>Review status<select aria-label="Review status" data-status-filter aria-describedby={`${filterHintId}-status`}><option value="">All recorded terms</option><option value="pending">Needs review</option><option value="reviewed">Reviewed</option></select></label><button type="button" className="btn" data-clear-status>Clear status</button><p id={`${filterHintId}-status`} data-status-filter-hint /><p role="status" data-term-count /><p data-term-empty hidden>No matching loaded terms. Clear status or the term filter to see other loaded terms.</p><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
+    flushSync(() => reactRoot.render(<><h2>Terms</h2><Comparison client={client} entityRef={entityRef} terms={FACT_TERMS} signal={lifetime.signal} revealTerm={revealTerm} /><label>Filter by term<select aria-label="Filter by term" data-term-filter aria-describedby={filterHintId}><option value="">All loaded terms</option>{[...new Set([...items.map(item => item.fact_key), ...(selectedTerm ? [selectedTerm] : [])])].map(key => <option key={key} value={key}>{FACT_TERMS[key]?.label || key.replaceAll('_', ' ')}</option>)}</select></label><p id={filterHintId} data-term-filter-hint /><label>Review status<select aria-label="Review status" data-status-filter aria-describedby={`${filterHintId}-status`}><option value="">All recorded terms</option><option value="pending">Needs review</option><option value="reviewed">Reviewed</option></select></label><button type="button" className="btn" data-clear-status>Clear status</button><p id={`${filterHintId}-status`} data-status-filter-hint /><label>Review priority<select aria-label="Review priority" data-priority-filter aria-describedby={`${filterHintId}-priority`}><option value="">All priorities</option><option value="high">High priority</option><option value="normal">Normal priority</option><option value="unrecorded">Priority not recorded</option>{[...new Set([...items.map(priorityValue), selectedPriority])].filter(value => value === 'unavailable' || value.startsWith('other:')).map(value => <option key={value} value={value}>{value === 'unavailable' ? 'Priority unavailable' : `Recorded priority: ${value.slice(6)}`}</option>)}</select></label><button type="button" className="btn" data-clear-priority>Clear priority</button><p id={`${filterHintId}-priority`} data-priority-filter-hint /><p role="status" data-term-count /><p data-term-empty hidden>No matching loaded terms. Clear priority, status or the term filter to see other loaded terms.</p><p role="status" data-terms-status>Loading terms…</p><div data-terms-list>{listContent}</div><div data-terms-record>{documents.length ? <details><summary>Record a term</summary><form data-fact-record><Entry key={recordRevision} documents={documents} prefix="record-term" terms={FACT_TERMS} /><button className="btn" type="submit">Record term</button><p role="status" data-write-status /></form></details> : <p>{documentsAvailable ? 'No stored documents for this deal.' : 'Stored documents unavailable. Recording and corrections are unavailable.'}</p>}</div><button type="button" className="btn" data-refresh-terms>Refresh terms</button></>));
     applyTermFilter();
   }
   function setDocuments(result: Document[] | null) {
@@ -377,6 +392,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
           refreshed.querySelector<HTMLFormElement>('[data-fact-review]')!.hidden = false;
           refreshed.querySelector<HTMLButtonElement>('[data-review-term]')!.hidden = true;
           dirty = true;
+          revealTerm();
         }
       } else if (error.payload?.error && !['internal_error', 'offline', 'DEPENDENCY_UNAVAILABLE'].includes(error.payload.error) && !error.pendingRequest || (error.status === 401 || error.status === 403) && !error.pendingRequest) {
         pending.delete(form);
@@ -402,6 +418,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   }
   function click(event: Event) {
     const target = event.target as HTMLElement;
+    if (target.closest('[data-clear-priority]') && !dirty && !writing && !pending.size) { selectedPriority = ''; applyTermFilter(); }
     if (target.closest('[data-clear-status]') && !dirty && !writing && !pending.size) { selectedStatus = ''; applyTermFilter(); }
     if (target.closest('[data-refresh-terms]')) void refresh();
     const button = target.closest<HTMLElement>('[data-review-term]');
@@ -410,6 +427,11 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
   root.addEventListener('submit', submit);
   const onChange = (event: Event) => {
     const target = event.target as Controls;
+    if (target.matches('[data-priority-filter]')) {
+      if (!dirty && !writing && !pending.size && [...target.querySelectorAll('option')].some(option => option.value === target.value)) selectedPriority = target.value;
+      applyTermFilter();
+      return;
+    }
     if (target.matches('[data-status-filter]')) {
       if (!dirty && !writing && !pending.size && (target.value === '' || target.value === 'pending' || target.value === 'reviewed')) selectedStatus = target.value;
       applyTermFilter();
@@ -417,7 +439,7 @@ export function mountFactReview(root: HTMLElement, { client, entityRef, terms: F
     }
     if (target.matches('[data-term-filter]')) {
       const hidesPending = [...pending.keys()].some(form => target.value && items[Number(form.dataset.factReview)]?.fact_key !== target.value);
-      if (!writing && !hidesPending) selectedTerm = target.value;
+      if (!dirty && !writing && !hidesPending) selectedTerm = target.value;
       applyTermFilter();
       return;
     }

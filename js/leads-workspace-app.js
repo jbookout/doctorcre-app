@@ -1,4 +1,5 @@
 import { mountLeadResearch } from './ui-lead-research.js';
+import { mountQuietLeads } from './ui-quiet-leads.js';
 import { mountTerritoryEvidence } from './ui-territory-evidence.js';
 import { mountLeadGuidance } from './ui-lead.js';
 import { createPageBudget } from './read-budget.mjs';
@@ -27,6 +28,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
   if (typeof client.getQuietFollowUps !== "function") $("quietFollowUps")?.remove();
+  const quiet = $("quietFollowUpsBody") && typeof client.getQuietFollowUps === "function" ? mountQuietLeads($("quietFollowUpsBody"), quietReason) : null;
   const reasons = $("contactReasons") && client.listPracticeOrigination ? mountContactReasons({host:$("contactReasons"),window:win,client}) : null;
   const territory = $("territoryEvidence") && client.getTerritoryStateBoard ? mountTerritoryEvidence($("territoryEvidence"), client, authorizationFailure) : null;
   const engagement = engagementWriterFor(client, engagementStorage(win));
@@ -36,7 +38,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function clearGuidance() { guidance?.dispose(); guidance = null; clearResearch(); }
   const engagementChecks = new Set();
   const expandedStages = new Set();
-  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, quietEpoch: 0, quietShown: false, openedRequestedLead: false, showEmptyStages: false, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, quietEpoch: 0, openedRequestedLead: false, showEmptyStages: false, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
     historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeDetail: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -191,11 +193,11 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   // background refresh retries soon; a superseded read resolves undefined.
   const sessionDenied = error => ["unauthorized", "not_authenticated"].includes(error?.code) || [401, 403].includes(error?.status);
   function clearQuiet() {
-    ++state.quietEpoch; state.quietShown = false;
+    ++state.quietEpoch;
     const section = $("quietFollowUps");
     if (!section) return;
     section.setAttribute("aria-busy", "false");
-    $("quietFollowUpsBody").replaceChildren();
+    quiet?.update({ kind: "idle" });
   }
   function quietReason(row) {
     const when = shortDate(row.anchor_on, true, "short");
@@ -209,8 +211,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (!section) return;
     section.hidden = false;
     section.setAttribute("aria-busy", "false");
-    const leads = payload.proposals.filter(row => row.subject_type === "lead");
-    $("quietFollowUpsBody").innerHTML = leads.length ? `<ol>${leads.map(row => `<li><a href="/leads?lead=${encodeURIComponent(row.ref)}" data-quiet-lead="${esc(row.subject_id)}"><span>${esc(row.name)}</span><p>${esc(quietReason(row))}</p></a></li>`).join("")}</ol>` : "<p>No quiet leads.</p>";
+    quiet?.update({ kind: "ready", snapshot: payload });
   }
   function startQuietRead(boardEpoch) {
     if (typeof client.getQuietFollowUps !== "function" || !$("quietFollowUps")) return;
@@ -218,18 +219,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const section = $("quietFollowUps");
     section.hidden = false;
     section.setAttribute("aria-busy", "true");
-    if (!state.quietShown) $("quietFollowUpsBody").innerHTML = '<p role="status">Loading follow-ups…</p>';
+    quiet?.update({ kind: "loading" });
     client.getQuietFollowUps().then(payload => {
       if (epoch !== state.quietEpoch || boardEpoch !== state.epoch) return;
-      state.quietShown = true;
       paintFollowUps(payload);
     }, error => {
       if (epoch !== state.quietEpoch || boardEpoch !== state.epoch) return;
       if (sessionDenied(error)) { authorizationFailure(error); return; }
-      state.quietShown = false;
       section.setAttribute("aria-busy", "false");
       const unreachable = error?.code === "network_error" || error?.code === "read_timeout";
-      $("quietFollowUpsBody").innerHTML = `<p role="alert">${unreachable ? "The follow-up list could not reach the server." : "The follow-up list was refused."}</p>`;
+      quiet?.update({ kind: "refused", message: unreachable ? "The follow-up list could not reach the server." : "The follow-up list was refused." });
     });
   }
   function openRequestedLead() {
@@ -241,6 +240,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (lead && eligibleLead(lead)) readDetail(lead.id);
   }
   async function refresh() {
+    if (disposed) return false;
     pageDocContext?.clear();
     const epoch = ++state.epoch;
     startQuietRead(epoch);
@@ -592,7 +592,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   $("refreshBoard").addEventListener("click", () => { territory?.refresh(); refresh(); });
   $("quietFollowUps")?.addEventListener("click", event => {
     const link = event.target.closest("a[data-quiet-lead]");
-    if (!link || !leadById(link.dataset.quietLead)) return;
+    if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !leadById(link.dataset.quietLead)) return;
     event.preventDefault();
     readDetail(link.dataset.quietLead);
   });
@@ -731,10 +731,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   win.addEventListener("doctorcre-session-invalidated", suspendPrivateView);
   const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
-  const resume = () => { if (doc.visibilityState === "hidden") { clearResearch(); pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
+  const resume = () => { if (doc.visibilityState === "hidden") { clearQuiet(); clearResearch(); pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   // eslint-disable-next-line no-restricted-syntax -- Hidden-state events only clear lead identity, document context, and drag state; they perform no HTTP reads.
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
-  return { state, refresh, openReview, readDetail, dispose() { if (disposed) return; disposed = true; suspendPrivateView(); territory?.dispose(); reasons?.dispose(); auto.dispose(); win.removeEventListener("doctorcre-session-invalidated", suspendPrivateView); win.removeEventListener("pagehide", clearTerritory); win.removeEventListener("doctorcre-session-invalidated", clearTerritory); state.map?.dispose(); win.removeEventListener("pagehide", retireDetail); doc.removeEventListener("visibilitychange", resume); } };
+  return { state, refresh, openReview, readDetail, dispose() { if (disposed) return; disposed = true; suspendPrivateView(); quiet?.dispose(); territory?.dispose(); reasons?.dispose(); auto.dispose(); win.removeEventListener("doctorcre-session-invalidated", suspendPrivateView); win.removeEventListener("pagehide", clearTerritory); win.removeEventListener("doctorcre-session-invalidated", clearTerritory); state.map?.dispose(); win.removeEventListener("pagehide", retireDetail); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("leadBoard")) mountLeadsWorkspace();
