@@ -296,7 +296,6 @@ test('real CDP context option coverage applies or refuses every migrated setting
   const fixture = await startFixture();
   const port = new URL(fixture.origin).port;
   await fixture.close();
-  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
   let borrowed;
   const cases = [
     { key: 'baseURL', value: 'http://proof.invalid', refused: true },
@@ -307,25 +306,30 @@ test('real CDP context option coverage applies or refuses every migrated setting
     { key: 'serviceWorkers', value: 'block', observe: page => page.evaluate(() => navigator.serviceWorker.controller), expected: null },
     { key: 'futureOption', value: true, refused: true },
   ];
-  const { default: ts } = await import('typescript');
+  const { parseSync: parse } = await import('@babel/core');
   const { readdirSync, readFileSync } = await import('node:fs');
   const found = new Set();
   for (const file of readdirSync(new URL('../scripts/', import.meta.url)).filter(file => /^prove-.*\.mjs$/.test(file))) {
-    const source = ts.createSourceFile(file, readFileSync(new URL(`../scripts/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const source = parse(readFileSync(new URL(`../scripts/${file}`, import.meta.url), 'utf8'), { sourceType: 'module' });
     function visit(node) {
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ['newContext', 'newPage'].includes(node.expression.name.text) && node.arguments.length) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && ['newContext', 'newPage'].includes(node.callee.property.name) && node.arguments.length) {
         const settings = node.arguments[0];
-        assert.ok(ts.isObjectLiteralExpression(settings), `${file} needs an explicit option coverage case`);
+        assert.equal(settings.type, 'ObjectExpression', `${file} needs an explicit option coverage case`);
         for (const property of settings.properties) {
-          assert.ok(property.name, `${file} needs coverage for spread settings`);
-          found.add(property.name.getText(source));
+          assert.ok(property.key, `${file} needs coverage for spread settings`);
+          found.add(property.key.name || property.key.value);
         }
       }
-      ts.forEachChild(node, visit);
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === 'object') visit(value);
+      }
     }
     visit(source);
   }
   assert.deepEqual([...found].sort(), cases.filter(entry => entry.key !== 'futureOption').map(entry => entry.key).sort());
+  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
   try {
     borrowed = await signedInEngine(`http://127.0.0.1:${port}`).launch();
     for (const entry of cases) await t.test(entry.key, async () => {
@@ -354,7 +358,7 @@ test('real CDP launch option coverage verifies existing settings or refuses them
   const fixture = await startFixture();
   const port = new URL(fixture.origin).port;
   await fixture.close();
-  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  const owner = await chromium.launch({ args: ['--enable-automation', `--remote-debugging-port=${port}`] });
   const endpoint = `http://127.0.0.1:${port}`;
   try {
     for (const options of [{ args: required }, { headless: true }, { timeout: 5000 }, { cdpUrl: endpoint }]) {
