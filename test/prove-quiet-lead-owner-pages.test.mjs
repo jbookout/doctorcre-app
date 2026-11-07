@@ -51,7 +51,7 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`deadline cleanup
   await assertProofDeadlineCleanup(t, { entry: args[0], args: args.slice(1), mode, timeoutMs: 2000 });
 });
 
-test('natural proof borrows a CDP session and leaves its browser running', async t => {
+for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreadable', 'malformed', 'deadline']) test(`natural proof live registry ${registryMode} and borrowed browser cleanup`, async t => {
   const { chromium } = await import('playwright');
   const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
   const { routeLeads } = await import('./leads-browser-fixture.mjs');
@@ -61,17 +61,40 @@ test('natural proof borrows a CDP session and leaves its browser running', async
   const owned = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   t.after(() => owned.close());
   const recording = JSON.parse(await readFile(new URL('./fixtures/quiet-lead-owner-pages/recordings.json', import.meta.url)));
-  let borrowed;
+  const registry = JSON.parse(await readFile(new URL('./fixtures/walk-verb-registry.json', import.meta.url))).response;
+  assert.equal(registry.verbs.find(verb => verb.name === 'quiet-follow-ups').write, false);
+  if (registryMode === 'stale write flag') registry.verbs.find(verb => verb.name === 'quiet-follow-ups').write = true;
+  if (registryMode === 'unknown') registry.verbs = registry.verbs.filter(verb => verb.name !== 'quiet-follow-ups');
+  registry.count = registry.verbs.length;
+  if (registryMode === 'malformed') delete registry.verbs[0].write;
+  let borrowed, registryReads = 0;
   const engine = { connectOverCDP: async (endpoint, options) => {
     borrowed = await chromium.connectOverCDP(endpoint, options);
     const context = borrowed.contexts()[0];
     await routeLeads(context);
-    await context.route('**/mcp', (route, request) => request.postDataJSON()?.params?.name === 'quiet-follow-ups' ? route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(recording) }] } } }) : route.fallback());
+    await context.route('**/mcp', async (route, request) => {
+      const name = request.postDataJSON()?.params?.name;
+      if (name === 'list-verbs') {
+        registryReads++;
+        if (registryMode === 'unreadable') return route.fulfill({ status: 503, body: 'Unavailable' });
+        if (registryMode === 'deadline') return;
+        return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(registry) }] } } });
+      }
+      if (name === 'quiet-follow-ups') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(recording) }] } } });
+      return route.fallback();
+    });
     return borrowed;
   } };
-  const result = await prove({ expectedCommit: commit, origin: 'http://localhost', cdpUrl: `http://127.0.0.1:${port}`, engine, readRelease: async () => ({ source_commit: commit }) });
-  assert.equal(result.mode, 'natural');
-  assert.equal(result.ok, true);
+  const execution = prove({ expectedCommit: commit, origin: 'http://localhost', cdpUrl: `http://127.0.0.1:${port}`, engine,
+    timeoutMs: registryMode === 'deadline' ? 5000 : 30000, readRelease: async () => ({ source_commit: commit }) });
+  if (registryMode === 'read-only') {
+    const result = await execution;
+    assert.equal(result.mode, 'natural');
+    assert.equal(result.ok, true);
+    assert.equal(result.writes, 0);
+  } else if (['unreadable', 'malformed', 'deadline'].includes(registryMode)) await assert.rejects(execution, { exitCode: 78 });
+  else await assert.rejects(execution, registryMode === 'unknown' ? /Unknown MCP verbs: quiet-follow-ups/ : /no writes/);
+  assert.equal(registryReads, 1, 'one live registry read, no snapshot fallback or retries');
   assert.equal(borrowed.isConnected(), false, 'proof disconnects its CDP connection');
   assert.equal(owned.isConnected(), true, 'shared browser process stays alive');
   assert.equal((await owned.newPage()).isClosed(), false, 'shared browser remains usable');
@@ -174,6 +197,42 @@ test('newPage rejection exits 78 through the CLI', async t => {
     assert.equal(error.code, 78);
     assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence');
     assert.match(JSON.parse(error.stdout).error, /page unavailable/);
+    return true;
+  });
+});
+
+for (const kind of ['read-only', 'write', 'unknown']) test(`registry ${kind} MCP calls through the CLI`, async t => {
+  const registry = JSON.parse(await readFile(new URL('./fixtures/walk-verb-registry.json', import.meta.url))).response.verbs;
+  const names = kind === 'read-only' ? registry.filter(verb => verb.write === false).map(verb => verb.name)
+    : [kind === 'write' ? registry.find(verb => verb.write === true).name : 'unregistered-proof-verb'];
+  const root = temporaryDirectory('quiet-registry-', t), preload = join(root, 'preload.mjs');
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+    const launch = chromium.launch.bind(chromium);
+    chromium.launch = async options => {
+      const browser = await launch(options), newPage = browser.newPage.bind(browser);
+      browser.newPage = async (...args) => {
+        const page = await newPage(...args);
+        await page.addInitScript(names => {
+          document.addEventListener('DOMContentLoaded', () => {
+            for (const name of names) void fetch('/mcp', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', id: name, method: 'tools/call', params: { name, arguments: {} } }),
+            });
+          });
+        }, ${JSON.stringify(names)});
+        return page;
+      };
+      return browser;
+    };
+  `);
+  const execution = run(process.execPath, ['--import', preload, ...args]);
+  if (kind === 'read-only') assert.equal(JSON.parse((await execution).stdout).ok, true);
+  else await assert.rejects(execution, error => {
+    assert.equal(error.code, 1);
+    const result = JSON.parse(error.stdout);
+    assert.equal(result.status, 'assertion_failure');
+    assert.match(result.error, kind === 'unknown' ? /Unknown MCP verbs: unregistered-proof-verb/ : /no writes/);
     return true;
   });
 });
