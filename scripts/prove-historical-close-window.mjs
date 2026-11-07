@@ -80,12 +80,12 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       });
       await page.goto(`${origin}/__window_proof`);
       payload = JSON.parse(await readFile(new URL('../test/fixtures/historical-close-window/recordings.json',import.meta.url))).full;
-      await page.evaluate(async ({ origin,payload }) => {
-        const { mountIdealClientProfile } = await import(`${origin}/js/ui-ideal-client-profile.js`);
+      await page.evaluate(async ({ payload }) => {
+        const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
         const host = document.createElement('main'); document.body.replaceChildren(host);
         window.closeProofReads = 0;
         mountIdealClientProfile(host,{ getIdealClientProfile() { window.closeProofReads++; return Promise.resolve(payload); } });
-      },{origin,payload});
+      },{payload});
       await page.getByText('Historical client fit',{exact:true}).click();
     } else {
       if (!cdpUrl) throw insufficient('Signed-in CDP session required');
