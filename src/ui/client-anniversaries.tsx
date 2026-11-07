@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
@@ -61,6 +61,7 @@ export function mountClientAnniversaries(host:HTMLElement, {load}:{load:(signal:
         if (!terminal && ticket === generation) setState({kind:'refusal',message:'Closing anniversaries could not be loaded. Try again.'});
       }
     }
+    useEffect(() => { void open(); }, []);
     return <section aria-label="Closing anniversaries" style={{overflowWrap:'anywhere'}}>
       <h2>Closing anniversaries</h2>
       <button type="button" className="action" aria-expanded={state.kind !== 'idle'} aria-controls="anniversaryContent" onClick={()=>{if(state.kind === 'idle') void open(); else invalidate();}}>{state.kind === 'idle' ? 'Show closing anniversaries' : 'Hide closing anniversaries'}</button>
