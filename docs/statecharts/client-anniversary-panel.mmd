@@ -1,0 +1,28 @@
+stateDiagram-v2
+  [*] --> idle
+  idle --> loading: Open
+  loading --> success: Ready
+  loading --> empty: Empty
+  loading --> refusal: Failed or unavailable or needs_input
+  refusal --> loading: Explicit retry
+  loading --> idle: Hide invalidates pending read
+  success --> idle: Hide clears snapshot
+  empty --> idle: Hide clears snapshot
+  refusal --> idle: Hide
+  loading --> loading: Ignore stale completion
+  idle --> idle: Ignore stale completion
+  loading --> retired: Auth retirement
+  success --> retired: Auth retirement
+  empty --> retired: Auth retirement
+  refusal --> retired: Auth retirement
+  idle --> retired: Auth retirement
+  loading --> disposed: Dispose or pagehide
+  success --> disposed: Dispose or pagehide
+  empty --> disposed: Dispose or pagehide
+  refusal --> disposed: Dispose or pagehide
+  idle --> disposed: Dispose or pagehide
+  idle --> idle: Persisted pagehide clears snapshot
+  loading --> idle: Persisted pagehide clears snapshot
+  success --> idle: Persisted pagehide clears snapshot
+  empty --> idle: Persisted pagehide clears snapshot
+  refusal --> idle: Persisted pagehide clears snapshot
