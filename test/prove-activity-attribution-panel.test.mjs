@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+const assets = await proofAssetSnapshot();
 import {prove} from '../scripts/prove-activity-attribution-panel.mjs';
 const expected='a'.repeat(40),descendant='b'.repeat(40);
 function setup(overrides={}){
@@ -11,6 +14,23 @@ function setup(overrides={}){
 for(const relation of ['equal','descendant','older','unrelated','unknown'])test(`proof requires ${relation} release containment`,async()=>{
  const s=setup({readRelease:async()=>({source_commit:relation==='equal'?expected:descendant}),contains:async(a,b)=>{assert.equal(a,expected);if(!['equal','descendant'].includes(relation))throw Error('No ancestry evidence');}});
  const result=await prove(s.options);assert.equal(result.exitCode,['equal','descendant'].includes(relation)?0:78);assert.equal(s.alive(),0);
+});
+test('real release ancestry accepts equal and descendant and refuses older unrelated unknown',async t=>{
+ const {requireContainingRelease}=await import('../scripts/prove-fact-review-pending-status-view.mjs');
+ const {temporaryDirectory}=await import('../scripts/temp-directory.mjs');
+ const {writeFile}=await import('node:fs/promises');
+ const {execFile}=await import('node:child_process');
+ const {promisify}=await import('node:util');
+ const exec=promisify(execFile),root=temporaryDirectory('attribution-ancestry-',t);
+ const git=async(...args)=>(await exec('git',args,{cwd:root})).stdout.trim();
+ await git('init','-q');await git('config','user.name','Synthetic');await git('config','user.email','synthetic@example.invalid');
+ const commit=async label=>{await writeFile(root+'/fixture',label);await git('add','fixture');await git('commit','-qm',label);return git('rev-parse','HEAD');};
+ const older=await commit('older'),equal=await commit('equal'),descendant=await commit('descendant');
+ await git('checkout','--orphan','unrelated');const unrelated=await commit('unrelated');
+ for(const [name,source,code] of [['equal',equal,0],['descendant',descendant,0],['older',older,78],['unrelated',unrelated,78],['unknown','f'.repeat(40),78]]){
+  const s=setup({expectedCommit:equal,readRelease:async()=>({source_commit:source}),contains:(a,b,options)=>requireContainingRelease(a,b,{...options,cwd:root})});
+  assert.equal((await prove(s.options)).exitCode,code,name);assert.equal(s.alive(),0);
+ }
 });
 test('containing release assertion failure exits 1 and closes acquired browser',async()=>{
  const s=setup({contains:async()=>{},observe:async()=>{throw Error('synthetic incorrect credit');}});const result=await prove(s.options);assert.equal(result.exitCode,1);assert.equal(s.alive(),0);
@@ -54,54 +74,61 @@ test('actual late browser acquisition closes after deadline without leaving its 
  }finally{await acquired.close();}
 });
 test('real CLI fixture passes, detects incorrect credit and preserves the supplied browser',async t=>{
- const {createServer}=await import('./proof-fixture-server.mjs');
  const {readFile}=await import('node:fs/promises');
- const {resolve,sep}=await import('node:path');
  const {fileURLToPath}=await import('node:url');
  const {execFile}=await import('node:child_process');
  const {chromium}=await import('../scripts/proof-browser.mjs');
  const root=fileURLToPath(new URL('../',import.meta.url));
  const commit=await new Promise((yes,no)=>execFile('git',['rev-parse','HEAD'],{cwd:root},(error,out)=>error?no(error):yes(out.trim())));
  const recording=JSON.parse(await readFile(new URL('./fixtures/activity-attribution-panel/recordings.json',import.meta.url)));
- let incorrect=false;
- const server=createServer(async(req,res)=>{
-  const path=new URL(req.url,'http://localhost').pathname;
-  if(path==='/app-release'){res.setHeader('content-type','application/json');return res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:commit}));}
-  if(path==='/mcp'){
-   let body='';for await(const chunk of req)body+=chunk;
-   const request=JSON.parse(body);res.setHeader('content-type','application/json');
-   return res.end(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(recording.cases[0].response)}]}}));
-  }
-  if(path==='/deals'){
-   res.setHeader('content-type','text/html');
-   return res.end(`<!doctype html><div class="kanban-card" hidden><button class="card-open">Open synthetic deal</button></div><main hidden><form id="detailUpdateForm">Synthetic detail</form><div id="updates"></div></main><script type="module">
+ let server;
+ const start=async(mutation,response=recording.cases[0].response)=>{
+  await server?.close();
+  server=await startWorkerFixture({assets,routes:new Map([['/deals',{contentType:'text/html',body:`<!doctype html><div class="kanban-card" hidden><button class="card-open">Open synthetic deal</button></div><main hidden><form id="detailUpdateForm">Synthetic detail</form><div id="updates"></div></main><script type="module">
     import {renderDealUpdates,mountActivityAttribution} from '/js/deal-timeline.js';
     setTimeout(()=>document.querySelector('.kanban-card').hidden=false,100);
     const id=${JSON.stringify(recording.activity_id)};
     updates.innerHTML=renderDealUpdates({entries:[{id,kind:'note',summary:'Synthetic fixture activity',when:'2026-11-01T12:00:00Z'}],activities:[{id}]});
     mountActivityAttribution(updates);
     document.querySelector('.card-open').onclick=()=>document.querySelector('main').hidden=false;
-    if(${incorrect})new MutationObserver(()=>{for(const p of updates.querySelectorAll('p'))if(p.textContent==='1 credited activities')p.textContent='0 credited activities';}).observe(updates,{subtree:true,childList:true,characterData:true});
-   </script>`);
-  }
-  let file;
-  try{file=resolve(root,'.'+decodeURIComponent(path));}catch{res.writeHead(400);return res.end();}
-  if(!file.startsWith(root.replace(/\/$/,'')+sep)){res.writeHead(403);return res.end();}
-  try{res.setHeader('content-type',path.endsWith('.js')||path.endsWith('.mjs')?'text/javascript':'text/plain');res.end(await readFile(file));}catch{res.writeHead(404);res.end();}
- });
- await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>{server.closeAllConnections();server.close(r);}));
- const origin=`http://127.0.0.1:${server.address().port}`;
- const reserve=createServer(()=>{});await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
+    new MutationObserver(()=>{for(const p of updates.querySelectorAll('p,li,h4,a,summary'))if(p.textContent===${JSON.stringify(mutation?.[0])})p.textContent=${JSON.stringify(mutation?.[1])};}).observe(updates,{subtree:true,childList:true,characterData:true});
+   </script>`}]]),env:{APP_ENV:'production',GIT_SHA:commit,CARR:{fetch:async request=>{
+   if(new URL(request.url).pathname==='/mcp'){
+    const body=await request.json();
+    return Response.json({jsonrpc:'2.0',id:body.id,result:{content:[{type:'text',text:JSON.stringify(response)}]}});
+   }
+   return new Response('signed in');
+  }}}});
+ };
+ t.after(()=>server?.close());
+ await start();
+ const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
  const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
  const existing=await browser.newPage();await existing.goto('about:blank');
- const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-activity-attribution-panel.mjs','--origin',origin,'--expected-commit',commit,'--cdp-url',`http://127.0.0.1:${port}`],{cwd:root,timeout:35000},(error,stdout,stderr)=>resolve({code:error?.code||0,receipt:stdout.trim()?JSON.parse(stdout.trim()):null,stderr})));
+ const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-activity-attribution-panel.mjs','--origin',server.origin,'--expected-commit',commit,'--cdp-url',`http://127.0.0.1:${port}`],{cwd:root,timeout:35000},(error,stdout,stderr)=>resolve({code:error?.code||0,receipt:stdout.trim()?JSON.parse(stdout.trim()):null,stderr})));
  const passing=await run();assert.equal(passing.code,0,JSON.stringify(passing));assert.equal(passing.receipt.status,'passed');assert.equal(browser.isConnected(),true);assert.equal(existing.isClosed(),false);
- incorrect=true;const failing=await run();assert.equal(failing.code,1,JSON.stringify(failing));assert.match(failing.receipt.error,/credit/);assert.equal(browser.isConnected(),true);assert.equal(existing.isClosed(),false);
+ for(const mutation of [
+  ['1 credited activities','0 credited activities'],
+  ['1 credited activities','11 credited activities'],
+  ['Coverage complete.','Coverage incomplete.'],
+  ['Direct deal attribution','Wrong direct deal attribution'],
+  ['Synthetic <Practice> & Lease','Synthetic <Practice> & Lease wrong'],
+  ['Synthetic <Practice> & Lease, deal version 4.','Synthetic <Practice> & Lease, deal version 14.'],
+  [`Activity ${recording.activity_id}, version 3.`,`Activity ${recording.activity_id}, version 13.`],
+  [`Activity ${recording.activity_id}, version 3. Source activity:${recording.activity_id}. Source version synthetic-v2.`,`Activity ${recording.activity_id}, version 13. Source activity:${recording.activity_id}. Source version synthetic-v2.`],
+ ]){
+  await start(mutation);const failing=await run();assert.equal(failing.code,1,JSON.stringify({mutation,...failing}));assert.equal(failing.receipt.status,'failed');assert.equal(browser.isConnected(),true);assert.equal(existing.isClosed(),false);
+ }
+
+ for(const {name,response} of recording.cases){
+  await start(undefined,response);const result=await run();assert.equal(result.code,0,JSON.stringify({name,...result}));
+ }
+ await start(['Review candidates. These links receive no activity credit.','Review candidates. These links receive no activity credit. Wrong.'],recording.cases.find(row=>row.name==='source_linked').response);
+ const wrongReview=await run();assert.equal(wrongReview.code,1,JSON.stringify(wrongReview));
  assert.equal(browser.contexts().flatMap(c=>c.pages()).length,1);
 });
 
 test('CLI acquisition failures refuse evidence and late CDP pages are closed before disconnect',async t=>{
- const {createServer}=await import('./proof-fixture-server.mjs');
  const {writeFile}=await import('node:fs/promises');
  const {pathToFileURL,fileURLToPath}=await import('node:url');
  const {execFile}=await import('node:child_process');
@@ -110,23 +137,22 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const {chromium:cdp}=await import('playwright');
  const root=fileURLToPath(new URL('../',import.meta.url));
  const commit=await new Promise((yes,no)=>execFile('git',['rev-parse','HEAD'],{cwd:root},(error,out)=>error?no(error):yes(out.trim())));
- const server=createServer((req,res)=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:commit}));});
- await new Promise(r=>server.listen(0,'127.0.0.1',r));
- t.after(()=>new Promise(r=>{server.closeAllConnections();server.close(r);}));
- const origin=`http://127.0.0.1:${server.address().port}`;
- const reserve=createServer(()=>{});await new Promise(r=>reserve.listen(0,'127.0.0.1',r));
- const port=reserve.address().port;await new Promise(r=>reserve.close(r));
+ const server=await startWorkerFixture({env:{APP_ENV:'production',GIT_SHA:commit}});
+ t.after(()=>server.close());
+ const origin=server.origin;
+ const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
  const endpoint=`http://127.0.0.1:${port}`;
  const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
  const existing=await browser.newPage();
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');
- for(const mode of ['unreachable','retired-context','missing-context','late-page'])await t.test(mode,async()=>{
+ for(const mode of ['unreachable','connect-rejection','retired-context','missing-context','late-page'])await t.test(mode,async()=>{
   const preload=`${scratch}/${mode}.mjs`;
   await writeFile(preload,`
    import {chromium} from ${JSON.stringify(playwrightURL)};
    const connect=chromium.connectOverCDP.bind(chromium);
    chromium.connectOverCDP=async(...args)=>{
+    if(${JSON.stringify(mode)}==='connect-rejection')throw Error('Synthetic CDP rejection');
     const browser=await connect(...args);
     const context=browser.contexts()[0];
     const newPage=context.newPage.bind(context);

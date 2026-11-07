@@ -33,18 +33,27 @@ export async function observeNatural(page, origin) {
   await panel.locator('h4').waitFor();
   const expectedHeadings={direct:'Direct deal attribution',source_linked:'Source-linked deal needs review',ambiguous:'Ambiguous deals need review',unresolved:'Deal attribution unresolved',unknown:'Activity attribution unknown',unavailable:'Activity attribution unavailable'};
   if(await panel.locator('h4').textContent()!==expectedHeadings[response.attribution])throw Error('Rendered attribution disagrees with registered read');
-  const text=await panel.textContent();
-  if(!text.includes(`${response.credited_activity_count} credited activities`) || !text.includes(`Coverage ${response.coverage}.`))throw Error('Rendered credit or coverage disagrees');
+  const paragraphs=await panel.locator(':scope > p').allTextContents();
+  const expectedParagraphs=[`${response.credited_activity_count} credited activities`,...(response.candidates.length?['Review candidates. These links receive no activity credit.']:[]),`Coverage ${response.coverage}.`];
+  if(JSON.stringify(paragraphs)!==JSON.stringify(expectedParagraphs))throw Error('Rendered credit, review label or coverage disagrees');
   const links=await panel.locator('a').evaluateAll(nodes=>nodes.map(n=>({label:n.textContent,href:n.getAttribute('href')})));
   const deals=response.direct?[response.direct]:response.candidates;
   if(JSON.stringify(links)!==JSON.stringify(deals.map(d=>({label:d.label,href:'/deals?deal='+d.deal_id}))))throw Error('Rendered recorded deal links disagree');
   await panel.getByText('Version evidence',{exact:true}).click();
-  const evidence=await panel.textContent();
-  if(response.activity && !evidence.includes(`Activity ${response.activity.id}, version ${response.activity.version}.`))throw Error('Activity version evidence disagrees');
-  for(const deal of deals){
-    if(!evidence.includes(`${deal.label}, deal version ${deal.deal_version}.`))throw Error('Deal version evidence disagrees');
-    for(const item of deal.evidence)if(!evidence.includes(`Activity ${item.activity_id}, version ${item.activity_version}.`))throw Error('Candidate evidence disagrees');
-  }
+  const evidence=await panel.locator('details').evaluate(node=>({
+    summary:node.querySelector('summary')?.textContent,
+    activity:Array.from(node.querySelectorAll(':scope > p'),n=>n.textContent),
+    deals:Array.from(node.querySelectorAll(':scope > div'),row=>({
+      label:row.querySelector('p')?.textContent,
+      evidence:Array.from(row.querySelectorAll('li'),n=>n.textContent),
+    })),
+  }));
+  const expectedEvidence={
+    summary:'Version evidence',
+    activity:[response.activity?`Activity ${response.activity.id}, version ${response.activity.version}. Source ${response.activity.source_ref}. Source version ${response.activity.source_version ?? 'not recorded'}.`:'No activity version available.'],
+    deals:deals.map(deal=>({label:`${deal.label}, deal version ${deal.deal_version}.`,evidence:deal.evidence.map(item=>`Activity ${item.activity_id}, version ${item.activity_version}.`)})),
+  };
+  if(JSON.stringify(evidence)!==JSON.stringify(expectedEvidence))throw Error('Rendered version evidence disagrees');
   return {activity_id:activityId,state:response.state,attribution:response.attribution,credited_activity_count:response.credited_activity_count,assertions:['state','credit','coverage','recorded links','version evidence']};
 }
 export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000,engine=defaultEngine,readRelease,contains=requireContainingRelease,observe=observeNatural}={}) {
