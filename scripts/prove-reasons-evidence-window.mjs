@@ -42,12 +42,23 @@ export async function observeWindow(page, origin) {
     assert.equal(await host.getByLabel('Evidence through',{exact:true}).inputValue(),'');
     assert.equal(await host.getByRole('searchbox').evaluate(el=>document.activeElement===el),true);
     assert.equal(reads,0,'selection and Clear must not read');
+    page.off('request',onRequest);
     await page.goto(`${origin}/review-workflows`);
     const home=page.locator('#homeContactReasons');
     await home.waitFor({state:'attached'});
+    const preview=await page.evaluate(async()=>{
+      const {createLeadBoardClient}=await import('/js/leads-client.js');
+      const {homeListLimit}=await import('/js/ui-limit.js');
+      const data=await createLeadBoardClient({docContext:false}).listPracticeOrigination({limit:100});
+      return data.cards?.filter(row=>row.route==='research').slice(0,homeListLimit(window)).map(row=>row.id);
+    }).catch(()=>{throw insufficient('Natural Home preview read unavailable');});
+    if(!preview?.length)throw insufficient('No natural Home research preview');
+    await page.locator('.home-grid').scrollIntoViewIfNeeded();
+    await home.locator('article').first().waitFor();
+    assert.deepEqual(await home.locator('article [data-reason-key^="source:"]').evaluateAll(links=>links.map(link=>link.getAttribute('data-reason-key').slice(7))),preview,'Home research preview ids');
     assert.equal(await home.getByLabel('Evidence from',{exact:true}).count(),0);
     assert.equal(await home.getByLabel('Evidence through',{exact:true}).count(),0);
-    return {date,ids:observed,local_reads:reads,home:'unchanged preview'};
+    return {date,ids:observed,local_reads:reads,home_ids:preview};
   } finally {page.off('request',onRequest);}
 }
 
