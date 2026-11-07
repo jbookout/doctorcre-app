@@ -27,12 +27,15 @@ function Dates({ item }: { item: Finding }) {
 function LeadResearch({ research, selected, onSelect }: { research: Research | undefined; selected: string; onSelect: (kind: string) => void }) {
   const kinds = [...new Set(research?.evidence.map(item => item.kind).filter(kind => kind.trim()) || [])];
   const [kind, setKind] = useState(kinds.includes(selected) ? selected : '');
-  const findings = research?.evidence.filter(item => !kind || item.kind === kind) || [];
+  const [source, setSource] = useState('all');
+  const sources = [...new Set(research?.evidence.map(item => item.source.trim() ? `source:${item.source}` : 'missing') || [])];
+  const findings = research?.evidence.filter(item => (!kind || item.kind === kind) && (source === 'all' || source === (item.source.trim() ? `source:${item.source}` : 'missing'))) || [];
   return <section className="detail-panel" id="sourcedResearch"><h3>Sourced research</h3>
     {!research ? <p>Sourced research was not included in this read.</p> : <>
       <p>{labels[research.state]}</p><p>{research.next_step}</p>
       {research.evidence.length === 0 ? <p>No sourced findings.</p> : <>
         <label>Finding kind<select aria-label="Finding kind" id="researchKind" value={kind} style={{ maxWidth: '100%' }} onChange={event => { setKind(event.target.value); onSelect(event.target.value); }}><option value="">All finding kinds</option>{kinds.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label>Finding source<select aria-label="Finding source" value={source} style={{ maxWidth: '100%' }} onChange={event => setSource(event.target.value)}><option value="all">All finding sources</option>{sources.map(value => <option key={value} value={value}>{value === 'missing' ? 'Source not recorded' : value.slice('source:'.length).trim()}</option>)}</select></label>
         <p role="status">{findings.length} of {research.evidence.length} loaded findings</p>
         {findings.length === 0 ? <p>No matching findings.</p> : <ol className="research-facts">{findings.map(item => <li key={item.flag_id} data-flag-id={item.flag_id}><strong>{item.kind ? item.kind[0]?.toUpperCase() + item.kind.slice(1).replaceAll('_', ' ') : 'Finding'}{item.proposes_correction ? ' · Proposed correction' : ''}</strong><p className="research-finding">{item.found ? 'Finding recorded.' : 'Nothing found.'} {factText(item.value)}</p><Dates item={item} />{item.expired && <p className="research-expiry">Expired</p>}{item.source.trim() && <p className="research-source">Source: {/^https:\/\/\S+$/.test(item.source.trim()) ? <a href={item.source.trim()}>{item.source.trim()}</a> : item.source.trim()}</p>}</li>)}</ol>}
       </>}

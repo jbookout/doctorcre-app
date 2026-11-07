@@ -1,0 +1,45 @@
+stateDiagram-v2
+  state Panel {
+    state Sources {
+      [*] --> All
+      All --> Recorded: Choose recorded source
+      All --> Missing: Choose source not recorded
+      Recorded --> Missing: Choose source not recorded
+      Missing --> Recorded: Choose recorded source
+      Recorded --> Recorded: Choose another recorded source
+      Recorded --> All: Choose all sources
+      Missing --> All: Choose all sources
+      All --> All: Open different panel
+      Recorded --> All: Open different panel
+      Missing --> All: Open different panel
+    }
+    --
+    state Kinds {
+      [*] --> AllKinds
+      AllKinds --> OneKind: Choose kind
+      OneKind --> AllKinds: Choose all kinds
+      OneKind --> OneKind: Choose kind
+      AllKinds --> AllKinds: Open different panel
+      OneKind --> AllKinds: Open different panel
+    }
+    --
+    state Results {
+      [*] --> AllFindings
+      AllFindings --> RecordedFindings: Choose recorded source
+      AllFindings --> MissingFindings: Choose source not recorded
+      RecordedFindings --> MissingFindings: Choose source not recorded
+      MissingFindings --> RecordedFindings: Choose recorded source
+      RecordedFindings --> RecordedFindings: Choose another recorded source
+      RecordedFindings --> AllFindings: Choose all sources
+      MissingFindings --> AllFindings: Choose all sources
+      AllFindings --> AllFindings: Open different panel
+      RecordedFindings --> AllFindings: Open different panel
+      MissingFindings --> AllFindings: Open different panel
+    }
+  }
+  %% never RecordedShowsAll: Recorded & AllFindings -- A recorded source never shows unfiltered findings.
+  %% never MissingShowsAll: Missing & AllFindings -- Missing sources never show unfiltered findings.
+  %% never AllShowsRecorded: All & RecordedFindings -- Resetting sources restores all loaded findings.
+  %% never AllShowsMissing: All & MissingFindings -- A different panel starts with all loaded findings.
+  %% never RecordedShowsMissing: Recorded & MissingFindings -- Exact recorded strings never match missing sources.
+  %% never MissingShowsRecorded: Missing & RecordedFindings -- Missing sources never match nonempty strings.
