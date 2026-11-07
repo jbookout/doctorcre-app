@@ -92,6 +92,8 @@ test('one in-flight read, explicit retry, malformed data and auth retirement',as
  await page.getByRole('button',{name:'Retry attribution'}).click();
  await page.waitForFunction(()=>window.probe.calls===4);
  assert.equal(await page.getByRole('button',{name:'Show deal attribution'}).nth(1).isDisabled(),true);
+ await page.getByRole('button',{name:'Show deal attribution'}).first().click();
+ assert.equal(await page.evaluate(()=>window.probe.calls),4,'repeated activation cannot start another in-flight read');
  await page.keyboard.press('Escape');await page.evaluate(()=>{window.release(window.probe.payload);window.probe.pending=null;});
  assert.equal(await page.locator('[aria-label="Activity deal attribution"]').count(),0);
  await page.evaluate(()=>window.probe.failure={status:403});await page.getByRole('button',{name:'Show deal attribution'}).first().click();
