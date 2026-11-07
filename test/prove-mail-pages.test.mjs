@@ -149,6 +149,7 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
   const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   t.after(() => context.close());
   const mutations = {
+    'paging read': `host.querySelector('nav button:last-child').addEventListener('click', () => fetch('/api/v1/intelligence/mail-needs-partner'))`,
     range: `host.querySelector('[data-mail-range]').textContent = 'Decisions 11–5 of 25 loaded'`,
     correct: '',
     date: `row.querySelector('time').textContent = '9' + row.querySelector('time').textContent`,

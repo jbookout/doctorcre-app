@@ -44,7 +44,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     await bounded(acquire);
     await bounded(page.setViewportSize({ width: 390, height: 844 }));
     let reads = 0;
-    page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) reads++; });
+    page.on('request', request => { const path = new URL(request.url()).pathname; if (path.startsWith('/api/') || path === '/mcp') reads++; });
     const responsePending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/intelligence/mail-needs-partner', { timeout: remaining() });
     responsePending.catch(() => {});
     await bounded(page.goto(base.origin + '/', { timeout: remaining(), waitUntil: 'domcontentloaded' }));
