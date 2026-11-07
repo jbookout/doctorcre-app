@@ -50,14 +50,22 @@ for(const lateAfterAuth of [false,true]) test(`pipeline refresh preserves filter
  await page.evaluate(async snapshot=>{
   const {state}=await import('/js/pipeline.js');const get=state.client.getDeal.bind(state.client);
   window.reads=0;window.mode='normal';window.getChecklist=get;
-  state.client.getDeal=async(...args)=>{window.reads++;const detail=await get(...args);if(window.mode==='failure')throw Error('Synthetic transient failure');if(window.mode==='denied')throw Object.assign(Error('Denied'),{status:403});if(window.mode==='held')await new Promise(resolve=>window.release=resolve);return {...detail,checklist:snapshot};};
+  state.client.getDeal=async(...args)=>{window.reads++;const detail=await get(...args);if(window.mode==='failure')throw Error('Synthetic transient failure');if(window.mode==='denied')throw Object.assign(Error('Denied'),{status:403});if(window.mode==='recovery')await new Promise(resolve=>window.releaseRecovery=resolve);if(window.mode==='held')await new Promise(resolve=>window.release=resolve);return {...detail,checklist:snapshot};};
  },snapshot);
  await page.locator('.card-open').first().click();await page.locator('.deal-checklist > summary').click();
  const filter=page.getByLabel('Requirements view');const beforeFilterReads=await page.evaluate(()=>window.reads);await filter.selectOption(lateAfterAuth?'outstanding':'all');assert.equal(await page.evaluate(()=>window.reads),beforeFilterReads);await page.locator('#dealUpdate').fill('First deal unsaved edit');
  await page.evaluate(()=>window.mode='failure');await page.locator('.deal-freshness [data-refresh-detail]').click();
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();assert.equal(await filter.inputValue(),lateAfterAuth?'outstanding':'all');assert.equal(await page.locator('#dealUpdate').inputValue(),'First deal unsaved edit');
- const reads=await page.evaluate(()=>window.reads);await page.evaluate(()=>window.mode='normal');await page.locator('.deal-freshness [data-refresh-detail]').click();
- await page.waitForFunction(reads=>window.reads===reads+1,reads);await page.locator('#detailReadStatus').filter({hasText:''}).waitFor();assert.equal(await filter.inputValue(),lateAfterAuth?'outstanding':'all');
+ await page.evaluate(()=>window.mode='recovery');await page.locator('.deal-freshness [data-refresh-detail]').click();
+ await page.waitForFunction(()=>!!window.releaseRecovery);
+ const status=page.locator('#detailReadStatus');
+ assert.equal(await status.textContent(),'Updates temporarily unavailable');assert.equal(await status.isVisible(),true);
+ const recovery=page.waitForFunction(()=>document.querySelector('#detailReadStatus')?.textContent==='');
+ assert.equal(await Promise.race([recovery.then(()=> 'completed'),new Promise(resolve=>setTimeout(()=>resolve('pending'),200))]),'pending','recovery must stay pending while its response is held');
+ assert.equal(await status.textContent(),'Updates temporarily unavailable');assert.equal(await status.isVisible(),true);
+ await page.evaluate(()=>window.releaseRecovery());await recovery;
+ assert.equal(await status.textContent(),'');assert.equal(await status.isHidden(),true);
+ assert.equal(await filter.inputValue(),lateAfterAuth?'outstanding':'all');assert.equal(await page.locator('#dealUpdate').inputValue(),'First deal unsaved edit');
  await page.evaluate(()=>window.mode='held');await page.locator('.deal-freshness [data-refresh-detail]').click();await page.waitForFunction(()=>!!window.release);
  const firstId=await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDeal);
  await page.locator('#panelClose').click();await page.locator(`.kanban-card:not([data-id="${firstId}"]) .card-open`).first().waitFor();
