@@ -314,16 +314,22 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
     const button = page.getByRole('button', { name: accept ? 'Approve item' : 'Skip item', exact: true });
     await button.click();
     await page.getByRole('alert').waitFor();
-    assert.equal(await page.getByRole('alert').innerText(), `Could not ${accept ? 'approve' : 'skip'} this item. Refresh and check before retrying.`);
+    assert.equal(await page.getByRole('alert').innerText(), 'The decision outcome is unknown. Check outcome before making another decision.');
     if (resolver === 'resolve-post-call-candidate' && process.env.UI_SCREENSHOT_DIR) {
       await mkdir(process.env.UI_SCREENSHOT_DIR, { recursive: true });
       await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/refusal-${accept ? 'approve' : 'skip'}-${width}-${theme}.png`, fullPage: true });
     }
     assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isEnabled(), false);
-    assert.equal(await page.evaluate(() => window.decisions.length), 1, 'refusals never auto-retry');
-    await button.click();
+    assert.equal(await page.evaluate(() => window.decisions.length), 1, 'unknown outcomes never auto-retry');
+    assert.equal(await button.isEnabled(), false, 'the original choice stays blocked while its outcome is unknown');
+    assert.equal(await page.getByRole('button', { name: accept ? 'Skip item' : 'Approve item', exact: true }).isEnabled(), false, 'the opposite choice stays blocked while the outcome is unknown');
+    const original = await page.evaluate(() => structuredClone(window.decisions[0]));
+    await page.getByRole('button', { name: 'Check outcome', exact: true }).click();
     await page.getByText('No longer pending', { exact: true }).waitFor();
     const writes = await page.evaluate(() => window.decisions);
+    assert.equal(writes.length, 2, 'one explicit check replays exactly once');
+    assert.deepEqual(writes[0], original, 'the held original request is unchanged');
+    assert.deepEqual(writes[1], original, 'Check outcome reuses the exact original request');
     assert.equal(writes[1][resolver === 'resolve-candidate' ? 'proposal_id' : 'candidate_id'], 'card-1');
     assert.equal(writes[1].accept, accept);
     assert.equal(typeof writes[1].idempotency_key, 'string');
@@ -454,8 +460,13 @@ for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers auto
     await page.clock.runFor(1000);
     await page.getByRole('button', { name: 'Approve or fix this item' }).waitFor();
     assert.equal(await page.evaluate(() => window.decisionAttempts), target === 'decision' ? 1 : 0);
-    await page.getByRole('button', { name: 'Approve or fix this item' }).click();
-    await page.getByRole('button', { name: 'Skip item', exact: true }).click();
+    if (target === 'decision') {
+      assert.equal(await page.getByRole('button', { name: 'Skip item', exact: true }).isDisabled(), true);
+      await page.getByRole('button', { name: 'Check outcome', exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: 'Approve or fix this item' }).click();
+      await page.getByRole('button', { name: 'Skip item', exact: true }).click();
+    }
     await page.getByText('No longer pending', { exact: true }).waitFor();
   } finally { await closeCallFixture(page, browser, server); }
 });
@@ -534,7 +545,7 @@ for (const end of ['dispose', 'sign out']) test(`${end} cancels an automatic bud
   } finally { await closeCallFixture(page, browser, server); }
 });
 
-for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (const accept of [true, false]) test(`refused decision stays visible with a countdown at ${width} ${theme} ${accept}`, async () => {
+for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (const accept of [true, false]) test(`unconfirmed decision stays visible with a countdown at ${width} ${theme} ${accept}`, async () => {
   const server = await fixtureServer(), browser = await chromium.launch(), page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
   try {
     await callDocument(page, server.origin);
@@ -545,10 +556,11 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
       Object.assign(rows[0].open_cards[0], { deal_name: 'Demo Bayside relocation', evidence_quote: 'Send the revised proposal.', payload: { subject: 'Send revised proposal' } });
       const node = document.createElement('section'); document.body.replaceChildren(node);
       document.documentElement.dataset.theme = theme;
-      window.decisionAttempts = 0;
+      window.decisionAttempts = 0; window.decisionRequests = [];
       window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
         readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
-        resolvePostCallCandidate: async () => {
+        resolvePostCallCandidate: async args => {
+          window.decisionRequests.push(structuredClone(args));
           if (++window.decisionAttempts === 1) throw Object.assign(new Error('budget'), { status: 429 });
           rows[0].open_cards = []; return { ok: true };
         },
@@ -558,7 +570,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
     await page.getByRole('button', { name: 'Approve or fix this item' }).click();
     const button = page.getByRole('button', { name: accept ? 'Approve item' : 'Skip item', exact: true });
     await button.click();
-    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved. When the countdown ends, choose Approve or Skip again./);
+    assert.match(await page.locator('.call-review').innerText(), /The decision outcome is unknown. Check outcome before making another decision./);
     assert.equal(await page.getByRole('heading', { name: 'Demo Bayside relocation' }).isVisible(), true);
     assert.equal(await page.getByText('Needs your decision', { exact: true }).isVisible(), true);
     assert.equal(await button.isDisabled(), true);
@@ -588,12 +600,16 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
     assert.match(await page.getByText('Trying again automatically in 1 second.', { exact: true }).innerText(), /automatically in 1 second\./);
     assert.equal(await page.evaluate(() => window.decisionAttempts), 1);
     await page.clock.runFor(1000);
-    assert.equal(await button.isEnabled(), true);
-    assert.match(await page.locator('.call-review').innerText(), /Your decision was not saved. When the countdown ends, choose Approve or Skip again./);
+    assert.equal(await button.isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: accept ? 'Skip item' : 'Approve item', exact: true }).isDisabled(), true);
+    assert.match(await page.locator('.call-review').innerText(), /The decision outcome is unknown. Check outcome before making another decision./);
     assert.equal(await page.evaluate(() => window.decisionAttempts), 1, 'only reads retry automatically');
-    await button.click();
+    await page.getByRole('button', { name: 'Check outcome', exact: true }).click();
     await page.getByText('No longer pending', { exact: true }).waitFor();
-    assert.equal(await page.getByText(/Your decision was not saved/).count(), 0);
+    assert.equal(await page.getByText(/outcome is unknown/).count(), 0);
+    const requests = await page.evaluate(() => window.decisionRequests);
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests[1], requests[0]);
     assert.equal(await page.evaluate(() => window.decisionAttempts), 2);
   } finally { await closeCallFixture(page, browser, server); }
 });

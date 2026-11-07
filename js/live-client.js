@@ -17,6 +17,7 @@ import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
 import { requireEmailActionReceipt } from './email-action-receipt.mjs';
+import { classifyCommandOutcome } from './command-feedback.mjs';
 import { createRetainedCommands } from './retained-commands.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
@@ -110,7 +111,9 @@ export function createLiveClient(opts = {}) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
       if (verb === 'new-deal') err.creationStage = 'new-deal';
-      err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
+      err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error)
+        || (['resolve-candidate', 'resolve-post-call-candidate'].includes(verb)
+          && ['refused', 'conflict'].includes(classifyCommandOutcome({ error: err }).status));
       throw err;
     }
     if (['list-fact-review', 'record-human-fact', 'resolve-fact-review'].includes(verb) && (payload?.ok !== true || payload.schema_version !== 'fact-review.v1'))
