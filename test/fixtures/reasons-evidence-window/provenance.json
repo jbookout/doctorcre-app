@@ -1,0 +1,16 @@
+{
+  "mode": "contract-checked synthetic fixture",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "revision": "9dbd98a9e7e92967fb7a3e62deed00438234dc6a",
+    "path": "mcp-server/src/practice-origination.ts"
+  },
+  "fixture": "data/fixtures/practice-origination.mjs",
+  "parser": {
+    "path": "js/contact-reasons.mjs",
+    "snapshot": "producer.txt",
+    "sha256": "0fe1a4b0d79142b08583e51b8c275808ea6b753cf5c52edb2a23699086a07329"
+  },
+  "contract": "contracts/carr-interface.v1/mcp_read_contracts/list-practice-origination.json",
+  "production_reads": false
+}

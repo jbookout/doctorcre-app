@@ -34,11 +34,24 @@ const reasonCategories: { value: ReasonCategory; label: string }[] = [
   { value: 'relationship_follow_up', label: 'Relationship follow-up' }, { value: 'identity_review', label: 'Identity review' },
 ];
 const filterLabelStyle = { display: 'grid', gap: 'var(--space-1)', color: 'var(--fg-muted)', fontSize: 'var(--font-size-1)' };
+type EvidenceWindow = { from: string; through: string };
+const emptyWindow: EvidenceWindow = { from: '', through: '' };
+function canonicalDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
 function ContactReasons({ payload, error, busy, retired, home, visibleCount }: State) {
   const searchInput = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<ReasonCategory>('');
   const [source, setSource] = useState('');
+  const [draft, setDraft] = useState<EvidenceWindow>(emptyWindow);
+  const [window, setWindow] = useState<EvidenceWindow>(emptyWindow);
+  const [windowError, setWindowError] = useState('');
+  const hasWindow = Boolean(window.from || window.through);
+  const hasDraft = Boolean(draft.from || draft.through);
+
   const [previousPayload, setPreviousPayload] = useState(payload);
   const availableSources = [...new Set((payload?.cards || []).map(row => row.source))].sort();
   if (previousPayload !== payload) {
@@ -48,15 +61,15 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
   const selectedSource = availableSources.includes(source) ? source : '';
   const query = search.trim().toLocaleLowerCase('en-US');
   const rows = (payload?.cards || []).filter(row => home ? row.route === 'research' :
-    (!selectedSource || row.source === selectedSource) && (!category || row.route === category) && (!query || [row.name, row.city, row.state, ...row.client_refs]
+    (!hasWindow || canonicalDate(row.evidence_date) && (!window.from || row.evidence_date >= window.from) && (!window.through || row.evidence_date <= window.through)) && (!selectedSource || row.source === selectedSource) && (!category || row.route === category) && (!query || [row.name, row.city, row.state, ...row.client_refs]
       .some(text => text.toLocaleLowerCase('en-US').includes(query))));
   const shown = rows.slice(0, visibleCount);
-  const emptyMessage = home || (!search && !category && !selectedSource && !payload?.next_cursor) ? 'No new reasons to reach out.'
-    : search || category || selectedSource ? 'No matches among loaded reasons.' : 'None on this page. Load more reasons below.';
+  const emptyMessage = home || (!search && !category && !selectedSource && !hasWindow && !payload?.next_cursor) ? 'No new reasons to reach out.'
+    : search || category || selectedSource || hasWindow ? 'No matches among loaded reasons.' : 'None on this page. Load more reasons below.';
   return <><header className={home ? 'home-panel-head' : 'section-heading'}><h2>Reasons to reach out</h2>{home && <a className="home-plain-link" data-reason-key="all" href="/leads#contactReasons">All reasons</a>}</header>
     {retired ? <p role="status">Sign in to view contact reasons.</p> : <>
       {error && <p role="status">Contact reasons unavailable.{payload ? ' Showing last update.' : ''} <button type="button" data-reason-key="retry" data-retry-reasons>Try again</button></p>}
-      {payload ? <>{!home && Boolean(payload.cards.length || payload.next_cursor || search || category || selectedSource) && <>
+      {payload ? <>{!home && Boolean(payload.cards.length || payload.next_cursor || search || category || selectedSource || hasDraft || hasWindow) && <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 'var(--space-3)', marginBlock: 'var(--space-3)' }}>
           <label className="search" style={filterLabelStyle}>Search loaded reasons<input ref={searchInput} type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
           <label style={filterLabelStyle}>Source<select aria-label="Source" value={selectedSource} onChange={event => setSource(event.target.value)}>
@@ -67,9 +80,25 @@ function ContactReasons({ payload, error, busy, retired, home, visibleCount }: S
             {reasonCategories.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select></label>
         </div>
+        <form onSubmit={event => {
+          event.preventDefault();
+          if ((draft.from && !canonicalDate(draft.from)) || (draft.through && !canonicalDate(draft.through))) {
+            setWindowError('Enter real dates as YYYY-MM-DD. Showing the last applied window.');
+          } else if (draft.from && draft.through && draft.from > draft.through) {
+            setWindowError('Evidence from must be on or before Evidence through. Showing the last applied window.');
+          } else { setWindow(draft); setWindowError(''); }
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 'var(--space-3)' }}>
+            <label style={filterLabelStyle}>Evidence from<input type="text" placeholder="YYYY-MM-DD" value={draft.from} aria-invalid={Boolean(windowError)} aria-describedby="evidence-window-help" onChange={event => setDraft({ ...draft, from: event.target.value })} /></label>
+            <label style={filterLabelStyle}>Evidence through<input type="text" placeholder="YYYY-MM-DD" value={draft.through} aria-invalid={Boolean(windowError)} aria-describedby="evidence-window-help" onChange={event => setDraft({ ...draft, through: event.target.value })} /></label>
+          </div>
+          <p id="evidence-window-help">Optional dates, YYYY-MM-DD. Both dates are included.</p>
+          <button type="submit" className="btn home-outline">Apply evidence window</button>
+          {windowError && <p role="alert">{windowError}</p>}
+        </form>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-          <p role="status">{rows.length} {search || category || selectedSource ? 'matching loaded' : 'loaded'} {rows.length === 1 ? 'reason' : 'reasons'}</p>
-          {(search || category || selectedSource) && <button type="button" className="btn home-outline" onClick={() => { setSearch(''); setCategory(''); setSource(''); searchInput.current?.focus(); }}>Clear</button>}
+          <p role="status">{rows.length} {search || category || selectedSource || hasWindow ? 'matching loaded' : 'loaded'} {rows.length === 1 ? 'reason' : 'reasons'}</p>
+          {(search || category || selectedSource || hasWindow || hasDraft || windowError) && <button type="button" className="btn home-outline" onClick={() => { setSearch(''); setCategory(''); setSource(''); setDraft(emptyWindow); setWindow(emptyWindow); setWindowError(''); searchInput.current?.focus(); }}>Clear</button>}
         </div>
       </>}
       <div className="contact-reason-list">{shown.length ? shown.map(row => <ReasonCard key={row.id} row={row} home={home} />) : <p>{emptyMessage}</p>}</div>
