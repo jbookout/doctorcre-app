@@ -1,0 +1,33 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle: Show mail priorities
+  Loading: Loading mail priorities
+  Ready: Ranked recorded decisions
+  Empty: No recorded pending decisions
+  Unavailable: Mail priorities unavailable, retry
+  Retired: Sign in to view mail priorities
+  Disposed: Panel closed
+  Idle --> Loading: Choose Show mail priorities
+  Loading --> Ready: Valid populated response
+  Loading --> Empty: Valid empty response
+  Loading --> Unavailable: Failure, unavailable or malformed response
+  Unavailable --> Loading: Choose Retry mail priorities
+  Ready --> Loading: Choose Refresh mail priorities
+  Empty --> Loading: Choose Refresh mail priorities
+  Ready --> Ready: Choose existing card review
+  Loading --> Retired: Authorization refused or session retired
+  Idle --> Retired: Session retired
+  Ready --> Retired: Session retired
+  Empty --> Retired: Session retired
+  Unavailable --> Retired: Session retired
+  Loading --> Disposed: Home unmounts, discard late completion
+  Ready --> Disposed: Home unmounts
+  Idle --> Disposed: Home unmounts
+  Empty --> Disposed: Home unmounts
+  Unavailable --> Disposed: Home unmounts
+  Retired --> Disposed: Home unmounts
+  Retired --> Retired: Ignore stale completion
+  Disposed --> Disposed: Ignore stale completion
+  %% never Send, approve or dismiss from this panel
+  %% never Reorder or infer dates
+  %% never Read before explicit choice or retry automatically
