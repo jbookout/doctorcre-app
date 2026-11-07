@@ -67,3 +67,10 @@ test('natural proof borrows a CDP session and leaves its browser running', async
 test('one total deadline includes release reads', async () => {
   await assert.rejects(prove({ expectedCommit: commit, timeoutMs: 20, readRelease: () => new Promise(() => {}) }), { exitCode: 78 });
 });
+
+
+test('missing expected commit remains insufficient evidence regardless of argument order', async () => {
+  for (const options of [['--fixture'], ['--origin', 'http://localhost', '--timeout-ms', '1']]) {
+    await assert.rejects(run(process.execPath, [args[0], ...options]), error => error.code === 78 && /Expected merge commit required/.test(error.stdout));
+  }
+});

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
+import { parseArgs } from 'node:util';
 import { chromium } from './proof-browser.mjs';
 import { chromium as cdpChromium } from 'playwright';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
@@ -121,9 +122,11 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const args = process.argv.slice(2), value = key => args[args.indexOf(key) + 1];
-    for (let i = 0; i < args.length; i++) { if (args[i] === '--fixture') continue; assert.ok(['--origin', '--expected-commit', '--cdp-url', '--timeout-ms', '--recording'].includes(args[i]) && args[i+1], 'proof arguments'); i++; }
-    const result = await prove({ origin: args.includes('--origin') ? value('--origin') : undefined, expectedCommit: value('--expected-commit'), fixture: args.includes('--fixture'), cdpUrl: args.includes('--cdp-url') ? value('--cdp-url') : undefined, timeoutMs: args.includes('--timeout-ms') ? Number(value('--timeout-ms')) : 30000, recordingUrl: args.includes('--recording') ? value('--recording') : undefined });
+    const { values } = parseArgs({ options: {
+      origin: { type: 'string' }, 'expected-commit': { type: 'string' }, 'cdp-url': { type: 'string' },
+      'timeout-ms': { type: 'string' }, recording: { type: 'string' }, fixture: { type: 'boolean', default: false },
+    } });
+    const result = await prove({ origin: values.origin, expectedCommit: values['expected-commit'], fixture: values.fixture, cdpUrl: values['cdp-url'], timeoutMs: Number(values['timeout-ms'] || 30000), recordingUrl: values.recording });
     console.log(JSON.stringify(result));
   } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message, status: error.exitCode === 78 ? 'insufficient_evidence' : 'assertion_failure' })); process.exitCode = error.exitCode || 1; }
 }
