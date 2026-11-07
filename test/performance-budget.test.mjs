@@ -74,8 +74,10 @@ test('CLI exits 1 on a breach and 2 on incomplete evidence', t => {
   const measured = report();
   measured.screens.home.interactionMs = 101;
   writeFileSync(reportPath, JSON.stringify(measured));
-  let run = spawnSync(process.execPath, ['scripts/performance-budget.mjs', budgetPath, reportPath], { encoding: 'utf8' });
+  const summaryPath = join(dir, 'summary.md');
+  let run = spawnSync(process.execPath, ['scripts/performance-budget.mjs', budgetPath, reportPath, summaryPath], { encoding: 'utf8' });
   assert.equal(run.status, 1);
+  assert.equal(readFileSync(summaryPath, 'utf8').trimEnd(), run.stdout.trimEnd());
   assert.match(run.stdout, /home \| interactionMs \| 40 \| 101 \| 100 \| FAIL/);
   delete measured.screens.home;
   writeFileSync(reportPath, JSON.stringify(measured));
