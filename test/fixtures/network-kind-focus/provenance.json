@@ -4,5 +4,6 @@
   "revision": "350951eb88b486e2d636fe4e22ea2fdf21156794",
   "parser": "js/relationship-network-model.js#validNetwork",
   "parser_sha256": "0e6e8a6f9c234ea6a8d960c64099cb132268faf86d4c5fb44d76d3f6776ffd63",
-  "natural": false
+  "natural": false,
+  "recordings_sha256": "760df721bbd1c31f5a3d097fbdcb96befc93d7e007cb5c1662b5133c9e4d437a"
 }

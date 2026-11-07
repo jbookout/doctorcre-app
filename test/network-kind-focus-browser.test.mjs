@@ -1,18 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { chromium } from './browser-harness.mjs';
 import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { filterNetwork, validNetwork } from '../js/relationship-network-model.js';
 const root = new URL('../', import.meta.url);
-const recording = JSON.parse(await readFile(new URL('test/fixtures/network-kind-focus/recordings.json', root)));
-const provenance = JSON.parse(await readFile(new URL('test/fixtures/network-kind-focus/provenance.json', root)));
-const parserBytes = await readFile(new URL('test/fixtures/network-kind-focus/producer.txt', root));
-const parser = await import(`data:text/javascript;base64,${parserBytes.toString('base64')}`);
+const recording = JSON.parse(readFileSync(new URL('test/fixtures/network-kind-focus/recordings.json', root)));
+const provenance = JSON.parse(readFileSync(new URL('test/fixtures/network-kind-focus/provenance.json', root)));
+const parserBytes = readFileSync(new URL('test/fixtures/network-kind-focus/producer.txt', root));
+const parser = import(`data:text/javascript;base64,${parserBytes.toString('base64')}`);
 assert.equal(createHash('sha256').update(parserBytes).digest('hex'), provenance.parser_sha256);
-assert.ok(parser.validNetwork(recording));
+test('fixture passes pinned exact production parser',async()=>assert.ok((await parser).validNetwork(recording)));
 assert.ok(validNetwork(recording));
+assert.equal(createHash('sha256').update(readFileSync(new URL('test/fixtures/network-kind-focus/recordings.json',root))).digest('hex'),provenance.recordings_sha256);
 
 for (const kind of ['vendor','client','lead','deal','contact']) test(`kind ${kind} intersects before pruning complete paths`, () => {
   const view = filterNetwork(recording, {kind});
@@ -27,8 +29,21 @@ for (const kind of ['vendor','client','lead','deal','contact']) test(`kind ${kin
     recording.nodes.filter(n => n.kind === kind && n.territory === 'Demo Coast' && n.verticals.includes('dental') && n.name.includes('Demo')));
 });
 
-const assets = await appAssetSnapshot();
+test('kind removes introductions through a filtered intermediary without shortening the path',async()=>{
+ const data=structuredClone(recording), intro=data.suggestions[0];
+ data.nodes.find(n=>n.id===intro.from).kind='vendor';
+ data.nodes.find(n=>n.id===intro.to).kind='vendor';
+ intro.via=data.nodes.find(n=>n.kind==='client').id;
+ data.edges.find(e=>e.id===intro.id).via=intro.via;
+ assert.ok((await parser).validNetwork(data));
+ const view=filterNetwork(data,{kind:'vendor'});
+ assert.ok(view.nodes.some(n=>n.id===intro.from));assert.ok(view.nodes.some(n=>n.id===intro.to));
+ assert.ok(!view.edges.some(e=>e.id===intro.id));assert.deepEqual(view.suggestions,[]);
+});
+
+let assets;
 async function open(t, width=1440, theme='light') {
+  assets ||= await appAssetSnapshot();
   const browser = await chromium.launch(); t.after(()=>browser.close());
   const page = await browser.newPage({viewport:{width,height:900}});
   await page.clock.install({time:new Date()});
@@ -62,7 +77,8 @@ for(const width of [390,1440])for(const theme of ['light','dark'])test(`kind res
   assert.equal(await select.inputValue(),'vendor');
   assert.equal(await page.locator('#networkNodes button').count(),2);
   const before=h.reads();
-  await select.focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+  await select.focus();await page.keyboard.press('c');await page.keyboard.press('Tab');
+  assert.equal(await select.inputValue(),'client', 'native keyboard selection changes kind');
   await select.selectOption('client');
   assert.deepEqual(await page.locator('#networkNodes [data-node]').evaluateAll(ns=>ns.map(n=>n.dataset.node)),recording.nodes.filter(n=>n.kind==='client').map(n=>n.id));
   await page.locator('#networkSearch').fill('no matching subject');
@@ -72,13 +88,15 @@ for(const width of [390,1440])for(const theme of ['light','dark'])test(`kind res
   assert.equal(h.reads(),before);
   await page.locator('#networkRefresh').click();await page.waitForFunction(()=>document.querySelector('#networkRefresh').getAttribute('aria-busy')==='false');
   assert.equal(await select.inputValue(),'client');
+  await page.reload();await page.locator('#networkNodes button').first().waitFor({state:'attached'});
+  assert.equal(await select.inputValue(),'client');
   await page.locator('#graphTab').click();
   await page.locator('#networkReset').click();
   assert.equal(await select.inputValue(),'');assert.equal(new URL(page.url()).searchParams.has('kind'),false);
   assert.equal(await page.locator('#networkNodes button').count(),recording.nodes.length);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await mkdir(new URL('out/test-artifacts/network-kind-focus/',root),{recursive:true});
-  await page.screenshot({path:`out/test-artifacts/network-kind-focus/${width}-${theme}.png`});
+  await page.screenshot({path:`out/test-artifacts/network-kind-focus/${width}-${theme}.png`,fullPage:true});
   assert.deepEqual(h.errors,[]);
 });
 test('invalid kind normalizes to All; malformed and empty recover; expiry and auth clear data',async t=>{
@@ -110,13 +128,14 @@ test('kind removes selected node safely and resets expanded graph limit',async t
  assert.equal(await page.locator('.relationship-node').count(),12);
  assert.equal(await page.locator('#networkKind').evaluate(n=>n===document.activeElement),true);
 });
-test('disposal ignores a late refresh and retires local control',async t=>{
+for (const phase of ['initial load','ready','refresh']) test(`disposal during ${phase} ignores late completion and retires local control`,async t=>{
  const h=await open(t),{page}=h;
- await page.goto('http://localhost/relationships?mode=live');await page.locator('#networkNodes button').first().waitFor();
+ if(phase!=='initial load'){await page.goto('http://localhost/relationships?mode=live');await page.locator('#networkNodes button').first().waitFor();}
  let release;const gate=new Promise(resolve=>release=resolve);t.after(()=>release());
  let requested;const pending=new Promise(resolve=>requested=resolve);
  await page.route('**/api/v1/business/relationships*',async route=>{requested();await gate;await route.fallback().catch(()=>{});});
- await page.locator('#networkRefresh').click();await pending;
+ if(phase==='initial load')await page.goto('http://localhost/relationships?mode=live');else if(phase==='refresh')await page.locator('#networkRefresh').click();else requested();
+ await pending;
  await page.evaluate(()=>window.__network.dispose()).catch(error=>{release();throw error;});
  const before=await page.locator('#networkNodes').textContent();
  release();await page.waitForTimeout(100);

@@ -17,7 +17,6 @@ stateDiagram-v2
   Ready --> Disposed: Dispose view
   Refreshing --> Disposed: Dispose view
   Disposed --> Disposed: Late completion ignored
-  Refreshing --> Refreshing: Superseded completion ignored
   %% never Show an edge or introduction through a removed node.
   %% never Read business data when a local filter changes.
   %% never Repopulate retired or disposed data from a late request.

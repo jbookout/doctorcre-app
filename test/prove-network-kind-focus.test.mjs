@@ -22,8 +22,8 @@ async function fixture(t, mode) {
   git('checkout','--orphan','unrelated'); const unrelated = await commit('unrelated');
   const released = { older, descendant, unrelated, unknown: 'f'.repeat(40) }[mode] || expectedCommit;
   const snapshot = new Map([...assets].map(([path, value]) => [path, {
-    ...value, body: mode === 'failure' && path === '/relationships.html'
-      ? value.body.toString().replace('</body>', `<script>new MutationObserver(()=>{const n=document.querySelector('#networkCount');if(n?.textContent==='2')n.textContent='12';}).observe(document,{childList:true,subtree:true});</script></body>`) : value.body,
+    ...value, body: mode === 'failure' && path === '/js/relationship-network.js'
+      ? value.body.toString().replace(/(networkCount"\)\.textContent=)`\$\{\w+\.nodes\.length\}`/, '$1"12"') : value.body,
   }]));
   const server = await startWorkerFixture({ assets: snapshot, env: {
     APP_ENV: 'production', GIT_SHA: released,
