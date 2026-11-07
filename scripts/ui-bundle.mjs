@@ -40,6 +40,7 @@ const UI_ENTRIES = {
   'ui-quiet-vendors': 'quiet-vendors',
   'ui-calendar-panels': 'calendar-panels',
   'ui-deal-documents': 'deal-documents',
+  'ui-checklist': 'deal-checklist',
   'ui-deal-tours': 'deal-tours',
   'ui-inbox': 'inbox-entry',
   'ui-mail-priorities': 'home/mail-priorities',

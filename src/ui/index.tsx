@@ -41,4 +41,5 @@ export { mountLeadResearch } from './lead-research';
 export { mountMailPriorities } from './home/mail-priorities';
 export { mountActivityAttributionView, parseActivityDealAttribution } from './activity-attribution';
 
+export { mountDealChecklist } from './deal-checklist';
 export { mountRelationshipKindFilter, relationshipKind } from './relationship-kind-filter';

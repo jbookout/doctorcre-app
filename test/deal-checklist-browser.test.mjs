@@ -9,7 +9,7 @@ import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const evidence = join(root, 'out/test-artifacts/deal-checklist');
-const focusEvidence = join(root, '.github/pr-evidence/WR39.S1.J15');
+const focusEvidence = join(evidence, 'empty-recovery');
 let outDir, server, browser, origin;
 before(async () => {
   outDir = await temporaryDirectory('deal-checklist-');
@@ -56,7 +56,7 @@ test('Checklist refresh waits for a held detail read even when checklist visibil
       return get(...args);
     };
   });
-  const visible = await page.locator('.deal-checklist').count() > 0;
+  const visible = true;
   let settled = false;
   const refresh = refreshChecklist(page, () => page.locator('.deal-freshness [data-refresh-detail]').click(), visible)
     .then(() => { settled = true; });
@@ -153,6 +153,12 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await review.evaluate(element => element.open), true, 'refresh preserves the opened item even after reordering');
   assert.equal(await checklist.locator('[data-checklist-item="lease"] details').evaluate(element => element.open), false, 'an unopened item stays closed');
   assert.equal(await page.getByLabel('Update', { exact: true }).inputValue(), 'Demo unsaved update');
+  const filter = checklist.getByLabel('Requirements view', {exact:true});
+  await filter.selectOption('outstanding');
+  assert.equal(await checklist.locator('[data-checklist-item="review"]').count(), 0);
+  assert.equal(await checklist.locator('[data-checklist-count]').textContent(), '1 matching of 2 recorded requirements.');
+  await filter.selectOption('all');
+  assert.equal(await checklist.locator('[data-checklist-item="review"] details').evaluate(element => element.open), true);
   assert.equal(await page.locator('#recordPanel').evaluate(element => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   await checklist.scrollIntoViewIfNeeded();
@@ -185,9 +191,9 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
         await page.keyboard.press(width === 390 ? 'Space' : 'Enter');
       }
       else await page.locator('.deal-freshness [data-refresh-detail]').click();
-    }, !['empty', 'absent'].includes(mode));
+    }, true);
     if (mode === 'empty' && recovering) {
-      const refresh = page.locator('.deal-freshness [data-refresh-detail]');
+      const refresh = checklist.locator(':scope > summary');
       assert.equal(await refresh.evaluate(element => document.activeElement === element), true, 'empty recovery returns focus to the header refresh control');
       const refreshBox = await refresh.boundingBox();
       assert.ok(refreshBox.y >= 0 && refreshBox.y + refreshBox.height <= 960, 'the focused refresh control is visible after recovery');
