@@ -12,7 +12,7 @@ function factText(value: unknown): string {
 }
 function instant(value: string) {
   const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
-  if (!parts) return null;
+  if (!parts || parts[0] !== value || value.length > 64) return null;
   const year = Number(parts[1]), month = Number(parts[2]), day = Number(parts[3]), hour = Number(parts[4]), minute = Number(parts[5]), second = Number(parts[6]), offsetHour = Number(parts[7]), offsetMinute = Number(parts[8]);
   const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (!(day >= 1 && day <= (days[month - 1] ?? 0) && hour < 24 && minute < 60 && second < 60 && (Number.isNaN(offsetHour) || offsetHour < 24 && offsetMinute < 60))) return null;
