@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
+import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { requireContainingRelease, signedInEngine } from './prove-terms-expense-basis.mjs';
 
 const unavailable = message => Object.assign(Error(message), { exitCode: 78 });
@@ -77,7 +78,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       await requireContainingRelease(expectedCommit, release.source_commit, { signal: lifetime.signal, cwd: ancestryCwd });
       if (!engine && !cdpUrl) throw unavailable('Authorized signed-in CDP session required');
       const target = engine || signedInEngine(cdpUrl, chromium);
-      const owned = { launch(options) { pending = target.launch(options); return pending; } };
+      const owned = { launch(options) { pending = target.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] }); return pending; } };
       browser = await launchProofBrowser(owned, { timeout: remaining() }, { signal: lifetime.signal });
       const page = await browser.newPage();
       page.setDefaultTimeout(remaining()); page.setDefaultNavigationTimeout(remaining());
