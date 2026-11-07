@@ -150,7 +150,7 @@ test('signed-in natural fixture passes normalized deal labels while borrowed bro
   const f=await fixture(t,'padded-label');
   const socket=await startFixture();
   const port=new URL(socket.origin).port; await socket.close();
-  const borrowed=await rawChromium.launch({args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
+  const borrowed=await rawChromium.launch({args:[...CHROMIUM_SAFETY_ARGS,'--enable-automation',`--remote-debugging-port=${port}`]});
   t.after(()=>borrowed.close());
   const context=await borrowed.newContext(); const keeper=await context.newPage();
   const result=await prove({origin:f.origin,expectedCommit:f.expected,cdpUrl:`http://127.0.0.1:${port}`,timeoutMs:15000});
@@ -182,7 +182,7 @@ test('late borrowed CDP page closes before disconnect, preserving existing tabs'
   const socket = await startFixture();
   const endpoint = socket.origin, port = new URL(endpoint).port;
   await socket.close();
-  const borrowed = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const borrowed = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   t.after(() => borrowed.close());
   const keeper = await borrowed.newPage();
   await keeper.setContent('<title>Existing signed-in tab</title>');
@@ -218,7 +218,7 @@ for (const mode of ['charts-route', 'old-route']) test(`CLI verifies real charts
   const socket = await startFixture();
   const endpoint = socket.origin, port = new URL(endpoint).port;
   await socket.close();
-  const browser = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const browser = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   t.after(() => browser.close());
   const setup = await rawChromium.connectOverCDP(endpoint);
   t.after(() => setup.close());

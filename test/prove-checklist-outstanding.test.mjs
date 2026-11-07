@@ -85,7 +85,7 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const origin=server.origin;
  const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
  const endpoint=`http://127.0.0.1:${port}`;
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
+ const browser=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
  const existing=await browser.newPage();
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');
@@ -146,7 +146,7 @@ test('natural observer CLI compares exact recorded counts, rows, due summary and
   server=await startWorkerFixture({routes,env:{APP_ENV:'production',GIT_SHA:commit}});
  };
  const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());const existing=await browser.newPage();
+ const browser=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});t.after(()=>browser.close());const existing=await browser.newPage();
  const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-checklist-outstanding.mjs','--origin',server.origin,'--expected-commit',commit,'--cdp-url',`http://127.0.0.1:${port}`,'--timeout-ms','7000'],{timeout:12000},(error,stdout,stderr)=>resolve({code:error?.code||0,stdout,stderr})));
  await start(false);const pass=await run();assert.equal(pass.code,0,JSON.stringify(pass));assert.equal(JSON.parse(pass.stdout).status,'passed');
  await start(true);const fail=await run();assert.equal(fail.code,1,JSON.stringify(fail));

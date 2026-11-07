@@ -50,7 +50,7 @@ for (const mode of ['equal','descendant','older','unrelated','unknown','failure'
     const portFixture = await startFixture();
     const port = new URL(portFixture.origin).port;
     await portFixture.close();
-    const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+    const browser = await chromium.launch({ args: ['--enable-automation',`--remote-debugging-port=${port}`] });
     t.after(() => browser.close());
     const args = ['scripts/prove-research-kind-filter.mjs', '--origin', options.origin, '--expected-commit', options.expectedCommit, '--cdp-url', `http://127.0.0.1:${port}`];
     if (mode === 'failure') await assert.rejects(promisify(execFile)(process.execPath, args), error => error.code === 1);
@@ -77,7 +77,7 @@ async function borrowedBrowser(t) {
   const portFixture = await startFixture();
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
-  const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  const browser = await chromium.launch({ args: ['--enable-automation',`--remote-debugging-port=${port}`] });
   t.after(() => browser.close());
   const cdpUrl = `http://127.0.0.1:${port}`;
   const { chromium: cdp } = await import('playwright');

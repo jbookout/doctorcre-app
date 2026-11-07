@@ -58,7 +58,7 @@ for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreada
   const listener = await startFixture();
   const port = new URL(listener.origin).port;
   await listener.close();
-  const owned = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const owned = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   t.after(() => owned.close());
   const recording = JSON.parse(await readFile(new URL('./fixtures/quiet-lead-owner-pages/recordings.json', import.meta.url)));
   const registry = JSON.parse(await readFile(new URL('./fixtures/walk-verb-registry.json', import.meta.url))).response;
@@ -128,7 +128,7 @@ test('late newPage closes before CDP disconnect and fresh connection sees no add
   const listener = await startFixture();
   const endpoint = listener.origin, port = new URL(endpoint).port;
   await listener.close();
-  const owned = await ownedEngine.launch({ args: [`--remote-debugging-port=${port}`] });
+  const owned = await ownedEngine.launch({ args: ['--enable-automation',`--remote-debugging-port=${port}`] });
   t.after(() => owned.close());
   const existing = await owned.newPage();
   let created;

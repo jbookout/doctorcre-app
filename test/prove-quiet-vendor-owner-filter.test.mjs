@@ -100,7 +100,7 @@ test('CDP observation closes its page and disconnects while preserving the exist
   const portFixture=await startFixture();
   const port=new URL(portFixture.origin).port;await portFixture.close();
   const {chromium}=await import('../scripts/proof-browser.mjs');
-  const existing=await chromium.launch({args:[`--remote-debugging-port=${port}`]});
+  const existing=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});
   t.after(()=>existing.close());
   const page=await existing.newPage();await page.goto('about:blank');
   const receipt=await prove({origin:f.origin,expectedCommit:commit,cdpUrl:`http://127.0.0.1:${port}`});

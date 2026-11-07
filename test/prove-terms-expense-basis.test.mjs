@@ -86,7 +86,7 @@ for (const broken of [false, true]) test(`CLI fixture exits ${broken ? 1 : 0} an
   const portFixture = await startFixture();
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   try {
     const args = ['scripts/prove-terms-expense-basis.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '5000'];
     if (broken) await assert.rejects(exec(process.execPath, args, { timeout: 10000 }), error => error.code === 1 && /assertion_failure/.test(error.stdout));
@@ -110,7 +110,7 @@ for (const nearMiss of [false, 'baseline', 'selected', 'local-read']) test(`real
   const portFixture = await startFixture();
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   try {
     const args = ['scripts/prove-terms-expense-basis.mjs', '--origin', origin, '--expected-commit', commit, '--cdp-url', `http://127.0.0.1:${port}`, '--timeout-ms', '3000'];
     if (nearMiss) await assert.rejects(exec(process.execPath, args), error => error.code === 1 && /assertion_failure/.test(error.stdout));
@@ -123,7 +123,7 @@ test('deadline drains a late real CDP page before disconnect and preserves senti
   const portFixture = await startFixture();
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
-  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   const endpoint = `http://127.0.0.1:${port}`;
   try {
     const initial = await chromium.connectOverCDP(endpoint);

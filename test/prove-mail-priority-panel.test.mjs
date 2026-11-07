@@ -81,7 +81,7 @@ test('real CDP closes a late-acquired page before disconnecting and preserves ex
   const portFixture = await startFixture();
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
-  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   const cdpUrl = `http://127.0.0.1:${port}`;
   const existing = context.pages()[0];
   let acquisition, inspection;
@@ -145,7 +145,7 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
   const port = new URL(portFixture.origin).port;
   await portFixture.close();
   const root = temporaryDirectory('mail-exact-cdp-', t);
-  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  const context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS, '--enable-automation',`--remote-debugging-port=${port}`] });
   t.after(() => context.close());
   const mutations = {
     correct: '',

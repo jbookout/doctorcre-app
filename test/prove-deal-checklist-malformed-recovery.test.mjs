@@ -145,7 +145,7 @@ test('CLI acquisition failures refuse evidence and late CDP pages are closed bef
  const origin=server.origin;
  const reserve=await startFixture();const port=new URL(reserve.origin).port;await reserve.close();
  const endpoint=`http://127.0.0.1:${port}`;
- const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
+ const browser=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
  const existing=await browser.newPage();
  const scratch=temporaryDirectory('attribution-acquisition-',t);
  const playwrightURL=import.meta.resolve('playwright');

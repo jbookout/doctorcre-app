@@ -51,7 +51,7 @@ async function fixture(t,mode='equal'){
 }
 async function borrowed(t){
   const reservation=await startFixture();const port=new URL(reservation.origin).port;await reservation.close();
-  const browser=await chromium.launch({args:[`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
+  const browser=await chromium.launch({args:['--enable-automation',`--remote-debugging-port=${port}`]});t.after(()=>browser.close());
   return {browser,cdpUrl:`http://127.0.0.1:${port}`};
 }
 for(const mode of ['equal','failure','near-miss','empty'])test(`natural proof CLI ${mode}`,async t=>{
