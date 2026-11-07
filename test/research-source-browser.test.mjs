@@ -41,6 +41,19 @@ for (const width of [390, 1440]) test(`source transitions and exact intersection
   }
   const calls = reads, requests = rpc;
   await check([0,1,2,3,4,5,6,7,8]);
+  await selector.selectOption('missing'); await check([3,4]);
+  await selector.selectOption(sourceValue('https://example.test/source/0')); await check([0,1]);
+  const attention = panel.getByLabel('Finding attention', { exact: true });
+  await attention.selectOption('correction'); await check([1]);
+  await panel.getByLabel('Finding kind', { exact: true }).selectOption('address'); await check([]);
+  await panel.getByLabel('Finding kind', { exact: true }).selectOption(''); await check([1]);
+  await attention.selectOption(''); await check([0,1]);
+  await attention.selectOption('expired'); await check([0]);
+  await attention.selectOption(''); await check([0,1]);
+  await attention.selectOption('nothing'); await check([]);
+  assert.deepEqual(await selector.locator('option').evaluateAll(nodes => nodes.map(n => ({ value: n.value, label: n.textContent }))), options);
+  await attention.selectOption(''); await check([0,1]);
+  await selector.selectOption('all'); await check([0,1,2,3,4,5,6,7,8]);
   await selector.selectOption(sourceValue('https://example.test/source/0')); await check([0,1]);
   await selector.selectOption('missing'); await check([3,4]);
   await selector.selectOption(sourceValue(' https://example.test/source/0 ')); await check([2]);
@@ -65,9 +78,17 @@ for (const width of [390, 1440]) test(`source transitions and exact intersection
   await panel.getByLabel('Finding kind', { exact: true }).selectOption('phone');
   assert.equal(await selector.inputValue(), 'missing', 'mounted panel preserves selection through other filters');
   await panel.getByLabel('Finding kind', { exact: true }).selectOption('');
-  await page.locator('#closeDetail').click();
-  await page.locator('[data-open]').nth(1).click();
-  assert.equal(await selector.inputValue(), 'all', 'different mount starts at all');
+  for (const selectedSource of ['all', 'missing', sourceValue('https://example.test/source/0')]) {
+    for (const selectedAttention of ['', 'correction', 'expired', 'nothing']) {
+      await selector.selectOption(selectedSource);
+      await attention.selectOption(selectedAttention);
+      await panel.getByLabel('Finding kind', { exact: true }).selectOption('phone');
+      await page.locator('#closeDetail').click();
+      await page.locator('[data-open]').nth(1).click();
+      assert.equal(await selector.inputValue(), 'all', 'different mount starts at all');
+      assert.equal(await attention.inputValue(), '', 'different mount resets attention independently');
+    }
+  }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 });
 

@@ -23,6 +23,20 @@ stateDiagram-v2
       OneKind --> AllKinds: Open different panel
     }
     --
+    state Attention {
+      [*] --> AllAttention
+      AllAttention --> Corrections: Choose corrections
+      AllAttention --> Expired: Choose expired
+      AllAttention --> NothingFound: Choose nothing found
+      Corrections --> AllAttention: Choose all attention
+      Expired --> AllAttention: Choose all attention
+      NothingFound --> AllAttention: Choose all attention
+      AllAttention --> AllAttention: Open different panel
+      Corrections --> AllAttention: Open different panel
+      Expired --> AllAttention: Open different panel
+      NothingFound --> AllAttention: Open different panel
+    }
+    --
     state Results {
       [*] --> AllFindings
       AllFindings --> RecordedFindings: Choose recorded source
