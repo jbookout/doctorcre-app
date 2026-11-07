@@ -93,6 +93,7 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
   const moduleCheck = (node, name, names) => {
     if (typeof name !== 'string') { if (strictLoaders) fail(node, 'Dynamic module capability cannot be verified'); return; }
     if (name.startsWith('.') || name.startsWith('/')) imports.push(name.split(/[?#]/)[0]);
+    if (name.startsWith('.') && names.some(name => constructors.has(name))) fail(node, 'Cannot import a raw server factory outside the descriptor transport');
     if (/^(?:express|serve-static|send|sirv|http-server|fastify|koa|connect)$/.test(name)) fail(node, 'Static server packages bypass fixture transport');
     if ((isTransport || transportDependency) && /^(?:node:)?fs(?:\/|$)/.test(name)) fail(node, 'Fixture transport cannot import filesystem APIs');
     if (!network.test(name) || isTransport) return;

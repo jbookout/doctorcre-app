@@ -28,6 +28,7 @@ for (const source of [
   "const builtin = process.getBuiltinModule; builtin('http').createServer();",
   "import {createRequire} from 'node:module'; const load = createRequire(import.meta.url); load('http').createServer();",
   "import express from 'express'; express().listen(0);",
+  "import {createServer as start} from './missing-listener-wrapper.mjs'; start(() => {});",
 ]) test(`refuses server capability ${source}`, () => assert.ok(checkFixtureSource(source).errors.length));
 
 for (const source of [
