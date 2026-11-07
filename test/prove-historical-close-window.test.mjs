@@ -12,6 +12,7 @@ import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 import { chromium as rawChromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -61,7 +62,7 @@ async function fixture(t, mode='equal') {
   const released = ({older,descendant,unrelated,unknown:'f'.repeat(40)})[mode] || expected;
   const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
   if (mode === 'padded-label') recorded.full.profiles[0].evidence[0].deal_name = '  Dental lease 1  ';
-  const snapshot = new Map([...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}]));
+  const snapshot = new Map([...(await appAssetSnapshot()), ...[...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}])]);
   if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.js',{body:assets.get('js/ui-ideal-client-profile.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
   const mutations = {
     'date-text': ['{entry.closed_on}</time>', '1{entry.closed_on}</time>'],
@@ -95,6 +96,7 @@ async function fixture(t, mode='equal') {
     if (new URL(request.url).pathname === '/auth/session') return Response.json(session);
     if (request.method === 'GET') return new Response(null, { status: 200 });
     const input=await request.json();
+    if (input.params?.name === "list-verbs") return Response.json({result:{content:[{type:"text",text:JSON.stringify(registry)}]}});
     assert.equal(input.params.name,'ideal-client-profile');
     return Response.json({jsonrpc:'2.0',id:input.id,result:{content:[{type:'text',text:JSON.stringify(mode==='empty'?recorded.empty:recorded.full)}]}});
   }}}});
@@ -236,4 +238,66 @@ for (const mode of ['charts-route', 'old-route']) test(`CLI verifies real charts
   assert.equal(result.code, mode === 'charts-route' ? 0 : 1, JSON.stringify(result));
   assert.equal(result.receipt.status, mode === 'charts-route' ? 'passed' : 'assertion_failure');
   if (mode === 'charts-route') assert.equal(result.receipt.observation.evidence, 1);
+});
+
+const registry = JSON.parse(await readFile(new URL("./fixtures/walk-verb-registry.json", import.meta.url))).response;
+
+for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable', 'malformed', 'incomplete', 'empty']) test(`registry CLI ${mode}`, async t => {
+  const f = await fixture(t, 'equal');
+  const scratch = temporaryDirectory('registry-cli-', t);
+  const preload = join(scratch, 'preload.mjs');
+  const marker = join(scratch, 'forwarded');
+  const live = structuredClone(registry);
+  live.verbs.push({ name: 'future-proof-read', write: false }); live.count++;
+  const name = mode === 'write' ? live.verbs.find(row => row.write).name : mode === 'unknown' ? 'unregistered-proof-call' : mode === 'future read' ? 'future-proof-read' : 'read-doctrine';
+  if (mode === 'malformed') delete live.verbs[0].write;
+  if (mode === 'incomplete') live.count++;
+  if (mode === 'empty') { live.verbs = []; live.count = 0; }
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+    import { appendFile } from 'node:fs/promises';
+    const connect = chromium.connectOverCDP.bind(chromium);
+    chromium.connectOverCDP = async (...args) => {
+      const connection = await connect(...args), context = connection.contexts()[0];
+      await context.route('**/mcp', async route => {
+        const call = route.request().postDataJSON().params;
+        if (call.name === 'list-verbs') {
+          await appendFile(${JSON.stringify(marker + '.registry')}, '1');
+          if (call.arguments.names_only !== true) throw Error('names_only registry required');
+          if (${JSON.stringify(mode)} === 'unreadable') return route.fulfill({status:503,body:'Unavailable'});
+          return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(${JSON.stringify(live)})}]}}});
+        }
+        if (call.name === ${JSON.stringify(name)}) {
+          await appendFile(${JSON.stringify(marker)}, call.name);
+          return route.fulfill({json:{result:{content:[{type:'text',text:'{}'}]}}});
+        }
+        return route.fallback();
+      });
+      await context.addInitScript(name => {
+        document.addEventListener('DOMContentLoaded', () => {
+          void fetch('/mcp', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:90,method:'tools/call',params:{name,arguments:{}}})}).catch(() => {});
+        });
+      }, ${JSON.stringify(name)});
+      return connection;
+    };
+  `);
+  const listener = await startFixture();
+  const port = new URL(listener.origin).port; await listener.close();
+  const { chromium: owner } = await import('../scripts/proof-browser.mjs');
+  const browser = await owner.launch({args:[`--remote-debugging-port=${port}`]});
+  t.after(() => browser.close());
+  const cliArgs = ['--import', preload, 'scripts/prove-historical-close-window.mjs', '--origin', f.origin, '--expected-commit', f.expected, '--cdp-url', `http://127.0.0.1:${port}`];
+  const execution = promisify(execFile)(process.execPath, cliArgs);
+  if (['extra read', 'future read'].includes(mode)) {
+    assert.equal(JSON.parse((await execution).stdout).status, 'passed');
+    assert.equal(await readFile(marker, 'utf8'), name);
+  } else {
+    await assert.rejects(execution, error => {
+      assert.equal(error.code, mode === 'write' ? 1 : 78, error.stdout);
+      return true;
+    });
+    await assert.rejects(readFile(marker), {code:'ENOENT'});
+  }
+  assert.equal(await readFile(marker + '.registry', 'utf8'), '1', 'one registry read');
+  assert.ok(browser.isConnected());
 });

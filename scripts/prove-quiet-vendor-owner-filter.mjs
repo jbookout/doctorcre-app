@@ -1,3 +1,4 @@
+import { guardProofReads } from './proof-verb-registry.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { parseArgs } from 'node:util';
@@ -18,7 +19,7 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     if (ms <= 0 || controller.signal.aborted) throw unavailable('Total proof deadline expired');
     return ms;
   };
-  let browser, page, release, borrowed;
+  let browser, page, release, borrowed, guard;
   const pendingPages = new Set();
   const work = async () => {
     release = await readAppRelease(base, { timeoutMs: remaining() });
@@ -50,16 +51,13 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
       try { page = await pending; } finally { pendingPages.delete(pending); }
     }
     page.setDefaultTimeout(remaining());
-    await page.route('**/*', route => {
-      const request = route.request(), url = new URL(request.url());
-      const allowed = url.origin === base.origin && (request.method() === 'GET' || url.pathname === '/mcp' && request.method() === 'POST' && request.postDataJSON()?.params?.name === 'quiet-follow-ups');
-      return allowed ? route.continue() : route.abort();
-    });
+    guard = await guardProofReads(page, base.origin);
     let reads = 0, snapshot;
     page.on('request', request => {
       if (new URL(request.url()).pathname === '/mcp' && request.postData()?.includes('quiet-follow-ups')) reads++;
     });
-    try { await page.goto(new URL('/vendors', base).href, { timeout: remaining() }); } catch { throw unavailable('Vendor page unavailable'); }
+    try { await page.goto(new URL('/vendors', base).href, { timeout: remaining(), waitUntil: 'domcontentloaded' }); } catch { throw unavailable('Vendor page unavailable'); }
+    await guard.load(remaining());
     const section = page.getByRole('region', { name: 'Quiet vendor follow-ups' });
     const show = page.getByRole('button', { name: 'Show quiet vendors' });
     try { await show.waitFor({ timeout: remaining() }); } catch { throw unavailable('Quiet vendor surface or signed-in session unavailable'); }
@@ -93,9 +91,11 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
     await select.selectOption('all');
     assert.equal(reads, before, 'Filter and clear perform no business reads');
     assert.deepEqual(await section.locator('li[data-vendor-id]').evaluateAll(rows => rows.map(row => row.dataset.vendorId)), vendors.slice(0, 5).map(row => row.subject_id));
+    guard.assertSafe();
     const after = await readAppRelease(base, { timeoutMs: remaining() });
     if (after.source_commit !== release.source_commit) throw unavailable('Release changed during observation');
-    return { status: 'passed', scope: fixture ? 'synthetic' : 'natural', release, after, vendor_count: vendors.length, matching_count: expected.length, business_reads: reads };
+    guard.assertSafe();
+    return { status: 'passed', writes: guard.writes, scope: fixture ? 'synthetic' : 'natural', release, after, vendor_count: vendors.length, matching_count: expected.length, business_reads: reads };
   };
   let timer;
   try {
@@ -103,15 +103,17 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
       timer = setTimeout(() => { controller.abort(); void page?.close().catch(() => {}); reject(unavailable('Total proof deadline expired')); }, timeoutMs);
     })]);
   } catch (error) {
+    guard?.assertSafe();
     if (!error.exitCode && !release) error.exitCode = 78;
     if (/Timeout|Target closed|Session closed|connectOverCDP/.test(error.message)) error.exitCode = 78;
     throw error;
   } finally {
-    clearTimeout(timer); controller.abort();
+    clearTimeout(timer); controller.abort(); guard?.dispose();
     await page?.close().catch(() => {});
     await browser?.close().catch(() => {});
     await Promise.allSettled(pendingPages);
     await borrowed?.close().catch(() => {});
+    guard?.assertSafe();
   }
 }
 
@@ -121,5 +123,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const timeoutMs = Number(values['timeout-ms']);
     if (!values.origin || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw Error('Expected --origin and a deadline from 1 to 30000 milliseconds');
     console.log(JSON.stringify(await prove({ origin: values.origin, expectedCommit: values['expected-commit'], cdpUrl: values['cdp-url'], timeoutMs, fixture: values.fixture })));
-  } catch (error) { console.log(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = error.exitCode || 1; }
+  } catch (error) { console.log(JSON.stringify({ status: error.exitCode === 78 ? 'insufficient_evidence' : 'assertion_failure', error: error.message })); process.exitCode = error.exitCode || 1; }
 }
