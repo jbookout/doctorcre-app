@@ -10,7 +10,7 @@ stateDiagram-v2
   Ready --> Ready: condition / offset=0
   Ready --> Ready: evidenceView / preserveOffset
   Loading --> Loading: supersede / epoch++
-  Loading --> Ready: staleCompletion / ignore
+  Ready --> Ready: staleCompletion / ignore
   Ready --> Idle: clearOrSignOut / offset=0, epoch++
   Loading --> Idle: clearOrAuthorizationFailure / offset=0, epoch++
   Idle --> Idle: staleCompletion / ignore
