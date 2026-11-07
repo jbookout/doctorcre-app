@@ -24,6 +24,10 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`evid
   const host=page.locator('#reasons'), from=host.getByLabel('Evidence from',{exact:true}), through=host.getByLabel('Evidence through',{exact:true});
   await host.locator('article').first().waitFor();
   const apply=()=>host.getByRole('button',{name:'Apply evidence window',exact:true}).click();
+  await from.fill('2026-10-26'); await through.fill(''); await apply();
+  assert.equal(await host.locator('time').getAttribute('datetime'),'2026-10-26');
+  await from.fill(''); await through.fill('2026-10-21'); await apply();
+  assert.equal(await host.locator('time').getAttribute('datetime'),'2026-10-21');
   await from.fill('2026-10-21'); await through.fill('2026-10-21'); await apply();
   assert.deepEqual(await host.locator('time').evaluateAll(rows=>rows.map(row=>row.dateTime)),['2026-10-21']);
   assert.match(await host.innerText(),/1 matching loaded reason/);

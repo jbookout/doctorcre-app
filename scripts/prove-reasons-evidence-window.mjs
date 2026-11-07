@@ -9,14 +9,13 @@ const insufficient = message => Object.assign(Error(message), {exitCode:78});
 export async function observeWindow(page, origin) {
   await page.goto(`${origin}/leads#contactReasons`);
   const host=page.locator('#contactReasons');
-  try { await host.getByLabel('Evidence from',{exact:true}).waitFor(); }
-  catch { throw insufficient('Signed-in Reasons view unavailable'); }
   // Use the app client so authentication stays inside the signed-in same-origin page.
   const payload=await page.evaluate(async()=>{
     const {createLeadBoardClient}=await import('/js/leads-client.js');
     return createLeadBoardClient({docContext:false}).listPracticeOrigination({limit:25});
   }).catch(()=>{throw insufficient('Natural reasons read unavailable');});
   if(payload?.contract!=='practice-origination.v1'||!payload.cards?.length) throw insufficient('No natural reasons');
+  await host.getByLabel('Evidence from',{exact:true}).waitFor({timeout:5000});
   const source=await host.getByLabel('Source',{exact:true}).inputValue();
   const category=await host.getByLabel('Action category').inputValue();
   const query=(await host.getByRole('searchbox').inputValue()).trim().toLocaleLowerCase('en-US');
