@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+import { assertProofDeadlineCleanup } from './proof-browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { prove, requireContainingRelease, signedInEngine } from '../scripts/prove-fact-priority-focus.mjs';
 async function fixture(t, mode = 'healthy', revision = '1'.repeat(40)) {
@@ -79,17 +80,12 @@ test('fixture HTTP refuses raw and encoded traversal with an empty body', async 
 });
 for (const mode of ['late launch', 'stalled evaluation']) {
   test(`real Chromium ${mode} leaves zero owned survivors`, async t => {
-    const f = await fixture(t, mode === 'stalled evaluation' ? 'stall' : 'healthy');
-    const { chromium } = await import('playwright');
-    const owned = [];
-    const engine = { launch: async options => {
-      const browser = await chromium.launch(options); owned.push(browser);
-      if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 1500));
-      return browser;
-    } };
-    await assert.rejects(prove({ origin: f.origin, commit: '1'.repeat(40), fixture: true, timeoutMs: 1000, engine }), error => error.exitCode === 78);
-    assert.equal(owned.length, 1);
-    assert.ok(owned.every(browser => !browser.isConnected()), 'zero owned browser survivors');
+    const f = await fixture(t);
+    await assertProofDeadlineCleanup(t, {
+      entry: 'scripts/prove-fact-priority-focus.mjs',
+      args: ['--origin', f.origin, '--expected-commit', '1'.repeat(40), '--fixture'],
+      mode, timeoutMs: 3000,
+    });
   });
 }
 
