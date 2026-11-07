@@ -50,7 +50,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     const detail = await page.evaluate(async () => {
       const { createLeadBoardClient } = await import('/js/leads-client.js');
       const client = createLeadBoardClient();
-      await client.getActor();
+      if (!await client.getActor()) return null;
       const board = await client.getWorkspace();
       for (const lead of board.leads.slice(0, 20)) {
         const { detail } = await client.getLeadDetail(lead);
