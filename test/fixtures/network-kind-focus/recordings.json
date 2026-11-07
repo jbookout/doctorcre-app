@@ -1,0 +1,240 @@
+{
+  "schema": "carr-relationship-network.v1",
+  "observed_at": "2026-11-07T12:00:00Z",
+  "valid_until": "2026-11-07T12:02:00.000Z",
+  "nodes": [
+    {
+      "id": "party:demo-lender",
+      "record_id": "demo-lender",
+      "name": "Demo Healthcare Lending",
+      "kind": "vendor",
+      "territory": "Demo Coast",
+      "verticals": [
+        "dental"
+      ],
+      "owner": "joe",
+      "summary": "Demo business relationship",
+      "contact_state": "active"
+    },
+    {
+      "id": "party:demo-client",
+      "record_id": "demo-client",
+      "name": "Demo Coastal Dental",
+      "kind": "client",
+      "territory": "Demo Coast",
+      "verticals": [
+        "dental"
+      ],
+      "owner": "joe",
+      "summary": "Demo business relationship",
+      "contact_state": "active"
+    },
+    {
+      "id": "party:demo-lead",
+      "record_id": "demo-lead",
+      "name": "Demo Dental Expansion",
+      "kind": "lead",
+      "territory": "Demo Coast",
+      "verticals": [
+        "dental"
+      ],
+      "owner": "joe",
+      "summary": "Demo business relationship",
+      "contact_state": "active"
+    },
+    {
+      "id": "party:demo-build",
+      "record_id": "demo-build",
+      "name": "Demo Practice Builders",
+      "kind": "vendor",
+      "territory": "Demo Coast",
+      "verticals": [
+        "dental"
+      ],
+      "owner": "joe",
+      "summary": "Demo business relationship",
+      "contact_state": "active"
+    },
+    {
+      "id": "deal:demo-won",
+      "record_id": "demo-won",
+      "name": "Demo Dental Relocation",
+      "kind": "deal",
+      "territory": "Demo Coast",
+      "verticals": [
+        "dental"
+      ],
+      "owner": "joe",
+      "summary": "Closed · Won",
+      "contact_state": "active"
+    },
+    {
+      "id": "deal:demo-open",
+      "record_id": "demo-open",
+      "name": "Demo Second Location",
+      "kind": "deal",
+      "territory": "Demo Coast",
+      "verticals": [
+        "dental"
+      ],
+      "owner": "joe",
+      "summary": "Touring",
+      "contact_state": "active"
+    },
+    {
+      "id": "party:demo-therapy",
+      "record_id": "demo-therapy",
+      "name": "Demo Therapy Group",
+      "kind": "client",
+      "territory": "Demo Inland",
+      "verticals": [
+        "physical-therapy"
+      ],
+      "owner": "dell",
+      "summary": "Demo business relationship",
+      "contact_state": "active"
+    },
+    {
+      "id": "deal:demo-lost",
+      "record_id": "demo-lost",
+      "name": "Demo Therapy Search",
+      "kind": "deal",
+      "territory": "Demo Inland",
+      "verticals": [
+        "physical-therapy"
+      ],
+      "owner": "dell",
+      "summary": "Closed · Lost",
+      "contact_state": "active"
+    }
+  ],
+  "edges": [
+    {
+      "id": "demo-offer",
+      "from": "party:demo-lender",
+      "to": "party:demo-lead",
+      "kind": "can_introduce",
+      "summary": "Worked together on equipment financing; offered an introduction.",
+      "detail": "Original synthetic email: Demo Healthcare Lending offered to connect the practice manager for the expansion. Willingness to introduce has not been confirmed.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-made",
+      "from": "party:demo-build",
+      "to": "party:demo-client",
+      "kind": "introduced",
+      "summary": "Introduction made at a practice planning meeting.",
+      "detail": "Introduction made at a practice planning meeting.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-client-referral",
+      "from": "party:demo-client",
+      "to": "party:demo-lead",
+      "kind": "referred",
+      "summary": "Client introduced another practice owner.",
+      "detail": "Client introduced another practice owner.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-vendor-won",
+      "from": "party:demo-lender",
+      "to": "deal:demo-won",
+      "kind": "referred",
+      "summary": "Referred the relocation deal.",
+      "detail": "Referred the relocation deal.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-vendor-open",
+      "from": "party:demo-lender",
+      "to": "deal:demo-open",
+      "kind": "referred",
+      "summary": "Referred a second location.",
+      "detail": "Referred a second location.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-worked",
+      "from": "party:demo-build",
+      "to": "deal:demo-won",
+      "kind": "worked",
+      "summary": "Managed the buildout.",
+      "detail": "Managed the buildout.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-client-won",
+      "from": "party:demo-client",
+      "to": "deal:demo-won",
+      "kind": "client_deal",
+      "summary": "Practice relocation",
+      "detail": "Practice relocation",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-client-open",
+      "from": "party:demo-client",
+      "to": "deal:demo-open",
+      "kind": "client_deal",
+      "summary": "Second location",
+      "detail": "Second location",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-client-sent",
+      "from": "party:demo-client",
+      "to": "deal:demo-lost",
+      "kind": "referred",
+      "summary": "Introduced a therapy practice owner.",
+      "detail": "Introduced a therapy practice owner.",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    },
+    {
+      "id": "demo-therapy-deal",
+      "from": "party:demo-therapy",
+      "to": "deal:demo-lost",
+      "kind": "client_deal",
+      "summary": "Practice search",
+      "detail": "Practice search",
+      "via": null,
+      "when": "2026-10-01T15:00:00Z"
+    }
+  ],
+  "referrals": [
+    {
+      "node_id": "party:demo-lender",
+      "deals": 2,
+      "won": 1,
+      "lost": 0,
+      "win_rate": 1
+    },
+    {
+      "node_id": "party:demo-client",
+      "deals": 1,
+      "won": 0,
+      "lost": 1,
+      "win_rate": 0
+    }
+  ],
+  "suggestions": [
+    {
+      "id": "demo-offer",
+      "from": "party:demo-lender",
+      "to": "party:demo-lead",
+      "via": null,
+      "reason": "Worked together on equipment financing; offered an introduction.",
+      "detail": "Original synthetic email: Demo Healthcare Lending offered to connect the practice manager for the expansion. Willingness to introduce has not been confirmed.",
+      "when": "2026-10-01T15:00:00Z"
+    }
+  ]
+}

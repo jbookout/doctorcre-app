@@ -40,3 +40,5 @@ export { mountClientAnniversaries } from './client-anniversaries';
 export { mountLeadResearch } from './lead-research';
 export { mountMailPriorities } from './home/mail-priorities';
 export { mountActivityAttributionView, parseActivityDealAttribution } from './activity-attribution';
+
+export { mountRelationshipKindFilter, relationshipKind } from './relationship-kind-filter';
