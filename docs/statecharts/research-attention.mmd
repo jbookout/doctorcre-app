@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> All
+    All --> Filtered: select attention
+    Filtered --> Filtered: select attention or kind
+    Filtered --> All: clear attention
+    Filtered --> Filtered: same subject repaint or refresh
+    Filtered --> All: different subject
+    Filtered --> Retired: authorization retirement or disposal
+    Retired --> All: new authorized mount
+    Retired --> Retired: late read ignored
