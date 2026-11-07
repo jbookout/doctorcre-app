@@ -1,33 +1,26 @@
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep, extname } from 'node:path';
+import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { prove } from '../scripts/prove-inbox-snooze-exact-preview.mjs';
-let out;
-before(async () => { out = await temporaryDirectory('snooze-proof-'); await buildArtifact({ root: process.cwd(), outDir: out }); });
+let out, manifest;
+before(async () => { out = await temporaryDirectory('snooze-proof-'); ({ manifest } = await buildArtifact({ root: process.cwd(), outDir: out })); });
 after(async () => { if (out) await rm(out, { recursive: true, force: true }); });
 async function server(t, broken = false) {
   const root = resolve(out, 'site');
-  const app = createServer(async (req, res) => {
-    const path = new URL(req.url, 'http://fixture.invalid').pathname;
-    if (path === '/app-release') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) })); }
-    const file = resolve(root, '.' + decodeURIComponent(path));
-    if (!file.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    try {
-      let body = await readFile(file);
-      if (broken && path === '/js/ui-inbox.js') body = Buffer.from(body.toString().replaceAll('America/Chicago', 'UTC'));
-      res.writeHead(200, { 'content-type': ['.js', '.mjs'].includes(extname(file)) ? 'text/javascript' : 'text/plain' }); res.end(body);
-    } catch { res.writeHead(404); res.end(); }
-  });
-  await new Promise(resolve => app.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { app.closeAllConnections(); app.close(resolve); }));
-  return `http://127.0.0.1:${app.address().port}`;
+  const responses = await loadFixtureAssets({ root, manifest: new Map(manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
+  responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) }) });
+  if (broken) responses.set('/js/ui-inbox.js', { ...responses.get('/js/ui-inbox.js'), body: responses.get('/js/ui-inbox.js').body.toString().replaceAll('America/Chicago', 'UTC') });
+  const fixture = await startFixture({ routes: responses });
+  t.after(() => fixture.close());
+  return fixture.origin;
 }
 function cli(origin, timeout = 15000) {
   return new Promise((resolve, reject) => {

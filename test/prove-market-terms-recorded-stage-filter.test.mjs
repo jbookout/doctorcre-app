@@ -2,25 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
 import { chromium as realChromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { prove } from '../scripts/prove-market-terms-recorded-stage-filter.mjs';
 
 const release = { service: 'doctorcre-app', environment: 'production', source_commit: 'a'.repeat(40) };
-async function server() {
+async function server(broken = false) {
   const assets = await uiAssets(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
-  let broken = false;
-  const http = createServer((req, res) => {
-    if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(release)); }
-    const body = assets.get(req.url?.replace(/^\//, ''));
-    if (!body) { res.writeHead(403); return res.end(); }
-    res.setHeader('content-type', 'text/javascript');
-    res.end(broken ? `export function mountMarketTerms(root) { root.innerHTML = '<label>Recorded stage<select aria-label="Recorded stage"><option>Wrong stages</option></select></label>'; return { dispose() {} }; }` : body);
-  });
-  await new Promise(resolve => http.listen(0, '127.0.0.1', resolve));
-  return { origin: `http://127.0.0.1:${http.address().port}`, break() { broken = true; }, async close() { http.closeAllConnections(); await new Promise(resolve => http.close(resolve)); } };
+  const responses = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
+  responses.set('/app-release', { body: JSON.stringify(release), contentType: 'application/json' });
+  if (broken) for (const path of assets.keys()) responses.set('/' + path, { contentType: 'text/javascript', body: `export function mountMarketTerms(root) { root.innerHTML = '<label>Recorded stage<select aria-label="Recorded stage"><option>Wrong stages</option></select></label>'; return { dispose() {} }; }` });
+  return startFixture({ routes: responses });
 }
 function cli(origin, fixture = true) {
   return new Promise((resolve, reject) => {
@@ -40,8 +34,9 @@ test('CLI exact admitted in-memory assets pass, assertion failure exits 1, unsig
     const unsigned = await cli(fixture.origin, false);
     assert.equal(unsigned.code, 78, unsigned.stderr);
     assert.equal(JSON.parse(unsigned.stdout).production_acceptance, false);
-    fixture.break();
-    const fail = await cli(fixture.origin);
+    const broken = await server(true);
+    let fail;
+    try { fail = await cli(broken.origin); } finally { await broken.close(); }
     assert.equal(fail.code, 1, fail.stderr);
   } finally { await fixture.close(); }
 });

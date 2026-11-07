@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
@@ -8,24 +8,21 @@ import { uiAssets } from '../scripts/ui-bundle.mjs';
 
 const assets = await uiAssets(path => readFile(path, 'utf8'));
 const exec = promisify(execFile);
+async function snapshot(mode) {
+  const responses = new Map([...assets].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
+  if (mode === 'unavailable') responses.clear();
+  if (mode === 'chunk-missing') for (const path of responses.keys()) if (path.includes('ui-shared-')) responses.delete(path);
+  if (mode === 'missing-selector') responses.set('/js/ui-territory-evidence.js', { contentType: 'text/javascript', body: 'export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}' });
+  if (mode === 'contradiction') responses.set('/js/ui-territory-evidence.js', { contentType: 'text/javascript', body: 'export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}' });
+  if (mode === 'foreign-import') responses.set('/js/ui-territory-evidence.js', { contentType: 'text/javascript', body: 'import "https://foreign.invalid/a.js";' });
+  responses.set('/app-release', { contentType: 'application/json', body: mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'production' }) });
+  if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+  return startFixture({ routes: responses });
+}
 async function run(t, mode, timeout = '30000') {
-  const server = createServer((req, res) => {
-    res.setHeader('content-type', 'application/json');
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      res.setHeader('Content-Type', 'application/json');
-      return res.end(mode === 'release-missing' ? '{}' : JSON.stringify({ service: 'doctorcre-app', source_commit: 'a'.repeat(40), environment: 'production' }));
-    }
-    let bytes = assets.get(req.url.slice(1));
-    if (mode === 'unavailable' || (mode === 'chunk-missing' && req.url.includes('ui-shared-'))) bytes = undefined;
-    if (mode === 'missing-selector' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('export function mountTerritoryEvidence(host){host.innerHTML="<details><table><tbody></tbody></table></details>"; return {dispose(){host.replaceChildren()}}}');
-    if (mode === 'contradiction' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('export function mountTerritoryEvidence(){throw new Error("Synthetic contradiction")}');
-    if (mode === 'foreign-import' && req.url === '/js/ui-territory-evidence.js') bytes = Buffer.from('import "https://foreign.invalid/a.js";');
-    res.writeHead(bytes ? 200 : 404, { 'Content-Type': 'text/javascript' }); res.end(bytes);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await snapshot(mode);
+  t.after(() => server.close());
+  const origin = server.origin;
   const args = ['scripts/prove-territory-condition-filter.mjs', '--origin', origin, '--timeout-ms', timeout];
   try { const result = await exec(process.execPath, args, { timeout: 35000 }); return { code: 0, receipt: JSON.parse(result.stdout) }; }
   catch (error) { return { code: error.code, receipt: JSON.parse(error.stdout) }; }
@@ -62,16 +59,8 @@ import { prove } from '../scripts/prove-territory-condition-filter.mjs';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes owned browser after ${mode}`, async t => {
-  const server = createServer((req, res) => {
-    if (req.url === '/app-release') {
-      res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}));
-    }
-    const bytes = assets.get(req.url.slice(1));
-    res.writeHead(bytes ? 200 : 404, {'content-type':'text/javascript'}); res.end(bytes);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  const server = await snapshot();
+  t.after(() => server.close());
   let owned, acquired;
   const acquisition = new Promise(resolve => acquired = resolve);
   const engine = { launch: async options => {
@@ -80,7 +69,7 @@ for (const mode of ['stalled evaluation', 'late launch']) test(`deadline closes 
     if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 1400));
     return owned;
   } };
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const origin = server.origin;
   try {
     await assert.rejects(prove({origin, timeoutMs:1200, engine,
       exercise: mode === 'stalled evaluation' ? () => new Promise(() => {}) : undefined}), error => error.exitCode === 78);

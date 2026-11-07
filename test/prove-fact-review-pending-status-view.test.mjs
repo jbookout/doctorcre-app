@@ -5,36 +5,20 @@ import assert from 'node:assert/strict';
 import { get } from 'node:http';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
-import { createServer } from './proof-fixture-server.mjs';
-import { uiAssets } from '../scripts/ui-bundle.mjs';
+import { rm } from 'node:fs/promises';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+import { handleDoctorcreRequest } from '../src/worker.js';
 import { prove, requireContainingRelease, signedInEngine } from '../scripts/prove-fact-review-pending-status-view.mjs';
-const root = resolve(new URL('../', import.meta.url).pathname);
-const assets = await uiAssets(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
 async function fixture(t, mode = 'healthy') {
-  const seen = [];
-  const server = createServer((req, res) => {
-    seen.push(req.url);
-    let path;
-    if (/%(?:2e|5c|00)/i.test(req.url)) { res.writeHead(403); return res.end(); }
-    try { path = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(403); return res.end(); }
-    if (/[\\\0]/.test(path)) { res.writeHead(403); return res.end(); }
-    const target = resolve(root, `.${path}`);
-    if (!target.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    if (path === '/app-release') {
-      res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }));
-    }
-    if (mode === 'protected') { res.writeHead(403); return res.end(); }
-    res.setHeader('content-type', 'text/javascript');
-    if (path === '/js/ui-facts.js' && mode === 'broken') return res.end('export function mountFactReview(){throw Error("broken module")}');
-    if (path === '/js/ui-facts.js' && mode === 'stall') return res.end('await new Promise(()=>{});');
-    readFile(target).then(body => res.end(assets.get(path.slice(1)) || body)).catch(() => { res.writeHead(404); res.end(); });
-  });
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: `http://127.0.0.1:${server.address().port}`, seen };
+  const assets = await proofAssetSnapshot();
+  if (mode === 'protected') for (const key of assets.keys()) assets.set(key,{status:403});
+  if (mode === 'broken' || mode === 'stall') assets.set('/js/ui-facts.js',{contentType:'text/javascript',
+    body:mode === 'broken' ? 'export function mountFactReview(){throw Error("broken module")}' : 'await new Promise(()=>{});'});
+  const release = await handleDoctorcreRequest(new Request('https://app.example/app-release'),{APP_ENV:'production',GIT_SHA:'1'.repeat(40)});
+  const server = await startFixture({assets,routes:new Map([['/app-release',{body:await release.text(),contentType:'application/json'}]])});
+  t.after(() => server.close());
+  return {origin:server.origin,get seen(){return server.requests.map(row => row.target);}};
 }
 async function cli(origin, fixture = true, timeoutMs = 30000) {
   const child = spawn(process.execPath, ['scripts/prove-fact-review-pending-status-view.mjs', '--commit', '1'.repeat(40), '--origin', origin, '--timeout-ms', String(timeoutMs), ...(fixture ? ['--fixture'] : [])], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -90,7 +74,7 @@ test('fixture HTTP refuses raw and encoded traversal with an empty body', async 
         res.on('end', () => resolve({ status: res.statusCode, body }));
       }).on('error', reject);
     });
-    assert.deepEqual(response, { status: 403, body: '' }, path);
+    assert.deepEqual(response, { status: 400, body: '' }, path);
   }
 });
 for (const mode of ['late launch', 'stalled evaluation']) {

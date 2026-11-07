@@ -1,3 +1,4 @@
+import { parseSync } from "@babel/core";
 import { APP_REPOSITORY, isAppRepository } from '../js/repository-identity.mjs';
 import { init, parse } from "es-module-lexer";
 import { offlineTourShell } from "./offline-tour-shell.mjs";
@@ -164,7 +165,18 @@ async function assembleArtifact(commit, paths, sourceContracts, readSource) {
   const contract = async (path) => {
     if (path.endsWith(".js")) {
       const content = await readSource(path);
-      const parsed = (await import(`data:text/javascript;base64,${content.toString("base64")}`)).routeContract;
+      const ast = parseSync(content.toString('utf8'), { configFile: false, babelrc: false, sourceType: 'module' });
+      const declaration = ast.program.body.flatMap(node => node.type === 'ExportNamedDeclaration'
+        ? node.declaration?.declarations || [] : []).find(node => node.id.name === 'routeContract');
+      if (declaration?.init?.type !== 'ObjectExpression' || declaration.init.properties.some(node => node.type === 'SpreadElement' || node.computed)) throw new Error('routeContract must be declared as an object');
+      const parsed = {};
+      for (const key of ['schema', 'version']) {
+        const fields = declaration.init.properties.filter(node => node.type === 'ObjectProperty' && (node.key.name || node.key.value) === key);
+        if (fields.length !== 1) throw new Error(`routeContract.${key} must occur once`);
+        const [field] = fields;
+        if (field?.value.type !== 'StringLiteral') throw new Error(`routeContract.${key} must be a literal string`);
+        parsed[key] = field.value.value;
+      }
       return { path, schema: parsed.schema, version: parsed.version, sha256: digest(content) };
     }
     const entries = [];
