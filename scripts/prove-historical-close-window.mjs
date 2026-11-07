@@ -29,7 +29,7 @@ async function windowAssertions(page, payload) {
     assert.equal(cells[4], `${profile.clients} ${profile.clients === 1 ? 'client' : 'clients'}`);
     assert.equal(cells[5], String(profile.evidence.length));
     await row.locator('details summary').click();
-    assert.deepEqual(await row.locator('a').allTextContents(), profile.evidence.map(e => `${e.deal_name || 'Won deal'} · ${e.closed_on}`));
+    assert.deepEqual(await row.locator('a').allTextContents(), profile.evidence.map(e => `${e.deal_name?.trim() || 'Won deal'} · ${e.closed_on}`));
     assert.deepEqual(await row.locator('time').allTextContents(), profile.evidence.map(e => e.closed_on));
     assert.deepEqual(await row.locator('time').evaluateAll(times => times.map(time => time.getAttribute('datetime'))), profile.evidence.map(e => e.closed_on));
     assert.deepEqual(await row.locator('a').evaluateAll(links => links.map(a => a.getAttribute('href'))), profile.evidence.map(e => `/deals?deal=${e.deal_id}`));

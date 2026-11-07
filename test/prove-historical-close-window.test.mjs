@@ -58,6 +58,7 @@ async function fixture(t, mode='equal') {
   await git('checkout','--orphan','unrelated'); const unrelated = await commit('unrelated');
   const released = ({older,descendant,unrelated,unknown:'f'.repeat(40)})[mode] || expected;
   const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
+  if (mode === 'padded-label') recorded.full.profiles[0].evidence[0].deal_name = '  Dental lease 1  ';
   const snapshot = new Map([...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}]));
   if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.js',{body:assets.get('js/ui-ideal-client-profile.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
   const mutations = {
@@ -132,8 +133,8 @@ for (const mode of ['late launch','stalled evaluation']) test(`real browser is d
   await new Promise(resolve=>setTimeout(resolve,1400)); assert.ok(owned); assert.equal(owned.isConnected(),false);
 });
 
-test('signed-in natural fixture passes while borrowed browser survives',async t=>{
-  const f=await fixture(t);
+test('signed-in natural fixture passes normalized deal labels while borrowed browser survives',async t=>{
+  const f=await fixture(t,'padded-label');
   const socket=await startFixture();
   const port=new URL(socket.origin).port; await socket.close();
   const borrowed=await rawChromium.launch({args:[...CHROMIUM_SAFETY_ARGS,`--remote-debugging-port=${port}`]});
