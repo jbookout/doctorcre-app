@@ -62,8 +62,17 @@ for (const width of [390, 1440]) test(`history intersects owner search and pages
   await section.getByRole('button', { name: 'Next leads', exact: true }).click();
   await owner.selectOption('owner:joe'); await check(leads.filter(row => row.basis === 'last_contact' && row.owner === 'joe'));
   assert.equal(reads, initialReads);
+  await owner.selectOption('all');
+  await section.getByRole('button', { name: 'Next leads', exact: true }).click();
+  await check(leads.filter(row => row.basis === 'last_contact'), 10);
+  await section.getByRole('button', { name: 'Clear search', exact: true }).click();
+  await check(leads.filter(row => row.basis === 'last_contact'));
+  assert.equal(await history.inputValue(), 'last_contact');
+  await section.getByRole('button', { name: 'Next leads', exact: true }).click();
+  await check(leads.filter(row => row.basis === 'last_contact'), 10);
+  assert.equal(reads, initialReads);
   await page.locator('#refreshBoard').click(); await history.waitFor();
-  assert.equal(await history.inputValue(), 'last_contact'); await check(leads.filter(row => row.basis === 'last_contact' && row.owner === 'joe'));
+  assert.equal(await history.inputValue(), 'last_contact'); await check(leads.filter(row => row.basis === 'last_contact'));
   refused = true; await page.locator('#refreshBoard').click(); await section.getByRole('alert').waitFor();
   assert.equal(await section.locator('[data-quiet-lead]').count(), 0);
   refused = false; await page.locator('#refreshBoard').click(); await history.waitFor();
