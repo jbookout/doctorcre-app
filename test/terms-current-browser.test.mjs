@@ -93,3 +93,145 @@ test('Compare retains focus through empty and malformed recovery; dispose and re
     } finally { await page.close(); }
   } finally { await browser.close(); await server.close(); }
 });
+
+test('workspace reopen and subject switches retain each cached comparison focus', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    try {
+      await page.goto(server.origin + '/deals?deal=d14');
+      await page.locator('#detailUpdateForm').waitFor();
+      await page.locator('#tab-market-terms').click();
+      const toggle = page.getByRole('checkbox', { name: 'Hide superseded terms' });
+      await toggle.check();
+      const rows = await page.locator('#workspace-market-terms tbody').textContent();
+      await page.locator('#panelClose').click();
+      await page.locator('.kanban-card[data-id="d14"]').click();
+      await page.locator('#tab-market-terms').click();
+      assert.equal(await toggle.isChecked(), true, 'reopening reattaches the focused comparison');
+      assert.equal(await page.locator('#workspace-market-terms tbody').textContent(), rows);
+      await page.locator('#panelClose').click();
+      await page.locator('.kanban-card[data-id="d08"]').click();
+      await page.locator('#tab-market-terms').click();
+      assert.equal(await toggle.isChecked(), false, 'new subject starts unfocused');
+      await toggle.check();
+      await toggle.uncheck();
+      await page.locator('#panelClose').click();
+      await page.locator('.kanban-card[data-id="d14"]').click();
+      await page.locator('#tab-market-terms').click();
+      assert.equal(await toggle.isChecked(), true, 'returning subject retains its own focus');
+      assert.equal(await page.locator('#workspace-market-terms tbody').textContent(), rows);
+    } finally { await page.close(); }
+  } finally { await browser.close(); await server.close(); }
+});
+
+test('workspace access retirement disposes cached comparisons and ignores late reads before remount', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    try {
+      await page.goto(server.origin + '/deals?deal=d14');
+      await page.locator('#detailUpdateForm').waitFor();
+      const toggle = page.getByRole('checkbox', { name: 'Hide superseded terms' });
+      await page.locator('#tab-market-terms').click();
+      await toggle.check();
+      await page.locator('#panelClose').click();
+      await page.locator('.kanban-card[data-id="d08"]').click();
+      await page.locator('#tab-market-terms').click();
+      await toggle.check();
+      await page.evaluate(async () => {
+        const { state } = await import('/js/pipeline.js');
+        window.originalDealRead = state.client.getDeal.bind(state.client);
+        const read = state.client.readMarketTerms.bind(state.client);
+        window.originalTermsRead = read;
+        state.client.readMarketTerms = async (...args) => {
+          const response = await read(...args);
+          await new Promise(resolve => { window.releaseTerms = resolve; });
+          return response;
+        };
+        state.client.getDeal = async () => { throw Object.assign(new Error('Synthetic denied detail'), { status: 401 }); };
+      });
+      await page.getByRole('button', { name: 'Compare', exact: true }).click();
+      await page.waitForFunction(() => typeof window.releaseTerms === 'function');
+      await page.getByRole('tab', { name: 'Overview', exact: true }).click();
+      await page.locator('[data-refresh-detail]').click();
+      await page.getByText('Unavailable. Sign in to reload this record.', { exact: false }).waitFor();
+      await page.evaluate(() => window.releaseTerms());
+      assert.equal(await page.locator('#workspace-market-terms').count(), 0);
+      assert.equal(await toggle.count(), 0);
+      await page.evaluate(async () => {
+        const { state } = await import('/js/pipeline.js');
+        state.client.getDeal = window.originalDealRead;
+        state.client.readMarketTerms = window.originalTermsRead;
+      });
+      await page.locator('[data-refresh-detail]').click();
+      await page.locator('#detailUpdateForm').waitFor();
+      await page.locator('#tab-market-terms').click();
+      await toggle.waitFor();
+      assert.equal(await toggle.isChecked(), false, 'access retirement remounts without focus');
+      await page.locator('#panelClose').click();
+      await page.locator('.kanban-card[data-id="d14"]').click();
+      await page.locator('#tab-market-terms').click();
+      await toggle.waitFor();
+      assert.equal(await toggle.isChecked(), false, 'access retirement also discards hidden cached subjects');
+    } finally { await page.close(); }
+  } finally { await browser.close(); await server.close(); }
+});
+
+test('workspace closure caches history, pending and failed comparisons without reloading', async () => {
+  const server = await fixtureServer(), browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    try {
+      await page.goto(server.origin + '/deals?deal=d14');
+      await page.locator('#detailUpdateForm').waitFor();
+      await page.locator('#tab-market-terms').click();
+      const toggle = page.getByRole('checkbox', { name: 'Hide superseded terms' });
+      await toggle.waitFor();
+      await page.evaluate(async () => {
+        const { state } = await import('/js/pipeline.js');
+        const read = state.client.readMarketTerms.bind(state.client);
+        window.termsReads = 0;
+        state.client.readMarketTerms = async (...args) => {
+          window.termsReads++;
+          const response = await read(...args);
+          return new Promise(resolve => { window.finishTerms = valid => resolve(valid ? response : null); });
+        };
+      });
+      const reopen = async () => {
+        await page.locator('.kanban-card[data-id="d14"]').click();
+        await page.locator('#tab-market-terms').click();
+      };
+      await page.locator('#panelClose').click();
+      await reopen();
+      assert.equal(await toggle.isChecked(), false);
+      assert.equal(await page.evaluate(() => window.termsReads), 0);
+      for (const valid of [true, false]) {
+        await page.evaluate(() => { window.finishTerms = null; });
+        await page.getByRole('button', { name: 'Compare', exact: true }).click();
+        await page.waitForFunction(() => typeof window.finishTerms === 'function');
+        await page.locator('#panelClose').click();
+        await reopen();
+        await page.getByText('Loading comparable terms…', { exact: true }).waitFor();
+        await page.locator('#panelClose').click();
+        await page.evaluate(valid => window.finishTerms(valid), valid);
+        await reopen();
+        if (valid) { await toggle.waitFor(); assert.equal(await toggle.isChecked(), false); }
+        else {
+          await page.getByText('Could not load comparable terms. Try again.', { exact: true }).waitFor();
+          await page.locator('#panelClose').click();
+          await reopen();
+          await page.getByText('Could not load comparable terms. Try again.', { exact: true }).waitFor();
+        }
+      }
+      assert.equal(await page.evaluate(() => window.termsReads), 2, 'reopening never reads comparisons');
+      await page.evaluate(() => { window.finishTerms = null; });
+      await page.getByRole('button', { name: 'Compare', exact: true }).click();
+      await page.waitForFunction(() => typeof window.finishTerms === 'function');
+      await page.evaluate(() => window.finishTerms(true));
+      await toggle.waitFor();
+      assert.equal(await toggle.isChecked(), false);
+      assert.equal(await page.evaluate(() => window.termsReads), 3, 'explicit retry reads once');
+    } finally { await page.close(); }
+  } finally { await browser.close(); await server.close(); }
+});
