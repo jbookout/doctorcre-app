@@ -64,11 +64,14 @@ export async function observe(recordings) {
   check('refreshed sorted rows and all day', labels(left)[0] === 'Nov 5 · All day' && left.querySelectorAll('.calendar-panel-meeting a')[1].textContent === 'Earlier');
   check('changed warning', left.textContent.includes('Time changed. Check Outlook.'));
   const rail = left.parentElement;
-  rail.style.height = '250px';
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const resizeRail = height => new Promise(resolve => {
+    const observer = new ResizeObserver(() => { observer.disconnect(); resolve(); });
+    observer.observe(rail);
+    rail.style.height = height;
+  });
+  await resizeRail('250px');
   check('rail shrinks', left.querySelectorAll('.calendar-panel-meeting[hidden]').length > 0);
-  rail.style.height = '1600px';
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await resizeRail('1600px');
   check('rail grows', left.querySelectorAll('.calendar-panel-meeting[hidden]').length === 0);
   panel.render({ state: 'ready', items: [{ title: 'bad', start: 'invalid', end: 'invalid' }] });
   check('invalid snapshot', labels(left).length === 0 && left.textContent.includes('Schedule unavailable'));

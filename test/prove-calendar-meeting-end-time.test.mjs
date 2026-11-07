@@ -42,6 +42,30 @@ test('proof CLI accepts a working-tree fixture and rejects a broken deployed mod
   assert.equal(receipt.evidence, 'local_fixture');
   assert.equal(receipt.production_acceptance, 'insufficient_evidence');
   assert.equal(receipt.observations.length, 4);
+  const engine = { async launch(options) {
+    const browser = await chromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] });
+    const newPage = browser.newPage.bind(browser);
+    browser.newPage = async (...args) => {
+      const page = await newPage(...args);
+      const evaluate = page.evaluate.bind(page);
+      page.evaluate = async (fn, arg) => {
+        if (fn === proof.observe) await evaluate(() => {
+          const NativeObserver = window.ResizeObserver;
+          window.ResizeObserver = class extends NativeObserver {
+            constructor(callback) {
+              super((entries, observer) => setTimeout(() => callback(entries, observer), 100));
+            }
+          };
+        });
+        return evaluate(fn, arg);
+      };
+      return page;
+    };
+    return browser;
+  } };
+  const delayedResize = await prove({ fixtureRoot: join(out, 'site'), engine });
+  assert.ok(delayedResize.observations.every(observation => observation.checks.every(check => check.pass)),
+    'resize assertions wait for layout delivery when resize callbacks arrive after animation frames');
   await writeFile(join(out, 'site/js/ui-calendar-panels.js'), 'export async function mountCalendarPanels() { throw Error("broken fixture module"); }');
   await assert.rejects(exec(process.execPath, args), error => {
     assert.equal(error.code, 1);
