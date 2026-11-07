@@ -1,11 +1,12 @@
 import { chromium as proofChromium } from './proof-browser.mjs';
 import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-reader.mjs';
 import { signedInEngine, requireContainingRelease } from './prove-fact-review-pending-status-view.mjs';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 const defaultEngine = {
-  launch: options => proofChromium.launch(options),
+  launch: options => proofChromium.launch({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] }),
   connectOverCDP: (endpoint, options) => chromium.connectOverCDP(endpoint, options),
 };
 const unavailable = message => Object.assign(new Error(message), {exitCode:78});
