@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile, symlink, realpath } from 'node:fs/promises';
+import { mkdir, writeFile, symlink, realpath, unlink } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { verifyLiveProducer, linkLiveProducer } from '../scripts/live-producer.mjs';
@@ -28,9 +28,12 @@ test('live package binds the resolved module to the exact clean producer revisio
   assert.equal(await realpath(otherApp + '/node_modules/mcp-server'), await realpath(app));
   await assert.rejects(verifyLiveProducer(root, pathToFileURL(entry).href, { ...producer, source_commit: '1'.repeat(40) }), /producer pin/);
   await assert.rejects(verifyLiveProducer(root, pathToFileURL(entry).href, { ...producer, repository: 'unrelated/repository' }));
-  const other = root + '/other.mjs';
+  const other = app + '/other.mjs';
   await writeFile(other, 'export const startLocalCarr = () => {};');
   await assert.rejects(verifyLiveProducer(root, pathToFileURL(other).href, producer), /declared producer checkout/);
+  await writeFile(root + '/extra.mjs', 'export const extra = true;');
+  await assert.rejects(verifyLiveProducer(root, pathToFileURL(entry).href, producer), /untracked source/);
+  await unlink(root + '/extra.mjs');
   await writeFile(entry, 'export const startLocalCarr = unknown;');
   await assert.rejects(verifyLiveProducer(root, pathToFileURL(entry).href, producer));
 });

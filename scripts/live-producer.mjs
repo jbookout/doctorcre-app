@@ -13,7 +13,7 @@ export async function verifyLiveProducer(checkout, moduleUrl, producer) {
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe', timeout: 10000 }).trim();
   assert.equal(await realpath(git(['rev-parse', '--show-toplevel'])), root, 'producer checkout must be the repository root');
   assert.equal(git(['rev-parse', 'HEAD']), producer.source_commit, 'CARR package must match the consumer producer pin');
-  git(['diff', '--exit-code', 'HEAD', '--']);
+  assert.equal(git(['status', '--porcelain', '--untracked-files=all']), '', 'CARR package source must be clean, including untracked source');
   const entry = 'mcp-server/test/helpers/local-carr.mjs';
   assert.equal(git(['ls-files', '--error-unmatch', entry]), entry, 'producer entry must belong to the pinned repository');
   assert.equal(await realpath(fileURLToPath(moduleUrl)), await realpath(resolve(root, entry)), 'installed CARR package must resolve to the declared producer checkout');
