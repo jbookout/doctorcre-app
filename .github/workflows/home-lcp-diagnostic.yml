@@ -1,0 +1,60 @@
+name: Home LCP diagnostic
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/home-lcp-diagnostic.yml'
+      - 'test/helpers/*home-lcp*.mjs'
+      - 'test/home-lcp-diagnostic.test.mjs'
+permissions:
+  contents: read
+jobs:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        allocation: ${{ github.event_name == 'workflow_dispatch' && fromJSON('[1,2,3]') || fromJSON('[1]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: diagnostic
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'a8fac628535fd989942d923bebfea17654789613' || 'b3703a0aa381ed79f5836b73125c8ab1f18caaf2' }}
+          path: head
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: a8fac628535fd989942d923bebfea17654789613
+          path: main
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.4
+      - run: npm ci
+        working-directory: diagnostic
+      - name: Install Chromium and Linux dependencies
+        working-directory: diagnostic
+        run: npx playwright install --with-deps chromium
+      - run: node --test test/home-lcp-diagnostic.test.mjs
+        working-directory: diagnostic
+      - run: npm ci && npm run build
+        working-directory: head
+      - run: npm ci && npm run build
+        working-directory: main
+      - name: Alternate cold five-sample batches
+        working-directory: diagnostic
+        run: node test/helpers/compare-home-lcp.mjs ../head ../main test-artifacts/home-lcp-diagnostic
+      - name: Capture separate Linux CPU and timeline evidence
+        working-directory: diagnostic
+        run: node test/helpers/profile-home-lcp.mjs ../main test-artifacts/home-lcp-diagnostic/profile
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: home-lcp-diagnostic-${{ github.sha }}-${{ matrix.allocation }}
+          path: diagnostic/test-artifacts/home-lcp-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
