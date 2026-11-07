@@ -32,3 +32,20 @@ stateDiagram-v2
 %% External proof: same-origin read-only transport, one total deadline, bounded reads; acquisition failure is insufficient evidence. Borrowed browser stays open. Owned handles close, including late acquisitions.
 %% Writes, idempotency keys, storage scaling and load spread: n/a, local projection only.
 %% Throughput: blocking contract and baseline tests first; one owner because UI and proof share one behavior; no independent agents or shared mutable state.
+
+state "Production proof" as Proof {
+    [*] --> Connecting
+    Connecting --> Insufficient: connection rejected or context absent
+    Connecting --> Acquiring: signed-in context available
+    Acquiring --> Insufficient: page acquisition rejected
+    Acquiring --> Observing: page acquired before deadline
+    Acquiring --> Draining: deadline expires with page pending
+    Observing --> Draining: pass, assertion failure, or deadline
+    Draining --> Disconnected: pending acquisition settles and owned page closes
+    Disconnected --> [*]: borrowed browser and prior tabs remain open
+}
+
+%% Proof data shape: one pending page promise and one memoized cleanup promise per borrowed connection.
+%% Cleanup keeps the CDP transport alive until the pending page settles and closes, then disconnects once.
+%% No new interface, cache, queue, storage, external request, or retry. Existing budgets and release checks remain.
+%% Evidence compares exact link labels, time text, datetime attributes and identities against the independently observed response.

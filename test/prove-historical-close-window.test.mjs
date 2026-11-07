@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { transform } from 'esbuild';
+import { build, transform } from 'esbuild';
 import { startFixture, startWorkerFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { uiAssets } from '../scripts/ui-bundle.mjs';
@@ -60,6 +60,18 @@ async function fixture(t, mode='equal') {
   const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
   const snapshot = new Map([...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}]));
   if(mode==='assertion') snapshot.set('/js/ui-ideal-client-profile.js',{body:assets.get('js/ui-ideal-client-profile.js').toString().replaceAll('Full-history wins','Wrong heading'),contentType:'text/javascript'});
+  const mutations = {
+    'date-text': ['{entry.closed_on}</time>', '1{entry.closed_on}</time>'],
+    'date-value': ['dateTime={entry.closed_on}', 'dateTime={`1${entry.closed_on}`}'],
+    'deal-label': ["{entry.deal_name || 'Won deal'}", "1{entry.deal_name || 'Won deal'}"],
+  };
+  if (mutations[mode]) {
+    const source = await readFile(new URL('../src/ui/ideal-client-profile.tsx', import.meta.url), 'utf8');
+    const [before, after] = mutations[mode];
+    assert.ok(source.includes(before));
+    const output = await build({ stdin: { contents: source.replace(before, after), loader: 'tsx', resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
+    snapshot.set('/js/ui-ideal-client-profile.js', { body: output.outputFiles[0].contents, contentType: 'text/javascript' });
+  }
   const routes = new Map([['/leads',{contentType:'text/html',body:`<!doctype html><title>Natural fixture</title><main></main><script type="module">
     import { mountIdealClientProfile } from '/js/ui-ideal-client-profile.js';
     mountIdealClientProfile(document.querySelector('main'),{ async getIdealClientProfile(){
@@ -132,4 +144,57 @@ test('signed-in natural fixture passes while borrowed browser survives',async t=
   const empty=await fixture(t,'empty');
   await assert.rejects(prove({origin:empty.origin,expectedCommit:empty.expected,cdpUrl:`http://127.0.0.1:${port}`,timeoutMs:1200}),{exitCode:78});
   assert.equal(borrowed.isConnected(),true); assert.equal(keeper.isClosed(),false);
+});
+
+for (const mode of ['date-text', 'date-value', 'deal-label']) test(`CLI refuses near-miss evidence ${mode}`, async t => {
+  const result = await cli(t, mode, ['--fixture']);
+  assert.equal(result.code, 1, JSON.stringify(result));
+  assert.equal(result.receipt.status, 'assertion_failure');
+});
+
+for (const mode of ['connect', 'newPage']) test(`rejected CDP ${mode} acquisition is insufficient evidence`, async t => {
+  const f = await fixture(t);
+  let disconnected = false;
+  const engine = { async connectOverCDP() {
+    if (mode === 'connect') throw Error('Connection rejected');
+    return { contexts: () => [{ newPage: async () => { throw Error('Page rejected'); } }], close: async () => { disconnected = true; } };
+  } };
+  await assert.rejects(prove({ origin: f.origin, expectedCommit: f.expected, cdpUrl: 'http://127.0.0.1:1', engine }), { exitCode: 78 });
+  assert.equal(disconnected, mode === 'newPage');
+});
+
+test('late borrowed CDP page closes before disconnect, preserving existing tabs', async t => {
+  const f = await fixture(t);
+  const socket = await startFixture();
+  const endpoint = socket.origin, port = new URL(endpoint).port;
+  await socket.close();
+  const borrowed = await rawChromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
+  t.after(() => borrowed.close());
+  const keeper = await borrowed.newPage();
+  await keeper.setContent('<title>Existing signed-in tab</title>');
+  const before = await rawChromium.connectOverCDP(endpoint);
+  const count = before.contexts()[0].pages().length;
+  await before.close();
+  let acquired = false;
+  const engine = { async connectOverCDP(...args) {
+    const connection = await rawChromium.connectOverCDP(...args);
+    const context = connection.contexts()[0], newPage = context.newPage.bind(context);
+    context.newPage = async () => {
+      const page = await newPage();
+      acquired = true;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return page;
+    };
+    return connection;
+  } };
+  await assert.rejects(prove({ origin: f.origin, expectedCommit: f.expected, cdpUrl: endpoint, timeoutMs: 700, engine }), { exitCode: 78 });
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  assert.equal(acquired, true);
+  const fresh = await rawChromium.connectOverCDP(endpoint);
+  try {
+    assert.equal(fresh.contexts()[0].pages().length, count, 'no proof-owned tab survives through fresh CDP connection');
+    assert.equal(await fresh.contexts()[0].pages()[0].title(), 'Existing signed-in tab');
+  } finally { await fresh.close(); }
+  assert.equal(borrowed.isConnected(), true);
+  assert.equal(keeper.isClosed(), false);
 });

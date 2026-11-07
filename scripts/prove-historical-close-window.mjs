@@ -28,6 +28,10 @@ async function windowAssertions(page, payload) {
     assert.equal(cells[3], `${profile.won_deals} ${profile.won_deals === 1 ? 'deal' : 'deals'}`);
     assert.equal(cells[4], `${profile.clients} ${profile.clients === 1 ? 'client' : 'clients'}`);
     assert.equal(cells[5], String(profile.evidence.length));
+    await row.locator('details summary').click();
+    assert.deepEqual(await row.locator('a').allTextContents(), profile.evidence.map(e => `${e.deal_name || 'Won deal'} · ${e.closed_on}`));
+    assert.deepEqual(await row.locator('time').allTextContents(), profile.evidence.map(e => e.closed_on));
+    assert.deepEqual(await row.locator('time').evaluateAll(times => times.map(time => time.getAttribute('datetime'))), profile.evidence.map(e => e.closed_on));
     assert.deepEqual(await row.locator('a').evaluateAll(links => links.map(a => a.getAttribute('href'))), profile.evidence.map(e => `/deals?deal=${e.deal_id}`));
   }
   const table = host.getByRole('table');
@@ -95,15 +99,16 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
         let connection;
         try { connection = await engine.connectOverCDP(cdpUrl,{timeout:options.timeout}); }
         catch { throw insufficient('Signed-in CDP session unavailable'); }
-        let ownedPage, pendingPage, closing = false;
+        let pendingPage, cleanup;
         return { newPage: async () => {
           const context = connection.contexts()[0];
           if (!context) throw insufficient('Signed-in context unavailable');
           pendingPage = context.newPage().catch(() => { throw insufficient('Signed-in page unavailable'); });
-          ownedPage = await pendingPage;
-          if (closing) await ownedPage.close();
-          return ownedPage;
-        }, close: async () => { closing = true; await ownedPage?.close(); await connection.close(); await pendingPage?.then(page => page.close()).catch(() => {}); } };
+          return pendingPage;
+        }, close: () => cleanup ||= (async () => {
+          try { await pendingPage?.then(page => page.close()).catch(() => {}); }
+          finally { await connection.close(); }
+        })() };
       } };
       browser = await launchProofBrowser(borrowed,{timeout:remaining()},{signal:controller.signal});
       page = await browser.newPage();
