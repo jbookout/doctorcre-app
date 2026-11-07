@@ -233,3 +233,60 @@ test('CLI with containing release and unreachable CDP exits 78', async t => {
   const result = await new Promise(resolve => execFile(process.execPath, ['scripts/prove-client-anniversary-panel.mjs', '--origin', fixture.origin, '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1'], { timeout: 15000 }, (error, stdout, stderr) => resolve({ code: error?.code || 0, stdout, stderr })));
   assert.equal(result.code, 78, JSON.stringify(result));
 });
+
+
+test('real CDP blocks service workers only on owned proof pages', async () => {
+  const { startFixture } = await import('../scripts/fixture-http.mjs');
+  const fixture = await startFixture({ routes: new Map([
+    ['/', { contentType: 'text/html', body: '<html>owned fixture</html>' }],
+    ['/sw.js', { contentType: 'text/javascript', body: "self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(new URL(e.request.url).pathname==='/data')e.respondWith(new Response('from-worker'));});" }],
+    ['/data', { contentType: 'text/plain', body: 'from-network' }],
+  ]) });
+  const portFixture = await startFixture();
+  const port = new URL(portFixture.origin).port;
+  await portFixture.close();
+  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  const { chromium: raw } = await import('playwright');
+  let observer, borrowed;
+  const response = page => page.evaluate(async () => ({
+    controlled: !!navigator.serviceWorker.controller,
+    body: await (await fetch('/data')).text(),
+  }));
+  try {
+    observer = await raw.connectOverCDP(`http://127.0.0.1:${port}`);
+    const existing = await observer.contexts()[0].newPage();
+    await existing.goto(fixture.origin);
+    await existing.evaluate(async () => {
+      await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
+    });
+    assert.deepEqual(await response(existing), { controlled: true, body: 'from-worker' });
+    const launched = await owner.newPage({ serviceWorkers: 'block' });
+    await launched.route('**/data', route => route.fulfill({ body: 'from-proof-route' }));
+    await launched.goto(fixture.origin);
+    assert.deepEqual(await response(launched), { controlled: false, body: 'from-proof-route' });
+    await launched.close();
+    borrowed = await signedInEngine(`http://127.0.0.1:${port}`).launch({ timeout: 5000 });
+    for (const contextMode of [false, true]) {
+      const context = contextMode ? await borrowed.newContext({ serviceWorkers: 'block' }) : borrowed;
+      const page = await context.newPage(contextMode ? undefined : { serviceWorkers: 'block' });
+      await page.route('**/data', route => route.fulfill({ body: 'from-proof-route' }));
+      await page.goto(fixture.origin);
+      assert.deepEqual(await response(page), { controlled: false, body: 'from-proof-route' });
+      await page.close();
+      assert.deepEqual(await response(existing), { controlled: true, body: 'from-worker' });
+    }
+    const allowed = await borrowed.newPage({ serviceWorkers: 'allow' });
+    await allowed.goto(fixture.origin);
+    assert.deepEqual(await response(allowed), { controlled: true, body: 'from-worker' });
+    await borrowed.close(); borrowed = undefined;
+    assert.deepEqual(await response(existing), { controlled: true, body: 'from-worker' });
+    assert.equal(owner.isConnected(), true);
+  } finally {
+    await borrowed?.close();
+    await observer?.close();
+    await owner.close();
+    await fixture.close();
+  }
+});
