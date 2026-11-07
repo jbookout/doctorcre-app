@@ -1,4 +1,3 @@
-import assert from 'node:assert/strict';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -28,16 +27,17 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     if (!cdpUrl) throw unavailable('Existing signed-in browser session required');
     const endpoint = new URL(cdpUrl);
     if (!['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname) || !['http:', 'ws:'].includes(endpoint.protocol)) throw unavailable('CDP endpoint must be local');
-    const connection = engine.connectOverCDP(cdpUrl, { timeout: remaining() }).then(async browser => {
+    const connection = Promise.resolve().then(() => engine.connectOverCDP(cdpUrl, { timeout: remaining() })).catch(() => { throw unavailable('Existing browser connection unavailable'); }).then(async browser => {
       // Playwright CDP close disconnects its transport; it does not terminate the shared browser.
       if (expired) { await browser.close(); throw unavailable('Total proof deadline exceeded'); }
       disconnect = () => browser.close();
       return browser;
     });
     const browser = await bounded(connection);
-    const context = browser.contexts()[0];
+    let context;
+    try { context = browser.contexts()[0]; } catch { throw unavailable('Existing browser context unavailable'); }
     if (!context) throw unavailable('Existing signed-in browser context required');
-    const acquire = context.newPage().then(async acquired => {
+    const acquire = Promise.resolve().then(() => context.newPage()).catch(() => { throw unavailable('Existing browser page unavailable'); }).then(async acquired => {
       if (expired) { await acquired.close(); throw unavailable('Total proof deadline exceeded'); }
       page = acquired; return acquired;
     });
@@ -62,12 +62,22 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       if (!host) throw Error('Mail priorities panel missing');
       const rows = [...host.querySelectorAll('[data-mail-proposal]')];
       const expected = snapshot.items;
-      if (rows.length !== expected.length || rows.some((row, index) => row.dataset.mailProposal !== expected[index].proposal_id || !row.textContent.includes(expected[index].reasonLabel) || !row.textContent.includes(expected[index].decision_date || 'Decision date unknown'))) throw Error('Visible ranked decisions differ from registered read');
-      if (!host.textContent.includes(snapshot.coverage.mailbox) || !host.textContent.includes(snapshot.coverage.as_of_day)) throw Error('Mailbox coverage missing');
-      if (snapshot.state === 'empty' && !host.textContent.includes('No recorded pending mail decisions.')) throw Error('Empty state missing');
+      if (rows.length !== expected.length || rows.some((row, index) => {
+        const item = expected[index];
+        const paragraphs = [...row.querySelectorAll('p')].map(node => node.textContent);
+        return row.dataset.mailProposal !== item.proposal_id
+          || paragraphs[0] !== `${item.reasonLabel} · ${item.decision_date || 'Decision date unknown'}`
+          || paragraphs[1] !== `Source time ${item.occurred_at || 'unknown'}`;
+      })) throw Error('Visible ranked decisions differ from registered read');
+      const coverage = `Mailbox ${snapshot.coverage.mailbox} · Recorded inbound pending proposals · As of ${snapshot.coverage.as_of_day} · Recorded next date in UTC`;
+      const expectedParagraphs = [coverage,
+        ...(snapshot.state === 'empty' ? ['No recorded pending mail decisions.'] : []),
+        ...(snapshot.more ? ['Only the first 25 ranked decisions are shown.'] : [])];
+      const paragraphs = [...host.querySelectorAll(':scope > p')].map(node => node.textContent);
+      if (JSON.stringify(paragraphs) !== JSON.stringify(expectedParagraphs)) throw Error('Mailbox coverage, empty state or page limit differs from registered read');
       return { count: rows.length, populated: rows.length ? 'observed' : 'unobserved', order_reasons_dates: true };
     }, raw));
-    const review = page.getByRole('region', { name: 'Mail priorities', exact: true }).getByRole('button', { name: /^Review / }).first();
+    const review = page.locator('section[aria-label="Mail priorities"] li button').first();
     if (await bounded(review.count())) {
       await bounded(review.click({ timeout: remaining() }));
       await bounded(page.getByRole('button', { name: 'Close review', exact: true }).waitFor({ timeout: remaining() }));
