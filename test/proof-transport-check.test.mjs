@@ -157,9 +157,7 @@ test('fixture refuses helper fetch and variable browser release navigation but a
   ]) });
   t.after(() => server.close());
   const origin = server.origin;
-  const root = temporaryDirectory('proof-helper-', t);
-  await writeFile(root + '/network-helper.mjs', 'export async function read(url) { return (await fetch(url)).json(); }');
-  const { read } = await import(pathToFileURL(root + '/network-helper.mjs'));
+  const { read } = await import('./fixtures/unmarked-network-helper.mjs');
   await assert.rejects(read(origin + '/app-release'));
   assert.equal((await fetch(origin + '/app-release')).status, 403);
   assert.equal((await fetch(origin + '/app-release?probe=1')).status, 403);

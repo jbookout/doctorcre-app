@@ -108,3 +108,60 @@ test('the generated UI module graph resolves the app call and queue imports from
   const errors = await checkFixtureServers();
   assert.equal(errors.some(error => /Unresolved fixture helper.*ui-(call|queue)\.js/.test(error)),false,errors.join('\n'));
 });
+
+test('root-relative browser imports resolve the actual source graph and refuse hidden servers', async t => {
+  const root = temporaryDirectory('fixture-browser-graph-', t);
+  execFileSync('git', ['init', '-q', root]);
+  await mkdir(root + '/scripts'); await mkdir(root + '/js');
+  await writeFile(root + '/scripts/fixture-http.mjs', 'export const startFixture = async () => {};');
+  await writeFile(root + '/scripts/use.mjs', "import {startFixture} from './fixture-http.mjs'; await page.evaluate(async () => import('/js/view.js'));");
+  await writeFile(root + '/js/view.js', 'export const view = 1;');
+  assert.deepEqual(await checkFixtureServers(root), []);
+  await writeFile(root + '/js/view.js', "export {createServer} from 'node:http';");
+  assert.ok((await checkFixtureServers(root)).some(error => /js\/view.js:1:.*Server construction/.test(error)));
+  await writeFile(root + '/js/view.js', 'await import(unknown);');
+  assert.ok((await checkFixtureServers(root)).some(error => /js\/view.js:1:.*Dynamic/.test(error)));
+});
+
+test('finite private URL loader follows every literal call and refuses escaped functions', () => {
+  const source = "const sibling = path => import(new URL(path, import.meta.url).href); await sibling('./one.js'); await sibling('./two.js');";
+  assert.deepEqual(checkFixtureSource(source).errors, []);
+  assert.deepEqual(checkFixtureSource(source).imports, ['./one.js', './two.js']);
+  assert.ok(checkFixtureSource(source + ' publish(sibling);').errors.length);
+  assert.ok(checkFixtureSource(source + ' sibling(unknown);').errors.length);
+  assert.ok(checkFixtureSource(source.replace('path => import', 'path => { path = unknown; return import').replace('.href);', '.href); };')).errors.length);
+});
+
+test('generated data-module graphs inspect actual compiler output and refuse unknown byte producers', async t => {
+  const root = temporaryDirectory('fixture-generated-graph-', t);
+  execFileSync('git', ['init', '-q', root]);
+  await mkdir(root + '/scripts'); await mkdir(root + '/source');
+  await writeFile(root + '/scripts/fixture-http.mjs', 'export const startFixture = async () => {};');
+  const consumer = "import {startFixture} from './fixture-http.mjs'; import {build} from 'esbuild'; const bundle = await build({entryPoints:['source/view.js'], bundle:true, write:false, platform:'node', format:'esm'}); await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);";
+  await writeFile(root + '/scripts/use.mjs', consumer);
+  await writeFile(root + '/source/view.js', 'export const view = 1;');
+  assert.deepEqual(await checkFixtureServers(root), []);
+  await writeFile(root + '/source/view.js', "export {createServer} from 'node:http';");
+  assert.ok((await checkFixtureServers(root)).some(error => /Server construction/.test(error)));
+  await writeFile(root + '/scripts/use.mjs', consumer.replace("import {build} from 'esbuild';", 'const build = unknown;'));
+  assert.ok((await checkFixtureServers(root)).some(error => /Dynamic module/.test(error)));
+});
+
+test('compiler provenance refuses modified output, shadowed buffers, plugins and unknown entries', async t => {
+  const root = temporaryDirectory('fixture-compiler-refusal-', t);
+  execFileSync('git', ['init', '-q', root]);
+  await mkdir(root + '/scripts'); await mkdir(root + '/source');
+  await writeFile(root + '/scripts/fixture-http.mjs', 'export const startFixture = async () => {};');
+  await writeFile(root + '/source/view.js', 'export const view = 1;');
+  const before = "import {startFixture} from './fixture-http.mjs'; import {build} from 'esbuild'; const bundle = await build({entryPoints:['source/view.js'],bundle:true,write:false,platform:'node',format:'esm'});";
+  const load = "await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);";
+  for (const source of [before + 'bundle.outputFiles[0].text = unknown;' + load,
+    before + 'const Buffer = unknown;' + load,
+    before.replace("entryPoints:['source/view.js']", 'entryPoints:unknown') + load,
+    before.replace('bundle:true', 'plugins:unknown,bundle:true') + load,
+    before.replace('bundle:true', '...unknown,bundle:true') + load,
+    before.replace('const bundle', 'let bundle') + 'bundle = unknown;' + load]) {
+    await writeFile(root + '/scripts/use.mjs', source);
+    assert.ok((await checkFixtureServers(root)).some(error => /Dynamic module/.test(error)), source);
+  }
+});

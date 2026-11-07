@@ -1,3 +1,4 @@
+import { build } from 'esbuild';
 import { uiAssets } from './ui-bundle.mjs';
 import { parseSync, traverse } from '@babel/core';
 import { execFileSync } from 'node:child_process';
@@ -18,9 +19,31 @@ function finiteModules(path, seen = new Set()) {
   const next = new Set(seen).add(path.node);
   const evaluated = path.evaluate();
   if (evaluated.confident && typeof evaluated.value === 'string') return [evaluated.value];
+  if (path.isMemberExpression() && !path.node.computed && path.node.property.name === 'href') {
+    const object = path.get('object');
+    if (object.isNewExpression() && object.node.callee.name === 'URL' && !object.scope.getBinding('URL')
+      && object.get('arguments.1').matchesPattern('import.meta.url')) return finiteModules(object.get('arguments.0'), next);
+  }
   if (path.isIdentifier()) {
     const binding = path.scope.getBinding(path.node.name);
     if (binding?.constant && binding.path.isVariableDeclarator()) return finiteModules(binding.path.get('init'), next);
+    if (binding?.kind === 'param' && binding.constant) {
+      const fn = binding.path.parentPath;
+      if (!fn.isArrowFunctionExpression() || !fn.parentPath.isVariableDeclarator()) return;
+      const index = fn.node.params.indexOf(binding.path.node);
+      const owner = fn.parentPath;
+      const callable = owner.scope.getBinding(owner.node.id.name);
+      if (!callable?.constant || !callable.referencePaths.length) return;
+      const values = [];
+      for (const reference of callable.referencePaths) {
+        const call = reference.parentPath;
+        if (!call.isCallExpression() || call.node.callee !== reference.node) return;
+        const argument = finiteModules(call.get(`arguments.${index}`), next);
+        if (!argument) return;
+        values.push(...argument);
+      }
+      return [...new Set(values)];
+    }
   }
   if (path.isConditionalExpression()) {
     const left = finiteModules(path.get('consequent'), next), right = finiteModules(path.get('alternate'), next);
@@ -49,7 +72,7 @@ function finiteModules(path, seen = new Set()) {
   }
 }
 
-export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoaders = true, transportDependency = false } = {}) {
+export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoaders = true, transportDependency = false, resolvedLoads = new Map() } = {}) {
   const errors = [], imports = [];
   const fail = (node, reason) => errors.push(`${filename}:${node.loc?.start.line || 1}: ${reason}`);
   let ast;
@@ -69,7 +92,7 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
   } });
   const moduleCheck = (node, name, names) => {
     if (typeof name !== 'string') { if (strictLoaders) fail(node, 'Dynamic module capability cannot be verified'); return; }
-    if (name.startsWith('.')) imports.push(name.split(/[?#]/)[0]);
+    if (name.startsWith('.') || name.startsWith('/')) imports.push(name.split(/[?#]/)[0]);
     if (/^(?:express|serve-static|send|sirv|http-server|fastify|koa|connect)$/.test(name)) fail(node, 'Static server packages bypass fixture transport');
     if ((isTransport || transportDependency) && /^(?:node:)?fs(?:\/|$)/.test(name)) fail(node, 'Fixture transport cannot import filesystem APIs');
     if (!network.test(name) || isTransport) return;
@@ -122,7 +145,7 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
     ExportDefaultDeclaration(path) { if (isTransport) fail(path.node, 'Default transport exports are forbidden'); },
     ExportAllDeclaration(path) { if (isTransport) fail(path.node, 'Transport re-exports are forbidden'); moduleCheck(path.node, path.node.source.value, ['*']); },
     ImportExpression(path) {
-      for (const name of finiteModules(path.get('source')) || [undefined])
+      for (const name of (resolvedLoads.has(path.node.start) ? [resolvedLoads.get(path.node.start)] : finiteModules(path.get('source'))) || [undefined])
         moduleCheck(path.node, name, network.test(name) && !isTransport ? loaderCapabilities(path) : ['*']);
     },
     ReferencedIdentifier(path) {
@@ -152,14 +175,109 @@ export function checkFixtureSource(source, filename = 'fixture.mjs', { strictLoa
   return { errors, imports };
 }
 
+// Resolve data modules only when their bytes originate in a declared esbuild
+// operation. Rebuild the actual graph; a data URL alone proves nothing.
+async function generatedLoads(source, filename, root) {
+  const loads = new Map(), modules = new Map();
+  let ast;
+  try { ast = parseSync(source, { configFile: false, babelrc: false, sourceType: 'module' }); }
+  catch { return { loads, modules }; }
+  const pending = [];
+  traverse(ast, { ImportExpression(path) {
+    const value = path.get('source');
+    if (!value.isTemplateLiteral() || value.node.quasis.length !== 2
+      || value.node.quasis[0].value.cooked !== 'data:text/javascript;base64,' || value.node.quasis[1].value.cooked !== '') return;
+    const encoded = value.get('expressions.0');
+    if (!encoded.isCallExpression() || !encoded.get('callee').isMemberExpression()
+      || property(encoded.node.callee) !== 'toString' || text(encoded.node.arguments[0]) !== 'base64') return;
+    const buffer = encoded.get('callee.object');
+    if (!buffer.isCallExpression() || !buffer.get('callee').matchesPattern('Buffer.from') || buffer.scope.getBinding('Buffer')) return;
+    const output = buffer.get('arguments.0');
+    if (!output.isMemberExpression() || !['text','contents'].includes(property(output.node))) return;
+    const first = output.get('object');
+    if (!first.isMemberExpression() || first.node.property.value !== 0) return;
+    const files = first.get('object');
+    if (!files.isMemberExpression() || property(files.node) !== 'outputFiles') return;
+    const binding = files.scope.getBinding(files.node.object.name);
+    if (!binding?.path.isVariableDeclarator() || binding.referencePaths.some(reference => {
+      const member = reference.parentPath;
+      return !member.isMemberExpression() || member.node.object !== reference.node || property(member.node) !== 'outputFiles'
+        || !member.parentPath.isMemberExpression() || member.parentPath.node.property.value !== 0
+        || !member.parentPath.parentPath.isMemberExpression()
+        || !['text', 'contents'].includes(property(member.parentPath.parentPath.node))
+        || !member.parentPath.parentPath.parentPath.isCallExpression()
+        || !member.parentPath.parentPath.parentPath.get('callee').matchesPattern('Buffer.from');
+    })) return;
+    let call = binding.path.get('init');
+    if (call.node && binding.constantViolations.length) return;
+    if (!call.node && binding.constantViolations.length === 1) call = binding.constantViolations[0].get('right');
+    if (call.isAwaitExpression()) call = call.get('argument');
+    if (!call.isCallExpression()) return;
+    if (call.get('callee').isMemberExpression() && property(call.node.callee) === 'rebuild') {
+      const compiler = call.scope.getBinding(call.node.callee.object.name);
+      if (!compiler?.constant || compiler.referencePaths.some(reference => {
+        const member = reference.parentPath;
+        return !member.isMemberExpression() || !['rebuild','cancel','dispose'].includes(property(member.node))
+          || !member.parentPath.isCallExpression() || member.parentPath.node.callee !== member.node
+          || member.parentPath.node.arguments.length;
+      })) return;
+      call = compiler.path.get('init');
+      if (call?.isAwaitExpression()) call = call.get('argument');
+    }
+    if (!call?.isCallExpression() || !call.get('callee').isIdentifier()) return;
+    const compilerImport = call.scope.getBinding(call.node.callee.name)?.path;
+    if (!compilerImport?.isImportSpecifier() || compilerImport.parent.source.value !== 'esbuild'
+      || !['build','context'].includes(compilerImport.node.imported.name)) return;
+    const options = call.get('arguments.0');
+    if (!options.isObjectExpression() || options.node.properties.some(p => p.type !== 'ObjectProperty' || p.computed)) return;
+    if (new Set(options.node.properties.map(p => p.key.name)).size !== options.node.properties.length) return;
+    const fields = new Map(options.get('properties').filter(p => p.isObjectProperty() && !p.node.computed).map(p => [p.node.key.name, p.get('value')]));
+    if (fields.get('bundle')?.evaluate().value !== true || fields.get('write')?.evaluate().value !== false
+      || fields.get('format')?.evaluate().value !== 'esm' || fields.get('platform')?.evaluate().value !== 'node'
+      || [...fields.keys()].some(key => !['entryPoints','stdin','bundle','write','platform','format'].includes(key))) return;
+    let inputs;
+    if (fields.has('entryPoints')) {
+      const entry = fields.get('entryPoints').evaluate();
+      if (!entry.confident || !Array.isArray(entry.value) || !entry.value.every(p => typeof p === 'string')) return;
+      inputs = { entryPoints: entry.value };
+    } else {
+      const stdin = fields.get('stdin');
+      if (!stdin?.isObjectExpression() || stdin.node.properties.some(p => p.type !== 'ObjectProperty' || p.computed || !['contents', 'resolveDir'].includes(p.key.name))) return;
+      if (new Set(stdin.node.properties.map(p => p.key.name)).size !== stdin.node.properties.length) return;
+      const directory = stdin.get('properties').find(p => p.node.key.name === 'resolveDir')?.get('value');
+      if (!directory?.isCallExpression() || !directory.get('callee').isIdentifier()) return;
+      const urlImport = directory.scope.getBinding(directory.node.callee.name)?.path;
+      const url = directory.get('arguments.0');
+      if (!urlImport?.isImportSpecifier() || urlImport.node.imported.name !== 'fileURLToPath' || urlImport.parent.source.value !== 'node:url'
+        || !url.isNewExpression() || url.node.callee.name !== 'URL' || text(url.node.arguments[0]) !== '../'
+        || !url.get('arguments.1').matchesPattern('import.meta.url') || dirname(filename) !== 'scripts') return;
+      const contents = stdin.get('properties').find(p => p.isObjectProperty() && p.node.key.name === 'contents')?.get('value').evaluate();
+      if (!contents?.confident || typeof contents.value !== 'string') return;
+      inputs = { stdin: { contents: contents.value, resolveDir: root } };
+    }
+    const key = `./__generated_fixture_${path.node.start}.mjs`;
+    loads.set(path.node.start, key);
+    pending.push(build({ ...inputs, absWorkingDir: root, bundle: true, write: false, platform: 'node', format: 'esm' })
+      .then(result => modules.set(relative(root, resolve(root, dirname(filename), key)), result.outputFiles[0].text)));
+  } });
+  await Promise.all(pending);
+  return { loads, modules };
+}
+
 export async function checkFixtureServers(root = fileURLToPath(new URL('../', import.meta.url))) {
   const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' })
     .split('\0').filter(f => /\.[cm]?[jt]sx?$/.test(f));
-  const results = new Map(), sources = new Map();
+  const results = new Map(), sources = new Map(), loadResolutions = new Map();
   for (const file of new Set(files)) {
     const source = await readFile(resolve(root, file), 'utf8');
     sources.set(file, source);
-    results.set(file, checkFixtureSource(source, file, { strictLoaders: file === transport }));
+    const generated = await generatedLoads(source, file, root);
+    loadResolutions.set(file, generated.loads);
+    for (const [key, contents] of generated.modules) {
+      sources.set(key, contents);
+      results.set(key, checkFixtureSource(contents, key));
+    }
+    results.set(file, checkFixtureSource(source, file, { strictLoaders: file === transport, resolvedLoads: generated.loads }));
   }
   if (sources.has('scripts/ui-bundle.mjs')) {
     try {
@@ -184,7 +302,7 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
     const result = checkFixtureSource(source, file, { transportDependency: true });
     errors.push(...result.errors);
     for (const imported of result.imports) {
-      const path = relative(root, resolve(root, dirname(file), imported));
+      const path = relative(root, resolve(root, imported.startsWith('/') ? '.' + imported : dirname(file), imported.startsWith('/') ? '' : imported));
       const target = [path, ...['.mjs', '.js', '.ts', '.tsx'].map(ext => path + ext), path.replace(/\.js$/, '.ts')].find(candidate => sources.has(candidate));
       if (target) checkTransportGraph(target);
       else if (/\.[cm]?[jt]sx?$/.test(path) || !/\.\w+$/.test(path)) errors.push(`${file}:1: Unresolved transport dependency ${imported}`);
@@ -196,12 +314,12 @@ export async function checkFixtureServers(root = fileURLToPath(new URL('../', im
     visited.add(file);
     const source = sources.get(file);
     if (source === undefined) { errors.push(`${file}:1: Fixture helper is outside scanned source`); return; }
-    const result = checkFixtureSource(source, file);
+    const result = checkFixtureSource(source, file, { resolvedLoads: loadResolutions.get(file) });
     errors.push(...result.errors);
     if (file === transport && result.imports.some(name => !['../src/worker.js', '../js/routes.js', './qa-fixture-dispatch.mjs', './work-inventory-fixture.mjs', './atlas-fixture.mjs'].includes(name))) errors.push(`${file}:1: Transport must not import local helpers`);
     if (file === transport) checkTransportGraph(file);
     for (const imported of result.imports) {
-      const path = relative(root, resolve(root, dirname(file), imported));
+      const path = relative(root, resolve(root, imported.startsWith('/') ? '.' + imported : dirname(file), imported.startsWith('/') ? '' : imported));
       const target = [path, ...['.mjs', '.js', '.ts', '.tsx'].map(ext => path + ext), path.replace(/\.js$/, '.ts')].find(candidate => sources.has(candidate));
       if (target) checkGraph(target);
       else if (/\.[cm]?[jt]sx?$/.test(path) || !/\.\w+$/.test(path)) errors.push(`${file}:1: Unresolved fixture helper ${imported}`);

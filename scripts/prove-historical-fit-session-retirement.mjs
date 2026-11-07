@@ -22,7 +22,7 @@ export async function retirementAssertions(page, moduleURL) {
   const payload = await responseFixture();
   const assertions = [];
   await page.evaluate(async ({ moduleURL, payload }) => {
-    const { mountIdealClientProfile } = await import(moduleURL);
+    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
     if (typeof mountIdealClientProfile !== 'function') throw Error('missing mountIdealClientProfile export');
     const host = document.createElement('main'); document.body.append(host);
     const p = window.retirementProof = { payload, reads: [], pending: [], mode: 'ready' };

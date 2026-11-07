@@ -8,7 +8,8 @@ import { test as base, expect, type Page } from '@playwright/test';
 import { startWorkerFixture } from '../../scripts/fixture-http.mjs';
 import { appAssetSnapshot } from '../../scripts/fixture-app-assets.mjs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { verifyLiveProducer } from '../../scripts/live-producer.mjs';
 
 export const APP_ORIGIN = 'http://127.0.0.1:8787';
 const COMPANION = 'http://127.0.0.1:4682';
@@ -48,7 +49,9 @@ export const test = base.extend<{ signedIn: Page; companion: (call: FiledCall) =
   carr: [async ({}, use) => {
     const checkout = process.env.CARR_PRODUCER_CHECKOUT;
     if (!checkout) throw new Error('CARR_PRODUCER_CHECKOUT must name the carr-system checkout for live journeys');
-    const { startLocalCarr } = await import(pathToFileURL(resolve(checkout, 'mcp-server/test/helpers/local-carr.mjs')).href);
+    const producer = JSON.parse(await readFile(new URL('../../contracts/carr-interface.v1/producer.json', import.meta.url), 'utf8'));
+    await verifyLiveProducer(checkout, import.meta.resolve('mcp-server/test/helpers/local-carr.mjs'), producer);
+    const { startLocalCarr } = await import('mcp-server/test/helpers/local-carr.mjs');
     await snapshot();
     const carr: LocalCarr = await startLocalCarr({ assets: asset });
     console.log(`live harness: local CARR ready in ${carr.setupMs}ms`);

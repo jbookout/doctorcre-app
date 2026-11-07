@@ -4,6 +4,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // real page and code run against a local server whose /mcp answers with the
 // synthetic fixture; nothing in production code knows about this test.
 import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
 import { readFile } from "node:fs/promises";
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
@@ -84,6 +85,25 @@ if (page.scrollWidth > innerWidth + 1) problems.push("open Key makes the page sc
 parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.length, legendEntries: entries.length, width: innerWidth, problems }));
 `;
 
+function withoutScripts(html) {
+  const dom = new JSDOM(html);
+  try {
+    const document = dom.window.document;
+    for (const script of document.querySelectorAll('script')) script.remove();
+    assert.equal(document.scripts.length, 0);
+    return document.documentElement.outerHTML;
+  } finally { dom.window.close(); }
+}
+
+for (const html of ['<script>throw Error(1)</script>', '<SCRIPT>throw Error(1)</SCRIPT>',
+  '<script type="module" src="/app.js"></script>', '<scr<script>ipt>text</scr</script>ipt>']) {
+  test(`layout shell removes parsed script elements: ${html}`, () => {
+    const dom = new JSDOM(withoutScripts(html));
+    try { assert.equal(dom.window.document.scripts.length, 0); }
+    finally { dom.window.close(); }
+  });
+}
+
 async function serve() {
   const assets = await appAssetSnapshot();
   const shell = assets.get('/control-room.html');
@@ -128,7 +148,7 @@ for (const width of [1440, 390]) test(`Live expansion keeps browser focus throug
   // Mount the production board directly, with synthetic reads and no external effects.
   const assets = await appAssetSnapshot();
   const shell = assets.get('/control-room.html');
-  assets.set('/', { ...shell, body:Buffer.from(String(shell.body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '')) });
+  assets.set('/', { ...shell, body: Buffer.from(withoutScripts(String(shell.body))) });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://board.test') return route.abort();

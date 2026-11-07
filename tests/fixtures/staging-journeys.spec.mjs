@@ -1,5 +1,8 @@
 import { test } from '@playwright/test';
 import assert from 'node:assert/strict';
+import { get } from 'node:http';
+import { temporaryDirectory } from '../../scripts/temp-directory.mjs';
+import { rm } from 'node:fs/promises';
 import { startWorkerFixture } from '../../scripts/fixture-http.mjs';
 import { appAssetSnapshot } from '../../scripts/fixture-app-assets.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -187,4 +190,30 @@ test('Fixture cleanup tolerates a target closing during disposal', async ({ brow
   };
   await Promise.all([local.close(), local.close()]);
   await assert.rejects(fetch(local.server.origin), TypeError);
+});
+
+
+test('Journey fixture refuses outside-root file URLs and raw encoded traversal', async ({ browser }) => {
+  const directory = temporaryDirectory('/tmp/WR622.S20.J7-path-probe-');
+  const marker = `${directory}/outside.txt`;
+  const sentinel = 'SYNTHETIC_OUTSIDE_ROOT_WR622_S20_J7';
+  await writeFile(marker, sentinel);
+  const local = await localFixture(browser);
+  try {
+    for (const path of [`/file://${marker}`, `/..%2f${marker.slice(1)}`, `/../${marker.slice(1)}`,
+      `/..%252f${marker.slice(1)}`, `/file%3a%2f%2f${marker}`, `/..%5c${marker.slice(1)}`]) {
+      const result = await new Promise((resolve, reject) => {
+        get(local.server.origin, { path }, response => {
+          let body = '';
+          response.setEncoding('utf8');
+          response.on('data', chunk => { body += chunk; });
+          response.on('end', () => resolve({ status: response.statusCode, body }));
+          response.on('error', reject);
+        }).on('error', reject);
+      });
+      assert.ok([400, 404].includes(result.status), `${path}: ${result.status}`);
+      assert.equal(result.body.includes(sentinel), false, path);
+      console.log(`outside-root probe ${path}: ${result.status}, sentinel=false`);
+    }
+  } finally { await local.close(); await rm(directory, { recursive: true, force: true }); }
 });
