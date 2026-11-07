@@ -223,6 +223,24 @@ test('refresh invalidation, empty subset, missing research, auth denial and susp
   await panel.getByText('No sourced findings.',{exact:true}).waitFor();assert.match(await panel.innerText(),/Needs review/);
   research=undefined;await page.evaluate(()=>window.app.readDetail(window.app.state.detailId,false));
   await panel.getByText('Sourced research was not included in this read.',{exact:true}).waitFor();
+  research = structuredClone(recording.detail.research);
+  await page.evaluate(()=>window.app.readDetail(window.app.state.detailId,false));
+  await select.selectOption(research.evidence[0].kind);
+  let releaseRead, started;
+  const reading = new Promise(resolve => { started = resolve; });
+  const gate = new Promise(resolve => { releaseRead = resolve; });
+  await page.route('**/mcp', async route => {
+    if (route.request().postDataJSON()?.params?.arguments?.lead_id) { started(); await gate; }
+    return route.fallback();
+  });
+  await page.evaluate(()=>{ window.pendingResearch = window.app.readDetail(window.app.state.detailId,false); });
+  await reading;
+  await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
+  assert.equal(await panel.count(),0);
+  releaseRead(); await page.evaluate(()=>window.pendingResearch);
+  assert.equal(await panel.count(),0,'page suspension retires the late read');
+  await page.evaluate(()=>window.app.readDetail(window.app.state.detailId,false));
+  await select.selectOption(research.evidence[0].kind);
   await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   assert.equal(await panel.count(),0);
   await page.evaluate(()=>window.app.dispose());

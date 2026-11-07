@@ -415,7 +415,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         }
       }
       const unchanged = JSON.stringify(state.detail) === JSON.stringify(response.detail);
-      state.detail = response.detail; if (!unchanged) paintDetail(response.detail, intent);
+      state.detail = response.detail; if (!unchanged || !researchView) paintDetail(response.detail, intent);
       state.resumeDetail = null;
     } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; clearGuidance(); state.detail = null; const unreachable = error?.code === "network_error" || error?.code === "read_timeout"; $("detailBody").innerHTML = `<p class="empty" role="alert">${unreachable ? "Connection interrupted · reconnecting…" : "Lead details were refused."}</p>`; }
   }
