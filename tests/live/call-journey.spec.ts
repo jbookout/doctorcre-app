@@ -11,6 +11,10 @@ const HARBOR = 'Synthetic Harbor Clinic Expansion';
 const PINECREST = 'Synthetic Pinecrest Lab Lease';
 let guideCall: FiledCall | undefined;
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-27T15:00:00Z'));
+});
+
 // The companion's capture and post-call logs travel with any failure.
 async function filed(call: FiledCall) {
   await test.info().attach('call-mode logs', { body: call.logs(), contentType: 'text/plain' });
@@ -71,6 +75,25 @@ test('a filed call shows its decisions and tasks on Home and updates the deal pa
   const timeline = page.locator('#workspace-timeline');
   await expect(timeline).toContainText('patch deal field · phase → Negotiation');
   await expect(timeline).toContainText('set next step · next_step → Send the lease draft to the landlord');
+});
+
+test('the filed action follows its due date in Chicago on any runner date', async ({ signedIn: page, carr }) => {
+  const today = new Date();
+  const chicagoDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(today);
+  const cases = [
+    { name: 'before the due date', at: new Date('2026-11-05T18:00:00Z'), label: 'Next action' },
+    { name: 'on the due date', at: new Date('2026-11-06T18:00:00Z'), label: 'Next action' },
+    { name: 'after the due date', at: new Date('2026-11-07T18:00:00Z'), label: 'Overdue action' },
+    { name: 'the runner date', at: today, label: chicagoDay > '2026-11-06' ? 'Overdue action' : 'Next action' },
+  ];
+  for (const { name, at, label } of cases) {
+    await test.step(`${name} (${at.toISOString()})`, async () => {
+      await page.clock.setFixedTime(at);
+      await page.goto(`/deals?deal=${carr.deals[BAYSIDE]}&mode=live`);
+      await expect(page.locator('.deal-current-action'))
+        .toHaveText(`${label}: Send the lease draft to the landlord · Due Fri, Nov 6, 2026`);
+    });
+  }
 });
 
 test('the filed call guide keeps pending work through navigation and reopening', async ({ signedIn: page, carr, companion }) => {
