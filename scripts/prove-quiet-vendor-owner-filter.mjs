@@ -35,9 +35,11 @@ export async function prove({ origin, expectedCommit, timeoutMs = 30000, cdpUrl,
       browser = await launchProofBrowser(engine, { timeout: remaining() }, { signal: controller.signal });
       page = await browser.newPage();
     } else {
-      const connected = await driver.connectOverCDP(cdpUrl, { timeout: remaining() });
-      borrowed = connected;
-      if (controller.signal.aborted) throw unavailable('Total proof deadline expired');
+      const connected = await driver.connectOverCDP(cdpUrl, { timeout: remaining() }).then(async acquired => {
+        if (controller.signal.aborted) { await acquired.close(); throw unavailable('Total proof deadline expired'); }
+        borrowed = acquired;
+        return acquired;
+      });
       const context = connected.contexts()[0];
       if (!context) throw unavailable('Existing browser context required');
       const pending = context.newPage().then(async acquired => {
