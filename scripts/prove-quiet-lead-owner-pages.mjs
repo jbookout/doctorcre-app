@@ -82,12 +82,20 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
         } catch { return route.abort(); }
       }));
     }
+    const registry = JSON.parse(await bounded(readFile(new URL('../test/fixtures/walk-verb-registry.json', import.meta.url))));
+    const verbWrites = new Map(registry.response.verbs.map(verb => [verb.name, verb.write]));
+    const unknownVerbs = new Set();
     let snapshot, rpc = 0, writes = 0;
     page.on('request', request => {
       const url = new URL(request.url());
       if (request.method() !== 'GET' && request.method() !== 'HEAD') {
         if (url.pathname !== '/mcp') writes++;
-        else { rpc++; if (!['quiet-follow-ups', 'lead-board', 'territory-state-board', 'list-practice-origination', 'read-home-agenda', 'deal-room-board'].includes(request.postDataJSON()?.params?.name)) writes++; }
+        else {
+          rpc++;
+          const name = request.postDataJSON()?.params?.name;
+          if (!verbWrites.has(name)) unknownVerbs.add(String(name));
+          else if (verbWrites.get(name) !== false) writes++;
+        }
       }
     });
     const response = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === 'quiet-follow-ups', { timeout: remaining() });
@@ -139,6 +147,7 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     await bounded(select.selectOption('all'));
     await checkPage(leads, 0);
     assert.equal(rpc, beforeLocal, 'no local selection/page RPC');
+    assert.equal(unknownVerbs.size, 0, `Unknown MCP verbs: ${[...unknownVerbs].sort().join(', ')}`);
     assert.equal(writes, 0, 'no writes');
     const after = await release(); await contains(after.source_commit); assert.deepEqual(after, before, 'stable release');
     return { ok: true, mode: fixture ? 'local-fixture' : 'natural', release: before, leads: leads.length, matching: matching.length, writes };
