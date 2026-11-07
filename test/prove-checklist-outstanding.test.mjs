@@ -133,10 +133,10 @@ test('natural observer CLI compares exact recorded counts, rows, due summary and
  const assets=await uiAssets(path=>readFile(new URL('../'+path,import.meta.url),'utf8'));
  const commit=await new Promise((yes,no)=>execFile('git',['rev-parse','HEAD'],(error,out)=>error?no(error):yes(out.trim())));
  let server;t.after(()=>server?.close());
- const start=async mutation=>{
+ const start=async(mutation,readMode="normal")=>{
   await server?.close();
   const routes=new Map([...assets].map(([path,body])=>['/'+path,{body,contentType:'text/javascript'}]));
-  routes.set('/js/pipeline.js',{body:`const detail={checklist:${JSON.stringify(recording.response)}}; export const state={panelDeal:"synthetic",panelDetail:detail,client:{getDeal:async()=>detail}};`,contentType:'text/javascript'});
+  routes.set('/js/pipeline.js',{body:`const detail={checklist:${JSON.stringify(recording.response)}}; export const state={panelDeal:"synthetic",panelDetail:detail,client:{getDeal:async()=>{if(${JSON.stringify(readMode)}==="auth")throw Error("Synthetic session expired");return ${JSON.stringify(readMode)}==="malformed"?{checklist:{schema_version:"deal-checklist.v1",template_state:"current",phases:{},due_items:[]}}:detail;}}};`,contentType:'text/javascript'});
   routes.set('/deals',{contentType:'text/html',body:`<!doctype html><div class="kanban-card"><button class="card-open">Open synthetic deal</button></div><main hidden><form id="detailUpdateForm">Synthetic detail</form><div id="host"></div></main><script type="module">
     import {mountDealChecklist} from '/js/ui-checklist.js';
     import {state} from '/js/pipeline.js';
@@ -150,5 +150,6 @@ test('natural observer CLI compares exact recorded counts, rows, due summary and
  const run=()=>new Promise(resolve=>execFile(process.execPath,['scripts/prove-checklist-outstanding.mjs','--origin',server.origin,'--expected-commit',commit,'--cdp-url',`http://127.0.0.1:${port}`,'--timeout-ms','7000'],{timeout:12000},(error,stdout,stderr)=>resolve({code:error?.code||0,stdout,stderr})));
  await start(false);const pass=await run();assert.equal(pass.code,0,JSON.stringify(pass));assert.equal(JSON.parse(pass.stdout).status,'passed');
  await start(true);const fail=await run();assert.equal(fail.code,1,JSON.stringify(fail));
+ for(const mode of ['auth','malformed']){await start(false,mode);const missing=await run();assert.equal(missing.code,78,JSON.stringify({mode,...missing}));}
  assert.equal(browser.isConnected(),true);assert.equal(existing.isClosed(),false);assert.equal(browser.contexts().flatMap(c=>c.pages()).length,1);
 });

@@ -13,7 +13,12 @@ export async function observeNaturalChecklist(page, origin) {
   await page.locator('#detailUpdateForm').waitFor();
   const snapshot = await page.evaluate(async () => {
     const {state} = await import('/js/pipeline.js');
-    return state.panelDeal ? (await state.client.getDeal(state.panelDeal)).checklist : null;
+    const {isDealChecklistSnapshot} = await import('/js/ui-checklist.js');
+    if (!state.panelDeal) return null;
+    let detail;
+    try { detail = await state.client.getDeal(state.panelDeal); }
+    catch { return null; }
+    return isDealChecklistSnapshot(detail?.checklist) ? detail.checklist : null;
   });
   if (!snapshot || snapshot.schema_version !== 'deal-checklist.v1' || !['current','deal_type_unknown'].includes(snapshot.template_state) || !snapshot.phases?.some(p=>p.items?.length)) throw unavailable('No natural recorded checklist available');
   const root = page.locator('.deal-checklist');

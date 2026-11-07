@@ -19,7 +19,7 @@ function item(v: unknown): v is Item {
   const refs = [source.document, source.request, source.record_verb];
   return row(v) && refs.every(optionalText) && refs.some(text) && (optionalText(source.version) || typeof source.version === 'number' && Number.isFinite(source.version));
 }
-function snapshot(v: unknown): v is Snapshot {
+export function isDealChecklistSnapshot(v: unknown): v is Snapshot {
   return object(v) && typeof v.schema_version === 'string' && typeof v.template_state === 'string'
     && Array.isArray(v.phases) && v.phases.every(p => object(p) && text(p.label) && Array.isArray(p.items) && p.items.every(item))
     && Array.isArray(v.due_items) && v.due_items.every(i => row(i) && text(i.due_on));
@@ -35,7 +35,7 @@ function Checklist({ checklist }: Props) {
   const unavailable = object(checklist) && checklist.template_state === 'unavailable';
   const unsupported = !object(checklist) || checklist.schema_version !== 'deal-checklist.v1';
   const changed = object(checklist) && checklist.template_state === 'source_changed';
-  if (unavailable || unsupported || changed || !snapshot(checklist)) {
+  if (unavailable || unsupported || changed || !isDealChecklistSnapshot(checklist)) {
     const message = unavailable ? 'Requirements could not be read.' : changed && !unsupported ? 'Checklist needs a doctrine review.' : 'Checklist unavailable.';
     return <section className="deal-checklist" aria-label="Deal checklist"><h3>Deal checklist</h3><p role="status">{message}</p>{checklist != null && (!changed || unavailable || unsupported) ? <button className="btn" type="button" data-refresh-detail data-detail-focus="checklist">Refresh deal</button> : null}</section>;
   }
