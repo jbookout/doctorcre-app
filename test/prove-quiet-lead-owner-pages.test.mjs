@@ -51,7 +51,7 @@ for (const mode of ['late launch', 'stalled evaluation']) test(`deadline cleanup
   await assertProofDeadlineCleanup(t, { entry: args[0], args: args.slice(1), mode, timeoutMs: 2000 });
 });
 
-test('natural proof borrows a CDP session and leaves its browser running', async t => {
+for (const registryMode of ['read-only', 'stale write flag', 'unknown', 'unreadable', 'malformed', 'deadline']) test(`natural proof live registry ${registryMode} and borrowed browser cleanup`, async t => {
   const { chromium } = await import('playwright');
   const { CHROMIUM_SAFETY_ARGS } = await import('../scripts/chromium-safety-args.mjs');
   const { routeLeads } = await import('./leads-browser-fixture.mjs');
@@ -61,17 +61,39 @@ test('natural proof borrows a CDP session and leaves its browser running', async
   const owned = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`] });
   t.after(() => owned.close());
   const recording = JSON.parse(await readFile(new URL('./fixtures/quiet-lead-owner-pages/recordings.json', import.meta.url)));
-  let borrowed;
+  const registry = JSON.parse(await readFile(new URL('./fixtures/walk-verb-registry.json', import.meta.url))).response;
+  assert.equal(registry.verbs.find(verb => verb.name === 'quiet-follow-ups').write, false);
+  if (registryMode === 'stale write flag') registry.verbs.find(verb => verb.name === 'quiet-follow-ups').write = true;
+  if (registryMode === 'unknown') registry.verbs = registry.verbs.filter(verb => verb.name !== 'quiet-follow-ups');
+  if (registryMode === 'malformed') delete registry.verbs[0].write;
+  let borrowed, registryReads = 0;
   const engine = { connectOverCDP: async (endpoint, options) => {
     borrowed = await chromium.connectOverCDP(endpoint, options);
     const context = borrowed.contexts()[0];
     await routeLeads(context);
-    await context.route('**/mcp', (route, request) => request.postDataJSON()?.params?.name === 'quiet-follow-ups' ? route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(recording) }] } } }) : route.fallback());
+    await context.route('**/mcp', async (route, request) => {
+      const name = request.postDataJSON()?.params?.name;
+      if (name === 'list-verbs') {
+        registryReads++;
+        if (registryMode === 'unreadable') return route.fulfill({ status: 503, body: 'Unavailable' });
+        if (registryMode === 'deadline') return;
+        return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(registry) }] } } });
+      }
+      if (name === 'quiet-follow-ups') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(recording) }] } } });
+      return route.fallback();
+    });
     return borrowed;
   } };
-  const result = await prove({ expectedCommit: commit, origin: 'http://localhost', cdpUrl: `http://127.0.0.1:${port}`, engine, readRelease: async () => ({ source_commit: commit }) });
-  assert.equal(result.mode, 'natural');
-  assert.equal(result.ok, true);
+  const execution = prove({ expectedCommit: commit, origin: 'http://localhost', cdpUrl: `http://127.0.0.1:${port}`, engine,
+    timeoutMs: registryMode === 'deadline' ? 5000 : 30000, readRelease: async () => ({ source_commit: commit }) });
+  if (registryMode === 'read-only') {
+    const result = await execution;
+    assert.equal(result.mode, 'natural');
+    assert.equal(result.ok, true);
+    assert.equal(result.writes, 0);
+  } else if (['unreadable', 'malformed', 'deadline'].includes(registryMode)) await assert.rejects(execution, { exitCode: 78 });
+  else await assert.rejects(execution, registryMode === 'unknown' ? /Unknown MCP verbs: quiet-follow-ups/ : /no writes/);
+  assert.equal(registryReads, 1, 'one live registry read, no snapshot fallback or retries');
   assert.equal(borrowed.isConnected(), false, 'proof disconnects its CDP connection');
   assert.equal(owned.isConnected(), true, 'shared browser process stays alive');
   assert.equal((await owned.newPage()).isClosed(), false, 'shared browser remains usable');
