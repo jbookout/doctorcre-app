@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
@@ -85,11 +87,20 @@ export async function observe(recordings) {
   return checks;
 }
 
-export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com', timeoutMs = 30000, engine = chromium }) {
+export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com', expectedCommit, timeoutMs = 30000, engine = chromium }) {
   assert.ok(Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 120000, 'bounded deadline');
   assert.equal(new URL(origin).origin, origin, 'origin only');
   const failure = Object.assign(new Error('insufficient_evidence: proof deadline exceeded'), { exitCode: 78 });
+  const unavailable = message => Object.assign(new Error(message), { exitCode: 78 });
+  if (!fixtureRoot && (!/^[a-f0-9]{40}$/.test(expectedCommit || '') || /^0+$/.test(expectedCommit))) throw unavailable('Expected commit is required for endpoint evidence');
+  const deadline = performance.now() + timeoutMs;
   const controller = new AbortController();
+  const remaining = () => {
+    controller.signal.throwIfAborted();
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0) throw failure;
+    return ms;
+  };
   const timer = setTimeout(() => controller.abort(failure), timeoutMs);
   let browser, bytes = 0, requests = 0;
   let root;
@@ -118,9 +129,19 @@ export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com',
   }
   try {
     root = fixtureRoot ? await realpath(fixtureRoot) : null;
-    const before = root ? null : await readAppRelease(origin, { timeoutMs });
+    const before = root ? null : await readAppRelease(origin, { timeoutMs: remaining() });
+    if (before && before.source_commit !== expectedCommit) {
+      try {
+        await new Promise((resolve, reject) => {
+          let failure;
+          const child = execFile('git', ['merge-base', '--is-ancestor', expectedCommit, before.source_commit], { timeout: Math.min(remaining(), 5000), signal: controller.signal, killSignal: 'SIGKILL' }, error => { failure = error; });
+          child.once('close', () => failure ? reject(failure) : resolve());
+        });
+      } catch { throw unavailable('Release does not establish expected commit containment'); }
+    }
+    remaining();
     await read('/js/ui-calendar-panels.js');
-    browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs }, { signal: controller.signal });
+    browser = await launchProofBrowser(engine, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() }, { signal: controller.signal });
     const observations = [];
     for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme, timezoneId: 'America/Chicago', serviceWorkers: 'block' });
@@ -143,16 +164,26 @@ export async function prove({ fixtureRoot, origin = 'https://app.doctorcre.com',
       observations.push({ width, theme, checks });
       await page.close();
     }
-    const after = root ? null : await readAppRelease(origin, { timeoutMs });
-    assert.deepEqual(after, before, 'unchanged release');
+    const after = root ? null : await readAppRelease(origin, { timeoutMs: remaining() });
+    remaining();
+    if (!isDeepStrictEqual(after, before)) throw unavailable('Release changed during proof');
     return { ok: true, evidence: root ? 'local_fixture' : 'deployed_asset_fixture', natural_authenticated_observation: 'not_run', production_acceptance: 'insufficient_evidence', release: before, observations, requests };
+  } catch (error) {
+    if (controller.signal.aborted || performance.now() >= deadline) throw failure;
+    throw error;
   } finally { clearTimeout(timer); await browser?.close(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const [flag, value] = process.argv.slice(2);
-    assert.ok(['--fixture-root', '--origin'].includes(flag) && value, 'usage: --fixture-root PATH | --origin URL');
-    console.log(JSON.stringify(await prove(flag === '--fixture-root' ? { fixtureRoot: value } : { origin: value })));
+    const args = process.argv.slice(2), options = {};
+    const flags = new Map([['--fixture-root', 'fixtureRoot'], ['--origin', 'origin'], ['--expected-commit', 'expectedCommit'], ['--timeout-ms', 'timeoutMs']]);
+    for (let index = 0; index < args.length; index += 2) {
+      const key = flags.get(args[index]), value = args[index + 1];
+      assert.ok(key && value && !value.startsWith('--') && !Object.hasOwn(options, key), 'usage: --fixture-root PATH | --origin URL --expected-commit SHA [--timeout-ms MS]');
+      options[key] = key === 'timeoutMs' ? Number(value) : value;
+    }
+    assert.ok(Boolean(options.fixtureRoot) !== Boolean(options.origin), 'choose fixture root or endpoint origin');
+    console.log(JSON.stringify(await prove(options)));
   } catch (error) { console.log(JSON.stringify({ ok: false, error: error.message })); process.exitCode = error.exitCode || 1; }
 }
