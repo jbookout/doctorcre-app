@@ -62,13 +62,34 @@ function validateEndpoint(endpoint, engine) {
 async function borrowBrowser(endpoint, options = {}, engine = rawChromium) {
   validateEndpoint(endpoint, engine);
   if (engine === chromium) engine = rawChromium;
+  for (const key of Object.keys(options)) {
+    if (!['args', 'headless', 'timeout', 'cdpUrl'].includes(key)) throw unavailable(`Unsupported borrowed browser launch option: ${key}`);
+  }
   let connection;
   try {
     connection = await engine.connectOverCDP(endpoint, { ...options, timeout: Math.min(30000, Math.max(1, options.timeout || 30000)), isLocal: true });
   } catch (error) { throw unavailable(`Signed-in browser connection unavailable: ${error.message}`); }
+  try {
+    if (options.args?.length || options.headless !== undefined) {
+      const session = await connection.newBrowserCDPSession();
+      try {
+        const { arguments: actual } = await session.send('Browser.getBrowserCommandLine');
+        if (options.headless !== undefined && options.headless !== actual.some(arg => /^--headless(?:=|$)/.test(arg))) throw unavailable('Unsupported borrowed browser launch option: headless');
+        if (options.args?.some(arg => !actual.includes(arg))) throw unavailable('Unsupported borrowed browser launch option: args');
+      } finally { await session.detach(); }
+    }
+  } catch (error) {
+    await connection.close();
+    throw unavailable(`Borrowed browser launch settings unavailable: ${error.message}`);
+  }
   const pages = new Set(), pending = new Set();
   let state = 'active', closing;
   function ownedContext(settings = {}) {
+    for (const key of Object.keys(settings)) {
+      if (!['viewport', 'timezoneId', 'serviceWorkers'].includes(key)) throw unavailable(`Unsupported borrowed browser context option: ${key}`);
+    }
+    if (settings.viewport === null) throw unavailable('Unsupported borrowed browser context option: viewport=null');
+    if (settings.serviceWorkers !== undefined && !['allow', 'block'].includes(settings.serviceWorkers)) throw unavailable('Unsupported borrowed browser context option: serviceWorkers');
     const localPages = new Set(), routes = [];
     let defaultTimeout;
     return {
@@ -134,7 +155,7 @@ async function borrowBrowser(endpoint, options = {}, engine = rawChromium) {
     }
     return closing;
   }
-  return { newPage: settings => settings ? ownedContext(settings).newPage() : context.newPage(), newContext: async settings => ownedContext(settings), contexts: () => [context], close };
+  return { newPage: async settings => settings ? ownedContext(settings).newPage() : context.newPage(), newContext: async settings => ownedContext(settings), contexts: () => [context], close };
 }
 
 chromium.connectOverCDP = (endpoint, options) => borrowBrowser(endpoint, options);

@@ -290,3 +290,83 @@ test('CLI with containing release and unreachable CDP exits 78', async t => {
   const result = await new Promise(resolve => execFile(process.execPath, ['scripts/prove-client-anniversary-panel.mjs', '--origin', fixture.origin, '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1'], { timeout: 15000 }, (error, stdout, stderr) => resolve({ code: error?.code || 0, stdout, stderr })));
   assert.equal(result.code, 78, JSON.stringify(result));
 });
+
+test('real CDP context option coverage applies or refuses every migrated setting', async t => {
+  const { startFixture } = await import('../scripts/fixture-http.mjs');
+  const fixture = await startFixture();
+  const port = new URL(fixture.origin).port;
+  await fixture.close();
+  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  let borrowed;
+  const cases = [
+    { key: 'baseURL', value: 'http://proof.invalid', refused: true },
+    { key: 'colorScheme', value: 'dark', refused: true },
+    { key: 'storageState', value: { cookies: [], origins: [] }, refused: true },
+    { key: 'viewport', value: { width: 390, height: 844 }, observe: page => page.viewportSize() },
+    { key: 'timezoneId', value: 'Asia/Tokyo', observe: page => page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone) },
+    { key: 'serviceWorkers', value: 'block', observe: page => page.evaluate(() => navigator.serviceWorker.controller), expected: null },
+    { key: 'futureOption', value: true, refused: true },
+  ];
+  const { default: ts } = await import('typescript');
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const found = new Set();
+  for (const file of readdirSync(new URL('../scripts/', import.meta.url)).filter(file => /^prove-.*\.mjs$/.test(file))) {
+    const source = ts.createSourceFile(file, readFileSync(new URL(`../scripts/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ['newContext', 'newPage'].includes(node.expression.name.text) && node.arguments.length) {
+        const settings = node.arguments[0];
+        assert.ok(ts.isObjectLiteralExpression(settings), `${file} needs an explicit option coverage case`);
+        for (const property of settings.properties) {
+          assert.ok(property.name, `${file} needs coverage for spread settings`);
+          found.add(property.name.getText(source));
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  assert.deepEqual([...found].sort(), cases.filter(entry => entry.key !== 'futureOption').map(entry => entry.key).sort());
+  try {
+    borrowed = await signedInEngine(`http://127.0.0.1:${port}`).launch();
+    for (const entry of cases) await t.test(entry.key, async () => {
+      for (const mode of ['newContext', 'newPage']) {
+        const settings = { [entry.key]: entry.value };
+        if (entry.refused) {
+          await assert.rejects(borrowed[mode](settings), error => error.exitCode === 78 && error.message.includes(entry.key));
+        } else {
+          const context = mode === 'newContext' ? await borrowed.newContext(settings) : undefined;
+          const page = context ? await context.newPage() : await borrowed.newPage(settings);
+          await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: 'fixture' }));
+          await page.goto('http://localhost/owned');
+          assert.deepEqual(await entry.observe(page), 'expected' in entry ? entry.expected : entry.value);
+          await page.close();
+          await context?.close();
+        }
+      }
+    });
+    assert.equal(owner.isConnected(), true);
+  } finally { await borrowed?.close(); await owner.close(); }
+});
+
+
+test('real CDP launch option coverage verifies existing settings or refuses them', async () => {
+  const { startFixture } = await import('../scripts/fixture-http.mjs');
+  const fixture = await startFixture();
+  const port = new URL(fixture.origin).port;
+  await fixture.close();
+  const owner = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  const endpoint = `http://127.0.0.1:${port}`;
+  try {
+    for (const options of [{ args: required }, { headless: true }, { timeout: 5000 }, { cdpUrl: endpoint }]) {
+      const borrowed = await signedInEngine(endpoint).launch(options);
+      try { assert.equal(await (await borrowed.newPage()).evaluate(() => 42), 42); }
+      finally { await borrowed.close(); }
+    }
+    for (const [key, options] of [
+      ['args', { args: ['--proof-setting-not-present'] }],
+      ['headless', { headless: false }],
+      ['futureLaunchOption', { futureLaunchOption: true }],
+    ]) await assert.rejects(signedInEngine(endpoint).launch(options), error => error.exitCode === 78 && error.message.includes(key));
+    assert.equal(owner.isConnected(), true);
+  } finally { await owner.close(); }
+});
