@@ -54,9 +54,10 @@ export async function prove({origin,expectedCommit,cdpUrl,timeoutMs=30000}) {
     });
     if(!['ready','empty'].includes(snapshot.state))throw insufficient('Natural anniversary snapshot unavailable');
     snapshotObserved = true;
-    await page.getByRole('button',{name:'Show closing anniversaries',exact:true}).click({timeout:remaining()});
     const section=page.getByRole('region',{name:'Closing anniversaries',exact:true});
+    assert.equal(await section.locator('button[aria-controls="anniversaryContent"]').getAttribute('aria-expanded'),'true');
     await section.locator('[aria-busy="false"]').waitFor({timeout:remaining()});
+    assert.equal(await section.locator('#anniversaryContent').isVisible(),true);
     const text=await section.innerText();
     if(await section.getByRole('alert').count())throw insufficient('Anniversary panel read unavailable');
     assert.ok(text.includes('America/Chicago'));
