@@ -37,3 +37,4 @@ export { mountDealDocuments } from './deal-documents';
 export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
 
 export { mountMailPriorities } from './home/mail-priorities';
+export { mountActivityAttributionView, parseActivityDealAttribution } from './activity-attribution';
