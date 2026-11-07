@@ -114,14 +114,14 @@ test('CDP observation closes its page and disconnects while preserving the exist
 
 const registry = JSON.parse(await readFile(new URL("./fixtures/walk-verb-registry.json", import.meta.url))).response;
 
-for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable', 'malformed', 'incomplete', 'empty']) test(`registry CLI ${mode}`, async t => {
+for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable', 'malformed', 'incomplete', 'empty', 'cleanup write', 'cleanup unknown']) test(`registry CLI ${mode}`, async t => {
   const f = await fixture(t, 'equal');
   const scratch = temporaryDirectory('registry-cli-', t);
   const preload = join(scratch, 'preload.mjs');
   const marker = join(scratch, 'forwarded');
   const live = structuredClone(registry);
   live.verbs.push({ name: 'future-proof-read', write: false }); live.count++;
-  const name = mode === 'write' ? live.verbs.find(row => row.write).name : mode === 'unknown' ? 'unregistered-proof-call' : mode === 'future read' ? 'future-proof-read' : 'read-doctrine';
+  const name = mode.endsWith('write') ? live.verbs.find(row => row.write).name : mode.endsWith('unknown') ? 'unregistered-proof-call' : mode === 'future read' ? 'future-proof-read' : 'read-doctrine';
   if (mode === 'malformed') delete live.verbs[0].write;
   if (mode === 'incomplete') live.count++;
   if (mode === 'empty') { live.verbs = []; live.count = 0; }
@@ -145,11 +145,25 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
         }
         return route.fallback();
       });
-      await context.addInitScript(name => {
+      if (${JSON.stringify(mode)}.startsWith('cleanup')) {
+        const newPage = context.newPage.bind(context);
+        context.newPage = async (...args) => {
+          const page = await newPage(...args), close = page.close.bind(page);
+          page.close = async (...options) => {
+            await page.evaluate(async name => {
+              await fetch('/mcp', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:91,method:'tools/call',params:{name,arguments:{}}})}).catch(() => {});
+            }, ${JSON.stringify(name)}).catch(() => {});
+            return close(...options);
+          };
+          return page;
+        };
+      }
+      await context.addInitScript(({name, cleanup}) => {
+        if (cleanup) return;
         document.addEventListener('DOMContentLoaded', () => {
           void fetch('/mcp', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:90,method:'tools/call',params:{name,arguments:{}}})}).catch(() => {});
         });
-      }, ${JSON.stringify(name)});
+      }, {name: ${JSON.stringify(name)}, cleanup: ${JSON.stringify(mode)}.startsWith('cleanup')});
       return connection;
     };
   `);
@@ -165,7 +179,7 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
     assert.equal(await readFile(marker, 'utf8'), name);
   } else {
     await assert.rejects(execution, error => {
-      assert.equal(error.code, mode === 'write' ? 1 : 78, error.stdout);
+      assert.equal(error.code, mode.endsWith('write') ? 1 : 78, error.stdout);
       return true;
     });
     await assert.rejects(readFile(marker), {code:'ENOENT'});
