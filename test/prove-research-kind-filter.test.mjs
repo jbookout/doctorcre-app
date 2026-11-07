@@ -79,3 +79,73 @@ for(const mode of ['late connection','stalled evaluation']) test(`proof deadline
   await assert.rejects(prove({...options,engine,cdpUrl:'fixture',timeoutMs:100}),error=>error.exitCode===78);
   await new Promise(resolve=>setTimeout(resolve,200));assert.equal(closed,1);assert.equal(pageClosed,mode==='late connection'?0:1);
 });
+
+async function borrowedBrowser(t) {
+  const portServer = createServer(() => {});
+  await new Promise(resolve => portServer.listen(0, '127.0.0.1', resolve));
+  const port = portServer.address().port;
+  await new Promise(resolve => portServer.close(resolve));
+  const browser = await chromium.launch({ args: [`--remote-debugging-port=${port}`] });
+  t.after(() => browser.close());
+  const cdpUrl = `http://127.0.0.1:${port}`;
+  const { chromium: cdp } = await import('playwright');
+  const connection = await cdp.connectOverCDP(cdpUrl);
+  t.after(() => connection.close());
+  return { browser, connection, cdp, cdpUrl };
+}
+
+test('proof CLI returns 78 when the context retires during page acquisition', async t => {
+  const options = await fixture(t, 'equal');
+  const { browser, cdpUrl } = await borrowedBrowser(t);
+  const scratch = temporaryDirectory('research-kind-retired-context-', t);
+  const preload = resolve(scratch, 'retire.mjs');
+  const playwrightUrl = import.meta.resolve('playwright');
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(playwrightUrl)};
+    const connect = chromium.connectOverCDP.bind(chromium);
+    chromium.connectOverCDP = async (...args) => {
+      const connection = await connect(...args);
+      const context = connection.contexts()[0];
+      const newPage = context.newPage.bind(context);
+      context.newPage = async () => {
+        await connection.close();
+        return newPage();
+      };
+      return connection;
+    };
+  `);
+  await assert.rejects(promisify(execFile)(process.execPath, [
+    '--import', preload, 'scripts/prove-research-kind-filter.mjs',
+    '--origin', options.origin, '--expected-commit', options.expectedCommit, '--cdp-url', cdpUrl,
+  ]), error => {
+    assert.equal(error.code, 78);
+    assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence');
+    return true;
+  });
+  assert.ok(browser.isConnected(), 'borrowed browser remains connected');
+});
+
+test('proof deadline closes a late CDP page before disconnecting and preserves existing tabs', async t => {
+  const options = await fixture(t, 'equal');
+  const { browser, connection, cdp, cdpUrl } = await borrowedBrowser(t);
+  const context = connection.contexts()[0];
+  const existing = await context.newPage();
+  await existing.goto('about:blank#existing');
+  const newPage = context.newPage.bind(context);
+  let acquisition;
+  context.newPage = () => acquisition = newPage().then(async page => {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    return page;
+  });
+  const engine = { connectOverCDP: async () => connection };
+  await assert.rejects(prove({ ...options, engine, cdpUrl, timeoutMs: 1000 }), error => error.exitCode === 78);
+  assert.ok(acquisition, 'page acquisition started before deadline');
+  await acquisition.catch(() => {});
+  const fresh = await cdp.connectOverCDP(cdpUrl);
+  try {
+    const pages = fresh.contexts()[0].pages();
+    assert.equal(pages.length, 1, 'only the existing tab remains');
+    assert.equal(pages[0].url(), 'about:blank#existing');
+    assert.ok(browser.isConnected(), 'borrowed browser remains connected');
+  } finally { await fresh.close(); }
+});

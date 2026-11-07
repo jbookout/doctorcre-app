@@ -33,7 +33,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     connection = await pendingConnection; controller.signal.throwIfAborted();
     const context = connection.contexts()[0];
     if (!context) throw unavailable('Existing signed-in context required');
-    pendingPage = context.newPage(); page = await pendingPage; controller.signal.throwIfAborted();
+    pendingPage = Promise.resolve().then(() => context.newPage()).catch(() => { throw unavailable('Existing signed-in page unavailable'); }); page = await pendingPage; controller.signal.throwIfAborted();
     page.setDefaultTimeout(remaining());
     let calls = 0;
     await page.route('**/*', route => {
@@ -82,10 +82,10 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
   } catch (error) { if (controller.signal.aborted) throw unavailable('Total proof deadline exceeded'); throw error; }
   finally {
     clearTimeout(timer); controller.abort();
-    await page?.close().catch(() => {});
-    if (!page) void pendingPage?.then(acquired => acquired.close()).catch(() => {});
-    if (!connection) void pendingConnection?.then(acquired => acquired.close()).catch(() => {});
-    await connection?.close().catch(() => {});
+    const acquiredPage = page || await pendingPage?.catch(() => undefined);
+    await acquiredPage?.close().catch(() => {});
+    const acquiredConnection = connection || await pendingConnection?.catch(() => undefined);
+    await acquiredConnection?.close().catch(() => {});
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
