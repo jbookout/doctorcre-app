@@ -29,7 +29,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       } catch { throw unavailable('Release containment is unproved'); }
     }
     if (!cdpUrl) throw unavailable('Existing signed-in browser required');
-    pendingConnection = engine.connectOverCDP(cdpUrl, { timeout: remaining() }).catch(() => { throw unavailable('Existing signed-in browser unavailable'); });
+    pendingConnection = Promise.resolve().then(() => engine.connectOverCDP(cdpUrl, { timeout: remaining() })).catch(() => { throw unavailable('Existing signed-in browser unavailable'); });
     connection = await pendingConnection; controller.signal.throwIfAborted();
     const context = connection.contexts()[0];
     if (!context) throw unavailable('Existing signed-in context required');
@@ -68,9 +68,9 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     const beforeCalls = calls;
     await panel.getByLabel('Finding kind', { exact: true }).selectOption(kind);
     assert.deepEqual(await panel.locator('li').evaluateAll(nodes => nodes.map(n => n.dataset.flagId)), detail.research.evidence.filter(item => item.kind === kind).map(item => item.flag_id));
-    assert.ok((await panel.innerText()).includes(detail.research.next_step), 'server guidance preserved');
-    assert.ok((await panel.innerText()).includes({ needs_review: 'Needs review', needs_research: 'Needs research', verified: 'Verified' }[detail.research.state]), 'server state preserved');
-    assert.ok((await panel.innerText()).includes(`${detail.research.evidence.filter(item => item.kind === kind).length} of ${detail.research.evidence.length} loaded findings`), 'matching count');
+    assert.equal(await panel.locator(':scope > p').nth(0).innerText(), { needs_review: 'Needs review', needs_research: 'Needs research', verified: 'Verified' }[detail.research.state], 'server state preserved');
+    assert.equal(await panel.locator(':scope > p').nth(1).innerText(), detail.research.next_step, 'server guidance preserved');
+    assert.equal(await panel.getByRole('status').innerText(), `${detail.research.evidence.filter(item => item.kind === kind).length} of ${detail.research.evidence.length} loaded findings`, 'matching count');
     await panel.getByLabel('Finding kind', { exact: true }).selectOption('');
     assert.equal(await panel.locator('li').count(), detail.research.evidence.length);
     assert.equal(calls, beforeCalls, 'selection performs no RPC');
