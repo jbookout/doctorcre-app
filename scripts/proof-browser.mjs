@@ -95,9 +95,14 @@ async function borrowBrowser(endpoint, options = {}, engine = rawChromium) {
               throw Error();
             }
             if (settings.viewport) await page.setViewportSize(settings.viewport);
-            if (settings.timezoneId) {
+            if (settings.timezoneId || settings.serviceWorkers === 'block') {
+              // Keep page overrides attached until the target closes; detaching resets them.
               const session = await shared.newCDPSession(page);
-              try { await session.send('Emulation.setTimezoneOverride', { timezoneId: settings.timezoneId }); } finally { await session.detach(); }
+              if (settings.timezoneId) await session.send('Emulation.setTimezoneOverride', { timezoneId: settings.timezoneId });
+              if (settings.serviceWorkers === 'block') {
+                await session.send('Network.enable');
+                await session.send('Network.setBypassServiceWorker', { bypass: true });
+              }
             }
             if (defaultTimeout) page.setDefaultTimeout(defaultTimeout);
             for (const args of routes) await page.route(...args);

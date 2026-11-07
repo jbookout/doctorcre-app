@@ -193,13 +193,14 @@ for (const late of [false, true]) test(`real CDP preserves borrowed browser and 
     borrowed = await launchProofBrowser(signedInEngine(endpoint), { timeout: late ? 100 : 10000 });
     if (late) await assert.rejects(borrowed.newPage(), { exitCode: 78 });
     else {
-      const context = await borrowed.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Chicago' });
+      const timezoneId = 'America/Chicago';
+      const context = await borrowed.newContext({ viewport: { width: 390, height: 844 }, timezoneId });
       await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: 'owned route' }));
       const page = await context.newPage();
       await page.goto('http://127.0.0.1:1/owned');
       assert.equal(await page.locator('body').textContent(), 'owned route');
       assert.deepEqual(page.viewportSize(), { width: 390, height: 844 });
-      assert.equal(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone), 'America/Chicago');
+      assert.equal(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone), timezoneId);
       await context.close();
       assert.equal(owner.isConnected(), true);
       await (await borrowed.newPage()).goto('data:text/html,owned');
@@ -211,29 +212,6 @@ for (const late of [false, true]) test(`real CDP preserves borrowed browser and 
     assert.equal(owner.isConnected(), true);
   } finally { await borrowed?.close(); await observer?.close(); await owner.close(); }
 });
-
-test('rejected page and missing context are insufficient evidence', async t => {
-  const { chromium: raw } = await import('playwright');
-  for (const contexts of [[], [{ newPage: async () => { throw Error('Target closed'); } }]]) {
-    let disconnected = false;
-    t.mock.method(raw, 'connectOverCDP', async () => ({ contexts: () => contexts, close: async () => { disconnected = true; } }));
-    const browser = await chromium.connectOverCDP('http://127.0.0.1:1234');
-    await assert.rejects(browser.newPage(), { exitCode: 78 });
-    await browser.close();
-    assert.equal(disconnected, true);
-  }
-});
-
-test('CLI with containing release and unreachable CDP exits 78', async t => {
-  const { startFixture } = await import('../scripts/fixture-http.mjs');
-  const { execFile } = await import('node:child_process');
-  const commit = '1'.repeat(40);
-  const fixture = await startFixture({ routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: commit }) }]]) });
-  t.after(() => fixture.close());
-  const result = await new Promise(resolve => execFile(process.execPath, ['scripts/prove-client-anniversary-panel.mjs', '--origin', fixture.origin, '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1'], { timeout: 15000 }, (error, stdout, stderr) => resolve({ code: error?.code || 0, stdout, stderr })));
-  assert.equal(result.code, 78, JSON.stringify(result));
-});
-
 
 test('real CDP blocks service workers only on owned proof pages', async () => {
   const { startFixture } = await import('../scripts/fixture-http.mjs');
@@ -290,3 +268,26 @@ test('real CDP blocks service workers only on owned proof pages', async () => {
     await fixture.close();
   }
 });
+
+test('rejected page and missing context are insufficient evidence', async t => {
+  const { chromium: raw } = await import('playwright');
+  for (const contexts of [[], [{ newPage: async () => { throw Error('Target closed'); } }]]) {
+    let disconnected = false;
+    t.mock.method(raw, 'connectOverCDP', async () => ({ contexts: () => contexts, close: async () => { disconnected = true; } }));
+    const browser = await chromium.connectOverCDP('http://127.0.0.1:1234');
+    await assert.rejects(browser.newPage(), { exitCode: 78 });
+    await browser.close();
+    assert.equal(disconnected, true);
+  }
+});
+
+test('CLI with containing release and unreachable CDP exits 78', async t => {
+  const { startFixture } = await import('../scripts/fixture-http.mjs');
+  const { execFile } = await import('node:child_process');
+  const commit = '1'.repeat(40);
+  const fixture = await startFixture({ routes: new Map([['/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: commit }) }]]) });
+  t.after(() => fixture.close());
+  const result = await new Promise(resolve => execFile(process.execPath, ['scripts/prove-client-anniversary-panel.mjs', '--origin', fixture.origin, '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1'], { timeout: 15000 }, (error, stdout, stderr) => resolve({ code: error?.code || 0, stdout, stderr })));
+  assert.equal(result.code, 78, JSON.stringify(result));
+});
+
