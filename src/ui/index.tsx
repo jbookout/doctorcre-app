@@ -35,3 +35,5 @@ export { mountDealTours } from './deal-tours';
 export { mountDealDocuments } from './deal-documents';
 
 export { mountMarketStudy, mountPortal } from './portal/shell-home-sources';
+
+export { mountLeadResearch } from './lead-research';

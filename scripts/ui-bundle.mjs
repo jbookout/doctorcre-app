@@ -29,6 +29,7 @@ const UI_ENTRIES = {
   'ui-call': 'call-review',
   'ui-board': 'deal-room-board',
   'ui-agenda': 'deal-room-agenda',
+  'ui-lead-research': 'lead-research',
   'ui-lead': 'lead-guidance',
   'ui-ideal-client-profile': 'ideal-client-profile',
   'ui-territory-evidence': 'territory-evidence',
