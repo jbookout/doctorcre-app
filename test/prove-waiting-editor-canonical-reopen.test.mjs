@@ -108,3 +108,21 @@ test('observation deadline closes the browser during an asset fetch', async () =
   assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.js'));
  } finally { await server.close(); }
 });
+
+
+test('independent host root probe cannot enter proof request observations', async () => {
+ const server = await serve('pass');
+ try {
+  const probe = new Promise((resolve, reject) => {
+   const child = spawn(process.execPath, ['--input-type=module', '-e',
+    'const response = await fetch(process.argv[1]); await response.arrayBuffer();', server.origin + '/']);
+   child.once('error', reject);
+   child.once('exit', code => code === 0 ? resolve() : reject(Error(`Probe exited ${code}`)));
+  });
+  const [result] = await Promise.all([cli(server.origin), probe]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.ok(server.requests.some(request => request.url === '/app-release'));
+  assert.ok(server.requests.some(request => request.url === '/js/ui-inbox.js'));
+  assert.equal(server.requests.filter(request => request.url === '/').length, 0);
+ } finally { await server.close(); }
+});

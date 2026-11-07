@@ -273,3 +273,59 @@ test('Worker admits encoded identifiers only through declared application routes
   t.after(() => proof.close());
   assert.equal((await raw(proof.origin,'/inbox/card/next_action%3At1')).status,400);
 });
+
+
+test('descriptor admission separates probes and diagnoses undeclared traffic without hiding real requests', async t => {
+  const f = await fixture(t, { routes: new Map([['/failure', { status: 404 }]]) });
+  const probe = await raw(f.origin, '/');
+  assert.equal(probe.status, 404);
+  assert.equal(probe.body, 'Undeclared fixture path: /');
+  assert.deepEqual(f.requests, []);
+  assert.equal((await raw(f.origin, '/asset.js?revision=1')).status, 200);
+  assert.equal((await raw(f.origin, '/asset.js', 'HEAD')).status, 200);
+  assert.equal((await raw(f.origin, '/failure')).status, 404);
+  assert.equal((await raw(f.origin, '/asset.js', 'POST')).status, 405);
+  assert.equal((await raw(f.origin, '/typo')).body, 'Undeclared fixture path: /typo');
+  assert.deepEqual(f.requests.map(r => [r.method, r.target]), [
+    ['GET', '/asset.js?revision=1'], ['HEAD', '/asset.js'], ['GET', '/failure'], ['POST', '/asset.js'], ['GET', '/typo'],
+  ]);
+  assert.deepEqual(f.rejectedRequests.map(r => r.target), ['/']);
+  f.rejectedRequests.length = 0;
+  assert.equal(f.rejectedRequests.length, 1);
+});
+
+test('declared root is real fixture traffic and rejected observations remain bounded', async t => {
+  const f = await fixture(t, { routes: new Map([['/', { body: 'declared root' }]]), limits: { observations: 1 } });
+  assert.equal((await raw(f.origin, '/')).body, 'declared root');
+  await raw(f.origin, '/missing-one');
+  await raw(f.origin, '/missing-two');
+  assert.deepEqual(f.requests.map(r => r.path), ['/']);
+  assert.deepEqual(f.rejectedRequests, []);
+});
+
+
+test('undeclared POST remains visible to existing GET-only assertions', async t => {
+  const f = await fixture(t);
+  assert.equal((await raw(f.origin, '/api/write', 'POST')).status, 405);
+  assert.deepEqual(f.requests.map(r => [r.method, r.path]), [['POST', '/api/write']]);
+  assert.throws(() => assert.ok(f.requests.every(r => r.method === 'GET')));
+  assert.deepEqual(f.rejectedRequests, []);
+});
+
+test('undeclared application GET fails an owning test route assertion', async t => {
+  const f = await fixture(t);
+  assert.equal((await raw(f.origin, '/api/system-work/current')).status, 404);
+  assert.throws(() => assert.deepEqual(f.requests.filter(r => r.path !== '/asset.js'), []));
+  assert.deepEqual(f.rejectedRequests, []);
+});
+
+test('only undeclared root GET and HEAD are bounded host probes', async t => {
+  const f = await fixture(t, { limits: { observations: 2 } });
+  for (const method of ['GET', 'HEAD', 'GET']) {
+    assert.equal((await raw(f.origin, '/?host=probe', method)).status, 404);
+  }
+  assert.deepEqual(f.requests, []);
+  assert.deepEqual(f.rejectedRequests.map(r => r.method), ['GET', 'HEAD']);
+  assert.equal((await raw(f.origin, '/', 'POST')).status, 405);
+  assert.deepEqual(f.requests.map(r => r.method), ['POST']);
+});
