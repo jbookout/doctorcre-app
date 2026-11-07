@@ -38,7 +38,7 @@ for(const mode of ['stalled evaluation','late launch'])test(`timeout drains ${mo
   const engine={launch:async args=>{
     owned=await chromium.launch({ ...args, args: [...CHROMIUM_SAFETY_ARGS, ...(args.args || [])] });
     if(mode==='late launch')await new Promise(r=>setTimeout(r,1800));
-    else {const create=owned.newPage.bind(owned);owned.newPage=async options=>{const page=await create(options);page.goto=()=>new Promise(()=>{});return page;};}
+    else {const create=owned.newPage.bind(owned);owned.newPage=async options=>{const page=await create(options);const go=page.goto.bind(page);page.goto=async(...args)=>{await go(...args);return page.evaluate(()=>new Promise(()=>{}));};return page;};}
     return owned;
   }};
   await assert.rejects(prove({...options,engine,timeoutMs:1400}),e=>e.exitCode===78);
