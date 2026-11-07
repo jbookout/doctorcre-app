@@ -1,0 +1,34 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Loading: expand
+    Loading --> Ready: valid latest response
+    Loading --> Error: malformed or failed response
+    Error --> Loading: explicit refresh
+    Ready --> Loading: refresh or server filters
+    Ready --> Ready: apply valid inclusive window or deal type
+    Ready --> Invalid: invalid or reversed draft
+    Invalid --> Ready: correct or clear window
+    Invalid --> Loading: refresh preserves applied window
+    Loading --> Loading: newer refresh supersedes pending read
+    Ready --> Ready: ignore stale completion
+    Loading --> Idle: clear or pagehide
+    Ready --> Idle: clear or pagehide
+    Loading --> Retired: session invalidation
+    Ready --> Retired: session invalidation
+    Retired --> Retired: refuse old controls and late completion
+    Idle --> Disposed: dispose
+    Loading --> Disposed: dispose
+    Ready --> Disposed: dispose
+    Disposed --> Disposed: refuse old controls and late completion
+
+%% System design written before implementation.
+%% Data shape: immutable Profile[] owns full-history counts and dated evidence. CloseWindow owns two validated inclusive bounds. Draft strings and validation message never replace the applied CloseWindow on refusal.
+%% Architecture: the existing mount owns selection, rendering and lifecycle. Client owns the existing bounded authenticated read. No new public interface or persistence.
+%% Capacity: one linear pass over loaded evidence per local edit, at most 1000 groups. At 10x evidence the first bottleneck is DOM rendering, not network. No fan-out or N+1 reads.
+%% Cache: one loaded snapshot. Refresh evicts visible evidence while pending or failed. Latest epoch replaces snapshot; window survives refresh; clear, retirement and disposal evict selection.
+%% Consistency: full-history counts stay authoritative. Matching evidence is derived locally; never infer client counts. Invalid input retains the last valid view.
+%% Availability: one explicit read per expand, refresh or server submit. Existing client deadline applies. No retry loop. Failure hides data and offers explicit refresh; auth retirement prevents future reads.
+%% Async lifetime: no queue; epoch and active lifecycle refuse stale completion. Disposal unmounts and removes listeners.
+%% External proof: same-origin read-only transport, one total deadline, bounded reads; acquisition failure is insufficient evidence. Borrowed browser stays open. Owned handles close, including late acquisitions.
+%% Writes, idempotency keys, storage scaling and load spread: n/a, local projection only.
+%% Throughput: blocking contract and baseline tests first; one owner because UI and proof share one behavior; no independent agents or shared mutable state.

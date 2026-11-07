@@ -1,0 +1,96 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { chromium } from './browser-harness.mjs';
+import { startFixtureServer } from '../scripts/fixture-server.mjs';
+
+for (const width of [390,1280]) for (const colorScheme of ['light','dark']) {
+  test(`inclusive window selection validation refresh and lifecycle ${width} ${colorScheme}`, async t => {
+    const recorded = JSON.parse(await readFile(new URL('./fixtures/historical-close-window/recordings.json',import.meta.url)));
+    const server = await startFixtureServer(); t.after(()=>server.stop());
+    const browser = await chromium.launch(); t.after(()=>browser.close());
+    const page = await browser.newPage({viewport:{width,height:900},colorScheme});
+    await page.route(`${server.url}/__window`,r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html data-theme="${colorScheme}"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Window</title><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/leads.css">`}));
+    await page.goto(`${server.url}/__window`);
+    await page.evaluate(async ({url,recorded})=>{
+      const {mountIdealClientProfile}=await import(url);
+      const host=document.createElement('main'); document.body.replaceChildren(host);
+      const p=window.windowProof={payload:recorded.full,reads:[],pending:[],hold:false,error:null};
+      p.mount=mountIdealClientProfile(host,{getIdealClientProfile(filters){
+        p.reads.push(filters);
+        if(p.error) return Promise.reject(Object.assign(Error('refused'),{code:p.error}));
+        const value=structuredClone(p.payload);
+        return p.hold ? new Promise(resolve=>p.pending.push(()=>resolve(value))) : Promise.resolve(value);
+      }});
+    },{url:`${server.url}/js/ui-ideal-client-profile.js`,recorded});
+    const host=page.locator('main'), rows=host.locator('tbody tr');
+    const settle=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const expand=()=>host.locator('summary').first().click();
+    const refresh=()=>host.getByRole('button',{name:'Refresh history'}).click();
+    await expand(); await host.getByRole('table').waitFor();
+    const from=host.getByLabel('Closed from',{exact:true}), through=host.getByLabel('Closed through',{exact:true});
+    await from.waitFor({timeout:1500});
+    const apply=()=>host.getByRole('button',{name:'Apply date window',exact:true}).click();
+    await from.fill('2020-02-29'); await through.fill('2020-02-29');
+    await through.press('Enter');
+    assert.equal(await rows.count(),2);
+    assert.deepEqual(await host.locator('tbody time').allTextContents(),['2020-02-29','2020-02-29']);
+    assert.deepEqual(await rows.first().locator('td').allTextContents().then(v=>v.slice(3,6)),['3 deals','2 clients','1']);
+    assert.match(await host.getByRole('table').innerText(),/Full-history wins/);
+    assert.match(await host.getByRole('table').innerText(),/Full-history distinct clients/);
+    assert.match(await host.getByRole('table').innerText(),/Matching evidence/);
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),colorScheme);
+    await through.focus();
+    const applyButton=host.getByRole('button',{name:'Apply date window',exact:true});
+    for(let step=0;step<5 && !await applyButton.evaluate(button=>button===document.activeElement);step++) await page.keyboard.press('Tab');
+    assert.equal(await applyButton.evaluate(button=>button===document.activeElement),true);
+    assert.equal(await page.evaluate(()=>window.windowProof.reads.length),1);
+    await rows.first().locator('summary').click();
+    assert.match(await rows.first().innerText(),/Dental lease 2/);
+    await host.getByLabel('Deal type',{exact:true}).selectOption(JSON.stringify('lease'));
+    assert.equal(await rows.count(),1);
+    await from.fill('2020-03-01'); await apply();
+    assert.match(await host.getByRole('alert').innerText(),/on or before/);
+    assert.equal(await rows.count(),1);
+    assert.equal(await host.locator('tbody time').first().textContent(),'2020-02-29');
+    await refresh(); await host.getByRole('table').waitFor();
+    assert.equal(await host.locator('tbody time').first().textContent(),'2020-02-29');
+    await from.fill('10000-02-29'); await apply();
+    assert.match(await host.getByRole('alert').innerText(),/real calendar dates/); assert.equal(await rows.count(),1);
+    await from.fill('2020-02-29'); await apply();
+    await refresh(); await host.getByRole('table').waitFor();
+    assert.equal(await from.inputValue(),'2020-02-29'); assert.equal(await rows.count(),1);
+    await host.getByLabel('Vertical',{exact:true}).fill('Dental');
+    await host.getByLabel('City',{exact:true}).fill('Synthetic city');
+    await host.getByLabel('State',{exact:true}).fill('TX');
+    await host.getByRole('button',{name:'Apply filters',exact:true}).click(); await host.getByRole('table').waitFor();
+    assert.deepEqual(await page.evaluate(()=>window.windowProof.reads.at(-1)),{vertical:'Dental',city:'Synthetic city',state:'TX'});
+    await through.fill('2019-01-01'); await apply(); assert.equal(await rows.count(),1);
+    await host.getByRole('button',{name:'Clear date window',exact:true}).click(); assert.equal(await rows.count(),1);
+    await host.getByLabel('Deal type',{exact:true}).selectOption(''); assert.equal(await rows.count(),3);
+    await through.fill('2020-02-28'); await apply(); assert.equal(await rows.count(),1);
+    await from.fill('2022-01-01'); await through.fill('2022-12-31'); await apply(); assert.equal(await rows.count(),1);
+    await from.fill('2023-01-01'); await through.fill('2023-12-31'); await apply(); assert.equal(await rows.count(),0);
+    await host.getByRole('button',{name:'Clear date window',exact:true}).click(); assert.equal(await rows.count(),3);
+    await page.evaluate(()=>{window.windowProof.error='transient';}); await refresh(); await host.getByRole('alert').waitFor(); assert.equal(await rows.count(),0);
+    await page.evaluate(payload=>{const p=window.windowProof;p.error=null;p.hold=true;p.payload=payload;},recorded.empty); await refresh();
+    await page.evaluate(payload=>{const p=window.windowProof;p.hold=false;p.payload=payload;},recorded.full); await refresh(); await host.getByRole('table').waitFor();
+    await page.evaluate(()=>window.windowProof.pending.splice(0).forEach(f=>f())); await settle(); assert.equal(await rows.count(),3);
+    for (const malformed of ['2026-02-31','2023-02-29','not-a-date']) {
+      await page.evaluate(date=>{window.windowProof.payload.profiles[0].evidence[0].closed_on=date;},malformed);
+      await refresh(); await host.getByRole('alert').waitFor(); assert.equal(await rows.count(),0);
+    }
+    await page.evaluate(payload=>window.windowProof.payload=payload,recorded.empty); await refresh(); await host.getByText(/No completed wins match/).waitFor();
+    await page.evaluate(payload=>window.windowProof.payload=payload,recorded.full); await refresh(); await host.getByRole('table').waitFor();
+    await page.evaluate(()=>{window.windowProof.error='forbidden';}); await refresh(); await host.getByRole('alert').waitFor(); assert.match(await host.getByRole('alert').innerText(),/Sign in again/);
+    await page.evaluate(()=>{const p=window.windowProof;p.error=null;p.hold=true;}); await refresh();
+    await page.evaluate(()=>{const p=window.windowProof;p.mount.clear();p.pending.splice(0).forEach(f=>f());p.hold=false;}); await settle(); assert.equal(await rows.count(),0);
+    await expand(); await host.getByRole('table').waitFor(); assert.equal(await from.inputValue(),'');
+    await page.evaluate(()=>{window.windowProof.hold=true;}); await refresh();
+    await page.evaluate(()=>{window.dispatchEvent(new Event('doctorcre-session-invalidated'));window.windowProof.pending.splice(0).forEach(f=>f());window.windowProof.mount.clear();}); await settle();
+    assert.equal(await rows.count(),0); assert.match(await host.getByRole('status').innerText(),/Sign in again/);
+    const reads=await page.evaluate(()=>window.windowProof.reads.length);
+    await page.evaluate(()=>{window.windowProof.mount.dispose();window.windowProof.mount.clear();}); await settle();
+    assert.equal(await host.innerText(),''); assert.equal(await page.evaluate(()=>window.windowProof.reads.length),reads);
+  });
+}
