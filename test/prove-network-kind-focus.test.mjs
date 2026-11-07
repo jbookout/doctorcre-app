@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
@@ -236,7 +237,7 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
   const listener = await startFixture();
   const port = new URL(listener.origin).port; await listener.close();
   const { chromium: owner } = await import('../scripts/proof-browser.mjs');
-  const browser = await owner.launch({args:[`--remote-debugging-port=${port}`]});
+  const browser = await owner.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});
   t.after(() => browser.close());
   const cliArgs = ['--import', preload, 'scripts/prove-network-kind-focus.mjs', '--origin', f.origin, '--expected-commit', f.expectedCommit, '--cdp-url', `http://127.0.0.1:${port}`];
   const execution = promisify(execFile)(process.execPath, cliArgs);

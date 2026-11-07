@@ -284,7 +284,7 @@ for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable
   const listener = await startFixture();
   const port = new URL(listener.origin).port; await listener.close();
   const { chromium: owner } = await import('../scripts/proof-browser.mjs');
-  const browser = await owner.launch({args:[`--remote-debugging-port=${port}`]});
+  const browser = await owner.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});
   t.after(() => browser.close());
   const cliArgs = ['--import', preload, 'scripts/prove-historical-close-window.mjs', '--origin', f.origin, '--expected-commit', f.expected, '--cdp-url', `http://127.0.0.1:${port}`];
   const execution = promisify(execFile)(process.execPath, cliArgs);
