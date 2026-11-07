@@ -28,3 +28,46 @@ for (const mode of ['late acquisition', 'stalled evaluation']) test(`timeout cle
   await new Promise(resolve => setTimeout(resolve, 80));
   assert.deepEqual(fixture.resources(), { pages: 0, sharedClosed: 1 });
 });
+
+import { chromium } from 'playwright';
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { ownedBrowserProcesses } from './proof-browser-harness.mjs';
+for (const mode of ['late launch', 'stalled evaluation']) test(`real owned Chromium cleanup ${mode}`, async t => {
+  const root = temporaryDirectory('mail-proof-timeout-', t);
+  let context, acquisition, disconnected, observed = [];
+  const fixture = setup({ stall: mode === 'stalled evaluation' });
+  fixture.options.engine = { connectOverCDP() {
+    acquisition = (async () => {
+      context = await chromium.launchPersistentContext(root, { headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+      observed = ownedBrowserProcesses(root);
+      const browser = context.browser();
+      disconnected = new Promise(resolve => browser.once('disconnected', resolve));
+      if (mode === 'late launch') await new Promise(resolve => setTimeout(resolve, 2200));
+      else {
+        const newPage = context.newPage.bind(context);
+        context.newPage = async () => {
+          const page = await newPage();
+          page.goto = async () => {};
+          page.url = () => 'http://localhost/';
+          const button = { waitFor: async () => {}, click: async () => {}, first() { return this; }, count: async () => 0 };
+          page.getByRole = () => ({ ...button, getByRole: () => button });
+          page.waitForResponse = async () => ({ ok: () => true, status: () => 200, json: async () => ({ state: 'empty' }) });
+          page.waitForFunction = async () => {};
+          page.evaluate = () => new Promise(() => {});
+          return page;
+        };
+      }
+      return browser;
+    })();
+    return acquisition;
+  } };
+  try {
+    await assert.rejects(prove({ ...fixture.options, timeoutMs: 2000 }), { exitCode: 78 });
+    await acquisition;
+    await disconnected;
+    assert.ok(observed.length > 0, 'real owned browser processes observed');
+    assert.deepEqual(ownedBrowserProcesses(root), [], 'zero surviving owned browser processes');
+    t.diagnostic(JSON.stringify({ mode, exit: 78, observed: observed.length, survivors: 0 }));
+  } finally { await context?.close(); }
+});
