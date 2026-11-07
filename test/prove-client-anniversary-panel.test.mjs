@@ -3,38 +3,30 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {temporaryDirectory} from '../scripts/temp-directory.mjs';
-import {resolve,sep} from 'node:path';
+import {resolve} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {createServer} from './proof-fixture-server.mjs';
+import {startFixture} from '../scripts/fixture-http.mjs';
+import {appAssetSnapshot} from '../scripts/fixture-app-assets.mjs';
 import {prove} from '../scripts/prove-client-anniversary-panel.mjs';
 import {assertProofDeadlineCleanup} from './proof-browser-harness.mjs';
 const exec=promisify(execFile), expected='a'.repeat(40);
 const root=resolve(new URL('../',import.meta.url).pathname);
 const fixtures=JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/recordings.json',import.meta.url),'utf8'));
+const assets=await appAssetSnapshot();
 async function server(t,{commit=expected,wrong=false,state='ready',auth=false,unavailableAfter=false,mutate='' }={}) {
-  let businessReads=0;
-  const server=createServer(async(req,res)=>{
-    const url=new URL(req.url,'http://localhost');
-    const json=value=>{res.setHeader('content-type','application/json');res.end(JSON.stringify(value));};
-    if(url.pathname==='/app-release')return json({service:'doctorcre-app',environment:'production',source_commit:commit});
-    if(url.pathname==='/auth/session') {if(auth){res.statusCode=401;return json({error:'unauthorized'});}return json({actor:{slug:'joe'},csrf_token:'synthetic'});}
-    if(url.pathname==='/api/v1/intelligence/client-anniversary-read'){
-      const name=unavailableAfter&&++businessReads>1?'unavailable':state;
-      if(name==='unavailable')res.statusCode=503;
-      return json(fixtures[name].output);
-    }
-    if(url.pathname==='/leases'){
-      res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`);
-    }
-    let path;
-    try{path=resolve(root,'.'+decodeURIComponent(url.pathname));}catch{res.statusCode=400;return res.end();}
-    if(!path.startsWith(root+sep)){res.statusCode=403;return res.end();}
-    try{res.setHeader('content-type','text/javascript');res.end(await readFile(path));}catch{res.statusCode=404;res.end();}
-  });
-  await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  t.after(()=>{server.closeAllConnections();server.close();});
-  return `http://127.0.0.1:${server.address().port}`;
+  const json=(value,status=200)=>({body:JSON.stringify(value),contentType:'application/json',status});
+  const snapshot=new Map(assets);
+  snapshot.set('/leases',{contentType:'text/html',body:`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/ui-client-anniversaries.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}${mutate}return value;}});</script>`});
+  const response=json(fixtures[state].output,state==='unavailable'?503:200);
+  const fixture=await startFixture({assets:snapshot,routes:new Map([
+    ['/app-release',json({service:'doctorcre-app',environment:'production',source_commit:commit})],
+    ['/auth/session',auth?json({error:'unauthorized'},401):json({actor:{slug:'joe'},csrf_token:'synthetic'})],
+    ['/api/v1/intelligence/client-anniversary-read',unavailableAfter
+      ?{sequence:[response,json(fixtures.unavailable.output,503)]}:response],
+  ])});
+  t.after(()=>fixture.close());
+  return fixture.origin;
 }
 test('proof CLI passes equal containing release and fails mismatched visible labels',async t=>{
   const origin=await server(t);
@@ -144,4 +136,12 @@ test('CDP deadline waits for a late page before disconnecting and leaves no borr
     assert.equal(await sentinel.title(),'Preserved shared page');
     assert.equal(browser.isConnected(),true);
   } finally { await observer.close(); }
+});
+
+test('CLI refuses an unreachable borrowed CDP endpoint on a containing release',async t=>{
+  const origin=await server(t);
+  const endpoint=await startFixture();
+  const cdpUrl=endpoint.origin;
+  await endpoint.close();
+  await assert.rejects(exec(process.execPath,['scripts/prove-client-anniversary-panel.mjs','--origin',origin,'--expected-commit',expected,'--cdp-url',cdpUrl,'--timeout-ms','3000']),error=>error.code===78);
 });
