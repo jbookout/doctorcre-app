@@ -15,3 +15,41 @@ for (const width of [390, 1440]) for (const colorScheme of ['light', 'dark']) {
     assert.ok(result.assertions.includes('disposed-late-response-ignored'));
   });
 }
+
+for (const width of [390, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`confirmed retry waits for its write after a held session at ${width}px ${colorScheme}`, async t => {
+    const server = await fixtureServer(); t.after(() => server.close());
+    const browser = await chromium.launch(); t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme });
+    await page.goto(server.origin);
+    await page.evaluate(() => {
+      const json = Response.prototype.json, timeout = globalThis.setTimeout;
+      let sessions = 0, releaseSession;
+      globalThis.retrySessionTrace = [];
+      Response.prototype.json = async function () {
+        const data = await json.call(this);
+        if (data?.csrf_token && ++sessions === 2) {
+          globalThis.retrySessionTrace.push('session-held');
+          await new Promise(resolve => { releaseSession = resolve; });
+          globalThis.retrySessionTrace.push('session-returned');
+        }
+        return data;
+      };
+      globalThis.setTimeout = (callback, ms, ...args) => timeout(() => {
+        callback(...args);
+        if (ms === 10 && releaseSession) {
+          const release = releaseSession; releaseSession = undefined;
+          globalThis.retrySessionTrace.push('proof-tick-before-session');
+          queueMicrotask(release);
+        }
+      }, ms);
+    });
+    const result = await observeOnPage(page, server.origin, recordings);
+    assert.deepEqual(await page.evaluate(() => globalThis.retrySessionTrace), [
+      'session-held', 'proof-tick-before-session', 'session-returned',
+    ]);
+    assert.ok(result.assertions.includes('confirmed-retry-refreshes'));
+    assert.ok(result.assertions.includes('retry-preserves-idempotency-and-versions'));
+    assert.equal(result.synthetic_write_attempts, 3);
+  });
+}
