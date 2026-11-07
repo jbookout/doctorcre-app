@@ -11,7 +11,7 @@ const recordings = JSON.parse(await readFile(new URL('../test/fixtures/deal-docu
 
 export async function observeLoadedSearch(page, assetUrl) {
   await page.evaluate(async ({ assetUrl, recordings }) => {
-    const { mountDealDocuments } = await import(assetUrl);
+    const { mountDealDocuments } = await import('/js/ui-deal-documents.js');
     const { request: initialRequest } = recordings.initial;
     window.loadedSearchRequests = [];
     window.loadedSearchPanel = mountDealDocuments(document.querySelector('main'), {
@@ -76,6 +76,7 @@ export async function proveLoadedSearch({ origin, timeout = 30000, syntheticOnly
     page.on('pageerror', error => errors.push(error));
     await context.route('**/*', async route => {
       const target = new URL(route.request().url());
+      if (route.request().method() === 'GET' && target.origin === url.origin && target.pathname === '/__loaded-search-proof') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><main></main>' });
       if (route.request().method() !== 'GET' || target.origin !== url.origin || !/^\/js\/[\w/.-]+\.js$/.test(target.pathname) || target.search) return route.abort();
       try {
         let asset = assets.get(target.href);
@@ -87,7 +88,7 @@ export async function proveLoadedSearch({ origin, timeout = 30000, syntheticOnly
         await route.fulfill({ body: asset.body, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' } });
       } catch (error) { errors.push(error); await route.abort().catch(() => {}); }
     });
-    await page.setContent('<!doctype html><main></main>');
+    await page.goto(new URL('/__loaded-search-proof', url).href);
     const observed = await observeLoadedSearch(page, new URL('/js/ui-deal-documents.js', url).href);
     if (errors.length) throw errors[0];
     const after = await readAppRelease(url, read);

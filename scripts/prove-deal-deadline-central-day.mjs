@@ -36,7 +36,7 @@ export function options(args) {
 
 export async function exercise(page, assetUrl) {
   return page.evaluate(async ({ assetUrl, cases }) => {
-    const view = await import(assetUrl);
+    const view = await import('/js/deal-timeline.js');
     const assertions = [];
     const check = (name, passed) => { if (!passed) throw Error(name); assertions.push({ name, passed }); };
     for (const [name, instant, day, expected] of cases) {

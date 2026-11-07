@@ -7,9 +7,9 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
 
 export async function observe({ origin, recordings, document = globalThis.document }) {
-  const { mountFactReview } = await import(`${origin}/js/ui-facts.js`);
-  const { createLiveClient } = await import(`${origin}/js/live-client.js`);
-  const { FACT_TERMS } = await import(`${origin}/js/client.js`);
+  const { mountFactReview } = await import('/js/ui-facts.js');
+  const { createLiveClient } = await import('/js/live-client.js');
+  const { FACT_TERMS } = await import('/js/client.js');
   const assertions = [];
   const check = (value, name) => { if (!value) throw Error(name); assertions.push(name); };
   let current = recordings.initial, reads = 0, documentsRead = 0, writes = [], finishWrite;

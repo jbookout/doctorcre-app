@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -15,36 +15,32 @@ assert.notEqual(before,renderer,'broken fixture restores the pre-fix joined line
 const broken = await uiAssets(path=>path === 'src/ui/answer-blocks.tsx' ? before : readFile(path));
 
 async function fixture(t, mode) {
-  const requests = [];
-  const server = createServer((request,response)=>{
-    response.setHeader('content-type', 'application/json');
-    requests.push(request.url);
-    if (mode === 'timeout') return;
-    if (request.url === '/app-release') {
-      response.writeHead(mode === 'no-release' ? 404 : 200,{'content-type':'application/json'});
-      return response.end(JSON.stringify(mode === 'invalid-release' ? {} : release));
-    }
-    const path = request.url.slice(1);
-    let bytes = (mode === 'broken' ? broken : assets).get(path);
-    if (mode === 'no-entry' || mode === 'no-chunk' && path !== 'js/ui-answers.js') bytes = undefined;
-    if (mode === 'foreign') bytes = Buffer.from('import "https://example.invalid/foreign.js";');
-    if (mode === 'cap') {
-      const index = path === 'js/ui-answers.js' ? 0 : Number(path.match(/ui-shared-(\d+)/)?.[1]);
-      bytes = Buffer.from(`import "./ui-shared-${index+1}.generated.js";`);
-    }
-    response.writeHead(bytes ? 200 : 404,{'content-type':'text/javascript'});
-    response.end(bytes ?? 'missing');
-  });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(()=>{server.closeAllConnections();server.close();});
-  return {origin:`http://127.0.0.1:${server.address().port}`,requests};
+  const responses = new Map();
+  const fixtureAssets = mode === 'broken' ? broken : assets;
+  for (const [path, original] of fixtureAssets) {
+    let body = original;
+    if (mode === 'no-entry' || mode === 'no-chunk' && path !== 'js/ui-answers.js') continue;
+    if (mode === 'foreign') body = 'import "https://example.invalid/foreign.js";';
+    responses.set('/' + path, { body, contentType: 'text/javascript' });
+  }
+  if (mode === 'cap') {
+    responses.set('/js/ui-answers.js', { body: 'import "./ui-shared-1.generated.js";', contentType: 'text/javascript' });
+    for (let i = 1; i <= 20; i++) responses.set(`/js/ui-shared-${i}.generated.js`, { body: `import "./ui-shared-${i+1}.generated.js";`, contentType: 'text/javascript' });
+  }
+  responses.set('/app-release', { status: mode === 'no-release' ? 404 : 200, contentType: 'application/json', body: JSON.stringify(mode === 'invalid-release' ? {} : release) });
+  if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+  const server = await startFixture({ routes: responses });
+  t.after(() => server.close());
+  return { origin: server.origin, get requests() { return server.requests.map(req => req.target); } };
 }
+
 for (const [mode,code] of [['success',0],['broken',1],['no-release',78],['invalid-release',78],['no-entry',78],['no-chunk',78],['foreign',78],['cap',78],['timeout',78]]) {
   test(`proof CLI ${mode} with declared flags`,{timeout:40000},async t=>{
-    const {origin,requests} = await fixture(t,mode);
+    const fixtureServer = await fixture(t,mode), origin = fixtureServer.origin;
     let result;
     try {result = {code:0,...await execute(process.execPath,['scripts/prove-answer-chart-missing-value-gaps.mjs','--origin',origin,'--timeout-ms','30000'],{timeout:35000})};}
     catch(error) {result = error;}
+    const requests = fixtureServer.requests;
     assert.equal(result.code,code,result.stdout || result.message);
     assert.equal(new Set(requests).size,requests.length,'no retries');
     assert.ok(requests.length <= 20,'finite fetch cap');
