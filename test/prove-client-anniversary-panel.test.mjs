@@ -19,7 +19,11 @@ async function server(t,{commit=expected,wrong=false,state='ready',auth=false,un
     const json=value=>{res.setHeader('content-type','application/json');res.end(JSON.stringify(value));};
     if(url.pathname==='/app-release')return json({service:'doctorcre-app',environment:'production',source_commit:commit});
     if(url.pathname==='/auth/session') {if(auth){res.statusCode=401;return json({error:'unauthorized'});}return json({actor:{slug:'joe'},csrf_token:'synthetic'});}
-    if(url.pathname==='/api/v1/intelligence/client-anniversary-read')return json(fixtures[unavailableAfter&&++businessReads>1?'unavailable':state].output);
+    if(url.pathname==='/api/v1/intelligence/client-anniversary-read'){
+      const name=unavailableAfter&&++businessReads>1?'unavailable':state;
+      if(name==='unavailable')res.statusCode=503;
+      return json(fixtures[name].output);
+    }
     if(url.pathname==='/leases'){
       res.setHeader('content-type','text/html');return res.end(`<div id="host"></div><script type="module">import {mountClientAnniversaries} from '/js/ui-client-anniversaries.js';import {createClientAnniversariesClient} from '/js/client-anniversaries-client.js';const client=createClientAnniversariesClient();mountClientAnniversaries(document.getElementById('host'),{load:async signal=>{const value=await client.read({signal});${wrong?"value.rows[0].client_name='Wrong label';":''}return value;}});</script>`);
     }

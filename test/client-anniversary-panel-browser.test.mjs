@@ -107,6 +107,8 @@ test('read adapter preserves query and signal, refuses auth and malformed bodies
     return new Response(JSON.stringify(fixtures.ready.output),{status:200});
   }});
   assert.deepEqual(await client.read(),fixtures.ready.output);assert.equal(count,1);
+  const unavailable=createClientAnniversariesClient({fetchImpl:async()=>new Response(JSON.stringify(fixtures.unavailable.output),{status:503})});
+  assert.deepEqual(await unavailable.read(),fixtures.unavailable.output);
   for(const status of [401,403,503])await assert.rejects(createClientAnniversariesClient({fetchImpl:async()=>new Response('{}',{status})}).read());
   await assert.rejects(createClientAnniversariesClient({fetchImpl:async()=>new Response('{}')}).read());
 });
