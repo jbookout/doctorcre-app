@@ -120,8 +120,6 @@ import { promisify } from 'node:util';
 import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 const exec = promisify(execFile);
 const recordings = JSON.parse(await readFile(new URL('./fixtures/mail-priority-panel/recordings.json', import.meta.url)));
-const producer = await import('data:text/javascript;base64,' + Buffer.from(await readFile('test/fixtures/mail-priority-panel/producer.txt')).toString('base64'));
-for (const response of Object.values(recordings)) producer.parseMailNeedsPartnerResponse(response);
 const assets = await appAssetSnapshot();
 const json = value => ({ body: JSON.stringify(value), contentType: 'application/json' });
 async function cli(origin, cdpUrl, preload) {
