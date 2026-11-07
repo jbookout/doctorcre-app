@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, componentDocument, fixtureServer, waitForAsync } from './browser-harness.mjs';
 const id='11111111-1111-4111-8111-111111111111';
 const recordings=JSON.parse(await readFile(new URL('./fixtures/activity-attribution-panel/recordings.json',import.meta.url)));
@@ -38,7 +38,7 @@ test('recorded registered producer and production parser agree',async t=>{
 async function open(t,{width=1280,theme='light',pipeline=false}={}){
  const fixture=await fixtureServer();t.after(()=>fixture.close());
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:900}});
- await componentDocument(page,fixture.origin,{owner:'attribution explanation',dispose:page=>page.evaluate(()=>window.view?.dispose())});
+ await componentDocument(page,fixture.origin,{owner:'attribution explanation',html:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/deal-timeline.css">',dispose:page=>page.evaluate(()=>window.view?.dispose())});
  await page.evaluate(({recordings,id,theme})=>{
   document.documentElement.dataset.theme=theme;window.recordings=recordings;window.activityId=id;
  },{recordings,id,theme});
@@ -69,6 +69,11 @@ for(const width of [390,1280])for(const theme of ['light','dark'])test(`recorded
   await page.getByText('Version evidence',{exact:true}).click();
   if(row.response.activity)assert.match(await page.locator('[aria-label="Activity deal attribution"]').textContent(),/version 3/);
   assert.equal(await page.locator('main').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+  if(row.name==='direct'){
+   assert.ok((await page.getByRole('button',{name:'Close attribution'}).boundingBox()).height>=44);
+   await mkdir('out/test-artifacts/activity-attribution',{recursive:true});
+   await page.screenshot({path:`out/test-artifacts/activity-attribution/${width}-${theme}.png`});
+  }
   await page.getByRole('button',{name:'Close attribution'}).focus();await page.keyboard.press('Enter');
   assert.equal(await page.getByRole('button',{name:'Show deal attribution'}).first().evaluate(n=>n===document.activeElement),true);
  }

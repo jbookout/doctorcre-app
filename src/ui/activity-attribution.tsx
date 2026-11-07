@@ -41,9 +41,9 @@ export function mountActivityAttributionView(host: HTMLElement, close: () => voi
   const root = createRoot(host);
   return {
     update(state: PanelState) {
-      flushSync(() => root.render(<section aria-label="Activity deal attribution" style={{overflowWrap:'anywhere',maxWidth:'100%'}}>
-        <button type="button" onClick={close}>Close attribution</button>
-        {state.kind === 'loading' ? <p role="status">Loading deal attribution…</p> : state.kind === 'failure' ? <><p role="alert">Deal attribution could not be read.</p><button type="button" onClick={retry}>Retry attribution</button></> : <>
+      flushSync(() => root.render(<section className="state-block" aria-label="Activity deal attribution" style={{overflowWrap:'anywhere',maxWidth:'100%'}}>
+        <button type="button" className="btn" onClick={close}>Close attribution</button>
+        {state.kind === 'loading' ? <p role="status">Loading deal attribution…</p> : state.kind === 'failure' ? <><p role="alert">Deal attribution could not be read.</p><button type="button" className="btn" onClick={retry}>Retry attribution</button></> : <>
           <h4>{labels[state.value.attribution]}</h4><p>{state.value.credited_activity_count} credited activities</p>
           {state.value.direct ? <ul><DealLink deal={state.value.direct}/></ul> : null}
           {state.value.candidates.length ? <><p>Review candidates. These links receive no activity credit.</p><ul>{state.value.candidates.map(deal => <DealLink key={deal.deal_id} deal={deal}/>)}</ul></> : null}
