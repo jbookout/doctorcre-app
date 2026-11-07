@@ -119,16 +119,22 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`pu
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   const requests = [];
-  let releaseInbox;
-  const earlyRequest = new Promise(resolve => releaseInbox = resolve);
-  await page.route('**/js/ui-inbox.js', async route => { await earlyRequest; await route.continue(); });
+  let releaseInbox, reachedInbox;
+  const inboxRequested = new Promise(resolve => reachedInbox = resolve);
+  const inboxAllowed = new Promise(resolve => releaseInbox = resolve);
+  await page.route('**/js/ui-inbox.js', async route => { reachedInbox(); await inboxAllowed; await route.continue(); });
   await page.route('**/api/v1/intelligence/mail-needs-partner*', route => {
     requests.push({ method: route.request().method(), url: route.request().url() });
-    releaseInbox();
     return route.fulfill({ json: recordings.ready });
   });
-  await page.goto(server.origin + '/?mode=fixture');
+  await page.goto(server.origin + '/?mode=fixture', { waitUntil: 'commit' });
+  await inboxRequested;
+  await page.waitForTimeout(250);
+  const earlyReads = requests.length;
+  releaseInbox();
   await page.getByText('Only the first 25 ranked decisions are shown.').waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.equal(earlyReads, 0, 'mail waits for the UI entry instead of competing with its bundle');
   assert.equal(requests.length, 1);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   const { mkdir } = await import('node:fs/promises');
