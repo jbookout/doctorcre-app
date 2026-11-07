@@ -1,10 +1,11 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 test('leases publishes an opt-in anniversary island', async () => {
   assert.match(await readFile(new URL('../lease-radar.html',import.meta.url),'utf8'), /id="clientAnniversaries"/);
 });
-import { transform } from 'esbuild';
+import { transform, stop } from 'esbuild';
+after(() => stop());
 import { createHash } from 'node:crypto';
 import { chromium } from './browser-harness.mjs';
 import { resolve, sep } from 'node:path';
