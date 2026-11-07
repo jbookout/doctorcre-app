@@ -186,7 +186,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
     /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
 });
 
-test('source CI keeps the full required suite and checks privacy before browser downloads', () => {
+test('source CI keeps the full required suite and checks privacy before browser downloads', async t => {
   const steps = checks.split(/^      - /m).slice(1);
   assert.match(ci, /^  test:/m);
   assert.match(ci, /^  checks:\n.*\n    uses: \.\/\.github\/workflows\/checks\.yml\n    secrets: inherit$/m);
@@ -201,7 +201,31 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.equal(ci.match(/continue-on-error:/g)?.length, 1,
     'only the performance measurement is report-only; setup and all other checks still block');
   assert.match(performance, /path: \|\n            doctorcre-app\/test-artifacts\/performance\/report\.json\n            doctorcre-app\/test-artifacts\/performance\/summary\.md/);
-  assert.match(performance, /run: cat test-artifacts\/performance\/summary\.md >> "\$GITHUB_STEP_SUMMARY"/);
+  const publication = workflowDocument(ci).jobs.performance.steps.find(step => step.name === 'Publish performance summary');
+  assert.equal(publication.if, '${{ !cancelled() }}');
+  const directory = temporaryDirectory('ci-performance-summary-', t);
+  const output = join(directory, 'published summary.md');
+  const existing = 'Previous step summary.\n';
+  const summary = '### Mobile performance budget\n\nSynthetic measurement results.\n';
+  for (const present of [false, true]) {
+    if (present) {
+      await mkdir(join(directory, 'test-artifacts/performance'), { recursive: true });
+      await writeFile(join(directory, 'test-artifacts/performance/summary.md'), summary);
+    }
+    await writeFile(output, existing);
+    const run = spawnSync('bash', ['-e', '-c', publication.run], {
+      cwd: directory, encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: output },
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const published = await readFile(output, 'utf8');
+    if (present) {
+      assert.equal(published, existing + summary, 'publish the complete measurement summary without replacing previous steps');
+    } else {
+      assert.ok(published.startsWith(existing), 'preserve previous steps when measurement output is absent');
+      assert.match(published.slice(existing.length), /Measurement failed\./);
+      assert.match(published.slice(existing.length), /Screen: unavailable/);
+    }
+  }
   assert.match(ci, /test "\$PERFORMANCE" = success/,
     'the aggregate consumes the successful job conclusion after a tolerated measurement failure');
   assert.match(ci, /node --test --test-shard=\$\{\{ matrix.shard \}\}\/4/);
