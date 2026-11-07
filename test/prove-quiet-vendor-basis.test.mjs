@@ -122,6 +122,43 @@ test('containing release with unreachable CDP is insufficient evidence', async t
 });
 
 
+test('closed CDP context during CLI page acquisition is insufficient evidence', async t => {
+  const f = await fixture(t);
+  const portFixture = await startFixture();
+  const endpoint = portFixture.origin; await portFixture.close();
+  const { chromium } = await import('../scripts/proof-browser.mjs');
+  const { chromium: driver } = await import('playwright');
+  const existing = await chromium.launch({args:[`--remote-debugging-port=${new URL(endpoint).port}`]});
+  t.after(() => existing.close());
+  const preexisting = await existing.newPage();
+  const root = temporaryDirectory('quiet-vendor-closed-context-', t);
+  const preload = root + '/preload.mjs';
+  await writeFile(preload, `
+    const { chromium } = await import(${JSON.stringify(import.meta.resolve('playwright'))});
+    const connect = chromium.connectOverCDP.bind(chromium);
+    chromium.connectOverCDP = async (...args) => {
+      const browser = await connect(...args);
+      const context = browser.contexts()[0], newPage = context.newPage.bind(context);
+      context.newPage = async () => {
+        await browser.close();
+        return newPage();
+      };
+      return browser;
+    };
+  `);
+  await assert.rejects(exec(process.execPath, ['--import', preload, 'scripts/prove-quiet-vendor-basis.mjs', '--origin', f.origin, '--expected-commit', commit, '--cdp-url', endpoint]), error => {
+    t.diagnostic(`closed context exit ${error.code} ${error.stdout.trim()}`);
+    assert.match(JSON.parse(error.stdout).error, /browserContext.newPage: Target page, context or browser has been closed/);
+    assert.equal(error.code, 78);
+    return true;
+  });
+  const fresh = await driver.connectOverCDP(endpoint);
+  try { assert.equal(fresh.contexts()[0].pages().length, 1); } finally { await fresh.close(); }
+  assert.equal(existing.isConnected(), true);
+  assert.equal(preexisting.isClosed(), false);
+  t.diagnostic('borrowedBrowserPreserved=true pages=1');
+});
+
 test('late CDP page acquisition drains before disconnect and preserves borrowed pages', async t => {
   const f = await fixture(t);
   const portFixture = await startFixture();
