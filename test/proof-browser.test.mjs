@@ -192,7 +192,18 @@ for (const late of [false, true]) test(`real CDP preserves borrowed browser and 
     });
     borrowed = await launchProofBrowser(signedInEngine(endpoint), { timeout: late ? 100 : 10000 });
     if (late) await assert.rejects(borrowed.newPage(), { exitCode: 78 });
-    else await (await borrowed.newPage()).goto('data:text/html,owned');
+    else {
+      const context = await borrowed.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Chicago' });
+      await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: 'owned route' }));
+      const page = await context.newPage();
+      await page.goto('http://127.0.0.1:1/owned');
+      assert.equal(await page.locator('body').textContent(), 'owned route');
+      assert.deepEqual(page.viewportSize(), { width: 390, height: 844 });
+      assert.equal(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone), 'America/Chicago');
+      await context.close();
+      assert.equal(owner.isConnected(), true);
+      await (await borrowed.newPage()).goto('data:text/html,owned');
+    }
     await borrowed.close(); borrowed = undefined;
     observer = await connect(endpoint);
     assert.equal(observer.contexts()[0].pages().length, before, 'fresh connection counts zero added tabs');

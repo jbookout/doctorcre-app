@@ -48,17 +48,22 @@ export function proofCdpUrl(args = process.argv.slice(2)) {
 }
 
 export function signedInEngine(endpoint, engine = rawChromium) {
+  validateEndpoint(endpoint, engine);
   return { launch: options => borrowBrowser(endpoint, options, engine) };
 }
 
+function validateEndpoint(endpoint, engine) {
+  if (engine !== rawChromium && engine !== chromium) return;
+  let url;
+  try { url = new URL(endpoint); } catch { throw unavailable('Local CDP URL required'); }
+  if (!['http:', 'ws:'].includes(url.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password) throw unavailable('Local CDP URL required');
+}
+
 async function borrowBrowser(endpoint, options = {}, engine = rawChromium) {
+  validateEndpoint(endpoint, engine);
   if (engine === chromium) engine = rawChromium;
   let connection;
   try {
-    if (engine === rawChromium || engine === chromium) {
-      const url = new URL(endpoint);
-      if (!['http:', 'ws:'].includes(url.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password) throw Error();
-    }
     connection = await engine.connectOverCDP(endpoint, { ...options, timeout: Math.min(30000, Math.max(1, options.timeout || 30000)), isLocal: true });
   } catch (error) { throw unavailable(`Signed-in browser connection unavailable: ${error.message}`); }
   const pages = new Set(), pending = new Set();

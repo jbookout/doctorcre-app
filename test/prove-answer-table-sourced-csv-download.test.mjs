@@ -103,11 +103,10 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
     const routes = new Map([
       ['/app-release', mode === 'unreadable' ? {status:503} : mode === 'changed'
         ? {sequence:[identity(release),identity(descendant)]} : identity(release)],
-      ['/', { contentType:'text/html', body:`<!doctype html><button id="accountSignOut">Sign out</button><main></main><script type="module">import {mountAnswerBlocks} from '/js/ui-answers.js';mountAnswerBlocks(document.querySelector('main'),${JSON.stringify(blocks.populated)},'recorded');</script>` }],
+      ['/', { contentType:'text/html', body:`<!doctype html><button id="${mode === 'signed-out' ? 'signedOut' : 'accountSignOut'}">Sign out</button><main></main><script type="module">import {mountAnswerBlocks} from '/js/ui-answers.js';mountAnswerBlocks(document.querySelector('main'),${JSON.stringify(blocks.populated)},'recorded');${mode === 'no-table' ? "new MutationObserver((_, observer) => { const table = document.querySelector('.answer-table'); if (table) { observer.disconnect(); table.remove(); } }).observe(document.querySelector('main'), { childList: true, subtree: true });" : mode === 'source-mismatch' ? "new MutationObserver((_, observer) => { const source = document.querySelector('.answer-source span'); if (source) { observer.disconnect(); source.textContent='Record invalid'; } }).observe(document.querySelector('main'), { childList: true, subtree: true });" : ''}</script>` }],
     ]);
     server = await startFixture({assets:snapshot,routes});
     origin = server.origin; snapshotKey = key;
-    if (page) { await page.goto(origin); await page.locator('.answer-table tbody tr').first().waitFor(); }
   };
   await prepare();
   t.after(() => server?.close());
@@ -139,22 +138,19 @@ test('natural CLI release ancestry and deadline exit matrix', async t => {
   release=equal;mode='pass';
   await t.test('default resolves the PR merge commit',async()=>assert.equal((await runNatural({defaultCommit:true})).code,0));
   await t.test('release changes during proof',async()=>{mode='changed';try{assert.equal((await runNatural()).code,78);}finally{mode='pass';await prepare();}});
-  await t.test('signed-out session',async()=>{await page.locator('#accountSignOut').evaluate(node=>node.id='signedOut');try{assert.equal((await runNatural()).code,78);}finally{await page.locator('#signedOut').evaluate(node=>node.id='accountSignOut');}});
+  await t.test('signed-out session',async()=>{mode='signed-out';try{assert.equal((await runNatural()).code,78);}finally{mode='pass';await prepare();}});
   await t.test('no session',async()=>assert.equal((await runNatural({noSession:true})).code,78));
   await t.test('no eligible table',async()=>{
-    await page.locator('.answer-table').evaluate(node=>node.hidden=true);
-    await page.locator('.answer-table').evaluate(node=>node.classList.remove('answer-table'));
+    mode='no-table';
     try { assert.equal((await runNatural()).code,78); }
-    finally { await page.locator('section').evaluate(node=>{node.classList.add('answer-table');node.hidden=false;}); }
+    finally { mode='pass';await prepare(); }
   });
   await t.test('natural source mismatch exits 1 and restores view',async()=>{
     await page.locator('th button').nth(3).click();
     const before = await page.locator('th').nth(3).getAttribute('aria-sort');
-    const source = page.locator('.answer-source span').first();
-    const text = await source.textContent();
-    await source.evaluate(node=>node.textContent='Record invalid');
+    mode='source-mismatch';
     try { assert.equal((await runNatural()).code,1); }
-    finally { await source.evaluate((node,text)=>node.textContent=text,text); }
+    finally { mode='pass';await prepare(); }
     assert.equal(await page.locator('th').nth(3).getAttribute('aria-sort'),before);
   });
   await t.test('slow ancestry shares total deadline',async()=>{
