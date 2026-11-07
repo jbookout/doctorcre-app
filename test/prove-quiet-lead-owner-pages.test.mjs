@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { createServer } from 'node:http';
 import { promisify } from 'node:util';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -22,6 +23,25 @@ for (const kind of ['equal', 'descendant', 'older', 'unrelated', 'unknown']) tes
   const options = { fixture: true, expectedCommit: commit, readRelease: async () => ({ source_commit: source }), ancestry: async () => kind === 'descendant' };
   if (['equal', 'descendant'].includes(kind)) assert.equal((await prove(options)).ok, true);
   else await assert.rejects(prove(options), { exitCode: 78 });
+});
+test('unreachable CDP session exits 78 after verifying a containing release', async t => {
+  let releaseReads = 0;
+  const server = createServer((request, response) => {
+    assert.equal(request.url, '/app-release');
+    releaseReads++;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: commit }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await assert.rejects(run(process.execPath, [args[0], '--origin', `http://127.0.0.1:${server.address().port}`,
+    '--expected-commit', commit, '--cdp-url', 'http://127.0.0.1:1', '--timeout-ms', '5000']), error => {
+    assert.equal(error.code, 78);
+    assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence');
+    assert.match(JSON.parse(error.stdout).error, /ECONNREFUSED/);
+    return true;
+  });
+  assert.equal(releaseReads, 1);
 });
 test('missing session is insufficient evidence', async () => {
   await assert.rejects(prove({ expectedCommit: commit, readRelease: async () => ({ source_commit: commit }) }), { exitCode: 78 });

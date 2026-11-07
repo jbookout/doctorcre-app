@@ -42,15 +42,17 @@ export async function prove({ origin = 'http://localhost', expectedCommit, fixtu
     const before = await release(); await contains(before.source_commit);
     if (!fixture && !cdpUrl) throw unavailable('Existing signed-in browser session required');
     const recording = fixture ? JSON.parse(await readFile(recordingUrl)) : null;
-    // Playwright's CDP browser.close disconnects this connection without closing the remote browser.
-    browser = await launchProofBrowser(fixture ? engine : { launch: options => (engine.connectOverCDP ? engine : cdpChromium).connectOverCDP(cdpUrl, { timeout: options.timeout }) }, { timeout: remaining() }, { signal: controller.signal });
-    if (!fixture && !browser.contexts()[0]) throw unavailable('Signed-in context unavailable');
-    const acquisition = (fixture ? browser.newPage({ viewport: { width: 390, height: 844 } }) : browser.contexts()[0].newPage()).then(async acquired => {
-      if (controller.signal.aborted) { await acquired.close(); throw controller.signal.reason; }
-      return acquired;
-    });
-    pendingPages.push(acquisition);
-    page = await bounded(acquisition);
+    try {
+      // Playwright's CDP browser.close disconnects this connection without closing the remote browser.
+      browser = await launchProofBrowser(fixture ? engine : { launch: options => (engine.connectOverCDP ? engine : cdpChromium).connectOverCDP(cdpUrl, { timeout: options.timeout }) }, { timeout: remaining() }, { signal: controller.signal });
+      if (!fixture && !browser.contexts()[0]) throw unavailable('Signed-in context unavailable');
+      const acquisition = (fixture ? browser.newPage({ viewport: { width: 390, height: 844 } }) : browser.contexts()[0].newPage()).then(async acquired => {
+        if (controller.signal.aborted) { await acquired.close(); throw controller.signal.reason; }
+        return acquired;
+      });
+      pendingPages.push(acquisition);
+      page = await bounded(acquisition);
+    } catch (error) { throw unavailable(`Browser session unavailable: ${error.message}`); }
     if (fixture) {
       const root = fileURLToPath(new URL('../', import.meta.url));
       await bounded(page.route('**/*', async route => {
