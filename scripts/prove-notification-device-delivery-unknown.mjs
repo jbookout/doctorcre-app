@@ -4,7 +4,7 @@ import { readAppRelease, proofFetch, launchProofBrowser } from './app-release-re
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 
 export function observeDelivery(model) {
-  if (typeof model === 'string') return import(model).then(observeDelivery);
+  if (typeof model === 'string') return import('/js/notifications-model.js').then(observeDelivery);
   const { deliveryPhrases, notificationCards, validFeedPayload, acknowledgeArgs } = model;
   const assertions = [];
   const check = (condition, name) => { if (!condition) throw Error(name); assertions.push(name); };

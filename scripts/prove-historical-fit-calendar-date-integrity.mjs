@@ -21,7 +21,7 @@ export function options(args) {
 
 export async function calendarAssertions(page, moduleURL) {
   await page.evaluate(async moduleURL => {
-    const { mountIdealClientProfile } = await import(moduleURL);
+    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
     if (typeof mountIdealClientProfile !== 'function') throw Error('missing mountIdealClientProfile export');
     const host = document.createElement('main'); document.body.append(host);
     const profile = date => ({ schema_version: 'ideal-client-profile.v1', coverage: 'recorded_closed_won_only', profiles: [

@@ -24,7 +24,7 @@ export async function exerciseSourceFilter(page, moduleUrl) {
   assert.equal(fixture.outreach_started, false);
   assert.deepEqual([...new Set(fixture.cards.map(row => row.source))].sort(), ['nppes', 'pecos']);
   await page.evaluate(async ({moduleUrl, fixture}) => {
-    const {mountContactReasons} = await import(moduleUrl);
+    const {mountContactReasons} = await import('/js/contact-reasons.mjs');
     document.body.innerHTML = '<main id="source-proof"></main>';
     const probe = window.sourceProof = {fixture, reads:[], held:false};
     probe.payload = structuredClone(fixture);

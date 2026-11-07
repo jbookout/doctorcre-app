@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import worker from '../src/worker.js';
 import { readAppRelease } from '../scripts/app-release-reader.mjs';
 
@@ -13,7 +13,7 @@ const root = resolve('.');
 const source = await readFile('js/email-source-line.js');
 const business = await readFile('js/business-date.js');
 async function fixture(t, mode) {
-  const seen = [], assets = new Map([[resolve(root, 'js/email-source-line.js'), source], [resolve(root, 'js/business-date.js'), business]]);
+  const assets = new Map([[resolve(root, 'js/email-source-line.js'), source], [resolve(root, 'js/business-date.js'), business]]);
   if (mode === 'contradiction') assets.set(resolve(root, 'js/business-date.js'), Buffer.from(business.toString().replace('America/Chicago', 'UTC')));
   if (mode === 'foreign') assets.set(resolve(root, 'js/email-source-line.js'), Buffer.from('import "https://foreign.invalid/module.js";'));
   if (mode === 'cap') assets.set(resolve(root, 'js/email-source-line.js'), Buffer.from(Array.from({ length: 20 }, (_, i) => `import "./extra-${i}.js";`).join('\n')));
@@ -24,27 +24,20 @@ async function fixture(t, mode) {
   };
   await readAppRelease('http://localhost', async () => ({ type: 'application/json', body: Buffer.from(JSON.stringify(await identity())) }));
   releaseReads = 0;
-  const server = createServer(async (req, res) => {
-    res.setHeader('content-type', 'application/json');
-    seen.push([req.method, req.url]);
-    if (mode === 'timeout') return;
-    if (req.url === '/app-release') {
-      res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify(mode === 'identity' ? {} : await identity()));
-    }
-    let path;
-    try { path = resolve(root, '.' + decodeURIComponent(req.url)); } catch { res.writeHead(400); return res.end(); }
-    if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-    const bytes = assets.get(path);
-    if (!bytes || mode === 'unavailable' || mode === 'auth') { res.writeHead(mode === 'auth' ? 401 : 404); return res.end(); }
-    res.setHeader('content-type', mode === 'html' ? 'text/html' : 'text/javascript');
-    res.end(bytes);
-  });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: `http://127.0.0.1:${server.address().port}`, seen };
+  const responses = new Map([...assets].map(([path, body]) => ['/' + path.slice(root.length + 1),
+    mode === 'unavailable' || mode === 'auth' ? { status: mode === 'auth' ? 401 : 404 } : { body, contentType: mode === 'html' ? 'text/html' : 'text/javascript' }]));
+  const first = { contentType: 'application/json', body: JSON.stringify(mode === 'identity' ? {} : await identity()) };
+  const second = { contentType: 'application/json', body: JSON.stringify(mode === 'identity' ? {} : await identity()) };
+  responses.set('/app-release', { sequence: [first, second] });
+  if (mode === 'timeout') {
+    for (const [path, response] of responses) if (path !== '/app-release') responses.set(path, { ...response, hold: 'timeout' });
+    responses.set('/app-release', { ...first, hold: 'timeout' });
+  }
+  const server = await startFixture({ routes: responses });
+  t.after(() => server.close());
+  return { origin: server.origin, get seen() { return server.requests.map(req => [req.method, req.target]); } };
 }
+
 async function cli(origin, flags = []) {
   const child = spawn(process.execPath, ['scripts/prove-email-source-clock-validation.mjs', '--origin', origin, '--timeout-ms', '30000', ...flags], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
