@@ -1,8 +1,9 @@
+import { uiAssets } from '../scripts/ui-bundle.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createServer } from './proof-fixture-server.mjs';
-import { resolve, sep } from 'node:path';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { build } from 'esbuild';
 import { options, responseFixture } from '../scripts/prove-historical-fit-session-retirement.mjs';
@@ -32,34 +33,19 @@ test('exact CLI flags prove fetched head and reject recoverable invalidation; un
   assert.ok(source.includes(listener), 'mutation must replace the session retirement listener');
   const recoverableInvalidation = source.replace(listener, "addEventListener('doctorcre-session-invalidated', clear)");
   const bundled = await build({ stdin: { contents: recoverableInvalidation, loader: 'tsx', resolveDir: root }, bundle: true, write: false, format: 'esm', jsx: 'automatic' });
-  let mode = 'pass';
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    res.setHeader('content-type', 'application/json');
-    try {
-      requests.push(req.url);
-      const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-      const path = resolve(root, `.${pathname}`);
-      if (!path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-      if (pathname === '/app-release') {
-        if (mode === 'timeout') return;
-        if (mode === 'unavailable') { res.writeHead(503); return res.end(); }
-        res.setHeader('content-type', 'application/json');
-        return res.end(JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: mode === 'staging' ? 'staging' : 'production' }));
-      }
-      if (mode === 'missing-asset') { res.writeHead(404); return res.end(); }
-      if (!/^\/js\/(ui-ideal-client-profile\.js|ui-shared-[A-Z0-9]+\.generated\.js)$/.test(pathname)) { res.writeHead(403); return res.end(); }
-      res.setHeader('content-type', 'text/javascript');
-      return res.end(mode === 'contradiction' && pathname === '/js/ui-ideal-client-profile.js' ? bundled.outputFiles[0].text : await readFile(path));
-    } catch { res.writeHead(404); res.end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const args = ['--origin', origin, '--timeout-ms', '30000'];
+  const assets = await uiAssets(path => readFile(path));
+  async function snapshot(mode) {
+    const responses = new Map([...assets].map(([path, body]) => ['/' + path, mode === 'missing-asset' ? { status: 404 } : { body, contentType: 'text/javascript' }]));
+    if (mode === 'contradiction') responses.set('/js/ui-ideal-client-profile.js', { body: bundled.outputFiles[0].text, contentType: 'text/javascript' });
+    responses.set('/app-release', mode === 'unavailable' ? { status: 503 } : { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', source_commit: '1'.repeat(40), environment: mode === 'staging' ? 'staging' : 'production' }), ...(mode === 'timeout' ? { hold: 'timeout' } : {}) });
+    const server = await startFixture({ routes: responses }); t.after(() => server.close()); return server;
+  }
   for (const [scenario, expected] of [['staging', 78], ['pass', 0], ['contradiction', 1], ['unavailable', 78], ['missing-asset', 78], ['timeout', 78]]) {
-    mode = scenario; requests.length = 0;
+    const server = await snapshot(scenario);
+    const args = ['--origin', server.origin, '--timeout-ms', '30000'];
     const result = await cli(args);
+    const requests = server.requests.map(req => req.target);
+    await server.close();
     assert.equal(result.code, expected, `${scenario}: ${result.stderr}`);
     if (scenario === 'staging') assert.deepEqual(requests, ['/app-release'], 'refuse nonproduction release before acquiring assets');
     if (scenario === 'contradiction') assert.match(result.stderr, /idle removes private rows and controls/);

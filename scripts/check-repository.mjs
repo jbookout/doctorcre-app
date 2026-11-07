@@ -1,5 +1,6 @@
+import { hasCrossRepositoryImport, repositoryFiles } from './repository-boundaries.mjs';
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCarrInterface } from "./carr-interface.mjs";
@@ -30,29 +31,17 @@ const forbidden = [
   [/BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY/, "private key"],
   [/postgres(?:ql)?:\/\//i, "database connection string"],
   [/@neondatabase|DATABASE_URL/, "database implementation or credential name", (path) => path.startsWith("js/")],
-  // A PATH SEGMENT, not a substring. The repository that produces those reads
-  // is named by a whole directory in an import path; `./control-room-model.js`
-  // is a module in THIS repository whose name merely starts with the same
-  // letters, and refusing it would refuse the app's own Control Room page.
-  [/(?:from\s+|import\s*\(\s*)["'](?:[^"']*\/)?(?:carr-system|mcp-server|control-room)(?:\/[^"']*)?["']/, "cross-repository source import"]
+
 ];
 
-async function files(directory) {
-  const result = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if ([".git", ".worktrees", "node_modules", "coverage", "dist", "build"].includes(entry.name)) continue;
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) result.push(...await files(path));
-    else result.push(path);
-  }
-  return result;
-}
+const sourceFiles = repositoryFiles(ROOT_PATH);
 
-for (const path of await files(ROOT_PATH)) {
+for (const path of sourceFiles) {
   if (!textExtensions.has(extname(path))) continue;
   const repositoryPath = relative(ROOT_PATH, path);
   if (repositoryPath === "scripts/check-repository.mjs") continue;
   const source = await readFile(path, "utf8");
+  assert.equal(hasCrossRepositoryImport(source, repositoryPath), false, `${repositoryPath} contains a cross-repository source import`);
   for (const [pattern, label, applies = () => true] of forbidden) {
     if (!applies(repositoryPath)) continue;
     assert.doesNotMatch(source, pattern, `${repositoryPath} contains a ${label}`);
@@ -87,7 +76,7 @@ const v2Tells = [
 ];
 const withoutComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "");
 let tellFiles = 0;
-for (const path of await files(ROOT_PATH)) {
+for (const path of sourceFiles) {
   const repositoryPath = relative(ROOT_PATH, path);
   if (!TELL_EXTENSIONS.has(extname(path)) || notFirstParty(repositoryPath) || repositoryPath === "scripts/check-repository.mjs") continue;
   tellFiles++;

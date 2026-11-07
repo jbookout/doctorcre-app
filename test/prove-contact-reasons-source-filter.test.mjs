@@ -1,30 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createServer} from './proof-fixture-server.mjs';
-import {readFile} from 'node:fs/promises';
-import {resolve,sep} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {chromium} from 'playwright';
 import {CHROMIUM_SAFETY_ARGS} from '../scripts/chromium-safety-args.mjs';
 import {prove, exerciseSourceFilter} from '../scripts/prove-contact-reasons-source-filter.mjs';
 const exec=promisify(execFile);
-const root=fileURLToPath(new URL('../',import.meta.url));
+const snapshot = await proofAssetSnapshot();
 async function serverFor(t,mode='pass') {
-  const server=createServer(async(req,res)=>{
-    res.setHeader('content-type','application/json');
-    if(req.url==='/app-release') return res.end(JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}));
-    let path;
-    try {path=resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://localhost').pathname));} catch {res.writeHead(400);return res.end();}
-    if(!path.startsWith(root.replace(/\/$/,'')+sep) || !/^\/js\/[\w.-]+\.(m?js)$/.test(req.url)) {res.writeHead(403);return res.end();}
-    res.setHeader('content-type','text/javascript');
-    if(mode==='fail' && req.url==='/js/contact-reasons.mjs') return res.end('export const missing=true;');
-    try {res.end(await readFile(path));} catch {res.writeHead(404);res.end();}
-  });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(()=>{server.closeAllConnections();server.close();});
-  return `http://127.0.0.1:${server.address().port}`;
+  const routes = new Map(snapshot);
+  routes.set('/app-release', { contentType: 'application/json', body: JSON.stringify({service:'doctorcre-app',environment:'production',source_commit:'a'.repeat(40)}) });
+  if (mode === 'fail') routes.set('/js/contact-reasons.mjs', { contentType: 'text/javascript', body: 'export const missing=true;' });
+  const server = await startFixture({ routes });
+  t.after(() => server.close());
+  return server.origin;
 }
 for(const mode of ['pass','fail']) test(`source proof CLI fixture ${mode}`,async t=>{
   const origin=await serverFor(t,mode);

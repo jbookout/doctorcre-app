@@ -4,17 +4,17 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // real page and code run against a local server whose /mcp answers with the
 // synthetic fixture; nothing in production code knows about this test.
 import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { join } from "node:path";
 import test from "node:test";
 import { chromium } from "./browser-harness.mjs";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FULL = JSON.parse(await readFile(join(ROOT, "test/fixtures/progress-board-full.json"), "utf8"));
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
-  ".json": "application/json", ".svg": "image/svg+xml" };
 
 const MEASURE = `
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -85,42 +85,36 @@ if (page.scrollWidth > innerWidth + 1) problems.push("open Key makes the page sc
 parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.length, legendEntries: entries.length, width: innerWidth, problems }));
 `;
 
-function serve() {
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url, "http://127.0.0.1");
-    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) {
-      response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-session'})); return;
-    }
-    if (request.method === "POST" && url.pathname === "/mcp") {
-      let body = "";
-      for await (const chunk of request) body += chunk;
-      const { params } = JSON.parse(body);
-      const read = params?.name === "read-progress-board"
-        ? (params.arguments?.board_id === "all-repos" ? FULL.all_repos : FULL.project) : {};
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ result: { content: [{ text: JSON.stringify({ ok: true, ...read }) }] } }));
-      return;
-    }
-    if (url.pathname === "/__measure.js") {
-      response.writeHead(200, { "content-type": "text/javascript" });
-      response.end(MEASURE);
-      return;
-    }
-    const path = url.pathname === "/progress-board" ? "/control-room.html" : url.pathname;
-    const file = normalize(join(ROOT, path));
-    if (!file.startsWith(ROOT)) { response.writeHead(403); response.end(); return; }
+function withoutScripts(html) {
+  const dom = new JSDOM(html);
+  try {
+    const document = dom.window.document;
+    for (const script of document.querySelectorAll('script')) script.remove();
+    assert.equal(document.scripts.length, 0);
+    return dom.serialize();
+  } finally { dom.window.close(); }
+}
+
+for (const html of ['<!doctype html><script>throw Error(1)</script>', '<SCRIPT>throw Error(1)</SCRIPT>',
+  '<script type="module" src="/app.js"></script>', '<scr<script>ipt>text</scr</script>ipt>']) {
+  test(`layout shell removes parsed script elements: ${html}`, () => {
+    const dom = new JSDOM(withoutScripts(html));
     try {
-      let content = await readFile(file);
-      if (path === "/control-room.html")
-        content = Buffer.from(String(content).replace("</body>", '<script type="module" src="/__measure.js"></script></body>'));
-      response.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream" });
-      response.end(content);
-    } catch {
-      response.writeHead(404);
-      response.end();
+      assert.equal(dom.window.document.scripts.length, 0);
+      assert.equal(dom.window.document.compatMode, html.startsWith('<!doctype') ? 'CSS1Compat' : 'BackCompat');
     }
+    finally { dom.window.close(); }
   });
-  return new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+async function serve() {
+  const assets = await appAssetSnapshot();
+  const shell = assets.get('/control-room.html');
+  assets.set('/progress-board', { ...shell,
+    body: Buffer.from(String(shell.body).replace('</body>', '<script type="module" src="/__measure.js"></script></body>')) });
+  assets.set('/__measure.js', { body: MEASURE, contentType: 'text/javascript' });
+  const session = { body: JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-session'}), contentType:'application/json' };
+  return startFixture({ assets, routes:new Map([['/auth/session',session],['/api/system-work/session',session]]) });
 }
 
 for (const width of [390, 1280]) {
@@ -131,8 +125,13 @@ for (const width of [390, 1280]) {
       const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 900 } });
-      const { port } = server.address();
-      await page.goto(`http://127.0.0.1:${port}/progress-board?board=${board}&mode=live&tab=boards`);
+      await page.route('**/mcp', async route => {
+        const { params } = route.request().postDataJSON();
+        const read = params?.name === 'read-progress-board'
+          ? (params.arguments?.board_id === 'all-repos' ? FULL.all_repos : FULL.project) : {};
+        await route.fulfill({ contentType:'application/json', body:JSON.stringify({result:{content:[{text:JSON.stringify({ok:true,...read})}]}}) });
+      });
+      await page.goto(`${server.origin}/progress-board?board=${board}&mode=live&tab=boards`);
       await page.waitForFunction(() => document.body.hasAttribute("data-measure"));
       const result = await page.evaluate(() => JSON.parse(document.body.getAttribute("data-measure")));
       assert.equal(result.width, width);
@@ -150,14 +149,15 @@ for (const width of [1440, 390]) test(`Live expansion keeps browser focus throug
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   // Mount the production board directly, with synthetic reads and no external effects.
-  await page.route("**/*", async route => {
+  const assets = await appAssetSnapshot();
+  const shell = assets.get('/control-room.html');
+  assets.set('/', { ...shell, body: Buffer.from(withoutScripts(String(shell.body))) });
+  await page.route('**/*', async route => {
     const url = new URL(route.request().url());
-    if (url.origin !== "http://board.test") return route.abort();
-    const path = url.pathname === "/" ? "control-room.html"
-      : url.pathname.startsWith("/icons/") ? `public-shell${url.pathname}` : url.pathname.slice(1);
-    let body = await readFile(join(ROOT, path));
-    if (path === "control-room.html") body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""));
-    await route.fulfill({ body, contentType: TYPES[extname(path)] || "application/octet-stream" });
+    if (url.origin !== 'http://board.test') return route.abort();
+    const asset = assets.get(url.pathname);
+    if (!asset) return route.fulfill({status:404,body:''});
+    await route.fulfill({body:asset.body,contentType:asset.contentType});
   });
   await page.goto("http://board.test/");
   await page.evaluate(async read => {

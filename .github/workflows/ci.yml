@@ -183,6 +183,10 @@ jobs:
           python -m pip install -r requirements.lock
           npm --prefix mcp-server ci --no-audit
       - run: npm ci
+      - name: Install the pinned CARR checkout as the live test package
+        run: node scripts/live-producer.mjs
+        env:
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - name: Prefer Ubuntu archives for browser dependencies
         run: |
           printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null

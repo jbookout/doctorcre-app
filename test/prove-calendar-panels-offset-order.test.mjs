@@ -2,50 +2,38 @@ import { APP_RELEASE_PATH } from '../scripts/app-release-reader.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import { get } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, rm } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { writeFile, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 
 const exec = promisify(execFile);
-let outDir;
-before(async () => { outDir = temporaryDirectory('offset-proof-cli-'); await buildArtifact({ root: process.cwd(), outDir }); });
+let outDir, admitted;
+before(async () => { outDir = temporaryDirectory('offset-proof-cli-'); const built = await buildArtifact({ root: process.cwd(), outDir }); admitted = built.manifest.files.map(row => ["/" + row.path, row.path]); });
 after(async () => rm(outDir, { recursive: true, force: true }));
 
 for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chunk-protected', 'timeout']) {
   test(`proof CLI ${mode} with production flags`, async t => {
-    const requests = [];
     const siteRoot = resolve(outDir, 'site');
-    const server = createServer(async (req, res) => {
-    res.setHeader('content-type', 'application/json');
-      requests.push({ method: req.method, path: req.url });
-      if (mode === 'timeout') return;
-      if (mode === 'protected') { res.writeHead(403).end(); return; }
-      if (mode === 'signin') { res.writeHead(302, { location: '/sign-in' }).end(); return; }
-      if (req.url === APP_RELEASE_PATH) {
-        const response = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'identity' ? undefined : '1'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
-        res.writeHead(response.status, Object.fromEntries(response.headers)).end(await response.text()); return;
-      }
-      if (mode === 'chunk-protected' && req.url !== '/js/ui-calendar-panels.js') { res.writeHead(401).end(); return; }
-      try {
-        const requestedPath = decodeURIComponent(req.url);
-        if (/%2e|%5c|%00/i.test(req.url) || requestedPath.includes('\\') || requestedPath.includes(String.fromCharCode(0))) {
-          res.writeHead(404).end(); return;
-        }
-        const file = resolve(siteRoot, requestedPath.slice(1));
-        if (!file.startsWith(siteRoot + sep)) { res.writeHead(404).end(); return; }
-        let content = await readFile(file);
-        if (mode === 'broken' && req.url === '/js/ui-calendar-panels.js') content = Buffer.from('export async function mountCalendarPanels(left) { return { render() {left.textContent="broken"}, clear() {} }; }');
-        res.writeHead(200, { 'content-type': 'text/javascript' }).end(content);
-      } catch { res.writeHead(404).end(); }
-    });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-    const origin = `http://127.0.0.1:${server.address().port}`;
+    const assets = await loadFixtureAssets({ root: siteRoot, manifest: new Map(admitted) });
+    const release = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'identity' ? undefined : '1'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
+    const responses = new Map(assets);
+    responses.set(APP_RELEASE_PATH, { status: release.status, headers: Object.fromEntries(release.headers), body: await release.text(), contentType: 'application/json' });
+    for (const [path, response] of responses) {
+      if (mode === 'timeout') responses.set(path, { ...response, hold: 'timeout' });
+      else if (mode === 'protected') responses.set(path, { status: 403 });
+      else if (mode === 'signin') responses.set(path, { status: 302, headers: { location: '/sign-in' } });
+      else if (path !== APP_RELEASE_PATH && mode === 'chunk-protected' && path !== '/js/ui-calendar-panels.js') responses.set(path, { status: 401 });
+      else if (mode === 'broken' && path === '/js/ui-calendar-panels.js') responses.set(path, { contentType: 'text/javascript', body: 'export async function mountCalendarPanels(left) { return { render() {left.textContent="broken"}, clear() {} }; }' });
+    }
+    const server = await startFixture({ routes: responses });
+    t.after(() => server.close());
+    const origin = server.origin;
     if (mode === 'success') {
       const marker = join(outDir, 'outside-marker.txt');
       await writeFile(marker, 'WR616-J3-SYNTHETIC-OUTSIDE-ARTIFACT');
@@ -69,7 +57,7 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
             res.on('end', () => resolve({ status: res.statusCode, body }));
           }).on('error', reject);
         });
-        assert.equal(response.status, 404, response.body);
+        assert.equal(response.status, 400, response.body);
         assert.equal(response.body.includes('WR616-J3-SYNTHETIC'), false);
       });
     }
@@ -80,8 +68,8 @@ for (const mode of ['success', 'broken', 'protected', 'identity', 'signin', 'chu
     const receipt = JSON.parse(result.stdout.trim());
     assert.equal(result.code, mode === 'success' ? 0 : ['protected', 'identity', 'signin', 'chunk-protected', 'timeout'].includes(mode) ? 78 : 1, result.stdout + result.stderr);
     assert.equal(receipt.ok, mode === 'success');
-    assert.ok(requests.every(request => request.method === 'GET'));
-    assert.ok(requests.length <= 64);
+    assert.ok(server.requests.every(request => request.method === 'GET'));
+    assert.ok(server.requests.length <= 64);
     if (mode === 'success') {
       assert.equal(receipt.origin, origin);
       assert.equal(receipt.release.source_commit, '1'.repeat(40));

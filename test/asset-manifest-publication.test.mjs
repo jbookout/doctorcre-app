@@ -4,10 +4,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
 import { spawn, execFileSync } from 'node:child_process';
-import { resolve, sep } from 'node:path';
 import { buildArtifact, verifyArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
@@ -102,39 +101,37 @@ setTimeout(() => {}, 4000);
     if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
     if (mode === 'identity') manifest.source_commit = '2'.repeat(40);
     if (mode === 'unsafe') manifest.files[0].path = '../private.js';
-    const siteRoot = resolve(outDir, 'site');
-    const server = createServer(async (req, res) => {
-      if (req.headers['x-doctorcre-release-reader'] !== '1') { res.writeHead(403); return res.end(); }
-      seen.push({ method: req.method, path: req.url });
-      let path;
-      try { path = resolve(siteRoot, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
-      if (!path.startsWith(siteRoot + sep)) { res.writeHead(403); return res.end(); }
-      if (mode === 'timeout') return;
-      if (mode === 'ancestry-timeout') await new Promise(resolve => setTimeout(resolve, 1500));
-      const response = await handleDoctorcreRequest(new Request('https://app.example' + req.url), {
+    const routes = new Map();
+    for (const name of ['app-release', 'artifact-manifest.json', ...files.keys()]) {
+      const response = await handleDoctorcreRequest(new Request('https://app.example/' + name), {
         GIT_SHA: released, APP_ENV: 'production',
         ASSETS: { fetch: async request => {
-          const name = new URL(request.url).pathname.slice(1);
-          if (name === 'artifact-manifest.json') return new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } });
+          const key = new URL(request.url).pathname.slice(1);
+          if (key === 'artifact-manifest.json') return new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } });
           if (mode === 'redirect') return new Response(null, { status: 302, headers: { location: '/business' } });
-          const data = files.get(name);
+          const data = files.get(key);
           if (!data || mode === 'missing') return new Response(null, { status: 404 });
           const content = Buffer.from(data);
           if (mode === 'digest') content[0] ^= 1;
           return new Response(mode === 'corrupt' ? Buffer.from('corrupt') : content);
         } },
       });
-      res.writeHead(response.status, mode === 'cache' ? { ...Object.fromEntries(response.headers), 'cache-control': 'public' } : Object.fromEntries(response.headers));
-      res.end(Buffer.from(await response.arrayBuffer()));
-    });
-    server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    t.after(() => { server.closeAllConnections(); server.close(); });
-    if (mode === 'ancestry-timeout') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/`)).status, 403);
+      routes.set('/' + name, { status: response.status, body: Buffer.from(await response.arrayBuffer()),
+        contentType: response.headers.get('content-type') || 'application/octet-stream',
+        headers: { ...Object.fromEntries(response.headers), ...(mode === 'cache' ? { 'cache-control': 'public' } : {}) },
+        ...(mode === 'timeout' ? { hold: 'timeout' } : {}),
+        ...(mode === 'ancestry-timeout' ? { delayMs: 1500 } : {}),
+      });
+    }
+    const server = await startFixture({ routes });
+    t.after(() => server.close());
+    if (mode === 'ancestry-timeout') assert.equal((await fetch(server.origin + '/app-release')).status, 403);
     const started = performance.now();
-    const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : mode === 'ancestry-timeout' ? '2000' : '30000'], { cwd: history, env: { ...process.env, ...(mode === 'ancestry-timeout' ? { PATH: slowBin + ':' + process.env.PATH } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', server.origin, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : mode === 'ancestry-timeout' ? '2000' : '30000'], { cwd: history, env: { ...process.env, ...(mode === 'ancestry-timeout' ? { PATH: slowBin + ':' + process.env.PATH } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const [code] = await once(child, 'close');
+    seen.push(...server.requests.filter(row => row.headers['x-doctorcre-release-reader'] === '1').map(row => ({ method: row.method, path: row.target })));
     assert.equal(code, ['built', 'legacy', 'renamed', 'descendant'].includes(mode) ? 0 : ['timeout', 'ancestry-timeout', 'unknown', 'unknown-release'].includes(mode) ? 78 : 1, stdout + stderr);
     if (mode === 'ancestry-timeout') {
       const elapsed = performance.now() - started;
@@ -156,7 +153,7 @@ setTimeout(() => {}, 4000);
     if (mode === 'descendant-identity') assert.match(receipt.error, /manifest commit mismatch/);
     assert.ok(seen.length <= requirement.safety.max_requests);
     assert.ok(seen.every(row => row.method === 'GET' && row.path !== '/business'));
-    if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`, { headers: { 'x-doctorcre-release-reader': '1' } })).status, 403);
+    if (mode === 'built') assert.equal((await fetch(server.origin + '/%2e%2e%2fprivate', { headers: { 'x-doctorcre-release-reader': '1' } })).status, 400);
   });
 });
 

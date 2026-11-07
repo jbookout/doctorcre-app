@@ -8,9 +8,9 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { temporaryDirectory } from './temp-directory.mjs';
 
 export async function observe({ origin, recordings, document = globalThis.document }) {
-  const { mountFactReview } = await import(`${origin}/js/ui-facts.js`);
-  const { createLiveClient } = await import(`${origin}/js/live-client.js`);
-  const { FACT_TERMS } = await import(`${origin}/js/client.js`);
+  const { mountFactReview } = await import('/js/ui-facts.js');
+  const { createLiveClient } = await import('/js/live-client.js');
+  const { FACT_TERMS } = await import('/js/client.js');
   const assertions = [];
   const check = (value, name) => { if (!value) throw Error(name); assertions.push(name); };
   let current = recordings.initial, reads = 0, documentsRead = 0, writes = [], finishWrite;
@@ -231,7 +231,7 @@ export async function requireContainingRelease(commit, observed, { signal, cwd }
 export async function observeNaturalOnPage(page, origin) {
   const subject = await page.evaluate(async origin => {
     try {
-      const { createLiveClient } = await import(`${origin}/js/live-client.js`);
+      const { createLiveClient } = await import('/js/live-client.js');
       const board = await createLiveClient().getBoard({ workspace: 'all' });
       return board.deals?.[0]?.id || null;
     } catch { return null; }
@@ -241,7 +241,7 @@ export async function observeNaturalOnPage(page, origin) {
   await page.locator('[data-open-terms]').click();
   await page.locator('[data-status-filter]').waitFor();
   const result = await page.evaluate(async ({ origin, subject }) => {
-    const { createLiveClient } = await import(`${origin}/js/live-client.js`);
+    const { createLiveClient } = await import('/js/live-client.js');
     const client = createLiveClient(), items = [];
     let cursor;
     for (let pageNumber = 0; pageNumber < 100; pageNumber++) {

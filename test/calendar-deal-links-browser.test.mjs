@@ -20,10 +20,9 @@ test('Calendar opens each owning deal and Back restores the selected period and 
   const outDir = await temporaryDirectory('calendar-deal-links-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
-  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  t.after(() => server.close());
+  const origin = server.origin;
   const browser = await chromium.launch();
   t.after(() => browser.close());
 

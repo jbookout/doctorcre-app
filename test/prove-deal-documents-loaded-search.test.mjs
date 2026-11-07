@@ -1,9 +1,10 @@
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
-import { createServer } from './proof-fixture-server.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
@@ -12,30 +13,20 @@ import { proveLoadedSearch } from '../scripts/prove-deal-documents-loaded-search
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 test('loaded search proof executes admitted assets, fails assertions and refuses missing evidence', async t => {
   const artifact = temporaryDirectory('loaded-search-proof-', t);
-  await buildArtifact({ root: process.cwd(), outDir: artifact, commit: '1'.repeat(40) });
-  const assets = new Map();
-  async function admit(directory, prefix) {
-    for (const item of await readdir(directory, { withFileTypes: true })) {
-      if (item.isDirectory()) await admit(`${directory}/${item.name}`, `${prefix}/${item.name}`);
-      else if (item.name.endsWith('.js')) assets.set(`${prefix}/${item.name}`, await readFile(`${directory}/${item.name}`));
-    }
+  const built = await buildArtifact({ root: process.cwd(), outDir: artifact, commit: '1'.repeat(40) });
+  const assets = await loadFixtureAssets({ root: `${artifact}/site`, manifest: new Map(built.manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path])) });
+  async function snapshot(mode) {
+    const responses = new Map(assets);
+    responses.set('/app-release', { contentType: 'application/json', body: JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+    if (mode !== 'pass') responses.set('/js/ui-deal-documents.js', { contentType: 'text/javascript', body: mode === 'broken'
+      ? 'export function mountDealDocuments(){throw Error("Synthetic assertion failure")}' : 'await new Promise(()=>{});' });
+    const fixture = await startFixture({ routes: responses });
+    t.after(() => fixture.close());
+    return fixture;
   }
-  await admit(`${artifact}/site/js`, '/js');
-  let mode = 'pass';
-  const server = createServer((req, res) => {
-    if (req.url === '/app-release') { res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) })); }
-    if (!assets.has(req.url)) { res.writeHead(403); return res.end(); }
-    res.setHeader('content-type', 'text/javascript');
-    if (req.url === '/js/ui-deal-documents.js' && mode === 'broken') return res.end('export function mountDealDocuments(){throw Error("Synthetic assertion failure")}');
-    if (req.url === '/js/ui-deal-documents.js' && mode === 'stalled') return res.end('await new Promise(()=>{});');
-    res.end(assets.get(req.url));
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
   for (const [scenario, synthetic, expected] of [['pass', true, 0], ['broken', true, 1], ['pass', false, 78]]) {
     await t.test(`${scenario} synthetic=${synthetic} exit ${expected}`, async () => {
-      mode = scenario;
+      const fixture = await snapshot(scenario), origin = fixture.origin;
       const result = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['scripts/prove-deal-documents-loaded-search.mjs', '--origin', origin, ...(synthetic ? ['--synthetic-only'] : [])], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 40000 });
         let stdout = '', stderr = '';
@@ -43,6 +34,7 @@ test('loaded search proof executes admitted assets, fails assertions and refuses
         child.on('error', reject); child.on('close', code => resolve({ code, stdout, stderr }));
       });
       assert.equal(result.code, expected, result.stderr);
+      await fixture.close();
       if (scenario === 'pass') {
         const receipt = JSON.parse(result.stdout);
         assert.equal(receipt.observed.list_calls, 2);
@@ -54,7 +46,7 @@ test('loaded search proof executes admitted assets, fails assertions and refuses
   }
   for (const probe of ['stalled evaluation', 'late launch']) {
     await t.test(`${probe} exits 78 with zero owned survivors`, async () => {
-      mode = probe === 'stalled evaluation' ? 'stalled' : 'pass';
+      const fixture = await snapshot(probe === 'stalled evaluation' ? 'stalled' : 'pass'), origin = fixture.origin;
       let ownedServer, pid, acquired = false;
       const engine = { async launch(options) {
         ownedServer = await chromium.launchServer({ ...options, args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])], timeout: 10000 });
@@ -71,7 +63,7 @@ test('loaded search proof executes admitted assets, fails assertions and refuses
         assert.equal(failure?.exitCode, 78, failure?.message);
         assert.ok(acquired, 'probe acquired a real owned browser');
         assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
-      } finally { await ownedServer?.close(); }
+      } finally { await ownedServer?.close(); await fixture.close(); }
     });
   }
 });

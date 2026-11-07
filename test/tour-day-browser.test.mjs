@@ -3,50 +3,57 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { createServer } from "node:http";
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { fileURLToPath } from 'node:url';
 import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 import { receipt as mapReceipt } from "./fixtures/tour-map.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
 
-async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false, fixture = detail, basemap = false } = {}) {
+async function open(t, { width = 390, reducedMotion = "reduce", denied = false, fixture = detail, basemap = false } = {}) {
   const requests = [], errors = [], current = structuredClone(fixture);
   let actor = "joe", refuse = false, sessionFailure = null, shellFailure = false;
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url, "http://localhost"); requests.push({ path: url.pathname, method: request.method });
-    if (url.pathname === "/auth/signout") { refuse = true; response.writeHead(302, { location: '/' }); response.end(); return; }
-    if (url.pathname === "/auth/session") { response.setHeader('content-type', 'application/json'); response.writeHead(refuse ? 401 : 200); response.end(JSON.stringify(refuse ? {} : {actor:{slug:actor},csrf_token:`synthetic-${actor}`})); return; }
-    if (url.pathname === "/auth/login") { response.end('<title>Synthetic login</title>'); return; }
-    if (url.pathname.startsWith("/api/")) {
-      response.setHeader("content-type", "application/json");
-      if (refuse) { response.writeHead(401); response.end('{}'); return; }
-      if (url.pathname === '/api/system-work/session' && sessionFailure) {
-        if (sessionFailure === 'hang') return;
-        response.writeHead(sessionFailure); response.end('{}'); return;
-      }
-      response.end(JSON.stringify(['/api/system-work/session','/auth/session'].includes(url.pathname) ? { actor: { slug: actor }, csrf_token: `synthetic-${actor}` } : url.pathname === "/api/tours/detail" ? { data: current } : {})); return;
+  const assets = await appAssetSnapshot();
+  if (basemap) {
+    const source = await loadFixtureAssets({root:fileURLToPath(root),manifest:new Map([['/tours/day.js','tours/day.js']])});
+    const day = source.get('/tours/day.js');
+    assets.set('/tours/day.js', { ...day, body:day.body.toString().replace('mountTourDay({ document, window });',
+      'mountTourDay({ document, window, mapFactory: (root, options) => mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } }) });') });
+  }
+  const server = await startWorkerFixture({ assets, env: { CARR: { fetch: async request => {
+    const url = new URL(request.url);
+    if (url.pathname === '/auth/signout') { refuse = true; return new Response(null,{status:302,headers:{location:'/'}}); }
+    if (url.pathname === '/auth/session') return Response.json(refuse ? {} : {actor:{slug:actor},csrf_token:`synthetic-${actor}`},{status:refuse ? 401 : 200});
+    if (url.pathname === '/auth/login') return new Response('<title>Synthetic login</title>');
+    if (refuse) return Response.json({}, {status:401});
+    if (url.pathname === '/api/system-work/session' && sessionFailure) {
+      if (sessionFailure === 'hang') return new Promise((resolve,reject) => request.signal.addEventListener('abort',()=>reject(request.signal.reason),{once:true}));
+      return Response.json({}, {status:sessionFailure});
     }
-    try {
-      if (shellFailure && !url.pathname.endsWith('day-sw.js') && !url.pathname.endsWith('day-shell.generated.js')) { response.writeHead(503); response.end('Unavailable'); return; }
-      const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
-      if (file.includes("..")) throw new Error("invalid path");
-      response.setHeader("content-type", file.endsWith(".css") ? "text/css" : /\.m?js$/.test(file) ? "text/javascript" : "text/html");
-      if (workerHeaders) {
-        const secured = await handleDoctorcreRequest(new Request(`https://doctorcre.com${url.pathname}`), { CARR: { fetch: async () => new Response('synthetic gate') }, ASSETS: { fetch: async () => new Response('synthetic asset') } });
-        for (const header of ['content-security-policy', 'permissions-policy', 'x-content-type-options', 'cross-origin-opener-policy', 'cross-origin-resource-policy']) response.setHeader(header, secured.headers.get(header));
-      }
-      const content = await readFile(new URL(file, root));
-      response.end(basemap && file === 'tours/day.js' ? content.toString().replace('mountTourDay({ document, window });',
-        'mountTourDay({ document, window, mapFactory: (root, options) => mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } }) });') : content);
-    } catch { response.writeHead(404); response.end(); }
-  });
-  await new Promise(r => server.listen(0, "127.0.0.1", r));
-  const origin = `http://localhost:${server.address().port}`;
+    return Response.json(['/api/system-work/session','/auth/session'].includes(url.pathname)
+      ? {actor:{slug:actor},csrf_token:`synthetic-${actor}`} : url.pathname === '/api/tours/detail' ? {data:current} : {});
+  } } } });
+  t.after(() => server.close());
+  const origin = server.origin;
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  t.after(() => browser.close());
   const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion });
   const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message));
-  await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  context.on('request', request => {
+    const url = new URL(request.url());
+    if (url.origin === origin) requests.push({path:url.pathname,method:request.method()});
+  });
+  await context.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (shellFailure && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/auth/')
+      && !url.pathname.endsWith('day-sw.js') && !url.pathname.endsWith('day-shell.generated.js'))
+      return route.fulfill({status:503,body:'Unavailable'});
+    return route.continue();
+  });
   await context.addInitScript(() => {
     window.syntheticRecorders = [];
     window.syntheticRecordingErrors = [];
@@ -71,7 +78,6 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
     };
   });
   if (denied) await page.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("denied", "NotAllowedError"); }; });
-  t.after(async () => { await browser.close(); await new Promise(r => server.close(r)); });
   await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
   await page.waitForFunction(() => document.querySelector("#day-title").textContent === "Synthetic tour").catch(async error => { throw new Error(JSON.stringify({ errors, text: await page.locator("body").textContent(), requests }) + error.message); });
   await page.waitForFunction(() => !document.querySelector("#day-record").disabled);
@@ -338,7 +344,7 @@ function parityFixture() {
 
 test("accepted Tour keeps itinerary, numbered markers, next stop and phone handoff aligned across reload and reorder", async t => {
   for (const width of [1440, 390]) await t.test(String(width), async t => {
-    const { page, current, errors, requests } = await open(t, { width, fixture: parityFixture(), workerHeaders: true, basemap: true });
+    const { page, current, errors, requests } = await open(t, { width, fixture: parityFixture(), basemap: true });
     const first = "44444444-4444-4444-8444-444444444444", second = "66666666-6666-4666-8666-666666666666", unknown = "88888888-8888-4888-8888-888888888888";
     const names = { [first]: 'Demo waterfront office', [second]: 'Demo garden suites', [unknown]: 'Demo unlocated office' };
     const currentIs = async (id, coordinate) => {
