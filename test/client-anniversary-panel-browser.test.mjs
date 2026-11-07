@@ -22,7 +22,7 @@ test('pinned registered producer and parser replay every recording through app p
   const producer=await producerPromise;
   for(const [name,text] of Object.entries(source))assert.equal(createHash('sha256').update(text).digest('hex'),provenance.files[name]);
   for(const fixture of Object.values(fixtures)) {
-    const output=await producer.readClientAnniversaries({client:{query:async()=>{if(fixture.input===null)throw Error('synthetic');return {rows:fixture.input};}},actor:{slug:'joe'},args:{horizon_days:30,limit:20,offset:0},now:()=>new Date('2026-11-06T18:00:00Z')});
+    const output=await producer.readClientAnniversaries({client:{query:async()=>{if(fixture.input===null)throw Error('synthetic');return {rows:fixture.input};}},actor:{slug:'joe'},args:fixture.args??{horizon_days:30,limit:20,offset:0},now:()=>new Date('2026-11-06T18:00:00Z')});
     assert.deepEqual(output,fixture.output);
     producer.parseClientAnniversaryResponse(fixture.output);
     assert.equal(ui.parseClientAnniversaries(fixture.output).state,fixture.output.state);
@@ -67,7 +67,7 @@ for(const width of [390,1440])for(const theme of ['light','dark'])test(`keyboard
 });
 test('empty, unavailable, needs input and malformed data are distinct and explicitly retry',async t=>{
   const page=await open(t);
-  for(const [value,text] of [[fixtures.empty.output,'No closing anniversaries in this slice.'],[fixtures.unavailable.output,'Closing anniversaries are unavailable.'],[{...fixtures.unavailable.output,state:'needs_input'},'Closing anniversaries need input.'],[{},'Closing anniversaries could not be loaded. Try again.']]){
+  for(const [value,text] of [[fixtures.empty.output,'No closing anniversaries in this slice.'],[fixtures.unavailable.output,'Closing anniversaries are unavailable.'],[fixtures.needs_input.output,'Closing anniversaries need input.'],[{},'Closing anniversaries could not be loaded. Try again.']]){
     await page.getByRole('button',{name:'Show closing anniversaries'}).click();await complete(page,value);
     await page.getByText(text,{exact:true}).waitFor();
     if(!text.startsWith('No ')){

@@ -698,5 +698,29 @@
       },
       "next_offset": null
     }
+  },
+  "needs_input": {
+    "input": [],
+    "args": {
+      "horizon_days": 0
+    },
+    "output": {
+      "schema_version": "client-anniversary-read.v1",
+      "state": "needs_input",
+      "as_of": "2026-11-06",
+      "timezone": "America/Chicago",
+      "query": {
+        "horizon_days": 30,
+        "limit": 20,
+        "offset": 0
+      },
+      "rows": [],
+      "coverage": {
+        "scanned": 0,
+        "skipped_invalid": 0,
+        "complete": false
+      },
+      "next_offset": null
+    }
   }
 }
