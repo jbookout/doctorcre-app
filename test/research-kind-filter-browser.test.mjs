@@ -53,8 +53,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     assert.deepEqual(await selector.locator('option').allTextContents(), ['All finding kinds', ...kinds]);
     const calls = reads;
     await selector.focus();
+    await selector.press(kinds[0][0]);
     await selector.press('Tab');
-    await selector.selectOption(kinds[0]);
     const chosen = await selector.inputValue();
     assert.equal(chosen, kinds[0]);
     assert.deepEqual(await panel.locator('li').evaluateAll(nodes => nodes.map(n => n.dataset.flagId)), recording.detail.research.evidence.filter(e => e.kind === chosen).map(e => e.flag_id));
