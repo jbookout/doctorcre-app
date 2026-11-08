@@ -96,7 +96,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
           const card = parseDraft(payload, ref);
           if (card) { setState({ kind: 'ready', card, key: crypto.randomUUID(), phase: 'idle' }); return; }
           if (object(payload) && payload.schema_version === 'action-link-resolve.v2') {
-            // eslint-disable-next-line no-restricted-syntax -- Contract mismatches are terminal; no read or write retry is scheduled.
+            // eslint-disable-next-line no-restricted-syntax -- Contract mismatches only set terminal retry=false metadata; they schedule no read or write.
             setState({ kind: 'unavailable', message: 'The draft could not be opened.', retry: false }); return;
           }
         }
