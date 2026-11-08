@@ -13,6 +13,8 @@
   },
   "files": [
     "src/ui/central-time.ts",
-    "src/ui/action-link.tsx"
+    "src/ui/action-link.tsx",
+    "src/ui/home/routes.tsx",
+    "src/ui/home/home.tsx"
   ]
 }
