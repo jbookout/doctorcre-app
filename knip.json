@@ -258,7 +258,8 @@
     "src/ui/switcher-history.ts",
     "src/ui/workspace-layout.ts",
     "tests/staging/journey-flows.mjs",
-    "tests/walks/privacy.ts"
+    "tests/walks/privacy.ts",
+    "js/charts.js"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",
