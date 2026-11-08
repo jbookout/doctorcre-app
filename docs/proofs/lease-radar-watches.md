@@ -12,12 +12,17 @@ import { parseWatch, isWatchSubjectId } from './src/ui/watches/model.ts';
 import { watchSummary } from './src/ui/watches/radar-model.ts';
 const unavailable = message => Object.assign(Error(message), {exitCode:78});
 const [expectedCommit, lease] = process.argv.slice(2);
-const rpc = async (page, name, args) => page.evaluate(async ({name,args}) => {
-  const {createMcpRequests} = await import('/js/mcp-requests.mjs');
-  const result = await createMcpRequests()(name,args,{timeoutMs:5000});
-  if (result.kind !== 'payload' || result.isError) throw Error('Registered read unavailable');
+const rpc = async (page, name, args) => {
+  let result;
+  try {
+    result = await page.evaluate(async ({name,args}) => {
+      const {createMcpRequests} = await import('/js/mcp-requests.mjs');
+      return createMcpRequests()(name,args,{timeoutMs:5000});
+    }, {name,args});
+  } catch { throw unavailable('Registered read unavailable'); }
+  if (!result || result.kind !== 'payload' || result.isError) throw unavailable('Registered read unavailable');
   return result.payload;
-}, {name,args});
+};
 async function observe(page, origin) {
   if (!isWatchSubjectId(lease)) throw unavailable('Canonical due lease required');
   await page.goto(`${origin}/leases?mode=live&lease=${lease}`);
