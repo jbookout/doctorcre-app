@@ -5,6 +5,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { context as buildContext } from 'esbuild';
 import { scenario } from './browser-scenario.mjs';
 
 describe('test/home-sections-browser.test.mjs', () => {
@@ -214,6 +215,117 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
   await page.clock.fastForward(1000);
   await today.locator('[data-inbox-row]').waitFor({ state: 'detached' });
   assert.equal(await today.locator('[data-inbox-row]').count(), 0);
+});
+
+async function workingScenario(t, { count = 3, current, width = 1440, theme = 'light' } = {}) {
+  const compiler = await buildContext({ stdin: { contents: "export {fixtureInboxRpc} from './src/ui/home/fixture'; export {parseSnapshot} from './src/ui/home/inbox';", resolveDir: process.cwd() }, bundle: true, write: false, platform: 'node', format: 'esm' });
+  let compiled;
+  try { compiled = await compiler.rebuild(); } finally { await compiler.dispose(); }
+  const { fixtureInboxRpc, parseSnapshot } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
+  const original = parseSnapshot(await fixtureInboxRpc()('read-home-inbox-v5', {}));
+  const template = original.items.find(item => item.item_id === 'demo-working');
+  let snapshot = parseSnapshot({ ...original, items: [...original.items.filter(item => !['working', 'held', 'snoozed'].includes(item.section)), ...Array.from({ length: count }, (_, i) => ({ ...template, item_id: `working-${i}`, title: `Working card ${i}`, section: ['working', 'held', 'snoozed'][i % 3] }))] });
+  const run = await scenario(t, { root: join(outDir, 'site'), now: NOW, page: { viewport: { width, height: 900 } } });
+  const { page } = run;
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
+  const calls = [];
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/mcp', route => {
+    const { name } = route.request().postDataJSON().params;
+    calls.push(name);
+    const payload = name === 'read-home-inbox-v5' ? parseSnapshot(snapshot) : { items: [] };
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
+  });
+  await run.open(`/?mode=live${current ? `&card=${current}` : ''}`);
+  await page.getByRole('searchbox').waitFor();
+  const region = page.getByRole('region', { name: 'In motion and waiting', exact: true });
+  await region.getByRole('heading', { level: 2 }).waitFor();
+  return { ...run, region, calls, update: change => { snapshot = parseSnapshot(change(snapshot)); } };
+}
+
+for (const count of [0, 1, 3]) test(`working section closed with ${count} cards`, async t => {
+  const { region } = await workingScenario(t, { count });
+  assert.equal(await region.getByRole('heading', { level: 2 }).textContent(), `In motion and waiting ${count}`);
+  assert.equal(await region.locator('[data-inbox-row]').count(), 0);
+  assert.equal(await region.getByRole('button').count(), count ? 1 : 0);
+  if (!count) await region.getByText('Nothing here right now.', { exact: true }).waitFor();
+});
+
+test('single working card exposes a disclosure', async t => {
+  const { region } = await workingScenario(t, { count: 1 });
+  assert.equal(await region.getByRole('button', { name: 'See all 1', exact: true }).count(), 1);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`working disclosure keyboard search refresh remount ${width} ${theme}`, async t => {
+  const { page, region, calls, update } = await workingScenario(t, { width, theme });
+  const disclosure = region.getByRole('button', { name: /See all|Show less/ });
+  const ids = () => region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow));
+  assert.deepEqual(await ids(), []);
+  await disclosure.focus();
+  const reads = () => calls.filter(name => /home-inbox|one-action|home-waiting/.test(name));
+  const before = [...reads()];
+  await page.keyboard.press('Enter');
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(await ids(), ['working-0', 'working-1', 'working-2']);
+  assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+  await page.screenshot({ path: `/tmp/WR617.S1.J60-open-${width}-${theme}.png`, fullPage: true });
+  await page.keyboard.press('Space');
+  assert.deepEqual(await ids(), []);
+  assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(reads(), before);
+  await page.screenshot({ path: `/tmp/WR617.S1.J60-closed-${width}-${theme}.png`, fullPage: true });
+  const search = page.getByRole('searchbox');
+  await search.fill('Working card 1');
+  assert.equal(await region.getByRole('heading', { level: 2 }).textContent(), 'In motion and waiting 1');
+  assert.deepEqual(await ids(), []);
+  await disclosure.click();
+  assert.deepEqual(await ids(), ['working-1']);
+  await page.getByRole('search').getByRole('button', { name: 'Clear', exact: true }).click();
+  assert.deepEqual(await ids(), ['working-0', 'working-1', 'working-2']);
+  await search.fill('Working card 1');
+  await disclosure.click();
+  await page.getByRole('search').getByRole('button', { name: 'Clear', exact: true }).click();
+  assert.deepEqual(await ids(), []);
+  await disclosure.click();
+  update(snapshot => ({ ...snapshot, items: snapshot.items.filter(item => item.item_id !== 'working-2') }));
+  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+  await region.getByRole('heading', { name: 'In motion and waiting 2', exact: true }).waitFor();
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(await ids(), ['working-0', 'working-1']);
+  await page.addScriptTag({ content: axe.source });
+  assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.reload();
+  await disclosure.waitFor();
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  await disclosure.click();
+  await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+  assert.equal(await disclosure.count(), 0);
+});
+
+test('closed working section preserves selected card without first preview', async t => {
+  const { page, region } = await workingScenario(t, { current: 'working-1' });
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), ['working-1']);
+  await page.getByRole('searchbox').fill('unmatched');
+  await region.getByText('Pinned outside search', { exact: true }).waitFor();
+  assert.equal(await region.locator('[data-inbox-row]').count(), 1);
+  await region.getByRole('button', { name: 'See all 1', exact: true }).click();
+  await region.getByRole('button', { name: 'Show less', exact: true }).click();
+  assert.equal(await region.locator('[data-inbox-row="working-1"]').count(), 1);
+});
+
+test('closed working refresh moves attention and resolved cards', async t => {
+  const { page, region, update } = await workingScenario(t);
+  update(snapshot => ({ ...snapshot, items: snapshot.items.map(item => item.item_id === 'working-0' ? { ...item, section: 'inbox', source_state: 'needs_attention', due_on: null } : item.item_id === 'working-1' ? { ...item, section: 'settled', disposition: 'settled', source_state: 'done', auto_settled: true } : item) }));
+  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+  await page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('button', { name: /^See all/ }).click();
+  await page.getByRole('region', { name: 'Needs your attention', exact: true }).locator('[data-inbox-row="working-0"]').waitFor();
+  await page.getByRole('region', { name: 'Earlier and undated completions', exact: true }).getByRole('button', { name: /^See all/ }).click();
+  await page.getByRole('region', { name: 'Earlier and undated completions', exact: true }).locator('[data-inbox-row="working-1"]').waitFor();
+  assert.equal(await region.locator('[data-inbox-row]').count(), 0);
+  assert.equal(await region.getByRole('button').getAttribute('aria-expanded'), 'false');
 });
 
 });

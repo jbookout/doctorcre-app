@@ -17,10 +17,10 @@ export function completionLabel(item: InboxItem) {
   return `Done ${completionFormat.format(new Date(item.completed_at))}`;
 }
 
-function Slice({ title, detail, items, current, row }: { title: string; detail: string; items: readonly InboxItem[]; current: string | undefined; row: (item: InboxItem) => ReactNode }) {
+function Slice({ title, detail, items, current, row, display = 'preview' }: { title: string; detail: string; items: readonly InboxItem[]; current: string | undefined; row: (item: InboxItem) => ReactNode; display?: 'preview' | 'collapsed-working' }) {
   const [expanded, expand] = useState(false);
-  const shown = expanded ? items : items.filter((item, index) => index === 0 || item.item_id === current);
-  return <section className="home-slice" aria-label={title}><header><div><h2 tabIndex={-1}>{title} <span>{items.length}</span></h2><p>{detail}</p></div>{items.length > 1 && <button type="button" aria-expanded={expanded} onClick={() => expand(!expanded)}>{expanded ? 'Show less' : `See all ${items.length}`}</button>}</header>{items.length ? shown.map(row) : <p className="home-slice-empty">Nothing here right now.</p>}</section>;
+  const shown = expanded ? items : items.filter((item, index) => (display === 'preview' && index === 0) || item.item_id === current);
+  return <section className="home-slice" aria-label={title}><header><div><h2 tabIndex={-1}>{title} <span>{items.length}</span></h2><p>{detail}</p></div>{(items.length > 1 || (display === 'collapsed-working' && items.length > 0)) && <button type="button" aria-expanded={expanded} onClick={() => expand(!expanded)}>{expanded ? 'Show less' : `See all ${items.length}`}</button>}</header>{items.length ? shown.map(row) : <p className="home-slice-empty">Nothing here right now.</p>}</section>;
 }
 
 export function HomeWelcome() {
@@ -64,7 +64,7 @@ export function HomeSections({ items: loaded, pinned, current, search, locked, c
     {overdueItems.length > 0 && <Slice title="Overdue" detail="Your tasks dated before today." items={overdueItems} current={current} row={renderRow} />}
     <Slice title="Needs your attention" detail="One thing at a time. Review, act, move on." items={items.filter(item => placement(item).section === 'inbox' && !dueToday(item) && !overdue(item))} current={current} row={renderRow} />
     <Slice title="Today" detail="Your tasks dated today." items={items.filter(dueToday)} current={current} row={renderRow} />
-    <Slice title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(placement(item).section))} current={current} row={renderRow} />
+    <Slice display="collapsed-working" title="In motion and waiting" detail="Work in progress, on hold, or snoozed." items={items.filter(item => ['working', 'held', 'snoozed'].includes(placement(item).section))} current={current} row={renderRow} />
     <Slice title="Done today" detail="Completed today in Chicago, with a recorded completion time." items={completed.today.map(done => items.find(item => item.item_id === done.item_id) ?? done)} current={current} row={renderRow} />
     <Slice title="Earlier and undated completions" detail="Completed before today, or without a recorded completion time." items={completed.earlier.map(done => items.find(item => item.item_id === done.item_id) ?? done)} current={current} row={renderRow} />
     <Slice title="Hidden from inbox" detail="Set aside by you. These tasks may still be open." items={items.filter(item => placement(item).section === 'settled' && !placement(item).auto_settled)} current={current} row={renderRow} />
