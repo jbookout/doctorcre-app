@@ -4,12 +4,14 @@ import { createWatchClient, type WatchClient } from "./client.ts";
 import { defaultPolicy, isWatchSubjectId, type Policy, type Subject, type Watch } from "./model.ts";
 import { PolicyEditor } from "./policy-editor.tsx";
 
+export { mountRadarWatches } from "./radar.ts";
+
 type Command = {
   verb: string;
   args: Subject & { idempotency_key: string; subscription_id?: string; base_version?: number; policy?: Policy };
 };
 type Phase = "loading" | "ready" | "saving" | "unknown" | "unavailable" | "retired";
-function WatchControl({ subject, client }: { subject: Subject; client: WatchClient }) {
+export function WatchControl({ subject, client }: { subject: Subject; client: WatchClient }) {
   const opened = useRef(false);
   const [watch, setWatch] = useState<Watch | null | undefined>();
   const [phase, setPhase] = useState<Phase>("loading");
@@ -58,6 +60,7 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
         return;
       }
       confirmedWatch.current = outcome.watch;
+      window.dispatchEvent(new Event("doctorcre-watch-confirmed"));
       setWatch(outcome.watch);
       setPhase("ready");
       if (!edited.current && outcome.watch) {
