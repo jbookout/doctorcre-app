@@ -199,3 +199,14 @@ test('a local helper named proof-browser cannot bypass transport policy', async 
 test('asynchronous read-only git ancestry remains admissible', () => {
   assert.deepEqual(checkProofSource("import { execFile } from 'node:child_process'; execFile('git', ['merge-base', '--is-ancestor', required, released], { signal }, error => {});"), []);
 });
+
+for (const helper of [false, true]) test(`TypeScript proof transport is refused, helper=${helper}`, async t => {
+  const root = temporaryDirectory('proof-typescript-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-regression.ts', helper
+    ? "import { read } from './helper.ts'; await read();"
+    : "await fetch('/synthetic');");
+  if (helper) await writeFile(root + '/scripts/helper.ts', "export const read = () => fetch('/synthetic');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('fetch')), errors.join('\n'));
+});
