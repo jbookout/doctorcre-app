@@ -4,7 +4,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const invalid = (): never => {
   throw Error("Watch response unavailable");
 };
-const uuid = (value: unknown): value is string =>
+export const isWatchSubjectId = (value: unknown): value is string =>
   typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const version = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
@@ -61,10 +61,10 @@ function parseSingle(value: unknown, subject: Subject) {
       "baseline",
       "subscribed_at",
     ]) ||
-    !uuid(value.id) ||
-    !uuid(value.actor_id) ||
+    !isWatchSubjectId(value.id) ||
+    !isWatchSubjectId(value.actor_id) ||
     value.subject_id !== subject.subject_id ||
-    !uuid(value.subject_id) ||
+    !isWatchSubjectId(value.subject_id) ||
     value.subject_type !== subject.subject_type ||
     !version(value.lifecycle_version) ||
     typeof value.subscribed_at !== "string" ||
@@ -112,7 +112,7 @@ export function parseWatch(value: unknown, subject: Subject): Watch | null {
     !("watch" in value) ||
     "watches" in value ||
     ("has_more" in value && typeof value.has_more !== "boolean") ||
-    ("next_cursor" in value && value.next_cursor !== null && !uuid(value.next_cursor)) ||
+    ("next_cursor" in value && value.next_cursor !== null && !isWatchSubjectId(value.next_cursor)) ||
     ("rows_changed" in value &&
       (typeof value.rows_changed !== "number" ||
         !Number.isInteger(value.rows_changed) ||

@@ -54,7 +54,7 @@ jobs:
       - name: Run synthetic files once with native Node shards
         run: |
           mkdir -p out/browser-results
-          node --test --test-shard=${{ matrix.shard }}/4 --test-concurrency=2 --test-timeout=180000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=out/browser-results/junit.xml test/*.test.mjs
+          node --test --test-shard=${{ matrix.shard }}/4 --test-concurrency=2 --test-timeout=180000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=out/browser-results/junit.xml test/*.test.mjs test/*.browser.ts
       - name: Require critical scenarios in their native shard
         if: ${{ always() }}
         run: python3 scripts/browser-results.py out/browser-results/junit.xml --shard ${{ matrix.shard }}

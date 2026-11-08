@@ -253,6 +253,7 @@
     "tours/day.js",
     "tours/planner.js",
     "test/*.test.ts",
+    "test/*.browser.ts",
     "src/ui/home/inbox.tsx",
     "src/ui/home/sections.tsx",
     "src/ui/switcher-history.ts",

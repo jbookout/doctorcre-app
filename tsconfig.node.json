@@ -14,7 +14,7 @@
     "test/typescript-gate-contract.test.ts",
     "test/watch-parser.test.ts",
     "test/watch-client.test.ts",
-    "test/watch-controls-browser.test.ts",
+    "test/watch-controls.browser.ts",
     "test/browser-harness.d.mts",
     "scripts/ui-bundle.d.mts",
     "test/fixtures/watches/producer-schema.ts",

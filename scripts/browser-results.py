@@ -72,7 +72,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     try:
         add_failure_locations(args.input, Path.cwd())
-        verify(args.input, sorted(str(p) for p in Path('test').glob('*.test.mjs')), args.shard)
+        verify(args.input, sorted(str(p) for p in [*Path('test').glob('*.test.mjs'), *Path('test').glob('*.browser.ts')]), args.shard)
     except (OSError, ValueError, ET.ParseError) as error:
         print(error, file=sys.stderr)
         sys.exit(1)

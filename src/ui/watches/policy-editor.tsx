@@ -13,10 +13,10 @@ export function PolicyEditor({
   disabled: boolean;
 }) {
   return (
-    <fieldset disabled={disabled}>
-      <legend>Watch policy draft</legend>
+    <fieldset className="watch-editor" disabled={disabled}>
+      <legend>Watch settings</legend>
       {(["reply_arrived", "lease_threshold_crossed"] as const).map((kind) => (
-        <label key={kind} style={{ display: "block" }}>
+        <label key={kind} className="watch-option">
           <input
             type="checkbox"
             checked={policy.change_kinds.includes(kind)}
@@ -29,20 +29,21 @@ export function PolicyEditor({
               })
             }
           />
-          {kind === "reply_arrived" ? "Replies arriving" : "Lease thresholds"}
+          {kind === "reply_arrived" ? "Replies to this record" : "Lease date reminders"}
         </label>
       ))}
-      <label style={{ display: "block" }}>
+      <label className="watch-option">
         <input
           type="checkbox"
           checked={policy.include_self_changes}
           onChange={(event) => onChange({ ...policy, include_self_changes: event.target.checked })}
         />
-        Include my changes
+        Include changes I make
       </label>
+      <p className="watch-detail">Replies covers new replies. Lease reminders covers approaching lease dates.</p>
       {policy.change_kinds.includes("lease_threshold_crossed") && (
-        <label>
-          Days before lease threshold
+        <label className="watch-days">
+          Days before the lease date (comma-separated)
           <input
             aria-label="Lease threshold days"
             value={days}

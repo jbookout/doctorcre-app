@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createWatchClient, type WatchClient } from "./client.ts";
-import { defaultPolicy, type Policy, type Subject, type Watch } from "./model.ts";
+import { defaultPolicy, isWatchSubjectId, type Policy, type Subject, type Watch } from "./model.ts";
 import { PolicyEditor } from "./policy-editor.tsx";
 
 type Command = {
@@ -10,6 +10,7 @@ type Command = {
 };
 type Phase = "loading" | "ready" | "saving" | "unknown" | "unavailable" | "retired";
 function WatchControl({ subject, client }: { subject: Subject; client: WatchClient }) {
+  const opened = useRef(false);
   const [watch, setWatch] = useState<Watch | null | undefined>();
   const [phase, setPhase] = useState<Phase>("loading");
   const [policy, setPolicy] = useState<Policy>(() => defaultPolicy(subject));
@@ -17,6 +18,7 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
   const [message, setMessage] = useState("");
   const pending = useRef<Command | null>(null);
   const edited = useRef(false);
+  const confirmedWatch = useRef<Watch | null>(null);
   const lifetime = useRef({ retired: false, sequence: 0, controller: new AbortController() });
   const retire = useCallback(() => {
     lifetime.current.retired = true;
@@ -44,6 +46,18 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
         setMessage("Watch state unavailable. Previous confirmation may be out of date.");
         return;
       }
+      const previous = confirmedWatch.current;
+      if (
+        previous &&
+        outcome.watch &&
+        previous.id === outcome.watch.id &&
+        outcome.watch.lifecycle_version < previous.lifecycle_version
+      ) {
+        setPhase("unavailable");
+        setMessage("Watch read is stale. Previous confirmation is kept. Refresh before making changes.");
+        return;
+      }
+      confirmedWatch.current = outcome.watch;
       setWatch(outcome.watch);
       setPhase("ready");
       if (!edited.current && outcome.watch) {
@@ -59,14 +73,13 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
     [client, subject, retire],
   );
   useEffect(() => {
-    void read();
     window.addEventListener("doctorcre-session-invalidated", retire);
     return () => {
       window.removeEventListener("doctorcre-session-invalidated", retire);
       lifetime.current.retired = true;
       lifetime.current.controller.abort();
     };
-  }, [read, retire]);
+  }, [retire]);
   const submit = async (verb?: string) => {
     const life = lifetime.current;
     if (life.retired || phase === "saving" || phase === "loading") return;
@@ -102,7 +115,7 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
     }
     const command = pending.current;
     setPhase("saving");
-    setMessage("Waiting for CARR to confirm.");
+    setMessage("Saving watch.");
     const outcome = await client(command.verb, command.args, life.controller.signal);
     if (life.retired) return;
     if (outcome.kind === "denied") {
@@ -123,7 +136,6 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
       edited.current = false;
       setPolicy(command.args.policy);
     }
-    setWatch(outcome.watch);
     await read();
   };
   const busy = phase !== "ready";
@@ -136,18 +148,23 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
           ? "Watch paused"
           : "Watching";
   return (
-    <details>
+    <details
+      className="watch-control"
+      onToggle={(event) => {
+        if (event.currentTarget.open && !opened.current) {
+          opened.current = true;
+          void read();
+        }
+      }}
+    >
       <summary>
         {subject.subject_type === "deal" ? "Deal" : "Lease"} watch settings · {confirmed}
       </summary>
-      <section
-        aria-label={`${subject.subject_type === "deal" ? "Deal" : "Lease"} watch`}
-        style={{ maxWidth: "100%", minWidth: 0, padding: "12px", overflowWrap: "anywhere" }}
-      >
+      <section aria-label={`${subject.subject_type === "deal" ? "Deal" : "Lease"} watch`} className="watch-panel">
         <h3>{confirmed}</h3>
         {watch && phase !== "retired" && (
           <section aria-label="Confirmed watch policy">
-            <p>
+            <p className="watch-detail">
               Last confirmed version {watch.lifecycle_version}.{" "}
               {watch.policy.include_self_changes ? "Includes" : "Excludes"} my changes.
             </p>
@@ -157,12 +174,14 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
                   (kind) =>
                     ({
                       reply_arrived: "Replies arriving",
-                      lease_threshold_crossed: "Lease thresholds",
+                      lease_threshold_crossed: "Lease date reminders",
                       listing_status_changed: "Listing status changes",
                     })[kind],
                 )
                 .join(", ")}
-              {watch.policy.lease_threshold_days ? ` · ${watch.policy.lease_threshold_days.join(", ")} days` : ""}
+              {watch.policy.lease_threshold_days
+                ? ` · ${watch.policy.lease_threshold_days.join(", ")} days before the lease date`
+                : ""}
             </p>
           </section>
         )}
@@ -182,7 +201,7 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
               }}
               disabled={phase === "saving" || phase === "unknown" || phase === "loading"}
             />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+            <div className="watch-actions">
               {watch && watch.state !== "removed" ? (
                 <>
                   <button
@@ -194,20 +213,30 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
                   >
                     {watch.state === "paused" ? "Resume watch" : "Pause watch"}
                   </button>
-                  <button type="button" disabled={busy} onClick={() => void submit("replace-subject-watch-policy-v2")}>
-                    Save watch policy
+                  <button
+                    className="watch-primary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submit("replace-subject-watch-policy-v2")}
+                  >
+                    Save settings
                   </button>
                   <button type="button" disabled={busy} onClick={() => void submit("unwatch-subject-v2")}>
                     Remove watch
                   </button>
                 </>
               ) : (
-                <button type="button" disabled={busy} onClick={() => void submit("watch-subject-v2")}>
+                <button
+                  className="watch-primary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void submit("watch-subject-v2")}
+                >
                   Start watch
                 </button>
               )}
               {phase === "unknown" ? (
-                <button type="button" onClick={() => void submit()}>
+                <button className="watch-primary" type="button" onClick={() => void submit()}>
                   Retry same watch request
                 </button>
               ) : (
@@ -226,6 +255,7 @@ export function mountWatchControl(
   host: HTMLElement,
   { subject, client = createWatchClient() }: { subject: Subject; client?: WatchClient },
 ) {
+  if (!isWatchSubjectId(subject.subject_id)) return { dispose() {} };
   const root = createRoot(host);
   root.render(<WatchControl subject={subject} client={client} />);
   return {
