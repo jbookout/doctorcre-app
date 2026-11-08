@@ -40,9 +40,9 @@
   "reply": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "1690f6dd010437242b42971b494732a519027ee0",
+      "source_commit": "5f7ad0c1c96cb2aef3c57bc014282b58c2b130c7",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3073",
-      "pin_status": "Final head, producer PR open at implementation start"
+      "pin_status": "Merged producer PR 3073; contract and fixture bytes match the final builder head"
     },
     "response_contract": "action-link-resolve.v2.json",
     "fixture": "test/fixtures/action-link-reply.v2.json",
