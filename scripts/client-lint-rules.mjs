@@ -120,7 +120,7 @@ const restrictions = [
 export class ClientLint {
   constructor(options = {}) { this.options = options; }
   async isPathIgnored(path) {
-    return isUiAsset(path) || path === 'tours/day-shell.generated.js' || /\/vendor\/maplibre-gl-6\.4\.1\//.test(path) || /\.d\.[cm]?ts$/.test(path);
+    return isUiAsset(path) || path === 'tours/day-shell.generated.js' || /(^|\/)vendor\//.test(path) || /\.d\.[cm]?ts$/.test(path);
   }
   async lintText(source, { filePath }) {
     if (await this.isPathIgnored(filePath)) return [];
@@ -168,12 +168,14 @@ export class ClientLint {
         let disabled = false;
         for (const comment of comments) {
           const directive = comment.value.split(/\s--\s/, 1)[0];
-          if (!/eslint-(?:disable|enable)/.test(directive)) continue;
-          if (!/no-restricted-syntax/.test(directive) && !/^\s*eslint-(?:disable|enable)(?:-next-line|-line)?\s*$/.test(directive)) continue;
-          if (/eslint-disable-next-line/.test(directive) && comment.loc.end.line + 1 === node.loc.start.line) return true;
-          if (/eslint-disable-line/.test(directive) && comment.loc.start.line === node.loc.start.line) return true;
-          if (/eslint-disable\s/.test(directive) && comment.end < node.start) disabled = true;
-          if (/eslint-enable/.test(directive) && comment.end < node.start) disabled = false;
+          const match = directive.match(/^\s*(eslint-disable(?:-next-line|-line)?|eslint-enable)(?:\s+(.*?))?\s*$/);
+          if (!match) continue;
+          const names = (match[2] || '').split(/[\s,]+/).filter(Boolean);
+          if (names.length && !names.includes('no-restricted-syntax')) continue;
+          if (match[1] === 'eslint-disable-next-line' && comment.loc.end.line + 1 === node.loc.start.line) return true;
+          if (match[1] === 'eslint-disable-line' && comment.loc.start.line === node.loc.start.line) return true;
+          if (match[1] === 'eslint-disable' && comment.end < node.start) disabled = true;
+          if (match[1] === 'eslint-enable' && comment.end < node.start) disabled = false;
         }
         return disabled;
       };

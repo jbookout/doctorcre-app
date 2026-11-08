@@ -259,7 +259,8 @@
     "src/ui/workspace-layout.ts",
     "tests/staging/journey-flows.mjs",
     "tests/walks/privacy.ts",
-    "js/charts.js"
+    "js/charts.js",
+    "tours/vendor/tour-map-route-state.js"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",

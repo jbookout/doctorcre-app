@@ -215,3 +215,15 @@ test('every placeholder is rejected anywhere and keywords do not count as explan
     assert.equal(report.messages[0].ruleId, 'client/bounded-exemption');
   }
 });
+
+test('only canonical directives can exempt restricted syntax', () => {
+  const reason = 'cleared on dispose; one pending timer per panel';
+  for (const comment of [
+    `// docs: eslint-disable-next-line no-restricted-syntax -- ${reason}`,
+    `/* docs: eslint-disable no-restricted-syntax -- ${reason} */`,
+    `// eslint-disable-next-line not-no-restricted-syntax -- ${reason}`,
+  ]) assert.equal(lint(`${comment}\nsetTimeout(work, 1);`).status, 1, comment);
+  const result = lint(`/* eslint-disable no-restricted-syntax -- ${reason} */\nsetTimeout(work, 1);\n/* eslint-enable no-restricted-syntax */\nsetTimeout(work, 1);`);
+  assert.equal(result.status, 1);
+  assert.deepEqual(JSON.parse(result.stdout)[0].messages.map(message => message.line), [4]);
+});

@@ -21,13 +21,13 @@
 //
 // Nothing here calls a provider, a verb or the network.
 
-const MAP_MODES = Object.freeze(["search", "tour"]);
-const MAP_EVENT_TYPES = Object.freeze([
+export const MAP_MODES = Object.freeze(["search", "tour"]);
+export const MAP_EVENT_TYPES = Object.freeze([
   "feature_click", "bounds_change", "draw_result", "filter_state", "slider_state",
   "selected_record", "route_stop_change", "mode_change",
 ]);
-const NAV_PLATFORMS = Object.freeze(["apple_maps", "google_maps"]);
-const NAV_TRAVEL_MODES = Object.freeze(["driving", "walking"]);
+export const NAV_PLATFORMS = Object.freeze(["apple_maps", "google_maps"]);
+export const NAV_TRAVEL_MODES = Object.freeze(["driving", "walking"]);
 const NAVIGABLE_ROLES = Object.freeze(["entrance", "driveway", "parking_access"]);
 const NAVIGABLE_PRECISION = Object.freeze(["entrance", "surveyed"]);
 const RETURN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -48,7 +48,7 @@ const REQUIRED_CHECKS = Object.freeze([
 ]);
 const EVIDENCE_FIELDS = Object.freeze(["mobile_test_evidence", "native_navigation_test_evidence", "offline_test_evidence"]);
 
-class RouteStateError extends Error {
+export class RouteStateError extends Error {
   constructor(code, message, detail) {
     super(`${code}: ${message}`);
     this.name = "RouteStateError";
@@ -101,7 +101,7 @@ function clone(value, path) {
 }
 
 /** Decide how a pin may be shown and whether it may drive native navigation. */
-function classifyPin(position) {
+export function classifyPin(position) {
   if (!position || typeof position !== "object") {
     return { navigable: false, display: "unknown", precision_label: "Location unknown",
       reason: "No coordinate on record. Add or approve an entrance, driveway or parking access point." };
@@ -222,7 +222,7 @@ function stopById(state, id) {
 }
 
 /** Reduced-motion aware camera plan. No essential explanation is animation-only. */
-function cameraPlan({ prefersReducedMotion = false } = {}) {
+export function cameraPlan({ prefersReducedMotion = false } = {}) {
   return prefersReducedMotion
     ? { animate: false, duration_ms: 0, method: "jumpTo" }
     : { animate: true, duration_ms: 600, method: "flyTo" };
@@ -258,7 +258,7 @@ function receiptProblem(state, receipt) {
  * row, the card, the HTML and buildNativeNavLink all read it, so they cannot
  * disagree about whether Navigate is enabled or why it is not.
  */
-function handoffEligibility(state, stop, { promotion_receipt = null, user_ref = null } = {}) {
+export function handoffEligibility(state, stop, { promotion_receipt = null, user_ref = null } = {}) {
   const pin = classifyPin(stop.position);
   if (!pin.navigable) return { available: false, reason_code: "pin_not_entrance_approved", reason: pin.reason };
   const problem = receiptProblem(state, promotion_receipt);
@@ -374,7 +374,58 @@ const tuple = item => JSON.stringify([item.route_sequence, item.route_stop_id, i
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Prove every surface agrees on order, identity, selection and navigation; name any that does not. */
-
+export function checkParity(projection) {
+  const divergences = [];
+  const flag = (surface, expected, actual) => divergences.push({ surface, expected, actual });
+  const reference = projection.markers.map(tuple);
+  for (const surface of ["list", "story_sections", "offline_itinerary"]) {
+    const seen = projection[surface].map(tuple);
+    if (!same(seen, reference)) flag(surface, reference, seen);
+  }
+  const sequences = projection.markers.map(item => item.route_sequence);
+  if (sequences.some((value, index) => index > 0 && value <= sequences[index - 1])) {
+    flag("markers", "strictly ascending route_sequence", sequences);
+  }
+  // Fields the list repeats from the markers.
+  for (const field of ["selected", "current", "display"]) {
+    const a = projection.markers.map(item => item[field]);
+    const b = projection.list.map(item => item[field]);
+    if (!same(a, b)) flag(`list.${field}`, a, b);
+  }
+  const active = projection.story_sections.map(item => item.active);
+  const current = projection.markers.map(item => item.current);
+  if (!same(active, current)) flag("story_sections.active", current, active);
+  for (const [field, fromList] of [["title", projection.list], ["title", projection.story_sections]]) {
+    const a = projection.offline_itinerary.map(item => item[field]);
+    const b = fromList.map(item => item[field]);
+    if (!same(a, b)) flag(`${field} across surfaces`, a, b);
+  }
+  if (!same(projection.offline_itinerary.map(item => item.appointment), projection.list.map(item => item.appointment))) {
+    flag("appointment", projection.list.map(item => item.appointment), projection.offline_itinerary.map(item => item.appointment));
+  }
+  // The card must be the selected stop, and only the selected stop.
+  const selected = projection.markers.filter(item => item.selected);
+  if (selected.length > 1) flag("markers.selected", "at most one", selected.length);
+  if (selected.length === 1 && !projection.card) flag("card", "a card for the selected stop", null);
+  if (selected.length === 0 && projection.card) flag("card", "no card without a selected stop", projection.card.route_stop_id);
+  if (projection.card && selected.length === 1) {
+    const marker = selected[0];
+    const row = projection.list.find(item => item.route_stop_id === projection.card.route_stop_id);
+    const wanted = [marker.route_sequence, marker.route_stop_id, marker.property_id, marker.label];
+    const got = [projection.card.route_sequence, projection.card.route_stop_id, projection.card.property_id, projection.card.label];
+    if (!same(wanted, got)) flag("card", wanted, got);
+    if (!row) {
+      flag("card", "a matching list row", null);
+    } else {
+      if (projection.card.title !== row.title) flag("card.title", row.title, projection.card.title);
+      if (!same(projection.card.native_navigation, row.native_navigation)) {
+        flag("card.native_navigation", row.native_navigation, projection.card.native_navigation);
+      }
+      if (!same(projection.card.appointment, row.appointment)) flag("card.appointment", row.appointment, projection.card.appointment);
+    }
+  }
+  return { ok: divergences.length === 0, divergences };
+}
 
 function assertBounds(bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4) fail("invalid_bounds", "bounds must be [west,south,east,north]");
@@ -484,7 +535,60 @@ export function reduceMapEvent(state, event) {
 }
 
 /** Move to a new route version, keeping identity-keyed state and recording the mapping. */
-
+export function applyRouteVersion(state, route) {
+  const next = buildRouteVersionState(route, { mode: state.mode });
+  if (next.tour_id !== state.tour_id) fail("tour_mismatch", "a route version cannot change tour");
+  if (next.route_version <= state.route_version) {
+    fail("stale_route_version", "the new route version must be greater than the current one");
+  }
+  const oldByProperty = new Map(state.route.stops.map(stop => [stop.property_id, stop]));
+  const newByProperty = new Map(next.route.stops.map(stop => [stop.property_id, stop]));
+  const mapping = [];
+  for (const old of state.route.stops) {
+    const now = newByProperty.get(old.property_id);
+    mapping.push({
+      old_route_version: state.route_version, new_route_version: next.route_version, property_id: old.property_id,
+      old_route_stop_id: old.route_stop_id, new_route_stop_id: now ? now.route_stop_id : null,
+      old_route_sequence: old.route_sequence, new_route_sequence: now ? now.route_sequence : null,
+      old_route_label: old.route_label, new_route_label: now ? now.route_label : null,
+      disposition: !now ? "removed"
+        : now.route_sequence === old.route_sequence && now.route_label === old.route_label ? "unchanged" : "resequenced",
+    });
+  }
+  for (const now of next.route.stops) {
+    if (!oldByProperty.has(now.property_id)) {
+      mapping.push({
+        old_route_version: state.route_version, new_route_version: next.route_version, property_id: now.property_id,
+        old_route_stop_id: null, new_route_stop_id: now.route_stop_id,
+        old_route_sequence: null, new_route_sequence: now.route_sequence,
+        old_route_label: null, new_route_label: now.route_label, disposition: "added",
+      });
+    }
+  }
+  const carried = {
+    ...next,
+    selected_property_id: newByProperty.has(state.selected_property_id) ? state.selected_property_id : null,
+    current_route_stop_id: null,
+    camera: structuredClone(state.camera),
+    filters: structuredClone(state.filters),
+    sliders: structuredClone(state.sliders),
+    drawn_geometry: structuredClone(state.drawn_geometry),
+    version_mapping: mapping,
+    lineage: [...structuredClone(state.lineage ?? []), {
+      tour_id: state.tour_id,
+      from_route_version: state.route_version, to_route_version: next.route_version,
+      from_projection_id: state.projection_id, to_projection_id: next.projection_id,
+      from_route_version_id: state.route_version_id, to_route_version_id: next.route_version_id,
+      mapping: structuredClone(mapping),
+    }],
+  };
+  const previousCurrent = state.current_route_stop_id
+    ? state.route.stops.find(stop => stop.route_stop_id === state.current_route_stop_id) : null;
+  if (previousCurrent && newByProperty.has(previousCurrent.property_id)) {
+    carried.current_route_stop_id = newByProperty.get(previousCurrent.property_id).route_stop_id;
+  }
+  return { state: carried, mapping };
+}
 
 /** Build a native navigation link, or withhold it with a reason and an offline fallback. */
 export function buildNativeNavLink(state, request) {
@@ -556,7 +660,6 @@ export function resolveReturn(state, marker, { now, user_ref = null } = {}) {
   let note = null;
   if (marker.route_version < state.route_version) {
     let version = marker.route_version;
-    // eslint-disable-next-line no-restricted-syntax -- advances one recorded lineage version until the current route version
     while (version < state.route_version) {
       const steps = (state.lineage ?? []).filter(item => item.tour_id === state.tour_id
         && item.from_route_version === version && item.from_projection_id === projectionId
@@ -593,6 +696,27 @@ const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&
 const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ESCAPES[char]);
 
 /** Tile-free ordered list. Usable when the map fails to load or tiles are offline. */
-
+export function renderOrderedListHtml(projection) {
+  const items = projection.list.map(item => {
+    const offline = projection.offline_itinerary.find(entry => entry.route_stop_id === item.route_stop_id);
+    const notice = item.display === "verified" ? "" : ` <span class="tour-pin-note">${esc(item.precision_label)}</span>`;
+    const when = item.appointment
+      ? ` <span class="tour-appointment">Appointment ${esc(item.appointment.start)} to ${esc(item.appointment.end)}</span>` : "";
+    const nav = item.native_navigation.available ? ""
+      : ` <span class="tour-nav-withheld">Navigation not available: ${esc(item.native_navigation.reason)}</span>`;
+    return `<li data-route-stop-id="${esc(item.route_stop_id)}"${item.current ? ' aria-current="step"' : ""}>`
+      + `<strong>${esc(item.label)}</strong> ${esc(item.title)}`
+      + (offline && offline.address_line ? `, ${esc(offline.address_line)}` : "")
+      + ` <span class="tour-durations">${esc(item.dwell_minutes ?? "unknown")} min dwell; ${esc(item.buffer_minutes ?? "unknown")} min buffer</span>`
+      + notice + when + nav + "</li>";
+  });
+  return `<ol class="tour-stop-list" aria-label="Tour stops in visit order">${items.join("")}</ol>`;
+}
 
 /** Start and end assumptions for the same ordered list, kept out of the stop count. */
+export function renderRouteEndpointsHtml(projection) {
+  const { start_point: start, end_point: end } = projection.route_endpoints;
+  const part = (name, point) => (point
+    ? `<dt>${name}</dt><dd>${esc(point.label ?? point.source_ref ?? "Unnamed point")} (${esc(point.latitude)}, ${esc(point.longitude)})</dd>` : "");
+  return `<dl class="tour-route-endpoints">${part("Start", start)}${part("End", end)}</dl>`;
+}
