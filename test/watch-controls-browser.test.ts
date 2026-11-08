@@ -71,6 +71,7 @@ test("built Deal Room and lease detail mount controls for the exact record", asy
         );
         await page.goto(`${server.url}/leases?lease=${originalWatch.subject_id}`);
       }
+      await page.locator("summary").filter({ hasText: "watch settings" }).click();
       const panel = page.getByRole("region", { name: kind === "deal" ? "Deal watch" : "Lease watch", exact: true });
       await panel.getByRole("heading", { name: "Watching", exact: true }).waitFor();
       await panel.getByRole("button", { name: "Pause watch", exact: true }).waitFor();
@@ -190,6 +191,7 @@ for (const kind of ["deal", "lease"] as const)
       if (!host) throw Error("Host missing");
       Object.assign(window, { control: mountWatchControl(host, { subject }) });
     }, subject);
+    await page.locator("summary").filter({ hasText: "watch settings" }).click();
     await page.getByRole("heading", { name: "Not watching", exact: true }).waitFor();
     mode = "slow";
     const held = waitHeld();

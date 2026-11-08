@@ -136,76 +136,90 @@ function WatchControl({ subject, client }: { subject: Subject; client: WatchClie
           ? "Watch paused"
           : "Watching";
   return (
-    <section
-      aria-label={`${subject.subject_type === "deal" ? "Deal" : "Lease"} watch`}
-      style={{ maxWidth: "100%", minWidth: 0, padding: "12px", overflowWrap: "anywhere" }}
-    >
-      <h3>{confirmed}</h3>
-      {watch && phase !== "retired" && (
-        <section aria-label="Confirmed watch policy">
-          <p>
-            Last confirmed version {watch.lifecycle_version}.{" "}
-            {watch.policy.include_self_changes ? "Includes" : "Excludes"} my changes.
-          </p>
-          <p>
-            {watch.policy.change_kinds.join(", ")}
-            {watch.policy.lease_threshold_days ? ` · ${watch.policy.lease_threshold_days.join(", ")} days` : ""}
-          </p>
-        </section>
-      )}
-      <p role="status">{message || (phase === "loading" ? "Reading current watch state…" : "")}</p>
-      {phase !== "retired" && (
-        <>
-          <PolicyEditor
-            policy={policy}
-            days={days}
-            onDays={(value) => {
-              edited.current = true;
-              setDays(value);
-            }}
-            onChange={(value) => {
-              edited.current = true;
-              setPolicy(value);
-            }}
-            disabled={phase === "saving" || phase === "unknown" || phase === "loading"}
-          />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
-            {watch && watch.state !== "removed" ? (
-              <>
-                <button
-                  disabled={busy}
-                  type="button"
-                  onClick={() =>
-                    void submit(watch.state === "paused" ? "resume-subject-watch-v2" : "pause-subject-watch-v2")
-                  }
-                >
-                  {watch.state === "paused" ? "Resume watch" : "Pause watch"}
+    <details>
+      <summary>
+        {subject.subject_type === "deal" ? "Deal" : "Lease"} watch settings · {confirmed}
+      </summary>
+      <section
+        aria-label={`${subject.subject_type === "deal" ? "Deal" : "Lease"} watch`}
+        style={{ maxWidth: "100%", minWidth: 0, padding: "12px", overflowWrap: "anywhere" }}
+      >
+        <h3>{confirmed}</h3>
+        {watch && phase !== "retired" && (
+          <section aria-label="Confirmed watch policy">
+            <p>
+              Last confirmed version {watch.lifecycle_version}.{" "}
+              {watch.policy.include_self_changes ? "Includes" : "Excludes"} my changes.
+            </p>
+            <p>
+              {watch.policy.change_kinds
+                .map(
+                  (kind) =>
+                    ({
+                      reply_arrived: "Replies arriving",
+                      lease_threshold_crossed: "Lease thresholds",
+                      listing_status_changed: "Listing status changes",
+                    })[kind],
+                )
+                .join(", ")}
+              {watch.policy.lease_threshold_days ? ` · ${watch.policy.lease_threshold_days.join(", ")} days` : ""}
+            </p>
+          </section>
+        )}
+        <p role="status">{message || (phase === "loading" ? "Reading current watch state…" : "")}</p>
+        {phase !== "retired" && (
+          <>
+            <PolicyEditor
+              policy={policy}
+              days={days}
+              onDays={(value) => {
+                edited.current = true;
+                setDays(value);
+              }}
+              onChange={(value) => {
+                edited.current = true;
+                setPolicy(value);
+              }}
+              disabled={phase === "saving" || phase === "unknown" || phase === "loading"}
+            />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+              {watch && watch.state !== "removed" ? (
+                <>
+                  <button
+                    disabled={busy}
+                    type="button"
+                    onClick={() =>
+                      void submit(watch.state === "paused" ? "resume-subject-watch-v2" : "pause-subject-watch-v2")
+                    }
+                  >
+                    {watch.state === "paused" ? "Resume watch" : "Pause watch"}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => void submit("replace-subject-watch-policy-v2")}>
+                    Save watch policy
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => void submit("unwatch-subject-v2")}>
+                    Remove watch
+                  </button>
+                </>
+              ) : (
+                <button type="button" disabled={busy} onClick={() => void submit("watch-subject-v2")}>
+                  Start watch
                 </button>
-                <button type="button" disabled={busy} onClick={() => void submit("replace-subject-watch-policy-v2")}>
-                  Save watch policy
+              )}
+              {phase === "unknown" ? (
+                <button type="button" onClick={() => void submit()}>
+                  Retry same watch request
                 </button>
-                <button type="button" disabled={busy} onClick={() => void submit("unwatch-subject-v2")}>
-                  Remove watch
+              ) : (
+                <button type="button" disabled={phase === "loading" || phase === "saving"} onClick={() => void read()}>
+                  Refresh watch
                 </button>
-              </>
-            ) : (
-              <button type="button" disabled={busy} onClick={() => void submit("watch-subject-v2")}>
-                Start watch
-              </button>
-            )}
-            {phase === "unknown" ? (
-              <button type="button" onClick={() => void submit()}>
-                Retry same watch request
-              </button>
-            ) : (
-              <button type="button" disabled={phase === "loading" || phase === "saving"} onClick={() => void read()}>
-                Refresh watch
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </section>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+    </details>
   );
 }
 export function mountWatchControl(
