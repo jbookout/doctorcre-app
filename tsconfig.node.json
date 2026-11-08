@@ -11,11 +11,15 @@
     "tests/live/producer-contract.d.mts",
     "test/central-time.test.ts",
     "scripts/check-typescript.ts",
-    "test/typescript-gate-contract.test.ts"
+    "test/typescript-gate-contract.test.ts",
+    "scripts/prove-reply-action-link.ts",
+    "test/prove-reply-action-link.test.ts"
   ],
   "compilerOptions": {
     "lib": [
-      "esnext"
+      "esnext",
+      "DOM",
+      "DOM.Iterable"
     ]
   }
 }

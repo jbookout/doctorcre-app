@@ -12,6 +12,7 @@
     "jsx": "react-jsx"
   },
   "files": [
-    "src/ui/central-time.ts"
+    "src/ui/central-time.ts",
+    "src/ui/action-link.tsx"
   ]
 }
