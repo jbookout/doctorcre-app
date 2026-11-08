@@ -136,6 +136,7 @@ test('literal field matching preserves canonical slices and excludes source payl
     const more = region.getByRole('button', { name: /^See all/ });
     if (await more.count()) await more.click();
   }
+  assert.equal(await page.getByRole('region', { name: 'In motion and waiting', exact: true }).getByRole('button', { name: 'Show less', exact: true }).getAttribute('aria-expanded'), 'true');
   const placements = () => page.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => [row.dataset.inboxRow, row.closest('.home-slice').getAttribute('aria-label')]));
   const before = await placements();
   await search.fill('Task');
