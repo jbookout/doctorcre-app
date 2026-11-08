@@ -4,6 +4,7 @@ import { parseSync, traverse } from '@babel/core';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import { stripTypeScriptTypes } from 'node:module';
 
 const networkModules = /^(?:node:)?(?:https?|http2|net|tls|dgram|dns|undici)(?:\/|$)|^(?:axios|got|node-fetch|ws)$/;
 const controlledImports = new Map([
@@ -11,22 +12,29 @@ const controlledImports = new Map([
   ['playwright-core', ['chromium']], ['@playwright/test', ['chromium']],
 ]);
 
+function parseProofSource(source, filename) {
+  if (filename.endsWith('.ts')) {
+    try { source = stripTypeScriptTypes(source, { mode: 'strip', sourceUrl: filename }); }
+    catch (error) { throw new Error(`Node TypeScript stripping refused: ${error.message}`, { cause: error }); }
+  }
+  return parseSync(source, { sourceType: 'module', configFile: false, babelrc: false });
+}
+
 export function checkProofSource(source, filename = 'proof.mjs') {
   const errors = [];
   const fail = (node, reason) => errors.push(`${filename}:${node.loc?.start.line || 1}: ${reason}`);
   let ast;
-  try { ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false, parserOpts: { plugins: ['typescript'] } }); }
+  try { ast = parseProofSource(source, filename); }
   catch (error) { return [`${filename}: ${error.message}`]; }
   const subprocessNames = new Set();
   for (const node of ast.program.body) if (node.type === 'ImportDeclaration' && node.source.value.replace(/^node:/, '') === 'child_process') for (const specifier of node.specifiers) subprocessNames.add(specifier.local.name);
   function visit(node, parent) {
     if (!node || typeof node !== 'object') return;
-    if (node.type === 'ImportDeclaration' && node.importKind !== 'type') {
+    if (node.type === 'ImportDeclaration') {
       const module = node.source.value.replace(/^node:/, '');
       if (networkModules.test(module)) fail(node, `network module must use shared reader ${module}`);
       const allowed = controlledImports.get(module);
       if (allowed) for (const specifier of node.specifiers) {
-        if (specifier.importKind === 'type') continue;
         const name = specifier.type === 'ImportDefaultSpecifier' ? 'default' : specifier.imported?.name;
         if (!allowed.includes(name)) fail(node, `undeclared network capability ${module} ${name || '*'}`);
       }
@@ -102,11 +110,11 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
     const filename = url.href.slice(root.href.length);
     errors.push(...checkProofSource(source, filename.replace(/^scripts\//, '')));
     if (depth === 0) return;
-    const ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false, parserOpts: { plugins: ['typescript'] } });
+    let ast;
+    try { ast = parseProofSource(source, filename); }
+    catch { return; }
     for (const node of ast.program.body) {
       if (!['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type)) continue;
-      if (node.importKind === 'type' || node.exportKind === 'type') continue;
-      if (node.type === 'ImportDeclaration' && node.specifiers.length && node.specifiers.every(specifier => specifier.importKind === 'type')) continue;
       if (node.source?.value.startsWith('.')) await inspect(new URL(node.source.value, url), depth - 1);
     }
   }
