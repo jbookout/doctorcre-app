@@ -70,6 +70,11 @@ test('borrowed CDP closes late acquired tab before disconnect without touching e
  assert.equal(order.at(-1),'disconnect');assert.ok(order.indexOf('tab')<order.indexOf('disconnect'));
 });
 
+test('closed CDP page acquisition refuses as insufficient evidence',async()=>{
+ const adapter=await signedInReplyEngine('http://127.0.0.1:9222',{connectOverCDP:async()=>({contexts:()=>[{newPage:async()=>{throw Error('context closed');}}],close:async()=>{}})}).launch({timeout:1000});
+ try{await assert.rejects(adapter.newPage(),{exitCode:78});}finally{await adapter.close();}
+});
+
 test('reply CLI fixture pass and near miss fail; real CDP late page leaves existing tabs intact',async()=>{
  const server=await fixture();
  const browser=await chromium.launch({headless:true,args:[...CHROMIUM_SAFETY_ARGS,'--remote-debugging-port=0','--enable-automation']});

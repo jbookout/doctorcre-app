@@ -20,7 +20,7 @@ export function signedInReplyEngine(endpoint, engine = chromium) {
       async newPage() {
         const context = connection.contexts()[0];
         if (!context) throw insufficient('Signed-in context unavailable');
-        const pending = context.newPage().then(async page => { if (closing) await page.close(); return page; });
+        const pending = context.newPage().then(async page => { if (closing) await page.close(); return page; }, () => { throw insufficient('Signed-in page unavailable'); });
         acquisitions.push(pending);
         return pending;
       },
@@ -87,8 +87,10 @@ export async function prove({ origin, commit, ref, proposalId, foreignRef, timeo
     assert.equal(await page.locator('[data-draft-cc]').textContent(), `CC: ${independent.cc.join(', ')}`);
     stage = 'foreign refusal';
     await page.goto(`${origin}/a/${foreignRef}?mode=live`);
-    await page.getByText('This draft is unavailable for your account.', { exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector('#actionLink') && !document.querySelector('#actionLink').textContent.includes('Opening draft'));
+    if (await page.getByText('Sign in to open this draft', { exact: true }).count()) throw insufficient('Partner session expired');
     assert.equal(await page.locator('[data-proposal-id], .action-link-message').count(), 0, 'foreign reference exposes no private review');
+    assert.equal(await page.locator('#actionLink [role="status"]').textContent(), 'This draft is unavailable for your account.', 'exact foreign refusal');
     assert.equal(await page.getByRole('button', { name: 'Submit reply for sending', exact: true }).count(), 0);
     assert.equal(violation, undefined);
     assert.deepEqual(await readAppRelease(origin, get), release, 'stable containing release');
