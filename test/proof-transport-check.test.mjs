@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { checkProofSource, checkProofTransports } from '../scripts/proof-transport-check.mjs';
+import { checkProofSource, checkProofTransports, proofRunners } from '../scripts/proof-transport-check.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from '../scripts/app-release-reader.mjs';
 
 const exec = promisify(execFile);
-const runners = (await readdir(new URL('../scripts/', import.meta.url))).filter(name => /^prove-.*\.mjs$/.test(name) && name !== 'prove-loop-lint-coverage.mjs');
+const runners = (await proofRunners()).filter(name => name !== 'prove-loop-lint-coverage.mjs');
 
 test('every production proof obeys the transport allowlist', async () => {
   assert.deepEqual(await checkProofTransports(), []);
@@ -54,7 +54,8 @@ for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${
   for (const runner of runners) {
     await t.test(runner, async () => {
       const args = [`scripts/${runner}`, '--origin', origin];
-      if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs', 'prove-territory-evidence-current-history-view.mjs'].includes(runner)) args.push('--commit', '1'.repeat(40));
+      if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs', 'prove-territory-evidence-current-history-view.mjs', 'prove-reply-action-link.ts'].includes(runner)) args.push('--commit', '1'.repeat(40));
+      if (runner === 'prove-reply-action-link.ts') args.push('--ref', 'synthetic', '--proposal-id', 'synthetic', '--foreign-ref', 'synthetic-foreign');
       args.push('--timeout-ms', '3000');
       await assert.rejects(exec(process.execPath, args, { timeout: 15000 }), error => {
         assert.equal(error.code, 78, `${runner}: ${error.stdout} ${error.stderr}`);
@@ -209,4 +210,9 @@ for (const helper of [false, true]) test(`TypeScript proof transport is refused,
   if (helper) await writeFile(root + '/scripts/helper.ts', "export const read = () => fetch('/synthetic');");
   const errors = await checkProofTransports(pathToFileURL(root + '/'));
   assert.ok(errors.some(error => error.includes('fetch')), errors.join('\n'));
+});
+
+test('TypeScript type imports declare no runtime capability', () => {
+  assert.deepEqual(checkProofSource("import type { Page } from 'playwright'; import { type Locator, chromium } from 'playwright';", 'prove-types.ts'), []);
+  assert.ok(checkProofSource("import { Page } from 'playwright';", 'prove-types.ts').length);
 });
