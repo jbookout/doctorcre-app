@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { checkProofSource, checkProofTransports } from '../scripts/proof-transport-check.mjs';
+import { checkProofSource, checkProofTransports, proofRunners } from '../scripts/proof-transport-check.mjs';
 import { launchProofBrowser, readAppRelease, proofFetch } from '../scripts/app-release-reader.mjs';
 
 const exec = promisify(execFile);
-const runners = (await readdir(new URL('../scripts/', import.meta.url))).filter(name => /^prove-.*\.mjs$/.test(name) && name !== 'prove-loop-lint-coverage.mjs');
+const runners = (await proofRunners()).filter(name => name !== 'prove-loop-lint-coverage.mjs');
 
 test('every production proof obeys the transport allowlist', async () => {
   assert.deepEqual(await checkProofTransports(), []);
@@ -54,7 +54,8 @@ for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${
   for (const runner of runners) {
     await t.test(runner, async () => {
       const args = [`scripts/${runner}`, '--origin', origin];
-      if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs', 'prove-territory-evidence-current-history-view.mjs'].includes(runner)) args.push('--commit', '1'.repeat(40));
+      if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs', 'prove-territory-evidence-current-history-view.mjs', 'prove-reply-action-link.ts'].includes(runner)) args.push('--commit', '1'.repeat(40));
+      if (runner === 'prove-reply-action-link.ts') args.push('--ref', 'synthetic', '--proposal-id', 'synthetic', '--foreign-ref', 'synthetic-foreign');
       args.push('--timeout-ms', '3000');
       await assert.rejects(exec(process.execPath, args, { timeout: 15000 }), error => {
         assert.equal(error.code, 78, `${runner}: ${error.stdout} ${error.stderr}`);
@@ -198,4 +199,66 @@ test('a local helper named proof-browser cannot bypass transport policy', async 
 
 test('asynchronous read-only git ancestry remains admissible', () => {
   assert.deepEqual(checkProofSource("import { execFile } from 'node:child_process'; execFile('git', ['merge-base', '--is-ancestor', required, released], { signal }, error => {});"), []);
+});
+
+for (const helper of [false, true]) test(`TypeScript proof transport is refused, helper=${helper}`, async t => {
+  const root = temporaryDirectory('proof-typescript-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-regression.ts', helper
+    ? "import { read } from './helper.ts'; await read();"
+    : "await fetch('/synthetic');");
+  if (helper) await writeFile(root + '/scripts/helper.ts', "export const read = () => fetch('/synthetic');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('fetch')), errors.join('\n'));
+});
+
+test('TypeScript type imports declare no runtime capability', () => {
+  assert.deepEqual(checkProofSource("import type { Page } from 'playwright'; import { type Locator, chromium } from 'playwright';", 'prove-types.ts'), []);
+  assert.ok(checkProofSource("import { Page } from 'playwright';", 'prove-types.ts').length);
+});
+
+for (const declaration of [
+  "import type { Options } from './helper.ts';",
+  "export type { Options } from './helper.ts';",
+]) test(`erased TypeScript edge is not traversed: ${declaration}`, async t => {
+  const root = temporaryDirectory('proof-type-edge-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', declaration);
+  await writeFile(root + '/scripts/helper.ts', "export type Options = { label: string }; export type Other = string; export const unusedRead = () => fetch('/synthetic');");
+  assert.deepEqual(await checkProofTransports(pathToFileURL(root + '/')), []);
+});
+
+test('mixed TypeScript import retains its runtime helper edge', async t => {
+  const root = temporaryDirectory('proof-mixed-edge-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', "import { type Options, read } from './helper.ts';");
+  await writeFile(root + '/scripts/helper.ts', "export type Options = { label: string }; export const read = () => fetch('/synthetic');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('helper.ts:1:') && error.includes('(fetch)')), errors.join('\n'));
+});
+
+for (const declaration of [
+  "import { type Options, type Other } from './helper.ts';",
+  "import {\n type Options,\n type Other\n} from './helper.ts';",
+]) test(`inline type import executes its helper: ${declaration}`, async t => {
+  const root = temporaryDirectory('proof-inline-types-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', declaration);
+  await writeFile(root + '/scripts/helper.ts', "export type Options = string; export type Other = string; await fetch('/synthetic');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('helper.ts:1:') && error.includes('(fetch)')), errors.join('\n'));
+});
+
+test('Node erasure removes commented type imports and transport names in type declarations', () => {
+  assert.deepEqual(checkProofSource("import /* erased */ type { Page } from 'playwright'; export /* erased */ type { Page } from 'playwright'; type Transport = { fetch: () => void };", 'prove-types.ts'), []);
+});
+
+for (const syntax of ['enum Mode { Read }', 'namespace Mode { export const read = 1; }']) test(`unsupported Node strip syntax is refused: ${syntax}`, async t => {
+  assert.match(checkProofSource(syntax, 'prove-types.ts').join('\n'), /Node TypeScript stripping refused/);
+  const root = temporaryDirectory('proof-unsupported-types-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', "import './helper.ts';");
+  await writeFile(root + '/scripts/helper.ts', syntax);
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.match(errors.join('\n'), /helper.ts: Node TypeScript stripping refused/);
 });

@@ -106,3 +106,25 @@ test('idle approval keeps its button through session checks; background refusal 
   assert.equal(await page.getByText(payload.card.subject,{exact:true}).count(),0);
  }finally{await page?.unrouteAll({behavior:'ignoreErrors'});await browser.close();await server.close();}
 });
+
+test('recorded reply action link renders exact review and session retirement clears it without writing',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const reply=JSON.parse(await readFile(new URL('./fixtures/action-link-reply.v2.json',import.meta.url)));
+ const server=await fixtureServer(),browser=await chromium.launch({headless:true,args:['--use-mock-keychain','--password-store=basic']});
+ let page;
+ try{
+  page=await browser.newPage({viewport:{width:390,height:900}});let writes=0;
+  await page.route('**/auth/session',route=>route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-csrf'}}));
+  await page.route('**/mcp',route=>{const rpc=route.request().postDataJSON();if(rpc.params.name==='submit-email-draft')writes++;return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(rpc.params.name==='resolve-action-link'?reply:{})}]}}});});
+  await page.goto(`${server.origin}/a/${reply.ref}?mode=live`);
+  await page.getByRole('heading',{name:'Review reply draft',exact:true}).waitFor();
+  assert.equal(await page.locator('[data-proposal-id]').getAttribute('data-proposal-id'),reply.card.id);
+  assert.equal(await page.locator('[data-draft-subject]').textContent(),reply.card.subject);
+  assert.equal(await page.locator('[data-draft-to]').textContent(),`To: ${reply.card.to[0]}`);
+  assert.equal(await page.locator('[data-draft-cc]').textContent(),`CC: ${reply.card.cc[0]}`);
+  assert.equal(writes,0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:'/tmp/wr617-j97-reply-review.png',fullPage:true});
+  await page.evaluate(()=>window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('#actionLink').textContent(),'');assert.equal(writes,0);
+ }finally{await page?.unrouteAll({behavior:'ignoreErrors'});await browser.close();await server.close();}
+});

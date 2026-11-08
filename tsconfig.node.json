@@ -12,6 +12,14 @@
     "test/central-time.test.ts",
     "scripts/check-typescript.ts",
     "test/typescript-gate-contract.test.ts",
+    "scripts/prove-reply-action-link.ts",
+    "test/prove-reply-action-link.browser.ts",
+    "scripts/containing-release.ts",
+    "test/containing-release.test.ts",
+    "scripts/app-release-reader.d.mts",
+    "scripts/chromium-safety-args.d.mts",
+    "scripts/fixture-app-assets.d.mts",
+    "scripts/fixture-http.d.mts",
     "test/watch-parser.test.ts",
     "test/watch-client.test.ts",
     "test/watch-controls.browser.ts",
@@ -25,7 +33,8 @@
   "compilerOptions": {
     "lib": [
       "esnext",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ]
   }
 }

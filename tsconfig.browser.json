@@ -13,6 +13,7 @@
   },
   "files": [
     "src/ui/central-time.ts",
+    "src/ui/action-link.tsx",
     "src/ui/watches/control.tsx",
     "src/ui/watches/client.ts",
     "src/ui/watches/model.ts",

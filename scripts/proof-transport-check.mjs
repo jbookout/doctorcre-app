@@ -4,6 +4,7 @@ import { parseSync, traverse } from '@babel/core';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import { stripTypeScriptTypes } from 'node:module';
 
 const networkModules = /^(?:node:)?(?:https?|http2|net|tls|dgram|dns|undici)(?:\/|$)|^(?:axios|got|node-fetch|ws)$/;
 const controlledImports = new Map([
@@ -11,11 +12,19 @@ const controlledImports = new Map([
   ['playwright-core', ['chromium']], ['@playwright/test', ['chromium']],
 ]);
 
+function parseProofSource(source, filename) {
+  if (filename.endsWith('.ts')) {
+    try { source = stripTypeScriptTypes(source, { mode: 'strip', sourceUrl: filename }); }
+    catch (error) { throw new Error(`Node TypeScript stripping refused: ${error.message}`, { cause: error }); }
+  }
+  return parseSync(source, { sourceType: 'module', configFile: false, babelrc: false });
+}
+
 export function checkProofSource(source, filename = 'proof.mjs') {
   const errors = [];
   const fail = (node, reason) => errors.push(`${filename}:${node.loc?.start.line || 1}: ${reason}`);
   let ast;
-  try { ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false }); }
+  try { ast = parseProofSource(source, filename); }
   catch (error) { return [`${filename}: ${error.message}`]; }
   const subprocessNames = new Set();
   for (const node of ast.program.body) if (node.type === 'ImportDeclaration' && node.source.value.replace(/^node:/, '') === 'child_process') for (const specifier of node.specifiers) subprocessNames.add(specifier.local.name);
@@ -84,6 +93,10 @@ export function checkProofSource(source, filename = 'proof.mjs') {
   return [...new Set(errors)];
 }
 
+export async function proofRunners(root = new URL('../', import.meta.url)) {
+  return (await readdir(new URL('scripts/', root))).filter(name => /^prove-.*\.(?:mjs|ts)$/.test(name));
+}
+
 export async function checkProofTransports(root = new URL('../', import.meta.url)) {
   const scripts = new URL('scripts/', root);
   const errors = [];
@@ -97,13 +110,15 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
     const filename = url.href.slice(root.href.length);
     errors.push(...checkProofSource(source, filename.replace(/^scripts\//, '')));
     if (depth === 0) return;
-    const ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false });
+    let ast;
+    try { ast = parseProofSource(source, filename); }
+    catch { return; }
     for (const node of ast.program.body) {
       if (!['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type)) continue;
       if (node.source?.value.startsWith('.')) await inspect(new URL(node.source.value, url), depth - 1);
     }
   }
-  for (const file of (await readdir(scripts)).filter(name => /^prove-.*\.mjs$/.test(name))) {
+  for (const file of await proofRunners(root)) {
     if (file === 'prove-loop-lint-coverage.mjs') {
       const source = await readFile(new URL(file, scripts));
       if (createHash('sha256').update(source).digest('hex') !== '95cbfc129bd562eb2c4fb68c26bca75bbaf3f05c94844a9c2b37fadba1ac338a') errors.push(`${file}: historical lint test changed; re-review its capabilities`);

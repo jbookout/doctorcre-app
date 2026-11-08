@@ -1,4 +1,5 @@
-import { execFile } from 'node:child_process';
+import { requireContainingRelease } from './containing-release.ts';
+export { requireContainingRelease } from './containing-release.ts';
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
@@ -222,11 +223,6 @@ export function signedInEngine(endpoint, engine = chromium) {
   } };
 }
 
-export async function requireContainingRelease(commit, observed, { signal, cwd } = {}) {
-  if (commit === observed) return;
-  try { await new Promise((resolve, reject) => execFile('git', ['merge-base', '--is-ancestor', commit, observed], { signal, cwd }, error => error ? reject(error) : resolve())); }
-  catch { throw Object.assign(Error('Containing release evidence unavailable'), { exitCode: 78 }); }
-}
 
 export async function observeNaturalOnPage(page, origin) {
   const subject = await page.evaluate(async origin => {
