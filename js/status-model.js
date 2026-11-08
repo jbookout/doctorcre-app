@@ -23,11 +23,11 @@ export const REFUSAL_SENTENCE = "Temporarily unavailable";
 
 /** The app's own read of itself, stated alongside the four record-layer reads. */
 export const APP_READ_ID = "app";
-export const APP_READ_LABEL = "app";
-export const APP_REFUSAL_SENTENCE = "the app did not answer";
+const APP_READ_LABEL = "app";
+const APP_REFUSAL_SENTENCE = "the app did not answer";
 
 export const SNAPSHOT_KEY = "doctorcre.status-snapshot.v1";
-export const SNAPSHOT_SCHEMA = "doctorcre-status-snapshot.v1";
+const SNAPSHOT_SCHEMA = "doctorcre-status-snapshot.v1";
 
 /** The only keys a stored read may carry. Anything else is a payload leak. */
 export const SNAPSHOT_READ_KEYS = Object.freeze(["id", "state", "observed_at", "reason", "coverage_word"]);
@@ -56,7 +56,7 @@ const answered = (read) => read?.state === "read";
  * that answered keeps its clock; a read that did not carries the app's own
  * fixed sentence and nothing the record layer wrote.
  */
-export function sanitizeReads(reads) {
+function sanitizeReads(reads) {
   const source = reads && typeof reads === "object" ? reads : {};
   const out = {};
   for (const id of READS) {

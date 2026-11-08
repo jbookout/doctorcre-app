@@ -1,7 +1,7 @@
 const RECENT_MS = 24 * 60 * 60 * 1000;
 const LIVE_MS = 10 * 60 * 1000;
 
-export function timeOf(turn) {
+function timeOf(turn) {
   const value = Date.parse(turn?.at || "");
   return Number.isFinite(value) ? value : 0;
 }

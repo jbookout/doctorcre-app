@@ -225,7 +225,7 @@ const KIND_WORDS = Object.freeze({
 });
 
 /** How a record describes itself in the popup, in words rather than a slug. */
-export function taskKindWords(loop, viewer = null) {
+function taskKindWords(loop, viewer = null) {
   const owner = String(loop?.owner || "").toLowerCase();
   const self = String(viewer || "").toLowerCase();
   if (loop?.kind === "team_loop") {
@@ -299,7 +299,7 @@ export function stableKey(text) {
  * Empty and duplicate names are dropped, and the list is capped so a long board
  * cannot turn one keystroke into a thousand name scans.
  */
-export const QUICK_ADD_RECORD_CAP = 200;
+const QUICK_ADD_RECORD_CAP = 200;
 
 export function quickAddRecords(rows, cap = QUICK_ADD_RECORD_CAP) {
   const records = [];

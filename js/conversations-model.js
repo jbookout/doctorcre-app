@@ -34,7 +34,7 @@ import { docRequestTarget } from "./routes.js";
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
 
-export { REFUSAL_SENTENCE };
+
 
 /* --------------------------------------------------------------- the sentences */
 
@@ -63,13 +63,13 @@ export const EXPOSURE_STATEMENT =
   "";
 
 /** The refusals this page raises before anything is sent. */
-export const VERSION_REFUSAL =
+const VERSION_REFUSAL =
   "Conversation updating. Changes are not ready yet.";
-export const NO_CHANGE_REFUSAL =
+const NO_CHANGE_REFUSAL =
   "A rename has to change the title, the pin or the archive state. Nothing was sent.";
-export const ID_REFUSAL =
+const ID_REFUSAL =
   "Conversation unavailable. Nothing changed.";
-export const TITLE_REFUSAL =
+const TITLE_REFUSAL =
   "A conversation needs a title of 1 to 200 characters. Nothing was sent.";
 
 /** The two partner slugs this workspace has. The page invents no third. */
@@ -244,7 +244,7 @@ export function shareCandidates(payload, slugs = PARTNER_SLUGS) {
 /* -------------------------------------------------------------------- the list */
 
 /** `list-doc-conversations`' own shape: the rows, the paging, the scalar. */
-export function validDocConversationListPayload(payload) {
+function validDocConversationListPayload(payload) {
   if (!payload || typeof payload !== "object") return false;
   return Array.isArray(payload.conversations);
 }

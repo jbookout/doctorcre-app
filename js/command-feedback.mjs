@@ -434,7 +434,7 @@ function receiptAction(view) {
 }
 
 /** One receipt as HTML. Every value from a caller passes through escapeText. */
-export function commandReceiptHtml(view) {
+function commandReceiptHtml(view) {
   const action = receiptAction(view);
   const button = action
     ? `<button type="button" class="btn ${action.variant}" data-op="${escapeText(view.operationKey)}" data-event="${action.event}">${action.text}</button>`

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 // bytes compiles committed bytes; React itself resolves from the lockfile's
 // install in this checkout.
 export const UI_SOURCE = "src/ui";
-export const UI_ENTRY = `${UI_SOURCE}/index.tsx`;
+const UI_ENTRY = `${UI_SOURCE}/index.tsx`;
 const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
@@ -51,7 +51,7 @@ const UI_ENTRIES = {
   'ui-deal-reviews': 'home/deal-update-reviews',
   'deal-room-forms.generated': 'deal-room-forms',
 };
-export const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-shared-*.generated.js'];
+const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-shared-*.generated.js'];
 const UI_OUTPUTS = new Set(UI_ASSET_PATTERNS.slice(0, -1));
 export const isUiAsset = path => UI_OUTPUTS.has(path) || /^js\/ui-shared-[A-Z0-9]+\.generated\.js$/.test(path);
 

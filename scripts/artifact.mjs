@@ -253,7 +253,7 @@ export async function verifyArtifact(archive, expectedSha256 = null) {
   return { archiveSha256, manifest, fileCount: manifest.files.length };
 }
 
-export async function verifyCommittedSource(root, archive, result = null) {
+async function verifyCommittedSource(root, archive, result = null) {
   result ||= await verifyArtifact(archive);
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");

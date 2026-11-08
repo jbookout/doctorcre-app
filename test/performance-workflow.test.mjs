@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -10,7 +11,7 @@ const performanceJob = ci.split(/^  performance:\n/m)[1].split(/^  \w+:/m)[0];
 test('main and PR run the same performance build, measurement and evidence steps', () => {
   assert.doesNotMatch(performanceJob, /github\.event_name/);
   assert.match(performanceJob, /ref: \$\{\{ github.sha \}\}/);
-  assert.match(performanceJob, /node-version: 22\.23\.4/);
+  assert.match(performanceJob, /node-version: 26\.12\.1/);
   assert.match(performanceJob, /run: npm run build[\s\S]*run: npm run performance:check/);
   assert.match(performanceJob, /if: \$\{\{ !cancelled\(\) \}\}[\s\S]*uses: actions\/upload-artifact@/);
   assert.match(performanceJob, /name: Publish performance summary\n\s+if: \$\{\{ !cancelled\(\) \}\}/);
@@ -47,8 +48,7 @@ test('unchanged Home budget rejects a genuine five-sample load regression', () =
 });
 
 test('performance measures and publishes report-only results on PRs and main pushes', () => {
-  const workflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-    'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
+  const workflow = parseYaml(ci);
   const job = workflow.jobs.performance;
   assert.equal(job.if, undefined, 'both workflow events must run performance');
   const measurement = job.steps.find(step => step.run === 'npm run performance:check');

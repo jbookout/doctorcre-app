@@ -1,0 +1,420 @@
+{
+  "entry": [
+    "docs/portal-model/view.ts",
+    "e2e.config.ts",
+    "e2e.production.config.ts",
+    "e2e.regressions.config.ts",
+    "js/app-shell.js",
+    "js/app.js",
+    "js/calendar.js",
+    "js/charts-page.js",
+    "js/client-portal.js",
+    "js/control-room.js",
+    "js/conversations.js",
+    "js/design-prototype.js",
+    "js/doc-activity.js",
+    "js/home-boot.js",
+    "js/ideas.js",
+    "js/incidents.js",
+    "js/invoice-tracker.js",
+    "js/leads-workspace-app.js",
+    "js/lease-radar-entry.js",
+    "js/notifications.js",
+    "js/phone-calls.js",
+    "js/pipeline.js",
+    "js/progress-board.js",
+    "js/progress-work.js",
+    "js/queue.js",
+    "js/relationship-network.js",
+    "js/search-page.js",
+    "js/status.js",
+    "js/system-work-app.js",
+    "js/task-records.js",
+    "js/theme-boot.js",
+    "js/work-inventory.js",
+    "js/workspace-business.js",
+    "js/workspace-command-center.js",
+    "public-shell/bootstrap.js",
+    "reports/share.js",
+    "scripts/prove-action-link-schedule-strict-instant.mjs",
+    "scripts/prove-activity-attribution-panel.mjs",
+    "scripts/prove-agenda-disabled-record-controls.mjs",
+    "scripts/prove-answer-chart-missing-value-gaps.mjs",
+    "scripts/prove-answer-source-safe-version.mjs",
+    "scripts/prove-answer-table-empty-match-state.mjs",
+    "scripts/prove-answer-table-sourced-csv-download.mjs",
+    "scripts/prove-asset-manifest-publication.mjs",
+    "scripts/prove-calendar-coverage-notes-panels.mjs",
+    "scripts/prove-calendar-meeting-end-time.mjs",
+    "scripts/prove-calendar-panels-offset-order.mjs",
+    "scripts/prove-checklist-outstanding.mjs",
+    "scripts/prove-client-anniversary-panel.mjs",
+    "scripts/prove-contact-reasons-own-taxonomy.mjs",
+    "scripts/prove-contact-reasons-source-filter.mjs",
+    "scripts/prove-deal-checklist-malformed-recovery.mjs",
+    "scripts/prove-deal-deadline-central-day.mjs",
+    "scripts/prove-deal-documents-hard-cap.mjs",
+    "scripts/prove-deal-documents-loaded-search.mjs",
+    "scripts/prove-email-filings-central-source-time.mjs",
+    "scripts/prove-email-source-clock-validation.mjs",
+    "scripts/prove-email-source-disclosure-retention.mjs",
+    "scripts/prove-fact-document-pagination-disposal.mjs",
+    "scripts/prove-fact-excerpt-invalid-expiry.mjs",
+    "scripts/prove-fact-priority-focus.mjs",
+    "scripts/prove-fact-review-pending-status-view.mjs",
+    "scripts/prove-fact-review-term-key-filter.mjs",
+    "scripts/prove-historical-close-window.mjs",
+    "scripts/prove-historical-fit-calendar-date-integrity.mjs",
+    "scripts/prove-historical-fit-deal-type-filter.mjs",
+    "scripts/prove-historical-fit-session-retirement.mjs",
+    "scripts/prove-historical-win-readable-labels.mjs",
+    "scripts/prove-home-fact-review-refresh-selection.mjs",
+    "scripts/prove-home-fact-review-source-page-range.mjs",
+    "scripts/prove-home-loaded-card-search.mjs",
+    "scripts/prove-home-next-step-touch-date-integrity.mjs",
+    "scripts/prove-home-overdue-task-slice.mjs",
+    "scripts/prove-inbox-snooze-exact-preview.mjs",
+    "scripts/prove-lead-research-source-dates.mjs",
+    "scripts/prove-lead-stage-correspondence-clock.mjs",
+    "scripts/prove-loop-lint-coverage.mjs",
+    "scripts/prove-mail-priority-panel.mjs",
+    "scripts/prove-market-terms-fact-filter.mjs",
+    "scripts/prove-market-terms-recorded-stage-filter.mjs",
+    "scripts/prove-market-terms-response-recovery.mjs",
+    "scripts/prove-meeting-prep-late-result-fence.mjs",
+    "scripts/prove-network-kind-focus.mjs",
+    "scripts/prove-notification-device-delivery-unknown.mjs",
+    "scripts/prove-overdue-reviews-truthful-coverage.mjs",
+    "scripts/prove-quick-add-draft-date-integrity.mjs",
+    "scripts/prove-quick-switcher-kind-filter.mjs",
+    "scripts/prove-quick-switcher-partial-read.mjs",
+    "scripts/prove-quiet-lead-owner-pages.mjs",
+    "scripts/prove-quiet-lead-search.mjs",
+    "scripts/prove-quiet-vendor-basis.mjs",
+    "scripts/prove-quiet-vendor-owner-filter.mjs",
+    "scripts/prove-reasons-evidence-window.mjs",
+    "scripts/prove-research-attention.mjs",
+    "scripts/prove-research-kind-filter.mjs",
+    "scripts/prove-task-completion-event-required.mjs",
+    "scripts/prove-terms-current.mjs",
+    "scripts/prove-terms-expense-basis.mjs",
+    "scripts/prove-territory-condition-filter.mjs",
+    "scripts/prove-territory-evidence-calendar-integrity.mjs",
+    "scripts/prove-territory-evidence-current-history-view.mjs",
+    "scripts/prove-territory-pages.mjs",
+    "scripts/prove-waiting-editor-canonical-reopen.mjs",
+    "scripts/prove-waiting-people-retry-page-cursor.mjs",
+    "scripts/release-command.mjs",
+    "scripts/release-environment.mjs",
+    "scripts/release-staging.py",
+    "smoke/production/offline-shell.e2e.ts",
+    "smoke/production/status.e2e.ts",
+    "src/ui/action-link.tsx",
+    "src/ui/activity-attribution.tsx",
+    "src/ui/answer-blocks.tsx",
+    "src/ui/brief-queues.tsx",
+    "src/ui/calendar-panels.tsx",
+    "src/ui/call-review.tsx",
+    "src/ui/client-anniversaries.tsx",
+    "src/ui/contact-reasons.tsx",
+    "src/ui/deal-checklist.tsx",
+    "src/ui/deal-documents.tsx",
+    "src/ui/deal-room-agenda.tsx",
+    "src/ui/deal-room-board.tsx",
+    "src/ui/deal-room-forms.tsx",
+    "src/ui/deal-tours.tsx",
+    "src/ui/email-followup-actions.tsx",
+    "src/ui/fact-review.tsx",
+    "src/ui/home/deal-update-reviews.tsx",
+    "src/ui/home/home.tsx",
+    "src/ui/home/mail-priorities-start.ts",
+    "src/ui/home/mail-priorities.tsx",
+    "src/ui/home/missing-next-step.tsx",
+    "src/ui/host-node.tsx",
+    "src/ui/ideal-client-profile.tsx",
+    "src/ui/inbox-entry.tsx",
+    "src/ui/index.tsx",
+    "src/ui/lead-guidance.tsx",
+    "src/ui/lead-research.tsx",
+    "src/ui/market-terms.tsx",
+    "src/ui/meeting-preparation-lifetime.ts",
+    "src/ui/portal/documents.tsx",
+    "src/ui/portal/microzones-competition.tsx",
+    "src/ui/portal/ownership-modeler.tsx",
+    "src/ui/portal/shell-home-sources.tsx",
+    "src/ui/portal/tour-list-signout.tsx",
+    "src/ui/portal/tour-list-state.ts",
+    "src/ui/quick-switcher.tsx",
+    "src/ui/quiet-leads.tsx",
+    "src/ui/quiet-vendors.tsx",
+    "src/ui/relationship-kind-filter.tsx",
+    "src/ui/territory-evidence.tsx",
+    "src/ui/workspace-zoom.tsx",
+    "tests/journeys/w01-shell.e2e.ts",
+    "tests/journeys/w02-home-attention.e2e.ts",
+    "tests/journeys/w04-local-deals.e2e.ts",
+    "tests/journeys/w05-vendors.e2e.ts",
+    "tests/journeys/w06-tours-drafts.e2e.ts",
+    "tests/journeys/w09-deal-timeline.e2e.ts",
+    "tests/journeys/w14-relationships.e2e.ts",
+    "tests/journeys/w15-invoices.e2e.ts",
+    "tests/journeys/w16-charts-map-vision.e2e.ts",
+    "tests/regressions/network-isolation.e2e.ts",
+    "tests/regressions/qa-001-account-menu.e2e.ts",
+    "tests/regressions/qa-002-light-titles.e2e.ts",
+    "tests/regressions/qa-003-deals-failure.e2e.ts",
+    "tests/regressions/qa-004-board-directory.e2e.ts",
+    "tests/regressions/qa-005-phone-doc-clearance.e2e.ts",
+    "tests/regressions/qa-006-search-focus.e2e.ts",
+    "tests/regressions/qa-007-search-toggle.e2e.ts",
+    "tests/regressions/qa-008-failed-freshness.e2e.ts",
+    "tests/regressions/qa-009-conversation-idle.e2e.ts",
+    "tests/regressions/qa-010-preferences-anchor.e2e.ts",
+    "tests/regressions/qa-011-search-guidance.e2e.ts",
+    "tests/regressions/qa-012-search-count-scope.e2e.ts",
+    "tests/regressions/qa-013-vendor-title.e2e.ts",
+    "tests/regressions/qa-014-introduction-contrast.e2e.ts",
+    "tests/regressions/qa-015-search-button-contrast.e2e.ts",
+    "tests/regressions/qa-016-leads-sign-in.e2e.ts",
+    "tests/regressions/qa-017-vendor-error-semantics.e2e.ts",
+    "tests/regressions/qa-018-doc-recovery.e2e.ts",
+    "tests/regressions/qa-019-client-failure-review.e2e.ts",
+    "tests/regressions/qa-020-cleared-search-address.e2e.ts",
+    "tests/regressions/qa-021-singular-lead-count.e2e.ts",
+    "tests/regressions/round2/qa-022-lease-filters.e2e.ts",
+    "tests/regressions/round2/qa-023-lease-detail.e2e.ts",
+    "tests/regressions/round2/qa-024-control-room-keyboard-route.e2e.ts",
+    "tests/regressions/round2/qa-025-atlas-terminal-freshness.e2e.ts",
+    "tests/regressions/round2/qa-026-singular-incident-occurrence.e2e.ts",
+    "tests/regressions/round2/qa-027-deal-owner-reload.e2e.ts",
+    "tests/regressions/round2/qa-028-pipeline-default-label.e2e.ts",
+    "tests/regressions/round2/qa-029-singular-client-count.e2e.ts",
+    "tests/regressions/round2/qa-030-malformed-incident-reference.e2e.ts",
+    "tests/regressions/round2/qa-031-design-token-swatches.e2e.ts",
+    "tests/regressions/round2/qa-033-chats-phone-receipt.e2e.ts",
+    "tests/regressions/round2/qa-034-national-market-agent.e2e.ts",
+    "tests/regressions/synthetic.setup.e2e.ts",
+    "tests/staging/auth.setup.ts",
+    "tests/walks/01-WR-000581.spec.ts",
+    "tests/walks/02-WR616-S3.spec.ts",
+    "tests/walks/03-WR617-S1.spec.ts",
+    "tests/walks/04-WR617-S2.spec.ts",
+    "tests/walks/05-WR617-S5.spec.ts",
+    "tests/walks/06-WR617-S7.spec.ts",
+    "tests/walks/07-WR617-S8.spec.ts",
+    "tests/walks/08-WR617-S10.spec.ts",
+    "tests/walks/09-WR617-S11.spec.ts",
+    "tests/walks/10-WR617-S12.spec.ts",
+    "tests/walks/11-WR-000620.spec.ts",
+    "tests/walks/12-unit-inbox-reopen-action.spec.ts",
+    "tests/walks/13-WR617-S13.spec.ts",
+    "tests/walks/14-WR617-S14.spec.ts",
+    "tests/walks/15-WR617-S15.spec.ts",
+    "tests/walks/16-WR39-S2.spec.ts",
+    "tests/walks/17-WR39-S3.spec.ts",
+    "tests/walks/18-WR39-S4.spec.ts",
+    "tests/walks/19-WR39-S5.spec.ts",
+    "tests/walks/20-WR39-S6.spec.ts",
+    "tests/walks/21-WR39-S7.spec.ts",
+    "tests/walks/22-WR39-S8.spec.ts",
+    "tests/walks/23-unit-checklist-focus-recovery.spec.ts",
+    "tests/walks/24-unit-checklist-unavailable.spec.ts",
+    "tests/walks/25-unit-invoice-owning-deal-link.spec.ts",
+    "tests/walks/26-WR441-S10.spec.ts",
+    "tests/walks/27-WR441-S16.spec.ts",
+    "tests/walks/28-WR588-S2.spec.ts",
+    "tests/walks/29-unit-email-action-semantics.spec.ts",
+    "tests/walks/30-unit-email-communicated-summary.spec.ts",
+    "tests/walks/31-unit-email-file-defer-u1.spec.ts",
+    "tests/walks/32-unit-email-filing-undo-uncertainty.spec.ts",
+    "tests/walks/33-unit-inbox-card-actions.spec.ts",
+    "tests/walks/34-unit-inbox-card-context.spec.ts",
+    "tests/walks/35-unit-inbox-safe-refresh.spec.ts",
+    "tests/walks/36-unit-calendar-open-deal.spec.ts",
+    "tests/walks/37-WR572-S11.spec.ts",
+    "tests/walks/38-unit-call-review-labels.spec.ts",
+    "tests/walks/39-unit-transcript-recovery-call-budget.spec.ts",
+    "tests/walks/40-WR227-S1.spec.ts",
+    "tests/walks/41-WR227-S7.spec.ts",
+    "tests/walks/42-WR227-S10.spec.ts",
+    "tests/walks/43-WR586-S2.spec.ts",
+    "tests/walks/44-WR586-S7.spec.ts",
+    "tests/walks/45-WR591-S7.spec.ts",
+    "tests/walks/46-WR591-S35.spec.ts",
+    "tests/walks/47-WR591-S36.spec.ts",
+    "tests/walks/48-unit-client-fit-charts.spec.ts",
+    "tests/walks/49-unit-cr-U2-action-vocabulary.spec.ts",
+    "tests/walks/50-unit-cr-U4-diagnostic-questions.spec.ts",
+    "tests/walks/51-unit-cr-U6-chronology.spec.ts",
+    "tests/walks/52-unit-qa-fixture-signout.spec.ts",
+    "tests/walks/auth.setup.ts",
+    "tests/walks/playwright.config.ts",
+    "tours/app.js",
+    "tours/day.js",
+    "tours/planner.js",
+    "test/*.test.ts",
+    "src/ui/home/inbox.tsx",
+    "src/ui/home/sections.tsx",
+    "src/ui/switcher-history.ts",
+    "src/ui/workspace-layout.ts",
+    "tests/staging/journey-flows.mjs",
+    "tests/walks/privacy.ts",
+    "js/charts.js",
+    "tours/vendor/tour-map-route-state.js"
+  ],
+  "project": [
+    "**/*.{js,mjs,cjs,jsx,ts,tsx}",
+    "!reports/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
+    "!reports/vendor/maplibre-gl-6.4.1/maplibre-gl-shared.mjs",
+    "!reports/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs",
+    "!tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
+    "!tours/vendor/maplibre-gl-6.4.1/maplibre-gl-shared.mjs",
+    "!tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs"
+  ],
+  "paths": {
+    "/js/*": [
+      "js/*"
+    ],
+    "/tours/*": [
+      "tours/*"
+    ],
+    "/data/*": [
+      "data/*"
+    ],
+    "/test/*": [
+      "test/*"
+    ],
+    "/js/ui-meeting-preparation-lifetime.js": [
+      "src/ui/meeting-preparation-lifetime.ts"
+    ],
+    "/js/ui-relationship-kind-filter.js": [
+      "src/ui/relationship-kind-filter.tsx"
+    ],
+    "/js/ui-client-anniversaries.js": [
+      "src/ui/client-anniversaries.tsx"
+    ],
+    "/js/ui-activity-attribution.js": [
+      "src/ui/activity-attribution.tsx"
+    ],
+    "/js/ui-portal.js": [
+      "src/ui/portal/shell-home-sources.tsx"
+    ],
+    "/js/ui-answers.js": [
+      "src/ui/answer-blocks.tsx"
+    ],
+    "/js/ui-keyboard-input.js": [
+      "src/ui/keyboard-input.ts"
+    ],
+    "/js/ui-quick-switcher.js": [
+      "src/ui/quick-switcher.tsx"
+    ],
+    "/js/ui-switcher-history.js": [
+      "src/ui/switcher-history.ts"
+    ],
+    "/js/ui-email-actions.js": [
+      "src/ui/email-followup-actions.tsx"
+    ],
+    "/js/ui-host.js": [
+      "src/ui/host-node.tsx"
+    ],
+    "/js/ui-zoom.js": [
+      "src/ui/workspace-zoom.tsx"
+    ],
+    "/js/ui-facts.js": [
+      "src/ui/fact-review.tsx"
+    ],
+    "/js/ui-market.js": [
+      "src/ui/market-terms.tsx"
+    ],
+    "/js/ui-limit.js": [
+      "src/ui/home-list-limit.ts"
+    ],
+    "/js/ui-reasons.js": [
+      "src/ui/contact-reasons.tsx"
+    ],
+    "/js/ui-queue.js": [
+      "src/ui/brief-queues.tsx"
+    ],
+    "/js/ui-action.js": [
+      "src/ui/action-link.tsx"
+    ],
+    "/js/ui-call.js": [
+      "src/ui/call-review.tsx"
+    ],
+    "/js/ui-board.js": [
+      "src/ui/deal-room-board.tsx"
+    ],
+    "/js/ui-agenda.js": [
+      "src/ui/deal-room-agenda.tsx"
+    ],
+    "/js/ui-lead-research.js": [
+      "src/ui/lead-research.tsx"
+    ],
+    "/js/ui-lead.js": [
+      "src/ui/lead-guidance.tsx"
+    ],
+    "/js/ui-ideal-client-profile.js": [
+      "src/ui/ideal-client-profile.tsx"
+    ],
+    "/js/ui-territory-evidence.js": [
+      "src/ui/territory-evidence.tsx"
+    ],
+    "/js/ui-quiet-leads.js": [
+      "src/ui/quiet-leads.tsx"
+    ],
+    "/js/ui-quiet-vendors.js": [
+      "src/ui/quiet-vendors.tsx"
+    ],
+    "/js/ui-calendar-panels.js": [
+      "src/ui/calendar-panels.tsx"
+    ],
+    "/js/ui-deal-documents.js": [
+      "src/ui/deal-documents.tsx"
+    ],
+    "/js/ui-checklist.js": [
+      "src/ui/deal-checklist.tsx"
+    ],
+    "/js/ui-deal-tours.js": [
+      "src/ui/deal-tours.tsx"
+    ],
+    "/js/ui-inbox.js": [
+      "src/ui/inbox-entry.tsx"
+    ],
+    "/js/ui-home-mail-start.js": [
+      "src/ui/home/mail-priorities-start.ts"
+    ],
+    "/js/ui-mail-priorities.js": [
+      "src/ui/home/mail-priorities.tsx"
+    ],
+    "/js/ui-next-step.js": [
+      "src/ui/home/missing-next-step.tsx"
+    ],
+    "/js/ui-task-done.js": [
+      "src/ui/home/task-done.ts"
+    ],
+    "/js/ui-deal-reviews.js": [
+      "src/ui/home/deal-update-reviews.tsx"
+    ],
+    "/js/deal-room-forms.generated.js": [
+      "src/ui/deal-room-forms.tsx"
+    ],
+    "/panel.js": [
+      "src/ui/home/mail-priorities.tsx"
+    ],
+    "/home.js": [
+      "src/ui/home/home.tsx"
+    ],
+    "/client.js": [
+      "src/ui/home/inbox.tsx"
+    ],
+    "/test/workspace-shell.js": [
+      "src/ui/workspace-shell.tsx"
+    ],
+    "/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs": [
+      "reports/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"
+    ],
+    "mcp-server/test/helpers/local-carr.mjs": [
+      "tests/live/producer-contract.d.mts"
+    ]
+  }
+}
