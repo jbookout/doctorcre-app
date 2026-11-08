@@ -19,7 +19,16 @@
     "scripts/app-release-reader.d.mts",
     "scripts/chromium-safety-args.d.mts",
     "scripts/fixture-app-assets.d.mts",
-    "scripts/fixture-http.d.mts"
+    "scripts/fixture-http.d.mts",
+    "test/watch-parser.test.ts",
+    "test/watch-client.test.ts",
+    "test/watch-controls.browser.ts",
+    "test/browser-harness.d.mts",
+    "scripts/ui-bundle.d.mts",
+    "test/fixtures/watches/producer-schema.ts",
+    "scripts/artifact.d.mts",
+    "scripts/fixture-server.d.mts",
+    "docs/statecharts/SubjectWatchControls.map.ts"
   ],
   "compilerOptions": {
     "lib": [
