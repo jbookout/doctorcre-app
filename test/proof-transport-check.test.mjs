@@ -219,7 +219,6 @@ test('TypeScript type imports declare no runtime capability', () => {
 
 for (const declaration of [
   "import type { Options } from './helper.ts';",
-  "import { type Options, type Other } from './helper.ts';",
   "export type { Options } from './helper.ts';",
 ]) test(`erased TypeScript edge is not traversed: ${declaration}`, async t => {
   const root = temporaryDirectory('proof-type-edge-', t);
@@ -236,4 +235,30 @@ test('mixed TypeScript import retains its runtime helper edge', async t => {
   await writeFile(root + '/scripts/helper.ts', "export type Options = { label: string }; export const read = () => fetch('/synthetic');");
   const errors = await checkProofTransports(pathToFileURL(root + '/'));
   assert.ok(errors.some(error => error.includes('helper.ts:1:') && error.includes('(fetch)')), errors.join('\n'));
+});
+
+for (const declaration of [
+  "import { type Options, type Other } from './helper.ts';",
+  "import {\n type Options,\n type Other\n} from './helper.ts';",
+]) test(`inline type import executes its helper: ${declaration}`, async t => {
+  const root = temporaryDirectory('proof-inline-types-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', declaration);
+  await writeFile(root + '/scripts/helper.ts', "export type Options = string; export type Other = string; await fetch('/synthetic');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('helper.ts:1:') && error.includes('(fetch)')), errors.join('\n'));
+});
+
+test('Node erasure removes commented type imports and transport names in type declarations', () => {
+  assert.deepEqual(checkProofSource("import /* erased */ type { Page } from 'playwright'; export /* erased */ type { Page } from 'playwright'; type Transport = { fetch: () => void };", 'prove-types.ts'), []);
+});
+
+for (const syntax of ['enum Mode { Read }', 'namespace Mode { export const read = 1; }']) test(`unsupported Node strip syntax is refused: ${syntax}`, async t => {
+  assert.match(checkProofSource(syntax, 'prove-types.ts').join('\n'), /Node TypeScript stripping refused/);
+  const root = temporaryDirectory('proof-unsupported-types-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', "import './helper.ts';");
+  await writeFile(root + '/scripts/helper.ts', syntax);
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.match(errors.join('\n'), /helper.ts: Node TypeScript stripping refused/);
 });
