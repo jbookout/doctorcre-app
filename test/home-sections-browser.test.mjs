@@ -395,7 +395,9 @@ for (const opened of [false, true]) test(`working select exact card from ${opene
   const { page, region, open } = await workingScenario(t);
   if (opened) await region.getByRole('button', { name: /^See all/ }).click();
   assert.equal(await region.locator('[data-inbox-row]').count(), opened ? 3 : 0);
+  await page.getByRole('searchbox').fill('Working card 1');
   await open('/?mode=live&card=working-1');
+  assert.equal(await page.getByRole('searchbox').inputValue(), '');
   await region.locator('[data-inbox-row="working-1"]').waitFor();
   assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), ['working-1']);
 });

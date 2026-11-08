@@ -10,12 +10,12 @@ stateDiagram-v2
       Open --> Open: Search cards
       Closed --> Closed: Clear search
       Open --> Open: Clear search
-      Closed --> Closed: Select card
-      Open --> Closed: Select card
       Closed --> Closed: Work needs review
       Open --> Open: Work needs review
       Closed --> Closed: Work resolves
       Open --> Open: Work resolves
+      Closed --> Closed: Select card
+      Open --> Closed: Select card
       Closed --> Closed: Remount Home
       Open --> Closed: Remount Home
       Closed --> Closed: Invalidate session
@@ -24,43 +24,39 @@ stateDiagram-v2
     --
     state Placement {
       [*] --> Empty
-      Empty --> Hidden: Refresh cards
-      Hidden --> Hidden: Refresh cards
-      Visible --> Visible: Refresh cards
-      Selected --> Selected: Refresh cards
-      Hidden --> Visible: Open section
-      Visible --> Hidden: Close section
-      Hidden --> Filtered: Search cards
-      Visible --> FilteredOpen: Search cards
-      Filtered --> FilteredOpen: Open section
-      FilteredOpen --> Filtered: Close section
-      Filtered --> Hidden: Clear search
-      FilteredOpen --> Visible: Clear search
-      Hidden --> Selected: Select card
-      Visible --> Selected: Select card
-      Selected --> Selected: Open section
-      Selected --> Selected: Close section
-      Hidden --> Attention: Work needs review
-      Visible --> Attention: Work needs review
-      Hidden --> Done: Work resolves
-      Visible --> Done: Work resolves
+      Empty --> Working: Refresh cards
+      Working --> Working: Refresh cards
+      Working --> Attention: Work needs review
+      Working --> Done: Work resolves
       Empty --> Empty: Remount Home
-      Hidden --> Hidden: Remount Home
-      Visible --> Hidden: Remount Home
-      Filtered --> Hidden: Remount Home
-      FilteredOpen --> Hidden: Remount Home
-      Selected --> Selected: Remount Home
+      Working --> Working: Remount Home
       Attention --> Attention: Remount Home
       Done --> Done: Remount Home
       Empty --> Empty: Invalidate session
-      Hidden --> Empty: Invalidate session
-      Visible --> Empty: Invalidate session
-      Filtered --> Empty: Invalidate session
-      FilteredOpen --> Empty: Invalidate session
-      Selected --> Empty: Invalidate session
+      Working --> Empty: Invalidate session
       Attention --> Empty: Invalidate session
       Done --> Empty: Invalidate session
     }
+    --
+    state Selection {
+      [*] --> Ordinary
+      Ordinary --> Selected: Select card
+      Selected --> Selected: Open section
+      Selected --> Selected: Close section
+      Selected --> Selected: Refresh cards
+      Selected --> Selected: Remount Home
+      Ordinary --> Ordinary: Invalidate session
+      Selected --> Ordinary: Invalidate session
+    }
+    --
+    state Search {
+      [*] --> All
+      All --> Filtered: Search cards
+      Filtered --> All: Clear search
+      Filtered --> All: Select card
+      All --> All: Remount Home
+      Filtered --> All: Remount Home
+      All --> All: Invalidate session
+      Filtered --> All: Invalidate session
+    }
   }
-  %% never OrdinaryClosed: Closed & Visible -- Ordinary working cards never appear while closed.
-  %% never SearchClosed: Closed & FilteredOpen -- Search never opens the section.

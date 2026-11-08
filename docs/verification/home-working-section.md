@@ -1,75 +1,69 @@
 # Home working disclosure
 
-Slice owns the mounted disclosure boolean. HomeSections owns search, grouping and the current/pinned projection. CARR owns source state and receipts. This verification-only revision changes no application behavior, contracts, storage, calls or capacity. The existing bounded 1,000-card snapshot and stale/refusal behavior remain unchanged.
+Slice owns the mounted disclosure boolean. HomeSections owns search, grouping and the current/pinned projection. CARR owns source state and receipts. This verification-only revision changes no application behavior, contracts, storage, calls or capacity. The bounded 1,000-card snapshot and stale/refusal behavior remain unchanged.
 
 ## Transition coverage
 
-Each row names the source, destination, event and executable test in `test/home-sections-browser.test.mjs`. Width/theme suffixes on `working disclosure keyboard search refresh remount` cover 390px and 1440px in light and dark. Select card means following an exact-card URL, which remounts Home closed. Selected abstracts whether unrelated rows are also shown while open.
+Disclosure, canonical placement, selection and search change independently. The chart gives each its own region instead of mixing these dimensions into overlapping display states. Closed/populated is Closed plus Working. Filtered/open is Open plus Working plus Filtered. Selected cards remain reachable in either disclosure state. Following an exact-card URL remounts closed and clears search.
+
+Each row names the source, destination, event and executable test in `test/home-sections-browser.test.mjs`. Width/theme suffixes on `working disclosure keyboard search refresh remount` cover 390px and 1440px in light and dark.
 
 | Region | From | Event | To | Test name |
 | --- | --- | --- | --- | --- |
 | Disclosure | [*] | Initial mount | Closed | working section closed with 0 cards |
 | Disclosure | Closed | Open section | Open | working disclosure keyboard search refresh remount |
 | Disclosure | Open | Close section | Closed | working disclosure keyboard search refresh remount |
-| Disclosure | Closed | Refresh cards | Closed | working empty refresh populates closed and hidden refresh stays closed |
-| Disclosure | Open | Refresh cards | Open | working disclosure keyboard search refresh remount |
+| Disclosure | Closed | Refresh cards | Closed | working empty refresh populates closed and hidden refresh stays closed; working disclosure keyboard search refresh remount |
+| Disclosure | Open | Refresh cards | Open | working empty refresh populates closed and hidden refresh stays closed; working disclosure keyboard search refresh remount |
 | Disclosure | Closed | Search cards | Closed | working disclosure keyboard search refresh remount |
 | Disclosure | Open | Search cards | Open | working disclosure keyboard search refresh remount |
 | Disclosure | Closed | Clear search | Closed | working disclosure keyboard search refresh remount |
 | Disclosure | Open | Clear search | Open | working disclosure keyboard search refresh remount |
-| Disclosure | Closed | Select card | Closed | working select exact card from hidden |
-| Disclosure | Open | Select card | Closed | working select exact card from visible |
 | Disclosure | Closed | Work needs review | Closed | working refresh moves attention and resolved cards closed |
 | Disclosure | Open | Work needs review | Open | working refresh moves attention and resolved cards open |
 | Disclosure | Closed | Work resolves | Closed | working refresh moves attention and resolved cards closed |
 | Disclosure | Open | Work resolves | Open | working refresh moves attention and resolved cards open |
+| Disclosure | Closed | Select card | Closed | working select exact card from hidden; working select exact card from visible |
+| Disclosure | Open | Select card | Closed | working select exact card from hidden; working select exact card from visible |
 | Disclosure | Closed | Remount Home | Closed | working Hidden remount transition |
 | Disclosure | Open | Remount Home | Closed | working Visible remount transition |
 | Disclosure | Closed | Invalidate session | Closed | working Hidden invalidate transition |
 | Disclosure | Open | Invalidate session | Closed | working Visible invalidate transition |
 | Placement | [*] | Initial mount | Empty | working section closed with 0 cards |
-| Placement | Empty | Refresh cards | Hidden | working empty refresh populates closed and hidden refresh stays closed |
-| Placement | Hidden | Refresh cards | Hidden | working empty refresh populates closed and hidden refresh stays closed |
-| Placement | Visible | Refresh cards | Visible | working disclosure keyboard search refresh remount |
-| Placement | Selected | Refresh cards | Selected | working selected refresh retains disclosure closed; working selected refresh retains disclosure open |
-| Placement | Hidden | Open section | Visible | working disclosure keyboard search refresh remount |
-| Placement | Visible | Close section | Hidden | working disclosure keyboard search refresh remount |
-| Placement | Hidden | Search cards | Filtered | working disclosure keyboard search refresh remount |
-| Placement | Visible | Search cards | FilteredOpen | working disclosure keyboard search refresh remount |
-| Placement | Filtered | Open section | FilteredOpen | working disclosure keyboard search refresh remount |
-| Placement | FilteredOpen | Close section | Filtered | working disclosure keyboard search refresh remount |
-| Placement | Filtered | Clear search | Hidden | working disclosure keyboard search refresh remount |
-| Placement | FilteredOpen | Clear search | Visible | working disclosure keyboard search refresh remount |
-| Placement | Hidden | Select card | Selected | working select exact card from hidden |
-| Placement | Visible | Select card | Selected | working select exact card from visible |
-| Placement | Selected | Open section | Selected | closed working section preserves selected card without first preview |
-| Placement | Selected | Close section | Selected | closed working section preserves selected card without first preview |
-| Placement | Hidden | Work needs review | Attention | working refresh moves attention and resolved cards closed |
-| Placement | Visible | Work needs review | Attention | working refresh moves attention and resolved cards open |
-| Placement | Hidden | Work resolves | Done | working refresh moves attention and resolved cards closed |
-| Placement | Visible | Work resolves | Done | working refresh moves attention and resolved cards open |
+| Placement | Empty | Refresh cards | Working | working empty refresh populates closed and hidden refresh stays closed; working disclosure keyboard search refresh remount |
+| Placement | Working | Refresh cards | Working | working empty refresh populates closed and hidden refresh stays closed; working disclosure keyboard search refresh remount |
+| Placement | Working | Work needs review | Attention | working refresh moves attention and resolved cards closed |
+| Placement | Working | Work resolves | Done | working refresh moves attention and resolved cards closed |
 | Placement | Empty | Remount Home | Empty | working Empty remount transition |
-| Placement | Hidden | Remount Home | Hidden | working Hidden remount transition |
-| Placement | Visible | Remount Home | Hidden | working Visible remount transition |
-| Placement | Filtered | Remount Home | Hidden | working Filtered remount transition |
-| Placement | FilteredOpen | Remount Home | Hidden | working FilteredOpen remount transition |
-| Placement | Selected | Remount Home | Selected | working Selected remount transition; working selected open remount closes and retains exact card |
+| Placement | Working | Remount Home | Working | working Hidden remount transition |
 | Placement | Attention | Remount Home | Attention | working Attention remount transition |
 | Placement | Done | Remount Home | Done | working Done remount transition |
 | Placement | Empty | Invalidate session | Empty | working Empty invalidate transition |
-| Placement | Hidden | Invalidate session | Empty | working Hidden invalidate transition |
-| Placement | Visible | Invalidate session | Empty | working Visible invalidate transition |
-| Placement | Filtered | Invalidate session | Empty | working Filtered invalidate transition |
-| Placement | FilteredOpen | Invalidate session | Empty | working FilteredOpen invalidate transition |
-| Placement | Selected | Invalidate session | Empty | working Selected invalidate transition |
+| Placement | Working | Invalidate session | Empty | working Hidden invalidate transition |
 | Placement | Attention | Invalidate session | Empty | working Attention invalidate transition |
 | Placement | Done | Invalidate session | Empty | working Done invalidate transition |
+| Selection | [*] | Initial mount | Ordinary | working section closed with 0 cards |
+| Selection | Ordinary | Select card | Selected | working select exact card from hidden; working select exact card from visible |
+| Selection | Selected | Open section | Selected | closed working section preserves selected card without first preview |
+| Selection | Selected | Close section | Selected | closed working section preserves selected card without first preview |
+| Selection | Selected | Refresh cards | Selected | working selected refresh retains disclosure closed; working selected refresh retains disclosure open |
+| Selection | Selected | Remount Home | Selected | working Selected remount transition; working selected open remount closes and retains exact card |
+| Selection | Ordinary | Invalidate session | Ordinary | working Hidden invalidate transition |
+| Selection | Selected | Invalidate session | Ordinary | working Selected invalidate transition |
+| Search | [*] | Initial mount | All | working section closed with 0 cards |
+| Search | All | Search cards | Filtered | working disclosure keyboard search refresh remount |
+| Search | Filtered | Clear search | All | working disclosure keyboard search refresh remount |
+| Search | Filtered | Select card | All | working select exact card from hidden; working select exact card from visible |
+| Search | All | Remount Home | All | working Hidden remount transition |
+| Search | Filtered | Remount Home | All | working Filtered remount transition |
+| Search | All | Invalidate session | All | working Hidden invalidate transition |
+| Search | Filtered | Invalidate session | All | working Filtered invalidate transition |
 
-The existing [lifecycle chart](home-inbox-v3.mmd) and lifecycle/browser suites retain canonical completion reasons, snooze, wake, hide and undo assertions. The disclosure test compares actual RPC lists before and after both toggles. Session invalidation asserts all rows and controls disappear, rather than pretending the signed-out app renders an empty working section.
+The eight rendered-state remount/invalidation cases additionally cover Empty, Hidden, Visible, Filtered, FilteredOpen, Selected, Attention and Done. Existing [lifecycle coverage](home-inbox-v3.mmd) retains canonical completion reasons, snooze, wake, hide and undo assertions. The disclosure test compares actual RPC lists before and after toggles. Session invalidation asserts all rows and controls disappear, rather than pretending the signed-out app renders an empty section.
 
 ## Reproduce the model
 
-The model and configuration below are versioned here to keep the plan's path scope. They replace the unversioned scratch-only model. Extract both blocks into a scratch directory alongside a copy of [the chart](home-working-section.mmd). No historical git objects are needed. Run this extraction from the repository root with `MODEL_DIR` set to an existing scratch directory.
+The model, configuration and labels below replace the unversioned scratch dependency. They stay in this note to preserve the plan's path scope. Extract them beside a copy of the chart into an existing scratch directory. Run this Python block from the repository root with MODEL_DIR set to that directory.
 
 ```python
 import os
@@ -83,200 +77,210 @@ for language, filename in [('tla', 'HomeWorkingSection.tla'), ('cfg', 'HomeWorki
 shutil.copyfile('docs/verification/home-working-section.mmd', root / 'home-working-section.mmd')
 ```
 
-Run `node /Users/booko/.claude/plugins/marketplaces/cursor-plugins/pstack/skills/statechart/scripts/statechart.mjs from-chart "$MODEL_DIR/home-working-section.mmd"`. Supply `TLA2TOOLS` and `JAVA` for installed TLC and Java. The mapping below retains the exact chart captions so from-chart can compare both regions. The model retains both chart regions and checks TypeOK plus all six feature rules. The SelectCard guard limits exact-card navigation to Hidden or Visible, the source rows drawn in Placement. The chart compiler cannot express this cross-region guard. Its unguarded chart comparison reports 21 differences, including unreachable Closed/Visible and Closed/FilteredOpen states. The guarded model is authoritative for these conditions. No invariant is weakened to accept those unreachable chart paths.
+Run `node /Users/booko/.claude/plugins/marketplaces/cursor-plugins/pstack/skills/statechart/scripts/statechart.mjs from-chart "$MODEL_DIR/home-working-section.mmd"`. Supply TLA2TOOLS and JAVA for installed TLC and Java. All six feature rules and TypeOK must hold, and the model must draw the chart back unchanged.
 
-OrdinaryClosed and SearchClosed prohibit closed ordinary/search rows. SelectedReachable checks both visible projection and retention across toggle, search, refresh and remount, so changing Selected to Hidden on close fails. AttentionOutsideWorking checks placement after authoritative refresh. DisclosureNoRPC checks event metadata. RefreshKeepsChoice checks the prior disclosure value. Browser assertions remain the actual transport and rendering evidence. This bounded model does not prove producer correctness, authentication, retries, concurrency or production data.
+OrdinaryClosed prohibits ordinary closed rows. SearchClosed checks that search never opens the section. SelectedReachable checks both selected projection and retention across toggle, refresh and remount. AttentionOutsideWorking excludes attention from working rows. DisclosureNoRPC checks event metadata. RefreshKeepsChoice checks the previous disclosure value. These are the five required never rules, with search separately checked. They require projections and previous-event values, so they live in the versioned companion model rather than chart-only forbidden state pairs. Changing Selected to Ordinary on Close section must break SelectedReachable. Browser assertions remain the actual transport and rendering evidence. This bounded model does not prove producer correctness, authentication, retries, concurrency or production data. Search abstracts a filter that can match only the selected row. Placement abstracts the working/held/snoozed union.
 
 ```tla
 ---- MODULE HomeWorkingSection ----
 
-VARIABLES disclosure, placement, lastDisclosure, lastPlacement, event, rpc
-vars == <<disclosure, placement, lastDisclosure, lastPlacement, event, rpc>>
+VARIABLES disclosure, placement, selection, search, priorDisclosure, priorSelection, event, rpc
+vars == <<disclosure, placement, selection, search, priorDisclosure, priorSelection, event, rpc>>
 
 disclosureStates == {"Closed", "Open"}
-placementStates == {"Attention", "Done", "Empty", "Filtered", "FilteredOpen", "Hidden", "Selected", "Visible"}
+placementStates == {"Attention", "Done", "Empty", "Working"}
+selectionStates == {"Ordinary", "Selected"}
+searchStates == {"All", "Filtered"}
 
 TypeOK ==
     /\ disclosure \in disclosureStates
     /\ placement \in placementStates
+    /\ selection \in selectionStates
+    /\ search \in searchStates
 
 Init ==
     /\ disclosure = "Closed"
     /\ placement = "Empty"
-    /\ lastDisclosure = "Closed"
-    /\ lastPlacement = "Empty"
+    /\ selection = "Ordinary"
+    /\ search = "All"
+    /\ priorDisclosure = "Closed"
+    /\ priorSelection = "Ordinary"
     /\ event = "Init"
     /\ rpc = FALSE
 
 \* src/ui/home/sections.tsx:24
 OpenSection ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "OpenSection"
     /\ rpc' = FALSE
-    /\ (disclosure \in {"Closed"} \/ placement \in {"Hidden", "Filtered", "Selected"})
+    /\ (disclosure \in {"Closed"} \/ selection \in {"Selected"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Open")
        \/ (disclosure \notin {"Closed"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Hidden" /\ placement' = "Visible")
-       \/ (placement = "Filtered" /\ placement' = "FilteredOpen")
-       \/ (placement = "Selected" /\ placement' = "Selected")
-       \/ (placement \notin {"Hidden", "Filtered", "Selected"} /\ UNCHANGED placement)
+    /\ \/ (selection = "Selected" /\ selection' = "Selected")
+       \/ (selection \notin {"Selected"} /\ UNCHANGED selection)
+    /\ UNCHANGED <<placement, search>>
 
 \* src/ui/home/sections.tsx:24
 CloseSection ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "CloseSection"
     /\ rpc' = FALSE
-    /\ (disclosure \in {"Open"} \/ placement \in {"Visible", "FilteredOpen", "Selected"})
+    /\ (disclosure \in {"Open"} \/ selection \in {"Selected"})
     /\ \/ (disclosure = "Open" /\ disclosure' = "Closed")
        \/ (disclosure \notin {"Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Visible" /\ placement' = "Hidden")
-       \/ (placement = "FilteredOpen" /\ placement' = "Filtered")
-       \/ (placement = "Selected" /\ placement' = "Selected")
-       \/ (placement \notin {"Visible", "FilteredOpen", "Selected"} /\ UNCHANGED placement)
+    /\ \/ (selection = "Selected" /\ selection' = "Selected")
+       \/ (selection \notin {"Selected"} /\ UNCHANGED selection)
+    /\ UNCHANGED <<placement, search>>
 
 \* src/ui/home/sections.tsx:21
 RefreshCards ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "RefreshCards"
     /\ rpc' = TRUE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Empty", "Hidden", "Visible", "Selected"})
+    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Empty", "Working"} \/ selection \in {"Selected"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Open")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Empty" /\ placement' = "Hidden")
-       \/ (placement = "Hidden" /\ placement' = "Hidden")
-       \/ (placement = "Visible" /\ placement' = "Visible")
-       \/ (placement = "Selected" /\ placement' = "Selected")
-       \/ (placement \notin {"Empty", "Hidden", "Visible", "Selected"} /\ UNCHANGED placement)
+    /\ \/ (placement = "Empty" /\ placement' = "Working")
+       \/ (placement = "Working" /\ placement' = "Working")
+       \/ (placement \notin {"Empty", "Working"} /\ UNCHANGED placement)
+    /\ \/ (selection = "Selected" /\ selection' = "Selected")
+       \/ (selection \notin {"Selected"} /\ UNCHANGED selection)
+    /\ UNCHANGED <<search>>
 
 \* src/ui/home/sections.tsx:49
 SearchCards ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "SearchCards"
     /\ rpc' = FALSE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Hidden", "Visible"})
+    /\ (disclosure \in {"Closed", "Open"} \/ search \in {"All"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Open")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Hidden" /\ placement' = "Filtered")
-       \/ (placement = "Visible" /\ placement' = "FilteredOpen")
-       \/ (placement \notin {"Hidden", "Visible"} /\ UNCHANGED placement)
+    /\ \/ (search = "All" /\ search' = "Filtered")
+       \/ (search \notin {"All"} /\ UNCHANGED search)
+    /\ UNCHANGED <<placement, selection>>
 
 \* src/ui/home/sections.tsx:49
 ClearSearch ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "ClearSearch"
     /\ rpc' = FALSE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Filtered", "FilteredOpen"})
+    /\ (disclosure \in {"Closed", "Open"} \/ search \in {"Filtered"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Open")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Filtered" /\ placement' = "Hidden")
-       \/ (placement = "FilteredOpen" /\ placement' = "Visible")
-       \/ (placement \notin {"Filtered", "FilteredOpen"} /\ UNCHANGED placement)
-
-\* src/ui/home/sections.tsx:50
-SelectCard ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
-    /\ event' = "SelectCard"
-    /\ rpc' = FALSE
-    /\ placement \in {"Hidden", "Visible"}
-    /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
-       \/ (disclosure = "Open" /\ disclosure' = "Closed")
-       \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Hidden" /\ placement' = "Selected")
-       \/ (placement = "Visible" /\ placement' = "Selected")
-       \/ (placement \notin {"Hidden", "Visible"} /\ UNCHANGED placement)
+    /\ \/ (search = "Filtered" /\ search' = "All")
+       \/ (search \notin {"Filtered"} /\ UNCHANGED search)
+    /\ UNCHANGED <<placement, selection>>
 
 \* src/ui/home/sections.tsx:67
 WorkNeedsReview ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "WorkNeedsReview"
     /\ rpc' = TRUE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Hidden", "Visible"})
+    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Working"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Open")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Hidden" /\ placement' = "Attention")
-       \/ (placement = "Visible" /\ placement' = "Attention")
-       \/ (placement \notin {"Hidden", "Visible"} /\ UNCHANGED placement)
+    /\ \/ (placement = "Working" /\ placement' = "Attention")
+       \/ (placement \notin {"Working"} /\ UNCHANGED placement)
+    /\ UNCHANGED <<selection, search>>
 
 \* src/ui/home/sections.tsx:69
 WorkResolves ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "WorkResolves"
     /\ rpc' = TRUE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Hidden", "Visible"})
+    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Working"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Open")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
-    /\ \/ (placement = "Hidden" /\ placement' = "Done")
-       \/ (placement = "Visible" /\ placement' = "Done")
-       \/ (placement \notin {"Hidden", "Visible"} /\ UNCHANGED placement)
+    /\ \/ (placement = "Working" /\ placement' = "Done")
+       \/ (placement \notin {"Working"} /\ UNCHANGED placement)
+    /\ UNCHANGED <<selection, search>>
+
+\* src/ui/home/sections.tsx:50
+SelectCard ==
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
+    /\ event' = "SelectCard"
+    /\ rpc' = TRUE
+    /\ (disclosure \in {"Closed", "Open"} \/ selection \in {"Ordinary"} \/ search \in {"Filtered"})
+    /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
+       \/ (disclosure = "Open" /\ disclosure' = "Closed")
+       \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
+    /\ \/ (selection = "Ordinary" /\ selection' = "Selected")
+       \/ (selection \notin {"Ordinary"} /\ UNCHANGED selection)
+    /\ \/ (search = "Filtered" /\ search' = "All")
+       \/ (search \notin {"Filtered"} /\ UNCHANGED search)
+    /\ UNCHANGED <<placement>>
 
 \* src/ui/home/sections.tsx:21
 RemountHome ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "RemountHome"
     /\ rpc' = TRUE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Empty", "Hidden", "Visible", "Filtered", "FilteredOpen", "Selected", "Attention", "Done"})
+    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Empty", "Working", "Attention", "Done"} \/ selection \in {"Selected"} \/ search \in {"All", "Filtered"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Closed")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
     /\ \/ (placement = "Empty" /\ placement' = "Empty")
-       \/ (placement = "Hidden" /\ placement' = "Hidden")
-       \/ (placement = "Visible" /\ placement' = "Hidden")
-       \/ (placement = "Filtered" /\ placement' = "Hidden")
-       \/ (placement = "FilteredOpen" /\ placement' = "Hidden")
-       \/ (placement = "Selected" /\ placement' = "Selected")
+       \/ (placement = "Working" /\ placement' = "Working")
        \/ (placement = "Attention" /\ placement' = "Attention")
        \/ (placement = "Done" /\ placement' = "Done")
-       \/ (placement \notin {"Empty", "Hidden", "Visible", "Filtered", "FilteredOpen", "Selected", "Attention", "Done"} /\ UNCHANGED placement)
+       \/ (placement \notin {"Empty", "Working", "Attention", "Done"} /\ UNCHANGED placement)
+    /\ \/ (selection = "Selected" /\ selection' = "Selected")
+       \/ (selection \notin {"Selected"} /\ UNCHANGED selection)
+    /\ \/ (search = "All" /\ search' = "All")
+       \/ (search = "Filtered" /\ search' = "All")
+       \/ (search \notin {"All", "Filtered"} /\ UNCHANGED search)
 
 \* src/ui/home/sections.tsx:21
 InvalidateSession ==
-    /\ lastDisclosure' = disclosure
-    /\ lastPlacement' = placement
+    /\ priorDisclosure' = disclosure
+    /\ priorSelection' = selection
     /\ event' = "InvalidateSession"
     /\ rpc' = FALSE
-    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Empty", "Hidden", "Visible", "Filtered", "FilteredOpen", "Selected", "Attention", "Done"})
+    /\ (disclosure \in {"Closed", "Open"} \/ placement \in {"Empty", "Working", "Attention", "Done"} \/ selection \in {"Ordinary", "Selected"} \/ search \in {"All", "Filtered"})
     /\ \/ (disclosure = "Closed" /\ disclosure' = "Closed")
        \/ (disclosure = "Open" /\ disclosure' = "Closed")
        \/ (disclosure \notin {"Closed", "Open"} /\ UNCHANGED disclosure)
     /\ \/ (placement = "Empty" /\ placement' = "Empty")
-       \/ (placement = "Hidden" /\ placement' = "Empty")
-       \/ (placement = "Visible" /\ placement' = "Empty")
-       \/ (placement = "Filtered" /\ placement' = "Empty")
-       \/ (placement = "FilteredOpen" /\ placement' = "Empty")
-       \/ (placement = "Selected" /\ placement' = "Empty")
+       \/ (placement = "Working" /\ placement' = "Empty")
        \/ (placement = "Attention" /\ placement' = "Empty")
        \/ (placement = "Done" /\ placement' = "Empty")
-       \/ (placement \notin {"Empty", "Hidden", "Visible", "Filtered", "FilteredOpen", "Selected", "Attention", "Done"} /\ UNCHANGED placement)
+       \/ (placement \notin {"Empty", "Working", "Attention", "Done"} /\ UNCHANGED placement)
+    /\ \/ (selection = "Ordinary" /\ selection' = "Ordinary")
+       \/ (selection = "Selected" /\ selection' = "Ordinary")
+       \/ (selection \notin {"Ordinary", "Selected"} /\ UNCHANGED selection)
+    /\ \/ (search = "All" /\ search' = "All")
+       \/ (search = "Filtered" /\ search' = "All")
+       \/ (search \notin {"All", "Filtered"} /\ UNCHANGED search)
 
-Next == OpenSection \/ CloseSection \/ RefreshCards \/ SearchCards \/ ClearSearch \/ SelectCard \/ WorkNeedsReview \/ WorkResolves \/ RemountHome \/ InvalidateSession
+Next == OpenSection \/ CloseSection \/ RefreshCards \/ SearchCards \/ ClearSearch \/ WorkNeedsReview \/ WorkResolves \/ SelectCard \/ RemountHome \/ InvalidateSession
 
 Spec == Init /\ [][Next]_vars
 
-OrdinaryClosed == ~(disclosure = "Closed" /\ placement = "Visible")
-
-SearchClosed == ~(disclosure = "Closed" /\ placement = "FilteredOpen")
-
-Shown == IF placement = "Selected" THEN {"selected"} ELSE IF disclosure = "Open" /\ placement = "Visible" THEN {"ordinary"} ELSE {}
+Shown ==
+    (IF placement = "Working" /\ selection = "Selected" THEN {"selected"} ELSE {})
+    \cup (IF placement = "Working" /\ disclosure = "Open" /\ search = "All" THEN {"ordinary"} ELSE {})
+OrdinaryClosed == disclosure = "Closed" => "ordinary" \notin Shown
+SearchClosed == event \in {"SearchCards", "ClearSearch"} => disclosure = priorDisclosure
 SelectedReachable ==
-    /\ (placement = "Selected" => "selected" \in Shown)
-    /\ (lastPlacement = "Selected" /\ event \in {"OpenSection", "CloseSection", "RefreshCards", "SearchCards", "ClearSearch", "RemountHome"} => placement = "Selected")
-AttentionOutsideWorking == placement = "Attention" => "ordinary" \notin Shown
+    /\ (placement = "Working" /\ selection = "Selected" => "selected" \in Shown)
+    /\ (priorSelection = "Selected" /\ event \in {"OpenSection", "CloseSection", "RefreshCards", "RemountHome"} => selection = "Selected")
+AttentionOutsideWorking == placement = "Attention" => Shown = {}
 DisclosureNoRPC == event \in {"OpenSection", "CloseSection"} => ~rpc
-RefreshKeepsChoice == event = "RefreshCards" => disclosure = lastDisclosure
+RefreshKeepsChoice == event = "RefreshCards" => disclosure = priorDisclosure
 ====
 ```
 
@@ -292,16 +296,16 @@ INVARIANT RefreshKeepsChoice
 ```
 
 ```mjs
-export const regions = ["disclosure","placement"];
+export const regions = ["disclosure","placement","selection","search"];
 const LABELS = {
 	"OpenSection": "Open section",
 	"CloseSection": "Close section",
 	"RefreshCards": "Refresh cards",
 	"SearchCards": "Search cards",
 	"ClearSearch": "Clear search",
-	"SelectCard": "Select card",
 	"WorkNeedsReview": "Work needs review",
 	"WorkResolves": "Work resolves",
+	"SelectCard": "Select card",
 	"RemountHome": "Remount Home",
 	"InvalidateSession": "Invalidate session"
 };
