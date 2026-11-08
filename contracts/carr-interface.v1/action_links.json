@@ -5,14 +5,48 @@
     "source_commit": "150c7386f6640d092d14d715c1badf1d8f78c6c9",
     "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2802"
   },
-  "resolve": { "verb": "resolve-action-link", "input": ["ref"], "card_kind": "lead_draft", "state": "pending_approval" },
+  "resolve": {
+    "verb": "resolve-action-link",
+    "input": [
+      "ref"
+    ],
+    "card_kind": "lead_draft",
+    "state": "pending_approval"
+  },
   "approve": {
     "verb": "approve-lead-draft",
-    "input": ["idempotency_key", "draft_id", "revision"],
-    "receipt": ["ok", "draft_id", "revision", "approved", "sent"],
+    "input": [
+      "idempotency_key",
+      "draft_id",
+      "revision"
+    ],
+    "receipt": [
+      "ok",
+      "draft_id",
+      "revision",
+      "approved",
+      "sent"
+    ],
     "effect": "Records approval only; sent must be false. Never invokes an email sender."
   },
-  "refusals": ["action_link_not_found", "action_link_no_longer_actionable", "draft_not_pending", "stale_draft_revision"],
+  "refusals": [
+    "action_link_not_found",
+    "action_link_no_longer_actionable",
+    "draft_not_pending",
+    "stale_draft_revision"
+  ],
   "authority": "Same-origin partner session. The reference is an address, not a credential. The producer checks ownership and eligibility.",
-  "deployment_order": "Producer deployed first. Live resolve-action-link discovery and synthetic not-found refusal verified before this app PR."
+  "deployment_order": "Producer deployed first. Live resolve-action-link discovery and synthetic not-found refusal verified before this app PR.",
+  "reply": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "1690f6dd010437242b42971b494732a519027ee0",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3073",
+      "pin_status": "Final head, producer PR open at implementation start"
+    },
+    "response_contract": "action-link-resolve.v2.json",
+    "fixture": "test/fixtures/action-link-reply.v2.json",
+    "approval": "submit-email-draft with exact proposal_id, base_version, subject, body, to, cc and retained idempotency_key. Authorizes sending; matching receipt confirms submission only.",
+    "expiry": "Lifecycle-based. Edited version, approval, dismissal or source retirement removes actionability. Never auto-retry."
+  }
 }
