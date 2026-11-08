@@ -16,6 +16,8 @@
     "src/ui/watches/control.tsx",
     "src/ui/watches/client.ts",
     "src/ui/watches/model.ts",
-    "src/ui/watches/policy-editor.tsx"
+    "src/ui/watches/policy-editor.tsx",
+    "src/ui/home/routes.tsx",
+    "src/ui/home/home.tsx"
   ]
 }
