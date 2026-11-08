@@ -216,3 +216,24 @@ test('TypeScript type imports declare no runtime capability', () => {
   assert.deepEqual(checkProofSource("import type { Page } from 'playwright'; import { type Locator, chromium } from 'playwright';", 'prove-types.ts'), []);
   assert.ok(checkProofSource("import { Page } from 'playwright';", 'prove-types.ts').length);
 });
+
+for (const declaration of [
+  "import type { Options } from './helper.ts';",
+  "import { type Options, type Other } from './helper.ts';",
+  "export type { Options } from './helper.ts';",
+]) test(`erased TypeScript edge is not traversed: ${declaration}`, async t => {
+  const root = temporaryDirectory('proof-type-edge-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', declaration);
+  await writeFile(root + '/scripts/helper.ts', "export type Options = { label: string }; export type Other = string; export const unusedRead = () => fetch('/synthetic');");
+  assert.deepEqual(await checkProofTransports(pathToFileURL(root + '/')), []);
+});
+
+test('mixed TypeScript import retains its runtime helper edge', async t => {
+  const root = temporaryDirectory('proof-mixed-edge-', t);
+  await mkdir(root + '/scripts');
+  await writeFile(root + '/scripts/prove-types.ts', "import { type Options, read } from './helper.ts';");
+  await writeFile(root + '/scripts/helper.ts', "export type Options = { label: string }; export const read = () => fetch('/synthetic');");
+  const errors = await checkProofTransports(pathToFileURL(root + '/'));
+  assert.ok(errors.some(error => error.includes('helper.ts:1:') && error.includes('(fetch)')), errors.join('\n'));
+});
