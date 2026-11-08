@@ -149,6 +149,9 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
   t.after(() => context.close());
   const mutations = {
     correct: '',
+    'later page near miss': `row.querySelectorAll('p')[1].textContent += ' wrong'`,
+    'duplicate later rank': `row.dataset.mailProposal = ${JSON.stringify(recordings.ready.items[0].proposal_id)}`,
+    'missing later rank': `row.remove()`,
     date: `row.querySelector('time').textContent = '9' + row.querySelector('time').textContent`,
     reason: `row.querySelector('p').firstChild.textContent = 'Wrong ' + row.querySelector('p').firstChild.textContent`,
     mailbox: `host.querySelector('p').textContent = host.querySelector('p').textContent.replace('Mailbox joe', 'Mailbox xjoe')`,
@@ -160,7 +163,7 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
     id: `row.dataset.mailProposal = 'wrong'`,
   };
   for (const [mode, mutation] of Object.entries(mutations)) await t.test(mode, async () => {
-    const html = assets.get('/workspace.html').body.toString().replace('<head>', `<head><script>history.replaceState(null,'','/?mode=fixture');new MutationObserver((_, observer) => {const host=document.querySelector('section[aria-label="Mail priorities"]');const row=host?.querySelector('[data-mail-proposal]');if(row){observer.disconnect();${mutation};}}).observe(document,{subtree:true,childList:true});</script>`);
+    const html = assets.get('/workspace.html').body.toString().replace('<head>', `<head><script>history.replaceState(null,'','/?mode=fixture');new MutationObserver((_, observer) => {const host=document.querySelector('section[aria-label="Mail priorities"]');const row=host?.querySelector('[data-mail-proposal]');if(row && (${JSON.stringify(['later page near miss', 'duplicate later rank', 'missing later rank'].includes(mode))} ? row.dataset.mailProposal === ${JSON.stringify(recordings.ready.items[5].proposal_id)} : true)){observer.disconnect();${mutation};}}).observe(document,{subtree:true,childList:true});</script>`);
     const server = await startFixture({ assets, routes: new Map([
       ['/', { body: html, contentType: 'text/html' }],
       ['/app-release', json({ service: 'doctorcre-app', environment: 'production', source_commit: expectedCommit })],
@@ -169,7 +172,13 @@ test('actual CLI compares every displayed evidence field exactly', async t => {
     ]) });
     try {
       const result = await cli(server.origin, `http://127.0.0.1:${port}`);
+      t.diagnostic(JSON.stringify({ mode, ...result }));
       assert.equal(result.code, mode === 'correct' ? 0 : 1, `${mode} ${JSON.stringify(result)}`);
+      if (mode === 'correct') {
+        assert.equal(result.receipt.assertions.count, 25);
+        assert.deepEqual(result.receipt.assertions.ids, recordings.ready.items.map(row => row.proposal_id));
+        assert.equal(result.receipt.assertions.pages, 5);
+      }
       assert.equal(context.pages().length, 1, 'only the preexisting page survives');
     } finally { await server.close(); }
   });

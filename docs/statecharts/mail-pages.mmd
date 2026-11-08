@@ -1,32 +1,88 @@
 stateDiagram-v2
-  [*] --> Loading: Open Home
-  Loading --> First: Read succeeds with decisions
-  Loading --> Empty: Read succeeds without decisions
-  Loading --> Unavailable: Read fails
-  Unavailable --> Loading: Retry
-  First --> Later: Next mail
-  Later --> Later: Next or Previous mail
-  Later --> First: Previous mail reaches first page
-  First --> Review: Open review
-  Later --> Review: Open review
-  Review --> First: Close review on first page
-  Review --> Later: Close review on later page
-  First --> Loading: Refresh
-  Later --> Loading: Refresh
-  Empty --> Loading: Refresh
-  First --> Hidden: Hide or page hidden
-  Later --> Hidden: Hide or page hidden
-  Loading --> Hidden: Hide or page hidden
-  Hidden --> Loading: Show
-  Loading --> Retired: Authorization refused or sign out
-  First --> Retired: Sign out
-  Later --> Retired: Sign out
-  Review --> Retired: Sign out
-  Retired --> Retired: Late read completes
-  Hidden --> Hidden: Late read completes
-  Loading --> [*]: Unmount
-  First --> [*]: Unmount
-  Later --> [*]: Unmount
-  %% never: Paging submits a decision or starts a read.
-  %% never: Review loses its opener through paging, refresh or hide controls.
-  %% never: Retirement or unmount restores rows after late completion.
+  state Home {
+    state Lifetime {
+      [*] --> Mounted
+      Mounted --> Unmounted: Unmount
+    }
+    --
+    state Panel {
+      [*] --> Loading
+      state Visible {
+        [*] --> First
+        state First
+        state Later
+        state FirstReview
+        state LaterReview
+      }
+      Loading --> First: Read succeeds with decisions including a smaller refreshed list [while Mounted]
+      %% when Mounted
+      Loading --> Empty: Read succeeds without decisions including a refreshed empty list [while Mounted]
+      %% when Mounted
+      Loading --> Unavailable: Read fails [while Mounted]
+      %% when Mounted
+      Unavailable --> Loading: Retry [while Mounted]
+      %% when Mounted
+      First --> Later: Next mail [while Mounted]
+      %% when Mounted
+      Later --> Later: Next or Previous mail [while Mounted]
+      %% when Mounted
+      Later --> First: Previous mail reaches first page [while Mounted]
+      %% when Mounted
+      First --> FirstReview: Open review [while Mounted]
+      %% when Mounted
+      Later --> LaterReview: Open review [while Mounted]
+      %% when Mounted
+      FirstReview --> First: Close review on first page [while Mounted]
+      %% when Mounted
+      LaterReview --> Later: Close review on later page [while Mounted]
+      %% when Mounted
+      First --> Loading: Refresh [while Mounted]
+      %% when Mounted
+      Later --> Loading: Refresh [while Mounted]
+      %% when Mounted
+      Empty --> Loading: Refresh [while Mounted]
+      %% when Mounted
+      First --> Hidden: Hide or page hidden
+      Later --> Hidden: Hide or page hidden
+      Loading --> Hidden: Hide or page hidden
+      Hidden --> Loading: Show [while Mounted]
+      %% when Mounted
+      Loading --> Retired: Authorization refused or sign out
+      First --> Retired: Sign out
+      Later --> Retired: Sign out
+      FirstReview --> Retired: Sign out
+      LaterReview --> Retired: Sign out
+      Retired --> Retired: Late read completes
+      Hidden --> Hidden: Late read completes
+      Loading --> Gone: Unmount
+      Visible --> Gone: Unmount
+      Empty --> Gone: Unmount
+      Unavailable --> Gone: Unmount
+      Hidden --> Gone: Unmount
+      Retired --> Gone: Unmount
+    }
+    --
+    state Read {
+      [*] --> Pending
+      Pending --> Settled: Read succeeds with decisions including a smaller refreshed list [while Mounted, Loading]
+      %% when Mounted, Loading
+      Pending --> Settled: Read succeeds without decisions including a refreshed empty list [while Mounted, Loading]
+      %% when Mounted, Loading
+      Pending --> Settled: Read fails [while Mounted, Loading]
+      %% when Mounted, Loading
+      Settled --> Pending: Retry [while Mounted, Unavailable]
+      %% when Mounted, Unavailable
+      Settled --> Pending: Refresh [while Mounted, First, Later, Empty]
+      %% when Mounted, First, Later, Empty
+      Pending --> Settled: Hide or page hidden
+      Settled --> Pending: Show [while Mounted, Hidden]
+      %% when Mounted, Hidden
+      Pending --> Settled: Authorization refused or sign out
+      Pending --> Settled: Unmount
+    }
+  }
+  %% never NoRowsAfterUnmount: Unmounted & Visible -- An unmounted panel never restores rows.
+  %% never NoRowsDuringRead: Pending & Visible -- Loading or refreshing removes the previous ranked page.
+  %% never NoReadAfterUnmount: Unmounted & Pending -- Unmount cancels the outstanding read.
+  %% Paging and review writes are checked through browser request and callback counts.
+  %% The model omits transport payloads and represents every later page by Later.

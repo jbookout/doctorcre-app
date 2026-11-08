@@ -58,22 +58,40 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       const host = document.querySelector('section[aria-label="Mail priorities"]');
       if (!host) throw Error('Mail priorities panel missing');
       if (host.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded') !== 'true') throw Error('Mail priorities must open automatically');
-      const rows = [...host.querySelectorAll('[data-mail-proposal]')];
       const expected = snapshot.items;
-      if (rows.length !== expected.length || rows.some((row, index) => {
-        const item = expected[index];
-        const paragraphs = [...row.querySelectorAll('p')].map(node => node.textContent);
-        return row.dataset.mailProposal !== item.proposal_id
-          || paragraphs[0] !== `${item.reasonLabel} · ${item.decision_date || 'Decision date unknown'}`
-          || paragraphs[1] !== `Source time ${item.occurred_at || 'unknown'}`;
-      })) throw Error('Visible ranked decisions differ from registered read');
+      const ids = [];
+      let pages = 0;
+      for (let offset = 0; offset < Math.max(1, expected.length); offset += 5) {
+        pages++;
+        const rows = [...host.querySelectorAll('[data-mail-proposal]')];
+        const slice = expected.slice(offset, offset + 5);
+        if (rows.length !== slice.length || rows.some((row, index) => {
+          const item = slice[index];
+          const paragraphs = [...row.querySelectorAll('p')].map(node => node.textContent);
+          return row.dataset.mailProposal !== item.proposal_id
+            || paragraphs[0] !== `${item.reasonLabel} · ${item.decision_date || 'Decision date unknown'}`
+            || paragraphs[1] !== `Source time ${item.occurred_at || 'unknown'}`;
+        })) throw Error('Visible ranked decisions differ from registered read');
+        ids.push(...rows.map(row => row.dataset.mailProposal));
+        const range = host.querySelector('[data-mail-range]');
+        if (expected.length ? range?.textContent !== `Decisions ${offset + 1}–${Math.min(offset + 5, expected.length)} of ${expected.length} loaded` : range) throw Error('Loaded range differs from registered read');
+        const buttons = [...host.querySelectorAll('nav[aria-label="Mail pages"] button')];
+        const previous = buttons.find(button => button.textContent === 'Previous mail');
+        const next = buttons.find(button => button.textContent === 'Next mail');
+        if (expected.length && (!previous || !next || previous.disabled !== (offset === 0) || next.disabled !== (offset + 5 >= expected.length))) throw Error('Mail page controls differ from registered read');
+        if (offset + 5 < expected.length) {
+          next.click();
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }
+      }
+      if (new Set(ids).size !== ids.length || JSON.stringify(ids) !== JSON.stringify(expected.map(item => item.proposal_id))) throw Error('Ranked decisions have duplicates or gaps');
       const coverage = `Mailbox ${snapshot.coverage.mailbox} · Recorded inbound pending proposals · As of ${snapshot.coverage.as_of_day} · Recorded next date in UTC`;
       const expectedParagraphs = [coverage,
         ...(snapshot.state === 'empty' ? ['No recorded pending mail decisions.'] : []),
         ...(snapshot.more ? ['Only the first 25 ranked decisions are shown.'] : [])];
       const paragraphs = [...host.querySelectorAll(':scope > div > p')].map(node => node.textContent);
       if (JSON.stringify(paragraphs) !== JSON.stringify(expectedParagraphs)) throw Error('Mailbox coverage, empty state or page limit differs from registered read');
-      return { count: rows.length, populated: rows.length ? 'observed' : 'unobserved', order_reasons_dates: true };
+      return { count: ids.length, ids, pages, populated: ids.length ? 'observed' : 'unobserved', order_reasons_dates: true };
     }, raw));
     const review = page.locator('section[aria-label="Mail priorities"] li button').first();
     if (await bounded(review.count())) {
