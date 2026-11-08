@@ -1,10 +1,10 @@
 import test from 'node:test';
-import { ESLint } from 'eslint';
+import { ClientLint } from '../scripts/client-lint-rules.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
 const lint = (source, path = 'js/new-client.js') => spawnSync(process.execPath,
-  ['node_modules/eslint/bin/eslint.js', '--stdin', '--stdin-filename', path, '--format', 'json'],
+  ['scripts/check-client-safety.ts', '--stdin', path],
   { input: source, encoding: 'utf8' });
 
 test('a new raw client timeout fails lint', () => {
@@ -96,7 +96,7 @@ test('exemptions require four words naming a bound or owner', () => {
 });
 
 test('all scheduler names reject value transfers through bare and global forms', async () => {
-  const eslint = new ESLint();
+  const eslint = new ClientLint();
   for (const scheduler of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'requestIdleCallback', 'queueMicrotask']) {
     for (const value of [scheduler, `window.${scheduler}`, `globalThis['${scheduler}']`, `self.${scheduler}`]) {
       for (const source of [`const later = ${value};`, `later = ${value};`, `consume(${value});`, `export default ${value};`]) {
@@ -112,7 +112,7 @@ test('all scheduler names reject value transfers through bare and global forms',
 });
 
 test('global-object aliases reject scheduler extraction and destructuring', async () => {
-  const eslint = new ESLint();
+  const eslint = new ClientLint();
   for (const global of ['window', 'globalThis', 'self']) {
     for (const scheduler of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'requestIdleCallback', 'queueMicrotask']) {
       for (const source of [
@@ -130,7 +130,7 @@ test('global-object aliases reject scheduler extraction and destructuring', asyn
 });
 
 test('static computed keys reject all five schedulers on globals and aliases', async () => {
-  const eslint = new ESLint();
+  const eslint = new ClientLint();
   for (const global of ['window', 'globalThis', 'self']) {
     for (const scheduler of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'requestIdleCallback', 'queueMicrotask']) {
       for (const object of [global, 'w', 'g']) {
@@ -167,7 +167,7 @@ for (const source of [
   'const key = `setTimeout`; globalThis[key](() => {}, 1);',
 ]) {
   test(`const-bound scheduler key fails lint: ${source}`, async () => {
-    const [report] = await new ESLint().lintText(source, { filePath: 'js/probe.js' });
+    const [report] = await new ClientLint().lintText(source, { filePath: 'js/probe.js' });
     assert.equal(report.errorCount, 1);
     assert.equal(report.messages[0].ruleId, 'client/no-scheduler-alias');
   });
@@ -180,14 +180,14 @@ for (const reason of [
   'n/a n/a n/a bound',
 ]) {
   test(`placeholder reason fails lint: ${reason}`, async () => {
-    const [report] = await new ESLint().lintText(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`, { filePath: 'js/probe.js' });
+    const [report] = await new ClientLint().lintText(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`, { filePath: 'js/probe.js' });
     assert.equal(report.errorCount, 1);
     assert.equal(report.messages[0].ruleId, 'client/bounded-exemption');
   });
 }
 
 test('a real reason still passes with the actual client configuration', async () => {
-  const [report] = await new ESLint().lintText('// eslint-disable-next-line no-restricted-syntax -- cleared on dispose; one pending timer per panel\nsetTimeout(work, 1);', { filePath: 'js/probe.js' });
+  const [report] = await new ClientLint().lintText('// eslint-disable-next-line no-restricted-syntax -- cleared on dispose; one pending timer per panel\nsetTimeout(work, 1);', { filePath: 'js/probe.js' });
   assert.equal(report.errorCount, 0);
   assert.equal(report.warningCount, 0);
 });
@@ -199,7 +199,7 @@ test('dynamic and shadowed computed keys stay outside const resolution', async (
     'const key = chooseKey(); window[key](work, 1);',
     'const key = "setTimeout"; function schedule(key) { window[key](work, 1); }',
   ]) {
-    const [report] = await new ESLint().lintText(source, { filePath: 'js/probe.js' });
+    const [report] = await new ClientLint().lintText(source, { filePath: 'js/probe.js' });
     assert.equal(report.errorCount, 0, source);
   }
 });
@@ -210,7 +210,7 @@ test('every placeholder is rejected anywhere and keywords do not count as explan
     'single callback after explicit input',
     'cleared on dispose; one TODO/owner pending timer per panel',
   ]) {
-    const [report] = await new ESLint().lintText(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`, { filePath: 'js/probe.js' });
+    const [report] = await new ClientLint().lintText(`// eslint-disable-next-line no-restricted-syntax -- ${reason}\nsetTimeout(work, 1);`, { filePath: 'js/probe.js' });
     assert.equal(report.errorCount, 1, reason);
     assert.equal(report.messages[0].ruleId, 'client/bounded-exemption');
   }

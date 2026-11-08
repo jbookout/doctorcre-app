@@ -50,8 +50,8 @@ import {
 } from "./sessions-model.js";
 
 export {
-  PROVABLE_STAGES, SURFACES, WORK_STATES, WORK_STATE_LABEL,
-  countsLine, dispatchView, lineage, listState,
+  WORK_STATES, WORK_STATE_LABEL,
+  countsLine, dispatchView, listState,
   refuseDispatchHistory, refuseSessionIdentity, sessionCards,
 };
 
@@ -72,16 +72,16 @@ export const TURN_ROOM = "model-room";
 export const QUEUE_BOARD = "carr-build";
 
 /** The producer's staleness window, in milliseconds (QUEUE_STALE_MS). */
-export const QUEUE_STALE_MS = 120000;
+const QUEUE_STALE_MS = 120000;
 
 /** The exact key sets the producer validates before a turn becomes a card. */
-export const QUEUE_EVENT_KEYS = Object.freeze(
+const QUEUE_EVENT_KEYS = Object.freeze(
   ["v", "board", "event_id", "event", "task_id", "card", "summary", "projected_at"]);
-export const QUEUE_CARD_KEYS = Object.freeze(
+const QUEUE_CARD_KEYS = Object.freeze(
   ["title", "target", "effective_model", "status", "priority", "cap", "updated_at", "source_seq"]);
 
 /** How many turns one visit reads. There is no timer anywhere in this slice. */
-export const TURN_LIMIT = 25;
+const TURN_LIMIT = 25;
 
 /* ----------------------------------------------------- the honesty sentences */
 
@@ -219,7 +219,7 @@ export function queueFreshness(payload, { now = Date.now() } = {}) {
 }
 
 /** Whole units, largest first, so a still screenshot carries the age in text. */
-export function humanAge(ms) {
+function humanAge(ms) {
   const seconds = Math.max(0, Math.round(Number(ms) / 1000));
   if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
   const minutes = Math.floor(seconds / 60);

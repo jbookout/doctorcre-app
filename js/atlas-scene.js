@@ -82,7 +82,7 @@ function organGlyph(shape, x, y, size) {
  * ids for the C07 index and passes its own map in `ids`. Nothing here is
  * looked up by a literal string a second time.
  */
-export const DEFAULT_SCENE_IDS = Object.freeze({
+const DEFAULT_SCENE_IDS = Object.freeze({
   root: "atlas", svg: "atlasSvg", crumbs: "atlasCrumbs", evidenceLegend: "atlasEvidenceLegend",
   index: "atlasIndex", componentDrawer: "componentDrawer", componentTitle: "componentTitle",
   componentBody: "componentBody", coverageTitle: "atlasCoverageTitle", safeExplanation: "atlasSafeExplanation",

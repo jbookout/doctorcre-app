@@ -332,5 +332,3 @@ export function mountCharts({ client: boardClient, storage: storageImpl } = {}) 
   else read({ push: false });
   return { view, address };
 }
-
-export { view, NO_VALUE_KEY };

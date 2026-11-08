@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -14,8 +15,7 @@ const checks = await readFile(new URL("../.github/workflows/checks.yml", import.
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-const workflowDocument = source => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], { input: source, encoding: 'utf8' }));
+const workflowDocument = source => parseYaml(source);
 const eventCondition = (expression = 'true', github = {}) => runInNewContext(
   expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ''),
   { github, always: () => true, cancelled: () => false },
@@ -510,8 +510,7 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   }
 });
 
-const validationWorkflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
+const validationWorkflow = parseYaml(ci);
 
 function validationPolicy({ eventName = 'pull_request', action = 'opened', changes = {}, number = 7, runId = 1, workflow = validationWorkflow.name } = {}) {
   const github = { workflow, event_name: eventName, run_id: runId,
