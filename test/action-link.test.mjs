@@ -140,9 +140,18 @@ test('reply transport reload is manual and fresh resolve replaces prior data',as
 
 test('reply signed out retains exact return path and retirement clears every phase and late result',async()=>{
  const signed=replySetup(async()=>({kind:'authorization'}));await until(()=>assert.match(signed.root.textContent,/Sign in to open/));assert.equal(new URL(signed.root.querySelector('.btn').href).searchParams.get('return_to'),`/a/${reply.ref}`);assert.doesNotMatch(signed.root.textContent,/Synthetic/);signed.mounted.dispose();
- for(const phase of ['opening','idle','submitting','unconfirmed','confirmed']) {
- let finish,signal;const {root,mounted}=replySetup(async(name,args,options)=>{signal=options.signal;if(phase==='opening'||name!=='resolve-action-link'&&phase==='submitting')return new Promise(resolve=>{finish=resolve;});return name==='resolve-action-link'?answer(reply):phase==='unconfirmed'?{kind:'unconfirmed'}:answer(replyReceipt());});
- if(phase!=='opening'){await until(()=>assert.match(root.textContent,/Review reply draft/));if(phase!=='idle'){click(root);await until(()=>assert.match(root.textContent,phase==='submitting'?/Submitting…/:phase==='unconfirmed'?/has not been confirmed/:/Reply submitted for sending/));}}
+ for(const phase of ['opening','idle','submitting','unconfirmed','confirmed','unavailable']) {
+ let finish,signal;const {root,mounted}=replySetup(async(name,args,options)=>{signal=options.signal;if(phase==='opening'||name!=='resolve-action-link'&&phase==='submitting')return new Promise(resolve=>{finish=resolve;});if(phase==='unavailable')return {kind:'payload',payload:{error:'action_link_not_found'},isError:true};return name==='resolve-action-link'?answer(reply):phase==='unconfirmed'?{kind:'unconfirmed'}:answer(replyReceipt());});
+ if(phase==='unavailable'){await until(()=>assert.match(root.textContent,/unavailable for your account/));}
+ else if(phase!=='opening'){await until(()=>assert.match(root.textContent,/Review reply draft/));if(phase!=='idle'){click(root);await until(()=>assert.match(root.textContent,phase==='submitting'?/Submitting…/:phase==='unconfirmed'?/has not been confirmed/:/Reply submitted for sending/));}}
  mounted.dispose();assert.equal(signal.aborted,true);assert.equal(root.textContent,'');finish?.(answer(reply));await delay(15);assert.equal(root.textContent,'');
  }
+});
+
+
+test('confirmed reply reopening refuses consumed producer reference without another write',async()=>{
+ let consumed=false,writes=0;
+ const request=async name=>{if(name==='resolve-action-link')return consumed?{kind:'payload',payload:{error:'action_link_no_longer_actionable'},isError:true}:answer(reply);consumed=true;writes++;return answer(replyReceipt());};
+ const first=replySetup(request);await until(()=>assert.match(first.root.textContent,/Review reply draft/));click(first.root);await until(()=>assert.match(first.root.textContent,/Reply submitted for sending/));first.mounted.dispose();
+ const reopened=replySetup(request);try{await until(()=>assert.match(reopened.root.textContent,/no longer awaiting approval/));assert.equal(reopened.root.querySelector('button'),null);assert.equal(writes,1);}finally{reopened.mounted.dispose();}
 });
