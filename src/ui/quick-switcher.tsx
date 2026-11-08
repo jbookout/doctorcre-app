@@ -69,6 +69,17 @@ const unavailableMessage = {
   none: 'Deals and contacts unavailable. Pages are still available.',
 };
 
+export async function readQuickSwitcherSources(readBoard: () => Promise<unknown>, readNetwork: () => Promise<unknown>): Promise<{ board: unknown; network: unknown }> {
+  const [board, network] = await Promise.allSettled([
+    Promise.resolve().then(readBoard),
+    Promise.resolve().then(readNetwork),
+  ]);
+  return {
+    board: board.status === 'fulfilled' ? board.value : null,
+    network: network.status === 'fulfilled' ? network.value : null,
+  };
+}
+
 export function openQuickSwitcher({ opener, pages, read }: Options) {
   if (document.querySelector('[data-quick-switcher]')) return;
   const dialog = document.createElement('dialog');
