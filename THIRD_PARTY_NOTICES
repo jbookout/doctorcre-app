@@ -1,0 +1,99 @@
+# Third-party notices
+
+## T3 Code
+
+Project: https://github.com/pingdotgg/t3code
+
+License: MIT
+
+The implementations below receive conservative attribution because retained
+implementation evidence does not determine whether any T3 Code source was
+copied or translated. This notice does not assert that shared UI ideas are
+copied code. The pinned files are provenance comparators, not a claim about
+which revision an original author studied. No copied block was identified in
+the historical comparison. Keep this copyright and permission notice with any
+copies or substantial portions of T3 Code included in the application.
+
+### Implementations covered conservatively
+
+- Initial inbox, settle, snooze, Undo, bulk selection, and card routes,
+  [PR 559](https://github.com/jbookout/doctorcre-app/pull/559).
+  App files: `src/ui/home/home.tsx`, `src/ui/home/inbox.tsx`, and
+  `src/ui/home/routes.tsx`.
+  T3 comparators:
+  [Sidebar.tsx](https://github.com/pingdotgg/t3code/blob/80a2351fcb909034e65a512dfabeb3cdfd367762/apps/web/src/components/Sidebar.tsx) and
+  [Sidebar.logic.ts](https://github.com/pingdotgg/t3code/blob/80a2351fcb909034e65a512dfabeb3cdfd367762/apps/web/src/components/Sidebar.logic.ts)
+  at `80a2351fcb909034e65a512dfabeb3cdfd367762`.
+- Sectioned Home,
+  [PR 642](https://github.com/jbookout/doctorcre-app/pull/642).
+  App files: `src/ui/home/sections.tsx` and `src/ui/home/home.tsx`.
+  T3 comparators:
+  [Sidebar.tsx](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/Sidebar.tsx) and
+  [Sidebar.logic.ts](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/Sidebar.logic.ts)
+  at `cefb544af3c98224874419198c0359b652ca3c94`.
+- Automatic settlement adoption,
+  [PR 644](https://github.com/jbookout/doctorcre-app/pull/644).
+  App files: `src/ui/home/inbox.tsx` and `src/ui/home/home.tsx`.
+  T3 comparators: `Sidebar.tsx` and `Sidebar.logic.ts` at the same
+  `cefb544af3c98224874419198c0359b652ca3c94` revision linked above.
+- Quick switcher and recents,
+  [PR 645](https://github.com/jbookout/doctorcre-app/pull/645).
+  App files: `src/ui/quick-switcher.tsx` and `src/ui/switcher-history.ts`.
+  T3 comparators:
+  [CommandPalette.logic.ts](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/CommandPalette.logic.ts),
+  [CommandPaletteLookups.ts](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/CommandPaletteLookups.ts), and
+  [CommandPaletteResults.tsx](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/CommandPaletteResults.tsx)
+  at `cefb544af3c98224874419198c0359b652ca3c94`.
+- Queued asks and continue-working composer,
+  [PR 641](https://github.com/jbookout/doctorcre-app/pull/641).
+  App files: `src/ui/queued-asks.ts` and `src/ui/ask-composer.tsx`.
+  T3 comparators:
+  [composerDraftStore.ts](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/composerDraftStore.ts) and
+  [QueuedRunsControl.tsx](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/chat/QueuedRunsControl.tsx)
+  at `cefb544af3c98224874419198c0359b652ca3c94`.
+- Receipt-bound bulk settle, snooze, and Undo,
+  [PR 654](https://github.com/jbookout/doctorcre-app/pull/654).
+  App files: `src/ui/home/bulk-controls.tsx`, `src/ui/home/batch.ts`, and
+  `src/ui/home/inbox.tsx`.
+  T3 comparators:
+  [Sidebar.tsx](https://github.com/pingdotgg/t3code/blob/86b7dc6bfa12123abef683811c852ec320537690/apps/web/src/components/Sidebar.tsx) and
+  [Sidebar.logic.ts](https://github.com/pingdotgg/t3code/blob/86b7dc6bfa12123abef683811c852ec320537690/apps/web/src/components/Sidebar.logic.ts)
+  at `86b7dc6bfa12123abef683811c852ec320537690`.
+
+Additional mechanical comparison candidates are
+[Sidebar.drag.ts](https://github.com/pingdotgg/t3code/blob/80a2351fcb909034e65a512dfabeb3cdfd367762/apps/web/src/components/Sidebar.drag.ts)
+for PR 559,
+[threadSettled.ts](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/packages/client-runtime/src/state/threadSettled.ts)
+for PR 644,
+[ChatGptWelcomeCoordinator.tsx](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/settings/ChatGptWelcomeCoordinator.tsx)
+and
+[deviceFold.ts](https://github.com/pingdotgg/t3code/blob/cefb544af3c98224874419198c0359b652ca3c94/apps/web/src/components/device/deviceFold.ts)
+for PR 645, and
+[threadSettled.ts](https://github.com/pingdotgg/t3code/blob/86b7dc6bfa12123abef683811c852ec320537690/packages/client-runtime/src/state/threadSettled.ts)
+for PR 654. Their short matches are generic shelf initialization, date
+validation, storage parsing, or object guards. They are included within the
+same conservative attribution without asserting copying.
+
+### Copyright and permission notice
+
+MIT License
+
+Copyright (c) 2026 T3 Tools Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
