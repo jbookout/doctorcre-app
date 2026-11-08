@@ -10,7 +10,7 @@ Each open or manual Retry starts at most two parallel source reads. There is one
 
 Each source retains its existing ten-second deadline. One failure marks that source unavailable after both reads settle; both failures retain pages and Retry. Client creation failure follows the whole-read error path. A healthy source can wait for the other source's deadline. This change does not stream progressive results.
 
-Retry replaces business results. Recents contain IDs and intersect the admitted set. No new cache, queue, storage, backend call, write, send, or idempotency key applies. The failure threshold is one failed source per attempt; the existing message is the alert and existing partial results are the fallback. Session invalidation closes the dialog and retires the shell before a late result can publish.
+Manual Retry is available only after a source is unavailable, including whole-read failure. Full results and an in-flight attempt have no Retry control. Reopening starts a fresh pair from full results. Retry replaces business results. Recents contain IDs and intersect the admitted set. No new cache, queue, storage, backend call, write, send, or idempotency key applies. The failure threshold is one failed source per attempt; the existing message is the alert and existing partial results are the fallback. Session invalidation closes the dialog and retires the shell before a late result can publish.
 
 ## Statechart
 
@@ -22,7 +22,7 @@ Run in owned scratch storage, with Java 11 or newer and `TLA2TOOLS` pointing at 
 node /Users/booko/.claude/plugins/marketplaces/cursor-plugins/pstack/skills/statechart/scripts/statechart.mjs from-chart quick-switcher-partial-transport.mmd --module QuickSwitcherPartialTransport --png
 ```
 
-The initial unguarded chart admitted impossible results and retired-session reopening. The final chart includes the real lifetime, settled-source, and Retry guards. After adding source annotations to the generated model, the same command passes again. The retained build report names `summary.json`, `stories.md`, the generated model, and rendered PNG. It records 59 model states, 174 transitions, and zero rule violations.
+The initial unguarded chart admitted impossible results and retired-session reopening. The final chart includes the real lifetime, settled-source, and Retry guards. After adding source annotations to the generated model, the same command passes again. The retained build report names `summary.json`, `stories.md`, the generated model, and rendered PNG. The review fix removes the unsupported full-results Retry edge. The regenerated model has 59 states, 173 transitions, and zero rule violations. All eight distinct Retry edges start both source reads. None leaves full results. The existing full-source and Retry browser tests verify that full results have no Retry control.
 
 The finite model abstracts transport bodies, concrete record IDs, query text, and history contents. It models source settlement rather than wall time. It represents the old-attempt fence by the closed lifetime; browser tests additionally prove that an old completion cannot replace a newly opened dialog. The two-read cap and history clearing also have executable browser checks; the chart's structural predicates do not measure HTTP counts or storage contents.
 
@@ -47,6 +47,7 @@ All named tests are in `test/quick-switcher-partial-read-browser.test.mjs` unles
 | Contacts fulfills; board HTTP, network, or timeout failure | `shell preserves contact results when board http`, `network`, `timeout` |
 | Both fail; show unavailable pages; distinguish successful empty | `shell keeps pages and Retry when both sources fail, empty is successful` |
 | Malformed fulfilled payload | `shell preserves deal and task results when contacts malformed`; `shell preserves contact results when board malformed`; existing malformed-section tests |
+| Full results have no Retry transition | `shell full source reads run in parallel, board finishes first`; `shell full source reads run in parallel, contacts finishes first`; `shell Retry replaces partial results with current results and removes inaccessible recents` |
 | Partial; Retry; loading; full results | `shell Retry replaces partial results with current results and removes inaccessible recents` |
 | Partial; Retry; narrower result; remove inaccessible results and recents | Same Retry test |
 | Local query and kind changes | Every `shell preserves ...` case asserts exactly one pair after filtering |

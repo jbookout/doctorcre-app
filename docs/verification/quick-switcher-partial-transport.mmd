@@ -85,8 +85,6 @@ stateDiagram-v2
       %% when Open, ContactsFulfilled, BoardRejected, BoardTimedOut
       LoadingPages --> UnavailablePages: Show unavailable sources [when Open, BoardRejected, BoardTimedOut, ContactsRejected, ContactsTimedOut]
       %% when Open, BoardRejected, BoardTimedOut, ContactsRejected, ContactsTimedOut
-      FullResults --> LoadingPages: Retry [when Open]
-      %% when Open
       BoardResults --> LoadingPages: Retry [when Open]
       %% when Open
       ContactResults --> LoadingPages: Retry [when Open]
