@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
@@ -31,6 +32,7 @@ async function fixture(t, mode) {
       const url = new URL(request.url);
       if (url.pathname === '/mcp') {
         const body = await request.json();
+        if (body.params?.name === "list-verbs") return Response.json({result:{content:[{type:"text",text:JSON.stringify(registry)}]}});
         return Response.json({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text:
           JSON.stringify(body.params?.name === 'lead-board' ? recording : { error: 'fixture_read_unavailable' }),
         }] } });
@@ -66,7 +68,7 @@ for (const mode of ['equal','descendant','older','unrelated','unknown','failure'
 });
 for(const mode of ['late connection','stalled evaluation']) test(`proof deadline cleans ${mode}`,async t=>{
   const options=await fixture(t,'equal');let closed=0,pageClosed=0;
-  const page={setDefaultTimeout(){},route:async()=>{},goto:async()=>{},evaluate:()=>new Promise(()=>{}),close:async()=>pageClosed++};
+  const page={on(){},setDefaultTimeout(){},route:async()=>{},goto:async()=>{},evaluate:()=>new Promise(()=>{}),close:async()=>pageClosed++};
   const connection={contexts:()=>[{newPage:async()=>page}],close:async()=>closed++};
   const engine={connectOverCDP:async()=>{if(mode==='late connection')await new Promise(resolve=>setTimeout(resolve,150));return connection;}};
   await assert.rejects(prove({...options,engine,cdpUrl:'fixture',timeoutMs:100}),error=>error.exitCode===78);
@@ -198,4 +200,80 @@ for (const acquisition of ['unreachable', 'connection rejection', 'page rejectio
     assert.equal(JSON.parse(error.stdout).status, 'insufficient_evidence');
     return true;
   });
+});
+
+const registry = JSON.parse(await readFile(new URL("./fixtures/walk-verb-registry.json", import.meta.url))).response;
+
+for (const mode of ['extra read', 'future read', 'write', 'unknown', 'unreadable', 'malformed', 'incomplete', 'empty', 'cleanup write', 'cleanup unknown']) test(`registry CLI ${mode}`, async t => {
+  const f = await fixture(t, 'equal');
+  const scratch = temporaryDirectory('registry-cli-', t);
+  const preload = resolve(scratch, 'preload.mjs');
+  const marker = resolve(scratch, 'forwarded');
+  const live = structuredClone(registry);
+  live.verbs.push({ name: 'future-proof-read', write: false }); live.count++;
+  const name = mode.endsWith('write') ? live.verbs.find(row => row.write).name : mode.endsWith('unknown') ? 'unregistered-proof-call' : mode === 'future read' ? 'future-proof-read' : 'read-doctrine';
+  if (mode === 'malformed') delete live.verbs[0].write;
+  if (mode === 'incomplete') live.count++;
+  if (mode === 'empty') { live.verbs = []; live.count = 0; }
+  await writeFile(preload, `
+    import { chromium } from ${JSON.stringify(import.meta.resolve('playwright'))};
+    import { appendFile } from 'node:fs/promises';
+    const connect = chromium.connectOverCDP.bind(chromium);
+    chromium.connectOverCDP = async (...args) => {
+      const connection = await connect(...args), context = connection.contexts()[0];
+      await context.route('**/mcp', async route => {
+        const call = route.request().postDataJSON().params;
+        if (call.name === 'list-verbs') {
+          await appendFile(${JSON.stringify(marker + '.registry')}, '1');
+          if (call.arguments.names_only !== true) throw Error('names_only registry required');
+          if (${JSON.stringify(mode)} === 'unreadable') return route.fulfill({status:503,body:'Unavailable'});
+          return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(${JSON.stringify(live)})}]}}});
+        }
+        if (call.name === ${JSON.stringify(name)}) {
+          await appendFile(${JSON.stringify(marker)}, call.name);
+          return route.fulfill({json:{result:{content:[{type:'text',text:'{}'}]}}});
+        }
+        return route.fallback();
+      });
+      if (${JSON.stringify(mode)}.startsWith('cleanup')) {
+        const newPage = context.newPage.bind(context);
+        context.newPage = async (...args) => {
+          const page = await newPage(...args), close = page.close.bind(page);
+          page.close = async (...options) => {
+            await page.evaluate(async name => {
+              await fetch('/mcp', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:91,method:'tools/call',params:{name,arguments:{}}})}).catch(() => {});
+            }, ${JSON.stringify(name)}).catch(() => {});
+            return close(...options);
+          };
+          return page;
+        };
+      }
+      await context.addInitScript(({name, cleanup}) => {
+        if (cleanup) return;
+        document.addEventListener('DOMContentLoaded', () => {
+          void fetch('/mcp', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:90,method:'tools/call',params:{name,arguments:{}}})}).catch(() => {});
+        });
+      }, {name: ${JSON.stringify(name)}, cleanup: ${JSON.stringify(mode)}.startsWith('cleanup')});
+      return connection;
+    };
+  `);
+  const listener = await startFixture();
+  const port = new URL(listener.origin).port; await listener.close();
+  const { chromium: owner } = await import('../scripts/proof-browser.mjs');
+  const browser = await owner.launch({args:[...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${port}`]});
+  t.after(() => browser.close());
+  const cliArgs = ['--import', preload, 'scripts/prove-research-kind-filter.mjs', '--origin', f.origin, '--expected-commit', f.expectedCommit, '--cdp-url', `http://127.0.0.1:${port}`];
+  const execution = promisify(execFile)(process.execPath, cliArgs);
+  if (['extra read', 'future read'].includes(mode)) {
+    assert.equal(JSON.parse((await execution).stdout).status, 'passed');
+    assert.equal(await readFile(marker, 'utf8'), name);
+  } else {
+    await assert.rejects(execution, error => {
+      assert.equal(error.code, mode.endsWith('write') ? 1 : 78, error.stdout);
+      return true;
+    });
+    await assert.rejects(readFile(marker), {code:'ENOENT'});
+  }
+  assert.equal(await readFile(marker + '.registry', 'utf8'), '1', 'one registry read');
+  assert.ok(browser.isConnected());
 });
