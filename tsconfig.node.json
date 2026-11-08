@@ -13,7 +13,7 @@
     "scripts/check-typescript.ts",
     "test/typescript-gate-contract.test.ts",
     "scripts/prove-reply-action-link.ts",
-    "test/prove-reply-action-link.test.ts",
+    "test/prove-reply-action-link.browser.ts",
     "scripts/containing-release.ts",
     "test/containing-release.test.ts",
     "scripts/app-release-reader.d.mts",
