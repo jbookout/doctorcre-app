@@ -1,4 +1,4 @@
-export const NETWORK_SCHEMA = "carr-relationship-network.v1";
+const NETWORK_SCHEMA = "carr-relationship-network.v1";
 export const EDGE_LABELS = Object.freeze({
   knows: "Knows",
   works_with: "Works with",

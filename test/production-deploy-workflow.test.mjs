@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -7,10 +8,7 @@ import { readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], {
-  input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
-}));
+const workflow = () => parseYaml(readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'));
 
 test('production accepts same-repository main push CI wakes and resolves current main', () => {
   const document = workflow();

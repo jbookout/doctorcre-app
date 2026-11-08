@@ -6,7 +6,7 @@ function field(value: string | number | boolean | null): string {
   return '"' + text.replaceAll('"', '""') + '"';
 }
 
-export function answerTableCsv(table: Table, rows: Table['rows']): string {
+function answerTableCsv(table: Table, rows: Table['rows']): string {
   const header = table.columns.flatMap((column, index) =>
     ['value', 'is_null', 'source_type', 'record_id', 'fact_id', 'version'].map(part => `${column.label} [${index + 1}:${column.key}].${part}`));
   const records = rows.map(row => table.columns.flatMap(column => {

@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [
+    "scripts/check-javascript.ts",
+    "test/javascript-gate.test.ts",
+    "scripts/check-client-safety.ts",
+    "scripts/agent-typescript-hook.ts",
+    "test/typescript-hook.test.ts",
+    "scripts/client-lint-rules.d.mts",
+    "scripts/temp-directory.d.mts",
+    "tests/live/producer-contract.d.mts",
+    "test/central-time.test.ts",
+    "scripts/check-typescript.ts",
+    "test/typescript-gate-contract.test.ts"
+  ],
+  "compilerOptions": {
+    "lib": [
+      "esnext"
+    ]
+  }
+}

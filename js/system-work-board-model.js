@@ -1,6 +1,6 @@
 import {resolveJobTasks} from './control-room-workspace-model.js';
 import {STAGES,RECORDED_STAGE,taskStage} from './progress-board-model.js';
-export const SYSTEM_WORK_CONTRACT = 'unfinished-work.v1';
+const SYSTEM_WORK_CONTRACT = 'unfinished-work.v1';
 // Producer revision is pinned in the app PR after the server source is committed.
 export function validSystemWork(read) {
  if(read?.schema!==SYSTEM_WORK_CONTRACT||!Array.isArray(read.items)||!Array.isArray(read.coverage))throw new Error('System work unavailable.');

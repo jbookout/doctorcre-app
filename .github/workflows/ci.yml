@@ -39,7 +39,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.4
+          node-version: 26.12.1
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
@@ -104,7 +104,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.4
+          node-version: 26.12.1
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
@@ -187,6 +187,10 @@ jobs:
           bash ops/ci-postgres.sh
           python -m pip install -r requirements.lock
           npm --prefix mcp-server ci --no-audit
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.12.1
+          package-manager-cache: false
       - run: npm ci
       - name: Install the pinned CARR checkout as the live test package
         run: node scripts/live-producer.mjs
@@ -240,7 +244,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.4
+          node-version: 26.12.1
       - run: npm ci
       - run: npm run build
         env:

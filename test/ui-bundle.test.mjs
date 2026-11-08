@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { init, parse } from 'es-module-lexer';
 import { spawnSync } from 'node:child_process';
-import { ESLint } from 'eslint';
+import { ClientLint } from '../scripts/client-lint-rules.mjs';
 import { isUiAsset, uiAssets } from '../scripts/ui-bundle.mjs';
 
 const readSource = path => readFile(new URL('../' + path, import.meta.url));
@@ -39,7 +39,7 @@ test('only emitted UI entries and shared chunks bypass source checks', async () 
   assert.ok(assets.has('js/ui-relationship-kind-filter.js'));
   assert.ok(assets.has('js/ui-ideal-client-profile.js'));
   assert.ok(!assets.has('js/ui-workspace.js'));
-  const lint = new ESLint();
+  const lint = new ClientLint();
   const paths = [...assets.keys(), 'js/ui-handwritten.js', 'js/other.generated.js', 'js/ui.generated.js', 'js/ui-workspace.js'];
   const ignored = spawnSync('git', ['check-ignore', '--no-index', '--stdin'], { input: paths.join('\n'), encoding: 'utf8' });
   assert.ok([0, 1].includes(ignored.status), ignored.stderr);

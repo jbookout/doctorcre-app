@@ -2,8 +2,8 @@ const object = (value: unknown): value is Record<string, unknown> => value !== n
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const day = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const invalid = (): never => { throw Error('Mail priorities response unavailable'); };
-export const mailKinds = { file_to_deal: 'Email filing', possible_new_deal: 'Possible new deal', next_step: 'Next step', phase_move: 'Deal progress', reply_draft: 'Reply draft' };
-export const mailReasons = { recorded_overdue: 'Recorded overdue', recorded_upcoming: 'Recorded upcoming', decision_date_unknown: 'Decision date unknown' };
+const mailKinds = { file_to_deal: 'Email filing', possible_new_deal: 'Possible new deal', next_step: 'Next step', phase_move: 'Deal progress', reply_draft: 'Reply draft' };
+const mailReasons = { recorded_overdue: 'Recorded overdue', recorded_upcoming: 'Recorded upcoming', decision_date_unknown: 'Decision date unknown' };
 const verbs = { file_to_deal: 'confirm-email-filing', possible_new_deal: 'confirm-email-filing', next_step: 'confirm-email-next-step', phase_move: 'confirm-email-deal-progress', reply_draft: 'submit-email-draft' };
 function parseDecision(value: unknown) {
   if (!object(value) || !uuid(value.proposal_id) || !Number.isSafeInteger(value.version) || typeof value.version !== 'number' || value.version < 1 || value.status !== 'pending' || typeof value.kind !== 'string' || !(value.kind in mailKinds) || !(value.kind in verbs) || !(value.decision_date === null || day(value.decision_date)) || !Array.isArray(value.reason_codes) || value.reason_codes.length !== 1) return invalid();

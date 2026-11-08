@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { verifyLiveProducer } from '../../scripts/live-producer.mjs';
 
-export const APP_ORIGIN = 'http://127.0.0.1:8787';
+const APP_ORIGIN = 'http://127.0.0.1:8787';
 const COMPANION = 'http://127.0.0.1:4682';
 const SITE = resolve(import.meta.dirname, '../../dist/site');
 let prepared: ReturnType<typeof appAssetSnapshot>;

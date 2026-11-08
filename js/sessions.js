@@ -344,5 +344,3 @@ export function mountSessions({ outage = null } = {}) {
     return read();
   });
 }
-
-export { view };
