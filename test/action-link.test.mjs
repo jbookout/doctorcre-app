@@ -102,7 +102,7 @@ test('reply rejects mismatched ref kind action identity version content and reci
  for(const change of [p=>p.ref='al1_foreign',p=>p.card.kind='arbitrary',p=>p.card.id=id,p=>p.card.source_version=2,p=>p.card.actions[0].verb='send-email',p=>p.card.actions[0].args.proposal_id=id,p=>p.card.actions[0].args.base_version=2,p=>p.card.actions[0].args.subject='other',p=>p.card.actions[0].args.body='other',p=>p.card.actions[0].args.to=['other@example.test'],p=>p.card.actions[0].args.cc=['other@example.test'],p=>p.card.extra=true]) {
   const value=cloneReply();change(value);let writes=0;
   const {root,mounted}=replySetup(async name=>{if(name!=='resolve-action-link')writes++;return answer(value);});
-  try{await until(()=>assert.match(root.textContent,/could not be opened/));assert.doesNotMatch(root.textContent,/Synthetic body/);assert.equal(root.querySelector('button').textContent,'Reload draft');assert.equal(writes,0);}finally{mounted.dispose();}
+  try{await until(()=>assert.match(root.textContent,/could not be opened/));assert.doesNotMatch(root.textContent,/Synthetic body/);assert.equal(root.querySelector('button'),null);assert.equal(writes,0);}finally{mounted.dispose();}
  }
 });
 
