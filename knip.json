@@ -253,6 +253,7 @@
     "tours/day.js",
     "tours/planner.js",
     "test/*.test.ts",
+    "test/*.browser.ts",
     "src/ui/home/inbox.tsx",
     "src/ui/home/sections.tsx",
     "src/ui/switcher-history.ts",
@@ -260,7 +261,9 @@
     "tests/staging/journey-flows.mjs",
     "tests/walks/privacy.ts",
     "js/charts.js",
-    "tours/vendor/tour-map-route-state.js"
+    "tours/vendor/tour-map-route-state.js",
+    "src/ui/watches/control.tsx",
+    "docs/statecharts/SubjectWatchControls.map.ts"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",
@@ -415,6 +418,9 @@
     ],
     "mcp-server/test/helpers/local-carr.mjs": [
       "tests/live/producer-contract.d.mts"
+    ],
+    "/js/ui-watches.js": [
+      "src/ui/watches/control.tsx"
     ]
   }
 }

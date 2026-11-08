@@ -596,3 +596,12 @@ test('release handoff admits both app identities through the source rule and ref
     assert.equal(text.includes(`manifest_repository=${repository}\n`), repository !== 'DoctorCRE/other');
   }
 });
+
+ test('typed watch journeys belong to browser collection and remain typechecked', async () => {
+ const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+ const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+ assert.ok(config.files.includes('test/watch-controls.browser.ts'));
+ assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
+ assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
+ assert.match(checks, /node --test test\/\*\.browser\.ts/);
+ });
