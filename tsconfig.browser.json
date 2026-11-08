@@ -12,6 +12,8 @@
     "jsx": "react-jsx"
   },
   "files": [
-    "src/ui/central-time.ts"
+    "src/ui/central-time.ts",
+    "src/ui/home/routes.tsx",
+    "src/ui/home/home.tsx"
   ]
 }
