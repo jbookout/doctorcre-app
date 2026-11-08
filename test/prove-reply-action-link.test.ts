@@ -6,9 +6,9 @@ import { promisify } from "node:util";
 import type { Browser } from "playwright";
 import { chromium } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
+import { requireContainingRelease } from "../scripts/containing-release.ts";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
-import { requireContainingRelease } from "../scripts/prove-fact-review-pending-status-view.mjs";
 import { prove, signedInReplyEngine } from "../scripts/prove-reply-action-link.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 
@@ -33,7 +33,7 @@ const commit = "1".repeat(40),
   foreignRef = "al1_foreign";
 const assets = await appAssetSnapshot();
 async function fixture() {
-  const routes = new Map(assets);
+  const routes = new Map<string, { body: string | Uint8Array; contentType: string }>(assets);
   routes.set("/app-release", {
     contentType: "application/json",
     body: JSON.stringify({ service: "doctorcre-app", environment: "production", source_commit: commit }),
@@ -135,8 +135,10 @@ test("reply proof release containment covers equal descendant older unrelated an
       [child, base],
       [base, unrelated],
       [base, "f".repeat(40)],
-    ])
+    ]) {
+      assert.ok(expected !== undefined && observed !== undefined);
       await assert.rejects(requireContainingRelease(expected, observed, { cwd }), { exitCode: 78 });
+    }
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

@@ -15,7 +15,7 @@ export function checkProofSource(source, filename = 'proof.mjs') {
   const errors = [];
   const fail = (node, reason) => errors.push(`${filename}:${node.loc?.start.line || 1}: ${reason}`);
   let ast;
-  try { ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false }); }
+  try { ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false, parserOpts: { plugins: ['typescript'] } }); }
   catch (error) { return [`${filename}: ${error.message}`]; }
   const subprocessNames = new Set();
   for (const node of ast.program.body) if (node.type === 'ImportDeclaration' && node.source.value.replace(/^node:/, '') === 'child_process') for (const specifier of node.specifiers) subprocessNames.add(specifier.local.name);
@@ -97,7 +97,7 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
     const filename = url.href.slice(root.href.length);
     errors.push(...checkProofSource(source, filename.replace(/^scripts\//, '')));
     if (depth === 0) return;
-    const ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false });
+    const ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false, parserOpts: { plugins: ['typescript'] } });
     for (const node of ast.program.body) {
       if (!['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type)) continue;
       if (node.source?.value.startsWith('.')) await inspect(new URL(node.source.value, url), depth - 1);

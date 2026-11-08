@@ -175,6 +175,7 @@ export function parseDraft(payload: unknown, ref: string): Draft | null {
 }
 function refusal(code: unknown): State | null {
   if (code === "action_link_not_found" || code === "action_link_stale")
+    // eslint-disable-next-line no-restricted-syntax -- Unavailable links only return retry=false metadata; they schedule no resolve requests.
     return { kind: "unavailable", message: "This draft is unavailable for your account.", retry: false };
   if (
     [
@@ -191,8 +192,10 @@ function refusal(code: unknown): State | null {
       "key_reuse",
     ].includes(String(code))
   )
+    // eslint-disable-next-line no-restricted-syntax -- Nonactionable drafts only return retry=false metadata; they schedule no resolve or approval attempts.
     return { kind: "unavailable", message: "This draft is no longer awaiting approval.", retry: false };
   if (code === "stale_draft_revision" || code === "version_conflict")
+    // eslint-disable-next-line no-restricted-syntax -- Only a manual reload can resolve the stale draft again; no automatic approval occurs.
     return { kind: "unavailable", message: "This draft changed. Reload it before approving.", retry: true };
   if (["not_authenticated", "authentication_required", "forbidden", "permission_denied"].includes(String(code)))
     return { kind: "signed-out" };
@@ -210,6 +213,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     busy.current = false;
     const read = async () => {
       if (!/^al1_[A-Za-z0-9_-]{1,120}$/.test(ref)) {
+        // eslint-disable-next-line no-restricted-syntax -- Invalid references only set retry=false state; they send no resolve requests.
         setState({ kind: "unavailable", message: "This draft link is invalid.", retry: false });
         return;
       }
@@ -224,6 +228,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
           const payload = result.payload;
           if (object(payload) && (result.isError || payload.error)) {
             setState(
+              // eslint-disable-next-line no-restricted-syntax -- Only a manual reload can retry a refused resolve result; no scheduled retry occurs.
               refusal(payload.error) || { kind: "unavailable", message: "The draft could not be opened.", retry: true },
             );
             return;
@@ -234,13 +239,16 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
             return;
           }
           if (object(payload) && payload.schema_version === "action-link-resolve.v2") {
+            // eslint-disable-next-line no-restricted-syntax -- Invalid references only set retry=false state; they send no resolve requests.
             setState({ kind: "unavailable", message: "The draft could not be opened.", retry: false });
             return;
           }
         }
+        // eslint-disable-next-line no-restricted-syntax -- Only a manual reload can retry a malformed draft result; no scheduled resolve retry occurs.
         setState({ kind: "unavailable", message: "The draft could not be opened.", retry: true });
       } catch {
         if (!controller.signal.aborted)
+          // eslint-disable-next-line no-restricted-syntax -- Only a manual reload can retry a failed resolve; aborted requests do not update state.
           setState({ kind: "unavailable", message: "The draft could not be opened.", retry: true });
       }
     };

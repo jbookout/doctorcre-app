@@ -13,7 +13,13 @@
     "scripts/check-typescript.ts",
     "test/typescript-gate-contract.test.ts",
     "scripts/prove-reply-action-link.ts",
-    "test/prove-reply-action-link.test.ts"
+    "test/prove-reply-action-link.test.ts",
+    "scripts/containing-release.ts",
+    "test/containing-release.test.ts",
+    "scripts/app-release-reader.d.mts",
+    "scripts/chromium-safety-args.d.mts",
+    "scripts/fixture-app-assets.d.mts",
+    "scripts/fixture-http.d.mts"
   ],
   "compilerOptions": {
     "lib": [

@@ -5,7 +5,7 @@ import type { LaunchOptions, Locator, Page, Route } from "playwright";
 import { chromium } from "playwright";
 import { launchProofBrowser, proofFetch, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
-import { requireContainingRelease } from "./prove-fact-review-pending-status-view.mjs";
+import { requireContainingRelease } from "./containing-release.ts";
 
 type ProofPage = Pick<Page, "getByText" | "getByRole" | "evaluate"> & {
   route(pattern: string, handler: (route: Route) => Promise<void>): Promise<unknown>;
