@@ -126,7 +126,7 @@ test('reply lost timeout and near miss receipts remain unconfirmed',async()=>{
 });
 
 test('reply expired resolved replayed and stale submit refuses without implicit reapproval',async()=>{
- for(const code of ['action_link_not_found','action_link_no_longer_actionable','email_draft_not_pending','version_conflict','key_reuse','email_draft_recipients_mismatch']) for(const stage of ['open','submit']) {
+ for(const code of ['action_link_not_found','action_link_no_longer_actionable','action_link_stale','email_draft_already_submitted','email_draft_failure_not_resubmittable','email_draft_source_missing','email_draft_copy_address_missing','email_draft_not_pending','version_conflict','key_reuse','email_draft_recipients_mismatch']) for(const stage of ['open','submit']) {
  let writes=0; const {root,mounted}=replySetup(async name=>{if(name==='resolve-action-link'&&stage==='submit')return answer(reply);if(name!=='resolve-action-link')writes++;return {kind:'payload',payload:{error:code},isError:true};});
  try{if(stage==='submit'){await until(()=>assert.match(root.textContent,/Review reply draft/));click(root);}await until(()=>assert.match(root.textContent,/unavailable|no longer|changed/));assert.doesNotMatch(root.textContent,/Synthetic body/);assert.equal(writes,stage==='submit'?1:0);assert.equal(root.querySelector('button')?.textContent,code==='version_conflict'?'Reload draft':undefined);}finally{mounted.dispose();}
  }

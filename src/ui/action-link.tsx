@@ -62,9 +62,9 @@ export function parseDraft(payload: unknown, ref: string): Draft | null {
 }
 function refusal(code: unknown): State | null {
   // eslint-disable-next-line no-restricted-syntax -- Unavailable links only return retry=false metadata; they schedule no resolve requests.
-  if (code === 'action_link_not_found') return { kind: 'unavailable', message: 'This draft is unavailable for your account.', retry: false };
+  if (code === 'action_link_not_found' || code === 'action_link_stale') return { kind: 'unavailable', message: 'This draft is unavailable for your account.', retry: false };
   // eslint-disable-next-line no-restricted-syntax -- Nonactionable drafts only return retry=false metadata; they schedule no resolve or approval attempts.
-  if (['action_link_no_longer_actionable', 'draft_not_pending', 'email_draft_not_pending', 'email_draft_not_found', 'email_draft_not_owner', 'email_draft_recipients_mismatch', 'key_reuse'].includes(String(code))) return { kind: 'unavailable', message: 'This draft is no longer awaiting approval.', retry: false };
+  if (['action_link_no_longer_actionable', 'draft_not_pending', 'email_draft_already_submitted', 'email_draft_failure_not_resubmittable', 'email_draft_source_missing', 'email_draft_copy_address_missing', 'email_draft_not_pending', 'email_draft_not_found', 'email_draft_not_owner', 'email_draft_recipients_mismatch', 'key_reuse'].includes(String(code))) return { kind: 'unavailable', message: 'This draft is no longer awaiting approval.', retry: false };
   // eslint-disable-next-line no-restricted-syntax -- Only a manual reload can resolve the stale draft again; no automatic approval occurs.
   if (code === 'stale_draft_revision' || code === 'version_conflict') return { kind: 'unavailable', message: 'This draft changed. Reload it before approving.', retry: true };
   if (['not_authenticated', 'authentication_required', 'forbidden', 'permission_denied'].includes(String(code))) return { kind: 'signed-out' };
