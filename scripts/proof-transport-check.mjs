@@ -105,6 +105,8 @@ export async function checkProofTransports(root = new URL('../', import.meta.url
     const ast = parseSync(source, { sourceType: 'module', configFile: false, babelrc: false, parserOpts: { plugins: ['typescript'] } });
     for (const node of ast.program.body) {
       if (!['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type)) continue;
+      if (node.importKind === 'type' || node.exportKind === 'type') continue;
+      if (node.type === 'ImportDeclaration' && node.specifiers.length && node.specifiers.every(specifier => specifier.importKind === 'type')) continue;
       if (node.source?.value.startsWith('.')) await inspect(new URL(node.source.value, url), depth - 1);
     }
   }
