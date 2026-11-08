@@ -11,11 +11,21 @@
     "tests/live/producer-contract.d.mts",
     "test/central-time.test.ts",
     "scripts/check-typescript.ts",
-    "test/typescript-gate-contract.test.ts"
+    "test/typescript-gate-contract.test.ts",
+    "test/watch-parser.test.ts",
+    "test/watch-client.test.ts",
+    "test/watch-controls-browser.test.ts",
+    "test/browser-harness.d.mts",
+    "scripts/ui-bundle.d.mts",
+    "test/fixtures/watches/producer-schema.ts",
+    "scripts/artifact.d.mts",
+    "scripts/fixture-server.d.mts",
+    "docs/statecharts/SubjectWatchControls.map.ts"
   ],
   "compilerOptions": {
     "lib": [
-      "esnext"
+      "esnext",
+      "DOM"
     ]
   }
 }

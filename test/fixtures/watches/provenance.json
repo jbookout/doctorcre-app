@@ -1,0 +1,7 @@
+{
+  "source": "DoctorCRE/carr-system",
+  "revision": "60ea5e9b",
+  "recorded_fixture": "mcp-server/contracts/subject-watch.v2.fixture.json",
+  "schema": "mcp-server/contracts/subject-watch.v2.js",
+  "parser": "src/ui/watches/model.ts#parseWatch"
+}
