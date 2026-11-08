@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import test from "node:test";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import type { Browser } from "playwright";
 import { chromium } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
@@ -372,5 +373,26 @@ test("reply CLI fixture pass and near miss fail; real CDP late page leaves exist
     await connection?.close();
     await browser.close();
     await server.close();
+  }
+});
+
+
+test("reply browser launch failure exits without leaking its fixture server", async () => {
+  const directory = temporaryDirectory("reply-proof-no-browser-");
+  try {
+    await assert.rejects(
+      exec(process.execPath, [
+        "--test",
+        "--test-name-pattern=^reply CLI fixture pass",
+        fileURLToPath(import.meta.url),
+      ], {
+        env: { ...process.env, NODE_TEST_CONTEXT: undefined, CI: "true", PLAYWRIGHT_BROWSERS_PATH: directory },
+        timeout: 10000,
+      }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === 1 &&
+        "stdout" in error && typeof error.stdout === "string" && /Executable doesn't exist/.test(error.stdout),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
