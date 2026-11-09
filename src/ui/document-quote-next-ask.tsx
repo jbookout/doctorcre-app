@@ -138,10 +138,10 @@ export function QuoteNextAsk({ client, block }: { client: QuoteAskClient; block:
       </button>
       <a href="/conversations">Open Conversations</a>
       {rows.length > 0 && (
-        <label>
+        <label className="field">
           Conversation for next ask
           <select
-            style={{ maxWidth: "100%" }}
+            style={{ maxWidth: "100%", borderColor: "var(--fg-quiet)" }}
             value={destination}
             onChange={(event) => {
               insert.current = null;
