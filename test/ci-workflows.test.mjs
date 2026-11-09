@@ -480,7 +480,7 @@ test('required CI runs the strict no-emit UI typecheck', async () => {
   assert.equal(config.compilerOptions.strict, true);
   assert.equal(config.compilerOptions.noEmit, true);
   assert.ok(config.include.includes('src/ui'));
-  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
+  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json');
   assert.match(pkg.scripts.check, /npm run typecheck/);
   assert.match(checksJob, /run: npm run check/);
 });

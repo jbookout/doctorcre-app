@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { uiAssets } from "../scripts/ui-bundle.mjs";
 
-const source = await readFile(new URL("../public-shell/sw.js", import.meta.url), "utf8");
+const assets = await uiAssets((path: string) => readFile(new URL(`../${path}`, import.meta.url), "utf8"));
+const workerAsset = assets.get("public-shell/sw.js");
+assert.ok(workerAsset, "bundle emits the service worker");
+const source = workerAsset.toString();
 async function worker() {
   const handlers = new Map<string, (event: object) => void>();
   let token: string | null = "synthetic-session",

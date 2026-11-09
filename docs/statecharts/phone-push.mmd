@@ -1,0 +1,65 @@
+stateDiagram-v2
+    state Phone {
+      state Session {
+        state "Signed in" as SignedIn
+        state "Session ended" as SignedOut
+        [*] --> SignedIn
+        SignedIn --> SignedOut: Session ends
+      }
+      --
+      state Notifications {
+        state "Notifications off" as Off
+        state "Platform unsupported" as Unsupported
+        state "Permission prompt" as Prompting
+        state "Permission blocked" as Denied
+        state "Waiting for registration" as Registering
+        state "Notifications enabled" as Enabled
+        state "Registration unconfirmed" as Unconfirmed
+        state "Turning notifications off" as Revoking
+        state "Revocation unconfirmed" as RevokeUnknown
+        state "Browser cleanup needed" as Cleanup
+        state "Sign in again" as Retired
+        state "Opening notification controls" as Loading
+        state "Notification key is missing" as Missing
+        state "Notification configuration is invalid" as Invalid
+        state "Sign in and reconnect" as Reconnect
+        [*] --> Loading
+        Loading --> Off: Configured authenticated v1 response
+        Loading --> Missing: Key not configured
+        Loading --> Invalid: Invalid configuration or schema
+        Loading --> Reconnect: Session or request failed
+        Loading --> Retired: Session ends
+        Missing --> Retired: Session ends
+        Invalid --> Retired: Session ends
+        Reconnect --> Retired: Session ends
+        Off --> Unsupported: Support unavailable
+        Off --> Prompting: Tap enable
+        Prompting --> Registering: Allow
+        Prompting --> Denied: Deny
+        Prompting --> Off: Dismiss
+        Denied --> Prompting: Tap enable
+        Registering --> Enabled: Server confirms
+        Registering --> Unconfirmed: Receipt lost
+        Unconfirmed --> Registering: Check outcome
+        Enabled --> Revoking: Tap disable
+        Revoking --> RevokeUnknown: Revocation receipt lost
+        RevokeUnknown --> Revoking: Check revocation
+        Revoking --> Off: Revoked and unsubscribed
+        Revoking --> Cleanup: Browser cleanup failed
+        Cleanup --> Off: Retry browser cleanup
+        Enabled --> Unconfirmed: Permission revoked
+        Off --> Retired: Session ends
+        Unsupported --> Retired: Session ends
+        Prompting --> Retired: Session ends
+        Denied --> Retired: Session ends
+        Registering --> Retired: Session ends
+        Enabled --> Retired: Session ends
+        Unconfirmed --> Retired: Session ends
+        Revoking --> Retired: Session ends
+        RevokeUnknown --> Retired: Session ends
+        Cleanup --> Retired: Session ends
+      }
+    }
+    %% never SignedOutEnabled: Session ended & Notifications enabled -- A closed session never shows enabled
+    %% never SignedOutRegistering: Session ended & Waiting for registration -- A closed session cannot register
+    %% never SignedOutRevoking: Session ended & Turning notifications off -- A closed session cannot start a write

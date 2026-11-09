@@ -21,5 +21,8 @@
   },
   "include": [
     "src/ui"
+  ],
+  "exclude": [
+    "src/ui/worker"
   ]
 }

@@ -41,7 +41,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   assert.ok(typeof migration.legacyTypeScript === "object" && migration.legacyTypeScript !== null);
   const legacy = new Map(Object.entries(migration.legacyTypeScript));
   const gated = new Set<string>();
-  for (const config of ["../tsconfig.node.json", "../tsconfig.browser.json"]) {
+  for (const config of ["../tsconfig.node.json", "../tsconfig.browser.json", "../tsconfig.worker.json"]) {
     const value: unknown = JSON.parse(readFileSync(new URL(config, import.meta.url), "utf8"));
     assert.ok(typeof value === "object" && value !== null && "files" in value && Array.isArray(value.files));
     for (const file of value.files) {

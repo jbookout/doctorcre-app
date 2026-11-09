@@ -71,3 +71,6 @@ mobile-a11y-evidence/
 
 /js/ui-action-session-return.js
 /js/ui-share-intake.js
+
+/js/ui-phone-push.js
+/public-shell/sw.js

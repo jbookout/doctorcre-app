@@ -49,13 +49,22 @@
     "test/document-quote-next-ask.test.ts",
     "test/document-quote-next-ask-browser.browser.ts",
     "test/fixtures/document-quote-model/Freeze.map.ts",
-    "test/document-quote-next-ask-browser.d.ts"
+    "test/document-quote-next-ask-browser.d.ts",
+    "test/phone-push.test.ts",
+    "test/phone-push.browser.ts",
+    "test/phone-push-worker.test.ts"
   ],
   "compilerOptions": {
     "lib": [
       "esnext",
       "DOM",
       "DOM.Iterable"
-    ]
+    ],
+    "paths": {
+      "/js/ui-phone-push.js": [
+        "./src/ui/phone-push.tsx"
+      ]
+    },
+    "jsx": "react-jsx"
   }
 }
