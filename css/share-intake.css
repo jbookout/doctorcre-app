@@ -1,0 +1,13 @@
+@import url('/css/tokens.css');
+:root { font-family: var(--font-text); background: var(--ground); color: var(--fg); }
+body { margin: 0; }
+main { max-width: 40rem; margin: 8vh auto; padding: var(--space-4); }
+section { padding: clamp(1rem,4vw,2.5rem); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); }
+h1 { font-size: var(--font-size-5); line-height: var(--line-height-heading); }
+h2, details p { overflow-wrap: anywhere; }
+p { line-height: var(--line-height-body); }
+a { color: var(--accent-ink); }
+button, select { display: block; box-sizing: border-box; width: 100%; min-height: var(--touch); margin: var(--space-4) 0; padding: var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); font: inherit; color: var(--fg); background: var(--surface-2); }
+button { cursor: pointer; font-weight: var(--font-weight-strong); }
+:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; }
+.eyebrow { font-size: var(--font-size-1); color: var(--fg-muted); }
