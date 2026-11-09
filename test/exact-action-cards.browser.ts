@@ -433,6 +433,65 @@ for (const receipt of [
     }
   });
 
+test("post-call review retries immediately from the unconfirmed view with the same intent", async () => {
+  const server = await fixture(),
+    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    const page = await browser.newPage();
+    const commands: Record<string, unknown>[] = [];
+    const operations: string[] = [];
+    let navigations = 0;
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) navigations++;
+    });
+    await page.route("**/mcp", async (route) => {
+      const rpc = route.request().postDataJSON();
+      if (!["review-call-outcome", "resolve-action-link-v2"].includes(rpc.params.name)) return route.fallback();
+      operations.push(rpc.params.name);
+      let payload: unknown;
+      if (rpc.params.name === "review-call-outcome") {
+        assert.ok(writeInput(rpc.params.arguments), JSON.stringify(writeInput.errors));
+        commands.push(rpc.params.arguments);
+        if (commands.length === 1) return route.fulfill({ status: 503, json: { error: "synthetic_unavailable" } });
+        assert.deepEqual(operations, ["resolve-action-link-v2", "review-call-outcome", "review-call-outcome"]);
+        payload = { ok: true, session_id: call.card.id, reviewed: true };
+        assert.ok(writeResponse(payload), JSON.stringify(writeResponse.errors));
+      } else {
+        payload = commands.length === 2 ? { ...call, card: { ...call.card, state: "resolved", actions: [] } } : call;
+        assert.ok(cardContract(payload), JSON.stringify(cardContract.errors));
+      }
+      return route.fulfill({
+        json: {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          result: { content: [{ type: "text", text: JSON.stringify(payload) }] },
+        },
+      });
+    });
+    await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+    const review = page.getByRole("button", { name: "Mark call reviewed", exact: true });
+    await review.click();
+    await page.getByText("Review was not confirmed. Reload before trying again.", { exact: true }).waitFor();
+    assert.deepEqual(operations, ["resolve-action-link-v2", "review-call-outcome"]);
+    assert.equal(await page.getByText("Resolved", { exact: true }).count(), 0);
+    await review.click();
+    await page.getByText("Resolved", { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(commands.length, 2);
+    assert.deepEqual(commands[1], commands[0], "retry preserves the exact command and its idempotency key");
+    assert.equal(navigations, 1, "retry stays in the original document");
+    assert.deepEqual(operations, [
+      "resolve-action-link-v2",
+      "review-call-outcome",
+      "review-call-outcome",
+      "resolve-action-link-v2",
+    ]);
+    assert.equal(await review.count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 for (const changed of [false, true])
   test(`atomic review ${changed ? "refuses an edit between display and write and reopens current version" : "accepts matching displayed version"}`, async () => {
     const server = await fixture(),

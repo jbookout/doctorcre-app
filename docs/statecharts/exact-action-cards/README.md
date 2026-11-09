@@ -43,7 +43,7 @@ Review intent is immutable. `reviewCallOutcome` verifies the principal and deriv
 | Intent transition | Executed behavior test |
 | --- | --- |
 | Eligible to Sending | atomic review accepts matching displayed version |
-| Unconfirmed to Sending | post-call review refuses unconfirmed receipt |
+| Unconfirmed to Sending | post-call review retries immediately from the unconfirmed view with the same intent |
 | Sending to Unconfirmed | post-call review uses registered input and receipt and retains its intent key after a lost response and reload |
 | Unconfirmed to Eligible | same lost-response/reload test |
 | Sending to Confirmed | same lost-response/replay test and atomic matching-version test |
