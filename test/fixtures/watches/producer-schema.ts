@@ -10,6 +10,13 @@ const subjectWatchPolicySchema = {
       items: { type: "string", enum: ["reply_arrived", "lease_threshold_crossed", "listing_status_changed"] },
     },
     include_self_changes: { type: "boolean", default: true },
+    lease_threshold_months: {
+      type: "array",
+      minItems: 1,
+      maxItems: 20,
+      uniqueItems: true,
+      items: { type: "integer", minimum: 0, maximum: 120 },
+    },
     lease_threshold_days: {
       type: "array",
       minItems: 1,
@@ -67,6 +74,17 @@ export const subjectWatchV2ResponseSchema = {
   properties: {
     ok: { const: true },
     schema_version: { const: "subject-watch.v2" },
+    health: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: ["last_success_at", "pending_count", "oldest_pending_at", "status"],
+      properties: {
+        last_success_at: { type: ["string", "null"], format: "date-time" },
+        oldest_pending_at: { type: ["string", "null"], format: "date-time" },
+        pending_count: { type: "integer", minimum: 0, maximum: 1001 },
+        status: { enum: ["healthy", "delayed", "needs_repair"] },
+      },
+    },
     watch: { anyOf: [watch, { type: "null" }] },
     watches: { type: "array", maxItems: 100, items: watch },
     rows_changed: { type: "integer", minimum: 0, maximum: 1 },

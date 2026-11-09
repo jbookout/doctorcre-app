@@ -2,7 +2,7 @@
 
 Direct action links read their canonical sources without searching Home. Lead drafts retain v1. Reply drafts, post-call reviews and feedback events use `resolve-action-link-v2`.
 
-Depends on carr 3091. Contracts are copied byte-for-byte through the existing `contracts/carr-interface.v1/` mechanism from CARR `e54fdcbee30d557c18d262611a40a0e49a89b5dd`. Resolver SHA-256 is `a9eb245d40445044ef60bf318e6b148b37206b41118cf57b7b99eb12066ef113`; review-call-outcome.v1 SHA-256 is `16fd6959de22e9c15d20b3c23ecfd7fec0f08aaca10c3fa636d8e25a99f53ab7`. The browser validates command, success, replay and public refusal fixtures against these producer contracts, then consumes their MCP envelopes through the production transport parser.
+Depends on carr 3091. Contracts are copied byte-for-byte through the existing `contracts/carr-interface.v1/` mechanism from CARR `ab4e3bc25e5a50a44b26d5d770500bb2276c070f`. Resolver SHA-256 is `93e494323da2f9cc6d6184d6acd4bd475efd6681d17fdd1bb32ac64ed4f807bb`; review-call-outcome.v1 SHA-256 is `3035b88b8ad143541825ee0caf0e68c907137a19e46dd53e4b5457c61bc12cbe`. The browser validates command, success, replay and public refusal fixtures against these producer contracts, then consumes their MCP envelopes through the production transport parser.
 
 Every arrow is exercised through a mounted browser view. The initial arrows are covered by cold navigation. Session arrows and card arrows share their user trigger in the two independent regions.
 
@@ -66,4 +66,4 @@ Exit 0 means a containing release passed all assertions. Exit 1 means an asserti
 
 Regenerate in a scratch directory with `statechart.mjs from-chart ExactCards.mmd --png`, using Java and tla2tools.jar. Browser tests and the abstract model do not constitute live production proof before deployment.
 
-Producer pin for this redesign: DoctorCRE/carr-system e54fdcbee30d557c18d262611a40a0e49a89b5dd (PR 3091). Review contract SHA-256 `16fd6959de22e9c15d20b3c23ecfd7fec0f08aaca10c3fa636d8e25a99f53ab7`. Producer must deploy before this consumer; repin to its merged revision before consumer merge.
+Producer pin for this redesign: DoctorCRE/carr-system ab4e3bc25e5a50a44b26d5d770500bb2276c070f (PR 3091). Review contract SHA-256 `3035b88b8ad143541825ee0caf0e68c907137a19e46dd53e4b5457c61bc12cbe`. Producer must deploy before this consumer; repin to its merged revision before consumer merge.

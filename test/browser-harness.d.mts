@@ -5,3 +5,5 @@ export function componentDocument(
   origin: string,
   options: { headers?: Record<string, string>; html: string; dispose: (page: Page) => Promise<void> },
 ): Promise<void>;
+
+export function fixtureServer(options?: { root?: string }): Promise<{ origin: string; close(): Promise<void> }>;
