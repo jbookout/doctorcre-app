@@ -38,6 +38,7 @@
     "src/ui/queued-asks.ts",
     "src/ui/document-quote.ts",
     "src/ui/document-quote-lines.tsx",
-    "src/ui/document-quote-next-ask.tsx"
+    "src/ui/document-quote-next-ask.tsx",
+    "src/ui/quick-switcher.tsx"
   ]
 }

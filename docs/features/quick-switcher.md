@@ -67,33 +67,22 @@ Named regression coverage in `test/quick-switcher-browser.test.mjs`:
 - `composing Enter preserves switcher before normal Enter` covers the composition self-transition and ordinary navigation afterward.
 
 
-## Exact task destinations remain blocked on source identity
+## Exact task destinations
 
-Board task results currently open their owning deal. Two results from one deal
-have distinct recent IDs but the same destination.
+Board tasks use the producer-owned `item_id` from `local-deals-board.v2` 2.1.0.
+The pinned producer is CARR `4a2463c7fee7d1ea2827325cb849bef6a44a88b2`.
+The switcher passes that identity to `recordRoutes.card` for both pointer and
+Enter selection. Recents use the same canonical identity, so next actions and
+call follow-ups remain distinct even when their table-local UUIDs collide.
+Missing identities reject the board section. No prefix is inferred from a UUID.
+Home owns card content and its explicit outside-snapshot message.
 
-The board contract does not prove that an open action ID belongs to
-`next_action`. At CARR revision
-`6c6ed9648bc56f7a3479522d48d66fab274e691d`, the registered board producer in
-`mcp-server/src/tools.js` selects open unstructured actions from
-`v_deal_room_action`. Migration `0936_deal_alert_items.sql` defines that view
-as a union of `next_action` and `capture_post_call_action`. The board returns
-only `id`, `owner`, `description`, and `due_on` for each action.
+The browser regression covers two tasks from one deal at 390 and 1440 pixels
+in light and dark themes. The recorded producer actions in
+`test/fixtures/deal-board-actions.v2.json` come from the registered producer's
+Postgres test and pass the copied action schema and production live-client
+parser. Both action source types reach their exact Home row, or Home's existing
+unavailable message when the snapshot omits them.
 
-Home's projection in migration `1136_home_inbox_projection.sql` uses
-`next_action:<UUID>` and `capture_post_call_action:<UUID>` as different card
-identities. Prefixing every board action with `next_action:` can therefore
-produce a nonexistent card. A UUID format check cannot distinguish the tables.
-Structured deal items are separate from these unstructured actions.
-
-The next implementation needs a producer-owned canonical card identity for
-each open action, or an authenticated resolver that determines that identity.
-Joining only the loaded Home snapshot cannot handle a task outside that
-snapshot. The destination must retain Home's explicit unavailable-card behavior
-when the task disappears or resolves before navigation.
-
-The partial branch for `WR617.S1.J246` retains a failing browser regression in
-`test/quick-switcher-kind-filter-browser.test.mjs`. It observes pointer and
-Enter selections for two task identities from one deal. Both navigate to the
-same deal URL. Its expected next-action routes describe the intended case for
-known next actions, not proof that every board action is a next action.
+The [task destination statechart](../statecharts/task-destinations/task-destinations.mmd)
+models selection and Home's response. Its README maps every transition to tests.
