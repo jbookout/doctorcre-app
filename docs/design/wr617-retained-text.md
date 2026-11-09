@@ -28,7 +28,7 @@ The browser parser does not compile code at runtime. This keeps the viewer compa
 
 The lifecycle model groups not-ready, unsupported and transport failure under Unavailable. It abstracts byte contents, DOM layout and concrete generation numbers. The parser and browser tests cover those details independently. The two never rules cover Ready with a pending/replaced identity and Expired with retained text.
 
-| Action | Named test coverage in deal-document-text-browser.test.ts |
+| Action | Named test coverage in deal-document-text-browser.browser.ts |
 | --- | --- |
 | Open, Produced | Open Produced Navigate and Close preserve exact source addresses |
 | Navigate, continuation | Page Navigate Unicode continuation keyboard and axe, all three widths and both themes |
