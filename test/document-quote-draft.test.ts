@@ -69,3 +69,36 @@ test("queued quote body and key survive reload unchanged", () => {
   assert.deepEqual(reloaded.entries()[0]?.request, request);
   assert.equal(Object.isFrozen(request), true);
 });
+
+test("a draft saved between insertion guard and write is never discarded", async () => {
+  const data = new Map<string, string>();
+  let interleave: (() => void) | undefined;
+  const storage: Storage = {
+    clear: () => data.clear(),
+    getItem(key) {
+      const value = data.get(key) ?? null;
+      interleave?.();
+      return value;
+    },
+    setItem: (key, value) => { data.set(key, value); },
+    removeItem: (key) => { data.delete(key); },
+    key: (index) => [...data.keys()][index] ?? null,
+    get length() { return data.size; },
+  };
+  const options = { storage, actor: "race-test", conversation: "00000000-0000-4000-8000-000000000001",
+    online: () => false, uuid: () => "00000000-0000-4000-8000-000000000002", submit: async () => ({}) };
+  const a = createAskOutbox(options);
+  await a.saveDraft("original");
+  const b = createAskOutbox(options);
+  let reads = 0;
+  let competing: Promise<void> | undefined;
+  interleave = () => {
+    if (++reads === 2) {
+      interleave = undefined;
+      competing = Promise.resolve(b.saveDraft("new draft from tab B"));
+    }
+  };
+  await a.appendDraft("quote", "original");
+  await competing;
+  assert.equal(a.draft(), "new draft from tab B");
+});
