@@ -333,7 +333,7 @@ test("reload prioritizes unresolved write over fresh worker share and changed se
 });
 
 test("expired bytes retain unresolved reservation for abandonment", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const x = intake(t, "worker-after-reserve");
   await x.model.start();
   x.model.choose(expected.deal_id);
@@ -345,3 +345,24 @@ test("expired bytes retain unresolved reservation for abandonment", async (t) =>
   await x.model.discard();
   assert.equal(x.states.at(-1)?.kind, "retired");
 });
+
+for (const elapsed of [false, true]) {
+  test(`reloaded recovery expires bytes and retains abandonment, delayed timer=${elapsed}`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    const x = intake(t, "worker-after-reserve");
+    await x.model.start();
+    x.model.choose(expected.deal_id);
+    await x.model.file();
+    await x.reload();
+    x.killWorker();
+    if (elapsed) t.mock.timers.setTime(Date.now() + 60001);
+    else t.mock.timers.tick(60001);
+    await x.model.file();
+    assert.equal(x.writes.filter((w) => w.path.endsWith("/bytes")).length, 0);
+    assert.equal(x.states.at(-1)?.kind, "uncertain");
+    assert.ok(x.journal.size);
+    await x.model.discard();
+    assert.equal(x.states.at(-1)?.kind, "retired");
+    assert.equal(x.writes.filter((w) => w.path.endsWith("/abandon")).length, 1);
+  });
+}
