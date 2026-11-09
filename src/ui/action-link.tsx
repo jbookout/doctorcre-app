@@ -293,31 +293,24 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     busy.current = true;
     const card = state.card,
       signal = lifetime.current.signal;
-    setReviewNotice("Checking current review…");
+    setReviewNotice("Saving review…");
     try {
-      const current = await request("resolve-action-link-v2", { ref }, { signal, timeoutMs: 10_000 });
-      if (signal.aborted) return;
-      if (object(current) && current.kind === "authorization") {
-        setState({ kind: "signed-out" });
-        return;
-      }
-      const fresh = object(current) && current.kind === "payload" ? parseExactCard(current.payload, ref) : null;
-      if (
-        fresh?.kind !== "post_call_review" ||
-        fresh.state !== "pending_review" ||
-        fresh.source_version !== card.source_version
-      ) {
-        setReload((value) => value + 1);
-        return;
-      }
       const result = await request(
         "review-call-outcome",
-        { session_id: card.id, idempotency_key: state.reviewKey },
+        { session_id: card.id, expected_source_version: card.source_version, idempotency_key: state.reviewKey },
         { signal, timeoutMs: 10_000 },
       );
       if (signal.aborted) return;
       if (object(result) && result.kind === "authorization") setState({ kind: "signed-out" });
       else if (
+        object(result) &&
+        result.kind === "payload" &&
+        object(result.payload) &&
+        result.payload.error === "source_version_changed"
+      ) {
+        setReviewNotice("");
+        setState({ kind: "exact", card: { ...card, state: "stale", detail: null } });
+      } else if (
         object(result) &&
         result.kind === "payload" &&
         !result.isError &&
@@ -332,6 +325,36 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
       } else setReviewNotice("Review was not confirmed. Reload before trying again.");
     } catch {
       if (!signal.aborted) setReviewNotice("Review was not confirmed. Reload before trying again.");
+    } finally {
+      busy.current = false;
+    }
+  };
+  const reopenCall = async () => {
+    if (
+      state.kind !== "exact" ||
+      state.card.kind !== "post_call_review" ||
+      state.card.state !== "stale" ||
+      busy.current ||
+      !lifetime.current
+    )
+      return;
+    busy.current = true;
+    const signal = lifetime.current.signal;
+    try {
+      const result = await request("resolve-action-link-v2", { ref }, { signal, timeoutMs: 10_000 });
+      if (signal.aborted) return;
+      if (object(result) && result.kind === "authorization") {
+        setState({ kind: "signed-out" });
+        return;
+      }
+      const card =
+        object(result) && result.kind === "payload" && !result.isError ? parseExactCard(result.payload, ref) : null;
+      if (card?.kind === "post_call_review" && /^[A-Za-z0-9_-]{1,32}$/.test(card.source_version)) {
+        const currentRef = `al1_${btoa(`cr:${card.id}:${card.source_version}`).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")}`;
+        location.assign(`/a/${currentRef}${location.search}`);
+      } else setReviewNotice("The current card could not be opened. Try again.");
+    } catch {
+      if (!signal.aborted) setReviewNotice("The current card could not be opened. Try again.");
     } finally {
       busy.current = false;
     }
@@ -448,6 +471,11 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
             {state.card.kind === "post_call_review" && state.card.state === "pending_review" && (
               <button type="button" className="btn" onClick={() => void reviewCall()}>
                 Mark call reviewed
+              </button>
+            )}
+            {state.card.kind === "post_call_review" && state.card.state === "stale" && (
+              <button type="button" className="btn" onClick={() => void reopenCall()}>
+                Open current version
               </button>
             )}
             {reviewNotice && <p role="status">{reviewNotice}</p>}

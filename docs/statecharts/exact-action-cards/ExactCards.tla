@@ -83,12 +83,22 @@ UserReloads ==
     /\ \/ (card = "Unavailable, no detail" /\ card' = "Opening the named card")
     /\ UNCHANGED <<session>>
 
-\* user marks reviewed after version check
-UserMarksReviewedAfterVersionCheck ==
+\* matching review receipt
+MatchingReviewReceipt ==
     /\ \/ (card = "Review the exact card" /\ card' = "Opening the named card")
     /\ UNCHANGED <<session>>
 
-Next == SessionRefused \/ SignInToSameReference \/ AuthorizedCurrentSource \/ SourceResolved \/ SourceChanged \/ SourceRetired \/ InvalidOrForeignReferenceOrNetworkFailure \/ UserReloads \/ UserMarksReviewedAfterVersionCheck
+\* write refuses changed source
+WriteRefusesChangedSource ==
+    /\ \/ (card = "Review the exact card" /\ card' = "Changed card, no actions")
+    /\ UNCHANGED <<session>>
+
+\* open current version
+OpenCurrentVersion ==
+    /\ \/ (card = "Changed card, no actions" /\ session = "Session available" /\ card' = "Opening the named card")
+    /\ UNCHANGED <<session>>
+
+Next == SessionRefused \/ SignInToSameReference \/ AuthorizedCurrentSource \/ SourceResolved \/ SourceChanged \/ SourceRetired \/ InvalidOrForeignReferenceOrNetworkFailure \/ UserReloads \/ MatchingReviewReceipt \/ WriteRefusesChangedSource \/ OpenCurrentVersion
 
 Spec == Init /\ [][Next]_vars
 

@@ -2,7 +2,7 @@
 
 Direct action links read their canonical sources without searching Home. Lead drafts retain v1. Reply drafts, post-call reviews and feedback events use `resolve-action-link-v2`.
 
-The contract and five recorded synthetic responses are pinned to CARR merge `44a493c74a570aa812f8d6c687d2974335a4061c`. The contract SHA-256 is `5234aa7b6a163edf50df0435e0a12bf7c44d6106dee76c0f4de2ba3cfc132c8b`. The responses passed the exact production parser function extracted from that revision, then the app parser and browser path.
+Depends on carr 3091. Contracts are copied byte-for-byte through the existing `contracts/carr-interface.v1/` mechanism from CARR `e54fdcbee30d557c18d262611a40a0e49a89b5dd`. Resolver SHA-256 is `a9eb245d40445044ef60bf318e6b148b37206b41118cf57b7b99eb12066ef113`; review-call-outcome.v1 SHA-256 is `16fd6959de22e9c15d20b3c23ecfd7fec0f08aaca10c3fa636d8e25a99f53ab7`. The browser validates command, success, replay and public refusal fixtures against these producer contracts, then consumes their MCP envelopes through the production transport parser.
 
 Every arrow is exercised through a mounted browser view. The initial arrows are covered by cold navigation. Session arrows and card arrows share their user trigger in the two independent regions.
 
@@ -28,11 +28,14 @@ Every arrow is exercised through a mounted browser view. The initial arrows are 
 | Unavailable to Unavailable on session refused | `mounted unavailable card clears on session refusal` |
 | Unavailable to Opening on user reloads | `reply transport reload is manual and fresh resolve replaces prior data` in action-link-browser |
 | Unavailable to Opening on sign in to same reference | Sign-in browser test follows the login link and returns to the exact card |
-| Review to Opening on user marks reviewed after version check | `post-call review uses registered input and receipt and retains its intent key after a lost response and reload` |
+| Review to Opening on matching review receipt | `post-call review uses registered input and receipt and retains its intent key after a lost response and reload` |
 
-The model abstracts network timing, server transactions and the existing reply approval machine. It does not prove transactional concurrency. The existing preflight read is a separate request and is **not version enforcement**. The transactional producer change is tracked in WR617.S1.J184; until it is pinned, concurrent edits remain an open review finding. Feedback has no mutation.
+| Review to Stale on write refuses changed source | `atomic review refuses an edit between display and write and reopens current version` |
+| Stale to Opening on open current version | The same atomic-refusal browser test resolves the latest version, follows its reference and renders the new review |
 
-The registered write input fixture is extracted from `mcp-server/src/tools.js` at the same pinned CARR revision. The browser validates every completion command against that input, uses the handler's `{ok:true, session_id, reviewed:true}` receipt, and tests missing identity, wrong identity and error receipts. Pending review intent keys persist in session storage across manual reload and lost responses; only a matching success receipt clears the key. The fixture with nonempty candidates passed the exact parser function extracted from `mcp-server/src/action-card-targets.ts` at that revision.
+The model abstracts network timing, server transactions and the existing reply approval machine. It does not prove database concurrency. CARR owns the atomic version guard; the app sends the displayed version in the write without a preflight read. Feedback has no mutation. The atomic-refusal fixture models a canonical candidate edit after display and before the write. The producer refusal passes its pinned refusal schema and the production MCP parser before the UI enters stale. Matching-version receipt and replay follow the pinned response schema. The existing invalid-receipt cases intentionally violate it and remain unconfirmed.
+
+Pending review intent keys persist in session storage across reload and lost responses; only a matching success receipt clears the key. A newly opened version has a distinct reference and intent. The shared legacy Home caller remains unchanged.
 
 ## PRODUCTION PROOF
 

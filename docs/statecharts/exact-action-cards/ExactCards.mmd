@@ -36,7 +36,10 @@ stateDiagram-v2
       Unavailable --> Unavailable: session refused
       Unavailable --> Opening: user reloads
       Unavailable --> Opening: sign in to same reference
-      Review --> Opening: user marks reviewed after version check
+      Review --> Opening: matching review receipt
+      Review --> Stale: write refuses changed source
+      Stale --> Opening: open current version [session available]
+      %% when SignedIn
     }
   }
   [*] --> App

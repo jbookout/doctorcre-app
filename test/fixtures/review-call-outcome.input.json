@@ -7,6 +7,11 @@
     },
     "session_id": {
       "type": "string"
+    },
+    "expected_source_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Canonical card source_version the partner reviewed. Omission is legacy Home compatibility until 2026-12-08; migrate js/live-client.js before requiring it."
     }
   },
   "required": [

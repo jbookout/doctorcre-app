@@ -28,6 +28,9 @@ const commit = "1".repeat(40),
 const writeInput = new Ajv().compile(
   JSON.parse(await readFile("test/fixtures/review-call-outcome.input.json", "utf8")),
 );
+const reviewContract = JSON.parse(await readFile("contracts/carr-interface.v1/review-call-outcome.v1.json", "utf8"));
+const writeResponse = new Ajv().compile(reviewContract.responseSchema);
+const writeRefusal = new Ajv().compile(reviewContract.refusalSchema);
 const cardContract = new Ajv({ strict: false, validateFormats: false }).compile(
   JSON.parse(await readFile("contracts/carr-interface.v1/action-link-resolve.v2.json", "utf8")),
 );
@@ -255,6 +258,7 @@ test("post-call review uses registered input and receipt and retains its intent 
       if (rpc.params.name === "review-call-outcome") {
         assert.ok(writeInput(rpc.params.arguments), JSON.stringify(writeInput.errors));
         assert.equal(rpc.params.arguments.session_id, call.card.id);
+        assert.equal(rpc.params.arguments.expected_source_version, "4392d9ee99a3e7940999c568bd4c7b61");
         assert.match(rpc.params.arguments.idempotency_key, /^[0-9a-f-]{36}$/);
         keys.push(rpc.params.arguments.idempotency_key);
         if (keys.length === 1) {
@@ -262,12 +266,14 @@ test("post-call review uses registered input and receipt and retains its intent 
           return;
         }
         reviewed = true;
+        const reviewReceipt = { ok: true, session_id: call.card.id, reviewed: true, replayed: true };
+        assert.ok(writeResponse(reviewReceipt), JSON.stringify(writeResponse.errors));
         await route.fulfill({
           json: {
             jsonrpc: "2.0",
             id: rpc.id,
             result: {
-              content: [{ type: "text", text: JSON.stringify({ ok: true, session_id: call.card.id, reviewed: true }) }],
+              content: [{ type: "text", text: JSON.stringify(reviewReceipt) }],
             },
           },
         });
@@ -407,8 +413,86 @@ for (const receipt of [
       await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
       await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
       await page.getByText("Review was not confirmed. Reload before trying again.", { exact: true }).waitFor();
-      assert.equal(reads, 2);
+      assert.equal(reads, 1);
       assert.equal(await page.getByText("Resolved", { exact: true }).count(), 0);
+    } finally {
+      await browser.close();
+      await server.close();
+    }
+  });
+
+for (const changed of [false, true])
+  test(`atomic review ${changed ? "refuses an edit between display and write and reopens current version" : "accepts matching displayed version"}`, async () => {
+    const server = await fixture(),
+      browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+    try {
+      const page = await browser.newPage();
+      let reads = 0,
+        writes = 0,
+        canonicalVersion = "4392d9ee99a3e7940999c568bd4c7b61";
+      const currentRef = `al1_${Buffer.from(`cr:${call.card.id}:changed2`).toString("base64url")}`;
+      await page.route("**/mcp", async (route) => {
+        const rpc = route.request().postDataJSON();
+        if (!["review-call-outcome", "resolve-action-link-v2"].includes(rpc.params.name)) return route.fallback();
+        let payload: unknown;
+        if (rpc.params.name === "review-call-outcome") {
+          writes++;
+          if (changed) canonicalVersion = "changed2";
+          assert.equal(reads, 1, "no separate preflight read");
+          assert.ok(writeInput(rpc.params.arguments), JSON.stringify(writeInput.errors));
+          assert.equal(rpc.params.arguments.expected_source_version, "4392d9ee99a3e7940999c568bd4c7b61");
+          assert.equal(rpc.params.arguments.expected_source_version !== canonicalVersion, changed);
+          payload = changed
+            ? {
+                error: "source_version_changed",
+                correlation_id: "20000000-0000-4000-8000-000000000999",
+                hint: reviewContract.refusal.hint,
+              }
+            : { ok: true, session_id: call.card.id, reviewed: true };
+          const validate = changed ? writeRefusal : writeResponse;
+          assert.ok(validate(payload), JSON.stringify(validate.errors));
+        } else {
+          reads++;
+          payload =
+            writes === 0
+              ? call
+              : changed
+                ? {
+                    ...call,
+                    ref: rpc.params.arguments.ref,
+                    card: {
+                      ...call.card,
+                      source_version: "changed2",
+                      state: rpc.params.arguments.ref === currentRef ? "pending_review" : "stale",
+                      actions: rpc.params.arguments.ref === currentRef ? call.card.actions : [],
+                    },
+                  }
+                : { ...call, card: { ...call.card, state: "resolved", actions: [] } };
+          assert.ok(cardContract(payload), JSON.stringify(cardContract.errors));
+        }
+        await route.fulfill({
+          json: {
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: {
+              isError: changed && rpc.params.name === "review-call-outcome",
+              content: [{ type: "text", text: JSON.stringify(payload) }],
+            },
+          },
+        });
+      });
+      await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+      await page.getByRole("button", { name: "Mark call reviewed", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
+      if (changed) {
+        await page.getByText("This card changed. Open its current version before acting.", { exact: true }).waitFor();
+        assert.equal(await page.getByRole("button", { name: "Mark call reviewed", exact: true }).count(), 0);
+        await page.getByRole("button", { name: "Open current version", exact: true }).click();
+        await page.waitForURL(`**/a/${currentRef}*`);
+        await page.getByRole("button", { name: "Mark call reviewed", exact: true }).waitFor();
+        assert.equal(await page.locator("[data-source-version]").getAttribute("data-source-version"), "changed2");
+      } else await page.getByText("Resolved", { exact: true }).waitFor();
+      assert.equal(writes, 1);
     } finally {
       await browser.close();
       await server.close();
