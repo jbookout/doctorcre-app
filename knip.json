@@ -269,7 +269,9 @@
     "src/ui/share-intake.tsx",
     "js/ui-share-intake.js",
     "scripts/prove-share-intake.ts",
-    "docs/statecharts/ViewerCode.map.ts"
+    "docs/statecharts/ViewerCode.map.ts",
+    "src/ui/phone-push.tsx",
+    "src/ui/worker/service-worker.ts"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",
@@ -430,6 +432,9 @@
     ],
     "/js/ui-share-intake.js": [
       "src/ui/share-intake.tsx"
+    ],
+    "/js/ui-phone-push.js": [
+      "src/ui/phone-push.tsx"
     ]
   }
 }

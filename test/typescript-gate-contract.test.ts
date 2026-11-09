@@ -28,7 +28,7 @@ test("each staged project inherits every standard strict flag", () => {
   assert.equal(flags.target, "esnext");
   assert.equal(flags.module, "nodenext");
   assert.deepEqual(flags.types, ["node"]);
-  for (const path of ["tsconfig.browser.json", "tsconfig.node.json"]) {
+  for (const path of ["tsconfig.browser.json", "tsconfig.node.json", "tsconfig.worker.json"]) {
     const config = object(path);
     assert.equal(config.extends, "./tsconfig.base.json");
     if (config.compilerOptions !== undefined) {

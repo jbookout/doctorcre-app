@@ -12,6 +12,7 @@ const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export const FORM_ENTRY = `${UI_SOURCE}/deal-room-forms.tsx`;
 const UI_ENTRIES = {
+  'ui-phone-push': 'phone-push',
   'ui-action-session-return': 'action-session-return',
   'ui-share-intake': 'share-intake',
   'ui-watches': 'watches/control',
@@ -55,7 +56,7 @@ const UI_ENTRIES = {
   'deal-room-forms.generated': 'deal-room-forms',
 };
 const UI_ASSET_PATTERNS = [...Object.keys(UI_ENTRIES).map(name => `js/${name}.js`), 'js/ui-shared-*.generated.js'];
-const UI_OUTPUTS = new Set(UI_ASSET_PATTERNS.slice(0, -1));
+const UI_OUTPUTS = new Set([...UI_ASSET_PATTERNS.slice(0, -1), 'public-shell/sw.js']);
 export const isUiAsset = path => UI_OUTPUTS.has(path) || /^js\/ui-shared-[A-Z0-9]+\.generated\.js$/.test(path);
 
 export async function uiBundle(readSource, entry = UI_ENTRY) {
@@ -70,7 +71,10 @@ export async function uiAssets(readSource) {
     ])),
     splitting: true, outdir: 'js', chunkNames: 'ui-shared-[hash].generated',
   });
-  return new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
+  const assets = new Map(result.outputFiles.map(file => [posix.relative(INSTALL, file.path), Buffer.from(file.contents)]));
+  const worker = await buildUi(readSource, { entryPoints: [`${UI_SOURCE}/worker/service-worker.ts`], format: 'iife' });
+  assets.set('public-shell/sw.js', Buffer.from(worker.outputFiles[0].contents));
+  return assets;
 }
 
 async function buildUi(readSource, options) {
@@ -81,9 +85,10 @@ async function buildUi(readSource, options) {
     } catch { return null; }
   };
   const result = await build({
-    ...options, absWorkingDir: INSTALL, bundle: true, write: false, format: "esm",
+    absWorkingDir: INSTALL, bundle: true, write: false, format: "esm",
     platform: "browser", target: "es2022", minify: true, legalComments: "eof", jsx: "automatic",
     tsconfigRaw: "{}", define: { "process.env.NODE_ENV": '"production"' },
+    ...options,
     plugins: [{ name: "ui-source", setup(builder) {
       // Island imports are relative and extensionless; each must name an
       // admitted .tsx or .ts file under src/ui/, or the shared read budget.

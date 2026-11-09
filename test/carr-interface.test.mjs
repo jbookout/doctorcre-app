@@ -107,3 +107,16 @@ test("near-identical surface paths have distinct reversible filenames and compos
   assert.deepEqual(composeCarrInterface(files).http_surfaces, paths);
   assert.throws(() => composeCarrInterface([files[0], [files[0][0], files[1][1]]]), /duplicate.*file/i);
 });
+
+
+test("web push receipt fixtures validate against the pinned producer bytes", async () => {
+  const { default: Ajv } = await import('ajv/dist/2020.js');
+  const bytes = await read('contracts/carr-interface.v1/web-push-registry.v1.json');
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), 'f781ad60eccdb326e2778d8c03d2b41b2a9bf16cf6a12384099dd3f24a2c594f');
+  const ajv = new Ajv({ strict: false });
+  ajv.addFormat('uuid', /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+  const validate = ajv.compile(JSON.parse(bytes));
+  const receipts = JSON.parse(await read('test/fixtures/phone-push/receipts.json'));
+  for (const receipt of Object.values(receipts)) assert.equal(validate(receipt), true, JSON.stringify(validate.errors));
+  assert.equal(validate({...receipts.register, generation: 0}), false);
+});

@@ -38,6 +38,8 @@
     "src/ui/queued-asks.ts",
     "src/ui/document-quote.ts",
     "src/ui/document-quote-lines.tsx",
-    "src/ui/document-quote-next-ask.tsx"
+    "src/ui/document-quote-next-ask.tsx",
+    "src/ui/phone-push.tsx",
+    "src/ui/phone-push-model.ts"
   ]
 }

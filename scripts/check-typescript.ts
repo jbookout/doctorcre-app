@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const files = new Set<string>();
-for (const config of ["tsconfig.base.json", "tsconfig.browser.json", "tsconfig.node.json"]) {
+for (const config of ["tsconfig.base.json", "tsconfig.browser.json", "tsconfig.node.json", "tsconfig.worker.json"]) {
   const result = spawnSync(resolve("node_modules/.bin/tsc"), ["-p", config], { stdio: "inherit", timeout: 120_000 });
   if (result.status !== 0) process.exit(1);
   const value: unknown = JSON.parse(readFileSync(config, "utf8"));

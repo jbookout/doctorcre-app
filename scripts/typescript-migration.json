@@ -204,7 +204,6 @@
     "js/workspace-command-center-model.js",
     "js/workspace-command-center.js",
     "public-shell/bootstrap.js",
-    "public-shell/sw.js",
     "reports/share-bootstrap.js",
     "reports/share.js",
     "scripts/app-release-reader.mjs",
