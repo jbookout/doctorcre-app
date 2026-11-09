@@ -1,0 +1,32 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "5263b3ac5c07af957c1db0fce5542f54156ef06e",
+  "schema_path": "docs/contracts/deal-document-text.v1/response.schema.json",
+  "schema_sha256": "169ad22a99c63b18670ded1fcbd0c2d6f6263f52f5fd54ebb88107292159b812",
+  "registered_fixture_test": "mcp-server/test/deal-document-text-postgres.test.mjs",
+  "fixtures": [
+    "produced",
+    "not-produced",
+    "no_text",
+    "unavailable"
+  ],
+  "additional_fixtures": "executeRegisteredTool, same pinned revision, injected synthetic retained row; full={}, split={page:2,line:1,offset:0,max_characters:1}, continuation={page:2,line:1,offset:1}, second-page={page:2}; second-document uses attachment UUID ending 0099; no-text uses two empty pages, unsupported uses zero pages",
+  "recorded_response_sha256": {
+    "continuation.json": "82f9cf8dffdef7471c347fd8233f9b8b78235625879aa58d0dbb8a3a9d5ec287",
+    "full.json": "4278785f3e3caeb27d0fc474ff2af79b97613f7635a9567c02f4c26bffc9e528",
+    "no-text-current.json": "f6a4e1c0257414540c21cca07af1f55e399704b3f596bfb8ad020bb29bf4ee89",
+    "no-text-second.json": "8ae6dd961c5d0ee92efbf239ebf2a8f71afe783c00dab7eb570f84f973a133c0",
+    "no_text.json": "1636a26890ea30653332bca2f447d1e1b816d8c787fc0cfdd3e01bed8b5a8814",
+    "not-produced.json": "192c8c03cdd91f6e41a1db26ef2948392c7bad6174779b842b82bf5ac4e78f55",
+    "produced.json": "e2c6c06f3ef4a470b5e2bb3a5dce123020365feccff5bfc111d1f570def2df6e",
+    "second-document.json": "52c540daee202b0f287a254b002f66a454597d6aaae9101d5be466337e614cc9",
+    "second-page.json": "e34cfd93c4573ee1e8661f27f193cd2f1079e555cad28714a4790dfd7e442de0",
+    "split.json": "dc4064e5e039cd70b361fe125cf1817dde13b6e3aaa735dd68bc1974363b1bc4",
+    "unavailable.json": "944949cc4923480032126b39abe1937c8a6c9da683204259364488465ff69876",
+    "unsupported-current.json": "9d8b1d06503adf111fd5994d21fe28f239a7524e12dded94d5cb380a351b7a13"
+  },
+  "synthetic_retained_pages": [
+    "first\n\nlast\n",
+    "😀second"
+  ]
+}
