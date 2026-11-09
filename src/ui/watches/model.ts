@@ -9,10 +9,19 @@ export const isWatchSubjectId = (value: unknown): value is string =>
 const version = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 const exact = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).every((key) => keys.includes(key));
+function parseThresholds(value: unknown, maximum: number): number[] {
+  if (!Array.isArray(value) || !value.length || value.length > 20 || new Set(value).size !== value.length)
+    return invalid();
+  return value.map((threshold: unknown) => {
+    if (typeof threshold !== "number" || !Number.isInteger(threshold) || threshold < 0 || threshold > maximum)
+      return invalid();
+    return threshold;
+  });
+}
 function parsePolicy(value: unknown) {
   if (
     !object(value) ||
-    !exact(value, ["change_kinds", "include_self_changes", "lease_threshold_days"]) ||
+    !exact(value, ["change_kinds", "include_self_changes", "lease_threshold_days", "lease_threshold_months"]) ||
     !Array.isArray(value.change_kinds) ||
     !value.change_kinds.length ||
     value.change_kinds.length > 3 ||
@@ -25,25 +34,17 @@ function parsePolicy(value: unknown) {
       return kind;
     return invalid();
   });
-  let lease_threshold_days: number[] | undefined;
-  if ("lease_threshold_days" in value) {
-    if (
-      !Array.isArray(value.lease_threshold_days) ||
-      !value.lease_threshold_days.length ||
-      value.lease_threshold_days.length > 20 ||
-      new Set(value.lease_threshold_days).size !== value.lease_threshold_days.length
-    )
-      return invalid();
-    lease_threshold_days = value.lease_threshold_days.map((day: unknown) => {
-      if (typeof day !== "number" || !Number.isInteger(day) || day < 0 || day > 3650) return invalid();
-      return day;
-    });
-  }
-  if (change_kinds.includes("lease_threshold_crossed") && !lease_threshold_days) return invalid();
+  const lease_threshold_days =
+    "lease_threshold_days" in value ? parseThresholds(value.lease_threshold_days, 3650) : undefined;
+  const lease_threshold_months =
+    "lease_threshold_months" in value ? parseThresholds(value.lease_threshold_months, 120) : undefined;
+  if (change_kinds.includes("lease_threshold_crossed") && !lease_threshold_days && !lease_threshold_months)
+    return invalid();
   return {
     change_kinds,
     include_self_changes: value.include_self_changes,
     ...(lease_threshold_days ? { lease_threshold_days } : {}),
+    ...(lease_threshold_months ? { lease_threshold_months } : {}),
   };
 }
 export type Policy = ReturnType<typeof parsePolicy>;

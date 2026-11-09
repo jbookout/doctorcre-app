@@ -36,7 +36,16 @@
     "test/share-intake.test.ts",
     "test/share-worker.test.ts",
     "test/share-intake.browser.ts",
-    "test/prove-share-intake.test.ts"
+    "test/prove-share-intake.test.ts",
+    "test/deal-document-text.test.ts",
+    "test/deal-document-text-browser.browser.ts",
+    "test/deal-document-text-browser.d.ts",
+    "docs/statecharts/ViewerCode.map.ts",
+    "test/document-quote-draft.test.ts",
+    "test/document-quote-next-ask.test.ts",
+    "test/document-quote-next-ask-browser.browser.ts",
+    "test/fixtures/document-quote-model/Freeze.map.ts",
+    "test/document-quote-next-ask-browser.d.ts"
   ],
   "compilerOptions": {
     "lib": [

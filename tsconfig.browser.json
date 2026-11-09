@@ -26,6 +26,14 @@
     "src/ui/share-contract.ts",
     "src/ui/share-intake-model.ts",
     "src/ui/share-intake.tsx",
-    "src/ui/call-review.tsx"
+    "src/ui/call-review.tsx",
+    "src/ui/deal-document-text.ts",
+    "src/ui/deal-document-text-viewer.tsx",
+    "src/ui/deal-documents.tsx",
+    "src/ui/ask-composer.tsx",
+    "src/ui/queued-asks.ts",
+    "src/ui/document-quote.ts",
+    "src/ui/document-quote-lines.tsx",
+    "src/ui/document-quote-next-ask.tsx"
   ]
 }

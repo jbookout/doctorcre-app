@@ -122,3 +122,20 @@ test('Home review forwards the displayed source version and retains it after a l
   assert.deepEqual(sent[0], sent[1]);
   assert.ok(sent[0].idempotency_key);
 });
+
+test('Home call contracts retain the merged producer bytes and fixture', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { createHash } = await import('node:crypto');
+  const contracts = {};
+  for (const [name, digest] of [
+    ['review-call-outcome.v1.json', '3035b88b8ad143541825ee0caf0e68c907137a19e46dd53e4b5457c61bc12cbe'],
+    ['read-call-outcomes.v1.json', '4e86e1102beb38c38ff74e4f1691c41e27c2feba10874658c236b9bc60a6ec8e'],
+  ]) {
+    const bytes = await readFile(new URL(`../contracts/carr-interface.v1/${name}`, import.meta.url));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), digest);
+    contracts[name] = JSON.parse(bytes);
+  }
+  const fixture = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
+  assert.equal(fixture.producer.source_commit, 'ab4e3bc25e5a50a44b26d5d770500bb2276c070f');
+  assert.deepEqual(fixture.contract, contracts['review-call-outcome.v1.json']);
+});
