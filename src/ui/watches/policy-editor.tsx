@@ -3,12 +3,16 @@ export function PolicyEditor({
   policy,
   days,
   onDays,
+  months,
+  onMonths,
   onChange,
   disabled,
 }: {
   policy: Policy;
   days: string;
   onDays: (value: string) => void;
+  months: string;
+  onMonths: (value: string) => void;
   onChange: (value: Policy) => void;
   disabled: boolean;
 }) {
@@ -42,15 +46,29 @@ export function PolicyEditor({
       </label>
       <p className="watch-detail">Replies covers new replies. Lease reminders covers approaching lease dates.</p>
       {policy.change_kinds.includes("lease_threshold_crossed") && (
-        <label className="watch-days">
-          Days before the lease date (comma-separated)
-          <input
-            aria-label="Lease threshold days"
-            value={days}
-            onChange={(event) => onDays(event.target.value)}
-            style={{ maxWidth: "100%", boxSizing: "border-box" }}
-          />
-        </label>
+        <>
+          <label className="watch-days">
+            Days before the lease date (comma-separated)
+            <input
+              aria-label="Lease threshold days"
+              value={days}
+              onChange={(event) => onDays(event.target.value)}
+              style={{ maxWidth: "100%", boxSizing: "border-box" }}
+            />
+          </label>
+          <label className="watch-days">
+            Calendar months before the lease date (comma-separated)
+            <input
+              aria-label="Lease threshold calendar months"
+              value={months}
+              onChange={(event) => onMonths(event.target.value)}
+              style={{ maxWidth: "100%", boxSizing: "border-box" }}
+            />
+          </label>
+          <p className="watch-detail">
+            Leave either list empty to remove it. Lease reminders need days, calendar months, or both.
+          </p>
+        </>
       )}
     </fieldset>
   );

@@ -1,0 +1,31 @@
+stateDiagram-v2
+    state Watch {
+        state Request {
+            [*] --> Ready
+            Ready --> Saving: save valid settings
+            Saving --> Ready: server confirms settings
+            Saving --> Unknown: reply is lost
+            Unknown --> Saving: retry same request and key
+            Saving --> Ready: stale version refresh keeps draft
+            Ready --> Reading: refresh watch
+            Reading --> Ready: current watch arrives
+            Ready --> Retired: sign out
+            Reading --> Retired: sign out
+            Saving --> Retired: sign out
+            Unknown --> Retired: sign out
+            Retired --> Retired: late reply arrives
+        }
+        --
+        state Thresholds {
+            [*] --> ExactUnits
+            ExactUnits --> ExactUnits: save valid settings
+            ExactUnits --> ExactUnits: current watch arrives
+            ExactUnits --> ExactUnits: stale version refresh keeps draft
+            ExactUnits --> ExactUnits: retry same request and key
+            ExactUnits --> Hidden: sign out
+            Hidden --> Hidden: late reply arrives
+        }
+    }
+    %% never RetiredSaving: Retired & ExactUnits -- Signing out hides all threshold controls and ignores late replies.
+    %% never SavingHidden: Saving & Hidden -- Only visible valid drafts can start a save.
+    %% never UnknownHidden: Unknown & Hidden -- A lost reply keeps the visible frozen request until sign-out.
