@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import type { ExactCard } from "./exact-action-card.ts";
+import { parseExactCard } from "./exact-action-card.ts";
+import { ExactActionCardView } from "./exact-action-card-view.tsx";
 
 type Request = (
   name: string,
@@ -28,6 +31,7 @@ type ReplyDraft = {
 type Draft = LeadDraft | ReplyDraft;
 type State =
   | { kind: "loading" }
+  | { kind: "exact"; card: ExactCard }
   | { kind: "ready"; card: Draft; key: string; phase: "idle" | "saving" | "unknown" }
   | { kind: "approved"; draftKind: Draft["kind"] }
   | { kind: "unavailable"; message: string; retry: boolean }
@@ -201,8 +205,18 @@ function refusal(code: unknown): State | null {
     return { kind: "signed-out" };
   return null;
 }
+function resolverForRef(ref: string) {
+  try {
+    return /^(rd|cr|fe):/.test(atob(ref.slice(4).replace(/-/g, "+").replace(/_/g, "/")))
+      ? "resolve-action-link-v2"
+      : "resolve-action-link";
+  } catch {
+    return "resolve-action-link";
+  }
+}
 function ActionLink({ ref, request }: { ref: string; request: Request }) {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [reviewNotice, setReviewNotice] = useState("");
   const [reload, setReload] = useState(0);
   const lifetime = useRef<AbortController | null>(null);
   const busy = useRef(false);
@@ -218,7 +232,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
         return;
       }
       try {
-        const result = await request("resolve-action-link", { ref }, { signal: controller.signal, timeoutMs: 10_000 });
+        const result = await request(resolverForRef(ref), { ref }, { signal: controller.signal, timeoutMs: 10_000 });
         if (controller.signal.aborted) return;
         if (object(result) && result.kind === "authorization") {
           setState({ kind: "signed-out" });
@@ -231,6 +245,11 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
               // eslint-disable-next-line no-restricted-syntax -- Only a manual reload can retry a refused resolve result; no scheduled retry occurs.
               refusal(payload.error) || { kind: "unavailable", message: "The draft could not be opened.", retry: true },
             );
+            return;
+          }
+          const exact = parseExactCard(payload, ref);
+          if (exact) {
+            setState({ kind: "exact", card: exact });
             return;
           }
           const card = parseDraft(payload, ref);
@@ -255,6 +274,45 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     void read();
     return () => controller.abort(`Resolve generation ${reload} retired`);
   }, [ref, request, reload]);
+  const reviewCall = async () => {
+    if (
+      state.kind !== "exact" ||
+      state.card.kind !== "post_call_review" ||
+      state.card.state !== "pending_review" ||
+      busy.current ||
+      !lifetime.current
+    )
+      return;
+    busy.current = true;
+    const card = state.card,
+      signal = lifetime.current.signal;
+    setReviewNotice("Checking current review…");
+    try {
+      const current = await request("resolve-action-link-v2", { ref }, { signal, timeoutMs: 10_000 });
+      if (signal.aborted) return;
+      if (object(current) && current.kind === "authorization") {
+        setState({ kind: "signed-out" });
+        return;
+      }
+      const fresh = object(current) && current.kind === "payload" ? parseExactCard(current.payload, ref) : null;
+      if (
+        fresh?.kind !== "post_call_review" ||
+        fresh.state !== "pending_review" ||
+        fresh.source_version !== card.source_version
+      ) {
+        setReload((value) => value + 1);
+        return;
+      }
+      const result = await request("review-call-outcome", { session_id: card.id }, { signal, timeoutMs: 10_000 });
+      if (signal.aborted) return;
+      if (object(result) && result.kind === "authorization") setState({ kind: "signed-out" });
+      else setReload((value) => value + 1);
+    } catch {
+      if (!signal.aborted) setReviewNotice("Review was not confirmed. Reload before trying again.");
+    } finally {
+      busy.current = false;
+    }
+  };
   const approve = async () => {
     if (state.kind !== "ready" || busy.current || !lifetime.current || lifetime.current.signal.aborted) return;
     busy.current = true;
@@ -321,6 +379,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     }
   };
   const reply =
+    (state.kind === "exact" && state.card.kind === "reply_draft") ||
     (state.kind === "ready" && state.card.kind === "reply_draft") ||
     (state.kind === "approved" && state.draftKind === "reply_draft");
   useEffect(() => {
@@ -333,17 +392,19 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
         ← Home
       </a>
       <header>
-        <p className="action-link-eyebrow">{reply ? "Reply" : "First contact"}</p>
+        <p className="action-link-eyebrow">{state.kind === "exact" ? "Review" : reply ? "Reply" : "First contact"}</p>
         <h1>
-          {state.kind === "approved"
-            ? reply
-              ? "Reply submitted"
-              : "Draft approved"
-            : reply
-              ? "Review reply draft"
-              : "Review draft"}
+          {state.kind === "exact"
+            ? "Review card"
+            : state.kind === "approved"
+              ? reply
+                ? "Reply submitted"
+                : "Draft approved"
+              : reply
+                ? "Review reply draft"
+                : "Review draft"}
         </h1>
-        {state.kind !== "approved" && (
+        {state.kind !== "approved" && state.kind !== "exact" && (
           <p>
             {reply
               ? "Review the message and recipients before submitting for sending."
@@ -352,9 +413,23 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
         )}
       </header>
       <section
+        data-exact-card-id={state.kind === "ready" ? state.card.id : undefined}
+        data-exact-card-kind={state.kind === "ready" ? state.card.kind : undefined}
+        data-source-version={state.kind === "ready" ? state.card.revision : undefined}
         className="action-link-card"
         aria-busy={state.kind === "loading" || (state.kind === "ready" && state.phase === "saving")}
       >
+        {state.kind === "exact" && (
+          <>
+            <ExactActionCardView card={state.card} />
+            {state.card.kind === "post_call_review" && state.card.state === "pending_review" && (
+              <button type="button" className="btn" onClick={() => void reviewCall()}>
+                Mark call reviewed
+              </button>
+            )}
+            {reviewNotice && <p role="status">{reviewNotice}</p>}
+          </>
+        )}
         {state.kind === "loading" && <p role="status">Opening draft…</p>}
         {state.kind === "signed-out" && (
           <>
@@ -447,3 +522,5 @@ export function mountActionLink(host: HTMLElement, options: { ref: string; reque
   flushSync(() => root.render(<ActionLink {...options} />));
   return { dispose: () => flushSync(() => root.unmount()) };
 }
+
+export { parseExactCard };

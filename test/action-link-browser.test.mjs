@@ -115,7 +115,7 @@ test('recorded reply action link renders exact review and session retirement cle
  try{
   page=await browser.newPage({viewport:{width:390,height:900}});let writes=0;
   await page.route('**/auth/session',route=>route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-csrf'}}));
-  await page.route('**/mcp',route=>{const rpc=route.request().postDataJSON();if(rpc.params.name==='submit-email-draft')writes++;return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(rpc.params.name==='resolve-action-link'?reply:{})}]}}});});
+  await page.route('**/mcp',route=>{const rpc=route.request().postDataJSON();if(rpc.params.name==='submit-email-draft')writes++;return route.fulfill({json:{jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify(rpc.params.name==='resolve-action-link-v2'?reply:{})}]}}});});
   await page.goto(`${server.origin}/a/${reply.ref}?mode=live`);
   await page.getByRole('heading',{name:'Review reply draft',exact:true}).waitFor();
   assert.equal(await page.locator('[data-proposal-id]').getAttribute('data-proposal-id'),reply.card.id);

@@ -263,7 +263,9 @@
     "js/charts.js",
     "tours/vendor/tour-map-route-state.js",
     "src/ui/watches/control.tsx",
-    "docs/statecharts/SubjectWatchControls.map.ts"
+    "docs/statecharts/SubjectWatchControls.map.ts",
+    "scripts/prove-exact-action-cards.ts",
+    "src/ui/action-session-return.ts"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",

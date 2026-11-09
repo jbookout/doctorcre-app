@@ -1,0 +1,45 @@
+stateDiagram-v2
+  state "Exact card" as App {
+    state "Session" as Access {
+      [*] --> SignedIn
+      state "Session available" as SignedIn
+      state "Sign in to continue" as SignedOut
+      SignedIn --> SignedOut: session refused
+      SignedOut --> SignedIn: sign in to same reference
+      SignedIn --> SignedIn: authorized current source [session available]
+      SignedIn --> SignedIn: source resolved [session available]
+      SignedIn --> SignedIn: source changed [session available]
+      SignedIn --> SignedIn: source retired
+    }
+    --
+    state "Card" as Card {
+      [*] --> Opening
+      state "Opening the named card" as Opening
+      state "Review the exact card" as Review
+      state "Resolved card, no actions" as Resolved
+      state "Changed card, no actions" as Stale
+      state "Retired source, no detail" as Retired
+      state "Unavailable, no detail" as Unavailable
+      Opening --> Review: authorized current source [session available]
+      %% when SignedIn
+      Opening --> Resolved: source resolved [session available]
+      %% when SignedIn
+      Opening --> Stale: source changed [session available]
+      %% when SignedIn
+      Opening --> Retired: source retired
+      Opening --> Unavailable: invalid or foreign reference or network failure
+      Opening --> Unavailable: session refused
+      Review --> Unavailable: session refused
+      Resolved --> Unavailable: session refused
+      Stale --> Unavailable: session refused
+      Retired --> Unavailable: session refused
+      Unavailable --> Unavailable: session refused
+      Unavailable --> Opening: user reloads
+      Unavailable --> Opening: sign in to same reference
+      Review --> Opening: user marks reviewed after version check
+    }
+  }
+  [*] --> App
+    %% never PrivatePending: Sign in to continue & Review the exact card -- Refused sessions never show pending private detail.
+    %% never PrivateResolved: Sign in to continue & Resolved card, no actions -- Refused sessions never show resolved private detail.
+    %% never PrivateStale: Sign in to continue & Changed card, no actions -- Refused sessions never show stale private detail.

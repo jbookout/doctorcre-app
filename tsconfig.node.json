@@ -28,7 +28,10 @@
     "test/fixtures/watches/producer-schema.ts",
     "scripts/artifact.d.mts",
     "scripts/fixture-server.d.mts",
-    "docs/statecharts/SubjectWatchControls.map.ts"
+    "docs/statecharts/SubjectWatchControls.map.ts",
+    "scripts/prove-exact-action-cards.ts",
+    "test/exact-action-card.test.ts",
+    "test/exact-action-cards.browser.ts"
   ],
   "compilerOptions": {
     "lib": [

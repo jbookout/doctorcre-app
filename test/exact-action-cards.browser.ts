@@ -1,0 +1,297 @@
+import assert from "node:assert/strict";
+import { mkdir, readFile } from "node:fs/promises";
+import test from "node:test";
+import { chromium } from "playwright";
+import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
+import { proveExact } from "../scripts/prove-exact-action-cards.ts";
+
+const rows: { ref: string; card: { id: string; kind: "reply_draft" | "post_call_review" | "feedback_event" } }[] =
+  JSON.parse(await readFile("test/fixtures/action-card-targets.v2.json", "utf8"));
+const reply: (typeof rows)[number] = JSON.parse(await readFile("test/fixtures/action-link-reply.v2.json", "utf8"));
+const call = rows[0],
+  feedback = rows[1];
+assert.ok(call && feedback);
+const cards = [reply, call, feedback];
+const targets = cards.map((value) => ({ ref: value.ref, id: value.card.id, kind: value.card.kind }));
+const commit = "1".repeat(40),
+  foreignRef = `al1_${Buffer.from(`rd:${reply.card.id}:dell:1`).toString("base64url")}`;
+const assets = await appAssetSnapshot();
+async function fixture() {
+  const routes = new Map(assets);
+  routes.set("/app-release", {
+    contentType: "application/json",
+    body: Buffer.from(JSON.stringify({ service: "doctorcre-app", environment: "production", source_commit: commit })),
+  });
+  const calls: string[] = [];
+  const server = await startWorkerFixture({
+    routes,
+    env: {
+      CARR: {
+        async fetch(request: Request) {
+          const url = new URL(request.url);
+          if (url.pathname === "/auth/session")
+            return Response.json({ actor: { slug: "joe" }, csrf_token: "synthetic-csrf" });
+          if (url.pathname === "/mcp") {
+            const rpc = await request.json();
+            assert.ok(
+              typeof rpc === "object" &&
+                rpc !== null &&
+                "id" in rpc &&
+                "params" in rpc &&
+                typeof rpc.params === "object" &&
+                rpc.params !== null &&
+                "name" in rpc.params &&
+                "arguments" in rpc.params &&
+                typeof rpc.params.arguments === "object" &&
+                rpc.params.arguments !== null,
+            );
+            calls.push(String(rpc.params.name));
+            const value =
+              "ref" in rpc.params.arguments ? cards.find((c) => c.ref === rpc.params.arguments.ref) : undefined;
+            return Response.json({
+              jsonrpc: "2.0",
+              id: rpc.id,
+              result: {
+                content: [{ type: "text", text: JSON.stringify(value || { error: "action_link_not_found" }) }],
+              },
+            });
+          }
+          return new Response(null);
+        },
+      },
+    },
+  });
+  return { ...server, calls };
+}
+test("cold navigation and existing tab show all three exact cards without inbox reads at phone and desktop sizes", async () => {
+  const server = await fixture(),
+    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    await mkdir("/tmp/J170-screenshots", { recursive: true });
+    for (const width of [390, 1440])
+      for (const theme of ["light", "dark"]) {
+        const page = await browser.newPage({ viewport: { width, height: 1000 } });
+        await page.addInitScript((theme) => localStorage.setItem("dealroom-theme", theme), theme);
+        for (const target of targets) {
+          await page.goto(`${server.origin}/a/${target.ref}?mode=live`);
+          const node = page.locator("[data-exact-card-id]");
+          await node.waitFor();
+          assert.equal(await node.getAttribute("data-exact-card-id"), target.id);
+          assert.equal(await node.getAttribute("data-exact-card-kind"), target.kind);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+          await page.screenshot({ path: `/tmp/J170-screenshots/${target.kind}-${width}-${theme}.png`, fullPage: true });
+        }
+        await page.close();
+      }
+    assert.ok(server.calls.filter((name) => name === "resolve-action-link-v2").length >= 12);
+    assert.equal(server.calls.includes("read-home-inbox"), false);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+test("wrong partner malformed near-match offline and expired session disclose no card; sign-in preserves reference", async () => {
+  const server = await fixture(),
+    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    const page = await browser.newPage();
+    for (const ref of [foreignRef, `${call.ref}A`, "al1_bad"]) {
+      await page.goto(`${server.origin}/a/${ref}?mode=live`);
+      await page.getByText(/unavailable for your account|invalid|could not be opened/).waitFor();
+      assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+    }
+    await page.route("**/mcp", (route) => route.abort("internetdisconnected"));
+    await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+    await page.getByText("The draft could not be opened.", { exact: true }).waitFor();
+    assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+    await page.unroute("**/mcp");
+    await page.route("**/auth/login?**", (route) =>
+      route.fulfill({ contentType: "text/html", body: "<h1>Sign in</h1>" }),
+    );
+    await page.route("**/auth/session", (route) =>
+      route.fulfill({ status: 401, json: { error: "not_authenticated" } }),
+    );
+    await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+    await page.waitForURL("**/public-shell/session-ended.html?**");
+    const login = page.locator("a[href*=return_to]");
+    await login.waitFor();
+    assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+    assert.equal(
+      new URL((await login.getAttribute("href")) || "", server.origin).searchParams.get("return_to"),
+      `/a/${call.ref}`,
+    );
+    await page.unroute("**/auth/session");
+    await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+    await page.locator("[data-exact-card-id]").waitFor();
+    await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+    assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+test("exact-card proof containing release passes and near-match fails; unavailable registered read is insufficient", async () => {
+  const server = await fixture();
+  try {
+    assert.equal(
+      (await proveExact({ origin: server.origin, commit, targets, foreignRef, engine: chromium })).status,
+      "passed",
+    );
+    await assert.rejects(
+      proveExact({
+        origin: server.origin,
+        commit,
+        targets: targets.map((t, i) => (i === 0 ? { ...t, id: `${t.id}f` } : t)),
+        foreignRef,
+        engine: chromium,
+      }),
+    );
+    await assert.rejects(
+      proveExact({
+        origin: server.origin,
+        commit,
+        targets: targets.map((t, i) => (i === 0 ? { ...t, ref: foreignRef } : t)),
+        foreignRef,
+        engine: chromium,
+      }),
+      { exitCode: 78 },
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("production proof CLI exits 0, 1 and 78 through a real browser fixture", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const exec = promisify(execFile);
+  const server = await fixture(),
+    browser = await chromium.launch({
+      headless: true,
+      args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
+    });
+  try {
+    const session = await browser.newBrowserCDPSession();
+    const result = await session.send("Browser.getBrowserCommandLine");
+    const directory = result.arguments
+      .find((arg: string) => arg.startsWith("--user-data-dir="))
+      ?.slice("--user-data-dir=".length);
+    assert.ok(directory);
+    const port = (await readFile(`${directory}/DevToolsActivePort`, "utf8")).split("\n")[0];
+    const args = [
+      "scripts/prove-exact-action-cards.ts",
+      "--origin",
+      server.origin,
+      "--commit",
+      commit,
+      "--reply-ref",
+      reply.ref,
+      "--reply-id",
+      reply.card.id,
+      "--call-ref",
+      call.ref,
+      "--call-id",
+      call.card.id,
+      "--feedback-ref",
+      feedback.ref,
+      "--feedback-id",
+      feedback.card.id,
+      "--foreign-ref",
+      foreignRef,
+      "--cdp-url",
+      `http://127.0.0.1:${port}`,
+    ];
+    assert.equal(JSON.parse((await exec(process.execPath, args, { timeout: 45000 })).stdout).status, "passed");
+    const wrong = [...args];
+    wrong[wrong.indexOf("--call-id") + 1] = `${call.card.id.slice(0, -1)}f`;
+    await assert.rejects(
+      exec(process.execPath, wrong, { timeout: 45000 }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === 1,
+    );
+    const missing = [...args];
+    missing[missing.indexOf("--call-ref") + 1] = foreignRef;
+    await assert.rejects(
+      exec(process.execPath, missing, { timeout: 45000 }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === 78,
+    );
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
+test("post-call completion rechecks the displayed version before the domain operation", async () => {
+  const server = await fixture(),
+    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    for (const changed of [false, true]) {
+      const page = await browser.newPage();
+      let reads = 0,
+        writes = 0;
+      await page.route("**/mcp", async (route) => {
+        const rpc = route.request().postDataJSON();
+        if (rpc.params.name === "review-call-outcome") {
+          writes++;
+          assert.deepEqual(rpc.params.arguments, { session_id: call.card.id });
+        }
+        if (rpc.params.name === "resolve-action-link-v2") reads++;
+        const original = JSON.parse(JSON.stringify(call));
+        if (writes || (changed && reads > 1)) {
+          original.card.state = writes ? "resolved" : "stale";
+          original.card.actions = [];
+        }
+        await route.fulfill({
+          json: { jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: JSON.stringify(original) }] } },
+        });
+      });
+      await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+      await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
+      await page
+        .getByText(changed ? "This card changed. Open its current version before acting." : "Resolved", { exact: true })
+        .waitFor();
+      assert.equal(writes, changed ? 0 : 1);
+      assert.equal(await page.getByRole("button", { name: "Mark call reviewed", exact: true }).count(), 0);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+for (const phase of ["late launch", "stalled evaluation"])
+  test(`exact-card deadline closes owned browser for ${phase}`, async () => {
+    const server = await fixture();
+    let owned: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+    try {
+      const engine = {
+        async launch(options: { timeout: number; args: string[] }) {
+          const browser = await chromium.launch({
+            ...options,
+            headless: true,
+            args: [...CHROMIUM_SAFETY_ARGS, ...options.args],
+          });
+          owned = browser;
+          if (phase === "late launch") await new Promise((resolve) => setTimeout(resolve, 1500));
+          else {
+            const newPage = browser.newPage.bind(browser);
+            browser.newPage = async () => {
+              const page = await newPage();
+              page.evaluate = () => new Promise<never>(() => {});
+              return page;
+            };
+          }
+          return browser;
+        },
+      };
+      await assert.rejects(
+        proveExact({ origin: server.origin, commit, targets, foreignRef, engine, timeoutMs: 1000 }),
+        { exitCode: 78 },
+      );
+      assert.equal(owned?.isConnected(), false);
+    } finally {
+      await owned?.close();
+      await server.close();
+    }
+  });
