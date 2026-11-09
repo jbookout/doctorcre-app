@@ -7,6 +7,7 @@ import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { proveExact } from "../scripts/prove-exact-action-cards.ts";
+import { settles } from "./browser-harness.mjs";
 
 const rows: {
   ref: string;
@@ -202,7 +203,11 @@ test("production proof CLI exits 0, 1 and 78 through a real browser fixture", as
       .find((arg: string) => arg.startsWith("--user-data-dir="))
       ?.slice("--user-data-dir=".length);
     assert.ok(directory);
-    const port = (await readFile(`${directory}/DevToolsActivePort`, "utf8")).split("\n")[0];
+    let port = "";
+    await settles(async () => {
+      port = (await readFile(`${directory}/DevToolsActivePort`, "utf8")).split("\n")[0] || "";
+      assert.match(port, /^[1-9]\d*$/);
+    });
     const args = [
       "scripts/prove-exact-action-cards.ts",
       "--origin",
