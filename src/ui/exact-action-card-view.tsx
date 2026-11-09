@@ -1,6 +1,7 @@
 import type { ExactCard } from "./exact-action-card.ts";
 
 const describeChange = (row: Record<string, unknown>) => {
+  if (typeof row.description === "string") return row.description;
   const payload = row.payload;
   if (typeof payload === "object" && payload !== null) {
     for (const key of ["action", "summary", "text", "body", "subject", "next_date"]) {
@@ -46,7 +47,14 @@ export function ExactActionCardView({ card }: { card: ExactCard }) {
           <ul>
             {[...card.detail.candidates, ...card.detail.changes].map((row) => (
               <li key={typeof row.id === "string" ? row.id : JSON.stringify(row)}>
-                {describeChange(row)}
+                <span>{describeChange(row)}</span>
+                {typeof row.assignee === "string" && <p>Assigned to {row.assignee}</p>}
+                {typeof row.due_on === "string" && (
+                  <p>
+                    Due <time dateTime={row.due_on}>{row.due_on}</time>
+                  </p>
+                )}
+                {typeof row.subject === "string" && <p>Subject: {row.subject}</p>}
                 {typeof row.evidence_quote === "string" && <blockquote>{row.evidence_quote}</blockquote>}
               </li>
             ))}

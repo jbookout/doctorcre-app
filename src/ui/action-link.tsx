@@ -31,7 +31,7 @@ type ReplyDraft = {
 type Draft = LeadDraft | ReplyDraft;
 type State =
   | { kind: "loading" }
-  | { kind: "exact"; card: ExactCard }
+  | { kind: "exact"; card: ExactCard; reviewKey?: string }
   | { kind: "ready"; card: Draft; key: string; phase: "idle" | "saving" | "unknown" }
   | { kind: "approved"; draftKind: Draft["kind"] }
   | { kind: "unavailable"; message: string; retry: boolean }
@@ -249,7 +249,13 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
           }
           const exact = parseExactCard(payload, ref);
           if (exact) {
-            setState({ kind: "exact", card: exact });
+            const intent = `doctorcre-review:${ref}`;
+            let reviewKey: string | undefined;
+            if (exact.kind === "post_call_review" && exact.state === "pending_review") {
+              reviewKey = sessionStorage.getItem(intent) || crypto.randomUUID();
+              sessionStorage.setItem(intent, reviewKey);
+            }
+            setState({ kind: "exact", card: exact, ...(reviewKey ? { reviewKey } : {}) });
             return;
           }
           const card = parseDraft(payload, ref);
@@ -280,7 +286,8 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
       state.card.kind !== "post_call_review" ||
       state.card.state !== "pending_review" ||
       busy.current ||
-      !lifetime.current
+      !lifetime.current ||
+      !state.reviewKey
     )
       return;
     busy.current = true;
@@ -303,10 +310,26 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
         setReload((value) => value + 1);
         return;
       }
-      const result = await request("review-call-outcome", { session_id: card.id }, { signal, timeoutMs: 10_000 });
+      const result = await request(
+        "review-call-outcome",
+        { session_id: card.id, idempotency_key: state.reviewKey },
+        { signal, timeoutMs: 10_000 },
+      );
       if (signal.aborted) return;
       if (object(result) && result.kind === "authorization") setState({ kind: "signed-out" });
-      else setReload((value) => value + 1);
+      else if (
+        object(result) &&
+        result.kind === "payload" &&
+        !result.isError &&
+        object(result.payload) &&
+        result.payload.ok === true &&
+        result.payload.session_id === card.id &&
+        (result.payload.reviewed === true || result.payload.already === "reviewed")
+      ) {
+        sessionStorage.removeItem(`doctorcre-review:${ref}`);
+        setReviewNotice("");
+        setReload((value) => value + 1);
+      } else setReviewNotice("Review was not confirmed. Reload before trying again.");
     } catch {
       if (!signal.aborted) setReviewNotice("Review was not confirmed. Reload before trying again.");
     } finally {
