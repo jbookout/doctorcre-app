@@ -99,13 +99,17 @@ function handleShareMessage(event) {
       if (!pendingShare || pendingShare.expires <= Date.now()) { retireShare(); throw Error('Share expired. Share the file again.'); }
       const active = pendingShare;
       if (await shareSession() !== active.session || event.data.csrf !== active.session || pendingShare !== active) { retireShare(); throw Error('Session ended. Share the file again after signing in.'); }
+      if (typeof event.source.id !== 'string' || !event.source.id) throw Error('Invalid intake page');
+      if (active.clientId && active.clientId !== event.source.id && await self.clients.get(active.clientId)) throw Error('Another intake page is already using this share. Return to it.');
+      if (pendingShare !== active || active.expires <= Date.now()) throw Error('Share expired. Share the file again.');
+      active.clientId = event.source.id;
       if (event.data.action === 'clear') { retireShare(); reply({ok:true}); return; }
       if (event.data.action === 'operation') {
         const next = event.data.operation;
         if (!next || typeof next.deal !== 'string' || active.operation && active.operation.deal !== next.deal) throw Error('Reconcile the current deal first.');
         active.operation = next;
       }
-      const { session, ...share } = active;
+      const { session, clientId, ...share } = active;
       reply({ok:true,share});
     } catch (error) { reply({ok:false,error:error.message}); }
   })());

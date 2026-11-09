@@ -11,6 +11,7 @@ async function worker() {
     cacheWrites = 0,
     networkPosts = 0;
   let now = Date.now();
+  const clients = new Set(["intake-a", "intake-b"]);
   const context = {
     URL,
     Response,
@@ -42,6 +43,7 @@ async function worker() {
     },
     self: {
       location: { origin: "https://app.example" },
+      clients: { get: async (id: string) => (clients.has(id) ? { id } : undefined) },
       addEventListener(name: string, handler: (event: object) => void) {
         handlers.set(name, handler);
       },
@@ -95,11 +97,14 @@ async function worker() {
       });
       return response;
     },
-    async message(action = "read") {
+    closeClient(id: string) {
+      clients.delete(id);
+    },
+    async message(action = "read", clientId = "intake-a") {
       let promise: Promise<void> | undefined, result: unknown;
       handlers.get("message")?.({
         data: { type: "doctorcre-share", csrf: token, action },
-        source: { url: "https://app.example/share-intake.html" },
+        source: { url: "https://app.example/share-intake.html", id: clientId },
         ports: [
           {
             postMessage(value: unknown) {
@@ -206,4 +211,21 @@ test("small multipart chunks preserve the shared file", async () => {
       reply.share.file instanceof File,
   );
   assert.deepEqual(new Uint8Array(await reply.share.file.arrayBuffer()), new Uint8Array(6));
+});
+
+test("another live intake page cannot consume the same share", async () => {
+  const x = await worker();
+  await x.post();
+  await x.message();
+  const other = await x.message("read", "intake-b");
+  assert.ok(other && typeof other === "object" && "ok" in other && other.ok === false);
+  const original = await x.message();
+  assert.ok(original && typeof original === "object" && "ok" in original && original.ok === true);
+});
+test("a closed intake page releases custody for reconciliation in a new page", async () => {
+  const x = await worker();
+  await x.post();
+  const original = await x.message();
+  x.closeClient("intake-a");
+  assert.deepEqual(await x.message("read", "intake-b"), original);
 });
