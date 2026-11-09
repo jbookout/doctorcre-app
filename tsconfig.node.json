@@ -28,7 +28,9 @@
     "test/fixtures/watches/producer-schema.ts",
     "scripts/artifact.d.mts",
     "scripts/fixture-server.d.mts",
-    "docs/statecharts/SubjectWatchControls.map.ts"
+    "docs/statecharts/SubjectWatchControls.map.ts",
+    "test/radar-watch.test.ts",
+    "test/lease-radar-proof-read.test.ts"
   ],
   "compilerOptions": {
     "lib": [

@@ -32,6 +32,19 @@ test("built Deal Room and lease detail mount controls for the exact record", asy
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     try {
       await page.route("**/mcp", (route) => {
+        if (route.request().postDataJSON().params.name === "list-subject-watches-v2") {
+          const payload = {
+            ok: true,
+            schema_version: "subject-watch.v2",
+            watches: [
+              { ...originalWatch, subject_type: kind, baseline: { ...originalWatch.baseline, subject_type: kind } },
+            ],
+            has_more: false,
+            next_cursor: null,
+          };
+          assert.equal(validateProducer(payload), true);
+          return route.fulfill({ json: { result: { content: [{ type: "text", text: JSON.stringify(payload) }] } } });
+        }
         const args: unknown = route.request().postDataJSON().params.arguments;
         assert.ok(typeof args === "object" && args !== null && "subject_id" in args && "subject_type" in args);
         assert.equal(args.subject_id, originalWatch.subject_id);
@@ -62,10 +75,15 @@ test("built Deal Room and lease detail mount controls for the exact record", asy
         );
         await page.goto(`${server.url}/deals?deal=${originalWatch.subject_id}`);
       } else {
-        const fixture = (await readFile(new URL("../js/lease-radar-fixture.js", import.meta.url), "utf8")).replace(
-          `id:\`demo-lease-\${i}\``,
-          `id:i===1?${JSON.stringify(originalWatch.subject_id)}:\`demo-lease-\${i}\``,
-        );
+        const fixture = (await readFile(new URL("../js/lease-radar-fixture.js", import.meta.url), "utf8"))
+          .replace(
+            `id:\`demo-lease-\${i}\``,
+            `id:i===1?${JSON.stringify(originalWatch.subject_id)}:\`demo-lease-\${i}\``,
+          )
+          .replace(
+            `client_name:\`Demo Practice \${i}\``,
+            `client_name:i===1 && globalThis.watchRefreshName ? globalThis.watchRefreshName : \`Demo Practice \${i}\``,
+          );
         await page.route("**/js/lease-radar-fixture.js", (route) =>
           route.fulfill({ body: fixture, contentType: "text/javascript" }),
         );
@@ -98,6 +116,42 @@ test("built Deal Room and lease detail mount controls for the exact record", asy
       const evidence = new URL("../out/test-artifacts/watches/", import.meta.url);
       await mkdir(evidence, { recursive: true });
       await page.screenshot({ path: new URL(`${kind}.png`, evidence).pathname });
+      if (kind === "lease") {
+        const pause = panel.getByRole("button", { name: "Pause watch", exact: true });
+        await pause.focus();
+        const reread = page.waitForResponse(
+          (response) =>
+            response.url().endsWith("/mcp") &&
+            response.request().postDataJSON().params.name === "list-subject-watches-v2",
+        );
+        await page.evaluate(() => {
+          Reflect.set(window, "watchRefreshName", "Demo Practice 1 updated");
+          window.dispatchEvent(new Event("online"));
+        });
+        await reread;
+        assert.equal(await page.locator("#leaseDetail h2").textContent(), "Demo Practice 1 updated");
+        assert.equal(
+          await pause.evaluate((node) => node === document.activeElement),
+          true,
+          "Radar refresh retains focused watch action",
+        );
+        await page.getByRole("button", { name: "Close lease details" }).click();
+        await page.locator("[data-radar-watch]").filter({ hasText: "Lease watching" }).waitFor();
+        for (const width of [390, 1440]) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.screenshot({ path: new URL(`radar-${width}.png`, evidence).pathname, animations: "disabled" });
+          await page.evaluate(() => {
+            document.documentElement.dataset.theme = "light";
+          });
+          await page.screenshot({
+            path: new URL(`radar-${width}-light.png`, evidence).pathname,
+            animations: "disabled",
+          });
+          await page.evaluate(() => {
+            document.documentElement.dataset.theme = "dark";
+          });
+        }
+      }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     } finally {
       await page.context().close();
@@ -407,4 +461,142 @@ test("fixture-only record identities do not expose server watch controls", async
   );
   assert.equal(await f.page.locator("summary").count(), 0);
   assert.equal(f.requests.length, 0);
+});
+
+test("radar confirms complete lists, preserves focus, fails closed and fences sign-out", async (t) => {
+  const { page } = await mountedWatch(t, "lease");
+  await page.evaluate(async (subject) => {
+    const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+    const host = document.createElement("section");
+    host.id = "radar";
+    const button = document.createElement("button");
+    button.textContent = "Open exact lease";
+    const status = document.createElement("small");
+    status.dataset.radarWatch = subject;
+    button.append(status);
+    host.append(button);
+    document.body.append(host);
+    button.focus();
+    Object.assign(window, { radar: mountRadarWatches(host) });
+    Reflect.get(window, "radar").paint([{ id: subject, deal_id: null }]);
+  }, originalWatch.subject_id);
+  let mode = "ok";
+  let finish = async () => {};
+  await page.route("**/mcp", async (route) => {
+    const payload =
+      mode === "bad"
+        ? {}
+        : { ok: true, schema_version: "subject-watch.v2", watches: [], has_more: false, next_cursor: null };
+    if (mode === "ok") assert.equal(validateProducer(payload), true);
+    const fulfill = () =>
+      route.fulfill({ json: { result: { content: [{ type: "text", text: JSON.stringify(payload) }] } } });
+    if (mode === "hold") {
+      finish = fulfill;
+      return;
+    }
+    await fulfill();
+  });
+  const refresh = () =>
+    page.evaluate(() => {
+      void Reflect.get(window, "radar").refresh();
+    });
+  await refresh();
+  await page.getByText("Lease not watching", { exact: true }).waitFor();
+  assert.equal(await page.locator("#radar button").evaluate((n) => n === document.activeElement), true);
+  mode = "bad";
+  await refresh();
+  await page.getByText("Watch states unavailable", { exact: true }).waitFor();
+  mode = "ok";
+  await refresh();
+  await page.getByText("Lease not watching", { exact: true }).waitFor();
+  mode = "hold";
+  await refresh();
+  await page.getByText("Reading watch states…", { exact: true }).waitFor();
+  await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+  await page.getByText("Sign in to inspect watches", { exact: true }).waitFor();
+  await finish();
+  await refresh();
+  assert.equal(await page.locator("[data-radar-watch]").textContent(), "Sign in to inspect watches");
+  await page.evaluate(() => Reflect.get(window, "radar").dispose());
+});
+
+for (const phase of ["Confirmed", "Unavailable"] as const)
+  test(`radar sign-out from ${phase} hides confirmations and refuses refresh`, async (t) => {
+    const { page } = await mountedWatch(t, "lease");
+    await page.evaluate(
+      async ({ id, phase }) => {
+        const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+        const host = document.createElement("section");
+        const status = document.createElement("small");
+        status.dataset.radarWatch = id;
+        host.append(status);
+        document.body.append(host);
+        let calls = 0;
+        const radar = mountRadarWatches(host, async () => {
+          calls++;
+          if (phase === "Unavailable") throw Error("Read failed");
+          return [];
+        });
+        radar.paint([{ id, deal_id: null }]);
+        await radar.refresh();
+        if (status.textContent !== (phase === "Confirmed" ? "Lease not watching" : "Watch states unavailable"))
+          throw Error("Wrong starting phase");
+        window.dispatchEvent(new Event("doctorcre-session-invalidated"));
+        await radar.refresh();
+        if (String(status.textContent) !== "Sign in to inspect watches" || calls !== 1)
+          throw Error("Session retirement failed");
+        radar.dispose();
+      },
+      { id: originalWatch.subject_id, phase },
+    );
+  });
+
+test("radar rejects a regressing lifecycle version and permits a new generation", async (t) => {
+  const { page, sample } = await mountedWatch(t, "lease");
+  await page.evaluate(async (sample) => {
+    const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+    const host = document.createElement("section");
+    const status = document.createElement("small");
+    status.dataset.radarWatch = sample.subject_id;
+    host.append(status);
+    document.body.append(host);
+    let current = { ...sample, lifecycle_version: 4 };
+    const radar = mountRadarWatches(host, async () => [current]);
+    radar.paint([{ id: sample.subject_id, deal_id: null }]);
+    await radar.refresh();
+    if (!status.textContent?.startsWith("Lease watching")) throw Error("No initial confirmation");
+    current = { ...sample, lifecycle_version: 2, state: "paused" };
+    await radar.refresh();
+    if (status.textContent !== "Watch states unavailable") throw Error("Stale list was accepted");
+    current = { ...sample, id: "a593ce5f-a245-432b-a829-329a7a461a34", lifecycle_version: 1 };
+    await radar.refresh();
+    if (!status.textContent?.startsWith("Lease watching")) throw Error("New generation refused");
+    radar.dispose();
+  }, sample);
+});
+
+test("radar superseded list cannot replace a newer confirmation", async (t) => {
+  const { page, sample } = await mountedWatch(t, "lease");
+  await page.evaluate(async (sample) => {
+    const { mountRadarWatches } = await import(String("/js/ui-watches.js"));
+    const host = document.createElement("section");
+    const status = document.createElement("small");
+    status.dataset.radarWatch = sample.subject_id;
+    host.append(status);
+    document.body.append(host);
+    const releases: ((value: (typeof sample)[]) => void)[] = [];
+    const radar = mountRadarWatches(host, () => new Promise<(typeof sample)[]>((resolve) => releases.push(resolve)));
+    radar.paint([{ id: sample.subject_id, deal_id: null }]);
+    const first = radar.refresh();
+    const second = radar.refresh();
+    const newer = releases[1];
+    const older = releases[0];
+    if (!newer || !older) throw Error("Reads not held");
+    newer([]);
+    await second;
+    older([sample]);
+    await first;
+    if (status.textContent !== "Lease not watching") throw Error("Late read replaced new confirmation");
+    radar.dispose();
+  }, sample);
 });
