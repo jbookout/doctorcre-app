@@ -22,7 +22,18 @@
           }
         ],
         "reviewed": false,
-        "candidates": [],
+        "candidates": [
+          {
+            "id": "20000000-0000-4000-8000-000000000700",
+            "kind": "assigned_action",
+            "status": "pending",
+            "description": "Send the revised lease proposal",
+            "assignee": "joe",
+            "due_on": "2026-11-10",
+            "subject": "Lease proposal",
+            "evidence_quote": "Please follow up"
+          }
+        ],
         "session_id": "20000000-0000-4000-8000-000000000100",
         "started_at": "2026-11-01T00:00:00+00:00"
       },

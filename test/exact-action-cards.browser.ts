@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import Ajv from "ajv";
 import { chromium } from "playwright";
 import { CHROMIUM_SAFETY_ARGS } from "../scripts/chromium-safety-args.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { proveExact } from "../scripts/prove-exact-action-cards.ts";
 
-const rows: { ref: string; card: { id: string; kind: "reply_draft" | "post_call_review" | "feedback_event" } }[] =
+const rows: { ref: string; card: { state?: string; actions?: unknown[]; id: string; kind: "reply_draft" | "post_call_review" | "feedback_event" } }[] =
   JSON.parse(await readFile("test/fixtures/action-card-targets.v2.json", "utf8"));
 const reply: (typeof rows)[number] = JSON.parse(await readFile("test/fixtures/action-link-reply.v2.json", "utf8"));
 const call = rows[0],
@@ -17,6 +18,11 @@ const cards = [reply, call, feedback];
 const targets = cards.map((value) => ({ ref: value.ref, id: value.card.id, kind: value.card.kind }));
 const commit = "1".repeat(40),
   foreignRef = `al1_${Buffer.from(`rd:${reply.card.id}:dell:1`).toString("base64url")}`;
+const writeInput = new Ajv().compile({ type: "object", additionalProperties: false,
+  properties: { session_id: { type: "string" }, idempotency_key: { type: "string" } },
+  required: ["idempotency_key", "session_id"] });
+const cardContract = new Ajv({ strict: false, validateFormats: false }).compile(JSON.parse(await readFile("contracts/carr-interface.v1/action-link-resolve.v2.json", "utf8")));
+for (const row of cards) assert.ok(cardContract(row), JSON.stringify(cardContract.errors));
 const assets = await appAssetSnapshot();
 async function fixture() {
   const routes = new Map(assets);
@@ -78,6 +84,7 @@ test("cold navigation and existing tab show all three exact cards without inbox 
           await page.goto(`${server.origin}/a/${target.ref}?mode=live`);
           const node = page.locator("[data-exact-card-id]");
           await node.waitFor();
+          if (target.kind === "post_call_review") await page.getByText("Send the revised lease proposal", { exact: true }).waitFor();
           assert.equal(await node.getAttribute("data-exact-card-id"), target.id);
           assert.equal(await node.getAttribute("data-exact-card-kind"), target.kind);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -107,9 +114,12 @@ test("wrong partner malformed near-match offline and expired session disclose no
     await page.getByText("The draft could not be opened.", { exact: true }).waitFor();
     assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
     await page.unroute("**/mcp");
-    await page.route("**/auth/login?**", (route) =>
-      route.fulfill({ contentType: "text/html", body: "<h1>Sign in</h1>" }),
-    );
+    await page.route("**/auth/login?**", async route => {
+      const destination = new URL(route.request().url()).searchParams.get("return_to");
+      assert.equal(destination, `/a/${call.ref}`);
+      await page.unroute("**/auth/session");
+      await route.fulfill({status:302, headers:{location: `${destination}?mode=live`}, body:""});
+    });
     await page.route("**/auth/session", (route) =>
       route.fulfill({ status: 401, json: { error: "not_authenticated" } }),
     );
@@ -122,8 +132,8 @@ test("wrong partner malformed near-match offline and expired session disclose no
       new URL((await login.getAttribute("href")) || "", server.origin).searchParams.get("return_to"),
       `/a/${call.ref}`,
     );
-    await page.unroute("**/auth/session");
-    await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+    await login.click();
+    await page.waitForURL(`${server.origin}/a/${call.ref}?mode=live`);
     await page.locator("[data-exact-card-id]").waitFor();
     await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
     assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
@@ -222,43 +232,37 @@ test("production proof CLI exits 0, 1 and 78 through a real browser fixture", as
   }
 });
 
-test("post-call completion rechecks the displayed version before the domain operation", async () => {
-  const server = await fixture(),
-    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+test("post-call review uses registered input and receipt and retains its intent key after a lost response and reload", async () => {
+  const server = await fixture(), browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
   try {
-    for (const changed of [false, true]) {
-      const page = await browser.newPage();
-      let reads = 0,
-        writes = 0;
-      await page.route("**/mcp", async (route) => {
-        const rpc = route.request().postDataJSON();
-        if (rpc.params.name === "review-call-outcome") {
-          writes++;
-          assert.deepEqual(rpc.params.arguments, { session_id: call.card.id });
-        }
-        if (rpc.params.name === "resolve-action-link-v2") reads++;
-        const original = JSON.parse(JSON.stringify(call));
-        if (writes || (changed && reads > 1)) {
-          original.card.state = writes ? "resolved" : "stale";
-          original.card.actions = [];
-        }
-        await route.fulfill({
-          json: { jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: JSON.stringify(original) }] } },
-        });
-      });
-      await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
-      await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
-      await page
-        .getByText(changed ? "This card changed. Open its current version before acting." : "Resolved", { exact: true })
-        .waitFor();
-      assert.equal(writes, changed ? 0 : 1);
-      assert.equal(await page.getByRole("button", { name: "Mark call reviewed", exact: true }).count(), 0);
-      await page.close();
-    }
-  } finally {
-    await browser.close();
-    await server.close();
-  }
+    const page = await browser.newPage();
+    const keys: string[] = [];
+    let reviewed = false;
+    await page.route("**/mcp", async route => {
+      const rpc = route.request().postDataJSON();
+      let payload = structuredClone(call);
+      if (rpc.params.name === "review-call-outcome") {
+        assert.ok(writeInput(rpc.params.arguments), JSON.stringify(writeInput.errors));
+        assert.equal(rpc.params.arguments.session_id, call.card.id);
+        assert.match(rpc.params.arguments.idempotency_key, /^[0-9a-f-]{36}$/);
+        keys.push(rpc.params.arguments.idempotency_key);
+        if (keys.length === 1) { await route.abort("failed"); return; }
+        reviewed = true;
+        await route.fulfill({json: {jsonrpc: "2.0", id: rpc.id, result: {content: [{type: "text", text: JSON.stringify({ok: true, session_id: call.card.id, reviewed: true})}]}}});
+        return;
+      }
+      if (reviewed) payload = {...payload, card: {...payload.card, state: "resolved", actions: []}};
+      await route.fulfill({json: {jsonrpc: "2.0", id: rpc.id, result: {content: [{type: "text", text: JSON.stringify(payload)}]}}});
+    });
+    await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+    await page.getByRole("button", {name: "Mark call reviewed", exact: true}).click();
+    await page.getByText("Review was not confirmed. Reload before trying again.", {exact:true}).waitFor();
+    await page.reload();
+    await page.getByRole("button", {name: "Mark call reviewed", exact: true}).click();
+    await page.getByText("Resolved", {exact:true}).waitFor();
+    assert.equal(keys.length, 2);
+    assert.equal(keys[0], keys[1]);
+  } finally { await browser.close(); await server.close(); }
 });
 for (const phase of ["late launch", "stalled evaluation"])
   test(`exact-card deadline closes owned browser for ${phase}`, async () => {
@@ -295,3 +299,31 @@ for (const phase of ["late launch", "stalled evaluation"])
       await server.close();
     }
   });
+
+for (const lifecycle of ["pending_review", "resolved", "stale", "retired", "unavailable"]) {
+  test(`mounted ${lifecycle} card clears on session refusal`, async () => {
+    const server = await fixture(), browser = await chromium.launch({headless:true, args:[...CHROMIUM_SAFETY_ARGS]});
+    try {
+      const page = await browser.newPage();
+      await page.route("**/mcp", route => {
+        const rpc = route.request().postDataJSON();
+        const payload = lifecycle === "unavailable" ? {error:"action_link_not_found"} : {
+          ...call, card:{...call.card, state:lifecycle, actions:lifecycle === "pending_review" ? call.card.actions : [],
+          ...(lifecycle === "retired" ? {detail:null} : {})}
+        };
+        return route.fulfill({json:{jsonrpc:"2.0",id:rpc.id,result:{content:[{type:"text",text:JSON.stringify(payload)}]}}});
+      });
+      await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+      if (lifecycle === "unavailable") await page.getByText("This draft is unavailable for your account.", {exact:true}).waitFor();
+      else {
+        await page.locator("[data-exact-card-id]").waitFor();
+        const status = lifecycle === "stale" ? "This card changed. Open its current version before acting." : lifecycle === "retired" ? "This source is no longer available." : lifecycle === "resolved" ? "Resolved" : "Awaiting your review";
+        await page.getByText(status, {exact:true}).waitFor();
+        assert.equal(await page.getByRole("button",{name:"Mark call reviewed",exact:true}).count(), lifecycle === "pending_review" ? 1 : 0);
+      }
+      await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+      assert.equal(await page.locator("[data-exact-card-id]").count(),0);
+      await page.getByText("Sign in to open this draft",{exact:true}).waitFor();
+    } finally {await browser.close(); await server.close();}
+  });
+}
