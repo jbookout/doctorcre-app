@@ -151,7 +151,7 @@ export async function prove({ origin, commit, ref, proposalId, foreignRef, timeo
           !object(rpc) ||
           rpc.method !== "tools/call" ||
           !object(rpc.params) ||
-          rpc.params.name !== "resolve-action-link" ||
+          !["resolve-action-link", "resolve-action-link-v2"].includes(String(rpc.params.name)) ||
           !object(rpc.params.arguments) ||
           ![ref, foreignRef].includes(String(rpc.params.arguments.ref))
         ) {

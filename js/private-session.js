@@ -88,6 +88,7 @@ export function privateSession() {
   if (browserBoundary) return browserBoundary;
   if (typeof window === 'undefined' || globalThis !== window || resolveDealroomBoot(window.location).mode !== 'live') return null;
   const win = window;
+  const returnTo = /^\/a\/al1_[A-Za-z0-9_-]{1,120}$/.test(win.location.pathname) ? win.location.pathname : null;
   const initialEpoch = sessionEpoch(win);
   let anonymousDiagnostics = false;
   try { anonymousDiagnostics = win.location.pathname === '/status' && !win.localStorage.getItem('doctorcre-session-binding-v1'); } catch {}
@@ -113,13 +114,14 @@ export function privateSession() {
       const cleanup = offlineTourSession(win).revoke();
       const view = win.document.createElement('main');
       const title = win.document.createElement('h1'); title.textContent = reason === 'signed-out' ? 'Signed out' : 'Session ended';
-      const link = win.document.createElement('a'); link.href = '/auth/login'; link.textContent = 'Sign in again';
+      const loginHref = returnTo ? `/auth/login?return_to=${encodeURIComponent(returnTo)}` : '/auth/login';
+      const link = win.document.createElement('a'); link.href = loginHref; link.textContent = 'Sign in again';
       win.document.title = 'Session ended';
       view.append(title,link); win.document.body.replaceChildren(view);
       // The new document releases controller closures, pending commands,
       // editor drafts, Doc context, media objects, and actor labels together.
       void cleanup.finally(() => {
-        if (win.document === retiredDocument) win.location.replace('/public-shell/session-ended.html');
+        if (win.document === retiredDocument) win.location.replace(returnTo ? `/public-shell/session-ended.html?return_to=${encodeURIComponent(returnTo)}` : '/public-shell/session-ended.html');
       });
     },
   });
@@ -163,7 +165,7 @@ export function privateSession() {
   // eslint-disable-next-line no-restricted-syntax -- Restored pages verify once per persisted pageshow before unlocking controls; the document request budget limits the verifier.
   win.addEventListener('pageshow', event => {
     if (!event.persisted) return;
-    if (browserBoundary.revoked) { win.location.replace('/public-shell/session-ended.html'); return; }
+    if (browserBoundary.revoked) { win.location.replace(returnTo ? `/public-shell/session-ended.html?return_to=${encodeURIComponent(returnTo)}` : '/public-shell/session-ended.html'); return; }
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
     const generation = ++restoreGeneration;
     win.document.documentElement.style.visibility = 'hidden';

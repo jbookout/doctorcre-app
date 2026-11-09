@@ -89,11 +89,11 @@ const click = root => root.querySelector('button').click();
 test('recorded reply fixture satisfies producer v2 contract and opens exact review without writing',async()=>{
  const {default:Ajv}=await import('ajv/dist/2020.js');
  const schema=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/action-link-resolve.v2.json',import.meta.url)));
- const validate=new Ajv({formats:{uuid:/^[0-9a-f-]{36}$/i,email:/^[^\s@]+@[^\s@]+\.[^\s@]+$/}}).compile(schema);
+ const validate=new Ajv({formats:{'date-time':true,uuid:/^[0-9a-f-]{36}$/i,email:/^[^\s@]+@[^\s@]+\.[^\s@]+$/}}).compile(schema);
  assert.equal(validate(reply),true,JSON.stringify(validate.errors));
  const calls=[]; const {root,mounted}=replySetup(async(name,args)=>{calls.push({name,args});return answer(reply);});
  try {await until(()=>assert.match(root.textContent,/Review reply draft/));
- assert.equal(calls.length,1);assert.deepEqual(calls[0],{name:'resolve-action-link',args:{ref:reply.ref}});
+ assert.equal(calls.length,1);assert.deepEqual(calls[0],{name:'resolve-action-link-v2',args:{ref:reply.ref}});
  assert.match(root.textContent,new RegExp(reply.card.id)); assert.match(root.textContent,/To: sender@example.test/);assert.match(root.textContent,/CC: dell@example.test/);
  }finally{mounted.dispose();}
 });
@@ -101,14 +101,14 @@ test('recorded reply fixture satisfies producer v2 contract and opens exact revi
 test('reply rejects mismatched ref kind action identity version content and recipients',async()=>{
  for(const change of [p=>p.ref='al1_foreign',p=>p.card.kind='arbitrary',p=>p.card.id=id,p=>p.card.source_version=2,p=>p.card.actions[0].verb='send-email',p=>p.card.actions[0].args.proposal_id=id,p=>p.card.actions[0].args.base_version=2,p=>p.card.actions[0].args.subject='other',p=>p.card.actions[0].args.body='other',p=>p.card.actions[0].args.to=['other@example.test'],p=>p.card.actions[0].args.cc=['other@example.test'],p=>p.card.extra=true]) {
   const value=cloneReply();change(value);let writes=0;
-  const {root,mounted}=replySetup(async name=>{if(name!=='resolve-action-link')writes++;return answer(value);});
+  const {root,mounted}=replySetup(async name=>{if(name!=='resolve-action-link-v2')writes++;return answer(value);});
   try{await until(()=>assert.match(root.textContent,/could not be opened/));assert.doesNotMatch(root.textContent,/Synthetic body/);assert.equal(root.querySelector('button'),null);assert.equal(writes,0);}finally{mounted.dispose();}
  }
 });
 
 test('reply submit freezes reviewed payload double click starts once and unknown retry reuses intent',async()=>{
  const writes=[];let finish;
- const {root,mounted}=replySetup(async(name,args)=>{if(name==='resolve-action-link')return answer(reply);writes.push(structuredClone(args));return writes.length===1?new Promise(resolve=>{finish=resolve;}):answer(replyReceipt());});
+ const {root,mounted}=replySetup(async(name,args)=>{if(name==='resolve-action-link-v2')return answer(reply);writes.push(structuredClone(args));return writes.length===1?new Promise(resolve=>{finish=resolve;}):answer(replyReceipt());});
  try{await until(()=>assert.match(root.textContent,/Review reply draft/));click(root);click(root);
  await until(()=>assert.equal(writes.length,1));assert.equal(root.querySelector('button').disabled,true);
  assert.deepEqual(writes[0],{...reply.card.actions[0].args,idempotency_key:writes[0].idempotency_key});
@@ -120,14 +120,14 @@ test('reply submit freezes reviewed payload double click starts once and unknown
 
 test('reply lost timeout and near miss receipts remain unconfirmed',async()=>{
  for(const result of [()=>{throw Error('timeout');},()=>({kind:'unconfirmed'}),...['proposal_id','version','subject','body','to','cc','status','sha256'].map(key=>()=>{const r=replyReceipt();r[key]=key==='version'?1:'near miss';return answer(r);})]) {
- const {root,mounted}=replySetup(async name=>name==='resolve-action-link'?answer(reply):result());
+ const {root,mounted}=replySetup(async name=>name==='resolve-action-link-v2'?answer(reply):result());
  try{await until(()=>assert.match(root.textContent,/Review reply draft/));click(root);await until(()=>assert.match(root.textContent,/Submission has not been confirmed/));assert.doesNotMatch(root.textContent,/Reply submitted for sending/);}finally{mounted.dispose();}
  }
 });
 
 test('reply expired resolved replayed and stale submit refuses without implicit reapproval',async()=>{
  for(const code of ['action_link_not_found','action_link_no_longer_actionable','action_link_stale','email_draft_already_submitted','email_draft_failure_not_resubmittable','email_draft_source_missing','email_draft_copy_address_missing','email_draft_not_pending','version_conflict','key_reuse','email_draft_recipients_mismatch']) for(const stage of ['open','submit']) {
- let writes=0; const {root,mounted}=replySetup(async name=>{if(name==='resolve-action-link'&&stage==='submit')return answer(reply);if(name!=='resolve-action-link')writes++;return {kind:'payload',payload:{error:code},isError:true};});
+ let writes=0; const {root,mounted}=replySetup(async name=>{if(name==='resolve-action-link-v2'&&stage==='submit')return answer(reply);if(name!=='resolve-action-link-v2')writes++;return {kind:'payload',payload:{error:code},isError:true};});
  try{if(stage==='submit'){await until(()=>assert.match(root.textContent,/Review reply draft/));click(root);}await until(()=>assert.match(root.textContent,/unavailable|no longer|changed/));assert.doesNotMatch(root.textContent,/Synthetic body/);assert.equal(writes,stage==='submit'?1:0);assert.equal(root.querySelector('button')?.textContent,code==='version_conflict'?'Reload draft':undefined);}finally{mounted.dispose();}
  }
 });
@@ -141,7 +141,7 @@ test('reply transport reload is manual and fresh resolve replaces prior data',as
 test('reply signed out retains exact return path and retirement clears every phase and late result',async()=>{
  const signed=replySetup(async()=>({kind:'authorization'}));await until(()=>assert.match(signed.root.textContent,/Sign in to open/));assert.equal(new URL(signed.root.querySelector('.btn').href).searchParams.get('return_to'),`/a/${reply.ref}`);assert.doesNotMatch(signed.root.textContent,/Synthetic/);signed.mounted.dispose();
  for(const phase of ['opening','idle','submitting','unconfirmed','confirmed','unavailable']) {
- let finish,signal;const {root,mounted}=replySetup(async(name,args,options)=>{signal=options.signal;if(phase==='opening'||name!=='resolve-action-link'&&phase==='submitting')return new Promise(resolve=>{finish=resolve;});if(phase==='unavailable')return {kind:'payload',payload:{error:'action_link_not_found'},isError:true};return name==='resolve-action-link'?answer(reply):phase==='unconfirmed'?{kind:'unconfirmed'}:answer(replyReceipt());});
+ let finish,signal;const {root,mounted}=replySetup(async(name,args,options)=>{signal=options.signal;if(phase==='opening'||name!=='resolve-action-link-v2'&&phase==='submitting')return new Promise(resolve=>{finish=resolve;});if(phase==='unavailable')return {kind:'payload',payload:{error:'action_link_not_found'},isError:true};return name==='resolve-action-link-v2'?answer(reply):phase==='unconfirmed'?{kind:'unconfirmed'}:answer(replyReceipt());});
  if(phase==='unavailable'){await until(()=>assert.match(root.textContent,/unavailable for your account/));}
  else if(phase!=='opening'){await until(()=>assert.match(root.textContent,/Review reply draft/));if(phase!=='idle'){click(root);await until(()=>assert.match(root.textContent,phase==='submitting'?/Submitting…/:phase==='unconfirmed'?/has not been confirmed/:/Reply submitted for sending/));}}
  mounted.dispose();assert.equal(signal.aborted,true);assert.equal(root.textContent,'');finish?.(answer(reply));await delay(15);assert.equal(root.textContent,'');
@@ -151,7 +151,7 @@ test('reply signed out retains exact return path and retirement clears every pha
 
 test('confirmed reply reopening refuses consumed producer reference without another write',async()=>{
  let consumed=false,writes=0;
- const request=async name=>{if(name==='resolve-action-link')return consumed?{kind:'payload',payload:{error:'action_link_no_longer_actionable'},isError:true}:answer(reply);consumed=true;writes++;return answer(replyReceipt());};
+ const request=async name=>{if(name==='resolve-action-link-v2')return consumed?{kind:'payload',payload:{error:'action_link_no_longer_actionable'},isError:true}:answer(reply);consumed=true;writes++;return answer(replyReceipt());};
  const first=replySetup(request);await until(()=>assert.match(first.root.textContent,/Review reply draft/));click(first.root);await until(()=>assert.match(first.root.textContent,/Reply submitted for sending/));first.mounted.dispose();
  const reopened=replySetup(request);try{await until(()=>assert.match(reopened.root.textContent,/no longer awaiting approval/));assert.equal(reopened.root.querySelector('button'),null);assert.equal(writes,1);}finally{reopened.mounted.dispose();}
 });
