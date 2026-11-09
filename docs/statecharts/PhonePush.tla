@@ -110,7 +110,7 @@ RetryBrowserCleanup ==
 
 \* Permission revoked
 PermissionRevoked ==
-    /\ \/ (notifications = "Notifications enabled" /\ notifications' = "Notifications off")
+    /\ \/ (notifications = "Notifications enabled" /\ notifications' = "Registration unconfirmed")
     /\ UNCHANGED <<session>>
 
 Next == SessionEnds \/ SupportUnavailable \/ TapEnable \/ Allow \/ Deny \/ Dismiss \/ ServerConfirms \/ ReceiptLost \/ CheckOutcome \/ TapDisable \/ RevocationReceiptLost \/ CheckRevocation \/ RevokedAndUnsubscribed \/ BrowserCleanupFailed \/ RetryBrowserCleanup \/ PermissionRevoked

@@ -35,7 +35,7 @@ stateDiagram-v2
         Revoking --> Off: Revoked and unsubscribed
         Revoking --> Cleanup: Browser cleanup failed
         Cleanup --> Off: Retry browser cleanup
-        Enabled --> Off: Permission revoked
+        Enabled --> Unconfirmed: Permission revoked
         Off --> Retired: Session ends
         Unsupported --> Retired: Session ends
         Prompting --> Retired: Session ends
