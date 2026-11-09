@@ -19,7 +19,19 @@ stateDiagram-v2
         state "Revocation unconfirmed" as RevokeUnknown
         state "Browser cleanup needed" as Cleanup
         state "Sign in again" as Retired
-        [*] --> Off
+        state "Opening notification controls" as Loading
+        state "Notification key is missing" as Missing
+        state "Notification configuration is invalid" as Invalid
+        state "Sign in and reconnect" as Reconnect
+        [*] --> Loading
+        Loading --> Off: Configured authenticated v1 response
+        Loading --> Missing: Key not configured
+        Loading --> Invalid: Invalid configuration or schema
+        Loading --> Reconnect: Session or request failed
+        Loading --> Retired: Session ends
+        Missing --> Retired: Session ends
+        Invalid --> Retired: Session ends
+        Reconnect --> Retired: Session ends
         Off --> Unsupported: Support unavailable
         Off --> Prompting: Tap enable
         Prompting --> Registering: Allow

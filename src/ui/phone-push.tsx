@@ -67,7 +67,8 @@ async function start(element: Element) {
   let view: ReturnType<typeof mountPhonePush> | undefined;
   const retire = () => {
     lifetime.abort();
-    view?.retire();
+    if (view) view.retire();
+    else element.textContent = "Session ended. Sign in again to manage this installation.";
   };
   addEventListener("doctorcre-offline-session-revoked", retire);
   addEventListener("storage", (event) => {
@@ -98,29 +99,6 @@ async function start(element: Element) {
     )
       throw Error("Session unavailable");
     const token = session.csrf_token;
-    const config = await read("/public-shell/web-push-config.json");
-    if (
-      !object(config) ||
-      config.vapid_key_version !== "v1" ||
-      typeof config.public_key !== "string" ||
-      !/^B[A-Za-z0-9_-]{86}$/.test(config.public_key)
-    ) {
-      element.textContent = "Phone notifications are unavailable until the public notification key is configured.";
-      return;
-    }
-    const key = Uint8Array.from(atob(config.public_key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-    const storageKey = `doctorcre-push-installation-v1:${session.actor.slug}`;
-    let installation = localStorage.getItem(storageKey);
-    if (!installation || !/^[a-f0-9-]{36}$/.test(installation)) {
-      installation = crypto.randomUUID();
-      localStorage.setItem(storageKey, installation);
-    }
-    const supported = () =>
-      isSecureContext &&
-      "serviceWorker" in navigator &&
-      "PushManager" in globalThis &&
-      "Notification" in globalThis &&
-      (!/iPad|iPhone|iPod/.test(navigator.userAgent) || matchMedia("(display-mode: standalone)").matches);
     async function call(verb: string, args: Record<string, string | number>) {
       const current = await read("/auth/session");
       if (!object(current) || current.csrf_token !== token) {
@@ -143,15 +121,55 @@ async function start(element: Element) {
       });
       if ([401, 403].includes(response.status)) retire();
       const envelope: unknown = await response.json();
-      if (!response.ok || !object(envelope) || !object(envelope.result) || envelope.result.isError)
-        throw Error("Unconfirmed");
-      if (object(envelope.result.structuredContent)) return envelope.result.structuredContent;
-      const content = envelope.result.content;
-      if (!Array.isArray(content) || !object(content[0]) || typeof content[0].text !== "string")
-        throw Error("Unconfirmed");
-      const result: unknown = JSON.parse(content[0].text);
+      if (!response.ok || !object(envelope) || !object(envelope.result)) throw Error("Unconfirmed");
+      let result: unknown = envelope.result.structuredContent;
+      if (!object(result)) {
+        const content = envelope.result.content;
+        if (!Array.isArray(content) || !object(content[0]) || typeof content[0].text !== "string")
+          throw Error("Unconfirmed");
+        result = JSON.parse(content[0].text);
+      }
+      if (envelope.result.isError)
+        throw Error(object(result) && typeof result.error === "string" ? result.error : "Unconfirmed");
       return result;
     }
+    let config: unknown;
+    try {
+      config = await call("read-web-push-config-v1", {});
+    } catch (error) {
+      if (lifetime.signal.aborted) return;
+      if (error instanceof Error && error.message === "push_not_configured") {
+        element.textContent = "Phone notifications are unavailable until the public notification key is configured.";
+        return;
+      }
+      if (!(error instanceof Error) || error.message !== "push_config_invalid") throw error;
+    }
+    if (
+      !object(config) ||
+      config.ok !== true ||
+      config.schema_version !== "web-push-config.v1" ||
+      config.vapid_key_version !== "v1" ||
+      typeof config.public_key !== "string" ||
+      !/^B[A-Za-z0-9_-]{86}$/.test(config.public_key)
+    ) {
+      element.textContent =
+        "Phone notifications are unavailable because the public notification configuration is invalid.";
+      return;
+    }
+    if (lifetime.signal.aborted) return;
+    const key = Uint8Array.from(atob(config.public_key.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+    const storageKey = `doctorcre-push-installation-v1:${session.actor.slug}`;
+    let installation = localStorage.getItem(storageKey);
+    if (!installation || !/^[a-f0-9-]{36}$/.test(installation)) {
+      installation = crypto.randomUUID();
+      localStorage.setItem(storageKey, installation);
+    }
+    const supported = () =>
+      isSecureContext &&
+      "serviceWorker" in navigator &&
+      "PushManager" in globalThis &&
+      "Notification" in globalThis &&
+      (!/iPad|iPhone|iPod/.test(navigator.userAgent) || matchMedia("(display-mode: standalone)").matches);
     const fingerprint = async () => {
       const subscription = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
       if (!subscription) return null;

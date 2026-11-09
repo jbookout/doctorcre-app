@@ -120,3 +120,18 @@ test("web push receipt fixtures validate against the pinned producer bytes", asy
   for (const receipt of Object.values(receipts)) assert.equal(validate(receipt), true, JSON.stringify(validate.errors));
   assert.equal(validate({...receipts.register, generation: 0}), false);
 });
+
+
+test("web push configuration fixture validates against the pinned producer bytes", async () => {
+  const { default: Ajv } = await import('ajv/dist/2020.js');
+  const bytes = await read('contracts/carr-interface.v1/web-push-config.v1.json');
+  const pin = carrInterface.mcp_read_contracts['read-web-push-config-v1'];
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), pin.producer.sha256);
+  assert.match(pin.producer.source_commit, /^[a-f0-9]{40}$/);
+  assert.ok(carrInterface.mcp_operations.includes('read-web-push-config-v1'));
+  const validate = new Ajv({ strict: false }).compile(JSON.parse(bytes));
+  const config = JSON.parse(await read('test/fixtures/phone-push/config.json'));
+  assert.equal(validate(config), true, JSON.stringify(validate.errors));
+  assert.equal(validate({...config, schema_version: 'web-push-config.v2'}), false);
+  assert.equal(validate({...config, public_key: null}), false);
+});

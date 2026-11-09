@@ -10,7 +10,7 @@ vars == <<session, notifications>>
 \* Region Session
 sessionStates == {"Session ended", "Signed in"}
 \* Region Notifications
-notificationsStates == {"Browser cleanup needed", "Notifications enabled", "Notifications off", "Permission blocked", "Permission prompt", "Platform unsupported", "Registration unconfirmed", "Revocation unconfirmed", "Sign in again", "Turning notifications off", "Waiting for registration"}
+notificationsStates == {"Browser cleanup needed", "Notification configuration is invalid", "Notification key is missing", "Notifications enabled", "Notifications off", "Opening notification controls", "Permission blocked", "Permission prompt", "Platform unsupported", "Registration unconfirmed", "Revocation unconfirmed", "Sign in again", "Sign in and reconnect", "Turning notifications off", "Waiting for registration"}
 
 TypeOK ==
     /\ session \in sessionStates
@@ -18,14 +18,18 @@ TypeOK ==
 
 Init ==
     /\ session = "Signed in"
-    /\ notifications = "Notifications off"
+    /\ notifications = "Opening notification controls"
 
 \* Session ends
 SessionEnds ==
-    /\ (session \in {"Signed in"} \/ notifications \in {"Notifications off", "Platform unsupported", "Permission prompt", "Permission blocked", "Waiting for registration", "Notifications enabled", "Registration unconfirmed", "Turning notifications off", "Revocation unconfirmed", "Browser cleanup needed"})
+    /\ (session \in {"Signed in"} \/ notifications \in {"Opening notification controls", "Notification key is missing", "Notification configuration is invalid", "Sign in and reconnect", "Notifications off", "Platform unsupported", "Permission prompt", "Permission blocked", "Waiting for registration", "Notifications enabled", "Registration unconfirmed", "Turning notifications off", "Revocation unconfirmed", "Browser cleanup needed"})
     /\ \/ (session = "Signed in" /\ session' = "Session ended")
        \/ (session \notin {"Signed in"} /\ UNCHANGED session)
-    /\ \/ (notifications = "Notifications off" /\ notifications' = "Sign in again")
+    /\ \/ (notifications = "Opening notification controls" /\ notifications' = "Sign in again")
+       \/ (notifications = "Notification key is missing" /\ notifications' = "Sign in again")
+       \/ (notifications = "Notification configuration is invalid" /\ notifications' = "Sign in again")
+       \/ (notifications = "Sign in and reconnect" /\ notifications' = "Sign in again")
+       \/ (notifications = "Notifications off" /\ notifications' = "Sign in again")
        \/ (notifications = "Platform unsupported" /\ notifications' = "Sign in again")
        \/ (notifications = "Permission prompt" /\ notifications' = "Sign in again")
        \/ (notifications = "Permission blocked" /\ notifications' = "Sign in again")
@@ -35,7 +39,27 @@ SessionEnds ==
        \/ (notifications = "Turning notifications off" /\ notifications' = "Sign in again")
        \/ (notifications = "Revocation unconfirmed" /\ notifications' = "Sign in again")
        \/ (notifications = "Browser cleanup needed" /\ notifications' = "Sign in again")
-       \/ (notifications \notin {"Notifications off", "Platform unsupported", "Permission prompt", "Permission blocked", "Waiting for registration", "Notifications enabled", "Registration unconfirmed", "Turning notifications off", "Revocation unconfirmed", "Browser cleanup needed"} /\ UNCHANGED notifications)
+       \/ (notifications \notin {"Opening notification controls", "Notification key is missing", "Notification configuration is invalid", "Sign in and reconnect", "Notifications off", "Platform unsupported", "Permission prompt", "Permission blocked", "Waiting for registration", "Notifications enabled", "Registration unconfirmed", "Turning notifications off", "Revocation unconfirmed", "Browser cleanup needed"} /\ UNCHANGED notifications)
+
+\* Configured authenticated v1 response
+ConfiguredAuthenticatedV1Response ==
+    /\ \/ (notifications = "Opening notification controls" /\ notifications' = "Notifications off")
+    /\ UNCHANGED <<session>>
+
+\* Key not configured
+KeyNotConfigured ==
+    /\ \/ (notifications = "Opening notification controls" /\ notifications' = "Notification key is missing")
+    /\ UNCHANGED <<session>>
+
+\* Invalid configuration or schema
+InvalidConfigurationOrSchema ==
+    /\ \/ (notifications = "Opening notification controls" /\ notifications' = "Notification configuration is invalid")
+    /\ UNCHANGED <<session>>
+
+\* Session or request failed
+SessionOrRequestFailed ==
+    /\ \/ (notifications = "Opening notification controls" /\ notifications' = "Sign in and reconnect")
+    /\ UNCHANGED <<session>>
 
 \* Support unavailable
 SupportUnavailable ==
@@ -113,7 +137,7 @@ PermissionRevoked ==
     /\ \/ (notifications = "Notifications enabled" /\ notifications' = "Registration unconfirmed")
     /\ UNCHANGED <<session>>
 
-Next == SessionEnds \/ SupportUnavailable \/ TapEnable \/ Allow \/ Deny \/ Dismiss \/ ServerConfirms \/ ReceiptLost \/ CheckOutcome \/ TapDisable \/ RevocationReceiptLost \/ CheckRevocation \/ RevokedAndUnsubscribed \/ BrowserCleanupFailed \/ RetryBrowserCleanup \/ PermissionRevoked
+Next == SessionEnds \/ ConfiguredAuthenticatedV1Response \/ KeyNotConfigured \/ InvalidConfigurationOrSchema \/ SessionOrRequestFailed \/ SupportUnavailable \/ TapEnable \/ Allow \/ Deny \/ Dismiss \/ ServerConfirms \/ ReceiptLost \/ CheckOutcome \/ TapDisable \/ RevocationReceiptLost \/ CheckRevocation \/ RevokedAndUnsubscribed \/ BrowserCleanupFailed \/ RetryBrowserCleanup \/ PermissionRevoked
 
 Spec == Init /\ [][Next]_vars
 
