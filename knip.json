@@ -265,7 +265,10 @@
     "src/ui/watches/control.tsx",
     "docs/statecharts/SubjectWatchControls.map.ts",
     "scripts/prove-exact-action-cards.ts",
-    "src/ui/action-session-return.ts"
+    "src/ui/action-session-return.ts",
+    "src/ui/share-intake.tsx",
+    "js/ui-share-intake.js",
+    "scripts/prove-share-intake.ts"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",
@@ -423,6 +426,9 @@
     ],
     "/js/ui-watches.js": [
       "src/ui/watches/control.tsx"
+    ],
+    "/js/ui-share-intake.js": [
+      "src/ui/share-intake.tsx"
     ]
   }
 }

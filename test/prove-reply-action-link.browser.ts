@@ -295,19 +295,15 @@ test("closed CDP page acquisition refuses as insufficient evidence", async () =>
 test("reply CLI fixture pass and near miss fail; real CDP late page leaves existing tabs intact", async (t) => {
   const server = await fixture();
   t.after(() => server.close());
+  const portFixture = await fixture();
+  const endpoint = portFixture.origin;
+  await portFixture.close();
   const browser = await chromium.launch({
     headless: true,
-    args: [...CHROMIUM_SAFETY_ARGS, "--remote-debugging-port=0", "--enable-automation"],
+    args: [...CHROMIUM_SAFETY_ARGS, `--remote-debugging-port=${new URL(endpoint).port}`],
   });
   let connection: Browser | undefined;
   try {
-    const session = await browser.newBrowserCDPSession();
-    const { arguments: args } = await session.send("Browser.getBrowserCommandLine");
-    const directoryArg = args.find((arg: string) => arg.startsWith("--user-data-dir="));
-    assert.ok(directoryArg);
-    const directory = directoryArg.slice("--user-data-dir=".length);
-    const port = (await readFile(`${directory}/DevToolsActivePort`, "utf8")).split("\n")[0];
-    const endpoint = `http://127.0.0.1:${port}`;
     connection = await chromium.connectOverCDP(endpoint);
     const context = connection.contexts()[0];
     assert.ok(context);

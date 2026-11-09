@@ -26,6 +26,9 @@
     "src/ui/exact-action-card-view.tsx",
     "src/ui/watches/radar.ts",
     "src/ui/watches/radar-model.ts",
-    "src/ui/watches/home-detail.tsx"
+    "src/ui/watches/home-detail.tsx",
+    "src/ui/share-contract.ts",
+    "src/ui/share-intake-model.ts",
+    "src/ui/share-intake.tsx"
   ]
 }

@@ -34,7 +34,13 @@
     "test/review-call-outcome.test.ts",
     "test/exact-action-cards.browser.ts",
     "test/radar-watch.test.ts",
-    "test/lease-radar-proof-read.test.ts"
+    "test/lease-radar-proof-read.test.ts",
+    "scripts/prove-share-intake.ts",
+    "scripts/prove-activity-attribution-panel.d.mts",
+    "test/share-intake.test.ts",
+    "test/share-worker.test.ts",
+    "test/share-intake.browser.ts",
+    "test/prove-share-intake.test.ts"
   ],
   "compilerOptions": {
     "lib": [
