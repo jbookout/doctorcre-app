@@ -103,7 +103,7 @@ function handleShareMessage(event) {
       if (active.clientId && active.clientId !== event.source.id && await self.clients.get(active.clientId)) throw Error('Another intake page is already using this share. Return to it.');
       if (pendingShare !== active || active.expires <= Date.now()) throw Error('Share expired. Share the file again.');
       active.clientId = event.source.id;
-      if (event.data.action === 'clear') { retireShare(); reply({ok:true}); return; }
+      if (event.data.action === 'clear') { if (event.data.shareId && event.data.shareId !== active.id) throw Error('Different share.'); retireShare(); reply({ok:true}); return; }
       if (event.data.action === 'operation') {
         const next = event.data.operation;
         if (!next || typeof next.deal !== 'string' || active.operation && active.operation.deal !== next.deal) throw Error('Reconcile the current deal first.');

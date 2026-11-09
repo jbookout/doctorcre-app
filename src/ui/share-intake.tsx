@@ -84,7 +84,7 @@ export function mountShareIntake(element: Element, options: Parameters<typeof cr
   void model.start();
   return {
     dispose() {
-      model.retire();
+      model.close();
       root.unmount();
     },
     retire: model.retire,
@@ -108,7 +108,7 @@ if (element) {
     const view = mountShareIntake(element, {
       fetcher: fetch.bind(globalThis),
       changed() {},
-      async handoff(csrf, action, operation) {
+      async handoff(csrf, action, operation, shareId) {
         const worker = navigator.serviceWorker?.controller;
         if (!worker) throw Error("Share worker unavailable. Share the file again.");
         return new Promise((resolve, reject) => {
@@ -123,7 +123,7 @@ if (element) {
             channel.port1.close();
             resolve(event.data);
           };
-          worker.postMessage({ type: "doctorcre-share", csrf, action, operation }, [channel.port2]);
+          worker.postMessage({ type: "doctorcre-share", csrf, action, operation, shareId }, [channel.port2]);
         });
       },
     });

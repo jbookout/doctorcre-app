@@ -11,7 +11,7 @@ The model uses `IntakeState` in `src/ui/share-intake-model.ts`. The controller o
 | Choosing/Ready → Retired | discard clears unreserved bytes without creating a reservation |
 | Uncertain → Filing → Retired | discard after lost reserve reconciles then abandons with stable key |
 | Receiving/Choosing/Ready/Filing/Uncertain/Filed/Refused → Retired on session change | session retirement clears receiving/choosing/ready/filing/uncertain/filed/refused and fences later completion (seven behavior tests); sign-out returns no bytes |
-| Pending custody → Retired on expiry | expired custody cannot return preview bytes |
+| Pending custody → Retired on expiry; unresolved filing → Uncertain without bytes | expired custody cannot return preview bytes; expired bytes retain unresolved reservation for abandonment |
 | Share POST → Receiving | share POST hands off exact bytes through 303 without shell cache or network POST |
 | Second POST → Refused, first unchanged | second share is refused and cannot replace first |
 | Second live intake page → Refused; closed owner → reconciliation | another live intake page cannot consume the same share; a closed intake page releases custody for reconciliation in a new page |
@@ -24,7 +24,7 @@ The chart is a behavior inventory. It does not prove server authorization, phone
 
 The lightest supported path is the OS Web Share Target POST, existing root worker, app-owned intake page and authenticated CARR browser intake. Both manifest sources register the same one-file target. The build serves the root manifest. CARR producer is pinned to `926602dead49619842aa4e617dae08d96fed40c2`. The unmodified contract SHA-256 is `1b3ab41c88d1fc094ef443e7e8d1af87f5690e63145f9ee4efaa40ec41855b4a`; the response fixture is copied from that commit.
 
-A bounded multipart stream limits the entire request before parsing, with 64 KiB for multipart framing. A fixed-capacity byte buffer prevents tiny stream chunks from growing an unbounded list of allocations. Only one file and no additional form fields are admitted. Each file is at most 25 MiB. At ten times usage, the same one-share cap prevents memory growth; a second share is visibly refused. One live intake client owns the handoff; a second page is refused until the first closes, then the new page can reconcile the same keys. The worker holds the file and server CSRF binding only in volatile memory. It never persists auth, file bytes, API replies or POSTs. There is no IndexedDB handoff because the producer exposes no non-secret session identity. Worker termination fails closed and requires a new share. This is a deliberate availability limitation and a deviation from the draft's preferred durable handoff.
+A bounded multipart stream limits the entire request before parsing, with 64 KiB for multipart framing. A fixed-capacity byte buffer prevents tiny stream chunks from growing an unbounded list of allocations. Only one file and no additional form fields are admitted. Each file is at most 25 MiB. At ten times usage, the same one-share cap prevents memory growth; a second share is visibly refused. One live intake client owns the handoff; a second page is refused until the first closes, then the new page can reconcile the same keys. The worker holds the file and server CSRF binding only in volatile memory. It never persists auth, file bytes, API replies or POSTs. There is no IndexedDB handoff because the producer exposes no non-secret session identity. Before reserve, worker loss retires with “Share the file again.” Before each write, the controller stores an AES-GCM encrypted recovery record in localStorage. A key derived from the verified CSRF token remains only in memory; neither credentials nor file bytes are persisted. A changed session cannot decrypt the record. This is an app-local recovery binding, not a fabricated CARR session identifier. The record freezes material, write keys and reservation identity across reload and across intake tabs. A fresh worker share cannot replace an unresolved operation. After receipt/list confirmation, cleanup failure cannot prevent Filed. If bytes are lost before upload, reconciliation retains the reservation for explicit abandonment, then the partner shares again.
 
 The file expires after ten minutes. Success and discard clear worker custody. The existing sign-out message clears it. The page clears its preview on session retirement, storage epoch change and expiry. Requests compare the verified session before and after each response. There is no background queue, polling or automatic retry. Every external failure stops the chain and offers manual reconciliation. The maximum list readback is ten pages of fifty documents; there is no per-deal fan-out. The board is one bounded read with local choices; filing re-reads authority and refuses an exact ID no longer present. This selector covers available board rows, not a claim of exhaustive deal access.
 
@@ -39,12 +39,22 @@ Codebase-design keeps the contract parser and the stateful filing controller beh
 
 - Blocking first steps. Pin the producer contract, inspect both manifests, and reproduce missing intake before implementation.
 - Independent workstreams. Contract parsing, worker custody, UI and proof have distinct files; one worker owns their integration under the no-subagent instruction.
-- Shared mutable state. One pending share stays in the root worker; operation writes freeze the exact target before reserve. No cache or persistent session store is shared.
+- Shared mutable state. One pending share stays in the root worker; operation writes freeze the exact target before reserve. Only encrypted recovery metadata is shared across tabs; bytes and credentials remain volatile.
 - Smallest safe decomposition. One app PR owns this vertical slice. No CARR, factory, link-filing or production-write work is included.
+
+## Worker-loss transitions and tests
+
+| Transition | Behavior test |
+| --- | --- |
+| Ready → Retired after worker loss before reserve; Choosing → Retired after loss and reload | worker loss before selection retires explicitly, reload=false/true; installed-worker browser before-selection case |
+| Receiving → Uncertain on recovery; Uncertain → Uncertain after worker loss and reload | worker loss worker-after-reserve preserves recovery, reload=true; worker loss lost-finalize preserves recovery, reload=true |
+| Filing → Uncertain on missing upload bytes; Uncertain → Filing → Retired on abandonment | worker loss worker-after-reserve preserves recovery, reload=true; installed-worker browser after-reserve case |
+| Uncertain → Filing → Filed after authoritative receipt/list despite empty worker | worker loss lost-finalize preserves recovery, reload=false/true; installed-worker browser lost-finalize case |
+| Receiving with fresh worker share → Uncertain with original operation; changed session → no recovery | reload prioritizes unresolved write over fresh worker share and changed session cannot decrypt it |
 
 ## Verification limits
 
-The statechart tool generated a TLA/CFG skeleton but exited because it could not find TLC in its configured environment. The generated skeleton is retained outside the repository under `/tmp/j177-model-scaffold`, rather than checked in as a verified model. No TLC invariant pass or PNG model rendering is claimed. The transition table is backed by executed behavior tests and an installed-worker Chromium flow with a real multipart navigation, not a phone OS observation.
+The updated chart is compiled with the statechart tool and TLC. See the fix report for its exact output and limits. The chart models visible states and session guards; it does not model encryption, HTTP authorization or phone operating-system lifetimes.
 
 The app edge serves the intake HTML as an explicit public utility shell. It contains no private data. This avoids requiring an unrelated producer page gate before session verification. The root service-worker cache allowlist is unchanged; the intake page, POST and all private reads bypass it.
 

@@ -5,7 +5,8 @@ type Deal = { id: string; name: string };
 type Operation = { deal: string; reservation: string | null; uploadPath: string | null };
 type Share = {
   id: string;
-  file: File;
+  file: File | null;
+  expected?: Material;
   expires: number;
   keys: { reserve: string; finalize: string; abandon: string };
   operation: Operation | null;
@@ -24,9 +25,16 @@ export function createShareIntake({
   fetcher,
   handoff,
   changed,
+  storage = typeof localStorage === "undefined" ? undefined : localStorage,
 }: {
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   fetcher: typeof fetch;
-  handoff(csrf: string, action: "read" | "operation" | "clear", operation?: Operation): Promise<unknown>;
+  handoff(
+    csrf: string,
+    action: "read" | "operation" | "clear",
+    operation?: Operation,
+    shareId?: string,
+  ): Promise<unknown>;
   changed(state: IntakeState): void;
 }) {
   let state: IntakeState = { kind: "receiving" };
@@ -35,6 +43,8 @@ export function createShareIntake({
     deals: Deal[] = [],
     selected: Deal | null = null;
   const lifetime = new AbortController();
+  const journalKey = "doctorcre-share-recovery-v1";
+  let recoveryKey: CryptoKey | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   const set = (next: IntakeState) => {
     if (!lifetime.signal.aborted) {
@@ -43,6 +53,7 @@ export function createShareIntake({
     }
   };
   function retire(message = "Session ended. Sign in and share the file again.") {
+    storage?.removeItem(journalKey);
     lifetime.abort();
     clearTimeout(expiry);
     share = null;
@@ -80,6 +91,108 @@ export function createShareIntake({
     }
     token = value.csrf_token;
     return token;
+  }
+  async function journalKeyForSession() {
+    const csrf = await session();
+    if (!recoveryKey) {
+      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`share-recovery:${csrf}`));
+      recoveryKey = await crypto.subtle.importKey("raw", hash, "AES-GCM", false, ["encrypt", "decrypt"]);
+    }
+    return recoveryKey;
+  }
+  async function remember(active: Share) {
+    if (!storage) return;
+    const key = await journalKeyForSession();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const { file: _file, ...metadata } = active;
+    const bytes = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      new TextEncoder().encode(JSON.stringify(metadata)),
+    );
+    lifetime.signal.throwIfAborted();
+    storage.setItem(journalKey, JSON.stringify({ iv: Array.from(iv), bytes: Array.from(new Uint8Array(bytes)) }));
+  }
+  async function recover(): Promise<Share | null> {
+    const text = storage?.getItem(journalKey);
+    if (!text) return null;
+    try {
+      const envelope: unknown = JSON.parse(text);
+      if (
+        !record(envelope) ||
+        !Array.isArray(envelope.iv) ||
+        envelope.iv.length !== 12 ||
+        !Array.isArray(envelope.bytes) ||
+        envelope.bytes.length > 8192 ||
+        ![...envelope.iv, ...envelope.bytes].every((v) => Number.isInteger(v) && v >= 0 && v <= 255)
+      )
+        throw Error("Invalid recovery envelope");
+      const bytes = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: new Uint8Array(envelope.iv) },
+        await journalKeyForSession(),
+        new Uint8Array(envelope.bytes),
+      );
+      // Only this controller writes authenticated ciphertext. No credentials or bytes are persisted.
+      const row: unknown = JSON.parse(new TextDecoder().decode(bytes));
+      if (
+        !record(row) ||
+        typeof row.id !== "string" ||
+        typeof row.expires !== "number" ||
+        !record(row.keys) ||
+        !record(row.operation) ||
+        !record(row.expected)
+      )
+        throw Error("Invalid recovery");
+      const { keys, operation, expected } = row;
+      if (
+        typeof keys.reserve !== "string" ||
+        !uuid.test(keys.reserve) ||
+        typeof keys.finalize !== "string" ||
+        !uuid.test(keys.finalize) ||
+        typeof keys.abandon !== "string" ||
+        !uuid.test(keys.abandon) ||
+        typeof operation.deal !== "string" ||
+        !uuid.test(operation.deal) ||
+        !(
+          operation.reservation === null ||
+          (typeof operation.reservation === "string" && uuid.test(operation.reservation))
+        ) ||
+        !(
+          operation.uploadPath === null ||
+          operation.uploadPath === `/api/v1/deal-deliverables/${operation.deal}/${operation.reservation}/bytes`
+        ) ||
+        expected.deal_id !== operation.deal ||
+        typeof expected.filename !== "string" ||
+        typeof expected.mime !== "string" ||
+        typeof expected.bytes !== "number" ||
+        expected.bytes < 1 ||
+        expected.bytes > 26214400 ||
+        typeof expected.sha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(expected.sha256)
+      )
+        throw Error("Invalid recovery material");
+      return {
+        id: row.id,
+        expires: row.expires,
+        file: null,
+        keys: { reserve: keys.reserve, finalize: keys.finalize, abandon: keys.abandon },
+        operation: {
+          deal: operation.deal,
+          reservation: operation.reservation,
+          uploadPath: typeof operation.uploadPath === "string" ? operation.uploadPath : null,
+        },
+        expected: {
+          deal_id: operation.deal,
+          filename: expected.filename,
+          mime: expected.mime,
+          bytes: expected.bytes,
+          sha256: expected.sha256,
+        },
+      };
+    } catch {
+      storage?.removeItem(journalKey);
+      return null;
+    }
   }
   async function request(path: string, method = "GET", body?: BodyInit) {
     const csrf = await session();
@@ -138,15 +251,34 @@ export function createShareIntake({
     });
   }
   async function clear() {
-    const result = await handoff(await session(), "clear");
-    if (!record(result) || result.ok !== true) throw Error("Share cleanup unavailable. Reconcile before continuing.");
+    try {
+      await handoff(await session(), "clear", undefined, share?.id);
+    } catch {
+      /* Volatile cleanup cannot invalidate an authoritative receipt. */
+    }
+    await session();
+    storage?.removeItem(journalKey);
   }
   async function save(active: Share, operation: Operation) {
-    const value = await handoff(await session(), "operation", operation);
-    if (!record(value) || value.ok !== true) throw Error("Share custody unavailable");
+    if (!active.operation) {
+      let value: unknown;
+      try {
+        value = await handoff(await session(), "operation", operation);
+      } catch {
+        retire("Share expired. Share the file again.");
+        throw Error("Share custody unavailable");
+      }
+      if (!record(value) || value.ok !== true) {
+        retire("Share expired. Share the file again.");
+        throw Error("Share custody unavailable");
+      }
+    }
     active.operation = operation;
+    await remember(active);
   }
   async function material(active: Share, deal: Deal): Promise<Material> {
+    if (active.expected) return active.expected;
+    if (!active.file) throw Error("File bytes unavailable. Discard this reservation and share the file again.");
     const hash = await crypto.subtle.digest("SHA-256", await active.file.arrayBuffer());
     return {
       deal_id: deal.id,
@@ -218,11 +350,12 @@ export function createShareIntake({
     if (!share || !selected || !["ready", "uncertain"].includes(state.kind)) return;
     const active = share,
       deal = selected;
-    set({ kind: "filing", filename: active.file.name, deal });
+    set({ kind: "filing", filename: active.file?.name ?? active.expected?.filename ?? "Shared file", deal });
     try {
       const fresh = await board();
       if (!fresh.some((row) => row.id === deal.id)) throw Error("The selected deal is no longer available.");
       const expected = await material(active, deal);
+      active.expected = expected;
       const operation = active.operation?.reservation ? active.operation : await reserve(active, deal, expected);
       const base = `/api/v1/deal-deliverables/${deal.id}/${operation.reservation}`;
       const receipt = await request(`${base}/receipt`);
@@ -260,6 +393,7 @@ export function createShareIntake({
         return;
       }
       if (receipt.deliverable.state === "started") {
+        if (!active.file) throw Error("File bytes unavailable. Discard this reservation and share the file again.");
         if (!operation.uploadPath) throw Error("Upload path unavailable");
         const uploaded = await request(operation.uploadPath, "PUT", active.file);
         if (
@@ -280,7 +414,7 @@ export function createShareIntake({
     } catch (error) {
       set({
         kind: "uncertain",
-        filename: active.file.name,
+        filename: active.file?.name ?? active.expected?.filename ?? "Shared file",
         deal,
         message: error instanceof Error ? error.message : "Receipt unavailable. Retry reconciliation.",
       });
@@ -289,10 +423,42 @@ export function createShareIntake({
   return {
     async start() {
       try {
+        await session();
+        const recovered = await recover();
+        if (recovered) {
+          try {
+            const current = await handoff(await session(), "read");
+            if (
+              record(current) &&
+              current.ok === true &&
+              record(current.share) &&
+              current.share.id === recovered.id &&
+              current.share.file instanceof File
+            )
+              recovered.file = current.share.file;
+          } catch {
+            /* Recovery does not require surviving worker custody. */
+          }
+          share = recovered;
+          deals = await board();
+          selected = deals.find((row) => row.id === recovered.operation?.deal) ?? null;
+          if (!selected) throw Error("Original deal unavailable.");
+          set({
+            kind: "uncertain",
+            filename: recovered.expected?.filename ?? "Shared file",
+            deal: selected,
+            message: "Reconcile the previous filing before continuing.",
+          });
+          return;
+        }
         const value = await handoff(await session(), "read");
         lifetime.signal.throwIfAborted();
-        if (!record(value) || value.ok !== true || !record(value.share))
-          throw Error(record(value) && typeof value.error === "string" ? value.error : "Share unavailable");
+        if (!record(value) || value.ok !== true || !record(value.share)) {
+          retire(
+            record(value) && typeof value.error === "string" ? value.error : "Share expired. Share the file again.",
+          );
+          return;
+        }
         const row = value.share;
         if (
           !(row.file instanceof File) ||
@@ -342,18 +508,29 @@ export function createShareIntake({
           operation,
         };
         // eslint-disable-next-line no-restricted-syntax -- Single expiry timer retires private bytes after the validated ten-minute share deadline.
-        expiry = setTimeout(() => retire("Share expired. Share the file again."), row.expires - Date.now());
+        expiry = setTimeout(() => {
+          if (share?.operation && selected) {
+            share.file = null;
+            set({
+              kind: "uncertain",
+              filename: share.expected?.filename ?? "Shared file",
+              deal: selected,
+              message: "File bytes expired. Reconcile or discard the reservation before sharing again.",
+            });
+          } else retire("Share expired. Share the file again.");
+        }, row.expires - Date.now());
         deals = await board();
         if (operation) {
           selected = deals.find((row) => row.id === operation.deal) ?? null;
           if (!selected) throw Error("Original deal unavailable.");
           set({
             kind: "uncertain",
-            filename: share.file.name,
+            filename: share.file?.name ?? share.expected?.filename ?? "Shared file",
             deal: selected,
             message: "Reconcile the previous filing before continuing.",
           });
-        } else set({ kind: "choosing", filename: share.file.name, deals });
+        } else
+          set({ kind: "choosing", filename: share.file?.name ?? share.expected?.filename ?? "Shared file", deals });
       } catch (error) {
         share = null;
         set({ kind: "refused", message: error instanceof Error ? error.message : "Share unavailable" });
@@ -367,7 +544,7 @@ export function createShareIntake({
         return;
       }
       selected = deal;
-      set({ kind: "ready", filename: share.file.name, deal });
+      set({ kind: "ready", filename: share.file?.name ?? share.expected?.filename ?? "Shared file", deal });
     },
     file: () => run(),
     async discard() {
@@ -379,6 +556,12 @@ export function createShareIntake({
       } catch {
         retire("Share could not be cleared. It expires within ten minutes.");
       }
+    },
+    close() {
+      lifetime.abort();
+      clearTimeout(expiry);
+      share = null;
+      token = null;
     },
     retire,
   };
