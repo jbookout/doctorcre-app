@@ -1,0 +1,23 @@
+export const state = (v: Record<string, string>) => `${v.selection} | ${v.insertion} | ${v.scope} | ${v.outbox}`;
+const labels: Record<string, string> = {
+  SelectLines: "select or replace lines",
+  AddComment: "add comment",
+  ReplaceSource: "source changes",
+  UseInNextAsk: "use in next ask",
+  AnotherTabEdits: "another tab changes draft",
+  AcquireDraft: "wait for other draft writers",
+  CheckDraft: "compare displayed draft",
+  ReleaseDraft: "insertion refused, release draft",
+  SaveDraft: "device saves excerpt",
+  StorageFailure: "storage fails",
+  RetireSession: "session or conversation retires",
+  ReopenDraft: "reopen current draft",
+  SendAsk: "send ask",
+  Reconnect: "reconnect or check receipt",
+  Refuse: "request refused",
+  Unknown: "receipt uncertain",
+  Accept: "received, answer pending",
+  Retry: "explicit retry",
+  Reload: "reload or double click",
+};
+export const step = (a: string) => labels[a] ?? a;

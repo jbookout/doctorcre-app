@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import type { DocumentTextClient } from "./deal-document-text";
 import { DocumentTextViewer } from "./deal-document-text-viewer";
 
+import type { QuoteAskClient } from "./document-quote-next-ask";
+
 type Document = {
   id: string;
   display_name: string;
@@ -16,12 +18,13 @@ type Page = { documents: Document[]; next: string | null };
 type State =
   | { kind: "expired" }
   | { kind: "loading" | "ready" | "more" | "unavailable"; page: Page; cursor: string | null };
-type Client = Partial<DocumentTextClient> & {
-  listDealDocuments(
-    args: { deal_id: string; limit: number; cursor?: string },
-    options: { signal: AbortSignal },
-  ): Promise<unknown>;
-};
+type Client = Partial<DocumentTextClient> &
+  Partial<QuoteAskClient> & {
+    listDealDocuments(
+      args: { deal_id: string; limit: number; cursor?: string },
+      options: { signal: AbortSignal },
+    ): Promise<unknown>;
+  };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -70,6 +73,11 @@ function parsePage(value: unknown): Page {
 
 export function mountDealDocuments(element: Element, { dealId, client }: { dealId: string; client: Client }) {
   if (!uuid.test(dealId)) throw Error("Invalid deal");
+  const { askSession, submitDocRequest, listDocConversations, readDocConversation } = client;
+  const quoteClient: QuoteAskClient | null =
+    askSession && submitDocRequest && listDocConversations && readDocConversation
+      ? { askSession, submitDocRequest, listDocConversations, readDocConversation }
+      : null;
   const root = createRoot(element);
   let state: State = { kind: "loading", page: { documents: [], next: null }, cursor: null },
     disposed = false,
@@ -247,6 +255,7 @@ export function mountDealDocuments(element: Element, { dealId, client }: { dealI
           {opened && (
             <DocumentTextViewer
               key={dealId + opened.id + opened.content_hash}
+              quoteClient={quoteClient}
               source={{
                 deal_id: dealId,
                 attachment_id: opened.id,
