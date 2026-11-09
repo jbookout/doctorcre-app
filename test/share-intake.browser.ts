@@ -10,6 +10,9 @@ test("installed-worker share handoff files a producer fixture and renders at pho
   const fixture = JSON.parse(
     await readFile(new URL("../contracts/fixtures/deal-document-intake.v1.json", import.meta.url), "utf8"),
   );
+  const recordings = JSON.parse(
+    await readFile(new URL("./fixtures/share-intake/receipts.json", import.meta.url), "utf8"),
+  );
   const expected = fixture.finalize.attachment;
   let finalized = false;
   const writes: string[] = [];
@@ -47,10 +50,7 @@ test("installed-worker share handoff files a producer fixture and renders at pho
               finalized = true;
               return json(fixture.finalize);
             }
-            if (path.endsWith("/receipt"))
-              return json(
-                finalized ? fixture.finalize : { ok: true, deliverable: fixture.reserve.deliverable, attachment: null },
-              );
+            if (path.endsWith("/receipt")) return json(finalized ? fixture.finalize : recordings.read_started);
             return json(fixture.reserve);
           }
           return new Response("Authorized synthetic gate");

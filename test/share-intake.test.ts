@@ -6,6 +6,10 @@ import { parseAttachment, parseReservation, validateSharedFile } from "../src/ui
 const fixture = JSON.parse(
   await readFile(new URL("../contracts/fixtures/deal-document-intake.v1.json", import.meta.url), "utf8"),
 );
+const recordings = JSON.parse(
+  await readFile(new URL("./fixtures/share-intake/receipts.json", import.meta.url), "utf8"),
+);
+assert.equal(recordings.producer_commit, "926602dead49619842aa4e617dae08d96fed40c2");
 const expected = fixture.finalize.attachment;
 test("producer receipt is parsed exactly; near-match deal and hash refuse", () => {
   assert.deepEqual(parseAttachment(fixture.finalize, expected), expected);
@@ -76,16 +80,15 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
         return json({ result: { content: [{ type: "text", text: JSON.stringify(result) }] } });
       }
       if (init?.method !== "GET") writes.push({ path, body });
+      if (path.endsWith("/receipt") && mode === "wrong-receipt")
+        return json({ ...recordings.read_started, schema_version: "deal-deliverables.v1" });
       if (path.endsWith("/receipt"))
         return json(
           server === "finalized"
             ? fixture.finalize
-            : {
-                ok: true,
-                schema_version: "deal-document-intake.v1",
-                deliverable: { ...fixture.reserve.deliverable, state: server },
-                attachment: null,
-              },
+            : server === "verified"
+              ? recordings.read_verified
+              : recordings.read_started,
         );
       if (path.endsWith("/bytes")) {
         server = "verified";
@@ -93,7 +96,14 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
       }
       if (path.endsWith("/abandon")) {
         server = "expired";
-        return json({ ok: true, deliverable: { ...fixture.reserve.deliverable, state: "expired" } });
+        return json(
+          mode === "wrong-abandon"
+            ? {
+                ...recordings.abandon,
+                deliverable: { ...recordings.abandon.deliverable, deal_id: `${expected.deal_id}a` },
+              }
+            : recordings.abandon,
+        );
       }
       if (path.endsWith("/finalize")) {
         server = "finalized";
@@ -104,7 +114,7 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
         return json(fixture.finalize);
       }
       assert.equal(body.target_collection, "documents");
-      if (mode === "lost-reserve" && !lost) {
+      if (["lost-reserve", "wrong-abandon"].includes(mode) && !lost) {
         lost = true;
         throw Error("lost reserve");
       }
@@ -210,3 +220,24 @@ for (const stage of ["receiving", "choosing", "ready", "filing", "uncertain", "f
     assert.equal(x.writes.length, count);
   });
 }
+
+test("a legacy deliverable receipt cannot authorize an upload", async (t) => {
+  const x = intake(t, "wrong-receipt");
+  await x.model.start();
+  x.model.choose(expected.deal_id);
+  await x.model.file();
+  assert.equal(x.states.at(-1)?.kind, "uncertain");
+  assert.equal(
+    x.writes.some((w) => w.path.endsWith("/bytes")),
+    false,
+  );
+});
+test("an abandon receipt for a near-match deal cannot clear custody", async (t) => {
+  const x = intake(t, "wrong-abandon");
+  await x.model.start();
+  x.model.choose(expected.deal_id);
+  await x.model.file();
+  await x.model.discard();
+  assert.equal(x.states.at(-1)?.kind, "uncertain");
+  assert.equal(x.cleared, false);
+});

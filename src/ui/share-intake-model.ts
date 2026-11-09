@@ -229,6 +229,7 @@ export function createShareIntake({
       if (
         !record(receipt) ||
         receipt.ok !== true ||
+        receipt.schema_version !== "deal-document-intake.v1" ||
         !record(receipt.deliverable) ||
         receipt.deliverable.deal_id !== deal.id ||
         receipt.deliverable.id !== operation.reservation
@@ -247,8 +248,10 @@ export function createShareIntake({
         if (
           !record(abandoned) ||
           abandoned.ok !== true ||
+          abandoned.schema_version !== "deal-document-intake.v1" ||
           !record(abandoned.deliverable) ||
           abandoned.deliverable.state !== "expired" ||
+          abandoned.deliverable.deal_id !== deal.id ||
           abandoned.deliverable.id !== operation.reservation
         )
           throw Error("Discard receipt unavailable");
