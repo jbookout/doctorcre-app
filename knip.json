@@ -266,7 +266,8 @@
     "docs/statecharts/SubjectWatchControls.map.ts",
     "src/ui/share-intake.tsx",
     "js/ui-share-intake.js",
-    "scripts/prove-share-intake.ts"
+    "scripts/prove-share-intake.ts",
+    "docs/statecharts/ViewerCode.map.ts"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",
