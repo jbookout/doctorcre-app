@@ -30,6 +30,7 @@
     "src/ui/share-contract.ts",
     "src/ui/share-intake-model.ts",
     "src/ui/share-intake.tsx",
+    "src/ui/call-review.tsx",
     "src/ui/deal-document-text.ts",
     "src/ui/deal-document-text-viewer.tsx",
     "src/ui/deal-documents.tsx",

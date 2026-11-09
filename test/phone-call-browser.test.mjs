@@ -1,9 +1,12 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import Ajv from 'ajv/dist/2020.js';
 import { contrastRatio } from '../js/visual-system.js';
 import { chromium, fixtureServer, animationsSettled } from './browser-harness.mjs';
+const readContract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/read-call-outcomes.v1.json', import.meta.url)));
+const validRead = new Ajv({ strict: false, validateFormats: false }).compile(readContract);
 let browser, server;
 const id = '10000000-0000-0000-0000-000000000001';
 before(async () => { server = await fixtureServer(); browser = await chromium.launch(); });
@@ -27,9 +30,13 @@ async function open(t, options = {}) {
     const rpc = r.request().postDataJSON();
     const { name, arguments: args } = rpc.params;
     let payload = { calls: [] };
-    if (name === 'read-call-outcomes' && state.transferred && !state.reviewed) payload = { calls: [{ session_id: id, call_date: '2026-10-30', applied: [{ candidate_id: 'applied-1', deal_name: 'Synthetic Clinic', deal_id: null, kind: 'next_step', payload: { text: 'Review revised proposal' }, evidence_quote: 'Review it.', deal_version: 3, undone_at: state.undone ? '2026-10-30' : null }], open_cards: [] }] };
+    if (name === 'read-call-outcomes' && state.transferred && !state.reviewed) payload = { calls: [{ session_id: id, recorder: 'joe', started_at: '2026-10-30T15:00:00Z', source_version: '0123456789abcdef0123456789abcdef', call_date: '2026-10-30', applied: [{ candidate_id: 'applied-1', deal_name: 'Synthetic Clinic', deal_id: null, kind: 'next_step', payload: { text: 'Review revised proposal' }, evidence_quote: 'Review it.', deal_version: 3, undone_at: state.undone ? '2026-10-30' : null }], open_cards: [] }] };
     if (name === 'review-call-outcome') { state.reviewed = true; state.writes.push({ name, args }); payload = { ok: true }; }
     if (name === 'undo-call-change') { state.undone = true; state.writes.push({ name, args }); payload = { ok: true }; }
+    if (name === 'read-call-outcomes') {
+      payload = { schema_version: 'call-outcomes.v1', send: false, ...payload };
+      assert.equal(validRead(payload), true, JSON.stringify(validRead.errors));
+    }
     return r.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(`${server.origin}/calls?mode=live${options.review ? `&session=${id}` : ''}`);
@@ -155,7 +162,11 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) for (con
     const { name, arguments: args } = rpc.params;
     if (name === 'resolve-post-call-candidate') { writes.push({ name, args }); pending = false; }
     if (name === 'review-call-outcome') { writes.push({ name, args }); reviewed = true; }
-    const payload = name === 'read-call-outcomes' ? { calls: reviewed ? [] : [{ session_id: id, call_date: '2026-10-30', applied: [], open_cards: pending ? [{ candidate_id: 'action-1', resolver: 'resolve-post-call-candidate', kind: 'action', deal_id: null, deal_name: 'Synthetic Clinic', payload: { action: 'Send revised proposal', assignee: 'joe', due_on: '2026-10-05' }, evidence_quote: 'Send it next week.' }] : [] }] } : { ok: true };
+    let payload = name === 'read-call-outcomes' ? { calls: reviewed ? [] : [{ session_id: id, recorder: 'joe', started_at: '2026-10-30T15:00:00Z', source_version: '0123456789abcdef0123456789abcdef', call_date: '2026-10-30', applied: [], open_cards: pending ? [{ candidate_id: 'action-1', resolver: 'resolve-post-call-candidate', kind: 'action', deal_id: null, deal_name: 'Synthetic Clinic', payload: { action: 'Send revised proposal', assignee: 'joe', due_on: '2026-10-05' }, evidence_quote: 'Send it next week.' }] : [] }] } : { ok: true };
+    if (name === 'read-call-outcomes') {
+      payload = { schema_version: 'call-outcomes.v1', send: false, ...payload };
+      assert.equal(validRead(payload), true, JSON.stringify(validRead.errors));
+    }
     return r.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.reload();
