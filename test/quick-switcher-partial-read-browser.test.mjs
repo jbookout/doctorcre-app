@@ -12,17 +12,17 @@ const transportBoard = {
   schema_version: boardContract.response.schema_version,
   actor: 'joe',
   deals: [{ id: 'switcher-deal', name: 'Transport Deal', phase: 'research', type: 'relocation',
-    open_actions: [{ id: 'switcher-task', owner: 'joe', description: 'Transport Task', due_on: null }] }],
+    open_actions: [{ id: 'switcher-task', item_id: 'next_action:33333333-3333-4333-8333-333333333333', owner: 'joe', description: 'Transport Task', due_on: null }] }],
   closed_deals: [], lost_deals: [],
 };
-assert.deepEqual(Object.keys(transportBoard.deals[0].open_actions[0]), boardContract.response.open_actions.item_keys);
+assert.deepEqual(Object.keys(transportBoard.deals[0].open_actions[0]).sort(), [...boardContract.response.open_actions.item_keys].sort());
 const transportNetwork = relationshipNetworkFixture();
 assert.equal(validNetwork(transportNetwork), true);
 const contact = transportNetwork.nodes.find(node => node.kind === 'client');
 
 const server = await startFixtureServer();
 test.after(() => server.stop());
-const board = { deals: [{ id: 'd1', name: 'Valid Deal', open_actions: [{ id: 't1', description: 'Valid Task' }] }] };
+const board = { deals: [{ id: 'd1', name: 'Valid Deal', open_actions: [{ id: 't1', item_id: 'next_action:33333333-3333-4333-8333-333333333333', description: 'Valid Task' }] }] };
 const network = { nodes: [{ id: 'party:c1', name: 'Valid Contact', kind: 'contact' }] };
 async function open(page, payload, mode = 'resolved') {
   await page.evaluate(async ({ payload, mode }) => {
@@ -44,6 +44,7 @@ for (const [name, payload, message, labels] of [
   ['full', { board, network }, null, ['Valid DealDeal', 'Valid Task · Valid DealTask', 'Valid ContactContact']],
   ['malformed contact rejects whole section', { board, network: { nodes: [...network.nodes, { name: 'No identity', kind: 'contact' }] } }, 'Contacts unavailable. Deals, tasks and pages are still available.', ['Valid DealDeal', 'Valid Task · Valid DealTask']],
   ['malformed board rejects whole section', { board: { deals: [...board.deals, { name: 'No identity' }] }, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
+  ['task without producer item_id never guesses a card', { board: { deals: [{ ...board.deals[0], open_actions: [{ id: '33333333-3333-4333-8333-333333333333', description: 'No canonical identity' }] }] }, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
   ['malformed task rejects whole board', { board: { deals: [{ ...board.deals[0], open_actions: [{ description: 'No identity' }] }] }, network }, 'Deals and tasks unavailable. Contacts and pages are still available.', ['Valid ContactContact']],
 ]) test(name, async () => {
   const browser = await chromium.launch();
@@ -346,7 +347,7 @@ for (const theme of ['light', 'dark']) for (const width of [390, 1440]) for (con
     const bounds = await page.locator('[data-quick-switcher]').boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1);
     if (kind === 'Task') await page.getByRole('combobox').press('Enter'); else await option.click();
-    await page.waitForURL(kind === 'Contact' ? `**/relationships?node=${encodeURIComponent(contact.id)}` : '**/deals?deal=switcher-deal');
+    await page.waitForURL(kind === 'Contact' ? `**/relationships?node=${encodeURIComponent(contact.id)}` : kind === 'Task' ? '**/inbox/card/next_action%3A33333333-3333-4333-8333-333333333333' : '**/deals?deal=switcher-deal');
   } finally { await browser.close(); }
 });
 

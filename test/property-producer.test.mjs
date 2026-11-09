@@ -388,8 +388,7 @@ test('the pinned producer publishes the orchestrator contract consumed by the ex
 test('deal item contracts retain the checklist shape across the board upgrade', () => {
   for (const verb of ['get-deal-room', 'deal-room-board']) {
     const read = contract.mcp_read_contracts[verb];
-    assert.equal(read.producer.source_commit, verb === 'deal-room-board'
-      ? 'b281ef8c69dad3c1dab98229074de1b167f06e02' : contract.producer.source_commit);
+    assert.equal(read.producer.source_commit, contract.producer.source_commit);
     assert.equal(read.response.item_schema_version, 'deal-items.v1');
     assert.deepEqual(read.response.item_keys, ['id', 'title', 'due_on', 'status', 'bullets', 'source_ref']);
   }
