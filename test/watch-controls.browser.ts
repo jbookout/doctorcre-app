@@ -600,3 +600,93 @@ test("radar superseded list cannot replace a newer confirmation", async (t) => {
     radar.dispose();
   }, sample);
 });
+
+for (const kind of ["deal", "lease"] as const)
+  for (const thresholds of [
+    { lease_threshold_days: [90, 0, 3650] },
+    { lease_threshold_months: [24, 12, 6] },
+    { lease_threshold_days: [90, 0], lease_threshold_months: [24, 6] },
+  ])
+    test(`${kind} canonical threshold units survive open refresh and self-change save ${JSON.stringify(thresholds)}`, async (t) => {
+      const f = await mountedWatch(t, kind);
+      const policy = { change_kinds: ["lease_threshold_crossed"] as const, include_self_changes: true, ...thresholds };
+      f.setCurrent({ ...f.sample, policy: { ...policy, change_kinds: [...policy.change_kinds] } });
+      await f.page.locator("summary").click();
+      await f.page.getByRole("heading", { name: "Watching", exact: true }).waitFor({ timeout: 5000 });
+      const days = "lease_threshold_days" in thresholds ? thresholds.lease_threshold_days : undefined;
+      const months = "lease_threshold_months" in thresholds ? thresholds.lease_threshold_months : undefined;
+      assert.equal(await f.page.getByLabel("Lease threshold days", { exact: true }).inputValue(), days?.join(", ") ?? "");
+      assert.equal(await f.page.getByLabel("Lease threshold calendar months").inputValue(), months?.join(", ") ?? "");
+      const labels = [days ? ` · ${days.join(", ")} days before the lease date` : "", months ? ` · ${months.join(", ")} calendar months before the lease date` : ""].join("");
+      assert.equal(await f.page.getByLabel("Confirmed watch policy").locator("p").nth(1).textContent(), `Lease date reminders${labels}`);
+      await f.page.getByRole("button", { name: "Refresh watch" }).click();
+      await f.page.getByRole("button", { name: "Save settings" }).waitFor({ state: "visible" });
+      await f.page.getByLabel("Include changes I make").uncheck();
+      await f.page.getByRole("button", { name: "Save settings" }).click();
+      await f.page.getByText(/Excludes my changes/).waitFor();
+      assert.deepEqual(Reflect.get(Object(f.requests.find(row => row.name === "replace-subject-watch-policy-v2")?.args), "policy"), { ...policy, include_self_changes: false });
+      assert.equal(f.requests.filter(row => row.name !== "read-subject-watch-v2").length, 1);
+    });
+
+test("month policy edits validate both units and preserve frozen retries and conflicted drafts", async (t) => {
+  const f = await mountedWatch(t, "lease");
+  f.setCurrent({ ...f.sample, policy: { change_kinds: ["lease_threshold_crossed"], include_self_changes: true, lease_threshold_months: [24, 6] } });
+  await f.page.locator("summary").click();
+  await f.page.getByRole("heading", { name: "Watching", exact: true }).waitFor();
+  const days = f.page.getByLabel("Lease threshold days", { exact: true });
+  const months = f.page.getByLabel("Lease threshold calendar months");
+  for (const [input, values] of [[days, ["-1", "3651", "1.5", "2,2", "1,", Array.from({ length: 21 }, (_, i) => i).join(",")]], [months, ["-1", "121", "1.5", "2,2", "1,", Array.from({ length: 21 }, (_, i) => i).join(",")]]] as const) {
+    for (const value of values) {
+      await input.fill(value);
+      await f.page.getByRole("button", { name: "Save settings" }).click();
+      await f.page.getByRole("status").getByText(/Choose a change category/).waitFor();
+      assert.equal(f.requests.filter(row => row.name !== "read-subject-watch-v2").length, 0);
+    }
+    await input.fill(input === days ? "" : "24, 6");
+  }
+  await months.fill("");
+  await f.page.getByRole("button", { name: "Save settings" }).click();
+  assert.equal(f.requests.filter(row => row.name !== "read-subject-watch-v2").length, 0);
+  await days.fill("3650, 0");
+  await months.fill("120, 0");
+  f.setMode("lost");
+  await f.page.getByRole("button", { name: "Save settings" }).click();
+  await f.page.getByRole("button", { name: "Retry same watch request" }).waitFor();
+  const pending = f.requests.at(-1);
+  assert.equal(await months.isDisabled(), true);
+  await f.page.getByRole("button", { name: "Retry same watch request" }).click();
+  await f.page.getByRole("button", { name: "Save settings" }).waitFor();
+  await f.page.getByText(/Last confirmed version 3/).waitFor();
+  assert.deepEqual(f.requests.filter(row => row.name === "replace-subject-watch-policy-v2").at(-1), pending);
+  await days.fill("");
+  f.setMode("conflict");
+  await f.page.getByRole("button", { name: "Save settings" }).click();
+  await f.page.getByText(/This watch changed/).waitFor();
+  assert.equal(await days.inputValue(), "");
+  assert.equal(await months.inputValue(), "120, 0");
+  await f.page.getByRole("button", { name: "Save settings" }).click();
+  await f.page.getByText(/Last confirmed version 5/).waitFor();
+  const monthPolicy = Reflect.get(Object(f.requests.filter(row => row.name === "replace-subject-watch-policy-v2").at(-1)?.args), "policy");
+  assert.deepEqual(monthPolicy, { change_kinds: ["lease_threshold_crossed"], include_self_changes: true, lease_threshold_months: [120, 0] });
+  await days.fill("90");
+  await months.fill("");
+  await f.page.getByRole("button", { name: "Save settings" }).click();
+  await f.page.getByText(/Last confirmed version 6/).waitFor();
+  assert.deepEqual(Reflect.get(Object(f.requests.filter(row => row.name === "replace-subject-watch-policy-v2").at(-1)?.args), "policy"), { change_kinds: ["lease_threshold_crossed"], include_self_changes: true, lease_threshold_days: [90] });
+});
+
+test("month-bearing late read is discarded after session invalidation", async (t) => {
+  const f = await mountedWatch(t, "lease");
+  await f.page.locator("summary").click();
+  await f.page.getByRole("heading", { name: "Not watching", exact: true }).waitFor();
+  f.setCurrent({ ...f.sample, policy: { change_kinds: ["lease_threshold_crossed"], include_self_changes: true, lease_threshold_months: [24, 6] } });
+  f.setMode("held-read");
+  const held = f.waitHeld();
+  await f.page.getByRole("button", { name: "Refresh watch" }).click();
+  await held;
+  await f.page.evaluate(() => window.dispatchEvent(new Event("doctorcre-session-invalidated")));
+  await f.release().catch(() => {});
+  await f.page.getByText(/Sign in again/).waitFor();
+  assert.equal(await f.page.getByRole("button").count(), 0);
+  assert.equal(await f.page.getByLabel("Confirmed watch policy").count(), 0);
+});
