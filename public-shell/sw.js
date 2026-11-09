@@ -64,19 +64,19 @@ async function receiveShare(request) {
     if (request.headers.get('origin') !== self.location.origin || request.headers.get('sec-fetch-site') === 'cross-site') return redirect('origin');
     if (!/^multipart\/form-data;/i.test(request.headers.get('content-type') || '')) return redirect('format');
     const session = await shareSession();
-    reader = request.body.getReader(); let count = 0; const chunks = [];
+    reader = request.body.getReader(); let count = 0; const buffer = new Uint8Array(SHARE_MAX + 65536);
     const deadline = new Promise((_, reject) => {
       // eslint-disable-next-line no-restricted-syntax -- Single fifteen-second deadline cancels a stalled multipart reader and releases intake custody.
-      readTimer = setTimeout(() => { void reader.cancel(); reject(Error('Share reception timed out')); }, 15000);
+      readTimer = setTimeout(() => { void reader.cancel().catch(() => {}); reject(Error('Share reception timed out')); }, 15000);
     });
     // eslint-disable-next-line no-restricted-syntax -- Limit multipart reception to 25 MiB plus framing under one fifteen-second deadline.
     for (;;) {
       const {done,value} = await Promise.race([reader.read(), deadline]); if (done) break;
       count += value.byteLength;
       if (count > SHARE_MAX + 65536) { await reader.cancel(); return redirect('size'); }
-      chunks.push(value);
+      buffer.set(value, count - value.byteLength);
     }
-    const form = await new Response(new Blob(chunks), { headers:{'content-type':request.headers.get('content-type')} }).formData();
+    const form = await new Response(new Blob([buffer.subarray(0, count)]), { headers:{'content-type':request.headers.get('content-type')} }).formData();
     const files = form.getAll('files');
     if (files.length !== 1 || [...form.keys()].some(key => key !== 'files')) return redirect('file');
     const file = files[0];

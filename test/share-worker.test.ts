@@ -64,10 +64,28 @@ async function worker() {
     offline() {
       online = false;
     },
-    async post(path = "/share-target", type = "application/pdf", origin = "https://app.example", size = 6) {
+    async post(
+      path = "/share-target",
+      type = "application/pdf",
+      origin = "https://app.example",
+      size = 6,
+      chunkSize?: number,
+    ) {
       const form = new FormData();
       form.set("files", new File([new Uint8Array(size)], "Demo.pdf", { type }));
-      const request = new Request(`https://app.example${path}`, { method: "POST", body: form, headers: { origin } });
+      let request = new Request(`https://app.example${path}`, { method: "POST", body: form, headers: { origin } });
+      if (chunkSize) {
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < bytes.length; offset += chunkSize)
+              controller.enqueue(bytes.slice(offset, offset + chunkSize));
+            controller.close();
+          },
+        });
+        const options = { method: "POST", headers: request.headers, body, duplex: "half" };
+        request = new Request(request.url, options);
+      }
       let response: Promise<Response> | undefined;
       handlers.get("fetch")?.({
         request,
@@ -172,4 +190,20 @@ test("expired custody cannot return preview bytes", async () => {
     ok: false,
     error: "Share expired. Share the file again.",
   });
+});
+
+test("small multipart chunks preserve the shared file", async () => {
+  const x = await worker();
+  assert.equal((await x.post("/share-target", "application/pdf", "https://app.example", 6, 1))?.status, 303);
+  const reply = await x.message();
+  assert.ok(
+    reply &&
+      typeof reply === "object" &&
+      "share" in reply &&
+      reply.share &&
+      typeof reply.share === "object" &&
+      "file" in reply.share &&
+      reply.share.file instanceof File,
+  );
+  assert.deepEqual(new Uint8Array(await reply.share.file.arrayBuffer()), new Uint8Array(6));
 });
