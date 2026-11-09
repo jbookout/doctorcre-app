@@ -82,3 +82,36 @@ for (const mode of ['empty', 'contacts only', 'reject']) test(`${mode} keeps loc
     await page.getByRole('combobox').press('Escape');
   } finally { await browser.close(); }
 });
+
+
+test('tasks sharing a deal open their own canonical cards with pointer and Enter', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const payload = contractFixture();
+    const deal = payload.board.deals[0];
+    deal.open_actions.push({ ...deal.open_actions[0], id: '44444444-4444-4444-8444-444444444444', description: 'Second Fixture Task' });
+    const observed = [];
+    for (const [index, action] of deal.open_actions.entries()) {
+      await page.goto(server.url);
+      await page.getByRole('button', { name: 'Quick switcher' }).waitFor();
+      await page.evaluate(async payload => {
+        const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
+        openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [], read: async () => payload });
+      }, payload);
+      await page.getByRole('group', { name: 'Destination kind' }).getByRole('button', { name: 'Tasks', exact: true }).click();
+      const input = page.getByRole('combobox', { name: 'Jump to', exact: true });
+      await input.fill(action.description);
+      const choice = page.getByRole('option', { name: `${action.description} · ${deal.name} Task`, exact: true });
+      await choice.waitFor();
+      if (index === 0) await choice.click();
+      else await input.press('Enter');
+      await page.waitForURL(url => url.pathname !== '/');
+      observed.push(new URL(page.url()).pathname + new URL(page.url()).search);
+    }
+    const recents = await page.evaluate(() => JSON.parse(sessionStorage.getItem('doctorcre.quick-switcher.recents.v1')));
+    assert.deepEqual(recents.filter(id => id.startsWith('task:')).slice(0, 2), deal.open_actions.map(action => `task:${action.id}`).reverse());
+    console.log(JSON.stringify({ task_ids: deal.open_actions.map(action => action.id), observed_destinations: observed }));
+    assert.deepEqual(observed, deal.open_actions.map(action => `/inbox/card/${encodeURIComponent(`next_action:${action.id}`)}`));
+  } finally { await browser.close(); }
+});
