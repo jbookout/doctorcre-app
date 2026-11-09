@@ -60,3 +60,14 @@ The app edge serves the intake HTML as an explicit public utility shell. It cont
 
 
 Lookup and abandonment recordings in `test/fixtures/share-intake/receipts.json` were captured by executing the registered handlers from the exact pinned producer source with an in-memory SQL adapter. The generator is retained at `/tmp/j177-capture.mjs`. No database or HTTP transport was supplied; unexpected SQL throws. The producer constructed its own internal key, which is stripped from every public recording. These are response-shape fixtures, not authorization or production-write proof. The copied producer contract and original reserve/upload/finalize/list fixture remain unmodified.
+
+## Recovery byte lifetime
+
+Recovered bytes keep the original worker deadline. Initial intake and recovery use the same expiry path. The upload body is acquired only after session verification and a deadline check, so a delayed timer cannot authorize expired bytes. Expiry drops the file while retaining encrypted operation metadata for receipt reconciliation or explicit abandonment. Timer expiry during an active request does not enable a second filing.
+
+| Transition | Behavior test |
+| --- | --- |
+| Uncertain → Uncertain when recovered bytes expire | reloaded recovery expires bytes and retains abandonment, delayed timer=false |
+| Uncertain → Filing → Uncertain when the deadline passes before the timer runs | reloaded recovery expires bytes and retains abandonment, delayed timer=true |
+
+The chart remains a visible-state inventory. Deadline enforcement is established by the executed controller and real-worker regression, rather than a timed formal model.

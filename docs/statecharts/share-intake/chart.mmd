@@ -24,6 +24,7 @@ stateDiagram-v2
       Filing --> Filed: Finalized receipt and list match despite empty worker
       Uncertain --> Uncertain: Reload with worker lost and frozen recovery
       Filing --> Uncertain: Bytes lost before upload
+      Uncertain --> Uncertain: Recovered file expires; reservation retained
       Filing --> Retired: Abandon after lost bytes
       Uncertain --> Filing: Reconcile frozen operation [signed in]
       %% when SignedIn

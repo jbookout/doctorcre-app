@@ -63,6 +63,27 @@ export function createShareIntake({
     state = { kind: "retired", message };
     changed(state);
   }
+  function expireBytes(active: Share) {
+    if (active.expires > Date.now()) return;
+    active.file = null;
+    if (!active.operation) {
+      retire("Share expired. Share the file again.");
+      return;
+    }
+    if (selected && state.kind !== "filing")
+      set({
+        kind: "uncertain",
+        filename: active.expected?.filename ?? "Shared file",
+        deal: selected,
+        message: "File bytes expired. Reconcile or discard the reservation before sharing again.",
+      });
+  }
+  function scheduleExpiry(active: Share) {
+    clearTimeout(expiry);
+    expireBytes(active);
+    // eslint-disable-next-line no-restricted-syntax -- One timer shares the original custody deadline across reloads.
+    if (active.file) expiry = setTimeout(() => expireBytes(active), active.expires - Date.now());
+  }
   async function session() {
     lifetime.signal.throwIfAborted();
     const response = await fetcher("/auth/session", {
@@ -194,7 +215,7 @@ export function createShareIntake({
       return null;
     }
   }
-  async function request(path: string, method = "GET", body?: BodyInit) {
+  async function request(path: string, method = "GET", body?: BodyInit | (() => BodyInit)) {
     const csrf = await session();
     const response = await fetcher(path, {
       method,
@@ -211,7 +232,7 @@ export function createShareIntake({
               "content-type": method === "PUT" ? "application/octet-stream" : "application/json",
             }),
       },
-      ...(body === undefined ? {} : { body }),
+      ...(body === undefined ? {} : { body: typeof body === "function" ? body() : body }),
     });
     if (response.status === 401 || response.status === 403) {
       retire();
@@ -395,7 +416,11 @@ export function createShareIntake({
       if (receipt.deliverable.state === "started") {
         if (!active.file) throw Error("File bytes unavailable. Discard this reservation and share the file again.");
         if (!operation.uploadPath) throw Error("Upload path unavailable");
-        const uploaded = await request(operation.uploadPath, "PUT", active.file);
+        const uploaded = await request(operation.uploadPath, "PUT", () => {
+          expireBytes(active);
+          if (!active.file) throw Error("File bytes expired. Discard this reservation and share the file again.");
+          return active.file;
+        });
         if (
           !record(uploaded) ||
           uploaded.ok !== true ||
@@ -440,6 +465,7 @@ export function createShareIntake({
             /* Recovery does not require surviving worker custody. */
           }
           share = recovered;
+          scheduleExpiry(recovered);
           deals = await board();
           selected = deals.find((row) => row.id === recovered.operation?.deal) ?? null;
           if (!selected) throw Error("Original deal unavailable.");
@@ -507,18 +533,7 @@ export function createShareIntake({
           keys: { reserve: row.keys.reserve, finalize: row.keys.finalize, abandon: row.keys.abandon },
           operation,
         };
-        // eslint-disable-next-line no-restricted-syntax -- Single expiry timer retires private bytes after the validated ten-minute share deadline.
-        expiry = setTimeout(() => {
-          if (share?.operation && selected) {
-            share.file = null;
-            set({
-              kind: "uncertain",
-              filename: share.expected?.filename ?? "Shared file",
-              deal: selected,
-              message: "File bytes expired. Reconcile or discard the reservation before sharing again.",
-            });
-          } else retire("Share expired. Share the file again.");
-        }, row.expires - Date.now());
+        scheduleExpiry(share);
         deals = await board();
         if (operation) {
           selected = deals.find((row) => row.id === operation.deal) ?? null;
