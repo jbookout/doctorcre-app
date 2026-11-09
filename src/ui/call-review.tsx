@@ -437,7 +437,7 @@ export function mountCallReview(container: HTMLElement, options: Options) {
               item.state !== "applied" &&
               ![...applied, ...pending].some((next) => next.key === item.key),
           )
-          .map((item) => ({ ...item, state: "resolved" }));
+          .map((item) => ({ ...item, call, state: "resolved" }));
         const dealOrder = new Map<string, number>();
         for (const candidate of [
           ...previous.filter((item) => item.call.session_id === call.session_id).map((item) => item.candidate),
