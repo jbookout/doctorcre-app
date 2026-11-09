@@ -136,6 +136,7 @@ test('Home call contracts retain the merged producer bytes and fixture', async (
     contracts[name] = JSON.parse(bytes);
   }
   const fixture = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
-  assert.equal(fixture.producer.source_commit, 'ab4e3bc25e5a50a44b26d5d770500bb2276c070f');
+  const producer = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/producer.json', import.meta.url)));
+  assert.equal(fixture.producer.source_commit, producer.source_commit);
   assert.deepEqual(fixture.contract, contracts['review-call-outcome.v1.json']);
 });
