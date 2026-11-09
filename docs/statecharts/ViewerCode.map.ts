@@ -26,7 +26,8 @@ const actions: Record<string, string> = {
   Retire: "Session ends",
   Late: "Old result arrives",
 };
-export const readerActions = ["Open", "Navigate", "Retry", "Close", "Switch"];
+// Render every edge because late stuttering completions keep all screens formally unsettled.
+export const readerActions: string[] = [];
 export const state = (value: Record<string, string>) =>
   `${screens[value.lifecycle ?? ""]} | ${requests[value.requestIdentity ?? ""]}`;
 export const step = (action: string) => actions[action] ?? action;
