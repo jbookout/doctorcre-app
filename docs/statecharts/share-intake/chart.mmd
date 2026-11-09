@@ -1,0 +1,33 @@
+stateDiagram-v2
+  state ShareFlow {
+    state Session {
+      [*] --> SignedOut
+      SignedOut --> SignedIn: Verified session
+      SignedIn --> SignedOut: Session ends
+    }
+    --
+    state Intake {
+      [*] --> Receiving
+      Receiving --> Choosing: Verified session and valid file
+      Receiving --> Refused: Unsupported file or unavailable custody
+      Choosing --> Ready: Select exact available deal
+      Choosing --> Refused: Select unknown deal
+      Ready --> Filing: File document
+      Filing --> Filed: Parsed receipt and exact document readback
+      Filing --> Uncertain: Reply unavailable
+      Uncertain --> Filing: Reconcile frozen operation
+      Choosing --> Retired: Discard file
+      Ready --> Retired: Discard file
+      Uncertain --> Filing: Discard after uncertain reservation
+      Filing --> Retired: Abandon receipt
+      Choosing --> Retired: Session ends
+      Ready --> Retired: Session ends
+      Filing --> Retired: Session ends
+      Uncertain --> Retired: Session ends
+      Filed --> Retired: Session ends
+      Receiving --> Retired: Session ends
+      Refused --> Retired: Session ends
+    }
+  }
+  %% never NoUnauthenticatedPreview: SignedOut & Ready -- Signed-out partners cannot preview private file names.
+  %% never NoUnauthenticatedFiling: SignedOut & Filing -- Signed-out partners cannot file documents.
