@@ -65,3 +65,35 @@ Named regression coverage in `test/quick-switcher-browser.test.mjs`:
 - `arrow selection wraps exactly and Tab excludes background controls` covers both arrow directions, wrapping and focus containment.
 - `global switcher preserves <variant> text entry` covers AltGraph, printable editable fields and both composition signals.
 - `composing Enter preserves switcher before normal Enter` covers the composition self-transition and ordinary navigation afterward.
+
+
+## Exact task destinations remain blocked on source identity
+
+Board task results currently open their owning deal. Two results from one deal
+have distinct recent IDs but the same destination.
+
+The board contract does not prove that an open action ID belongs to
+`next_action`. At CARR revision
+`6c6ed9648bc56f7a3479522d48d66fab274e691d`, the registered board producer in
+`mcp-server/src/tools.js` selects open unstructured actions from
+`v_deal_room_action`. Migration `0936_deal_alert_items.sql` defines that view
+as a union of `next_action` and `capture_post_call_action`. The board returns
+only `id`, `owner`, `description`, and `due_on` for each action.
+
+Home's projection in migration `1136_home_inbox_projection.sql` uses
+`next_action:<UUID>` and `capture_post_call_action:<UUID>` as different card
+identities. Prefixing every board action with `next_action:` can therefore
+produce a nonexistent card. A UUID format check cannot distinguish the tables.
+Structured deal items are separate from these unstructured actions.
+
+The next implementation needs a producer-owned canonical card identity for
+each open action, or an authenticated resolver that determines that identity.
+Joining only the loaded Home snapshot cannot handle a task outside that
+snapshot. The destination must retain Home's explicit unavailable-card behavior
+when the task disappears or resolves before navigation.
+
+The partial branch for `WR617.S1.J246` retains a failing browser regression in
+`test/quick-switcher-kind-filter-browser.test.mjs`. It observes pointer and
+Enter selections for two task identities from one deal. Both navigate to the
+same deal URL. Its expected next-action routes describe the intended case for
+known next actions, not proof that every board action is a next action.
