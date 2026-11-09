@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer, settles } from './browser-harness.mjs';
 import { callChangeText, callOutcomesHtml, mountCallOutcomes, undoRefusal } from '../js/call-outcomes.js';
 
 async function callDocument(page, origin) {
@@ -21,7 +21,7 @@ async function closeCallFixture(page, browser, server) {
 
 // Synthetic read-call-outcomes rows (CARR call-outcomes.v1).
 const synthetic = () => [{
-  session_id: 'session-1', call_date: '2026-10-26', recorder: 'joe',
+  session_id: 'session-1', source_version: 'displayed-v1', call_date: '2026-10-26', recorder: 'joe',
   applied: [
     { candidate_id: 'phase-1', kind: 'phase_move', deal_id: 'deal-a', deal_name: 'Demo Bayside relocation', deal_version: 7,
       payload: { deal: 'deal-a', field: 'phase', value: 'negotiation', started_on: '2026-10-20', base_event_id: 'phase-base' },
@@ -155,7 +155,7 @@ test('the call guide orders deals, preserves the outstanding item and acknowledg
     await guide.getByRole('button', { name: 'Complete call review' }).click();
     await page.getByText('Call review complete.', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.guideWrites), [
-      { candidate_id: 'phase-1', base_version: 7 }, { session_id: 'session-1' },
+      { candidate_id: 'phase-1', base_version: 7 }, { session_id: 'session-1', expected_source_version: 'displayed-v1' },
     ]);
   } finally { await closeCallFixture(page, browser, server); }
 });
@@ -262,7 +262,7 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
     const writes = await page.evaluate(() => window.guideWrites);
     assert.equal(writes[1].candidate_id, 'card-1');
     assert.equal(writes[1].accept, true);
-    assert.deepEqual(writes[2], { session_id: 'session-1' });
+    assert.deepEqual(writes[2], { session_id: 'session-1', expected_source_version: 'displayed-v1' });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   } finally { await closeCallFixture(page, browser, server); }
 });
@@ -364,7 +364,7 @@ test('nine filed-call decisions at two seconds each stay within the human reques
     await page.clock.install();
     await page.evaluate(async () => {
       const { mountCallReview, mountCallReviewDialog } = await import('/js/ui-call.js');
-      const rows = [{ session_id: 'budget-call', call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
+      const rows = [{ session_id: 'budget-call', source_version: 'displayed-v1', call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
         candidate_id: `applied-${i}`, kind: 'next_step', deal_id: `deal-${i}`, deal_name: `Synthetic deal ${i}`,
         deal_version: 1, undone_at: null, payload: { text: `Initial step ${i}` },
       })), open_cards: Array.from({ length: 9 }, (_, i) => ({
@@ -765,3 +765,81 @@ test(`Home source calls at ${width} in ${theme}`, async () => {
     }
   } finally { await closeCallFixture(page, browser, server); }
 });
+
+for (const outcome of ['success', 'stale', 'missing-version', 'changed-before-submit']) {
+  test(`Home versioned completion ${outcome} through the live client`, async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { default: Ajv } = await import('ajv');
+    const { contract } = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
+    const ajv = new Ajv({ strict: false });
+    const requestValid = ajv.compile(contract.inputSchema), responseValid = ajv.compile(contract.responseSchema), refusalValid = ajv.compile(contract.refusalSchema);
+    const server = await fixtureServer(), browser = await chromium.launch({ headless: true }), page = await browser.newPage();
+    const rows = synthetic(); rows[0].open_cards = []; rows[0].applied = [{ ...rows[0].applied[0], deal_id: null }];
+    if (outcome === 'missing-version') delete rows[0].source_version;
+    let writes = [], reads = 0, release;
+    const hold = new Promise(resolve => { release = resolve; });
+    await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+    await page.route('**/mcp', async route => {
+      const { name, arguments: args } = route.request().postDataJSON().params;
+      let payload, isError = false;
+      if (name === 'read-call-outcomes') {
+        reads++;
+        if (outcome === 'changed-before-submit' && reads === 2) rows[0].source_version = 'reloaded-v2';
+        payload = { schema_version: 'call-outcomes.v1', calls: structuredClone(rows), send: false };
+      } else if (name === 'review-call-outcome') {
+        assert.equal(requestValid(args), true, JSON.stringify(requestValid.errors));
+        writes.push(args);
+        await hold;
+        if (outcome === 'stale') {
+          rows[0].source_version = 'reloaded-v2';
+          rows[0].applied[0].evidence_quote = 'The outcome changed elsewhere';
+          payload = { ...contract.refusal, correlation_id: '00000000-0000-4000-8000-000000000001' };
+          assert.equal(refusalValid(payload), true); isError = true;
+        } else {
+          payload = { ...contract.receipt, session_id: args.session_id };
+          assert.equal(responseValid(payload), true); rows.length = 0;
+        }
+      } else throw new Error(`Unexpected verb ${name}`);
+      await route.fulfill({ json: { result: { isError, content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
+    });
+    try {
+      await componentDocument(page, server.origin, {
+        html: '<!doctype html><html><body><script type="module">import "/js/doc-context.js";</script></body></html>',
+        dispose: page => page.evaluate(() => window.guide?.dispose()),
+      });
+      await page.evaluate(async () => {
+        const { mountCallReview } = await import('/js/ui-call.js');
+        const { createLiveClient } = await import('/js/live-client.js');
+        const node = document.createElement('section'); document.body.replaceChildren(node);
+        const client = createLiveClient({ docContext: false });
+        window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => client,
+          describe: change => change.payload.value, undoRefusal: () => 'Could not undo' });
+        await window.guide.refresh();
+      });
+      const complete = page.getByRole('button', { name: 'Complete call review' });
+      await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
+      if (outcome === 'missing-version') {
+        assert.equal(await complete.isDisabled(), true);
+        await page.getByText('This call cannot be completed until its current version is available. Refresh call review to check again.', { exact: true }).waitFor();
+        assert.equal(writes.length, 0);
+        return;
+      }
+      await complete.click();
+      if (outcome !== 'changed-before-submit') {
+        await page.waitForFunction(() => document.querySelector('.call-review progress') && document.querySelector('.call-review nav button.primary').disabled);
+        await settles(() => assert.equal(writes.length, 1));
+        assert.equal(writes[0].expected_source_version, 'displayed-v1');
+      }
+      release();
+      if (outcome === 'success') await page.getByText('Call review complete.', { exact: true }).waitFor();
+      else {
+        await page.getByRole('alert').filter({ hasText: 'This call outcome changed elsewhere.' }).waitFor();
+        await page.getByText('0 of 1 reviewed', { exact: true }).waitFor();
+        assert.equal(await complete.isDisabled(), true);
+        assert.equal(writes.length, outcome === 'stale' ? 1 : 0);
+        if (outcome === 'stale') await page.getByText('The outcome changed elsewhere', { exact: true }).waitFor();
+      }
+      await page.screenshot({ path: `/tmp/J227-${outcome}.png` });
+    } finally { release(); await closeCallFixture(page, browser, server); }
+  });
+}

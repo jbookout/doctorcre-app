@@ -97,3 +97,28 @@ test('an email outcome check joins its observed send when it settles during sess
   assert.equal(sends, 1);
   assert.equal(commands.details('email'), null);
 });
+
+
+test('Home review forwards the displayed source version and retains it after a lost receipt', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { default: Ajv } = await import('ajv');
+  const { contract } = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
+  const validate = new Ajv({ strict: false }).compile(contract.responseSchema);
+  const sent = [];
+  let lost = true;
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic' });
+    const { arguments: args } = JSON.parse(init.body).params;
+    sent.push(args);
+    if (lost) { lost = false; throw new Error('lost receipt'); }
+    const payload = { ...contract.receipt, session_id: args.session_id };
+    assert.equal(validate(payload), true);
+    return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
+  } });
+  const args = { session_id: 'session-1', expected_source_version: 'displayed-v1' };
+  await assert.rejects(client.reviewCallOutcome(args));
+  await client.reviewCallOutcome(args);
+  assert.equal(sent[0].expected_source_version, 'displayed-v1');
+  assert.deepEqual(sent[0], sent[1]);
+  assert.ok(sent[0].idempotency_key);
+});
