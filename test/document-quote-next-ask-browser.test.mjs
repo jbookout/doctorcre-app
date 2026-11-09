@@ -66,6 +66,7 @@ for (const width of [390,1024,1440]) for (const theme of ['light','dark']) test(
     await input.waitFor();assert.equal(await input.inputValue(),'Other tab draft');
     await input.fill('Existing ask');
   }
+  await useQuote.click({trial:true});
   await useQuote.evaluate(button => { button.click(); button.click(); });
   await page.waitForFunction(expected=>document.querySelector("#quote-test #askText")?.value===expected,`Existing ask\n\n${preview}`);
   assert.equal(await input.inputValue(),`Existing ask\n\n${preview}`);
