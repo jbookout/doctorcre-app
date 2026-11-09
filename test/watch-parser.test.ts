@@ -72,12 +72,26 @@ for (const thresholds of [
 
 test("both producer threshold units refuse malformed lists", () => {
   const watch = Reflect.get(Object(fixture), "watch");
-  for (const [field, maximum] of [["lease_threshold_days", 3650], ["lease_threshold_months", 120]] as const)
+  for (const [field, maximum] of [
+    ["lease_threshold_days", 3650],
+    ["lease_threshold_months", 120],
+  ] as const)
     for (const list of [[], [1, 1], [-1], [maximum + 1], [0.5], ["6"], null, Array.from({ length: 21 }, (_, i) => i)]) {
-      const value = { ...Object(fixture), watch: { ...watch, policy: {
-        change_kinds: ["lease_threshold_crossed"], include_self_changes: true, [field]: list,
-      } } };
-      assert.equal(new Ajv({ strict: false, validateFormats: false }).compile(subjectWatchV2ResponseSchema)(value), false);
+      const value = {
+        ...Object(fixture),
+        watch: {
+          ...watch,
+          policy: {
+            change_kinds: ["lease_threshold_crossed"],
+            include_self_changes: true,
+            [field]: list,
+          },
+        },
+      };
+      assert.equal(
+        new Ajv({ strict: false, validateFormats: false }).compile(subjectWatchV2ResponseSchema)(value),
+        false,
+      );
       assert.throws(() => parseWatch(value, subject));
     }
 });

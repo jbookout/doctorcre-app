@@ -17,6 +17,7 @@ export function WatchControl({ subject, client }: { subject: Subject; client: Wa
   const [phase, setPhase] = useState<Phase>("loading");
   const [policy, setPolicy] = useState<Policy>(() => defaultPolicy(subject));
   const [days, setDays] = useState("30, 90");
+  const [months, setMonths] = useState("");
   const [message, setMessage] = useState("");
   const pending = useRef<Command | null>(null);
   const edited = useRef(false);
@@ -65,7 +66,8 @@ export function WatchControl({ subject, client }: { subject: Subject; client: Wa
       setPhase("ready");
       if (!edited.current && outcome.watch) {
         setPolicy(outcome.watch.policy);
-        setDays((outcome.watch.policy.lease_threshold_days ?? [30, 90]).join(", "));
+        setDays((outcome.watch.policy.lease_threshold_days ?? []).join(", "));
+        setMonths((outcome.watch.policy.lease_threshold_months ?? []).join(", "));
       }
       setMessage(
         conflict
@@ -95,23 +97,41 @@ export function WatchControl({ subject, client }: { subject: Subject; client: Wa
         args.base_version = watch.lifecycle_version;
       }
       if (verb === "watch-subject-v2" || verb === "replace-subject-watch-policy-v2") {
-        const thresholds = days.split(",").map((value) => value.trim());
-        const numbers = thresholds.map(Number);
+        const parseDraft = (text: string, maximum: number): number[] | null => {
+          if (!text.trim()) return [];
+          const values = text.split(",").map((value) => value.trim());
+          const numbers = values.map(Number);
+          return values.some((value) => !/^\d+$/.test(value)) ||
+            numbers.length > 20 ||
+            new Set(numbers).size !== numbers.length ||
+            numbers.some((value) => !Number.isInteger(value) || value < 0 || value > maximum)
+            ? null
+            : numbers;
+        };
+        const dayNumbers = parseDraft(days, 3650);
+        const monthNumbers = parseDraft(months, 120);
         if (
           !policy.change_kinds.length ||
-          (policy.change_kinds.includes("lease_threshold_crossed") &&
-            (thresholds.some((value) => !/^\d+$/.test(value)) ||
-              numbers.length > 20 ||
-              new Set(numbers).size !== numbers.length ||
-              numbers.some((value) => value < 0 || value > 3650)))
+          !dayNumbers ||
+          !monthNumbers ||
+          (policy.change_kinds.includes("lease_threshold_crossed") && !dayNumbers.length && !monthNumbers.length)
         ) {
-          setMessage("Choose a change category and up to 20 unique threshold days from 0 to 3650.");
+          setMessage(
+            "Choose a change category and up to 20 unique integers per list: days from 0 to 3650, calendar months from 0 to 120. Lease reminders need at least one list.",
+          );
           return;
         }
         args.policy = {
           change_kinds: [...policy.change_kinds],
           include_self_changes: policy.include_self_changes,
-          ...(policy.change_kinds.includes("lease_threshold_crossed") ? { lease_threshold_days: numbers } : {}),
+          ...(dayNumbers.length &&
+          (policy.change_kinds.includes("lease_threshold_crossed") || policy.lease_threshold_days)
+            ? { lease_threshold_days: dayNumbers }
+            : {}),
+          ...(monthNumbers.length &&
+          (policy.change_kinds.includes("lease_threshold_crossed") || policy.lease_threshold_months)
+            ? { lease_threshold_months: monthNumbers }
+            : {}),
         };
       }
       pending.current = { verb, args };
@@ -185,6 +205,9 @@ export function WatchControl({ subject, client }: { subject: Subject; client: Wa
               {watch.policy.lease_threshold_days
                 ? ` · ${watch.policy.lease_threshold_days.join(", ")} days before the lease date`
                 : ""}
+              {watch.policy.lease_threshold_months
+                ? ` · ${watch.policy.lease_threshold_months.join(", ")} calendar months before the lease date`
+                : ""}
             </p>
           </section>
         )}
@@ -194,6 +217,11 @@ export function WatchControl({ subject, client }: { subject: Subject; client: Wa
             <PolicyEditor
               policy={policy}
               days={days}
+              months={months}
+              onMonths={(value) => {
+                edited.current = true;
+                setMonths(value);
+              }}
               onDays={(value) => {
                 edited.current = true;
                 setDays(value);
