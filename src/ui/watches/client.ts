@@ -1,4 +1,5 @@
 import { parseWatch, type Subject, type Watch } from "./model.ts";
+import { parseWatchPage } from "./radar-model.ts";
 
 type Transport = (verb: string, args: object, options: { signal: AbortSignal; timeoutMs: number }) => Promise<unknown>;
 type Outcome =
@@ -34,3 +35,30 @@ export function createWatchClient(transport?: Transport) {
   };
 }
 export type WatchClient = ReturnType<typeof createWatchClient>;
+export function createWatchListReader(transport?: Transport) {
+  return async (signal: AbortSignal) => {
+    const send = transport ?? (await import(new URL("./mcp-requests.mjs", import.meta.url).href)).createMcpRequests();
+    const watches: Watch[] = [];
+    const cursors = new Set<string>();
+    let cursor: string | null = null;
+    // eslint-disable-next-line no-restricted-syntax -- Limit the list to 10 pages of 100 watches, each read has a 10-second deadline.
+    for (let page = 0; page < 10; page++) {
+      const result: unknown = await send(
+        "list-subject-watches-v2",
+        { limit: 100, ...(cursor ? { cursor } : {}) },
+        { signal, timeoutMs: 10000 },
+      );
+      if (!object(result) || result.kind !== "payload" || result.isError) throw Error("Watch list unavailable");
+      const parsed = parseWatchPage(result.payload);
+      watches.push(...parsed.watches);
+      if (new Set(watches.map((watch) => watch.actor_id)).size > 1) throw Error("Watch actor changed while paging");
+      if (new Set(watches.map((watch) => `${watch.subject_type}:${watch.subject_id}`)).size !== watches.length)
+        throw Error("Watch list changed while paging. Refresh.");
+      if (!parsed.next) return watches;
+      if (cursors.has(parsed.next)) throw Error("Watch list cursor repeated");
+      cursors.add(parsed.next);
+      cursor = parsed.next;
+    }
+    throw Error("Watch list exceeds 1000 subscriptions");
+  };
+}

@@ -391,3 +391,35 @@ test('collapsed nonempty shelves do not intercept empty-list Refresh focus', asy
   await page.waitForFunction(() => document.activeElement.textContent === 'Refresh inbox');
   assert.equal(await page.locator('details[open]').count(), 0);
 });
+
+
+test('lease watch card opens the exact lease and snooze or settle never removes its watch', async t => {
+ const lease='a593ce5f-a245-432b-a829-329a7a461a34';
+ const notification=row('lease-alert',{source_type:'notification',kind_label:'Update',action_id:null,action_version:null,deal_id:null,open_url:`/leases?lease=${lease}`});
+ const {page,calls}=await open(t,{card:'lease-alert',extra:[notification]});
+ const card=page.locator('[data-inbox-row="lease-alert"]');
+ assert.equal(await card.locator('.inbox-source').getAttribute('href'),`/leases?lease=${lease}`);
+ await card.getByText('This alert is separate from its watch. Snoozing or settling the card keeps the watch.',{exact:true}).waitFor();
+ await card.getByRole('button',{name:'Snooze',exact:true}).click();
+ await page.getByRole('button',{name:/^1 hour/}).click();
+ await page.getByRole('button',{name:'Undo',exact:true}).click();
+ await card.getByRole('button',{name:'Hide from inbox',exact:true}).click();
+ await page.getByRole('button',{name:'Undo',exact:true}).click();
+ assert.equal(calls.some(call=>/^(unwatch|pause|resume|replace-subject-watch|watch-subject)/.test(call.name)),false);
+ assert.equal(await card.locator('.inbox-source').getAttribute('href'),`/leases?lease=${lease}`);
+ const fixture=(await readFile(new URL('../js/lease-radar-fixture.js',import.meta.url),'utf8')).replace('id:`demo-lease-${i}`',`id:i===1?'${lease}':\`demo-lease-\${i}\``);
+ await page.route('**/js/lease-radar-fixture.js',route=>route.fulfill({body:fixture,contentType:'text/javascript'}));
+ await card.locator('.inbox-source').click();
+ await page.locator('#leaseDetail[open]').waitFor();
+ assert.equal(new URL(page.url()).searchParams.get('lease'),lease);
+ assert.equal(await page.locator('#leaseDetail h2').textContent(),'Demo Practice 1');
+});
+
+
+for(const destination of ['/leases','/leases?lease=demo','/leases?lease=a593ce5f-a245-432b-a829-329a7a461a34&lease=a593ce5f-a245-432b-a829-329a7a461a34','//foreign.example/leases?lease=a593ce5f-a245-432b-a829-329a7a461a34']) test(`lease card refuses ambiguous or foreign destination ${destination}`,async t=>{
+ const {page}=await open(t,{card:'invalid-lease',extra:[row('invalid-lease',{source_type:'notification',kind_label:'Update',action_id:null,action_version:null,deal_id:null,open_url:destination})]});
+ const card=page.locator('[data-inbox-row="invalid-lease"]');
+ await card.getByText('Source record unavailable. Its destination is unsupported or invalid.',{exact:true}).waitFor();
+ assert.equal(await card.locator('.inbox-source').count(),0);
+ assert.equal(await card.locator('.watch-control').count(),0);
+});

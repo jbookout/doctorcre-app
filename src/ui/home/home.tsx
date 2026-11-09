@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tan
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Route, Routes, useLocation, useParams } from "react-router";
+import { HomeWatchDetail } from "../watches/home-detail.tsx";
 import { BulkControls } from "./bulk-controls";
 import {
   type Action,
@@ -431,6 +432,9 @@ function Inbox({ client }: { client: InboxClient }) {
             <a className="inbox-source" href={recordRoutes.source(item) || undefined}>
               Open source record ↗
             </a>
+          )}
+          {item_id === item.item_id && item.source_type === "notification" && (
+            <HomeWatchDetail open_url={item.open_url} />
           )}
           {item_id === item.item_id && item.open_url && !recordRoutes.source(item) && (
             <p role="status">Source record unavailable. Its destination is unsupported or invalid.</p>

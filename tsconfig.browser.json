@@ -22,6 +22,9 @@
     "src/ui/home/home.tsx",
     "src/ui/action-session-return.ts",
     "src/ui/exact-action-card.ts",
-    "src/ui/exact-action-card-view.tsx"
+    "src/ui/exact-action-card-view.tsx",
+    "src/ui/watches/radar.ts",
+    "src/ui/watches/radar-model.ts",
+    "src/ui/watches/home-detail.tsx"
   ]
 }
