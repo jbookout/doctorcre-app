@@ -31,6 +31,7 @@
     "docs/statecharts/SubjectWatchControls.map.ts",
     "scripts/prove-exact-action-cards.ts",
     "test/exact-action-card.test.ts",
+    "test/review-call-outcome.test.ts",
     "test/exact-action-cards.browser.ts",
     "test/radar-watch.test.ts",
     "test/lease-radar-proof-read.test.ts"
