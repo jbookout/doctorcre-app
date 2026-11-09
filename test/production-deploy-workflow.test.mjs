@@ -146,7 +146,7 @@ test('queued completion wakes reconcile current main even when older or failed C
   }
   for (const runs of [[], [{ ...green, status: 'in_progress', conclusion: '' }], [{ ...green, conclusion: 'failure' }], [{ ...green, headSha: 'a'.repeat(40) }]]) {
     const result = run(runs);
-    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.status, 0, 'a deployment that cannot select green main must not report success');
     assert.match(result.output, /ready=false/);
   }
   writeFileSync(gh, '#!/bin/sh\nexit 1\n');

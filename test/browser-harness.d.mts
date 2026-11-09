@@ -7,3 +7,5 @@ export function componentDocument(
 ): Promise<void>;
 
 export function fixtureServer(options?: { root?: string }): Promise<{ origin: string; close(): Promise<void> }>;
+
+export function settles(check: () => unknown | Promise<unknown>, budgetMs?: number): Promise<void>;
