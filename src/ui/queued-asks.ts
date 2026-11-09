@@ -43,6 +43,7 @@ export function createAskOutbox(o: Options) {
     return { text:value.text, version:value.version };
   }
   const draft = () => savedDraft().text;
+  let draftSnapshot = o.storage.getItem(draftKey);
   const entries = (): QueuedAsk[] => {
     const rows: QueuedAsk[] = [];
     // eslint-disable-next-line no-restricted-syntax -- Single finite scan of this device's storage; no network reads.
@@ -89,7 +90,17 @@ export function createAskOutbox(o: Options) {
   }
   return {
     draft, entries,
-    saveDraft(text: string) { o.storage.setItem(draftKey, JSON.stringify({ text, version:savedDraft().version + 1 })); },
+    appendDraft(block: string, expected: string) {
+      if (stopped) throw Error("This conversation is closed. Reopen it before inserting.");
+      const current = o.storage.getItem(draftKey);
+      if (current !== draftSnapshot || draft() !== expected) throw Error("The draft changed in another tab. Reopen it before inserting.");
+      const text = expected ? expected + "\n\n" + block : block;
+      if (text.length > 20000) throw Error("The ask would exceed 20,000 characters. Nothing was inserted.");
+      o.storage.setItem(draftKey, JSON.stringify({ text, version:savedDraft().version + 1 }));
+      draftSnapshot = o.storage.getItem(draftKey);
+      return text;
+    },
+    saveDraft(text: string) { o.storage.setItem(draftKey, JSON.stringify({ text, version:savedDraft().version + 1 })); draftSnapshot = o.storage.getItem(draftKey); },
     enqueue(text = draft()) {
       if (!text.trim() || text.length > 20000) throw Error('Write an ask of up to 20,000 characters.');
       if (draft() !== text) throw Error('The draft changed in another tab. Reopen it before sending.');
@@ -99,6 +110,7 @@ export function createAskOutbox(o: Options) {
       const request = Object.freeze({ idempotency_key:key, conversation_id:o.conversation, body:text });
       put({ kind:'queued', request });
       if (o.storage.getItem(draftKey) === snapshot) o.storage.removeItem(draftKey);
+      draftSnapshot = o.storage.getItem(draftKey);
       return request;
     },
     // eslint-disable-next-line no-restricted-syntax -- Single explicit trigger drains saved asks, bounded to one attempt per key.

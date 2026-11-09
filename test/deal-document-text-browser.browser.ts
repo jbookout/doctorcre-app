@@ -247,8 +247,8 @@ test("viewer lifecycle and request identity transitions", async (t) => {
           await page.getByRole("button", { name: "Read next chunk", exact: true }).focus();
           await page.keyboard.press("Enter");
           await resolve(page, await read("continuation"));
-          await page.getByText("Line 1, continued at character 1", { exact: true }).waitFor();
-          assert.equal(await page.locator("[data-text-line] pre").textContent(), "second");
+          await page.getByText("Line 1", { exact: true }).waitFor();
+          assert.equal(await page.locator("[data-text-line] pre").textContent(), "😀second");
           assert.equal(await page.locator("[data-text-line]").count(), 1);
           assert.deepEqual(await page.evaluate(() => window.textTest.requests.at(-1)), {
             deal_id: produced.deal_id,

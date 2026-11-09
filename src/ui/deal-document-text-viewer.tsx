@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DocumentTextClient, TextChunk, TextIdentity, TextPosition, TextRequest } from "./deal-document-text";
 import { parseDocumentText } from "./deal-document-text";
+import { joinQuoteContinuation, type QuoteFragment } from "./document-quote";
+import { QuoteLines } from "./document-quote-lines";
+import type { QuoteAskClient } from "./document-quote-next-ask";
 
 type Source = TextIdentity & { filename: string };
 type State =
@@ -10,10 +13,12 @@ export function DocumentTextViewer({
   source,
   client,
   onClose,
+  quoteClient,
 }: {
   source: Source;
   client: DocumentTextClient;
   onClose(): void;
+  quoteClient: QuoteAskClient | null;
 }) {
   const initial = useRef({ source, client });
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -25,6 +30,7 @@ export function DocumentTextViewer({
     busy: false,
   });
   const retry = useRef<TextRequest>(source);
+  const tail = useRef<QuoteFragment | null>(null);
   const textHash = useRef<string | undefined>(undefined);
   const heading = useRef<HTMLHeadingElement>(null);
   const invalidate = useCallback(() => {
@@ -33,6 +39,7 @@ export function DocumentTextViewer({
     request.current.controller = null;
     request.current.busy = false;
     textHash.current = undefined;
+    tail.current = null;
   }, []);
   const load = useCallback(
     async (position?: TextPosition) => {
@@ -63,7 +70,9 @@ export function DocumentTextViewer({
         if (chunk.status === "produced") {
           textHash.current = chunk.text_hash;
           setPageInput(String(chunk.lines.at(0)?.page ?? 1));
-          setState({ kind: "ready", chunk });
+          const lines = joinQuoteContinuation(tail.current, chunk.lines);
+          tail.current = lines.at(-1) ?? null;
+          setState({ kind: "ready", chunk: { ...chunk, lines } });
         } else
           setState({
             kind:
@@ -118,7 +127,6 @@ export function DocumentTextViewer({
     };
   }, [invalidate, load]);
   const chunk = state.kind === "ready" ? state.chunk : null;
-  const groups = chunk ? [...new Set(chunk.lines.map((line) => line.page))] : [];
   return (
     <section aria-label="Document text" className="document-text-viewer">
       <h3 ref={heading} tabIndex={-1} style={{ overflowWrap: "anywhere" }}>
@@ -190,31 +198,12 @@ export function DocumentTextViewer({
               Read page
             </button>
           </form>
-          {groups.map((page) => (
-            <section key={page} aria-label={`Page ${page}`}>
-              <h4>Page {page}</h4>
-              {chunk.lines
-                .filter((line) => line.page === page)
-                .map((line) => (
-                  <div
-                    key={`${line.page}:${line.line}:${line.offset}`}
-                    data-text-page={line.page}
-                    data-text-line={line.line}
-                    data-text-offset={line.offset}
-                    data-line-complete={line.offset === 0 && line.end_of_line}
-                  >
-                    <span>
-                      Line {line.line}
-                      {line.offset ? `, continued at character ${line.offset}` : ""}
-                      {!line.end_of_line ? " (continues)" : ""}
-                    </span>
-                    <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "0 0 1rem" }}>
-                      {line.text}
-                    </pre>
-                  </div>
-                ))}
-            </section>
-          ))}
+          <QuoteLines
+            key={request.current.generation}
+            source={{ ...source, text_hash: chunk.text_hash, text_format_version: chunk.text_format_version }}
+            fragments={chunk.lines}
+            client={quoteClient}
+          />
           {chunk.next && (
             <button
               className="btn"

@@ -1,0 +1,47 @@
+stateDiagram-v2
+state Quote {
+ state Selection {
+  [*] --> None
+  None --> Selected: select lines
+  Selected --> Selected: replace selection
+  Selected --> Commented: add comment
+  Commented --> Selected: replace selection
+  Commented --> Commented: edit comment
+  Selected --> None: replace source
+  Commented --> None: replace source
+  Selected --> None: retire session
+  Commented --> None: retire session
+ }
+ --
+ state Insertion {
+  [*] --> Reviewing
+  Reviewing --> Inserting: use in next ask
+  Inserting --> Inserted: save draft
+  Inserting --> Failed: storage or scope failure
+  Failed --> Inserting: use in next ask
+  Inserted --> Reviewing: select lines
+  Inserted --> Inserted: replace source
+  Inserted --> Inserted: double click
+  Reviewing --> Unavailable: retire session
+  Inserting --> Unavailable: retire session
+  Failed --> Unavailable: retire session
+  Inserted --> Unavailable: retire session
+ }
+ --
+ state Outbox {
+  [*] --> Draft
+  Draft --> Queued: send ask
+  Queued --> Submitting: reconnect
+  Submitting --> Unknown: receipt uncertain
+  Submitting --> Refused: request refused
+  Submitting --> Accepted: request accepted
+  Unknown --> Submitting: check receipt
+  Refused --> Submitting: retry ask
+  Accepted --> Accepted: reload
+ }
+}
+
+%% Never insert across conversations. Freeze.tla NoCrossScope.
+%% Never overwrite concurrent drafts. Freeze.tla NoConcurrentOverwrite.
+%% Never mutate frozen asks. Freeze.tla NoFrozenMutation.
+%% Never regenerate retry keys. Freeze.tla NoRegeneratedKey.

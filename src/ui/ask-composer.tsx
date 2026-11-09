@@ -1,19 +1,19 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createAskOutbox, type AskRequest, type QueuedAsk } from './queued-asks';
 
-type Client = { askSession(): Promise<{ actor: string }>; submitDocRequest(request: AskRequest, actor: string): Promise<unknown> };
+export type AskComposerClient = { askSession(): Promise<{ actor: string }>; submitDocRequest(request: AskRequest, actor: string): Promise<unknown> };
 const labels: Record<QueuedAsk['kind'], string> = {
   queued:'Saved on this device. Waiting for a connection.', submitting:'Sending your ask…',
   unknown:'Receipt not confirmed. Your ask is kept here.', refused:'Your ask was declined. It is kept here.',
   accepted:'Received by Dr. CRE. An answer is still pending.',
 };
-export async function mountAskComposer(host: HTMLElement, client: Client, conversation: string) {
+export async function mountAskComposer(host: HTMLElement, client: AskComposerClient, conversation: string, onReady?: (insert: ((block: string) => void) | null) => void) {
   let closed = false, started = false, starting = false;
   const root = createRoot(host);
   let stop = () => {};
-  const dispose = () => { closed = true; window.removeEventListener('online', restart); stop(); root.unmount(); };
+  const dispose = () => { closed = true; onReady?.(null); window.removeEventListener('online', restart); stop(); root.unmount(); };
   const unavailable = () => flushSync(() => root.render(<p role="status">Reconnect and sign in to open your saved asks.</p>));
   async function start() {
     if (started || starting || closed) return;
@@ -30,6 +30,19 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
       function Composer() {
         const [text, setText] = useState(() => box.draft());
         const [notice, setNotice] = useState('');
+        const input = useRef<HTMLTextAreaElement>(null);
+        const currentText = useRef(text);
+        currentText.current = text;
+        useEffect(() => {
+          onReady?.(block => {
+            if (closed) throw Error('This conversation is closed.');
+            const next = box.appendDraft(block, currentText.current);
+            currentText.current = next;
+            setText(next); setNotice('Excerpt inserted. Review your ask before sending.');
+            input.current?.focus();
+          });
+          return () => onReady?.(null);
+        }, []);
         const [, update] = useState(0);
         redraw = () => update(n => n+1);
         const run = (action: () => void | Promise<void>) => {
@@ -40,7 +53,7 @@ export async function mountAskComposer(host: HTMLElement, client: Client, conver
           box.enqueue(text); setText(box.draft()); setNotice(''); return box.flush();
         }); }}>
           <div className="field"><label htmlFor="askText">Ask Dr. CRE</label>
-          <textarea id="askText" rows={3} maxLength={20000} value={text}
+          <textarea ref={input} id="askText" rows={3} maxLength={20000} value={text}
             aria-describedby="askHelp askNotice" onChange={event => {
               const next = event.target.value; setText(next);
               try { box.saveDraft(next); setNotice(''); }
