@@ -81,7 +81,7 @@ export function createShareIntake({
   function scheduleExpiry(active: Share) {
     clearTimeout(expiry);
     expireBytes(active);
-    // eslint-disable-next-line no-restricted-syntax -- One timer shares the original custody deadline across reloads.
+    // eslint-disable-next-line no-restricted-syntax -- Single expiry timer retires private bytes after the validated ten-minute share deadline.
     if (active.file) expiry = setTimeout(() => expireBytes(active), active.expires - Date.now());
   }
   async function session() {
