@@ -63,7 +63,7 @@ async function fixture() {
                 rpc.params.arguments !== null &&
                 "ref" in rpc.params.arguments,
             );
-            if (rpc.params.name !== "resolve-action-link") writes++;
+            if (!["resolve-action-link", "resolve-action-link-v2"].includes(String(rpc.params.name))) writes++;
             return Response.json({
               jsonrpc: "2.0",
               id: rpc.id,

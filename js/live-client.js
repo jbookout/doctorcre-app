@@ -400,8 +400,8 @@ export function createLiveClient(opts = {}) {
       return write('undo-call-change', { candidate_id, base_version });
     },
 
-    async reviewCallOutcome({ session_id }) {
-      return write('review-call-outcome', { session_id });
+    async reviewCallOutcome({ session_id, expected_source_version }) {
+      return write('review-call-outcome', { session_id, expected_source_version });
     },
 
     async getChanges(cursor, { signal, since } = {}) {
