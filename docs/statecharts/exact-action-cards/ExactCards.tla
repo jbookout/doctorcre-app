@@ -83,6 +83,11 @@ UserReloads ==
     /\ \/ (card = "Unavailable, no detail" /\ card' = "Opening the named card")
     /\ UNCHANGED <<session>>
 
+\* unconfirmed receipt retains retry intent
+UnconfirmedReceiptRetainsRetryIntent ==
+    /\ \/ (card = "Review the exact card" /\ card' = "Review the exact card")
+    /\ UNCHANGED <<session>>
+
 \* matching review receipt
 MatchingReviewReceipt ==
     /\ \/ (card = "Review the exact card" /\ card' = "Opening the named card")
@@ -98,7 +103,7 @@ OpenCurrentVersion ==
     /\ \/ (card = "Changed card, no actions" /\ session = "Session available" /\ card' = "Opening the named card")
     /\ UNCHANGED <<session>>
 
-Next == SessionRefused \/ SignInToSameReference \/ AuthorizedCurrentSource \/ SourceResolved \/ SourceChanged \/ SourceRetired \/ InvalidOrForeignReferenceOrNetworkFailure \/ UserReloads \/ MatchingReviewReceipt \/ WriteRefusesChangedSource \/ OpenCurrentVersion
+Next == SessionRefused \/ SignInToSameReference \/ AuthorizedCurrentSource \/ SourceResolved \/ SourceChanged \/ SourceRetired \/ InvalidOrForeignReferenceOrNetworkFailure \/ UserReloads \/ UnconfirmedReceiptRetainsRetryIntent \/ MatchingReviewReceipt \/ WriteRefusesChangedSource \/ OpenCurrentVersion
 
 Spec == Init /\ [][Next]_vars
 

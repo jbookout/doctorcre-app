@@ -28,6 +28,7 @@ Every arrow is exercised through a mounted browser view. The initial arrows are 
 | Unavailable to Unavailable on session refused | `mounted unavailable card clears on session refusal` |
 | Unavailable to Opening on user reloads | `reply transport reload is manual and fresh resolve replaces prior data` in action-link-browser |
 | Unavailable to Opening on sign in to same reference | Sign-in browser test follows the login link and returns to the exact card |
+| Review to Review on unconfirmed receipt retains retry intent | `post-call review refuses unconfirmed receipt` reloads and retries with the same key, including matching success fields plus an error |
 | Review to Opening on matching review receipt | `post-call review uses registered input and receipt and retains its intent key after a lost response and reload` |
 
 | Review to Stale on write refuses changed source | `atomic review refuses an edit between display and write and reopens current version` |
@@ -35,7 +36,7 @@ Every arrow is exercised through a mounted browser view. The initial arrows are 
 
 The model abstracts network timing, server transactions and the existing reply approval machine. It does not prove database concurrency. CARR owns the atomic version guard; the app sends the displayed version in the write without a preflight read. Feedback has no mutation. The atomic-refusal fixture models a canonical candidate edit after display and before the write. The producer refusal passes its pinned refusal schema and the production MCP parser before the UI enters stale. Matching-version receipt and replay follow the pinned response schema. The existing invalid-receipt cases intentionally violate it and remain unconfirmed.
 
-Pending review intent keys persist in session storage across reload and lost responses; only a matching success receipt clears the key. A newly opened version has a distinct reference and intent. The shared legacy Home caller remains unchanged.
+Pending review intent keys persist in session storage across reload and lost responses; only a schema-valid matching success receipt clears the key. `ReviewOutcome` classifies success, retryable error, terminal session refusal and stale source once and declares key lifetime. The pinned contract defines no additional terminal business refusal that clears an intent. Session refusal ends the attempt and hides private detail while retaining the unconfirmed key. Stale source retains the old reference key. The four outcome tests in `test/review-call-outcome.test.ts` check this policy against the pinned schemas. A newly opened version has a distinct reference and intent. The shared legacy Home caller remains unchanged.
 
 ## PRODUCTION PROOF
 

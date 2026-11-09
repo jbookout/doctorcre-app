@@ -36,6 +36,7 @@ stateDiagram-v2
       Unavailable --> Unavailable: session refused
       Unavailable --> Opening: user reloads
       Unavailable --> Opening: sign in to same reference
+      Review --> Review: unconfirmed receipt retains retry intent
       Review --> Opening: matching review receipt
       Review --> Stale: write refuses changed source
       Stale --> Opening: open current version [session available]

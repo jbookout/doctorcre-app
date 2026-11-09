@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { ExactCard } from "./exact-action-card.ts";
 import { parseExactCard } from "./exact-action-card.ts";
 import { ExactActionCardView } from "./exact-action-card-view.tsx";
+import { parseReviewOutcome } from "./review-call-outcome.ts";
 
 type Request = (
   name: string,
@@ -301,28 +302,24 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
         { signal, timeoutMs: 10_000 },
       );
       if (signal.aborted) return;
-      if (object(result) && result.kind === "authorization") setState({ kind: "signed-out" });
-      else if (
-        object(result) &&
-        result.kind === "payload" &&
-        object(result.payload) &&
-        result.payload.error === "source_version_changed"
-      ) {
-        setReviewNotice("");
-        setState({ kind: "exact", card: { ...card, state: "stale", detail: null } });
-      } else if (
-        object(result) &&
-        result.kind === "payload" &&
-        !result.isError &&
-        object(result.payload) &&
-        result.payload.ok === true &&
-        result.payload.session_id === card.id &&
-        (result.payload.reviewed === true || result.payload.already === "reviewed")
-      ) {
-        sessionStorage.removeItem(`doctorcre-review:${ref}`);
-        setReviewNotice("");
-        setReload((value) => value + 1);
-      } else setReviewNotice("Review was not confirmed. Reload before trying again.");
+      const outcome = parseReviewOutcome(result, card.id);
+      if (outcome.intent === "clear") sessionStorage.removeItem(`doctorcre-review:${ref}`);
+      switch (outcome.kind) {
+        case "terminal-refusal":
+          setState({ kind: "signed-out" });
+          break;
+        case "stale-source":
+          setReviewNotice("");
+          setState({ kind: "exact", card: { ...card, state: "stale", detail: null } });
+          break;
+        case "success":
+          setReviewNotice("");
+          setReload((value) => value + 1);
+          break;
+        case "retryable-error":
+          setReviewNotice("Review was not confirmed. Reload before trying again.");
+          break;
+      }
     } catch {
       if (!signal.aborted) setReviewNotice("Review was not confirmed. Reload before trying again.");
     } finally {

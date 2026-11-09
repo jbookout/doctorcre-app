@@ -292,6 +292,7 @@ test("post-call review uses registered input and receipt and retains its intent 
     await page.getByText("Resolved", { exact: true }).waitFor();
     assert.equal(keys.length, 2);
     assert.equal(keys[0], keys[1]);
+    assert.equal(await page.evaluate((ref) => sessionStorage.getItem(`doctorcre-review:${ref}`), call.ref), null);
   } finally {
     await browser.close();
     await server.close();
@@ -498,6 +499,7 @@ for (const changed of [false, true])
       if (changed) {
         await page.getByText("This card changed. Open its current version before acting.", { exact: true }).waitFor();
         assert.equal(await page.getByRole("button", { name: "Mark call reviewed", exact: true }).count(), 0);
+        assert.ok(await page.evaluate((ref) => sessionStorage.getItem(`doctorcre-review:${ref}`), call.ref));
         await page.getByRole("button", { name: "Open current version", exact: true }).click();
         await page.waitForURL(`**/a/${currentRef}*`);
         await page.getByRole("button", { name: "Mark call reviewed", exact: true }).waitFor();
