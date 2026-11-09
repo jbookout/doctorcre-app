@@ -390,6 +390,9 @@ for (const receipt of [
   { ok: true },
   { ok: true, reviewed: true, session_id: "foreign" },
   { error: "partner_required" },
+  { ok: true, session_id: call.card.id, reviewed: true, error: "partner_required" },
+  { ok: true, session_id: call.card.id, reviewed: true, extra: true },
+  { ok: true, session_id: call.card.id, reviewed: true, already: "reviewed" },
 ])
   test(`post-call review refuses unconfirmed receipt ${JSON.stringify(receipt)}`, async () => {
     const server = await fixture(),
@@ -397,11 +400,14 @@ for (const receipt of [
     try {
       const page = await browser.newPage();
       let reads = 0;
+      const keys: string[] = [];
       await page.route("**/mcp", (route) => {
         const rpc = route.request().postDataJSON();
         const write = rpc.params.name === "review-call-outcome";
-        if (write) assert.ok(writeInput(rpc.params.arguments));
-        else if (rpc.params.name === "resolve-action-link-v2") reads++;
+        if (write) {
+          assert.ok(writeInput(rpc.params.arguments));
+          keys.push(rpc.params.arguments.idempotency_key);
+        } else if (rpc.params.name === "resolve-action-link-v2") reads++;
         return route.fulfill({
           json: {
             jsonrpc: "2.0",
@@ -415,6 +421,11 @@ for (const receipt of [
       await page.getByText("Review was not confirmed. Reload before trying again.", { exact: true }).waitFor();
       assert.equal(reads, 1);
       assert.equal(await page.getByText("Resolved", { exact: true }).count(), 0);
+      await page.reload();
+      await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
+      await page.getByText("Review was not confirmed. Reload before trying again.", { exact: true }).waitFor();
+      assert.equal(keys.length, 2);
+      assert.equal(keys[0], keys[1]);
     } finally {
       await browser.close();
       await server.close();
