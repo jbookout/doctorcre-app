@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "./browser-harness.mjs";
@@ -60,11 +61,16 @@ test("installed-worker share handoff files a producer fixture and renders at pho
   t.after(() => server.close());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  await mkdir("/tmp/j177-screenshots", { recursive: true });
+  const screenshots = new URL("../out/test-artifacts/share-intake/", import.meta.url);
+  await mkdir(screenshots, { recursive: true });
   for (const width of [390, 1440])
     for (const theme of ["light", "dark"] as const) {
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme: theme });
       try {
+        await page.addInitScript(
+          (theme) => localStorage.setItem("doctorcre.visual-preferences", JSON.stringify({ theme })),
+          theme,
+        );
         const errors: string[] = [];
         page.on("pageerror", (error) => errors.push(error.message));
         await page.goto(`${server.origin}/share-intake.html?refused=setup`);
@@ -103,8 +109,9 @@ test("installed-worker share handoff files a producer fixture and renders at pho
             throw Error(String(error) + (await page.locator("body").textContent()) + JSON.stringify(errors));
           });
         await page.getByRole("button", { name: "File document", exact: true }).waitFor();
+        assert.equal(await page.locator("html").getAttribute("data-theme"), theme);
         assert.equal(await page.locator("body").evaluate((node) => node.scrollWidth <= innerWidth), true);
-        await page.screenshot({ path: `/tmp/j177-screenshots/${width}-${theme}.png`, fullPage: true });
+        await page.screenshot({ path: fileURLToPath(new URL(`${width}-${theme}.png`, screenshots)), fullPage: true });
         finalized = false;
         await page.getByRole("button", { name: "File document", exact: true }).click();
         await page.getByRole("heading", { name: "Filed", exact: true }).waitFor();
