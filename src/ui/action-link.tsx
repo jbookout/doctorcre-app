@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { ExactCard } from "./exact-action-card.ts";
 import { parseExactCard } from "./exact-action-card.ts";
 import { ExactActionCardView } from "./exact-action-card-view.tsx";
-import { parseReviewOutcome } from "./review-call-outcome.ts";
+import { reviewCallOutcome } from "./review-call-outcome.ts";
 
 type Request = (
   name: string,
@@ -32,7 +32,7 @@ type ReplyDraft = {
 type Draft = LeadDraft | ReplyDraft;
 type State =
   | { kind: "loading" }
-  | { kind: "exact"; card: ExactCard; reviewKey?: string }
+  | { kind: "exact"; card: ExactCard }
   | { kind: "ready"; card: Draft; key: string; phase: "idle" | "saving" | "unknown" }
   | { kind: "approved"; draftKind: Draft["kind"] }
   | { kind: "unavailable"; message: string; retry: boolean }
@@ -215,7 +215,8 @@ function resolverForRef(ref: string) {
     return "resolve-action-link";
   }
 }
-function ActionLink({ ref, request }: { ref: string; request: Request }) {
+type Options = { ref: string; request: Request; principal: () => Promise<string | null> };
+function ActionLink({ ref, request, principal }: Options) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [reviewNotice, setReviewNotice] = useState("");
   const [reload, setReload] = useState(0);
@@ -250,13 +251,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
           }
           const exact = parseExactCard(payload, ref);
           if (exact) {
-            const intent = `doctorcre-review:${ref}`;
-            let reviewKey: string | undefined;
-            if (exact.kind === "post_call_review" && exact.state === "pending_review") {
-              reviewKey = sessionStorage.getItem(intent) || crypto.randomUUID();
-              sessionStorage.setItem(intent, reviewKey);
-            }
-            setState({ kind: "exact", card: exact, ...(reviewKey ? { reviewKey } : {}) });
+            setState({ kind: "exact", card: exact });
             return;
           }
           const card = parseDraft(payload, ref);
@@ -287,8 +282,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
       state.card.kind !== "post_call_review" ||
       state.card.state !== "pending_review" ||
       busy.current ||
-      !lifetime.current ||
-      !state.reviewKey
+      !lifetime.current
     )
       return;
     busy.current = true;
@@ -296,14 +290,8 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
       signal = lifetime.current.signal;
     setReviewNotice("Saving review…");
     try {
-      const result = await request(
-        "review-call-outcome",
-        { session_id: card.id, expected_source_version: card.source_version, idempotency_key: state.reviewKey },
-        { signal, timeoutMs: 10_000 },
-      );
+      const outcome = await reviewCallOutcome({ card, request, signal, principal });
       if (signal.aborted) return;
-      const outcome = parseReviewOutcome(result, card.id);
-      if (outcome.intent === "clear") sessionStorage.removeItem(`doctorcre-review:${ref}`);
       switch (outcome.kind) {
         case "terminal-refusal":
           setState({ kind: "signed-out" });
@@ -565,7 +553,7 @@ function ActionLink({ ref, request }: { ref: string; request: Request }) {
     </>
   );
 }
-export function mountActionLink(host: HTMLElement, options: { ref: string; request: Request }) {
+export function mountActionLink(host: HTMLElement, options: Options) {
   const root = createRoot(host);
   flushSync(() => root.render(<ActionLink {...options} />));
   return { dispose: () => flushSync(() => root.unmount()) };

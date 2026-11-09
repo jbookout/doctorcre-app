@@ -323,7 +323,7 @@ if (typeof document !== "undefined") {
   if (actionHost && location.pathname.startsWith('/a/')) {
     const { mountActionLink } = await import("./ui-action.js");
     if (!privateSession()?.revoked) {
-      const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests() });
+      const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests(), principal: async () => (await privateSession()?.verify({ fresh: true }))?.actor.slug || null });
       window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });
     }
   }

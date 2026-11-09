@@ -439,6 +439,7 @@ for (const changed of [false, true])
       browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
     try {
       const page = await browser.newPage();
+      const sentKeys: string[] = [];
       let reads = 0,
         writes = 0,
         canonicalVersion = "4392d9ee99a3e7940999c568bd4c7b61";
@@ -449,6 +450,13 @@ for (const changed of [false, true])
         let payload: unknown;
         if (rpc.params.name === "review-call-outcome") {
           writes++;
+          sentKeys.push(rpc.params.arguments.idempotency_key);
+          if (writes === 2) {
+            assert.ok(writeInput(rpc.params.arguments));
+            assert.equal(rpc.params.arguments.expected_source_version, "changed2");
+            await route.abort("failed");
+            return;
+          }
           if (changed) canonicalVersion = "changed2";
           assert.equal(reads, 1, "no separate preflight read");
           assert.ok(writeInput(rpc.params.arguments), JSON.stringify(writeInput.errors));
@@ -499,15 +507,90 @@ for (const changed of [false, true])
       if (changed) {
         await page.getByText("This card changed. Open its current version before acting.", { exact: true }).waitFor();
         assert.equal(await page.getByRole("button", { name: "Mark call reviewed", exact: true }).count(), 0);
-        assert.ok(await page.evaluate((ref) => sessionStorage.getItem(`doctorcre-review:${ref}`), call.ref));
+        assert.equal(await page.evaluate((ref) => sessionStorage.getItem(`doctorcre-review:${ref}`), call.ref), null);
         await page.getByRole("button", { name: "Open current version", exact: true }).click();
         await page.waitForURL(`**/a/${currentRef}*`);
         await page.getByRole("button", { name: "Mark call reviewed", exact: true }).waitFor();
         assert.equal(await page.locator("[data-source-version]").getAttribute("data-source-version"), "changed2");
       } else await page.getByText("Resolved", { exact: true }).waitFor();
       assert.equal(writes, 1);
+      if (changed) {
+        await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
+        await page.getByText("Review was not confirmed. Reload before trying again.", { exact: true }).waitFor();
+        assert.equal(sentKeys.length, 2);
+        assert.notEqual(sentKeys[0], sentKeys[1]);
+      }
     } finally {
       await browser.close();
       await server.close();
     }
   });
+
+for (const status of [401, 403])
+  test(`review intent survives HTTP ${status} retirement without retaining private storage`, async () => {
+    const server = await fixture(),
+      browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+    try {
+      const page = await browser.newPage();
+      const keys: string[] = [];
+      await page.route("**/mcp", async (route) => {
+        const rpc = route.request().postDataJSON();
+        if (rpc.params.name !== "review-call-outcome") return route.fallback();
+        assert.ok(writeInput(rpc.params.arguments));
+        keys.push(rpc.params.arguments.idempotency_key);
+        return route.fulfill({ status, json: { error: "forbidden" } });
+      });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+        await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
+        await page.waitForURL("**/public-shell/session-ended.html?**");
+        assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+        assert.equal(await page.evaluate((ref) => sessionStorage.getItem(`doctorcre-review:${ref}`), call.ref), null);
+      }
+      assert.equal(keys.length, 2);
+      assert.equal(keys[0], keys[1]);
+    } finally {
+      await browser.close();
+      await server.close();
+    }
+  });
+
+test("sign out erases private state and reopening under another principal derives a distinct review", async () => {
+  const server = await fixture(),
+    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS] });
+  try {
+    const page = await browser.newPage();
+    let actor = "joe";
+    const keys: string[] = [];
+    await page.route("**/auth/session", (route) =>
+      route.fulfill({ json: { actor: { slug: actor }, csrf_token: `${actor}-csrf` } }),
+    );
+    await page.route("**/mcp", (route) => {
+      const rpc = route.request().postDataJSON();
+      if (rpc.params.name !== "review-call-outcome") return route.fallback();
+      assert.ok(writeInput(rpc.params.arguments));
+      keys.push(rpc.params.arguments.idempotency_key);
+      return route.abort("failed");
+    });
+    for (const nextActor of ["joe", "joe", "dell"]) {
+      actor = nextActor;
+      await page.goto(`${server.origin}/a/${call.ref}?mode=live`);
+      await page.getByRole("button", { name: "Mark call reviewed", exact: true }).click();
+      await page.getByText("Review was not confirmed. Reload before trying again.", { exact: true }).waitFor();
+      await page.evaluate(async () => {
+        const modulePath: string = "/js/private-session.js";
+        const { privateSession } = await import(modulePath);
+        privateSession()?.revoke("signed-out");
+      });
+      await page.waitForURL("**/public-shell/session-ended.html?**");
+      assert.equal(await page.locator("[data-exact-card-id]").count(), 0);
+      assert.equal(await page.evaluate((ref) => sessionStorage.getItem(`doctorcre-review:${ref}`), call.ref), null);
+    }
+    assert.equal(keys.length, 3);
+    assert.equal(keys[0], keys[1]);
+    assert.notEqual(keys[0], keys[2]);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});

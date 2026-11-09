@@ -36,7 +36,27 @@ Every arrow is exercised through a mounted browser view. The initial arrows are 
 
 The model abstracts network timing, server transactions and the existing reply approval machine. It does not prove database concurrency. CARR owns the atomic version guard; the app sends the displayed version in the write without a preflight read. Feedback has no mutation. The atomic-refusal fixture models a canonical candidate edit after display and before the write. The producer refusal passes its pinned refusal schema and the production MCP parser before the UI enters stale. Matching-version receipt and replay follow the pinned response schema. The existing invalid-receipt cases intentionally violate it and remain unconfirmed.
 
-Pending review intent keys persist in session storage across reload and lost responses; only a schema-valid matching success receipt clears the key. `ReviewOutcome` classifies success, retryable error, terminal session refusal and stale source once and declares key lifetime. The pinned contract defines no additional terminal business refusal that clears an intent. Session refusal ends the attempt and hides private detail while retaining the unconfirmed key. Stale source retains the old reference key. The four outcome tests in `test/review-call-outcome.test.ts` check this policy against the pinned schemas. A newly opened version has a distinct reference and intent. The shared legacy Home caller remains unchanged.
+Review intent is immutable. `reviewCallOutcome` verifies the principal and derives a UUID from a namespaced SHA-256 of principal, call ID and displayed source version. It owns command identity; neither component receipts nor session cleanup can rotate it. Nothing is persisted. Success ends command eligibility; stale source requires reopening; 401/403 and sign-out erase private state and retire the document. An authorized reopen of the same principal/source reconstructs the same identity, and another principal or source reconstructs a different identity. Shared Home callers remain unchanged.
+
+`ReviewIntent.mmd` adds one intent region alongside session access. `ReviewIntent-model` contains the compiled model. It abstracts the hash and transaction; executable command/browser tests establish key equality and the producer contract establishes atomic source guarding. No unbounded retention claim is made about the producer replay window.
+
+| Intent transition | Executed behavior test |
+| --- | --- |
+| Eligible to Sending | atomic review accepts matching displayed version |
+| Unconfirmed to Sending | post-call review refuses unconfirmed receipt |
+| Sending to Unconfirmed | post-call review uses registered input and receipt and retains its intent key after a lost response and reload |
+| Unconfirmed to Eligible | same lost-response/reload test |
+| Sending to Confirmed | same lost-response/replay test and atomic matching-version test |
+| Sending to Changed | atomic review refuses an edit between display and write and reopens current version |
+| Changed to Eligible | same changed-source/reopen test |
+| Eligible to Retired | mounted pending_review card clears on session refusal |
+| Sending to Retired | review intent survives HTTP 401/403 retirement without retaining private storage |
+| Unconfirmed to Retired | sign out erases private state and reopening under another principal derives a distinct review |
+| Confirmed to Retired | mounted resolved card clears on session refusal |
+| Changed to Retired | mounted stale card clears on session refusal |
+| Retired to Eligible | HTTP 401/403 retirement tests and sign-out/another-principal test |
+| Access Authorized to SignedOut | same retirement tests |
+| Access SignedOut to Authorized | same reopen tests |
 
 ## PRODUCTION PROOF
 
@@ -45,3 +65,5 @@ Pending review intent keys persist in session storage across reload and lost res
 Exit 0 means a containing release passed all assertions. Exit 1 means an assertion failed. Exit 78 means insufficient evidence, including an unavailable registered read or session. `node --test test/exact-action-cards.browser.ts` runs executable CLI fixtures for all three exits.
 
 Regenerate in a scratch directory with `statechart.mjs from-chart ExactCards.mmd --png`, using Java and tla2tools.jar. Browser tests and the abstract model do not constitute live production proof before deployment.
+
+Producer pin for this redesign: DoctorCRE/carr-system e54fdcbee30d557c18d262611a40a0e49a89b5dd (PR 3091). Review contract SHA-256 `16fd6959de22e9c15d20b3c23ecfd7fec0f08aaca10c3fa636d8e25a99f53ab7`. Producer must deploy before this consumer; repin to its merged revision before consumer merge.
