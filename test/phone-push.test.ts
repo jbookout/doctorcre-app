@@ -107,6 +107,10 @@ test("unsupported installation never asks permission or registers", async () => 
   await model.enable();
   assert.equal(model.state().kind, "unsupported");
   assert.deepEqual(f.calls, []);
+  model.retire();
+  await model.enable();
+  assert.equal(model.state().kind, "retired");
+  assert.deepEqual(f.calls, []);
 });
 test("inspection enables only the confirmed matching browser generation", async () => {
   const f = fixture();
