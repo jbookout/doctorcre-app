@@ -38,7 +38,19 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
     lost = false,
     token = "test-session-a";
   let operation: unknown = null,
-    cleared = false;
+    cleared = false,
+    workerAlive = true,
+    shareId = "original-share";
+  const journal = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => journal.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      journal.set(key, value);
+    },
+    removeItem: (key: string) => {
+      journal.delete(key);
+    },
+  };
   const writes: { path: string; body: Record<string, unknown> }[] = [];
   const states: { kind: string }[] = [];
   const file = new File([new Uint8Array([255, 216, 255, 0, 1, 2, 3])], "Photo.jpg", { type: "image/jpeg" });
@@ -48,11 +60,13 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
     abandon: "33333333-3333-4333-8333-333333333333",
   };
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-  const model = createShareIntake({
-    changed(state) {
+  const options = {
+    changed(state: { kind: string }) {
       states.push(state);
     },
-    async handoff(csrf, action, next) {
+    storage,
+    async handoff(csrf: string, action: string, next: unknown) {
+      if (!workerAlive) return { ok: false, error: "Share expired. Share the file again." };
       assert.equal(csrf, token);
       if (action === "clear") {
         cleared = true;
@@ -62,9 +76,9 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
         operation = next;
         return { ok: true };
       }
-      return { ok: true, share: { id: keys.reserve, file, expires: Date.now() + 60000, keys, operation } };
+      return { ok: true, share: { id: shareId, file, expires: Date.now() + 60000, keys, operation } };
     },
-    async fetcher(input, init) {
+    async fetcher(input: Parameters<typeof fetch>[0], init?: RequestInit) {
       const path = String(input);
       if (mode === "offline") throw Error("offline");
       if (path === "/auth/session")
@@ -82,6 +96,10 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
       if (init?.method !== "GET") writes.push({ path, body });
       if (path.endsWith("/receipt") && mode === "wrong-receipt")
         return json({ ...recordings.read_started, schema_version: "deal-deliverables.v1" });
+      if (mode === "worker-after-reserve" && !lost && path.endsWith("/receipt")) {
+        lost = true;
+        throw Error("lost receipt");
+      }
       if (path.endsWith("/receipt"))
         return json(
           server === "finalized"
@@ -120,10 +138,27 @@ function intake(t: { after(fn: () => void): void }, mode = "") {
       }
       return json(fixture.reserve);
     },
-  });
+  };
+  let model = createShareIntake(options);
   t.after(() => model.retire());
   return {
-    model,
+    get model() {
+      return model;
+    },
+    freshShare() {
+      workerAlive = true;
+      operation = null;
+      shareId = "new-share";
+    },
+    killWorker() {
+      workerAlive = false;
+    },
+    reload() {
+      model.close?.();
+      model = createShareIntake(options);
+      return model.start();
+    },
+    journal,
     states,
     writes,
     get cleared() {
@@ -240,4 +275,73 @@ test("an abandon receipt for a near-match deal cannot clear custody", async (t) 
   await x.model.discard();
   assert.equal(x.states.at(-1)?.kind, "uncertain");
   assert.equal(x.cleared, false);
+});
+
+for (const reload of [false, true]) {
+  test(`worker loss before selection retires explicitly, reload=${reload}`, async (t) => {
+    const x = intake(t);
+    await x.model.start();
+    x.killWorker();
+    if (reload) await x.reload();
+    else {
+      x.model.choose(expected.deal_id);
+      await x.model.file();
+    }
+    assert.equal(x.states.at(-1)?.kind, "retired");
+    assert.match(JSON.stringify(x.states.at(-1)), /Share the file again/i);
+    assert.equal(x.writes.length, 0);
+  });
+  for (const mode of ["worker-after-reserve", "lost-finalize"])
+    test(`worker loss ${mode} preserves recovery, reload=${reload}`, async (t) => {
+      const x = intake(t, mode);
+      await x.model.start();
+      x.model.choose(expected.deal_id);
+      await x.model.file();
+      assert.equal(x.states.at(-1)?.kind, "uncertain");
+      x.killWorker();
+      if (reload) await x.reload();
+      assert.equal(x.states.at(-1)?.kind, "uncertain");
+      x.model.choose(`${expected.deal_id}a`);
+      await x.model.file();
+      assert.equal(x.states.at(-1)?.kind, mode === "lost-finalize" || !reload ? "filed" : "uncertain");
+      if (mode === "worker-after-reserve" && reload) {
+        await x.model.discard();
+        assert.equal(x.states.at(-1)?.kind, "retired");
+        assert.equal(x.writes.filter((w) => w.path.endsWith("/bytes")).length, 0);
+      }
+      assert.equal(
+        x.writes.filter((w) => w.path.endsWith("/finalize")).length,
+        mode === "lost-finalize" || !reload ? 1 : 0,
+      );
+    });
+}
+test("reload prioritizes unresolved write over fresh worker share and changed session cannot decrypt it", async (t) => {
+  const x = intake(t, "lost-finalize");
+  await x.model.start();
+  x.model.choose(expected.deal_id);
+  await x.model.file();
+  assert.ok(x.journal.size);
+  assert.equal(JSON.stringify([...x.journal]).includes("test-session-a"), false);
+  assert.equal(JSON.stringify([...x.journal]).includes("Photo.jpg"), false);
+  x.freshShare();
+  await x.reload();
+  assert.equal(x.states.at(-1)?.kind, "uncertain");
+  x.killWorker();
+  x.changeSession();
+  await x.reload();
+  assert.notEqual(x.states.at(-1)?.kind, "uncertain");
+});
+
+test("expired bytes retain unresolved reservation for abandonment", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const x = intake(t, "worker-after-reserve");
+  await x.model.start();
+  x.model.choose(expected.deal_id);
+  await x.model.file();
+  t.mock.timers.tick(60001);
+  assert.equal(x.states.at(-1)?.kind, "uncertain");
+  await x.model.file();
+  assert.equal(x.writes.filter((w) => w.path.endsWith("/bytes")).length, 0);
+  await x.model.discard();
+  assert.equal(x.states.at(-1)?.kind, "retired");
 });
