@@ -36,8 +36,9 @@ export function QuoteNextAsk({ client, block }: { client: QuoteAskClient; block:
   const [notice, setNotice] = useState("");
   const [ready, setReady] = useState(false);
   const [inserted, setInserted] = useState<string | null>(null);
+  const [inserting, setInserting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const insert = useRef<((block: string) => void) | null>(null);
+  const insert = useRef<((block: string) => Promise<void>) | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const request = useRef({ retired: false, busy: false, controller: new AbortController() });
   const used = useRef<string | null>(null);
@@ -163,8 +164,8 @@ export function QuoteNextAsk({ client, block }: { client: QuoteAskClient; block:
       <button
         className="btn"
         type="button"
-        disabled={!ready || !block || inserted === block}
-        onClick={() => {
+        disabled={inserting || !ready || !block || inserted === block}
+        onClick={async () => {
           if (
             !block ||
             latest.current !== block ||
@@ -173,13 +174,20 @@ export function QuoteNextAsk({ client, block }: { client: QuoteAskClient; block:
             request.current.retired
           )
             return;
+          const handler = insert.current;
+          used.current = block;
+          setInserting(true);
           try {
-            insert.current(block);
-            used.current = block;
+            await handler(block);
+            if (request.current.retired || insert.current !== handler) return;
             setInserted(block);
             setNotice("Excerpt inserted. Review your ask before sending.");
           } catch (error) {
+            used.current = null;
+            if (request.current.retired || insert.current !== handler) return;
             setNotice(error instanceof Error ? error.message : "The excerpt could not be inserted.");
+          } finally {
+            setInserting(false);
           }
         }}
       >

@@ -3,6 +3,7 @@ type Kind = "queued" | "submitting" | "unknown" | "refused" | "accepted";
 export type QueuedAsk = { kind: Kind; request: AskRequest };
 type Options = {
   storage: Storage;
+  locks?: Pick<LockManager, "request"> | null;
   actor: string;
   conversation: string;
   online(): boolean;
@@ -94,6 +95,15 @@ export function createAskOutbox(o: Options) {
   }
   const draft = () => savedDraft().text;
   let draftSnapshot = o.storage.getItem(draftKey);
+  const locks = o.locks === undefined ? globalThis.navigator?.locks : o.locks;
+  function mutateDraft<T>(action: () => T): Promise<T> {
+    if (!locks)
+      return Promise.reject(Error("Safe device storage is unavailable. Keep this page open to retain your text."));
+    return locks.request(draftKey, async () => {
+      if (stopped) throw Error("This conversation is closed. Reopen it before inserting.");
+      return action();
+    });
+  }
   const entries = (): QueuedAsk[] => {
     const rows: QueuedAsk[] = [];
     // eslint-disable-next-line no-restricted-syntax -- Single finite scan of this device's storage; no network reads.
@@ -155,31 +165,40 @@ export function createAskOutbox(o: Options) {
     draft,
     entries,
     appendDraft(block: string, expected: string) {
-      if (stopped) throw Error("This conversation is closed. Reopen it before inserting.");
-      const current = o.storage.getItem(draftKey);
-      if (current !== draftSnapshot || draft() !== expected)
-        throw Error("The draft changed in another tab. Reopen it before inserting.");
-      const text = expected ? expected + "\n\n" + block : block;
-      if (text.length > 20000) throw Error("The ask would exceed 20,000 characters. Nothing was inserted.");
-      o.storage.setItem(draftKey, JSON.stringify({ text, version: savedDraft().version + 1 }));
-      draftSnapshot = o.storage.getItem(draftKey);
-      return text;
+      return mutateDraft(() => {
+        const current = o.storage.getItem(draftKey);
+        if (current !== draftSnapshot || draft() !== expected)
+          throw Error("The draft changed in another tab. Reopen it before inserting.");
+        const text = expected ? expected + "\n\n" + block : block;
+        if (text.length > 20000) throw Error("The ask would exceed 20,000 characters. Nothing was inserted.");
+        const next = JSON.stringify({ text, version: savedDraft().version + 1 });
+        o.storage.setItem(draftKey, next);
+        if (o.storage.getItem(draftKey) !== next) throw Error("The draft changed before insertion could be confirmed.");
+        draftSnapshot = next;
+        return text;
+      });
     },
     saveDraft(text: string) {
-      o.storage.setItem(draftKey, JSON.stringify({ text, version: savedDraft().version + 1 }));
-      draftSnapshot = o.storage.getItem(draftKey);
+      return mutateDraft(() => {
+        const next = JSON.stringify({ text, version: savedDraft().version + 1 });
+        o.storage.setItem(draftKey, next);
+        draftSnapshot = next;
+      });
     },
-    enqueue(text = draft()) {
-      if (!text.trim() || text.length > 20000) throw Error("Write an ask of up to 20,000 characters.");
-      if (draft() !== text) throw Error("The draft changed in another tab. Reopen it before sending.");
-      const snapshot = o.storage.getItem(draftKey);
-      const key = o.uuid();
-      if (!uuid(key) || o.storage.getItem(prefix + key)) throw Error("The request key is unavailable. Try again.");
-      const request = Object.freeze({ idempotency_key: key, conversation_id: o.conversation, body: text });
-      put({ kind: "queued", request });
-      if (o.storage.getItem(draftKey) === snapshot) o.storage.removeItem(draftKey);
-      draftSnapshot = o.storage.getItem(draftKey);
-      return request;
+    enqueue(text?: string) {
+      return mutateDraft(() => {
+        const body = text ?? draft();
+        if (!body.trim() || body.length > 20000) throw Error("Write an ask of up to 20,000 characters.");
+        if (draft() !== body) throw Error("The draft changed in another tab. Reopen it before sending.");
+        const snapshot = o.storage.getItem(draftKey);
+        const key = o.uuid();
+        if (!uuid(key) || o.storage.getItem(prefix + key)) throw Error("The request key is unavailable. Try again.");
+        const request = Object.freeze({ idempotency_key: key, conversation_id: o.conversation, body });
+        put({ kind: "queued", request });
+        if (o.storage.getItem(draftKey) === snapshot) o.storage.removeItem(draftKey);
+        draftSnapshot = o.storage.getItem(draftKey);
+        return request;
+      });
     },
     flush: () => run(),
     // eslint-disable-next-line no-restricted-syntax -- Single explicit trigger drains saved asks, bounded to one attempt per key.

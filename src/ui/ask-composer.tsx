@@ -22,22 +22,30 @@ function Composer({
 }: {
   box: ReturnType<typeof createAskOutbox>;
   isClosed(): boolean;
-  onReady: ((insert: ((block: string) => void) | null) => void) | undefined;
+  onReady: ((insert: ((block: string) => Promise<void>) | null) => void) | undefined;
   onUpdate(handler: () => void): void;
 }) {
   const [text, setText] = useState(() => box.draft());
+  const [inserting, setInserting] = useState(false);
   const [notice, setNotice] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
   const currentText = useRef(text);
   currentText.current = text;
   useEffect(() => {
-    onReady?.((block) => {
+    onReady?.(async (block) => {
       if (isClosed()) throw Error("This conversation is closed.");
-      const next = box.appendDraft(block, currentText.current);
-      currentText.current = next;
-      setText(next);
-      setNotice("Excerpt inserted. Review your ask before sending.");
-      input.current?.focus();
+      setInserting(true);
+      try {
+        const next = await box.appendDraft(block, currentText.current);
+        if (isClosed()) return;
+        currentText.current = next;
+        setText(next);
+        setNotice("Excerpt inserted. Review your ask before sending.");
+        flushSync(() => setInserting(false));
+        input.current?.focus();
+      } finally {
+        setInserting(false);
+      }
     });
     return () => onReady?.(null);
   }, [box, isClosed, onReady]);
@@ -56,9 +64,14 @@ function Composer({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        run(() => {
-          box.enqueue(text);
-          setText(box.draft());
+        run(async () => {
+          const submitted = currentText.current;
+          await box.enqueue(submitted);
+          if (isClosed()) return;
+          if (currentText.current === submitted) {
+            currentText.current = box.draft();
+            setText(currentText.current);
+          }
           setNotice("");
           return box.flush();
         });
@@ -72,23 +85,28 @@ function Composer({
           rows={3}
           maxLength={20000}
           value={text}
+          disabled={inserting}
           aria-describedby="askHelp askNotice"
           onChange={(event) => {
             const next = event.target.value;
             setText(next);
-            try {
-              box.saveDraft(next);
-              setNotice("");
-            } catch {
-              setNotice("This text is only on this page. Device storage is unavailable.");
-            }
+            currentText.current = next;
+            void box
+              .saveDraft(next)
+              .then(() => {
+                if (isClosed()) return;
+                setNotice("");
+              })
+              .catch(() => {
+                if (!isClosed()) setNotice("This text is only on this page. Device storage is unavailable.");
+              });
           }}
         />
       </div>
       <p id="askHelp" className="caption">
         Saved asks send when you reconnect. You can keep working while an answer is pending.
       </p>
-      <button type="submit" className="btn" disabled={!text.trim()}>
+      <button type="submit" className="btn" disabled={inserting || !text.trim()}>
         Send ask
       </button>
       <p id="askNotice" role="status">
@@ -120,7 +138,7 @@ export async function mountAskComposer(
   host: HTMLElement,
   client: AskComposerClient,
   conversation: string,
-  onReady?: (insert: ((block: string) => void) | null) => void,
+  onReady?: (insert: ((block: string) => Promise<void>) | null) => void,
 ) {
   let closed = false,
     started = false,

@@ -16,7 +16,11 @@ state Quote {
  state Insertion {
   [*] --> Reviewing
   Reviewing --> Inserting: use in next ask
-  Inserting --> Inserted: save draft
+  Inserting --> Locked: acquire draft lock
+  Locked --> Checked: compare displayed draft
+  Checked --> Inserted: save exact draft and release lock
+  Locked --> Failed: changed draft or retired scope
+  Checked --> Failed: storage failure and release lock
   Inserting --> Failed: storage or scope failure
   Failed --> Inserting: use in next ask
   Inserted --> Reviewing: select lines

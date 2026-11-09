@@ -88,6 +88,11 @@ for (const width of [390, 1024, 1440])
       const input = host.getByRole("textbox", { name: "Ask Dr. CRE", exact: true });
       await input.waitFor();
       await input.fill("Existing ask");
+      await page.waitForFunction(() =>
+        Object.keys(localStorage).some(
+          (key) => key.endsWith(":draft") && JSON.parse(localStorage.getItem(key) ?? "{}").text === "Existing ask",
+        ),
+      );
       const preview = await host.getByLabel("Excerpt preview").textContent();
       assert.ok(preview);
       const useQuote = host.getByRole("button", { name: "Use in next ask", exact: true });
@@ -132,10 +137,18 @@ for (const width of [390, 1024, 1440])
         (expected) => document.querySelector<HTMLTextAreaElement>("#quote-test #askText")?.value === expected,
         `Existing ask\n\n${preview}`,
       );
+      await page.waitForFunction(
+        (expected) => document.querySelector<HTMLTextAreaElement>("#quote-test #askText")?.value === expected,
+        `Existing ask\n\n${preview}`,
+      );
       assert.equal(await input.inputValue(), `Existing ask\n\n${preview}`);
       assert.equal(await useQuote.isDisabled(), true);
       assert.equal(await input.evaluate((node) => node === document.activeElement), true);
       await comment.fill("Changed after insertion");
+      await page.waitForFunction(
+        (expected) => document.querySelector<HTMLTextAreaElement>("#quote-test #askText")?.value === expected,
+        `Existing ask\n\n${preview}`,
+      );
       assert.equal(await input.inputValue(), `Existing ask\n\n${preview}`);
       await page.context().setOffline(true);
       await host.getByRole("button", { name: "Send ask", exact: true }).click();
@@ -273,6 +286,10 @@ test("viewer source replacement, Unicode continuation and retirement preserve in
   assert.ok(preview);
   assert.ok(preview.includes("😀second"));
   await host.getByRole("button", { name: "Use in next ask", exact: true }).click();
+  await page.waitForFunction(
+    (expected) => document.querySelector<HTMLTextAreaElement>("#quote-test #askText")?.value === expected,
+    `Existing ask\n\n${preview}`,
+  );
   assert.equal(await input.inputValue(), `Existing ask\n\n${preview}`);
   await host.getByRole("spinbutton", { name: "Page", exact: true }).fill("1");
   await host.getByRole("button", { name: "Read page", exact: true }).click();
@@ -304,4 +321,70 @@ test("viewer source replacement, Unicode continuation and retirement preserve in
   const restored = page.getByRole("textbox", { name: "Ask Dr. CRE", exact: true });
   await restored.waitFor();
   assert.equal(await restored.inputValue(), `Existing ask\n\n${preview}`);
+});
+
+test("two browser tabs serialize autosave before a waiting quote insertion", async (t) => {
+  const server = await fixtureServer();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const a = await browser.newPage();
+  const context = a.context();
+  const bundle = await build({
+    stdin: {
+      contents: `import {createAskOutbox} from './src/ui/queued-asks'; export const box=createAskOutbox({storage:localStorage,actor:'two-tabs',conversation:'00000000-0000-4000-8000-000000000001',online:()=>false,uuid:()=>crypto.randomUUID(),submit:async()=>({})});`,
+      resolveDir: process.cwd(),
+    },
+    bundle: true,
+    format: "esm",
+    write: false,
+  });
+  const output = bundle.outputFiles[0];
+  assert.ok(output);
+  await context.route("**/outbox-race.js", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: output.text }),
+  );
+  const b = await context.newPage();
+  await a.goto(`${server.origin}/conversations`);
+  await b.goto(`${server.origin}/conversations`);
+  await a.evaluate(async () => {
+    const path = "/outbox-race.js";
+    const { box } = await import(path);
+    await box.saveDraft("original");
+  });
+  await b.evaluate(async () => {
+    const path = "/outbox-race.js";
+    const { box } = await import(path);
+    void navigator.locks.request("doctorcre:asks:v1:two-tabs:00000000-0000-4000-8000-000000000001:draft", async () => {
+      document.body.dataset.lock = "held";
+      await new Promise<void>((resolve) => window.addEventListener("release-draft", () => resolve(), { once: true }));
+    });
+    void box.saveDraft("other tab draft").then(() => {
+      document.body.dataset.saved = "yes";
+    });
+  });
+  await b.waitForFunction(() => document.body.dataset.lock === "held");
+  await a.evaluate(async () => {
+    const path = "/outbox-race.js";
+    const { box } = await import(path);
+    void box.appendDraft("quote", "original").then(
+      () => {
+        document.body.dataset.insertion = "success";
+      },
+      (error: Error) => {
+        document.body.dataset.insertion = error.message;
+      },
+    );
+  });
+  assert.equal(await a.evaluate(() => document.body.dataset.insertion), undefined);
+  await b.evaluate(() => window.dispatchEvent(new Event("release-draft")));
+  await b.waitForFunction(() => document.body.dataset.saved === "yes");
+  await a.waitForFunction(() => document.body.dataset.insertion?.includes("another tab"));
+  assert.equal(
+    await a.evaluate(async () => {
+      const path = "/outbox-race.js";
+      return (await import(path)).box.draft();
+    }),
+    "other tab draft",
+  );
 });
