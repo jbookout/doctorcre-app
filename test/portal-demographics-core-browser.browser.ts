@@ -4,13 +4,6 @@ import test from "node:test";
 import { build } from "esbuild";
 import { chromium } from "./browser-harness.mjs";
 
-declare global {
-  interface Window {
-    renderData: (data: unknown) => void;
-    fixtureInjected?: boolean;
-  }
-}
-
 const fixture = JSON.parse(await readFile("test/fixtures/portal-demographics-core.market-study.json", "utf8"));
 const css = (await readFile("css/tokens.css", "utf8")) + (await readFile("portal/demographics-core.css", "utf8"));
 const data = fixture.demographics;
@@ -70,8 +63,8 @@ for (const width of [390, 1280])
         });
       });
       await page.goto("http://127.0.0.1/demographics");
-      await page.evaluate((value) => window.renderData(value), data);
-      assert.equal(await page.evaluate(() => window.fixtureInjected), undefined);
+      await page.evaluate((value) => Reflect.get(window, "renderData")(value), data);
+      assert.equal(await page.evaluate(() => Reflect.get(window, "fixtureInjected")), undefined);
       assert.equal((await page.locator("[data-growth] > p").nth(1).textContent()) ?? "", data.growth.reach_note);
       const growth = page.locator("[data-growth]");
       await page
@@ -150,7 +143,7 @@ for (const width of [390, 1280])
       replacement.age.geographies = [data.age.geographies[1]];
       replacement.median_income.geographies = [{ name: "Income only", value: 90000 }];
       replacement.income_bands.thresholds = [200000];
-      await page.evaluate((value) => window.renderData(value), replacement);
+      await page.evaluate((value) => Reflect.get(window, "renderData")(value), replacement);
       assert.equal(
         (await page.locator(".regional-growth button[aria-pressed=true]").textContent()) ?? "",
         "Sample City",
@@ -170,9 +163,9 @@ for (const width of [390, 1280])
       assert.match((await page.locator("[data-age]").textContent()) ?? "", /Unknown/);
       assert.equal(await page.locator("[data-age] a").count(), 0);
       assert.equal(await page.locator("[data-median] a").count(), 0);
-      await page.evaluate(() => window.renderData(undefined));
+      await page.evaluate(() => Reflect.get(window, "renderData")(undefined));
       assert.equal(await page.locator(".demographics-core").count(), 0);
-      await page.evaluate((value) => window.renderData(value), data);
+      await page.evaluate((value) => Reflect.get(window, "renderData")(value), data);
       await page.getByRole("heading", { name: "Regional growth", exact: true }).waitFor();
     });
   }
@@ -190,11 +183,11 @@ for (const width of [390, 1280])
         }),
       );
       await page.goto("http://127.0.0.1/demographics");
-      await page.evaluate((value) => window.renderData(value), data);
+      await page.evaluate((value) => Reflect.get(window, "renderData")(value), data);
       const duplicate = structuredClone(data);
       for (const section of ["growth", "age", "median_income"])
         duplicate[section].geographies[1].name = "Sample County";
-      await page.evaluate((value) => window.renderData(value), duplicate);
+      await page.evaluate((value) => Reflect.get(window, "renderData")(value), duplicate);
       const growth = page.getByRole("group", { name: "Growth geography", exact: true });
       await growth.getByRole("button").nth(1).click();
       assert.equal(await growth.locator("[aria-pressed=true]").count(), 1);
@@ -225,7 +218,7 @@ for (const width of [390, 1280])
       const replacement = structuredClone(duplicate);
       replacement.growth.geographies[1].series[2].value = 12000;
       replacement.age.geographies[1].under_18_pct = 31;
-      await page.evaluate((value) => window.renderData(value), replacement);
+      await page.evaluate((value) => Reflect.get(window, "renderData")(value), replacement);
       assert.equal(await growth.getByRole("button").nth(0).getAttribute("aria-pressed"), "true");
       assert.equal(await household.getByRole("button").nth(0).getAttribute("aria-pressed"), "true");
       assert.match((await page.locator("[data-growth] table").textContent()) ?? "", /60,000/);

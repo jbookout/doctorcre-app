@@ -25,9 +25,9 @@ new Function("require", "module", "exports", required(result.outputFiles[0]).tex
   module,
   module.exports,
 );
+type CoreModule = typeof import("../src/ui/portal/demographics-core.tsx");
 // The bundle comes directly from this typed source in the same checkout.
-const { DemographicsCore, projectDemographics } =
-  module.exports as typeof import("../src/ui/portal/demographics-core.tsx");
+const { DemographicsCore, projectDemographics } = module.exports as CoreModule;
 const fixture = JSON.parse(await readFile("test/fixtures/portal-demographics-core.market-study.json", "utf8"));
 const render = (demographics: import("../src/ui/portal/demographics-core.tsx").DemographicsCoreData | undefined) =>
   new JSDOM(renderToStaticMarkup(createElement(DemographicsCore, { demographics }))).window.document;
