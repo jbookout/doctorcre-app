@@ -33,3 +33,7 @@ export function startWorkerFixture(options?: {
   close(): Promise<void>;
   release(token: string): void;
 }>;
+
+export function startFixture(
+  options?: Pick<NonNullable<Parameters<typeof startWorkerFixture>[0]>, "assets" | "routes" | "limits" | "signal">,
+): ReturnType<typeof startWorkerFixture>;

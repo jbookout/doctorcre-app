@@ -52,7 +52,11 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-brief-queue-menu-malformed-section.ts",
+    "test/brief-queue-menu-malformed-section.test.ts",
+    "test/brief-queue-menu-malformed-section-browser.browser.ts",
+    "test/prove-brief-queue-menu-malformed-section.test.ts"
   ],
   "compilerOptions": {
     "lib": [
@@ -63,6 +67,9 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
+      ],
+      "/js/ui-queue.js": [
+        "./src/ui/brief-queues.tsx"
       ]
     },
     "jsx": "react-jsx"
