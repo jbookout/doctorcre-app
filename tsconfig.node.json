@@ -61,6 +61,9 @@
     "js/invoice-tracker-model.d.ts",
     "js/routes.d.ts",
     "src/worker.d.ts",
+    "test/quiet-vendors-malformed-snapshot.browser.ts",
+    "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
+    "scripts/prove-quiet-vendors-malformed-snapshot.ts",
     "test/portal-demographics-core.test.ts",
     "test/portal-demographics-core-browser.browser.ts"
   ],
@@ -79,6 +82,9 @@
       ],
       "/js/invoice-tracker-model.js": [
         "./js/invoice-tracker-model.d.ts"
+      ],
+      "/js/ui-quiet-vendors.js": [
+        "./src/ui/quiet-vendors.tsx"
       ]
     },
     "jsx": "react-jsx"
