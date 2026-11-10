@@ -74,3 +74,5 @@ mobile-a11y-evidence/
 
 /js/ui-phone-push.js
 /public-shell/sw.js
+
+/tsconfig.*.generated.json

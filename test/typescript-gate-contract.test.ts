@@ -56,7 +56,7 @@ test("the check keeps Knip unconditional, dependencies exact and Node 26 mandato
 });
 
 test("Knip excludes only named vendor source and has no diagnostic suppression lists", () => {
-  const config = object("knip.json");
+  const config = object("scripts/knip-base.json");
   assert.deepEqual(Object.keys(config).sort(), ["entry", "paths", "project"]);
   assert.ok(Array.isArray(config.project));
   const scope = object("scripts/typescript-migration.json");

@@ -1,80 +1,6 @@
 {
   "extends": "./tsconfig.base.json",
-  "files": [
-    "scripts/check-javascript.ts",
-    "test/javascript-gate.test.ts",
-    "scripts/check-client-safety.ts",
-    "scripts/agent-typescript-hook.ts",
-    "test/typescript-hook.test.ts",
-    "scripts/client-lint-rules.d.mts",
-    "scripts/temp-directory.d.mts",
-    "tests/live/producer-contract.d.mts",
-    "test/central-time.test.ts",
-    "scripts/check-typescript.ts",
-    "test/typescript-gate-contract.test.ts",
-    "scripts/prove-reply-action-link.ts",
-    "test/prove-reply-action-link.browser.ts",
-    "scripts/containing-release.ts",
-    "test/containing-release.test.ts",
-    "scripts/app-release-reader.d.mts",
-    "scripts/chromium-safety-args.d.mts",
-    "scripts/fixture-app-assets.d.mts",
-    "scripts/fixture-http.d.mts",
-    "test/watch-parser.test.ts",
-    "test/watch-client.test.ts",
-    "test/watch-controls.browser.ts",
-    "test/browser-harness.d.mts",
-    "scripts/ui-bundle.d.mts",
-    "test/fixtures/watches/producer-schema.ts",
-    "scripts/artifact.d.mts",
-    "scripts/fixture-server.d.mts",
-    "docs/statecharts/SubjectWatchControls.map.ts",
-    "scripts/prove-exact-action-cards.ts",
-    "test/exact-action-card.test.ts",
-    "test/review-call-outcome.test.ts",
-    "test/exact-action-cards.browser.ts",
-    "test/radar-watch.test.ts",
-    "test/lease-radar-proof-read.test.ts",
-    "scripts/prove-share-intake.ts",
-    "scripts/prove-activity-attribution-panel.d.mts",
-    "test/share-intake.test.ts",
-    "test/share-worker.test.ts",
-    "test/share-intake.browser.ts",
-    "test/prove-share-intake.test.ts",
-    "test/deal-document-text.test.ts",
-    "test/deal-document-text-browser.browser.ts",
-    "test/deal-document-text-browser.d.ts",
-    "docs/statecharts/ViewerCode.map.ts",
-    "test/document-quote-draft.test.ts",
-    "test/document-quote-next-ask.test.ts",
-    "test/document-quote-next-ask-browser.browser.ts",
-    "test/fixtures/document-quote-model/Freeze.map.ts",
-    "test/document-quote-next-ask-browser.d.ts",
-    "test/phone-push.test.ts",
-    "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts",
-    "scripts/prove-brief-queue-menu-malformed-section.ts",
-    "test/brief-queue-menu-malformed-section.test.ts",
-    "test/brief-queue-menu-malformed-section-browser.browser.ts",
-    "test/prove-brief-queue-menu-malformed-section.browser.ts",
-    "scripts/prove-invoice-payment-chronology-display.ts",
-    "test/prove-invoice-payment-chronology-display.browser.ts",
-    "scripts/proof-browser.d.mts",
-    "test/proof-browser-harness.d.mts",
-    "js/invoice-tracker-fixture.d.ts",
-    "js/invoice-tracker-model.d.ts",
-    "js/routes.d.ts",
-    "src/worker.d.ts",
-    "test/quiet-vendors-malformed-snapshot.browser.ts",
-    "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
-    "scripts/prove-quiet-vendors-malformed-snapshot.ts",
-    "test/portal-demographics-core.test.ts",
-    "test/portal-demographics-core-browser.browser.ts",
-    "scripts/prove-deal-tours-revoked-controls.ts",
-    "test/deal-tours-revoked-controls.browser.ts",
-    "test/prove-deal-tours-revoked-controls.browser.ts",
-    "test/deal-tours-revoked-controls.d.ts"
-  ],
+  "files": [],
   "compilerOptions": {
     "lib": [
       "esnext",
@@ -84,9 +10,6 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
-      ],
-      "/js/ui-queue.js": [
-        "./src/ui/brief-queues.tsx"
       ],
       "/js/invoice-tracker-fixture.js": [
         "./js/invoice-tracker-fixture.d.ts"
@@ -99,6 +22,9 @@
       ],
       "/js/ui-deal-tours.js": [
         "./src/ui/deal-tours.tsx"
+      ],
+      "/js/ui-queue.js": [
+        "./src/ui/brief-queues.tsx"
       ]
     },
     "jsx": "react-jsx"
