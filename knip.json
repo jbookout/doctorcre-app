@@ -271,7 +271,8 @@
     "scripts/prove-share-intake.ts",
     "docs/statecharts/ViewerCode.map.ts",
     "src/ui/phone-push.tsx",
-    "src/ui/worker/service-worker.ts"
+    "src/ui/worker/service-worker.ts",
+    "js/leads-client.d.ts"
   ],
   "project": [
     "**/*.{js,mjs,cjs,jsx,ts,tsx}",

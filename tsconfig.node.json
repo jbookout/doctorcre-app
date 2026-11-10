@@ -52,7 +52,13 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-research-source.ts",
+    "test/prove-research-source.browser.ts",
+    "test/research-source.browser.ts",
+    "js/leads-client.d.ts",
+    "scripts/proof-browser.d.mts",
+    "test/leads-browser-fixture.d.mts"
   ],
   "compilerOptions": {
     "lib": [
@@ -65,6 +71,7 @@
         "./src/ui/phone-push.tsx"
       ]
     },
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "resolveJsonModule": true
   }
 }

@@ -41,6 +41,7 @@
     "src/ui/document-quote-next-ask.tsx",
     "src/ui/phone-push.tsx",
     "src/ui/phone-push-model.ts",
-    "src/ui/quick-switcher.tsx"
+    "src/ui/quick-switcher.tsx",
+    "src/ui/lead-research.tsx"
   ]
 }
