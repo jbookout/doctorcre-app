@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { checkResolverFixture, resolverFixture } from "../scripts/prove-call-review-decision-replay-key.ts";
-import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 
 const script = "scripts/prove-call-review-decision-replay-key.ts";
 function cli(origin: string, timeout = 30000, commit = "a".repeat(40)) {
@@ -97,10 +97,9 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
     assert.ok(receipt.assertions.includes(resolver + ":exact-original-decision-replay"));
   }
   assert.ok(receipt.assets["/js/ui-call.js"]);
-  assert.equal(
-    receipt.assets["/js/live-client.js"],
-    createHash("sha256").update(assets.get("js/live-client.js")!).digest("hex"),
-  );
+  const adapter = assets.get("js/live-client.js");
+  assert.ok(adapter);
+  assert.equal(receipt.assets["/js/live-client.js"], createHash("sha256").update(adapter).digest("hex"));
   assert.equal(receipt.max_requests, 64);
   for (const [failure, code] of [
     ["manifest", 1],

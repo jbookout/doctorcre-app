@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { init, parse } from "es-module-lexer";
@@ -144,7 +143,7 @@ export async function prove({
   let timer: ReturnType<typeof setTimeout> | undefined;
   const unavailable = (message: string) => Object.assign(new Error(message), { exitCode: 78 });
   const fetchBytes = async (path: string) => {
-    if (++requests > 10) throw new Error("Ten HTTP request cap exceeded");
+    if (++requests > 64) throw new Error("64 HTTP request cap exceeded");
     try {
       const response = await proofFetch(new URL(path, origin), { signal: controller.signal, redirect: "error" });
       if (!response.ok) throw unavailable("Release or asset unavailable");
@@ -185,29 +184,27 @@ export async function prove({
     const assets = new Map<string, Buffer>(),
       hashes: Record<string, string> = {};
     await init;
-    async function load(path: string, local = false) {
+    async function load(path: string) {
       if (assets.has(path)) return;
       if (!/^\/js\/[a-zA-Z0-9_.-]+\.(?:js|mjs)$/.test(path)) throw new Error("Asset outside admitted graph: " + path);
       const entries = manifest.files.filter((row) => row.path === path.slice(1));
       if (entries.length !== 1) throw new Error("Asset missing or duplicated in manifest");
-      const bytes = local ? await readFile(new URL(".." + path, import.meta.url)) : await fetchBytes(path),
+      const bytes = await fetchBytes(path),
         sha = createHash("sha256").update(bytes).digest("hex");
       const entry = entries[0];
       if (!entry || sha !== entry.sha256 || bytes.length !== entry.bytes) throw new Error("Asset hash mismatch");
       assets.set(path, bytes);
       hashes[path] = sha;
       for (const entry of parse(bytes.toString())[0]) {
-        if (entry.d === -2 || (local && entry.d >= 0)) continue;
+        if (entry.d !== -1) continue;
         if (!entry.n) throw new Error("Unbounded module import");
         const url = new URL(entry.n, origin + path);
         if (url.origin !== origin || url.search || url.hash) throw new Error("Cross-origin asset");
-        await load(url.pathname, local);
+        await load(url.pathname);
       }
     }
     await load("/js/ui-call.js");
-    // Verify local adapter dependencies against the deployed manifest to keep the
-    // ten-GET budget. A different checkout refuses proof rather than substituting code.
-    await load("/js/live-client.js", true);
+    await load("/js/live-client.js");
     const browser = await launchProofBrowser(
       chromium,
       { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs },
@@ -238,7 +235,7 @@ export async function prove({
     const assertions = await page.evaluate(exercise, {
       fixtures,
     });
-    return { release, assets: hashes, assertions, requests, max_requests: 10, synthetic: true };
+    return { release, assets: hashes, assertions, requests, max_requests: 64, synthetic: true };
   };
   try {
     return await Promise.race([run(), deadline]);
