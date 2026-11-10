@@ -341,3 +341,11 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 }
 
 .workspace-grid > details > summary { display: flex; align-items: center; min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); }
+
+.client-grant-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
+.client-grant-row > div { min-width: 0; }
+.client-grant-row p { margin: .35rem 0 0; overflow-wrap: anywhere; }
+.client-grant-row button { flex-shrink: 0; min-height: 44px; }
+.share-form input[type="datetime-local"], .share-link input { box-sizing: border-box; width: 100%; min-width: 0; }
+.share-actions { flex-wrap: wrap; }
+@media (max-width: 480px) { .client-grant-row { align-items: flex-start; flex-direction: column; } .share-actions > button { flex: 1 1 100%; min-height: 44px; } }

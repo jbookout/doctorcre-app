@@ -1,3 +1,4 @@
+import { transformSync } from 'esbuild';
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
@@ -14,7 +15,8 @@ const html = await readFile(new URL("../tours/route-editor.html", import.meta.ur
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const tourScript = `${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const grantScript = transformSync(await readFile(new URL("../src/ui/tour-client-grants.ts", import.meta.url), "utf8"), { loader: "ts", format: "iife", globalName: "clientGrants" }).code;
+const tourScript = `${grantScript}\nconst { prepareClientGrant, grantReceipt, renderClientGrants } = clientGrants;\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const script = `${autoRefreshScript}\n${tourScript}`;
 const uuid = () => webcrypto.randomUUID();
 const fixtureDeal = "11111111-1111-4111-8111-111111111111";
