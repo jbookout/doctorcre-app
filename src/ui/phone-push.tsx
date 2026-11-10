@@ -170,6 +170,26 @@ async function start(element: Element) {
       "PushManager" in globalThis &&
       "Notification" in globalThis &&
       (!/iPad|iPhone|iPod/.test(navigator.userAgent) || matchMedia("(display-mode: standalone)").matches);
+    if (supported()) {
+      element.textContent = "Preparing phone notifications…";
+      try {
+        await Promise.race([
+          navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(() => navigator.serviceWorker.ready),
+          new Promise<never>((_, reject) => {
+            AbortSignal.any([lifetime.signal, AbortSignal.timeout(10000)]).addEventListener(
+              "abort",
+              () => reject(Error("Notification worker unavailable")),
+              { once: true },
+            );
+          }),
+        ]);
+      } catch {
+        if (!lifetime.signal.aborted)
+          element.textContent = "Phone notification setup failed. Reopen Updates to try again.";
+        return;
+      }
+      if (lifetime.signal.aborted) return;
+    }
     const fingerprint = async () => {
       const subscription = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
       if (!subscription) return null;
