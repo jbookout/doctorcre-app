@@ -1,3 +1,4 @@
+import { generatedSheet } from "../src/ui/broker-cheat-sheet.ts";
 import { createPageBudget } from '../js/read-budget.mjs';
 import { createCurrentRead } from "../js/current-read.mjs";
 import { authGeneration, authReadable } from '../js/progress-auth.js';
@@ -34,7 +35,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   return context;
 }
 const rpc = payload => new Response(JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}}));
-const elements = () => { const rows = new Map(); return key => { if(!rows.has(key)) rows.set(key, {value:"",textContent:"",hidden:false,disabled:false,listeners:{},addEventListener(type,listener){this.listeners[type]=listener;},setAttribute:noop}); return rows.get(key); }; };
+const elements = () => { const rows = new Map(); return key => { if(!rows.has(key)) rows.set(key, {value:"",textContent:"",hidden:false,disabled:false,listeners:{},addEventListener(type,listener){this.listeners[type]=listener;},setAttribute:noop,replaceChildren:noop}); return rows.get(key); }; };
 
 for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping slow status reads apply ${terminal}`, async () => {
   const reply=deferred(); let reads=0, stops=0;
@@ -234,7 +235,7 @@ test("Dot 3: sheet save allows typing while sending and locks only an unknown ou
   // Keep the real recovery renderer, revision parser and receipt validator in
   // the same context as saveSheet so its retained state is observed directly.
   const h=handlers("tours/app.js","  function canRegenerateSheet(","  const routeEndpoints",{
-    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,sheetMessage:"",sessionBinding:"synthetic-scope",
+    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,sheetGenerated:"",sheetRegenerating:false,sheetMessage:"",sessionBinding:"synthetic-scope",
     text:(value,fallback="")=>value||fallback,cheatSheetText:value=>value?.notes||"",
     id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>`key-${++keys}`,
     request:async()=>structuredClone(state.tour),persistOtherWrites:noop,status:noop,loadTour:async()=>{},
@@ -508,10 +509,9 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   await assert.rejects(h.issueShare(rotate));
   // Use both source read/render handlers: a refreshed Tour replaces the current
   // projection and grant, while the uncertain operation belongs to the old one.
-  $("#route-stops").replaceChildren=noop;
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
-    state,$,dealContext:null,embedded:false,notify:noop,id:()=>false,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
+    state,$,generatedSheet,sheetGenerated:"",dealContext:null,embedded:false,notify:noop,id:()=>false,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
     request:async()=>({id:"A",stops:[],projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,

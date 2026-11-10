@@ -1,3 +1,4 @@
+import { generatedSheet } from "../src/ui/broker-cheat-sheet.ts";
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
@@ -52,6 +53,7 @@ async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) 
     } else throw new Error(`Unexpected broker request: ${path}`);
     return { ok: true, json: async () => ({ data }) };
   };
+  dom.window.generatedSheet = generatedSheet;
   dom.window.eval(tourScript);
   await settle();
   return { dom, doc: dom.window.document, reads };
