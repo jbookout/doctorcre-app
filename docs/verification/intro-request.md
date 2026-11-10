@@ -37,7 +37,7 @@ Transition-to-test mapping:
 | --- | --- |
 | Selected to reviewing, reviewing to submitting to confirmed | selected path requires explicit review and preserves exact party identities |
 | Submitting to changed source | fresh source refuses restricted/hold/stale/changed/removed/already-requested |
-| Changed source to reviewing | Reopening uses current snapshot through the same open interface; covered by the browser's refreshed review entry |
+| Changed source to reviewing | changed source requires reopening and explicitly reviewing its current identities |
 | Submitting to refused, refused to reviewing | server refusal remains refused and reopening requires a new review |
 | Submitting to unknown, unknown to submitting to confirmed | lost response blocks replacement and recovers with identical key after reopening |
 | Confirmed to confirmed on refresh | V03 explicitly reviews and records the exact introduction, all widths/themes |

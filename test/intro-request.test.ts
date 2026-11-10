@@ -247,3 +247,20 @@ test("missing restriction evidence and an altered introducer refuse before dispa
     assert.equal(h.calls.length, 0);
   }
 });
+
+test("changed source requires reopening and explicitly reviewing its current identities", async () => {
+  const h = harness();
+  h.model.open(h.network, "demo-offer");
+  assert.ok(h.network.nodes[0]);
+  h.network.nodes[0].name = "Demo Updated Lending";
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.equal(h.model.view().status, "changed_source");
+  assert.equal(h.calls.length, 0);
+  h.model.open(h.network, "demo-offer");
+  assert.equal(h.model.view().status, "reviewing");
+  assert.equal(h.model.view().path?.from.name, "Demo Updated Lending");
+  await h.model.submit("2026-11-10", "Note", false);
+  assert.equal(h.calls.length, 0);
+  await h.model.submit("2026-11-10", "Note", true);
+  assert.equal(h.model.view().status, "confirmed");
+});
