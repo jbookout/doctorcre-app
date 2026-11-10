@@ -30,9 +30,19 @@ stateDiagram-v2
   Leaving --> List: Leave tour and discard edits
   Leaving --> Closed: Leave workspace and discard edits
   Error --> Saving: Reconcile retained request
-  Open --> Unavailable: Session changes
-  Opening --> Unavailable: Session changes
-  Creating --> Unavailable: Session changes
+  Open --> Retired: Session changes
+  Opening --> Retired: Session changes
+  Creating --> Retired: Session changes
+  Loading --> Retired: Session changes
+  List --> Retired: Session changes
+  Error --> Retired: Session changes
+  NotAvailable --> Retired: Session changes
+  Dirty --> Retired: Session changes
+  Saving --> Retired: Session changes
+  Saved --> Retired: Session changes
+  Leaving --> Retired: Session changes and dismiss departure
+  Retired --> Retired: Ignore Start, Refresh, Retry, late reads and frame messages
+  Retired --> Closed: Dispose workspace
   Loading --> Closed: Leave workspace
   Opening --> Closed: Leave workspace
   Open --> Closed: Leave workspace
@@ -43,3 +53,4 @@ stateDiagram-v2
   %% never Show server errors as tour content
   %% never Discard dirty edits without an in-app departure decision
   %% never Let an older Open or creation response replace a newer editor
+  %% never Re-enter a retired workspace; verify scope and mount a new one

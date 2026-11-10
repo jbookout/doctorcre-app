@@ -1,0 +1,20 @@
+stateDiagram-v2
+  [*] --> Loading
+  Loading --> Ready: Read succeeds
+  Loading --> Unavailable: Read fails
+  Unavailable --> Ready: Refresh succeeds
+  Ready --> Pending: Approve or skip
+  Pending --> Ready: Affirmative receipt from either resolver
+  Pending --> Ready: Authoritative semantic refusal
+  Pending --> Recovery: Reply lost, unconfirmed HTTP, server fault or receipt missing
+  Recovery --> Pending: Check outcome with unchanged proposal
+  Recovery --> Recovery: Changed proposal or failed check
+  Recovery --> Ready: Read shows resolved
+  Ready --> Retired: Authorization fails
+  Pending --> Retired: Authorization fails
+  Recovery --> Retired: Session invalidated
+  Ready --> Disposed: Close guide
+  Pending --> Disposed: Close guide
+  Recovery --> Disposed: Close guide
+  %% never Send an opposite or newly keyed decision while an outcome is unknown.
+  %% never Replay a write automatically.
