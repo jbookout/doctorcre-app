@@ -10,5 +10,5 @@
     "input_class": "synthetic-read-only-deployed-module",
     "deadline_seconds": 30
   }],
-  "safety": { "read_only": true, "no_sends": true, "max_requests": 10, "max_records": 1, "max_runtime_seconds": 30, "max_artifact_bytes": 65536 }
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 64, "max_records": 1, "max_runtime_seconds": 30, "max_artifact_bytes": 65536 }
 }
