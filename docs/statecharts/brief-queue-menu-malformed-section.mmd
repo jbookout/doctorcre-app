@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> Unknown: missing or malformed sections
+    [*] --> Accurate: valid section coverage
+    Unknown --> Unknown: another malformed render preserves usable buttons
+    Unknown --> Accurate: valid replacement facts
+    Accurate --> Unknown: malformed replacement facts
+    Accurate --> Accurate: valid zero or partial replacement
+    Unknown --> Unmounted: dispose
+    Accurate --> Unmounted: dispose
+    Accurate --> Switch: select active queue
+    Unknown --> Switch: select active queue
+    Switch --> Accurate: back with valid facts
+    Switch --> Unknown: back with malformed facts
+    Unmounted --> [*]
