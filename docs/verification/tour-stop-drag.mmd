@@ -1,0 +1,42 @@
+stateDiagram-v2
+    state Editor {
+        state Flow {
+            [*] --> idle
+            idle --> dragging: Hold flexible stop handle
+            dirty --> dragging: Hold flexible stop handle
+            dragging --> cancelled: Escape or pointer cancel or outside drop
+            dragging --> idle: Drop without moving
+            dragging --> dirty: Drop on flexible stop
+            cancelled --> dragging: Hold flexible stop handle
+            idle --> dirty: Press Up or Down
+            dirty --> dirty: Press Up or Down
+            dirty --> undo: Undo last edit
+            undo --> dragging: Hold flexible stop handle
+            undo --> dirty: Press Up or Down
+            dirty --> saving: Explicit Save
+            saving --> unknown: Response lost
+            unknown --> reconciled: Explicit Reconcile
+            reconciled --> saving: Explicit Retry same request
+            saving --> reviewed: Saved draft and explicit review
+            reviewed --> saving: Explicit Accept
+            saving --> idle: Accepted readback
+            saving --> dirty: Conflict preserves edits
+            idle --> retired: Session changes
+            dragging --> retired: Session changes
+            cancelled --> retired: Session changes
+            dirty --> retired: Session changes
+            undo --> retired: Session changes
+            saving --> retired: Session changes
+            unknown --> retired: Session changes
+            reconciled --> retired: Session changes
+            reviewed --> retired: Session changes
+        }
+        --
+        state Session {
+            [*] --> signedIn
+            signedIn --> signedOut: Session changes
+        }
+    }
+%% never NoDraggingAfterSignout: dragging & signedOut -- A retired session cannot finish a drag
+%% never NoSavingAfterSignout: saving & signedOut -- A retired session cannot save
+%% never NoReviewAfterSignout: reviewed & signedOut -- A retired session cannot accept a review
