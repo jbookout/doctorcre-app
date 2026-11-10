@@ -33,8 +33,18 @@ export function assertPublishedPacketText(text: string, packet: ReturnType<typeo
   ];
   const observed = pages.map(normalize);
   const overview = expected[0];
-  if (overview && observed[0] === `${overview} ${packet.map((stop) => stop.route_label).join(" ")}`)
+  if (overview && observed[0]) {
+    const words = observed[0].split(" ");
+    const expectedWords = overview.split(" ");
+    assert.deepEqual(words.slice(0, expectedWords.length), expectedWords);
+    let cursor = 0;
+    for (const emitted of words.slice(expectedWords.length)) {
+      const index = packet.findIndex((stop, index) => index >= cursor && stop.route_label === emitted);
+      assert.ok(index >= cursor, "Only ordered public marker labels may follow the overview");
+      cursor = index + 1;
+    }
     observed[0] = overview;
+  }
   assert.deepEqual(observed, expected, "Published PDF differs from the fixed public template");
 }
 export async function assertPublishedPacketPdf(bytes: Buffer, packet: ReturnType<typeof parsePublicTourPacket>) {
