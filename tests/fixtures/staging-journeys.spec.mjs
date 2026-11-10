@@ -1,3 +1,4 @@
+import { presentedPacket } from "../../test/packet-presentation.fixture.ts";
 import { test } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { get } from 'node:http';
@@ -29,8 +30,8 @@ export async function localFixture(browser, {denyShortlist = false} = {}) {
   const lease = leaseRadarFixture();
   Object.assign(lease.leases[0], fixture.lease);
   const publicRef = property => 'property:public:' + createHash('sha256').update(`carr-internal:${fixture.tour.projection_id}:${property}`).digest('hex').slice(0, 32);
-  const packet = { stops: tour.stops.map(stop => ({ name: stop.property_name, address: stop.property_address,
-    property_ref: publicRef(stop.property_id), route_label: stop.route_label, route_sequence: stop.route_sequence })) };
+  const packet = presentedPacket(tour.stops.map(stop => ({ name: stop.property_name, address: stop.property_address,
+    property_ref: publicRef(stop.property_id), route_label: stop.route_label, route_sequence: stop.route_sequence })));
   const projectionRef = 'projection:public:abcdefghijklmnop';
   const assets = await appAssetSnapshot();
   const server = await startWorkerFixture({ assets, env:{ APP_ENV:'staging', CARR:{fetch:async req => {

@@ -6,7 +6,7 @@ import { packetMapPoints, parsePublicTourPacket } from "../src/ui/public-tour-pa
 import { presentedPacket } from "../test/packet-presentation.fixture.ts";
 import { proofFetch } from "./app-release-reader.mjs";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
-import { assertPublishedPacketPdf, assertPublishedPacketText } from "./public-tour-pdf-proof.ts";
+import { assertPublishedPacketPdf } from "./public-tour-pdf-proof.ts";
 
 const unavailable = (message: string) => Object.assign(Error(message), { exitCode: 78 });
 export async function proveTourPacket({
@@ -33,61 +33,20 @@ export async function proveTourPacket({
       name: `Example ${n}`,
       address: `${n} Example Street`,
     }));
-    return runProof({
-      origin,
-      expectedCommit,
-      readRelease: async () => ({ source_commit: expectedCommit }),
-      contains: async () => {},
-      observe: async (page) => {
-        if (fixtureCase === "insufficient") throw unavailable("Published PDF unavailable");
-        const packet = parsePublicTourPacket(presentedPacket(stops));
-        const points = stops.map((stop) => ({ ...stop, latitude: 30, longitude: -87 }));
-        packetMapPoints(packet, { points });
-        const pages = packet.map((stop) =>
-          [
-            `Stop ${stop.route_label}`,
-            stop.name,
-            stop.address,
-            ...stop.facts.map((fact) => `${fact.label} ${fact.value}`),
-            "My Notes",
-          ].join("\n"),
-        );
-        pages.unshift(
-          [
-            "CARR Healthcare Real Estate",
-            "Your property tour",
-            "3 properties in tour order.",
-            "Tour day at a glance",
-            ...packet.map((stop, index) => `${index + 1}. ${stop.route_label} · ${stop.name} · ${stop.address}`),
-            "Tour map",
-            "Properties",
-          ].join("\n"),
-        );
-        const text = pages.join("\f");
-        assertPublishedPacketText(text, packet);
-        await page.setContent(
-          pages
-            .map(
-              (text, index) =>
-                `<section style="break-after:${index === pages.length - 1 ? "auto" : "page"}">${text
-                  .split("\n")
-                  .map((line) => `<p>${line}</p>`)
-                  .join("")}</section>`,
-            )
-            .join(""),
-        );
-        if (fixtureCase === "fail")
-          await page
-            .locator("p")
-            .filter({ hasText: "Suite Unknown" })
-            .first()
-            .evaluate((node) => {
-              node.textContent = "Suite Unknown extra";
-            });
-        await assertPublishedPacketPdf(await page.pdf(), packet);
-        return { propertyCount: packet.length, scope: "synthetic extracted PDF text and projection fixture" };
-      },
-    });
+    if (fixtureCase === "insufficient") return { status: "insufficient_evidence", exitCode: 78 };
+    const packet = parsePublicTourPacket(presentedPacket(stops));
+    const pdf = await readFile(
+      new URL(
+        `../test/fixtures/tour-packet-${fixtureCase === "fail" ? "near-miss" : "synthetic"}.pdf`,
+        import.meta.url,
+      ),
+    );
+    try {
+      await assertPublishedPacketPdf(pdf, packet);
+      return { status: "passed", exitCode: 0 };
+    } catch {
+      return { status: "failed", exitCode: 1 };
+    }
   }
   return runProof({
     origin,
