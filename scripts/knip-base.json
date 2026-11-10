@@ -1,5 +1,6 @@
 {
   "entry": [
+    "docs/statecharts/broker-cheat-sheet/BrokerSheet.map.mjs",
     "docs/portal-model/view.ts",
     "e2e.config.ts",
     "e2e.production.config.ts",

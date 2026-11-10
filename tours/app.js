@@ -251,7 +251,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     for (const selector of ["#preview-pdf", "#download-pdf", "#tour-day-link"]) { const link = $(selector); link.hidden = true; link.removeAttribute("href"); }
     $(".discovery").hidden = true; $("#empty-state").hidden = false; $("#empty-copy").textContent = "Your session ended. Sign in to reopen Tours.";
     $("#retry-library").hidden = true; $("#tour-name").textContent = ""; $("#tour-meta").textContent = "";
-    sheetGenerated = ""; $("#sheet-generated").textContent = ""; $("#sheet-history").replaceChildren();
+    sheetGenerated = ""; $("#sheet-generated").textContent = ""; $("#sheet-history").replaceChildren(); $("#sheet-history-status").textContent = "";
     $("#cheat-content").value = ""; $("#share-url").value = ""; $("#share-link").hidden = true;
     $("#create-tour-form").reset(); $("#create-tour-panel").open = false;
     const recovery = $("#tour-recovery"), signIn = document.createElement("a");
@@ -1211,7 +1211,10 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       sheetGenerated = generated; $("#sheet-generated").textContent = generated;
       $("#cheat-content").dispatchEvent(new Event("input"));
     } catch {
-      if (!state.sessionInvalidated) { sheetMessage = "The current itinerary could not be read. Your notes are kept."; status(sheetMessage); }
+      if (state.tour?.id === tourId && binding === sessionBinding && !state.sessionInvalidated) {
+        if (state.cheatDirty && state.cheatDraftTourId === tourId) $("#cheat-content").dispatchEvent(new Event("input"));
+        sheetMessage = "The current itinerary could not be read. Your notes are kept."; status(sheetMessage);
+      }
     } finally { sheetRegenerating = false; renderSheetRecovery(); }
   }));
   $("#read-sheet-history").addEventListener("click", () => void action(async () => {

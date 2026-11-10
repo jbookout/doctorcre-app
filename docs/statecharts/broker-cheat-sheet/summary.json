@@ -1,11 +1,11 @@
 {
   "view": "customer",
-  "modelStates": 13,
-  "modelTransitions": 40,
-  "chartStates": 13,
-  "chartTransitions": 38,
+  "modelStates": 19,
+  "modelTransitions": 69,
+  "chartStates": 19,
+  "chartTransitions": 66,
   "chartStatus": {
-    "works": 13,
+    "works": 19,
     "wrong": 0,
     "fixed": 0
   },

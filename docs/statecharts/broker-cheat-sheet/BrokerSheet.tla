@@ -12,7 +12,7 @@ syncStates == {"Conflict", "Editing", "Regenerating", "Retired", "Saved", "Savin
 \* Region Access
 accessStates == {"Authorized", "Revoked"}
 \* Region History
-historyStates == {"Closed", "Hidden", "Visible"}
+historyStates == {"Closed", "Hidden", "Reading", "Visible"}
 
 TypeOK ==
     /\ sync \in syncStates
@@ -70,8 +70,8 @@ CurrentFactsReceived ==
     /\ \/ (sync = "Regenerating" /\ sync' = "Editing")
     /\ UNCHANGED <<access, history>>
 
-\* facts unavailable keeps draft
-FactsUnavailableKeepsDraft ==
+\* facts unavailable resumes autosave
+FactsUnavailableResumesAutosave ==
     /\ \/ (sync = "Regenerating" /\ sync' = "Editing")
     /\ UNCHANGED <<access, history>>
 
@@ -81,14 +81,14 @@ ReadRevisions ==
     /\ \/ (sync = "Saved" /\ sync' = "Saved")
        \/ (sync = "Editing" /\ sync' = "Editing")
        \/ (sync \notin {"Saved", "Editing"} /\ UNCHANGED sync)
-    /\ \/ (history = "Closed" /\ history' = "Visible")
+    /\ \/ (history = "Closed" /\ history' = "Reading")
        \/ (history = "Visible" /\ history' = "Visible")
        \/ (history \notin {"Closed", "Visible"} /\ UNCHANGED history)
     /\ UNCHANGED <<access>>
 
 \* session revoked
 SessionRevoked ==
-    /\ (sync \in {"Saved", "Editing", "Saving", "Conflict", "Uncertain", "Regenerating"} \/ access \in {"Authorized"} \/ history \in {"Visible", "Closed"})
+    /\ (sync \in {"Saved", "Editing", "Saving", "Conflict", "Uncertain", "Regenerating"} \/ access \in {"Authorized"} \/ history \in {"Reading", "Visible", "Closed"})
     /\ \/ (sync = "Saved" /\ sync' = "Retired")
        \/ (sync = "Editing" /\ sync' = "Retired")
        \/ (sync = "Saving" /\ sync' = "Retired")
@@ -98,11 +98,22 @@ SessionRevoked ==
        \/ (sync \notin {"Saved", "Editing", "Saving", "Conflict", "Uncertain", "Regenerating"} /\ UNCHANGED sync)
     /\ \/ (access = "Authorized" /\ access' = "Revoked")
        \/ (access \notin {"Authorized"} /\ UNCHANGED access)
-    /\ \/ (history = "Visible" /\ history' = "Hidden")
+    /\ \/ (history = "Reading" /\ history' = "Hidden")
+       \/ (history = "Visible" /\ history' = "Hidden")
        \/ (history = "Closed" /\ history' = "Hidden")
-       \/ (history \notin {"Visible", "Closed"} /\ UNCHANGED history)
+       \/ (history \notin {"Reading", "Visible", "Closed"} /\ UNCHANGED history)
 
-Next == TypeNotes \/ PauseOrSaveNow \/ SaveConfirmed \/ NewerRevisionFound \/ ReviewCurrentAndKeepDraft \/ ResponseLost \/ CheckOutcome \/ Regenerate \/ CurrentFactsReceived \/ FactsUnavailableKeepsDraft \/ ReadRevisions \/ SessionRevoked
+\* revisions received
+RevisionsReceived ==
+    /\ \/ (history = "Reading" /\ history' = "Visible")
+    /\ UNCHANGED <<sync, access>>
+
+\* revisions unavailable
+RevisionsUnavailable ==
+    /\ \/ (history = "Reading" /\ history' = "Closed")
+    /\ UNCHANGED <<sync, access>>
+
+Next == TypeNotes \/ PauseOrSaveNow \/ SaveConfirmed \/ NewerRevisionFound \/ ReviewCurrentAndKeepDraft \/ ResponseLost \/ CheckOutcome \/ Regenerate \/ CurrentFactsReceived \/ FactsUnavailableResumesAutosave \/ ReadRevisions \/ SessionRevoked \/ RevisionsReceived \/ RevisionsUnavailable
 
 Spec == Init /\ [][Next]_vars
 

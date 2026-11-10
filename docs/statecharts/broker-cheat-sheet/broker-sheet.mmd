@@ -13,7 +13,7 @@ stateDiagram-v2
       Saved --> Regenerating: regenerate
       Editing --> Regenerating: regenerate
       Regenerating --> Editing: current facts received
-      Regenerating --> Editing: facts unavailable keeps draft
+      Regenerating --> Editing: facts unavailable resumes autosave
       Saved --> Saved: read revisions
       Editing --> Editing: read revisions
       Saved --> Retired: session revoked
@@ -31,7 +31,10 @@ stateDiagram-v2
     --
     state History {
       [*] --> Closed
-      Closed --> Visible: read revisions
+      Closed --> Reading: read revisions
+      Reading --> Visible: revisions received
+      Reading --> Closed: revisions unavailable
+      Reading --> Hidden: session revoked
       Visible --> Visible: read revisions
       Visible --> Hidden: session revoked
       Closed --> Hidden: session revoked
