@@ -26,7 +26,7 @@ test("create uses an opaque token and sends only hashes with explicit permission
   });
   assert.notEqual(grant.token, other.token);
 });
-test("rotation binds the predecessor and rejects unsupported download authority", async () => {
+test("rotation binds the predecessor and preserves separate download authority", async () => {
   const options = {
     projectionId: projection,
     scopes: ["view_packet"],
@@ -35,7 +35,9 @@ test("rotation binds the predecessor and rejects unsupported download authority"
     grantId,
   };
   assert.equal((await prepareClientGrant(options)).payload.share_grant_id, grantId);
-  await assert.rejects(prepareClientGrant({ ...options, scopes: ["download"] }));
+  assert.deepEqual((await prepareClientGrant({ ...options, scopes: ["download"] })).payload.permission_scopes, [
+    "download",
+  ]);
   await assert.rejects(prepareClientGrant({ ...options, scopes: ["comment"] }));
   await assert.rejects(prepareClientGrant({ ...options, scopes: [] }));
   await assert.rejects(prepareClientGrant({ ...options, expiresAt: "2026-11-10T12:00:00Z" }));

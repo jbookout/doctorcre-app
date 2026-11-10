@@ -1,3 +1,4 @@
+import { mountTourClientDownload } from "../js/ui-tour-client-download.js";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });
@@ -9,6 +10,7 @@ mountNavigation(document, location.pathname, { report: true });
   const summary = document.querySelector("#report-summary");
   const list = document.querySelector("#report-list");
   const openButton = document.querySelector("#open-tour");
+  if (openButton?.parentElement) mountTourClientDownload(openButton.parentElement);
   const feedbackStatus = document.querySelector("#feedback-status");
   let shareToken = typeof globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__ === "function"
     ? globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__() : "";

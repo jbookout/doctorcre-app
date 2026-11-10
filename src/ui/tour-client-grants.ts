@@ -1,6 +1,7 @@
 const SCOPES = new Map([
   ["view_packet", "View tour"],
   ["view_map", "View map"],
+  ["download", "Download PDF"],
   ["comment", "Comment"],
   ["shortlist", "Shortlist"],
 ]);
