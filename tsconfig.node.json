@@ -52,7 +52,9 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-reply-draft-recipient-race.ts",
+    "test/prove-reply-draft-recipient-race.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
