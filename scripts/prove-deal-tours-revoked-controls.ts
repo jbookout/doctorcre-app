@@ -2,12 +2,16 @@ import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { launchProofBrowser, readAppRelease } from "./app-release-reader.mjs";
 import { CHROMIUM_SAFETY_ARGS } from "./chromium-safety-args.mjs";
+import { requireContainingRelease } from "./containing-release.ts";
 
 export function parseArgs(args: string[]) {
-  const options: { timeoutMs: number; origin?: string | undefined } = { timeoutMs: 30000 };
+  const options: { timeoutMs: number; origin?: string | undefined; expectedCommit?: string | undefined } = {
+    timeoutMs: 30000,
+  };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--help") return { help: true };
     if (args[i] === "--origin") options.origin = args[++i];
+    else if (args[i] === "--expected-commit") options.expectedCommit = args[++i];
     else if (args[i] === "--timeout-ms") options.timeoutMs = Number(args[++i]);
     else throw Error(`Unknown option ${args[i]}`);
   }
@@ -16,27 +20,45 @@ export function parseArgs(args: string[]) {
     throw Error("Expected an HTTP origin without a path");
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > 30000)
     throw Error("Timeout must be 1 through 30000ms");
-  return { origin: url.origin, timeoutMs: options.timeoutMs };
+  return { origin: url.origin, timeoutMs: options.timeoutMs, expectedCommit: options.expectedCommit };
 }
 
 export async function prove({
   origin,
+  expectedCommit,
   timeoutMs = 30000,
   screenshotDir,
 }: {
   origin: string;
+  expectedCommit: string | undefined;
   timeoutMs?: number;
   screenshotDir?: string;
 }) {
-  const started = Date.now();
-  const release = await readAppRelease(origin, { timeoutMs });
-  const remaining = Math.max(1, timeoutMs - (Date.now() - started));
-  const browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const work = async () => {
+  const controller = new AbortController();
+  const expired = () => Object.assign(Error("Proof deadline exceeded"), { exitCode: 78 });
+  const deadline = performance.now() + timeoutMs;
+  const remaining = () => {
+    controller.signal.throwIfAborted();
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0) throw expired();
+    return ms;
+  };
+  const timer = setTimeout(() => controller.abort(expired()), timeoutMs);
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  try {
+    const release = await readAppRelease(origin, { timeoutMs: remaining() });
+    if (!expectedCommit || !/^[a-f0-9]{40}$/.test(expectedCommit) || /^0+$/.test(expectedCommit))
+      throw Object.assign(Error("Expected merge commit required"), { exitCode: 78 });
+    remaining();
+    await requireContainingRelease(expectedCommit, release.source_commit, { signal: controller.signal });
+    browser = await launchProofBrowser(
+      chromium,
+      { args: [...CHROMIUM_SAFETY_ARGS], timeout: remaining() },
+      { signal: controller.signal },
+    );
     const context = await browser.newContext({ serviceWorkers: "block" });
     const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
+    page.setDefaultTimeout(remaining());
     const modules = new Set<string>();
     let requests = 0;
     await context.route("**/*", (route) => {
@@ -123,23 +145,16 @@ export async function prove({
       }
     return {
       origin,
+      expectedCommit,
       release,
       loadedModuleUrls: [...modules],
       assertions,
       requests,
       evidenceClass: "deployed-code-synthetic-clients",
     };
-  };
-  try {
-    return await Promise.race([
-      work(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(Error("Proof timeout")), Math.max(1, timeoutMs - (Date.now() - started)));
-      }),
-    ]);
   } finally {
     clearTimeout(timer);
-    await browser.close();
+    await browser?.close();
   }
 }
 
@@ -147,7 +162,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const options = parseArgs(process.argv.slice(2));
     if ("help" in options)
-      console.log("Usage: node scripts/prove-deal-tours-revoked-controls.ts --origin <http-origin> --timeout-ms 30000");
+      console.log(
+        "Usage: node scripts/prove-deal-tours-revoked-controls.ts --origin <http-origin> --expected-commit <merge-sha> --timeout-ms 30000",
+      );
     else console.log(JSON.stringify(await prove(options), null, 2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

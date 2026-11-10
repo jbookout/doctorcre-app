@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -10,9 +10,10 @@ import { parseArgs, prove } from "../scripts/prove-deal-tours-revoked-controls.t
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 
 const runner = "scripts/prove-deal-tours-revoked-controls.ts";
-function cli(args: string[]) {
+const runnerPath = fileURLToPath(new URL(`../${runner}`, import.meta.url));
+function cli(args: string[], cwd?: string) {
   return new Promise<{ code: number | null; output: string }>((resolve) => {
-    const child = spawn(process.execPath, [runner, ...args]);
+    const child = spawn(process.execPath, [runnerPath, ...args], { cwd });
     let output = "";
     child.stdout.on("data", (data) => {
       output += data;
@@ -39,6 +40,7 @@ test("proof CLI fails closed for unavailable identity, missing export and failed
     ["release", /Proof HTTP unavailable/],
     ["export", /Missing mountDealTours export/],
     ["assertion", /fixture assertion failure/],
+    ["timeout", /Proof deadline exceeded/],
   ] as const) {
     const server = await startFixture({
       routes: new Map([
@@ -61,14 +63,24 @@ test("proof CLI fails closed for unavailable identity, missing export and failed
             body:
               mode === "export"
                 ? "export {}"
-                : 'export function mountDealTours() { throw Error("fixture assertion failure"); }',
+                : mode === "timeout"
+                  ? "await new Promise(() => {}); export function mountDealTours() {}"
+                  : 'export function mountDealTours() { throw Error("fixture assertion failure"); }',
           },
         ],
       ]),
     });
     t.after(() => server.close());
-    const result = await cli(["--origin", server.origin, "--timeout-ms", "30000"]);
-    assert.equal(result.code, mode === "release" ? 78 : 1);
+    const result = await cli([
+      "--origin",
+      server.origin,
+      "--expected-commit",
+      "1".repeat(40),
+      "--timeout-ms",
+      mode === "timeout" ? "3000" : "30000",
+    ]);
+    assert.equal(result.code, mode === "release" || mode === "timeout" ? 78 : 1);
+    if (mode === "timeout") assert.ok(server.requests.some((request) => request.path === "/js/ui-deal-tours.js"));
     assert.match(result.output, expected);
   }
 });
@@ -86,7 +98,12 @@ test("proof command imports served artifact, refuses retired re-entry and permit
   t.after(() => server.close());
   const screenshotDir = fileURLToPath(new URL("../out/test-artifacts/revoked-controls", import.meta.url));
   await mkdir(screenshotDir, { recursive: true });
-  const receipt = await prove({ origin: server.origin, timeoutMs: 30000, screenshotDir });
+  const receipt = await prove({
+    origin: server.origin,
+    expectedCommit: "1".repeat(40),
+    timeoutMs: 30000,
+    screenshotDir,
+  });
   await writeFile(`${screenshotDir}/receipt.json`, JSON.stringify(receipt, null, 2));
   assert.equal(receipt.assertions.length, 4);
   assert.ok(receipt.loadedModuleUrls.includes(`${server.origin}/js/ui-deal-tours.js`));
@@ -95,11 +112,78 @@ test("proof command imports served artifact, refuses retired re-entry and permit
   );
   assert.equal(
     declaration.assertions[0].predicate.match(/`([^`]+)`/)[1],
-    `node ${runner} --origin https://app.doctorcre.com --timeout-ms 30000`,
+    `node ${runner} --origin https://app.doctorcre.com --expected-commit <merge-sha> --timeout-ms 30000`,
   );
-  const result = await cli(["--origin", server.origin, "--timeout-ms", "30000"]);
+  const result = await cli(["--origin", server.origin, "--expected-commit", "1".repeat(40), "--timeout-ms", "30000"]);
   assert.equal(result.code, 0, result.output);
   assert.equal(JSON.parse(result.output).origin, server.origin);
-  assert.equal((await cli(["--origin", server.origin, "--timeout-ms", "1"])).code, 78);
-  assert.deepEqual(parseArgs(["--origin", server.origin]), { origin: server.origin, timeoutMs: 30000 });
+  assert.equal(
+    (await cli(["--origin", server.origin, "--expected-commit", "1".repeat(40), "--timeout-ms", "1"])).code,
+    78,
+  );
+  for (const expected of [
+    [],
+    ["--expected-commit", ""],
+    ["--expected-commit", "bad"],
+    ["--expected-commit", "0".repeat(40)],
+  ]) {
+    const refused = await cli(["--origin", server.origin, ...expected]);
+    assert.equal(refused.code, 78, refused.output);
+    assert.match(refused.output, /Expected merge commit required/);
+  }
+  assert.deepEqual(parseArgs(["--origin", server.origin]), {
+    origin: server.origin,
+    timeoutMs: 30000,
+    expectedCommit: undefined,
+  });
+});
+
+test("proof CLI requires equal or descendant release ancestry", async (t) => {
+  const repository = await temporaryDirectory("tour-proof-ancestry-", t);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, encoding: "utf8" }).trim();
+  git("init", "-q");
+  git("config", "user.name", "Synthetic");
+  git("config", "user.email", "synthetic@example.invalid");
+  const commit = (label: string) => {
+    git("commit", "--allow-empty", "-qm", label);
+    return git("rev-parse", "HEAD");
+  };
+  const older = commit("older");
+  const expectedCommit = commit("expected merge");
+  const descendant = commit("descendant");
+  git("checkout", "--orphan", "unrelated");
+  const unrelated = commit("unrelated");
+  const routes = await appAssetSnapshot();
+  for (const [name, observed, code] of [
+    ["equal", expectedCommit, 0],
+    ["descendant", descendant, 0],
+    ["older", older, 78],
+    ["unrelated", unrelated, 78],
+    ["unknown", "f".repeat(40), 78],
+  ] as const) {
+    await t.test(name, async () => {
+      const server = await startWorkerFixture({ routes, env: { APP_ENV: "production", GIT_SHA: observed } });
+      try {
+        const result = await cli(
+          ["--origin", server.origin, "--expected-commit", expectedCommit, "--timeout-ms", "30000"],
+          repository,
+        );
+        assert.equal(result.code, code, result.output);
+        if (code === 0) {
+          const receipt = JSON.parse(result.output);
+          assert.equal(receipt.release.source_commit, observed);
+          assert.equal(receipt.expectedCommit, expectedCommit);
+          assert.equal(receipt.assertions.length, 4);
+        } else {
+          assert.match(result.output, /Containing release evidence unavailable/);
+          assert.deepEqual(
+            server.requests.map((request) => request.path),
+            ["/app-release"],
+          );
+        }
+      } finally {
+        await server.close();
+      }
+    });
+  }
 });

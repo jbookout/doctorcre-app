@@ -7,7 +7,7 @@
   "assertions": [
     {
       "id": "retired-tour-instance-denies-reentry",
-      "predicate": "Match the deployed release to the merged build. Import deployed mountDealTours and its chunks, invalidate its synthetic session, and prove no recreated frame, new client reads or navigation. A separately verified fresh mount works. Run `node scripts/prove-deal-tours-revoked-controls.ts --origin https://app.doctorcre.com --timeout-ms 30000`.",
+      "predicate": "Require the deployed release to contain the expected merge commit. Older, unrelated and unknown releases exit 78. Import deployed mountDealTours and its chunks, invalidate its synthetic session, and prove no recreated frame, new client reads or navigation. A separately verified fresh mount works. Run `node scripts/prove-deal-tours-revoked-controls.ts --origin https://app.doctorcre.com --expected-commit <merge-sha> --timeout-ms 30000`.",
       "runner": "app-release-live-walk.v1",
       "expected_result": "Exit zero with JSON release identity, module URLs and passing synthetic assertions. This does not prove natural client data.",
       "input_class": "public-read-only",
