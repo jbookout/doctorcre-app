@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
 import test from "node:test";
 import { promisify } from "node:util";
+import { startFixture } from "../scripts/fixture-http.mjs";
 import { uiAssets } from "../scripts/ui-bundle.mjs";
 
 const exec = promisify(execFile);
@@ -21,36 +21,31 @@ for (const scenario of [
   "timeout",
 ]) {
   test(`proof CLI ${scenario} with declared flags`, { timeout: 45000 }, async (t) => {
-    const requests: (string | undefined)[] = [];
-    const server = createServer((request, response) => {
-      requests.push(request.url);
-      if (scenario === "timeout") return;
-      let bytes = request.url === "/app-release" ? release : assets.get((request.url || "").slice(1));
-      if (scenario === "missing-release" && request.url === "/app-release") bytes = undefined;
-      if (scenario === "missing-entry" && request.url === "/js/ui-quiet-vendors.js") bytes = undefined;
-      if (scenario === "missing-chunk" && request.url?.includes("ui-shared-")) bytes = undefined;
-      if (request.url === "/js/ui-quiet-vendors.js") {
+    const routes = new Map<
+      string,
+      { body?: string | Uint8Array; contentType?: string; status?: number; hold?: string }
+    >();
+    routes.set(
+      "/app-release",
+      scenario === "missing-release" ? { status: 404 } : { body: release, contentType: "application/json" },
+    );
+    for (const [path, value] of assets) {
+      if (scenario === "missing-entry" && path === "js/ui-quiet-vendors.js") continue;
+      if (scenario === "missing-chunk" && path.includes("ui-shared-")) continue;
+      let bytes: string | Uint8Array = value;
+      if (path === "js/ui-quiet-vendors.js") {
         if (scenario === "contradiction")
           bytes = 'export function mountQuietVendors() { throw Error("synthetic contradiction"); }';
         if (scenario === "foreign-import") bytes = 'import "https://foreign.invalid/asset.js";';
         if (scenario === "too-many-assets")
           bytes = Array.from({ length: 20 }, (_, i) => `import "./ui-shared-A${i}.generated.js";`).join("\n");
       }
-      if (!bytes) {
-        response.writeHead(404).end();
-        return;
-      }
-      response
-        .writeHead(200, { "Content-Type": request.url === "/app-release" ? "application/json" : "text/javascript" })
-        .end(bytes);
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
-    t.after(() => {
-      server.closeAllConnections();
-      server.close();
-    });
-    // The fixture listens on TCP, so its address has a port.
-    const origin = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+      routes.set(`/${path}`, { body: bytes, contentType: "text/javascript" });
+    }
+    if (scenario === "timeout") routes.set("/app-release", { hold: "release-timeout" });
+    const server = await startFixture({ routes });
+    t.after(() => server.close());
+    const origin = server.origin;
     let result: { stdout: string; stderr: string; code?: number };
     try {
       result = await exec(
@@ -78,8 +73,9 @@ for (const scenario of [
     const expected = scenario === "success" ? 0 : scenario.startsWith("missing-") ? 78 : 1;
     assert.equal(result.code || 0, expected, result.stdout + result.stderr);
     assert.equal(receipt.exitCode, expected);
-    assert.ok(requests.length <= 20);
-    assert.equal(new Set(requests).size, requests.length);
+    const paths = server.requests.map((request) => request.path);
+    assert.ok(paths.length <= 20);
+    assert.equal(new Set(paths).size, paths.length);
     if (scenario === "success") {
       assert.equal(receipt.release.source_commit, "a".repeat(40));
       assert.ok(receipt.assertions.includes("disposed ignores late read"));
