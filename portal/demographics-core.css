@@ -1,0 +1,25 @@
+.demographics-core { color: var(--fg); background: var(--ground); padding: clamp(12px, 3vw, 32px); line-height: 1.6; overflow-wrap: anywhere; }
+.demographics-core section { margin-block-end: 3rem; }
+.demographics-core h2 { font-size: clamp(1.4rem, 4vw, 2rem); line-height: 1.25; }
+.demographics-core a { color: var(--fg); text-underline-offset: .2em; }
+.demographics-core [role=group] { display: grid; gap: .5rem; font-weight: 600; margin-block: 1rem; }
+.demographics-core button { max-width: 100%; min-height: 44px; padding: .5rem; font: inherit; color: inherit; background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: 6px; }
+.demographics-core :focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+.demographics-core table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-block: 1rem; }
+.demographics-core caption { text-align: left; padding-block: .5rem; }
+.demographics-core th, .demographics-core td { padding: .65rem .4rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hairline-strong); }
+.demographics-core [data-selected=true] { background: var(--surface-3); font-weight: 700; }
+.demographics-tiles, .demographics-income-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; }
+.demographics-core article { border: 1px solid var(--hairline-strong); border-radius: 10px; padding: 1rem; min-width: 0; }
+.demographics-core strong { font-size: 1.25rem; }
+.demographics-core summary { cursor: pointer; padding-block: .75rem; }
+.demographics-bar { display: block; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; margin-block: .5rem; }
+.demographics-bar > span { display: block; height: 100%; background: var(--data-4); }
+.demographics-projection > span { background: repeating-linear-gradient(90deg, var(--data-4) 0 5px, transparent 5px 8px); }
+@media (prefers-reduced-motion: reduce) { .demographics-core * { scroll-behavior: auto; } }
+@media print { .demographics-core details > * { display: block; } }
+
+.demographics-core [role=group] { display:flex; flex-wrap:wrap; gap:.5rem; }
+.demographics-core button[aria-pressed=true] { background:var(--surface-3); font-weight:700; border-width:2px; }
+
+.demographics-core fieldset { border: 0; padding: 0; min-inline-size: 0; margin-inline: 0; }
