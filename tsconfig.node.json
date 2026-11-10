@@ -54,7 +54,9 @@
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
     "scripts/prove-reply-draft-recipient-race.ts",
-    "test/prove-reply-draft-recipient-race.browser.ts"
+    "test/prove-reply-draft-recipient-race.browser.ts",
+    "test/portal-demographics-core.test.ts",
+    "test/portal-demographics-core-browser.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
