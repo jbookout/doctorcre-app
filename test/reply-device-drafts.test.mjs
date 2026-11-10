@@ -39,3 +39,41 @@ test('late save confirmation cannot erase newer typing from another tab', () => 
   drafts.remove(row.id, { ...edited, body: 'Newer typing' });
   assert.equal(drafts.restore(row), null);
 });
+
+for (const change of [
+  { to: ['new@example.test'] }, { cc: ['new@example.test'] },
+  { to: ['a@example.test', 'b@example.test'] }, { cc: [] },
+  { baseVersion: 4 }, { subject: 'new subject' }, { body: 'new body' },
+]) test(`late receipt preserves changed ${Object.keys(change)[0]} ${JSON.stringify(change)}`, () => {
+  const drafts = createReplyDeviceDrafts(memory(), 'joe');
+  drafts.save(row.id, edited);
+  const newer = { ...edited, ...change };
+  drafts.save(row.id, newer);
+  drafts.remove(row.id, edited);
+  assert.deepEqual(drafts.restore(row), { ...newer, conflict: newer.baseVersion !== row.version || JSON.stringify(newer.to) !== JSON.stringify(row.reply_draft.to) || JSON.stringify(newer.cc) !== JSON.stringify(row.reply_draft.cc) });
+  drafts.remove(row.id, newer);
+  drafts.remove(row.id, newer);
+  assert.equal(drafts.restore(row), null);
+});
+test('recipient order is part of the snapshot identity', () => {
+  for (const field of ['to', 'cc']) {
+    const drafts = createReplyDeviceDrafts(memory(), 'joe');
+    const snapshot = { ...edited, [field]: ['a@example.test', 'b@example.test'] };
+    const newer = { ...snapshot, [field]: [...snapshot[field]].reverse() };
+    drafts.save(row.id, newer);
+    drafts.remove(row.id, snapshot);
+    assert.deepEqual(drafts.restore(row)[field], newer[field]);
+  }
+});
+test('missing storage and explicit discard are repeat safe', () => {
+  const drafts = createReplyDeviceDrafts(null, 'joe');
+  assert.equal(drafts.save(row.id, edited), false);
+  drafts.remove(row.id, edited);
+  drafts.remove(row.id);
+  assert.equal(drafts.restore(row), null);
+  const stored = createReplyDeviceDrafts(memory(), 'joe');
+  stored.save(row.id, edited);
+  stored.remove(row.id);
+  stored.remove(row.id);
+  assert.equal(stored.restore(row), null);
+});

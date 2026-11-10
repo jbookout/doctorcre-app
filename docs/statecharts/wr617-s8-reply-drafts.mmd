@@ -11,6 +11,10 @@ stateDiagram-v2
     SavedOnDevice --> Saving: Save draft
     Restored --> Saving: Save draft
     Saving --> Reviewing: Server confirms exact saved text, clear matching snapshot
+    Saving --> NewerLocalEdit: Another tab persists newer text or ordered To or Cc
+    NewerLocalEdit --> NewerLocalEdit: Old save receipt arrives, keep newer device draft
+    NewerLocalEdit --> ChangedElsewhere: Reload and open preserved draft
+    NewerLocalEdit --> Reviewing: Explicitly discard device draft
     Saving --> ChangedElsewhere: Version conflict
     Saving --> SaveUnknown: Outcome unknown, editing locked
     SaveUnknown --> Saving: Check outcome with original request
@@ -30,6 +34,7 @@ stateDiagram-v2
         state SavedOnDevice
         state Restored
         state ChangedElsewhere
+        state NewerLocalEdit
         state Saving
         state SaveUnknown
         state Grace
@@ -59,3 +64,7 @@ stateDiagram-v2
     %% Submit unknown/replay: test/email-followups.test.mjs: reply submission loss locks editing and Check outcome replays the exact request after removal from the list.
     %% Submit refused: test/email-followups.test.mjs: a refusal after the send grace is shown plainly with the edits kept.
     %% Cross-tab cleanup guard: reviewed recovery cleanup preserves newer typing from another tab.
+    %% never A late receipt deletes a draft with newer text, version, or ordered To or Cc.
+    %% Newer edit / late receipt / reload / discard: late save preserves FIELD-only edit at WIDTHpx THEME.
+    %% Exact identity and order: test/reply-device-drafts.test.mjs: late receipt preserves changed FIELD; recipient order is part of the snapshot identity.
+    %% Missing storage / repeat discard: test/reply-device-drafts.test.mjs: missing storage and explicit discard are repeat safe.
