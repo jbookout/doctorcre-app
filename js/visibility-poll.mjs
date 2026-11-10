@@ -7,8 +7,8 @@ export const IDLE_CUTOFF_MS = 30 * 60_000;
 // Periodic reads run at most once a minute; healthy lifecycle refreshes
 // share their attempt cap and begin backing off after five attempts.
 export const MIN_POLL_MS = 60_000;
-export const MAX_POLL_ATTEMPTS = 20;
-export const MAX_BACKOFF_MS = 15 * 60_000;
+const MAX_POLL_ATTEMPTS = 20;
+const MAX_BACKOFF_MS = 15 * 60_000;
 const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "touchmove", "wheel"];
 
 // Scroll events are also dispatched for scrollIntoView and restored scroll.

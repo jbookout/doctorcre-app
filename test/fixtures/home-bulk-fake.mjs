@@ -6,7 +6,7 @@ export function createBatchFake(items, { mixed = false, stale = false, lost = fa
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   return { items, calls, release, async rpc(name, args) {
-    if (name === 'read-home-inbox-v4') return { error: 'unknown_tool' };
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return { error: 'unknown_tool' };
     if (name === 'read-home-inbox-v3') return { ok: true, schema_version: 'home-inbox.v3', items: structuredClone(items), truncated: false, limit: 1000, working_collapsed: true, auto_settle_enabled: true };
     if (!contract.verbs[name]) return { ok: true, items: [], enabled: false };
     calls.push({ name, args: structuredClone(args) });

@@ -1,3 +1,4 @@
+import { isPortfolioPullRequest } from './repository-identity.mjs';
 import { createPageBudget } from './read-budget.mjs';
 const STATES = [
   ['waiting','Waiting'],['working','Working'],['review','Review'],['fixing','Sent back for fixes'],
@@ -105,7 +106,7 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
     setText(record.delivery,card.delivery_evidence ? `Delivery evidence: ${card.delivery_evidence}` : 'Live is recorded. Matching delivery evidence detail is unavailable in this observation.');
     setText(record.changed,`Last changed ${timestamp(card.changed_at)}`);setText(record.identity,`Reference ${card.id}`);
     record.prs.setAttribute('aria-label',`Source changes for ${card.title} (${card.id})`);
-    const valid=card.prs.filter(href=>/^https:\/\/github\.com\/jbookout\/(?:carr-system|doctorcre-app|software-factory)\/pull\/[1-9]\d*$/.test(href));
+    const valid=card.prs.filter(isPortfolioPullRequest);
     record.prs.hidden=!valid.length;
     for(const [href,link] of record.links) if(!valid.includes(href)){link.remove();record.links.delete(href);}
     for(const href of valid) if(!record.links.has(href)) {

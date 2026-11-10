@@ -3,7 +3,11 @@
     "strict": true,
     "noEmit": true,
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -12,7 +16,13 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": false,
-    "types": []
+    "types": [],
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/ui"]
+  "include": [
+    "src/ui"
+  ],
+  "exclude": [
+    "src/ui/worker"
+  ]
 }

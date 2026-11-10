@@ -18,14 +18,14 @@ import { outcomeOpenTarget } from './open-session-model.js';
 /* ---------------------------------------------------------- producer vocabulary */
 
 export const ROUTING_STATES = Object.freeze(["queued", "active", "waiting", "failed", "unknown", "verified"]);
-export const INTENT_KINDS = Object.freeze(["recommendation", "submission"]);
+const INTENT_KINDS = Object.freeze(["recommendation", "submission"]);
 
-export const ROUTING_STATE_LABEL = Object.freeze({
+const ROUTING_STATE_LABEL = Object.freeze({
   queued: "queued", active: "active", waiting: "waiting",
   failed: "failed", unknown: "unknown", verified: "verified",
 });
 
-export const INTENT_LABEL = Object.freeze({
+const INTENT_LABEL = Object.freeze({
   recommendation: "Recommendation",
   submission: "Submission",
 });

@@ -1,4 +1,5 @@
 import {onDialogClosed} from './dialog-lifecycle.js';
+import { mountRadarWatches } from './ui-watches.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { projectLeaseRadar, pastClientTouches, radarToday, leaseRadarAddress, parseLeaseRadarAddress } from './lease-radar-model.js';
 const E = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,7 +14,7 @@ function leaseCard(row, gap = false) {
   return `<button type="button" class="lease-card ${gap ? 'gap' : row.tone || 'soon'}" data-lease="${E(row.id)}" data-radar-key="lease:${E(row.id)}"><span class="lease-light" aria-hidden="true"></span><span class="lease-card-copy"><strong>${E(row.client_name)}</strong><span>${E([row.city,row.state].filter(Boolean).join(' · '))}</span></span><span class="lease-card-date"><time datetime="${E(row.expiration_on || '')}">${date(row.expiration_on)}</time><small>${gap ? 'Date needed' : E(row.label)}</small></span><span class="lease-card-arrow" aria-hidden="true">↗</span></button>`;
 }
 function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}) {
-  let selected = null, opener = null;
+  let selected = null, opener = null, renderedHtml = null;
   const dismiss = () => {
     if (selected === null) return;
     selected = null;
@@ -21,14 +22,19 @@ function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}
   };
   const paintSelected = () => {
     const row = rows().find(r => r.id === selected);
-    if (!row) { dialog.replaceChildren(); if (dialog.open) dialog.close(); return; }
+    if (!row) { renderedHtml=null; dialog.replaceChildren(); if (dialog.open) dialog.close(); return; }
     const expanded = dialog.querySelector('details')?.open;
     const focused = dialog.contains(document.activeElement) ? document.activeElement.dataset.radarKey : null;
     const html = `<div class="lease-detail-heading"><div><span>${E(row.client_status_label || 'Client')}</span><h2 id="${E(dialog.id)}Title">${E(row.client_name)}</h2></div><button type="button" data-radar-key="close" data-close-lease aria-label="Close lease details">×</button></div><div class="lease-detail-grid"><section><h3>Client</h3><dl><dt>Market</dt><dd>${E([row.city,row.state].filter(Boolean).join(' · ') || '—')}</dd><dt>Specialty</dt><dd>${E(row.vertical || '—')}</dd><dt>Broker</dt><dd>${E(row.owner_label || 'Unassigned')}</dd><dt>Contact</dt><dd>${E(({active:'Active',nurture:'Nurture',paused:'Paused',do_not_contact:'Do not contact'})[row.contact_state] || '—')}</dd></dl></section><section><h3>Lease</h3><div class="lease-expiry-value">${date(row.expiration_on)}</div><dl><dt>Commencement</dt><dd>${date(row.commencement_on).replace('Missing expiry','—')}</dd><dt>Option notice</dt><dd>${row.notice_on ? date(row.notice_on) : '—'}</dd><dt>Review</dt><dd>${row.lease_status === 'current' ? 'Current lease' : 'Needs review'}</dd><dt>Next touch</dt><dd>${row.touch_due_on ? `${date(row.touch_due_on)} · ${E(row.touch_summary || 'Follow up')}` : 'Not scheduled'}</dd></dl></section></div>${row.options_note ? '<p class="lease-note-summary">Lease options</p>' : ''}<details><summary data-radar-key="details">Details</summary><dl><dt>Signed</dt><dd>${row.executed_on ? date(row.executed_on) : '—'}</dd><dt>Agreement</dt><dd>${E(row.evidence_ref || '—')}</dd></dl>${row.options_note ? `<h3>Lease entry</h3><p class="lease-original">${E(row.options_note)}</p>` : ''}${row.notice_note ? `<h3>Notice entry</h3><p class="lease-original">${E(row.notice_note)}</p>` : ''}</details><div class="lease-detail-links"><a data-radar-key="client" href="/clients?record=${encodeURIComponent(row.client_id)}">Client ↗</a>${row.deal_id ? `<a data-radar-key="deal" href="/deals?deal=${encodeURIComponent(row.deal_id)}">Deal ↗</a>` : ''}</div>`;
-    if (dialog.innerHTML === html) return;
+    if (renderedHtml === html && dialog.querySelector('.lease-detail-heading')) return;
+    const island = [...dialog.querySelectorAll('[data-lease-watch-host]')].find(node => node.dataset.leaseWatchHost === row.id);
+    const islandFocus = island?.contains(document.activeElement) ? document.activeElement : null;
+    renderedHtml = html;
     dialog.innerHTML = html;
+    if (island) dialog.append(island);
     if (expanded) dialog.querySelector('details').open = true;
-    if (focused) ([...dialog.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === focused) || dialog.querySelector('button')).focus();
+    if (islandFocus) islandFocus.focus();
+    else if (focused) ([...dialog.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === focused) || dialog.querySelector('button')).focus();
   };
   const closeDialog = () => { dismiss(); if (dialog.open) dialog.close(); };
   dialog.addEventListener('click', e => { if (e.target.closest('[data-close-lease]')) closeDialog(); });
@@ -49,6 +55,7 @@ function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}
 export function mountLeaseRadar({document, window, client, now = () => new Date(), intervalMs}) {
   const $ = id => document.getElementById(id);
   let payload = null, model = null, sequence=0, disposed=false;
+  const watches = mountRadarWatches($('leaseRadar'));
   let {view,scope,search,quarter,lease} = parseLeaseRadarAddress(window.location?.search);
   const saveAddress = () => window.history?.replaceState({},'',leaseRadarAddress({view,scope,search,quarter,lease},window.location?.href));
   const restoreControls = () => {
@@ -68,6 +75,11 @@ export function mountLeaseRadar({document, window, client, now = () => new Date(
     const quarters = filtered.quarters.filter(q=>!quarter || quarter===q.key);
     const html = view==='gaps' ? `<section class="lease-gap-list" aria-label="Missing expiry dates">${filtered.gaps.map(row=>leaseCard(row,true)).join('') || '<p class="lease-empty">No missing expiry dates</p>'}</section>` : `<div class="lease-timeline-viewport">${visual}</div><div class="lease-legend"><span class="urgent">≤ 6 months</span><span class="soon">6–12 months</span><span class="later">12–24 months</span></div><div class="lease-quarter-list">${quarters.map(q=>`<section class="lease-quarter-group"><div class="lease-quarter-title"><h2>${q.label}</h2><span>${q.leases.length}</span></div><div class="lease-quarter-cards">${q.leases.map(row=>leaseCard(row)).join('') || '<span class="lease-empty">No expirations</span>'}</div></section>`).join('')}</div>`;
     keyedPaint($('leaseRadar'),html,$('refreshLeases'));
+    for (const card of $('leaseRadar').querySelectorAll('[data-lease]')) {
+      const status = document.createElement('small'); status.dataset.radarWatch = card.dataset.lease;
+      card.querySelector('.lease-card-copy').append(status);
+    }
+    watches.paint(payload.leases);
     $('leaseWindow').textContent=`${date(model.today)} – ${date(model.end)}`;
     $('leaseGapCount').textContent=String(model.gaps.length);
     $('leaseTotal').textContent=String(model.dated.length);
@@ -80,7 +92,7 @@ export function mountLeaseRadar({document, window, client, now = () => new Date(
     try { const next = await readWithDeadline(signal=>client.readLeaseRadar({signal}),{signal});
       if(disposed || epoch!==sequence) return;
       if (!projectLeaseRadar(next,{today:radarToday(now())})) throw Error('Unavailable');
-      payload=next; render();
+      payload=next; render(); void watches.refresh();
       if (lease) { const row=payload.leases.find(row=>row.id===lease); if(row) detail.open(lease,[...document.querySelectorAll("[data-lease]")].find(node=>node.dataset.lease===lease)); }
     } catch(error) { if(disposed || epoch!==sequence) return;
       payload=null; model=null; detail.close();
@@ -99,7 +111,7 @@ export function mountLeaseRadar({document, window, client, now = () => new Date(
   $('leaseScope').addEventListener('change',e=>{scope=e.target.value;saveAddress();render();});
   for(const tab of document.querySelectorAll('[data-lease-view]')) tab.addEventListener('click',()=>{view=tab.dataset.leaseView;quarter=null;saveAddress();restoreControls();render();});
   const auto=mountAutoRefresh({document,window,refresh,intervalMs}); $('refreshLeases').addEventListener('click',auto.refresh); auto.refresh();
-  return {dispose(){disposed=true;sequence++;auto.dispose();},refresh:auto.refresh};
+  return {dispose(){disposed=true;sequence++;auto.dispose();watches.dispose();},refresh:auto.refresh};
 }
 
 export function mountPastClientWidget({document,window,client,host,now=()=>new Date(),scope=()=> 'team'}) {

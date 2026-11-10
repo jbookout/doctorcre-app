@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -65,7 +66,7 @@ export async function prove({ origin, timeoutMs }) {
   const controller = new AbortController();
   const unavailable = message => Object.assign(new Error(message), { unavailable: true });
   const deadline = new Promise((_, reject) => {
-    timer = setTimeout(() => { controller.abort(); reject(unavailable('total deadline exceeded')); }, timeoutMs);
+    timer = setTimeout(() => { controller.abort(unavailable('total deadline exceeded')); reject(controller.signal.reason); }, timeoutMs);
   });
   try {
     await Promise.race([deadline, (async () => {
@@ -74,7 +75,7 @@ export async function prove({ origin, timeoutMs }) {
       const get = async url => {
         if (++requests > 20) throw unavailable('twenty-fetch cap exceeded');
         let response;
-        try { response = await fetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
+        try { response = await proofFetch(url, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
         catch { throw unavailable('asset fetch unavailable'); }
         if (!response.ok) throw unavailable(`asset unavailable ${new URL(url).pathname}`);
         const chunks = [];
@@ -85,10 +86,7 @@ export async function prove({ origin, timeoutMs }) {
         }
         return Buffer.concat(chunks);
       };
-      const releaseBytes = await get(`${origin}/app-release`);
-      try { receipt.release = JSON.parse(releaseBytes.toString()); }
-      catch { throw unavailable('release identity unavailable'); }
-      if (receipt.release?.service !== 'doctorcre-app' || !/^[0-9a-f]{40}$/.test(receipt.release?.source_commit || '') || /^0+$/.test(receipt.release.source_commit)) throw unavailable('release identity unavailable');
+      receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.href) }));
       const assets = new Map();
       const pending = [`${origin}/js/ui-answers.js`];
       await init;
@@ -107,7 +105,7 @@ export async function prove({ origin, timeoutMs }) {
           if (assets.size + pending.length > 19) throw unavailable('twenty-fetch cap exceeded');
         }
       }
-      browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeoutMs - (Date.now() - started)) });
+      browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: Math.max(1, timeoutMs - (Date.now() - started)) }, { signal: controller.signal });
       if (controller.signal.aborted) { await browser.close(); throw unavailable('total deadline exceeded'); }
       const context = await browser.newContext({ serviceWorkers: 'block' });
       await context.route('**/*', route => {
@@ -142,6 +140,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = result.exitCode;
   } catch (error) {
     console.log(JSON.stringify({status:'failed',error:error.message,exitCode:1}));
-    process.exitCode = 1;
+    process.exitCode = error.exitCode || 1;
   }
 }

@@ -1,6 +1,17 @@
 import { BUSINESS_TIME_ZONE } from './business-date.js';
 
-const parse = value => { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date : null; };
+const parse = value => {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/.exec(value);
+  if (!match || match[0] !== value) return null;
+  const [, year, month, day, hour, minute, second, , offsetHour = '0', offsetMinute = '0'] = match;
+  const leap = +year % 4 === 0 && (+year % 100 !== 0 || +year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (+month < 1 || +month > 12 || +day < 1 || +day > days[+month - 1]
+    || +hour > 23 || +minute > 59 || +second > 59 || +offsetHour > 23 || +offsetMinute > 59) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 export function relativeAge(occurredAt, now = new Date()) {
   const sent = parse(occurredAt);
   if (!sent) return 'time unavailable';

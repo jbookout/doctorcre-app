@@ -1,0 +1,52 @@
+stateDiagram-v2
+  [*] --> EarlyLoading: Home opens, session transport starts read
+  EarlyLoading: Home bundle loading, mail read in flight
+  EarlySettled: Home bundle loading, mail result held
+  EarlyLoading --> EarlySettled: Response or failure
+  EarlyLoading --> Loading: Island mounts, adopt same request
+  EarlySettled --> Ready: Island mounts with populated response
+  EarlySettled --> Empty: Island mounts with empty response
+  EarlySettled --> Unavailable: Island mounts with failure
+  EarlySettled --> Retired: Island mounts after authorization refusal
+  EarlyLoading --> Collapsed: Page hidden or pagehide before mount
+  EarlySettled --> Collapsed: Page hidden or pagehide before mount
+  EarlyLoading --> Retired: Session retired before mount
+  EarlySettled --> Retired: Session retired before mount
+  Collapsed: Show mail priorities
+  Loading: Loading mail priorities
+  Ready: Ranked recorded decisions
+  Empty: No recorded pending decisions
+  Unavailable: Mail priorities unavailable, retry
+  Retired: Sign in to view mail priorities
+  Disposed: Home closed
+  Collapsed --> Loading: Choose Show mail priorities
+  Loading --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Ready --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Empty --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Unavailable --> Collapsed: Choose Hide mail priorities, page hidden or pagehide
+  Collapsed --> Collapsed: Ignore stale completion
+  Loading --> Loading: Late starter cannot duplicate adopted or island-owned request
+  Loading --> Ready: Valid populated response
+  Loading --> Empty: Valid empty response
+  Loading --> Unavailable: Failure, unavailable or malformed response
+  Unavailable --> Loading: Choose Retry mail priorities
+  Ready --> Loading: Choose Refresh mail priorities
+  Empty --> Loading: Choose Refresh mail priorities
+  Ready --> Ready: Choose existing card review
+  Loading --> Retired: Authorization refused or session retired
+  Collapsed --> Retired: Session retired
+  Ready --> Retired: Session retired
+  Empty --> Retired: Session retired
+  Unavailable --> Retired: Session retired
+  Loading --> Disposed: Home unmounts, discard late completion
+  Ready --> Disposed: Home unmounts
+  Collapsed --> Disposed: Home unmounts
+  Empty --> Disposed: Home unmounts
+  Unavailable --> Disposed: Home unmounts
+  Retired --> Disposed: Home unmounts
+  Retired --> Retired: Ignore stale completion
+  Disposed --> Disposed: Ignore stale completion
+  %% never Send, approve or dismiss from this panel
+  %% never Reorder or infer dates
+  %% never Poll or automatically retry
+  %% never Commit a stale completion after collapse, hiding, retirement or disposal

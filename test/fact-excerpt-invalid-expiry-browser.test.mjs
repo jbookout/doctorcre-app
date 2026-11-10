@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromium, fixtureServer, pausedClock } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer, pausedClock } from './browser-harness.mjs';
 import { observeExcerpts } from '../scripts/prove-fact-excerpt-invalid-expiry.mjs';
 
 for (const width of [390, 1440]) {
@@ -11,7 +11,7 @@ for (const width of [390, 1440]) {
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await pausedClock(page, new Date('2026-02-01T00:00:00Z'));
-    await page.goto(server.origin);
+    await componentDocument(page, server.origin, { dispose: page => page.evaluate(() => window.fixture?.panel.dispose()) });
     const result = await observeExcerpts(page, `${server.origin}/js/ui-facts.js`);
     assert.equal(result.assertions, 28);
     await page.evaluate(async origin => {

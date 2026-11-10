@@ -1,0 +1,13 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "producer": "mcp-server/src/lead-follow-up.ts#quiet-follow-ups",
+  "source_sha256": "14e367343600b15b627d3ac4926adda89ace52c66cacb9c34f51c3f75ba27515",
+  "method": "executeRegisteredTool with synthetic database query results. No database connection. Real registry input parser and handler; not a PostgreSQL eligibility proof.",
+  "query": {
+    "verb": "quiet-follow-ups",
+    "arguments": {}
+  },
+  "natural": false,
+  "validation": "Registered input parser plus tools/prove-quiet-follow-up-owner-filter.py#response and js/leads-client.js#validateQuietFollowUps executed successfully. No external replay dependency."
+}

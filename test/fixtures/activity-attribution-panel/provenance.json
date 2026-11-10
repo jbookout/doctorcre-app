@@ -1,0 +1,31 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "verb": "read-activity-deal-attribution",
+  "method": "Real registered family handler executed with synthetic query snapshots, one bounded query. Bundle includes pinned parser and dependencies, replayable without CARR checkout. Does not claim SQL integration coverage.",
+  "producer_sha256": "5b39e326e8ff537cde8990aed6880e5d95ad1d5f7cee4202401bc5450e95d10d",
+  "recordings_sha256": "bda5517d1cbbd293315069cce8b0b39813f4355bb7933a53a45fa9078287ac4f",
+  "dependencies": [
+    {
+      "path": "mcp-server/src/activity-deal-attribution.ts",
+      "sha256": "7ac0503959f42aa9c178c59db30f62fc1218ffad61073de127b5894a88bf88a9"
+    },
+    {
+      "path": "mcp-server/src/tool-families/activity-deal-attribution.js",
+      "sha256": "9e769645d9b0ed358d53d7462d7204d0d3c265b6ae4844dfba6f5b51ee3448c1"
+    },
+    {
+      "path": "mcp-server/src/partner-authority.js",
+      "sha256": "57d1e77b63f97b3880d9a22d01fdcdde6921b0f9886d9b1cfe5b30e07bf0985e"
+    },
+    {
+      "path": "mcp-server/src/identity.js",
+      "sha256": "875d3d96698ba60bad5d9eb88485cb798d067822665daeee50358f8e91b12b7a"
+    },
+    {
+      "path": "mcp-server/src/tool-error.ts",
+      "sha256": "560dd7d6509deb1ebe3cb42dcdb50254dd272383f34436c2558d8f53d9f6b57f"
+    }
+  ],
+  "validator": "@cfworker/json-schema@4.1.1"
+}

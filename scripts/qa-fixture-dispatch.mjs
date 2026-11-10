@@ -1,0 +1,210 @@
+import { handleDoctorcreRequest } from '../src/worker.js';
+import { createFixtureClient, createFixtureDealStore } from '../js/fixture-client.js';
+import { createInvoiceFixture, invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
+import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
+import { workspace as leadWorkspace, detail as leadDetail, id as leadId, emptyQuietFollowUps } from '../test/leads-workspace-fixture.mjs';
+import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mjs';
+import { parseViewState, PAGE_SIZE } from '../js/workspace-business-model.js';
+import { PHASES } from '../js/client.js';
+import { censusResponse } from './work-inventory-fixture.mjs';
+
+const cookieName = 'doctorcre_qa';
+const now = () => new Date().toISOString();
+const phases = ['pending','research','site_selection','negotiation','legal','due_diligence','closing'];
+
+const json = (body, status=200, headers={}) => new Response(JSON.stringify(body), { status, headers:{ 'content-type':'application/json', 'cache-control':'no-store', ...headers } });
+const refusal = code => { throw Object.assign(new Error(code), { payload:{error:code} }); };
+const namespaceValid = name => typeof name === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(name);
+
+function directoryRead(url, state, viewer, namespace) {
+  const match=url.pathname.match(/^\/api\/v1\/business\/(clients|vendors)(?:\/([^/]+))?$/);
+  if(!match)return null;
+  const [,dataset,id]=match;
+  const fixtureUrl=new URL(`/api/v1/business/${dataset}`,url);
+  const all=state.variant==='empty'?[]:Array.from({length:3},(_,i)=>directoryFixture(`${fixtureUrl}?page=${i+1}`).rows).flat();
+  if(id) {
+    if(!all.some(row=>row.id===id))return json({error:'record_not_found'},404);
+    const payload=directoryFixture(url.href);
+    payload.viewer=viewer;payload.record.owned_by_viewer=payload.record.owner_label.toLowerCase()===viewer;
+    payload.source.correlation_id=`synthetic-${namespace}-${dataset}`;
+    return json(payload);
+  }
+  const {query}=parseViewState(`/${dataset}`,url.search);
+  const payload=directoryFixture(url.href);
+  let rows=all.filter(row=>(query.scope!=='mine'||row.owner_label.toLowerCase()===viewer)
+    &&(query.owner==='all'||row.owner_label.toLowerCase()===query.owner)
+    &&(!query.q||row.name.toLowerCase().includes(query.q.toLowerCase()))
+    &&(!query.territory||row.territory===query.territory)
+    &&(dataset==='clients'
+      ?(!query.status||row.recorded_status===query.status)&&(!query.type||row.recorded_client_type===query.type)
+        &&(query.pipeline==='any'||(query.pipeline==='active'?row.recorded_status_active_pipeline===true:query.pipeline==='other'?row.recorded_status_active_pipeline===false:row.recorded_status_active_pipeline==null))
+      :(!query.category||row.recorded_category===query.category)&&(!query.stage||row.recorded_stage===query.stage)&&(!query.disposition||row.recorded_disposition===query.disposition)));
+  const sortField=query.sort==='recent'?'updated_at':query.sort.startsWith('last_deal')?'last_deal_at':query.sort;
+  const descending=query.sort==='recent'||query.sort==='last_deal_desc';
+  rows.sort((a,b)=>(descending?-1:1)*String(a[sortField]||'').localeCompare(String(b[sortField]||''))||a.name.localeCompare(b.name));
+  payload.viewer=viewer;payload.total=rows.length;payload.page_count=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));payload.out_of_range=query.page>payload.page_count;
+  payload.rows=rows.slice((query.page-1)*PAGE_SIZE,query.page*PAGE_SIZE).map(row=>({...row,owned_by_viewer:row.owner_label.toLowerCase()===viewer}));
+  payload.facets=dataset==='clients'?{statuses:[{slug:'active',label:'Active'}],types:[{slug:'practice',label:'Practice'}]}:{categories:[{slug:'banker',label:'Banking'},{slug:'architect',label:'Architecture'}],stages:[{slug:'warm',label:'Warm'}],dispositions:[{slug:'active',label:'Active'}],territories:[{slug:'Demo North',label:'Demo North'},{slug:'Demo South',label:'Demo South'}]};
+  payload.source.correlation_id=`synthetic-${namespace}-${dataset}`;
+  return json(payload);
+}
+
+function makeState(variant) {
+  const count = variant === 'empty' ? 0 : variant === 'large' ? 160 : 16;
+  const today = new Date().toISOString().slice(0,10);
+  const deals = Array.from({length:count}, (_, i) => ({ id:`qa-deal-${i+1}`, name:`Demo ${i%2 ? 'Dell' : 'Joe'} ${['Dental Relocation','Primary Care Renewal','Ortho Expansion','Surgical Purchase'][i%4]} ${String(i+1).padStart(3,'0')}`, type:['relocation','renewal','expansion','purchase'][i%4], phase:phases[i%phases.length], owner:i%2 ? 'dell':'joe', attention:i<8 || i%5===0, last_touch:today, next_step:`Review synthetic ${i%2 ? 'lease terms':'property shortlist'}`, next_date:today, segment:'Dental', market:['Pensacola','Mobile','Gulf Breeze','Destin'][i%4], lane:'territory', workspace_kind:'team', operating_state:'active', parking_reason:null, parking_note:null, version:1, field_base:{}, invoiced_on:null, client_name:`Demo Practice ${i+1}` }));
+  const template = leadWorkspace().leads;
+  const leads = Array.from({length:variant==='empty'?0:variant==='large'?180:template.length}, (_, i) => ({ ...structuredClone(template[i%template.length]), id:leadId(i+1), party_id:leadId(i+1000), registry_ref:`L-${i+1}`, name:`Demo Lead ${String(i+1).padStart(3,'0')}`, doctor_name:`Dr. Demo ${i+1}`, owner:i%3===0?'joe':i%3===1?'dell':null, created_at:now(), first_seen_at:now(), score:95-i%70 }));
+  const invoiceRows = invoiceTrackerFixture(today).entries;
+  const entries = variant==='empty'?[]:variant==='large'?Array.from({length:120},(_,i)=>({...structuredClone(invoiceRows[i%invoiceRows.length]), deal_id:`qa-invoice-deal-${i+1}`,name:`Demo Invoice Practice ${i+1}`,commission_id:invoiceRows[i%invoiceRows.length].commission_id===null?null:`10000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`, owner:i%2?'dell':'joe'})):invoiceRows;
+  const stops = variant === 'empty' ? [] : [
+    { property_ref:'property:public:synthetic_qa_property_01', route_sequence:1, route_label:'A', name:'Demo Meadow Medical', address:'100 Example Meadow Way', suite:'Suite 101' },
+    { property_ref:'property:public:synthetic_qa_property_02', route_sequence:2, route_label:'B', name:'Demo Harbor Offices', address:'200 Sample Harbor Lane', suite:'Suite 202' },
+  ];
+  const sharedTour = {
+    report:{stops},
+    map:{points:stops.map((stop,index) => ({property_ref:stop.property_ref,route_sequence:stop.route_sequence,route_label:stop.route_label,latitude:30.4+index*0.01,longitude:-87.2+index*0.01}))},
+    feedback:{projection_ref:'projection:public:synthetic_qa_tour_01',permission_scopes:['shortlist','comment'],items:stops.map(stop => ({property_ref:stop.property_ref,shortlisted:false,comments:[{comment:'Synthetic feedback for this demo property.'}]}))},
+  };
+  return { variant, dealStore:createFixtureDealStore({deals}), leads, sharedTour, invoices:createInvoiceFixture({entries}), clients:new Map() };
+}
+
+export function createQaDispatcher({ seed, assets: snapshot }) {
+
+  const namespaces = new Map();
+  const identities = new Map();
+  const stateFor = namespace => {
+    if(!namespaces.has(namespace)) namespaces.set(namespace,makeState('realistic'));
+    return namespaces.get(namespace);
+  };
+  const sessionKey = request => {
+    const cookie = request.headers.get('cookie')?.split(';').map(part=>part.trim()).find(part=>part.startsWith(`${cookieName}=`));
+    return cookie?.slice(cookieName.length+1);
+  };
+  const identify = request => identities.get(sessionKey(request));
+  async function fallback(state, viewer) {
+    if(!state.clients.has(viewer)) state.clients.set(viewer,await createFixtureClient({selfActor:viewer,dealStore:state.dealStore,seedUrl:`data:application/json,${encodeURIComponent(JSON.stringify(seed))}`}));
+    return state.clients.get(viewer);
+  }
+  async function call(state, viewer, name, args) {
+    const client=await fallback(state,viewer);
+    if(name==='deal-room-board') return {...await client.getBoard(),schema_version:'local-deals-board.v2',accounts:[],as_of:now()};
+    if(name==='read-home-agenda') return {schema_version:'home-agenda.v1',actor:viewer,deals:structuredClone([...state.dealStore.deals.values()]).map(deal=>({...deal,critical_dates:structuredClone(state.dealStore.criticalDates.get(deal.id) || []),next_actions:[{id:`action-${deal.id}`,owner:deal.owner,description:deal.next_step,due_on:deal.next_date,status:'open',hold_until:null}]}))};
+    if(name==='read-post-call-followups') return {schema_version:'post-call-followups.v1',candidates:[],send:false};
+
+    if(name==='get-deal-room') {
+      const {deal,history,...detail}=await client.getDeal(args.deal);
+      const changes=await client.getChanges(null);
+      return {...deal,...detail,deal_id:deal.id,base_version:deal.version,
+        critical_dates:structuredClone(state.dealStore.criticalDates.get(deal.id) || []),
+        events:changes.events.filter(event=>event.subject_id===deal.id)};
+    }
+    if(name==='new-deal') {
+      const result=await client.createDeal({...args,market:args.city,phase:PHASES[phases.indexOf(args.phase)] || args.phase});
+      return {deal_id:result.deal.id};
+    }
+    if(['patch-deal-field','set-next-step','add-deal-note','add-critical-date','update-deal','set-lead','resolve-conflict','presence-lease'].includes(name)) {
+      const method=name.replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase());
+      const result=await client[method](name==='patch-deal-field'&&args.field==='phase'
+        ?{...args,value:PHASES[phases.indexOf(args.value)] || args.value}:args);
+      if(result.status==='conflict') {
+        const {conflict}=result;
+        return {ok:false,conflict:{id:conflict.conflict_id,deal_id:conflict.deal,field:conflict.field,
+          actor_a:conflict.a.actor,value_a:conflict.a.value,actor_b:conflict.b.actor,value_b:conflict.b.value}};
+      }
+      return {...result,ok:result.ok===true || result.status==='ok'};
+    }
+    if(name==='read-invoice-tracker') return {...await state.invoices.getInvoiceTracker(),actor:viewer};
+    if(name==='record-commission-receipt') return state.invoices.markInvoicePaid(args);
+    if(name==='lead-board') return {schema_version:'lead-workspace.v1',generated_at:now(),last_search_at:null,leads:structuredClone(state.leads),detail:args.lead_id?leadDetail(state.leads.find(row=>row.id===args.lead_id)):null};
+    if(name==='quiet-follow-ups') return emptyQuietFollowUps();
+    if(name==='capture-queue') return {candidates:[]};
+    if(['claim-lead','update-lead'].includes(name))refusal('fixture_operation_unavailable');
+    const overrides={'read-session-identity':'sessionIdentity','read-dispatch-history':'dispatchHistory','read-room':'roomTurns','read-room-queue':'roomQueue','read-notification-preferences':'notificationPreferences','read-doc-outcome-cards':'docOutcomeCards','list-my-codex-sessions':'codexSessions','start-deal-review':'startReview','end-deal-review':'endReview','review-deal':'reviewDeal'};
+    const method=overrides[name]||name.replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase());
+    if(typeof client[method]!=='function')refusal('fixture_operation_unavailable');
+    return client[method](args);
+  }
+  async function carr(request) {
+    const url=new URL(request.url);const identity=identify(request);
+    if(url.pathname==='/auth/signout') {
+      if(request.method!=='POST')return json({error:'method_not_allowed'},405);
+      if(!identity)return json({error:'not_authenticated'},401);
+      if(request.headers.get('origin')!==url.origin||request.headers.get('sec-fetch-site')!=='same-origin'||request.headers.get('x-carr-csrf')!==`synthetic-qa-${identity.viewer}`)return json({error:'forbidden',reason:'csrf_mismatch'},403);
+      identities.delete(sessionKey(request));
+      return new Response(null,{status:302,headers:{location:`${url.origin}/`,'set-cookie':`${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`}});
+    }
+    if(url.pathname==='/auth/logout')return new Response(null,{status:302,headers:{location:'/auth/login','set-cookie':`${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`}});
+    if(url.pathname==='/auth/login')return new Response('<!doctype html><title>Fixture sign in</title><h1>Fixture sign in required</h1><p>Synthetic identities are created by the QA setup fixture.</p>',{headers:{'content-type':'text/html'}});
+    if(!identity)return url.pathname==='/mcp'||url.pathname==='/auth/session'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
+    const {viewer,namespace}=identity;const state=stateFor(namespace);
+    if(url.pathname==='/api/system-work/session')return request.method==='GET'?json({actor:{slug:viewer}}):json({error:'fixture_method_unavailable'},405);
+    if(url.pathname==='/mcp') {
+      let input;try{input=await request.json();}catch{return json({error:'invalid_json'},400);}
+      if(input.method!=='tools/call')return json({jsonrpc:'2.0',id:input.id,error:{code:-32601,message:'Method not found'}});
+      try{return json({jsonrpc:'2.0',id:input.id,result:{content:[{type:'text',text:JSON.stringify(await call(state,viewer,input.params.name,input.params.arguments||{}))}]}});}
+      catch(error){return json({jsonrpc:'2.0',id:input.id,result:{isError:true,content:[{type:'text',text:JSON.stringify(error.payload||{error:error.message})}]}});}
+    }
+    if(url.pathname==='/pipeline/changes')return json(await (await fallback(state,viewer)).getChanges(url.searchParams.get('cursor')));
+    if(url.pathname==='/api/v1/work-inventory') {
+      if(request.method!=='GET')return json({error:'fixture_method_unavailable'},405);
+      const projection=censusResponse(url);projection.viewer=viewer;projection.source.correlation_id=`${namespace}-${projection.source.correlation_id}`;
+      return json(projection);
+    }
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname))return json({actor:{slug:viewer},csrf_token:`synthetic-qa-${viewer}`});
+    if(url.pathname==='/api/system-work/current')return request.method==='GET'?json({ok:true,data:await (await fallback(state,viewer)).currentWorkRequests()}):json({error:'fixture_method_unavailable'},405);
+    const directory=directoryRead(url,state,viewer,namespace);
+    if(directory)return request.method==='GET'?directory:json({error:'fixture_method_unavailable'},405);
+    if(url.pathname==='/api/v1/business/relationships')return json(relationshipNetworkFixture());
+    if(url.pathname==='/api/v1/business/leases')return json(leaseRadarFixture());
+    if(url.pathname==='/api/v1/command-center'){
+      const projection=await (await fallback(state,viewer)).commandCenter();
+      for(const metric of projection.metrics){const rows=[...state.dealStore.deals.values()].filter(row=>metric.scope==='team'||row.owner===viewer);metric.active_deals=rows.length;metric.flagged_deals=rows.filter(row=>row.attention).length;}
+      for(const need of projection.needs_you_now){if(need.kind==='team_flagged_deals')need.count=[...state.dealStore.deals.values()].filter(row=>row.attention).length;if(need.kind==='my_flagged_deals')need.count=[...state.dealStore.deals.values()].filter(row=>row.owner===viewer&&row.attention).length;}
+      return json(projection);
+    }
+    if(url.pathname.startsWith('/api/'))return json({error:'fixture_endpoint_unavailable'},404);
+    return new Response(null,{status:200});
+  }
+  async function assets(request) {
+    const asset = snapshot.get(new URL(request.url).pathname);
+    return asset ? new Response(request.method === 'HEAD' ? null : asset.body,
+      {status:asset.status || 200,headers:{...asset.headers,'content-type':asset.contentType}}) : new Response('Not found',{status:404});
+  }
+  async function dispatch(request) {
+    const url=new URL(request.url);
+    // Share deploys separately in production. Mount its unmodified build here
+    // so fixture QA cannot follow the app Worker's live reports redirect.
+    const shareAsset=url.pathname==='/share'?'/reports/share.html'
+      :['/share.css','/share-bootstrap.js','/share.js'].includes(url.pathname)||url.pathname.startsWith('/vendor/maplibre-gl-6.4.1/')?`/reports${url.pathname}`:null;
+    if(shareAsset) {
+      if(!['GET','HEAD'].includes(request.method))return json({error:'fixture_method_unavailable'},405);
+      const assetUrl=new URL(url);assetUrl.pathname=shareAsset;assetUrl.search='';
+      const response=await assets(new Request(assetUrl,request));
+      const headers=new Headers(response.headers);
+      headers.set('content-security-policy',"default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'");
+      headers.set('cache-control','no-store');
+      return new Response(response.body,{status:response.status,headers});
+    }
+    if(url.pathname.startsWith('/api/share/')) {
+      const identity=identify(request);
+      if(!identity)return json({error:'not_authenticated'},401);
+      if(request.method!=='GET')return json({error:'fixture_method_unavailable'},405);
+      const resource=url.pathname.slice('/api/share/'.length);
+      if(!['report','map','feedback'].includes(resource))return json({error:'fixture_endpoint_unavailable'},404);
+      return json({data:stateFor(identity.namespace).sharedTour[resource]});
+    }
+    if(url.pathname==='/api/test/health')return json({ok:true,synthetic:true});
+    if(url.pathname==='/api/test/seed'&&request.method==='POST') {
+      const {namespace,variant='realistic',viewer='joe',reset=false}=await request.json();
+      if(!namespaceValid(namespace)||!['empty','large','realistic'].includes(variant)||!['joe','dell'].includes(viewer))return json({error:'invalid_fixture_request'},400);
+      if(reset||!namespaces.has(namespace)||stateFor(namespace).variant!==variant)namespaces.set(namespace,makeState(variant));
+      const value=`fixture.${namespace}.${viewer}`;identities.set(value,{namespace,viewer});const state=stateFor(namespace);
+      return json({synthetic:true,namespace,viewer,variant,counts:{deals:state.dealStore.deals.size,leads:state.leads.length,invoices:(await state.invoices.getInvoiceTracker()).entries.length},cookie:{name:cookieName,value,url:url.origin,httpOnly:true,sameSite:'Lax'}},200,{'set-cookie':`${cookieName}=${value}; Path=/; HttpOnly; SameSite=Lax`});
+    }
+    if(url.pathname==='/api/test/identity')return identify(request)?json({synthetic:true,...identify(request)}):json({error:'not_authenticated'},401);
+    return handleDoctorcreRequest(request,{ASSETS:{fetch:assets},CARR:{fetch:carr},APP_ENV:'fixture',GIT_SHA:'0'.repeat(40)});
+  }
+  return dispatch;
+}

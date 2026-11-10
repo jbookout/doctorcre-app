@@ -1,0 +1,11 @@
+stateDiagram-v2
+    [*] --> EvidenceUnavailable: Open stage review
+    EvidenceUnavailable --> ManualExplanationRequired: No captured contact
+    EvidenceUnavailable --> ManualExplanationRequired: Impossible or zone-less date
+    EvidenceUnavailable --> FutureEvidenceExcluded: Valid contact occurs after now
+    FutureEvidenceExcluded --> ManualExplanationRequired: No remaining usable contact
+    EvidenceUnavailable --> EvidenceUsable: Valid past email, meeting or connected call
+    EvidenceUsable --> EvidenceUsable: Order newest first and limit to three
+    EvidenceUsable --> ManualExplanationRequired: Only disconnected calls or wrong contact kind
+    ManualExplanationRequired --> EvidenceUsable: Retry returns valid past contact
+    %% never Suppress the human question using impossible, zone-less or future timestamps

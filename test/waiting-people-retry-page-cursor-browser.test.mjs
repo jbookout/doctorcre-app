@@ -1,0 +1,21 @@
+import test, { before } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { chromium } from './browser-harness.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { proofAssetSnapshot } from './proof-asset-snapshot.mjs';
+const snapshot = await proofAssetSnapshot();
+import { handleDoctorcreRequest } from '../src/worker.js';
+import { runProof, assertions } from '../scripts/prove-waiting-people-retry-page-cursor.mjs';
+before(async () => { await mkdir('/tmp/WR617.S28.J1-evidence', { recursive: true }); });
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`actual inbox exact page retry ${width} ${theme}`, async t => {
+  const response = await handleDoctorcreRequest(new Request('https://synthetic.invalid/app-release'), {GIT_SHA:'1'.repeat(40),APP_ENV:'production'});
+  const routes=new Map(snapshot);
+  routes.set('/app-release',{status:response.status,contentType:response.headers.get('content-type'),body:await response.text()});
+  const server=await startFixture({routes});
+  t.after(()=>server.close());
+  const origin=server.origin;
+  const receipt = await runProof({ origin, engine: chromium, viewport: { width, height: 900 }, theme, screenshot: `/tmp/WR617.S28.J1-evidence/retry-${width}-${theme}.png` });
+  assert.deepEqual(receipt.assertions, assertions);
+  assert.ok(receipt.assets.length <= 30); assert.ok(receipt.bytes <= 10 * 1024 * 1024);
+});

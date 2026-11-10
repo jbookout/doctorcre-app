@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const createLegacyInboxClient = rpc => createInboxClient((name, ...args) => name === 'read-home-inbox-v4' ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
+import { readFile } from 'node:fs/promises';
+const createLegacyInboxClient = rpc => createInboxClient((name, ...args) => ['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name) ? Promise.resolve({ error: 'unknown_tool' }) : rpc(name, ...args));
 const bundle = await build({ entryPoints: ['src/ui/home/inbox.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
 const { parseSnapshot, shelves, createInboxClient } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 export const item = (item_id, fields = {}) => ({ completed_at: null, auto_settled: false, item_id, source_type: 'next_action', source_id: item_id, source_version: 'source:1', source_state: 'needs_attention', title: 'Synthetic follow-up', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: 'Demo practice', due_on: '2026-11-05', open_url: '/deals?deal=00000000-0000-0000-0000-000000000001&focus=next-step', kind_label: 'Task', merged_source_ids: ['00000000-0000-0000-0000-000000000002'], action_id: '00000000-0000-0000-0000-000000000002', action_version: 7, deal_id: '00000000-0000-0000-0000-000000000001', ...fields });
@@ -179,4 +180,23 @@ for (const invalid of [
   assert.equal(taskCommand('reopen', result.item, result.receipt).args.completion_event_id, '00000000-0000-0000-0000-000000000009');
   assert.throws(() => taskCommand('reopen', result.item, { ...result.receipt, action_id: '00000000-0000-0000-0000-000000000099' }), /Can't undo/);
   assert.throws(() => taskCommand('complete', item('working', { source_state: 'working' })), /cannot be marked done/);
+});
+
+
+test('v5 watch notification routes to its exact client record', async () => {
+  const contract = JSON.parse(await readFile('contracts/carr-interface.v1/home_inbox_contract.json', 'utf8'));
+  assert.equal(contract.read, 'read-home-inbox-v5');
+  const url = '/clients?record=00000000-0000-4000-8000-000000000002';
+  const card = item('notification:watch', { source_type: 'notification', source_id: '00000000-0000-4000-8000-000000000009', kind_label: 'Update', open_url: url, action_id: null, action_version: null, waiting_version: 0, waiting_on: null });
+  for (const field of Object.keys(contract.projection.item_fields)) assert.ok(Object.hasOwn(card, field) || field === 'review_reference', field);
+  const client = createInboxClient(async name => {
+    assert.equal(name, contract.read);
+    return { ...snapshot([card]), schema_version: contract.schema_version };
+  });
+  const parsed = await client.read();
+  const built = await build({ entryPoints: ['src/ui/home/routes.tsx'], bundle: true, write: false, platform: 'node', format: 'esm' });
+  const { recordRoutes } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].contents).toString('base64')}`);
+  assert.equal(recordRoutes.source(parsed.items[0]), url);
+  for (const open_url of ['/clients', '/clients?record=bad', '/clients?record=', '/clients?record=00000000-0000-4000-8000-000000000002&record=00000000-0000-4000-8000-000000000003']) assert.equal(recordRoutes.source({ ...parsed.items[0], open_url }), null);
+  for (const open_url of ['/deals?deal=demo', '/calls?session=demo', '/updates?notification=demo', '/doc-chats?conversation=demo']) assert.equal(recordRoutes.source({ ...parsed.items[0], open_url }), open_url);
 });

@@ -1,0 +1,15 @@
+{
+  "schema": "market-terms-stage-recording.v1",
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "revision": "2585588ff11f9f46b9b08ce7e7ed753289ac02e8",
+    "path": "mcp-server/src/market-terms.ts",
+    "sha256": "94c8f087cd7cfed71439f76445a3905ff441b28488b2037982b2e80fda53a0c2"
+  },
+  "recorder": "Existing synthetic snapshot recorder: unchanged rebuildMarketTerms projection used by registered read-market-terms handler",
+  "contract": "market-terms.v1",
+  "parser": "src/ui/market-terms.tsx isResponse through mountMarketTerms",
+  "synthetic": true,
+  "future_stage": "Forward-compatible string probe; not a claim that the SQL producer currently emits it",
+  "recordings_sha256": "83c4177c91d4ce7a556248320e1d9a58c2bc43cbbaa670c9244074b6574a5c5b"
+}

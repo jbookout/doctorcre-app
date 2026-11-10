@@ -1,0 +1,46 @@
+stateDiagram-v2
+  state ComparisonWorkspace {
+    state Screen {
+      [*] --> Visible
+      Visible --> Cached: Close panel or switch subject
+      Cached --> Visible: Reopen this subject
+      Visible --> Retired: Access retired
+      Cached --> Retired: Access retired
+      Retired --> Visible: Remount after authorized detail retry
+    }
+    --
+    state Comparison {
+      [*] --> Mounted
+      state Mounted {
+        [*] --> Loading
+        Loading --> History: Valid response with focus off
+        Loading --> Focused: Valid response with focus on
+        Loading --> Error: Failed or malformed response
+        History --> Focused: Check Hide superseded terms
+        Focused --> History: Clear Hide superseded terms
+        History --> History: Change term, stage, or expense basis
+        Focused --> Focused: Change term, stage, or expense basis
+        History --> Loading: Compare again
+        Focused --> Loading: Compare again
+        Error --> Loading: Retry Compare
+      }
+      Mounted --> Disposed: Access retired
+      Disposed --> Mounted: Remount after authorized detail retry
+    }
+  }
+  %% never RetiredMounted: Retired & Mounted -- Retired access never displays or accepts late comparison results.
+  %% never VisibleDisposed: Visible & Disposed -- An authorized remount starts a fresh comparison.
+  %% Screen describes this subject; switching subjects caches its mounted comparison and opens the other subject's independent view.
+  %% Closing changes only Screen. Responses may settle while cached. Reopening reattaches the existing comparison without a read or focus reset.
+  %% Access retirement disposes every cached subject. Explicit component disposal/remount has the same fresh-focus semantics.
+  %% Focus survives Compare, empty and malformed responses; History and Focused describe successful results, including an empty result.
+  %% Projection rules checked by the browser matrix: never hide without a matching successor in the complete response; local controls preserve coverage and make no read.
+  %% System design: Comparison owns the boolean and validated response; Results owns the local projection.
+  %% The workspace owns a session-scoped per-subject mount cache, cleared on actor change or access refusal (js/pipeline.js:343,870,1099).
+  %% Use one successor predicate for styling and visibility. Keep the mount interface unchanged except an additive parser export for proof admission.
+  %% Capacity: existing rows.some is quadratic; reuse its result once per row before filtering. At 10x the response, rendering and this scan grow first. No new infrastructure.
+  %% Load spread, storage, N+1 and persistent cache: n/a, one existing read and no new storage access. Successful reads replace the response.
+  %% Consistency: project only the latest validated response. Malformed and failed reads refuse; stale reads cannot replace the latest view.
+  %% Async: existing Compare sequence guards responses. No queue, new calls, fan-out, retries, circuit breaker, rate limit, write or idempotency key is added.
+  %% External failures use existing explicit retry behavior. Local controls make zero requests.
+  %% Throughput checkpoint: reproduce the chart contradiction, cover real workspace entry points, then serial focused and full verification.

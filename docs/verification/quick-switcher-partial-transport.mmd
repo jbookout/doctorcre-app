@@ -1,0 +1,117 @@
+stateDiagram-v2
+  state Switcher {
+    state Lifetime {
+      state "Dialog closed" as Closed
+      state "Dialog open" as Open
+      state "Session retired" as Retired
+
+      [*] --> Closed
+      Closed --> Open: Open switcher
+      Open --> Closed: Close switcher
+      Open --> Retired: Sign out
+      Closed --> Retired: Sign out
+    }
+    --
+    state Board {
+      state "Deals not requested" as BoardIdle
+      state "Deals loading" as BoardPending
+      state "Deals loaded" as BoardFulfilled
+      state "Deals failed" as BoardRejected
+      state "Deals timed out" as BoardTimedOut
+
+      [*] --> BoardIdle
+      BoardIdle --> BoardPending: Open switcher [when Closed]
+      %% when Closed
+      BoardPending --> BoardFulfilled: Deals arrive
+      BoardPending --> BoardRejected: Deals fail
+      BoardPending --> BoardTimedOut: Deals time out
+      BoardFulfilled --> BoardPending: Retry [when Open, BoardResults, ContactResults, UnavailablePages]
+      %% when Open, BoardResults, ContactResults, UnavailablePages
+      BoardRejected --> BoardPending: Retry [when Open, BoardResults, ContactResults, UnavailablePages]
+      %% when Open, BoardResults, ContactResults, UnavailablePages
+      BoardTimedOut --> BoardPending: Retry [when Open, BoardResults, ContactResults, UnavailablePages]
+      %% when Open, BoardResults, ContactResults, UnavailablePages
+      BoardFulfilled --> BoardPending: Open switcher [when Closed]
+      %% when Closed
+      BoardRejected --> BoardPending: Open switcher [when Closed]
+      %% when Closed
+      BoardTimedOut --> BoardPending: Open switcher [when Closed]
+      %% when Closed
+    }
+    --
+    state Contacts {
+      state "Contacts not requested" as ContactsIdle
+      state "Contacts loading" as ContactsPending
+      state "Contacts loaded" as ContactsFulfilled
+      state "Contacts failed" as ContactsRejected
+      state "Contacts timed out" as ContactsTimedOut
+
+      [*] --> ContactsIdle
+      ContactsIdle --> ContactsPending: Open switcher [when Closed]
+      %% when Closed
+      ContactsPending --> ContactsFulfilled: Contacts arrive
+      ContactsPending --> ContactsRejected: Contacts fail
+      ContactsPending --> ContactsTimedOut: Contacts time out
+      ContactsFulfilled --> ContactsPending: Retry [when Open, BoardResults, ContactResults, UnavailablePages]
+      %% when Open, BoardResults, ContactResults, UnavailablePages
+      ContactsRejected --> ContactsPending: Retry [when Open, BoardResults, ContactResults, UnavailablePages]
+      %% when Open, BoardResults, ContactResults, UnavailablePages
+      ContactsTimedOut --> ContactsPending: Retry [when Open, BoardResults, ContactResults, UnavailablePages]
+      %% when Open, BoardResults, ContactResults, UnavailablePages
+      ContactsFulfilled --> ContactsPending: Open switcher [when Closed]
+      %% when Closed
+      ContactsRejected --> ContactsPending: Open switcher [when Closed]
+      %% when Closed
+      ContactsTimedOut --> ContactsPending: Open switcher [when Closed]
+      %% when Closed
+    }
+    --
+    state Visible {
+      state "No dialog" as Hidden
+      state "Loading with pages" as LoadingPages
+      state "All records and pages" as FullResults
+      state "Deals tasks and pages" as BoardResults
+      state "Contacts and pages" as ContactResults
+      state "Unavailable records with pages" as UnavailablePages
+
+      [*] --> Hidden
+      Hidden --> LoadingPages: Open switcher [when Closed]
+      %% when Closed
+      LoadingPages --> FullResults: Show all records [when Open, BoardFulfilled, ContactsFulfilled]
+      %% when Open, BoardFulfilled, ContactsFulfilled
+      LoadingPages --> BoardResults: Show deals and tasks [when Open, BoardFulfilled, ContactsRejected, ContactsTimedOut]
+      %% when Open, BoardFulfilled, ContactsRejected, ContactsTimedOut
+      LoadingPages --> ContactResults: Show contacts [when Open, ContactsFulfilled, BoardRejected, BoardTimedOut]
+      %% when Open, ContactsFulfilled, BoardRejected, BoardTimedOut
+      LoadingPages --> UnavailablePages: Show unavailable sources [when Open, BoardRejected, BoardTimedOut, ContactsRejected, ContactsTimedOut]
+      %% when Open, BoardRejected, BoardTimedOut, ContactsRejected, ContactsTimedOut
+      BoardResults --> LoadingPages: Retry [when Open]
+      %% when Open
+      ContactResults --> LoadingPages: Retry [when Open]
+      %% when Open
+      UnavailablePages --> LoadingPages: Retry [when Open]
+      %% when Open
+      LoadingPages --> Hidden: Close switcher
+      FullResults --> Hidden: Close switcher
+      BoardResults --> Hidden: Close switcher
+      ContactResults --> Hidden: Close switcher
+      UnavailablePages --> Hidden: Close switcher
+      LoadingPages --> Hidden: Sign out
+      FullResults --> Hidden: Sign out
+      BoardResults --> Hidden: Sign out
+      ContactResults --> Hidden: Sign out
+      UnavailablePages --> Hidden: Sign out
+      Hidden --> Hidden: Sign out
+      BoardResults --> BoardResults: Filter locally
+      ContactResults --> ContactResults: Filter locally
+      FullResults --> FullResults: Filter locally
+      UnavailablePages --> UnavailablePages: Filter locally
+    }
+  }
+  %% never KeepBoard: Deals loaded & Contacts failed & Unavailable records with pages -- Failed contacts never discard admitted deals after settlement.
+  %% never KeepContacts: Contacts loaded & Deals failed & Unavailable records with pages -- Failed deals never discard admitted contacts after settlement.
+  %% never TruthfulUnavailable: Deals loaded & Contacts loaded & Unavailable records with pages -- Successful empty sources are not unavailable.
+  %% never RetiredHidden: Session retired & All records and pages -- A retired session never displays business results or writes recents.
+  %% never OldAttemptHidden: Dialog closed & Deals tasks and pages -- An old completed attempt never changes the closed dialog.
+  %% never FilterNoRead: Deals tasks and pages & Deals loading -- Filtering never starts reads.
+  %% never PairCap: All records and pages & Contacts loading -- An attempt never starts another pair before Retry.

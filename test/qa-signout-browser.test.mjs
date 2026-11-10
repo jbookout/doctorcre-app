@@ -14,10 +14,10 @@ test('QA real Sign out redirects, revokes only its session, and ends the workspa
   const outDir = await temporaryDirectory('qa-signout-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '1'.repeat(40) });
-  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const fixture = await createQaServer({ buildRoot: join(outDir, 'site') });
+  const server = await fixture.start();
+  t.after(() => server.close());
+  const origin = server.origin;
   const browser = await chromium.launch();
   t.after(() => browser.close());
   if (evidence) await mkdir(evidence, { recursive: true });

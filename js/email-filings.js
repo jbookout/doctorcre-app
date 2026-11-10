@@ -1,3 +1,4 @@
+import { sourceTime } from './email-source-line.js';
 import { uuidv4 } from './uuid.js';
 import { readWithDeadline } from './current-read.mjs';
 
@@ -9,7 +10,6 @@ const REFUSALS = {
 const filingState = row => row.current_deal_id === null ? 'absent'
   : typeof row.current_deal_id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.current_deal_id) ? 'current' : 'unknown';
 const denied = error => [401, 403].includes(error?.status) || error?.code === 'session_changed';
-const when = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
 export function mountEmailFilings({ container, client }) {
   const win = container.ownerDocument.defaultView;
@@ -32,7 +32,7 @@ export function mountEmailFilings({ container, client }) {
       const destination = current ? `<a class="btn home-outline" href="/deals?deal=${encodeURIComponent(row.current_deal_id)}">Open filed deal</a>` : '';
       const filingNotice = state === 'absent' ? 'This email is no longer currently filed to this deal.'
         : !current ? 'Current filing destination unavailable.' : '';
-      return `<article class="email-proposal" data-filing-id="${E(row.event_id)}"><h3>${E(row.subject || 'Subject unavailable')}</h3><p>From ${E(row.sender_name || 'Sender unavailable')}${when(row.occurred_at) ? ` · ${E(when(row.occurred_at))}` : ''}</p>${
+      return `<article class="email-proposal" data-filing-id="${E(row.event_id)}"><h3>${E(row.subject || 'Subject unavailable')}</h3><p>From ${E(row.sender_name || 'Sender unavailable')} · ${E(sourceTime(row.occurred_at))}</p>${
         outcome?.status === 'undone' ? '<p role="status" tabindex="-1">Undone. The email is no longer filed to this deal and will not be filed automatically again.</p>'
           : `${filingNotice ? `<p>${filingNotice}</p>` : ''}${outcome?.message ? `<p role="status" tabindex="-1">${E(outcome.message)}</p>` : ''}<div class="email-controls">${destination}${outcome?.status === 'refused' && outcome.filingState === 'absent' ? '' : `<button type="button" class="btn home-outline" data-filing-undo${outcome?.status === 'submitting' ? ' disabled' : ''}>${outcome?.status === 'uncertain' ? 'Check outcome' : 'Undo'}</button>`}</div>`}</article>`;
     }).join('')}`;

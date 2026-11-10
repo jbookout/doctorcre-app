@@ -5,17 +5,18 @@
 // commit, with mcp-server dependencies and the Python lock installed. The app
 // listens on 127.0.0.1:8787, a local origin the Call Mode companion admits.
 import { test as base, expect, type Page } from '@playwright/test';
-import { createServer, type Server } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { extname, isAbsolute, relative, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { startWorkerFixture } from '../../scripts/fixture-http.mjs';
+import { appAssetSnapshot } from '../../scripts/fixture-app-assets.mjs';
+import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { verifyLiveProducer } from '../../scripts/live-producer.mjs';
 
-export const APP_ORIGIN = 'http://127.0.0.1:8787';
+const APP_ORIGIN = 'http://127.0.0.1:8787';
 const COMPANION = 'http://127.0.0.1:4682';
 const SITE = resolve(import.meta.dirname, '../../dist/site');
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json',
-  '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+let prepared: ReturnType<typeof appAssetSnapshot>;
+const snapshot = () => prepared ||= appAssetSnapshot(SITE);
+type AppFixture = Awaited<ReturnType<typeof startWorkerFixture>>;
 
 /** One filed (or failed) call: its companion and session name. */
 export type FiledCall = { url: string; name: string; logs(): string };
@@ -27,49 +28,31 @@ export type LocalCarr = {
 };
 
 async function asset(request: Request) {
-  const path = resolve(SITE, `.${new URL(request.url).pathname}`);
-  const inside = relative(SITE, path);
-  if (inside.startsWith('..') || isAbsolute(inside)) return new Response('Not found', { status: 404 });
-  try {
-    if (!(await stat(path)).isFile()) return new Response('Not found', { status: 404 });
-    return new Response(request.method === 'HEAD' ? null : await readFile(path),
-      { headers: { 'content-type': MIME[extname(path)] || 'application/octet-stream' } });
-  } catch { return new Response('Not found', { status: 404 }); }
+  const descriptor = (await snapshot()).get(new URL(request.url).pathname);
+  return descriptor ? new Response(request.method === 'HEAD' ? null : descriptor.body,
+    {headers:{'content-type':descriptor.contentType}}) : new Response('Not found',{status:404});
 }
 
-async function serveApp(carr: LocalCarr): Promise<Server> {
-  const { handleDoctorcreRequest } = await import('../../src/worker.js');
+async function serveApp(carr: LocalCarr): Promise<AppFixture> {
   // The app Worker's CARR service binding, pointed at the local CARR Worker.
   const CARR = { fetch: (request: Request) => {
     const url = new URL(request.url);
     return fetch(`${carr.url}${url.pathname}${url.search}`, { method: request.method, headers: request.headers,
-      body: request.body, redirect: 'manual', duplex: 'half' } as RequestInit);
+      body: request.body, signal:request.signal, redirect: 'manual', duplex: 'half' } as RequestInit);
   } };
-  const server = createServer(async (incoming, outgoing) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of incoming) chunks.push(chunk);
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(incoming.headers))
-      for (const item of [value ?? []].flat()) headers.append(name, item);
-    const request = new Request(new URL(incoming.url || '/', APP_ORIGIN), { method: incoming.method, headers,
-      ...(chunks.length ? { body: Buffer.concat(chunks), duplex: 'half' } : {}) } as RequestInit);
-    const response: Response = await handleDoctorcreRequest(request, { ASSETS: { fetch: asset }, CARR, APP_ENV: 'local',
-      GIT_SHA: '0'.repeat(40) });
-    const out: Record<string, string | string[]> = Object.fromEntries(response.headers);
-    if (response.headers.getSetCookie().length) out['set-cookie'] = response.headers.getSetCookie();
-    outgoing.writeHead(response.status, out);
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
-  });
-  await new Promise<void>(done => server.listen(Number(new URL(APP_ORIGIN).port), '127.0.0.1', done));
-  return server;
+  return startWorkerFixture({assets:await snapshot(),port:Number(new URL(APP_ORIGIN).port),
+    env:{CARR,APP_ENV:'local',GIT_SHA:'0'.repeat(40)}});
 }
 
 export const test = base.extend<{ signedIn: Page; companion: (call: FiledCall) => Promise<void> },
-  { carr: LocalCarr; app: Server }>({
+  { carr: LocalCarr; app: AppFixture }>({
   carr: [async ({}, use) => {
     const checkout = process.env.CARR_PRODUCER_CHECKOUT;
     if (!checkout) throw new Error('CARR_PRODUCER_CHECKOUT must name the carr-system checkout for live journeys');
-    const { startLocalCarr } = await import(pathToFileURL(resolve(checkout, 'mcp-server/test/helpers/local-carr.mjs')).href);
+    const producer = JSON.parse(await readFile(new URL('../../contracts/carr-interface.v1/producer.json', import.meta.url), 'utf8'));
+    await verifyLiveProducer(checkout, import.meta.resolve('mcp-server/test/helpers/local-carr.mjs'), producer);
+    const { startLocalCarr } = await import('mcp-server/test/helpers/local-carr.mjs');
+    await snapshot();
     const carr: LocalCarr = await startLocalCarr({ assets: asset });
     console.log(`live harness: local CARR ready in ${carr.setupMs}ms`);
     await use(carr);
@@ -78,7 +61,7 @@ export const test = base.extend<{ signedIn: Page; companion: (call: FiledCall) =
   app: [async ({ carr }, use) => {
     const server = await serveApp(carr);
     await use(server);
-    await new Promise(done => server.close(done));
+    await server.close();
   }, { scope: 'worker' }],
   // A page signed in as the synthetic partner through the staging e2e door.
   signedIn: async ({ page, app, carr }, use) => {

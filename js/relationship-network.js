@@ -1,3 +1,4 @@
+import { mountRelationshipKindFilter, relationshipKind } from "./ui-relationship-kind-filter.js";
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
@@ -39,6 +40,7 @@ export function mountRelationshipNetwork({
     q: params.get("q") || "",
     territory: params.get("territory") || "",
     vertical: params.get("vertical") || "",
+    kind: relationshipKind(params.get("kind")),
   };
   $("networkSearch").value = currentFilters.q;
   focus = params.get("node");
@@ -104,6 +106,14 @@ export function mountRelationshipNetwork({
     const directory = $("networkNodes").parentElement, graphView = $("graphView");
     if (phone && graphView.firstElementChild !== directory) graphView.prepend(directory);
     else if (!phone && graphView.lastElementChild !== directory) graphView.append(directory);
+    if (focus && !view.nodes.some(n => n.id === focus)) {
+      focus = null;
+      returnId = null;
+      dialog.clear();
+      address();
+      if (focusedNode || document.activeElement === document.body)
+        $("networkKind").focus();
+    }
     const selected = view.nodes.some((n) => n.id === focus)
       ? focus
       : view.suggestions[0]?.to || view.nodes[0]?.id;
@@ -338,23 +348,35 @@ export function mountRelationshipNetwork({
       }
     };
   });
+  const localEvents = new window.AbortController();
+  const applyFilters = () => {
+    if (disposed) return;
+    limit = 12;
+    positions.clear();
+    render();
+    address();
+  };
+  const kindControl = mountRelationshipKindFilter($("networkKindFilter"), {
+    value: currentFilters.kind,
+    onChange(kind) {
+      currentFilters.kind = kind;
+      applyFilters();
+    },
+  });
   for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
     // eslint-disable-next-line no-restricted-syntax -- Registers input/change callbacks for only 3 network filters; 0 lifecycle reads.
     $(id).addEventListener(id === "networkSearch" ? "input" : "change", () => {
       currentFilters.q = $("networkSearch").value;
       currentFilters.territory = $("networkTerritory").value;
       currentFilters.vertical = $("networkVertical").value;
-      address();
-      limit = 12;
-      positions.clear();
-      render();
-    });
+      applyFilters();
+    }, { signal: localEvents.signal });
   $("networkReset").onclick = () => {
     for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
       $(id).value = "";
-    Object.assign(currentFilters, { q: "", territory: "", vertical: "" });
-    address();
-    render();
+    Object.assign(currentFilters, { q: "", territory: "", vertical: "", kind: "" });
+    kindControl.setValue("");
+    applyFilters();
   };
   $("networkRefresh").onclick = auto.refresh;
   $("networkMore").onclick = () => {
@@ -387,7 +409,10 @@ export function mountRelationshipNetwork({
   return {
     refresh: auto.refresh,
     dispose() {
+      if (disposed) return;
       disposed = true;
+      localEvents.abort();
+      kindControl.dispose();
       epoch++;
       auto.dispose();
       dialog.dispose();

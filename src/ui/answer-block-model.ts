@@ -1,9 +1,9 @@
-export type Source = { record_id: string } | { fact_id: string; version: number };
+type Source = { record_id: string } | { fact_id: string; version: number };
 export type Cell = { value: string | boolean | null; source?: Source } | { value: number; source: Source };
-export type Column = { key: string; label: string; type: 'text' | 'number' | 'boolean' | 'date' };
+type Column = { key: string; label: string; type: 'text' | 'number' | 'boolean' | 'date' };
 export type Table = { type: 'table.v1'; id: string; columns: Column[]; rows: Record<string, Cell>[] };
 export type Chart = { type: 'chart.v1'; id: string; table_id: string; kind: 'bar' | 'line'; x: string; y: string };
-export type Block = Table | Chart;
+type Block = Table | Chart;
 export type Answer = { kind: 'text' } | { kind: 'invalid' } | { kind: 'valid'; blocks: Block[] };
 export type Sort = { key: string; direction: 'asc' | 'desc' } | null;
 

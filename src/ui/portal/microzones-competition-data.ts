@@ -1,4 +1,4 @@
-export type Text = string;
+type Text = string;
 
 export type MicroZone = {
   id: Id;
@@ -115,7 +115,7 @@ export type MicroZone = {
 };
 };
 
-export type Id = string;
+type Id = string;
 
 export type Asset = {
   sha256: string;
@@ -123,15 +123,15 @@ export type Asset = {
   type: string;
 };
 
-export type Page = number;
+type Page = number;
 
-export type LonLat = readonly number[];
+type LonLat = readonly number[];
 
-export type Count = number;
+type Count = number;
 
-export type YearValues = Readonly<Record<string, Count>>;
+type YearValues = Readonly<Record<string, Count>>;
 
-export type Percent = number;
+type Percent = number;
 
 export type CountShare = {
   label: Text;
@@ -153,9 +153,9 @@ export type MicroZones = {
   zones: readonly (MicroZone)[];
 };
 
-export type Url = string;
+type Url = string;
 
-export type Locator = {
+type Locator = {
   lon: number;
   lat: number;
   precision: Text;
@@ -167,7 +167,7 @@ export type Rich = readonly (({
   link: Link;
 }))[];
 
-export type Link = {
+type Link = {
   label: Text;
   url: Url;
 };

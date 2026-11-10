@@ -1,4 +1,4 @@
-import { readAppRelease } from './app-release-reader.mjs';
+import { launchProofBrowser, proofFetch, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +16,7 @@ export async function prove({ origin, timeoutMs }) {
   const protectedAsset = message => Object.assign(new Error(message), { exitCode: 78 });
   async function read(url, json = false) {
     assert.ok(++requests <= 64, 'request cap');
-    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(Math.min(10000, remaining())) });
+    const response = await proofFetch(url, { redirect: 'manual', signal: AbortSignal.timeout(Math.min(10000, remaining())) });
     if ([301, 302, 303, 307, 308, 401, 403].includes(response.status)) throw protectedAsset('Protected asset or sign-in required');
     assert.ok(response.ok, `asset HTTP ${response.status}`);
     const type = response.headers.get('content-type') || '';
@@ -41,7 +41,7 @@ export async function prove({ origin, timeoutMs }) {
   await read(assetUrl);
   const timer = setTimeout(() => { failure = new Error('Entire proof timed out'); void browser?.close(); }, remaining());
   try {
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], headless: true, timeout: remaining() });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], headless: true, timeout: remaining() });
     const context = await browser.newContext({ timezoneId: 'America/Chicago', serviceWorkers: 'block' });
     const page = await context.newPage();
     page.setDefaultTimeout(remaining());

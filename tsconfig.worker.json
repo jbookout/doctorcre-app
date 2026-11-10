@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "esnext",
+      "WebWorker"
+    ],
+    "types": [],
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "files": [
+    "src/ui/worker/service-worker.ts"
+  ]
+}

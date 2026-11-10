@@ -1,0 +1,9 @@
+{
+  "card": "WR647.S22.J1",
+  "method": "Unmodified registered handler executed with synthetic aggregate query rows. SQL and database eligibility are not asserted. Every response passes the pinned app parser through the real island and the pinned response contract.",
+  "producer_repository": "DoctorCRE/carr-system",
+  "producer_revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "producer_sha256": "312557012f86411d6b3ec12c9aa9e2d5963e93a24d3f66b5bcf0570229ab6546",
+  "parser_sha256": "775dcdea58c1f09c2d3e39d478d4729207084ef9f50a1d29fae881eda0a90454",
+  "recordings_sha256": "9dd2d5f912e7bffb06c48baf7f53ce9c86c50a4bdbb4b80bde919e9bc4ac3cd8"
+}

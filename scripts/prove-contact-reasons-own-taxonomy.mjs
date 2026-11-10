@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {CHROMIUM_SAFETY_ARGS} from './chromium-safety-args.mjs';
@@ -137,13 +138,9 @@ export async function prove({origin,timeoutMs=30000,requiredRevision}) {
   assert.match(required,/^[0-9a-f]{40}$/,'required revision missing');
   let browser, timer;
   const work = async () => {
-    const response = await fetch(`${origin}/app-release`,{redirect:'error',signal:AbortSignal.timeout(timeoutMs)});
-    assert.ok(response.ok,'release identity unavailable or protected');
-    const release = await response.json();
-    assert.equal(release.service,'doctorcre-app','wrong release service');
-    assert.match(release.source_commit || '',/^[0-9a-f]{40}$/,'missing release revision');
+    const release = await readAppRelease(origin, { timeoutMs: timeoutMs });
     execFileSync('git',['merge-base','--is-ancestor',required,release.source_commit],{cwd:root,timeout:5000,stdio:'pipe'});
-    browser = await chromium.launch({args: [...CHROMIUM_SAFETY_ARGS]});
+    browser = await launchProofBrowser(chromium, {args: [...CHROMIUM_SAFETY_ARGS]});
     const context = await browser.newContext({storageState:{cookies:[],origins:[]},serviceWorkers:'block'});
     const page = await context.newPage();
     page.setDefaultTimeout(timeoutMs);
@@ -179,5 +176,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       options[args[i]]=args[i+1];
     }
     console.log(JSON.stringify(await prove({origin:options['--origin'],timeoutMs:Number(options['--timeout-ms'] || 30000),requiredRevision:options['--required-revision']})));
-  } catch (error) {console.error(`Contact taxonomy proof failed: ${error.message}`);process.exitCode=1;}
+  } catch (error) {console.error(`Contact taxonomy proof failed: ${error.message}`);process.exitCode=error.exitCode||1;}
 }
