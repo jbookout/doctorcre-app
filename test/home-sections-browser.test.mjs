@@ -1,11 +1,14 @@
-import test, { before, after } from 'node:test';
+import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import axe from 'axe-core';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { context as buildContext } from 'esbuild';
 import { scenario } from './browser-scenario.mjs';
+
+describe('test/home-sections-browser.test.mjs', () => {
 const NOW = new Date('2026-11-03T10:00:00-06:00');
 let outDir;
 before(async () => { outDir = temporaryDirectory('home-sections-'); await buildArtifact({ root: process.cwd(), outDir }); });
@@ -72,7 +75,7 @@ for (const state of ['empty', 'unavailable', 'partial']) test(`Home and schedule
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     const payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
       : name === 'calendar-meeting-prep' ? { state, items: [] }
       : name === 'deal-room-board' ? { actor: 'joe', deals: [] }
@@ -116,7 +119,7 @@ for (const outcome of ['empty', 'unavailable']) test(`Home reserves its frame an
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', async route => {
     const { name } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     if (name !== 'read-home-inbox-v3') panelReads.push(name);
     const value = name === 'read-home-inbox-v3' ? outcome === 'empty'
       ? { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [], working_collapsed: true, auto_settle_enabled: true }
@@ -182,13 +185,13 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
   const { page } = run;
   await page.clock.install({ time: new Date('2026-11-04T16:00:17Z') });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
-  const item = (item_id, completed_at, fields = {}) => ({ waiting_version: 0, waiting_on: null, item_id, completed_at, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'done', title: item_id, activity_at: '2026-11-04T16:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'done', base_version: 'v1', context_label: 'Demo practice', due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000001', action_version: 7, deal_id: null, auto_settled: false, ...fields });
+  const item = (item_id, completed_at, fields = {}) => ({ item_id, completed_at, source_type: 'next_action', source_id: item_id, source_version: 'v1', source_state: 'done', title: item_id, activity_at: '2026-11-04T16:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'done', base_version: 'v1', context_label: 'Demo practice', due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: '00000000-0000-0000-0000-000000000001', action_version: 7, deal_id: null, auto_settled: false, ...fields });
   const items = [item('Finished after midnight', '2026-11-04T06:10:00Z', { section: 'settled', disposition: 'settled', auto_settled: true }), item('Yesterday with a new notification', '2026-11-04T05:30:00Z'), item('Legacy completed task', null), item('Manually hidden task', null, { source_state: 'needs_attention', disposition: 'settled', section: 'settled' })];
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/pipeline/changes*', route => route.fulfill({ json: { events: [], cursor: 'end' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
-    const value = name === 'read-home-inbox-v4' ? { ok: true, schema_version: 'home-inbox.v4', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true } : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
+    const value = name === 'read-home-inbox-v5' ? { error: 'unknown_tool' } : name === 'read-home-inbox-v4' ? { ok: true, schema_version: 'home-inbox.v4', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true } : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(value) }] } } });
   });
   await run.open('/?mode=live');
@@ -212,4 +215,201 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Do
   await page.clock.fastForward(1000);
   await today.locator('[data-inbox-row]').waitFor({ state: 'detached' });
   assert.equal(await today.locator('[data-inbox-row]').count(), 0);
+});
+
+async function workingScenario(t, { count = 3, current, width = 1440, theme = 'light' } = {}) {
+  const compiler = await buildContext({ stdin: { contents: "export {fixtureInboxRpc} from './src/ui/home/fixture'; export {parseSnapshot} from './src/ui/home/inbox';", resolveDir: process.cwd() }, bundle: true, write: false, platform: 'node', format: 'esm' });
+  let compiled;
+  try { compiled = await compiler.rebuild(); } finally { await compiler.dispose(); }
+  const { fixtureInboxRpc, parseSnapshot } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
+  const original = parseSnapshot(await fixtureInboxRpc()('read-home-inbox-v5', {}));
+  const template = original.items.find(item => item.item_id === 'demo-working');
+  let snapshot = parseSnapshot({ ...original, items: [...original.items.filter(item => !['working', 'held', 'snoozed'].includes(item.section)), ...Array.from({ length: count }, (_, i) => ({ ...template, item_id: `working-${i}`, title: `Working card ${i}`, section: ['working', 'held', 'snoozed'][i % 3] }))] });
+  const run = await scenario(t, { root: join(outDir, 'site'), now: NOW, page: { viewport: { width, height: 900 } } });
+  const { page } = run;
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true } })), theme);
+  const calls = [];
+  await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/mcp', route => {
+    const { name } = route.request().postDataJSON().params;
+    calls.push(name);
+    const payload = name === 'read-home-inbox-v5' ? parseSnapshot(snapshot) : { items: [] };
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
+  });
+  await run.open(`/?mode=live${current ? `&card=${current}` : ''}`);
+  await page.getByRole('searchbox').waitFor();
+  const region = page.getByRole('region', { name: 'In motion and waiting', exact: true });
+  await region.getByRole('heading', { level: 2 }).waitFor();
+  return { ...run, region, calls, update: change => { snapshot = parseSnapshot(change(snapshot)); } };
+}
+
+for (const count of [0, 1, 3]) test(`working section closed with ${count} cards`, async t => {
+  const { region } = await workingScenario(t, { count });
+  assert.equal(await region.getByRole('heading', { level: 2 }).textContent(), `In motion and waiting ${count}`);
+  assert.equal(await region.locator('[data-inbox-row]').count(), 0);
+  assert.equal(await region.getByRole('button').count(), count ? 1 : 0);
+  if (!count) await region.getByText('Nothing here right now.', { exact: true }).waitFor();
+});
+
+test('single working card exposes a disclosure', async t => {
+  const { region } = await workingScenario(t, { count: 1 });
+  assert.equal(await region.getByRole('button', { name: 'See all 1', exact: true }).count(), 1);
+});
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`working disclosure keyboard search refresh remount ${width} ${theme}`, async t => {
+  const { page, region, calls, update } = await workingScenario(t, { width, theme });
+  const disclosure = region.getByRole('button', { name: /See all|Show less/ });
+  const ids = () => region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow));
+  assert.deepEqual(await ids(), []);
+  await disclosure.focus();
+  const reads = () => calls.filter(name => /home-inbox|one-action|home-waiting/.test(name));
+  const before = [...reads()];
+  await page.keyboard.press('Enter');
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(await ids(), ['working-0', 'working-1', 'working-2']);
+  assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+  await page.screenshot({ path: `/tmp/WR617.S1.J60-open-${width}-${theme}.png`, fullPage: true });
+  await page.keyboard.press('Space');
+  assert.deepEqual(await ids(), []);
+  assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(reads(), before);
+  await page.screenshot({ path: `/tmp/WR617.S1.J60-closed-${width}-${theme}.png`, fullPage: true });
+  const search = page.getByRole('searchbox');
+  await search.fill('Working card 1');
+  assert.equal(await region.getByRole('heading', { level: 2 }).textContent(), 'In motion and waiting 1');
+  assert.deepEqual(await ids(), []);
+  await disclosure.click();
+  assert.deepEqual(await ids(), ['working-1']);
+  await page.getByRole('search').getByRole('button', { name: 'Clear', exact: true }).click();
+  assert.deepEqual(await ids(), ['working-0', 'working-1', 'working-2']);
+  await search.fill('Working card 1');
+  await disclosure.click();
+  await page.getByRole('search').getByRole('button', { name: 'Clear', exact: true }).click();
+  assert.deepEqual(await ids(), []);
+  await disclosure.click();
+  update(snapshot => ({ ...snapshot, items: snapshot.items.filter(item => item.item_id !== 'working-2') }));
+  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+  await region.getByRole('heading', { name: 'In motion and waiting 2', exact: true }).waitFor();
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(await ids(), ['working-0', 'working-1']);
+  await page.addScriptTag({ content: axe.source });
+  assert.deepEqual(await page.evaluate(async () => (await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] } })).violations), []);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.reload();
+  await disclosure.waitFor();
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  await disclosure.click();
+  await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+  assert.equal(await disclosure.count(), 0);
+});
+
+test('closed working section preserves selected card without first preview', async t => {
+  const { page, region } = await workingScenario(t, { current: 'working-1' });
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), ['working-1']);
+  await page.getByRole('searchbox').fill('unmatched');
+  await region.getByText('Pinned outside search', { exact: true }).waitFor();
+  assert.equal(await region.locator('[data-inbox-row]').count(), 1);
+  await region.getByRole('button', { name: 'See all 1', exact: true }).click();
+  await region.getByRole('button', { name: 'Show less', exact: true }).click();
+  assert.equal(await region.locator('[data-inbox-row="working-1"]').count(), 1);
+});
+
+for (const opened of [false, true]) test(`working refresh moves attention and resolved cards ${opened ? 'open' : 'closed'}`, async t => {
+  const { page, region, update } = await workingScenario(t);
+  if (opened) await region.getByRole('button', { name: /^See all/ }).click();
+  update(snapshot => ({ ...snapshot, items: snapshot.items.map(item => item.item_id === 'working-0' ? { ...item, section: 'inbox', source_state: 'needs_attention', due_on: null } : item.item_id === 'working-1' ? { ...item, section: 'settled', disposition: 'settled', source_state: 'done', auto_settled: true } : item) }));
+  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+  await page.getByRole('region', { name: 'Needs your attention', exact: true }).getByRole('button', { name: /^See all/ }).click();
+  await page.getByRole('region', { name: 'Needs your attention', exact: true }).locator('[data-inbox-row="working-0"]').waitFor();
+  await page.getByRole('region', { name: 'Earlier and undated completions', exact: true }).getByRole('button', { name: /^See all/ }).click();
+  await page.getByRole('region', { name: 'Earlier and undated completions', exact: true }).locator('[data-inbox-row="working-1"]').waitFor();
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), opened ? ['working-2'] : []);
+  assert.equal(await region.getByRole('button', { name: /See all|Show less/ }).getAttribute('aria-expanded'), String(opened));
+});
+
+for (const state of ['Empty', 'Hidden', 'Visible', 'Filtered', 'FilteredOpen', 'Selected', 'Attention', 'Done']) for (const event of ['remount', 'invalidate']) test(`working ${state} ${event} transition`, async t => {
+  const { page, region, update } = await workingScenario(t, { count: state === 'Empty' ? 0 : 3, current: state === 'Selected' ? 'working-1' : undefined });
+  const ids = () => region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow));
+  const disclosure = region.getByRole('button', { name: /See all|Show less/ });
+  if (['Visible', 'FilteredOpen'].includes(state)) await disclosure.click();
+  if (['Filtered', 'FilteredOpen'].includes(state)) await page.getByRole('searchbox').fill('Working card 1');
+  if (['Attention', 'Done'].includes(state)) {
+    update(snapshot => ({ ...snapshot, items: snapshot.items.map(item => item.item_id.startsWith('working-') ? { ...item, section: state === 'Attention' ? 'inbox' : 'settled', source_state: state === 'Attention' ? 'needs_attention' : 'done', disposition: state === 'Attention' ? 'inbox' : 'settled', auto_settled: state === 'Done', due_on: null } : item) }));
+    await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+    await region.getByRole('heading', { name: 'In motion and waiting 0', exact: true }).waitFor();
+    const destination = page.getByRole('region', { name: state === 'Attention' ? 'Needs your attention' : 'Earlier and undated completions', exact: true });
+    await destination.getByRole('button', { name: /^See all/ }).click();
+    await destination.locator('[data-inbox-row="working-0"]').waitFor();
+  }
+  assert.deepEqual(await ids(), state === 'Selected' ? ['working-1'] : state === 'Visible' ? ['working-0', 'working-1', 'working-2'] : state === 'FilteredOpen' ? ['working-1'] : []);
+  if (event === 'invalidate') {
+    await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+    assert.equal(await page.locator('[data-inbox-row]').count(), 0);
+    assert.equal(await disclosure.count(), 0);
+    return;
+  }
+  await page.reload();
+  await region.getByRole('heading', { level: 2 }).waitFor();
+  assert.equal(await page.getByRole('searchbox').inputValue(), '');
+  assert.deepEqual(await ids(), state === 'Selected' ? ['working-1'] : []);
+  if (['Empty', 'Attention', 'Done'].includes(state)) assert.equal(await disclosure.count(), 0);
+  else assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  if (['Attention', 'Done'].includes(state)) {
+    const destination = page.getByRole('region', { name: state === 'Attention' ? 'Needs your attention' : 'Earlier and undated completions', exact: true });
+    await destination.getByRole('button', { name: /^See all/ }).click();
+    for (const id of ['working-0', 'working-1', 'working-2']) await destination.locator(`[data-inbox-row="${id}"]`).waitFor();
+  }
+});
+
+for (const opened of [false, true]) test(`working selected refresh retains disclosure ${opened ? 'open' : 'closed'}`, async t => {
+  const { page, region, update } = await workingScenario(t, { current: 'working-1' });
+  const disclosure = region.getByRole('button', { name: /See all|Show less/ });
+  if (opened) await disclosure.click();
+  update(snapshot => ({ ...snapshot, items: snapshot.items.filter(item => item.item_id !== 'working-2') }));
+  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+  await region.getByRole('heading', { name: 'In motion and waiting 2', exact: true }).waitFor();
+  assert.equal(await disclosure.getAttribute('aria-expanded'), String(opened));
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), opened ? ['working-0', 'working-1'] : ['working-1']);
+});
+
+test('working empty refresh populates closed and hidden refresh stays closed', async t => {
+  const { page, region, update } = await workingScenario(t);
+  let saved;
+  update(snapshot => { saved = snapshot; return { ...snapshot, items: [] }; });
+  const refresh = page.getByRole('button', { name: 'Refresh inbox', exact: true });
+  await refresh.click();
+  await region.getByRole('heading', { name: 'In motion and waiting 0', exact: true }).waitFor();
+  update(() => saved);
+  await refresh.click();
+  await region.getByRole('heading', { name: 'In motion and waiting 3', exact: true }).waitFor();
+  for (let i = 0; i < 2; i++) {
+    assert.equal(await region.locator('[data-inbox-row]').count(), 0);
+    assert.equal(await region.getByRole('button').getAttribute('aria-expanded'), 'false');
+    await refresh.click();
+  }
+});
+
+for (const opened of [false, true]) test(`working select exact card from ${opened ? 'visible' : 'hidden'}`, async t => {
+  const { page, region, open } = await workingScenario(t);
+  if (opened) await region.getByRole('button', { name: /^See all/ }).click();
+  assert.equal(await region.locator('[data-inbox-row]').count(), opened ? 3 : 0);
+  await page.getByRole('searchbox').fill('Working card 1');
+  await open('/?mode=live&card=working-1');
+  assert.equal(await page.getByRole('searchbox').inputValue(), '');
+  await region.locator('[data-inbox-row="working-1"]').waitFor();
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), ['working-1']);
+});
+
+test('working selected open remount closes and retains exact card', async t => {
+  const { page, region } = await workingScenario(t, { current: 'working-1' });
+  await region.getByRole('button', { name: /^See all/ }).click();
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), ['working-0', 'working-1', 'working-2']);
+  await page.reload();
+  await region.locator('[data-inbox-row="working-1"]').waitFor();
+  assert.equal(await region.getByRole('button', { name: /^See all/ }).getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(await region.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => row.dataset.inboxRow)), ['working-1']);
+});
+
 });

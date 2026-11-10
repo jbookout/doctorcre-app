@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "answer-chart-missing-value-gaps",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "answer-chart-missing-value-gaps",
+    "predicate": "Run node scripts/prove-answer-chart-missing-value-gaps.mjs --origin https://app.doctorcre.com --timeout-ms 30000 against the deployed app. Fetch /app-release and the deployed answer module and referenced same-origin generated chunks. Synthetic sourced line charts retain gaps, positions, scaling, accessible inspection and full tables for leading, interior, trailing, repeated, all-null, contiguous and single-point series. Bars omit null values. Changed answers recompute and disposal unmounts. Record release identity, asset hashes and named assertion results.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with all named deployed-byte assertions passing. Exit 1 on contradiction and 78 for unavailable release or assets.",
+    "input_class": "read-only deployed app bytes and synthetic answer props",
+    "deadline_seconds": 30
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 20, "max_records": 200, "max_runtime_seconds": 30, "max_artifact_bytes": 65536}
+}

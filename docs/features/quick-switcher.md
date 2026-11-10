@@ -65,3 +65,24 @@ Named regression coverage in `test/quick-switcher-browser.test.mjs`:
 - `arrow selection wraps exactly and Tab excludes background controls` covers both arrow directions, wrapping and focus containment.
 - `global switcher preserves <variant> text entry` covers AltGraph, printable editable fields and both composition signals.
 - `composing Enter preserves switcher before normal Enter` covers the composition self-transition and ordinary navigation afterward.
+
+
+## Exact task destinations
+
+Board tasks use the producer-owned `item_id` from `local-deals-board.v2` 2.1.0.
+The pinned producer is CARR `4a2463c7fee7d1ea2827325cb849bef6a44a88b2`.
+The switcher passes that identity to `recordRoutes.card` for both pointer and
+Enter selection. Recents use the same canonical identity, so next actions and
+call follow-ups remain distinct even when their table-local UUIDs collide.
+Missing identities reject the board section. No prefix is inferred from a UUID.
+Home owns card content and its explicit outside-snapshot message.
+
+The browser regression covers two tasks from one deal at 390 and 1440 pixels
+in light and dark themes. The recorded producer actions in
+`test/fixtures/deal-board-actions.v2.json` come from the registered producer's
+Postgres test and pass the copied action schema and production live-client
+parser. Both action source types reach their exact Home row, or Home's existing
+unavailable message when the snapshot omits them.
+
+The [task destination statechart](../statecharts/task-destinations/task-destinations.mmd)
+models selection and Home's response. Its README maps every transition to tests.

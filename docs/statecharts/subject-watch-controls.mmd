@@ -1,0 +1,40 @@
+stateDiagram-v2
+  state Controls {
+    state Request {
+      Loading: Reading current watch
+      Ready: Current watch confirmed
+      Unavailable: Watch unavailable, previous confirmation labelled stale
+      Saving: Waiting for confirmation
+      Uncertain: Outcome unknown, retry same request
+      Closed: Private watch hidden
+      [*] --> Loading
+      Loading --> Ready: Server confirms read
+      Loading --> Unavailable: Read fails validation or connection
+      Unavailable --> Loading: Retry read
+      Ready --> Loading: Refresh watch
+      Ready --> Saving: Submit command
+      Saving --> Loading: Server confirms command
+      Saving --> Uncertain: Response lost or malformed
+      Uncertain --> Saving: Retry identical command and key
+      Saving --> Loading: Stale version fetches current state
+      Loading --> Loading: Ignore late reply
+      Loading --> Closed: Sign out
+      Unavailable --> Closed: Sign out
+      Ready --> Closed: Sign out
+      Saving --> Closed: Sign out
+      Uncertain --> Closed: Sign out
+      Closed --> Closed: Ignore late reply
+    }
+    --
+    state Session {
+      SignedIn: Signed in
+      Retired: Sign in again
+      [*] --> SignedIn
+      SignedIn --> Retired: Sign out
+      Retired --> Retired: Ignore late reply
+    }
+
+  }
+  %% never RetiredSaving: Waiting for confirmation & Sign in again -- Signing out fences writes and late results.
+  %% never RetiredReady: Current watch confirmed & Sign in again -- Signing out removes private confirmations.
+  %% LostRetryKey and WriteWithoutKey are additional TLA invariants over the retained command.

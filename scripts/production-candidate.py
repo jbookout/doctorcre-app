@@ -20,6 +20,8 @@ def candidate():
     with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
         output.write(f'source_commit={sha}\nready={str(ready).lower()}\n')
     print(f'Current main {sha}: {"CI passed" if ready else "waiting for successful CI"}')
+    if not ready:
+        raise SystemExit("No deployment: current main does not have successful CI")
 
 
 if __name__ == '__main__':

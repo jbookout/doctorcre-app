@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> disposition
+    state disposition <<choice>>
+    disposition --> unknown: missing or invalid recorded day
+    disposition --> cleared: valid day and cleared status
+    disposition --> passed: valid day and passed status
+    disposition --> overdue: open deadline before Central day
+    disposition --> today: open date equals Central day
+    disposition --> soon: open deadline one through seven days away
+    disposition --> upcoming: other future date
+    disposition --> passed: open nondeadline before Central day
+    upcoming --> soon: Central day reaches seven days before deadline
+    soon --> today: Central midnight reaches deadline
+    today --> overdue: Central midnight passes deadline

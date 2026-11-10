@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
-import { chromium } from "./browser-harness.mjs";
+import { componentDocument, chromium } from "./browser-harness.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -22,7 +22,7 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   const page = await browser.newPage();
   await page.route('**/*', route => route.abort());
   try {
-    await page.setContent(`<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main class="shell home-shell"><section class="home-panel glass"><div class="home-week"><div class="home-day"><header><span>Mon</span><strong>28</strong></header></div><div class="home-day today"><header><span>Tue</span><strong>29</strong></header></div></div></section></main></body></html>`);
+    await componentDocument(page, 'http://localhost', {html: `<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main class="shell home-shell"><section class="home-panel glass"><div class="home-week"><div class="home-day"><header><span>Mon</span><strong>28</strong></header></div><div class="home-day today"><header><span>Tue</span><strong>29</strong></header></div></div></section></main></body></html>`});
     const ratios = await page.evaluate(() => {
       const rgba = (value) => value.match(/[\d.]+/g).map(Number);
       const over = ([r, g, b, a = 1], [R, G, B]) => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a)];

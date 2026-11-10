@@ -1,0 +1,57 @@
+{
+  "response": {
+    "schema_version": "territory-state-board.v1",
+    "coverage": "recorded_geographies_only",
+    "submarkets": [
+      {
+        "city": "Conflict City",
+        "state": "TX",
+        "evidence": [
+          {
+            "source": "Synthetic current soft",
+            "current": true,
+            "expired": false,
+            "flag_id": "current-soft",
+            "condition": "soft",
+            "expires_on": "2099-01-01",
+            "observed_at": "2026-01-03T06:00:00-06:00"
+          },
+          {
+            "source": "Synthetic current tight",
+            "current": true,
+            "expired": false,
+            "flag_id": "current-tight",
+            "condition": "tight",
+            "expires_on": "2099-01-01",
+            "observed_at": "2026-01-02T06:00:00-06:00"
+          },
+          {
+            "source": "Synthetic unexpired historical",
+            "current": false,
+            "expired": false,
+            "flag_id": "historical-unexpired",
+            "condition": "balanced",
+            "expires_on": "2099-01-01",
+            "observed_at": "2026-01-01T06:00:00-06:00"
+          },
+          {
+            "source": "Synthetic expired historical",
+            "current": false,
+            "expired": true,
+            "flag_id": "historical-expired",
+            "condition": "tight",
+            "expires_on": "2025-02-01",
+            "observed_at": "2025-01-01T06:00:00-06:00"
+          }
+        ],
+        "condition": "conflicting"
+      },
+      {
+        "city": "Unknown City",
+        "state": "TX",
+        "evidence": [],
+        "condition": "unknown"
+      }
+    ]
+  }
+}

@@ -1203,7 +1203,7 @@ export async function createFixtureClient(opts = {}) {
   function boardSteps(deal) {
     const open_actions = actionsFor(deal).filter(action => action.status === 'open')
       .sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.id.localeCompare(b.id))
-      .slice(0, 3).map(({ id, owner, description, due_on }) => ({ id, owner, description, due_on }));
+      .slice(0, 3).map(({ id, owner, description, due_on }) => ({ id, item_id: `next_action:${id}`, owner, description, due_on }));
     const completed = actionsFor(deal).filter(action => action.status === 'done' && action.completed_at)
       .map(action => ({ id: action.id, kind: 'completed_action', summary: action.outcome || action.description, occurred_at: action.completed_at }));
     const last = [...activitiesFor(deal.id), ...completed]

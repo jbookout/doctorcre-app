@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
@@ -13,8 +14,9 @@ try {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw Error('Bad origin');
     const timeout = Number(values['timeout-ms']);
     if (!Number.isInteger(timeout) || timeout < 1 || timeout > 30000) throw Error('Timeout must be 1..30000 ms');
-    timer = setTimeout(() => { console.error('Proof timeout'); process.exitCode = 1; void browser?.close(); }, timeout);
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
+    timer = setTimeout(() => { console.error('Proof timeout'); process.exitCode = 78; void browser?.close(); }, timeout);
+    const release = await readAppRelease(url, { timeoutMs: timeout });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout });
     const context = await browser.newContext({ serviceWorkers: 'block' });
     context.setDefaultTimeout(timeout);
     const loaded = new Set();
@@ -31,10 +33,6 @@ try {
     await page.goto(`${url.origin}/__quick_add_proof__`);
     const result = await page.evaluate(async () => {
       const check = (value, message) => { if (!value) throw Error(message); };
-      const response = await fetch('/app-release');
-      check(response.ok, 'Release identity unavailable');
-      const release = await response.json();
-      check(release.service === 'doctorcre-app' && typeof release.source_commit === 'string' && /^[a-f0-9]{40}$/.test(release.source_commit), 'Release identity invalid');
       const { createLocalDrafts } = await import('/js/local-drafts.mjs');
       check(typeof createLocalDrafts === 'function', 'Missing createLocalDrafts export');
       const data = new Map();
@@ -48,13 +46,13 @@ try {
       const restored = createLocalDrafts({ storage, viewer: 'synthetic-proof' }).list();
       check(restored[0].dueDate === '2028-02-29', 'Restored leap day changed');
       check(restored[1]?.sentence === '  Call lender  ' && restored[1]?.dueDate === '2026-02-31' && restored[1]?.dateReviewRequired === true, 'Stored text or date-review disposition lost');
-      return { release, assertions: ['reject-impossible-save', 'preserve-leap-day', 'retain-text-and-raw-date-for-review'] };
+      return { assertions: ['reject-impossible-save', 'preserve-leap-day', 'retain-text-and-raw-date-for-review'] };
     });
-    console.log(JSON.stringify({ origin: url.origin, ...result, loaded_module_urls: [...loaded].filter(url => /\.(m?js)(\?|$)/.test(url)), requests }));
+    console.log(JSON.stringify({ origin: url.origin, release, ...result, loaded_module_urls: [...loaded].filter(url => /\.(m?js)(\?|$)/.test(url)), requests }));
   }
 } catch (error) {
   console.error(error.message);
-  process.exitCode = 1;
+  process.exitCode = error.exitCode || 1;
 } finally {
   await browser?.close();
   clearTimeout(timer);

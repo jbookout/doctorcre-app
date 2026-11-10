@@ -15,7 +15,7 @@
 //     means "nothing on this page points at this", and the page says exactly
 //     that in words rather than claiming the node stands alone anywhere.
 
-export const ATLAS_ENDPOINT = "/api/v1/atlas-graph";
+const ATLAS_ENDPOINT = "/api/v1/atlas-graph";
 
 /** The three layers, in the producer's canonical order. `inferred` is not one. */
 export const ATLAS_LAYERS = Object.freeze(["declared", "installed", "observed"]);
@@ -25,8 +25,8 @@ export const EVIDENCE_CLASSES = Object.freeze(["declared", "installed", "observe
 
 export const ATLAS_LIMIT_DEFAULT = 500;
 export const ATLAS_LIMIT_MAX = 2000;
-export const ATLAS_TENANT = "carr-internal";
-export const ATLAS_VIEWERS = Object.freeze(["joe", "dell"]);
+const ATLAS_TENANT = "carr-internal";
+const ATLAS_VIEWERS = Object.freeze(["joe", "dell"]);
 
 /** The twelve node classes the graph actually emits, in emission order. */
 export const NODE_CLASS_ORDER = Object.freeze([
@@ -46,7 +46,7 @@ export const NODE_CLASS_LABEL = Object.freeze({
   workflow: "Workflows",
 });
 
-export const MISSING_REASONS = Object.freeze([
+const MISSING_REASONS = Object.freeze([
   "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR", "page_capped",
   "no_grant", "not_in_bundle", "column_not_granted", "no_relation",
 ]);
@@ -176,7 +176,7 @@ function validSource(source) {
  * changed its mind about what a node is, and this page must stop rather than
  * paint a class it has no row for.
  */
-export function validAtlasNode(node) {
+function validAtlasNode(node) {
   const observed = NODE_OBSERVED_KEYS.filter((key) => node && typeof node === "object" && key in node);
   if (observed.length !== 0 && observed.length !== NODE_OBSERVED_KEYS.length) return false;
   if (!exactKeys(node, observed.length === 0 ? NODE_KEYS : [...NODE_KEYS, ...NODE_OBSERVED_KEYS])) return false;
@@ -194,7 +194,7 @@ export function validAtlasNode(node) {
   return nullableIso(node.observed_at) && nullableString(node.observed_status) && nonEmptyString(node.observed_source_ref);
 }
 
-export function validAtlasEdge(edge) {
+function validAtlasEdge(edge) {
   return exactKeys(edge, EDGE_KEYS) && nonEmptyString(edge.from) && nonEmptyString(edge.to) &&
     // `type` is data-driven for doctrine edges and links, so it is checked as a
     // string and rendered verbatim. A closed table here would silently drop a
@@ -203,7 +203,7 @@ export function validAtlasEdge(edge) {
     nonEmptyString(edge.source_ref) && nullableIso(edge.observed_at);
 }
 
-export function validAtlasCoverage(entry) {
+function validAtlasCoverage(entry) {
   if (!exactKeys(entry, COVERAGE_KEYS)) return false;
   if (!nonEmptyString(entry.source_ref) || !EVIDENCE_CLASSES.includes(entry.evidence_class)) return false;
   if (!wholeNumber(entry.node_count) || !wholeNumber(entry.edge_count)) return false;
@@ -271,7 +271,7 @@ export function validAtlasPayload(payload) {
  * never narrows the graph by accident, and `inferred` is not offerable: it is a
  * coverage class, and sending it would be refused with a 403.
  */
-export function buildAtlasQuery({ layer = null, q = "", includeRetired = false, limit = null, cursor = null } = {}) {
+function buildAtlasQuery({ layer = null, q = "", includeRetired = false, limit = null, cursor = null } = {}) {
   const parameters = new URLSearchParams();
   if (typeof layer === "string" && ATLAS_LAYERS.includes(layer)) parameters.set("layer", layer);
   const needle = String(q ?? "").trim();
@@ -331,7 +331,7 @@ export function coverageOrbFor(entry) {
   return "urgent";
 }
 
-export function isKnownGap(entry) {
+function isKnownGap(entry) {
   return GAP_REFS.has(entry?.source_ref);
 }
 

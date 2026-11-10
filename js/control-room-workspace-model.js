@@ -76,7 +76,7 @@ export function withGovernance(board, tasks) {
 }
 
 // Both scheduler surfaces carry observation coverage and the same timing words.
-export function automationSchedule(payload) {
+function automationSchedule(payload) {
  if(!validScheduleBoardPayload(payload))return {jobs:null,notice:'Automations unavailable'};
  const unknown=payload.sources.filter(source=>source.state!=='read').map(source=>source.owner);
  const jobs=payload.jobs.map(job=>({...job,source_state:payload.sources.find(source=>source.owner===job.owner)?.state==='read'?'read':'unknown'}));

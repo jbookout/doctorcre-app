@@ -1,10 +1,12 @@
-import test, { before, after } from 'node:test';
+import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { scenario } from './browser-scenario.mjs';
+
+describe('test/calendar-rail-fit-browser.test.mjs', () => {
 
 const NOW = new Date('2026-11-03T10:00:00-06:00');
 let outDir;
@@ -47,4 +49,6 @@ for (const theme of ['light', 'dark']) for (const count of [0, 1, 2, 3, 6]) test
     assert.ok(!['scroll', 'auto'].includes(fit.overflow), 'no scrollbar inside calendar rail');
     if (width === 1440) assert.ok(shown >= Math.min(count, 3), 'use available height for complete previews');
   }
+});
+
 });

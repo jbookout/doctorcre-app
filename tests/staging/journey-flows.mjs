@@ -69,27 +69,33 @@ export async function itinerary(page, fixture) {
   expect(await acceptedRoute(page.request, fixture)).toEqual(before);
 }
 
+export async function navigateConfidentialShare(page, link) {
+  let issued;
+  try { issued = new URL(link); } catch { throw new Error('Malformed confidential Share URL'); }
+  expect(issued.pathname === '/share' && issued.search === '' && /^#token=[A-Za-z0-9_-]{43}$/.test(issued.hash),
+    'confidential Share URL has the required shape').toBe(true);
+  await page.goto(`/share${issued.hash}`).catch(() => {
+    throw new Error('Share navigation failed; confidential URL omitted');
+  });
+  return issued;
+}
+
 export async function shareLifecycle(page, fixture) {
   await page.goto(`/tours/route-editor.html?tour=${fixture.tour.id}`);
   await expect(page.locator('#tour-name')).toHaveAttribute('title', fixture.tour.name, { timeout: 27000 });
   await page.locator('.projection-card > summary').click();
   await page.locator('#receipt-digest').fill('sha256:' + 'b'.repeat(64));
   await page.locator('input[name="scope"][value="shortlist"]').check();
+  await expect(page.locator('#appMainSlot #share-form')).toBeVisible();
   const issue = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tours/share/issue');
   await page.locator('#share-form button[type="submit"]').click();
   expect((await issue).ok()).toBe(true);
   await expect(page.locator('#share-link')).toBeVisible();
   const link = await page.locator('#share-url').inputValue();
   await page.locator('#share-url').evaluate(node => { node.value = ''; });
-  let issued;
-  try { issued = new URL(link); } catch { throw new Error('Malformed confidential Share URL'); }
-  expect(issued.pathname === '/share' && issued.search === '' && /^#token=[A-Za-z0-9_-]{43}$/.test(issued.hash),
-    'confidential Share URL has the required shape').toBe(true);
   const client = await page.context().newPage();
   try {
-    await client.goto(`/share${issued.hash}`).catch(() => {
-      throw new Error('Share navigation failed; confidential URL omitted');
-    });
+    const issued = await navigateConfidentialShare(client, link);
     const [exchange] = await Promise.all([
       client.waitForResponse(response => new URL(response.url()).pathname === '/api/share/exchange'),
       client.locator('#open-tour').click(),

@@ -1,0 +1,35 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "source": "mcp-server/src/lead-follow-up.ts",
+  "sha256": "14e367343600b15b627d3ac4926adda89ace52c66cacb9c34f51c3f75ba27515",
+  "method": "executeRegisteredTool against disposable synthetic PostgreSQL snapshot, default arguments; input admitted by registered inputSchema",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "lead_days": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "default": 45
+      },
+      "vendor_days": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "default": 90
+      },
+      "owner_slug": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "minLength": 1,
+        "maxLength": 100,
+        "pattern": "\\S"
+      }
+    }
+  },
+  "natural": false
+}

@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> Unmounted
+    Unmounted --> SegmentsRendered: Valid answer mounted
+    SegmentsRendered --> ActiveLabel: Focus or hover known point
+    ActiveLabel --> SegmentsRendered: Blur or leave point
+    SegmentsRendered --> SegmentsRendered: Changed answer recomputes segments
+    ActiveLabel --> SegmentsRendered: Changed answer resets inspection
+    SegmentsRendered --> Unmounted: Dispose
+    ActiveLabel --> Unmounted: Dispose
+    Unmounted --> Unmounted: Repeated dispose

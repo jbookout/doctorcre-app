@@ -92,7 +92,7 @@ export function countValue(raw) {
  * The dimensions a row can be grouped and drilled by. `owner` is here because
  * the disclosure needs it; it is NOT one of the charts painted on load.
  */
-export const DIMENSIONS = Object.freeze([
+const DIMENSIONS = Object.freeze([
   Object.freeze({ id: "phase", label: "Phase", noValue: "Not placed on this board" }),
   Object.freeze({ id: "type", label: "Deal type", noValue: "No type on file" }),
   Object.freeze({ id: "segment", label: "Segment", noValue: "Not segmented" }),

@@ -1,0 +1,8 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "source": "mcp-server/src/deal-checklist.ts",
+  "producer_sha256": "1e112949fe14963813ecacc8b1136de64f2c03235c781ecc51a28d4fe41942d4",
+  "method": "esbuild bundle of exact producer and calendar-date module; deriveDealChecklist with synthetic record and doctrine source hashes",
+  "database": false
+}

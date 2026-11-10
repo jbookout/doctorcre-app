@@ -1,0 +1,31 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle: History closed
+    Loading: Loading completed wins
+    Ready: Completed wins or genuine empty history
+    Error: History unavailable
+    Retired: Sign in again to read history
+    Disposed: History removed
+    Idle --> Loading: Open history
+    Loading --> Ready: Valid current response
+    Loading --> Error: Failed or invalid current response
+    Ready --> Loading: Refresh or apply filters
+    Error --> Loading: Refresh or apply filters
+    Loading --> Loading: Newer request replaces pending request
+    Idle --> Idle: Clear or pagehide
+    Loading --> Idle: Clear or pagehide
+    Ready --> Idle: Clear or pagehide
+    Error --> Idle: Clear or pagehide
+    Idle --> Retired: Session ends
+    Loading --> Retired: Session ends
+    Ready --> Retired: Session ends
+    Error --> Retired: Session ends
+    Retired --> Retired: Former controls, clear, pagehide, repeated invalidation, late response
+    Idle --> Disposed: Dispose
+    Loading --> Disposed: Dispose
+    Ready --> Disposed: Dispose
+    Error --> Disposed: Dispose
+    Retired --> Disposed: Dispose
+    Disposed --> Disposed: Saved callbacks, late response or repeated dispose
+    %% never Show private rows or issue reads after the session ends or disposal.
+    %% never Treat ordinary clear or pagehide as terminal session invalidation.

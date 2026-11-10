@@ -1,16 +1,14 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { createServer } from 'node:http';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], {
-  input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
-}));
+const workflow = () => parseYaml(readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'));
 
 test('production accepts same-repository main push CI wakes and resolves current main', () => {
   const document = workflow();
@@ -32,27 +30,18 @@ test('production accepts same-repository main push CI wakes and resolves current
 });
 
 test('production smoke reads each page and refuses a sign-in redirect for another page', async t => {
-  let wrongPage = false;
-  const paths = [];
-  const server = createServer((request, response) => {
-    assert.equal(request.method, 'GET');
-    paths.push(request.url);
-    if (request.url === '/status') {
-      response.writeHead(200, { 'content-type': 'text/html' }).end('<h1>Status</h1>');
-    } else {
-      const target = wrongPage && request.url === '/leads' ? '/other' : request.url;
-      response.writeHead(302, { location: `/auth/login?return_to=${encodeURIComponent(target)}` }).end();
-    }
-  });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  t.after(() => server.close());
+  async function snapshot(wrongPage = false) {
+    const responses = new Map(['/deals', '/leads', '/invoices', '/control-room/progress', '/doc-chats'].map(path => [path, { status: 302, headers: { location: `/auth/login?return_to=${encodeURIComponent(wrongPage && path === '/leads' ? '/other' : path)}` } }]));
+    responses.set('/status', { contentType: 'text/html', body: '<h1>Status</h1>' });
+    const server = await startFixture({ routes: responses }); t.after(() => server.close()); return server;
+  }
+  let server = await snapshot();
   const step = workflow().jobs.production.steps.find(step => step.name === 'Verify signed-out page gates');
   assert.ok(step);
   const run = async () => {
     const child = spawn('bash', ['-e', '-c', step.run], { env: {
       PATH: process.env.PATH,
-      DOCTORCRE_SMOKE_URL: `http://127.0.0.1:${server.address().port}`,
+      DOCTORCRE_SMOKE_URL: server.origin,
     } });
     let errors = '';
     child.stderr.on('data', bytes => { errors += bytes; });
@@ -61,8 +50,9 @@ test('production smoke reads each page and refuses a sign-in redirect for anothe
   };
   const healthy = await run();
   assert.equal(healthy.status, 0, healthy.errors);
-  assert.deepEqual(paths, ['/deals', '/leads', '/invoices', '/control-room/progress', '/doc-chats', '/status']);
-  wrongPage = true;
+  assert.ok(server.requests.every(req => req.method === 'GET'));
+  assert.deepEqual(server.requests.map(req => req.target), ['/deals', '/leads', '/invoices', '/control-room/progress', '/doc-chats', '/status']);
+  await server.close(); server = await snapshot(true);
   assert.notEqual((await run()).status, 0);
 });
 
@@ -156,7 +146,7 @@ test('queued completion wakes reconcile current main even when older or failed C
   }
   for (const runs of [[], [{ ...green, status: 'in_progress', conclusion: '' }], [{ ...green, conclusion: 'failure' }], [{ ...green, headSha: 'a'.repeat(40) }]]) {
     const result = run(runs);
-    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.status, 0, 'a deployment that cannot select green main must not report success');
     assert.match(result.output, /ready=false/);
   }
   writeFileSync(gh, '#!/bin/sh\nexit 1\n');

@@ -67,3 +67,34 @@ that no longer maps to the live queue.
 Run `python3 ops/review-gate-selftest.py`. Its synthetic PRs and queue entries
 exercise native identity, head binding, review states, metadata freshness,
 squash groups, pagination, and status publication. `node --test test/review-gate.test.mjs` runs the same selftest in the candidate-head CI suite.
+
+## Required CI on merge groups
+
+`CI` accepts `merge_group` events of type `checks_requested`, as well as PRs
+and main pushes. Its `checks`, four `shards`, `performance`, and `live` jobs
+check out `github.sha`, the queue candidate on a merge-group event. The final
+job emits the required Actions check named exactly `test`. The ruleset's
+Actions integration ID remains 15368. Changing repository settings is a
+separate coordinator operation.
+
+The reusable `checks.yml` inherits the caller's event and SHA through
+`workflow_call`; it needs no independent `merge_group` trigger. Its typed
+surfaces step runs for PRs and merge groups. PRs use `pull_request.base.sha`;
+groups use `merge_group.base_sha`. The existing checker compares that base
+with HEAD and refuses new JavaScript UI files. Main pushes, schedules and
+manual checks skip that incremental step.
+
+The preview job accepts only same-repository PR events. Production listens
+for CI completion but admits only same-repository main-push runs. It checks
+out current main and selects a successful current-main CI candidate, so a
+green queue SHA cannot deploy. CodeQL remains on managed default setup.
+Offline tests do not establish combined-group code scanning coverage.
+
+`node --test test/ci-workflows.test.mjs test/production-deploy-workflow.test.mjs test/review-gate.test.mjs`
+checks the event graph, required check name, typed surfaces, deployment
+exclusions and native App review behavior with synthetic queue fixtures.
+After transfer and queue enablement, the coordinator must observe one approved
+app PR merge through the queue with `test` green on its group SHA from Actions
+15368, then verify `/app-release` matches the merged main commit. The same run
+must record the review gate and managed CodeQL observations. These live effects
+remain unproven until that rollout.
