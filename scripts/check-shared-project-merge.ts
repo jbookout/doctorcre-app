@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { temporaryDirectory } from "./temp-directory.mjs";
 
 const root = resolve(".");
-const directory = temporaryDirectory(resolve("out/shared-project-merge-"));
+const directory = temporaryDirectory("shared-project-merge-");
 const base = process.argv[2] ?? "HEAD";
 function git(...args: string[]): string {
   return execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
