@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildArtifact } from "../scripts/artifact.mjs";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
-import { startWorkerFixture } from "../scripts/fixture-http.mjs";
+import { startFixture, startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { parseArgs, prove } from "../scripts/prove-deal-tours-revoked-controls.ts";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 
@@ -36,35 +35,40 @@ test("proof CLI documents and rejects invalid arguments", async () => {
     assert.equal((await cli(args)).code, 1);
 });
 test("proof CLI fails closed for unavailable identity, missing export and failed UI assertions", async (t) => {
-  let mode = "release";
-  const server = createServer((request, response) => {
-    if (request.url === "/app-release") {
-      response.writeHead(mode === "release" ? 503 : 200, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({ service: "doctorcre-app", environment: "production", source_commit: "1".repeat(40) }),
-      );
-    } else {
-      response.writeHead(200, { "content-type": "text/javascript" });
-      response.end(
-        mode === "export"
-          ? "export {}"
-          : 'export function mountDealTours() { throw Error("fixture assertion failure"); }',
-      );
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))));
-  const address = server.address();
-  assert.ok(address && typeof address !== "string");
-  const origin = `http://127.0.0.1:${address.port}`;
-  for (const [next, expected] of [
+  for (const [mode, expected] of [
     ["release", /Proof HTTP unavailable/],
     ["export", /Missing mountDealTours export/],
     ["assertion", /fixture assertion failure/],
   ] as const) {
-    mode = next;
-    const result = await cli(["--origin", origin, "--timeout-ms", "30000"]);
-    assert.equal(result.code, next === "release" ? 78 : 1);
+    const server = await startFixture({
+      routes: new Map([
+        [
+          "/app-release",
+          {
+            status: mode === "release" ? 503 : 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              service: "doctorcre-app",
+              environment: "production",
+              source_commit: "1".repeat(40),
+            }),
+          },
+        ],
+        [
+          "/js/ui-deal-tours.js",
+          {
+            contentType: "text/javascript",
+            body:
+              mode === "export"
+                ? "export {}"
+                : 'export function mountDealTours() { throw Error("fixture assertion failure"); }',
+          },
+        ],
+      ]),
+    });
+    t.after(() => server.close());
+    const result = await cli(["--origin", server.origin, "--timeout-ms", "30000"]);
+    assert.equal(result.code, mode === "release" ? 78 : 1);
     assert.match(result.output, expected);
   }
 });

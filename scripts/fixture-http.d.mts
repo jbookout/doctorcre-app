@@ -33,3 +33,5 @@ export function startWorkerFixture(options?: {
   close(): Promise<void>;
   release(token: string): void;
 }>;
+
+export function startFixture(options?: Parameters<typeof startWorkerFixture>[0]): ReturnType<typeof startWorkerFixture>;
