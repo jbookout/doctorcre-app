@@ -43,6 +43,7 @@
     "src/ui/phone-push-model.ts",
     "src/ui/quick-switcher.tsx",
     "src/ui/portal/demographics-core.tsx",
-    "src/ui/email-followup-actions.tsx"
+    "src/ui/email-followup-actions.tsx",
+    "src/ui/quiet-vendors.tsx"
   ]
 }

@@ -53,13 +53,22 @@
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
+    "scripts/prove-invoice-payment-chronology-display.ts",
+    "test/prove-invoice-payment-chronology-display.browser.ts",
+    "scripts/proof-browser.d.mts",
+    "test/proof-browser-harness.d.mts",
+    "js/invoice-tracker-fixture.d.ts",
+    "js/invoice-tracker-model.d.ts",
+    "js/routes.d.ts",
+    "src/worker.d.ts",
+    "test/quiet-vendors-malformed-snapshot.browser.ts",
+    "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
+    "scripts/prove-quiet-vendors-malformed-snapshot.ts",
     "test/portal-demographics-core.test.ts",
     "test/portal-demographics-core-browser.browser.ts",
     "scripts/prove-email-deal-picker-auth-retirement.ts",
     "test/email-deal-picker-auth-retirement.browser.ts",
-    "test/prove-email-deal-picker-auth-retirement.browser.ts",
-    "scripts/proof-browser.d.mts",
-    "test/proof-browser-harness.d.mts"
+    "test/prove-email-deal-picker-auth-retirement.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
@@ -70,6 +79,15 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
+      ],
+      "/js/invoice-tracker-fixture.js": [
+        "./js/invoice-tracker-fixture.d.ts"
+      ],
+      "/js/invoice-tracker-model.js": [
+        "./js/invoice-tracker-model.d.ts"
+      ],
+      "/js/ui-quiet-vendors.js": [
+        "./src/ui/quiet-vendors.tsx"
       ]
     },
     "jsx": "react-jsx"
