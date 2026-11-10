@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { ESLint } from 'eslint';
+import { ClientLint } from './client-lint-rules.mjs';
 import { JSDOM } from 'jsdom';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
@@ -17,7 +17,7 @@ test('direct sites are linted; historical indirect sites receive no origin credi
     .replace("from 'jsdom'", `from '${import.meta.resolve('jsdom')}'`)
     .replace("from '@babel/parser'", `from '${pathToFileURL(createRequire(import.meta.resolve('@babel/core')).resolve('@babel/parser')).href}'`);
   const { loopSites } = await import(`data:text/javascript;base64,${Buffer.from(scanner).toString('base64')}`);
-  const eslint = new ESLint({ allowInlineConfig: false });
+  const eslint = new ClientLint({ allowInlineConfig: false });
   const paths = git('ls-tree', '-r', '--name-only', baseline).trim().split('\n').filter(path =>
     /^(js|src|reports|tours|public-shell)\/|^[^/]+\.html$/.test(path)
     && /\.(?:[cm]?[jt]s|[jt]sx|html)$/.test(path)

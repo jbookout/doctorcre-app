@@ -27,7 +27,7 @@ export const fields = {
 };
 export type Field = keyof typeof fields;
 export type Draft = Partial<Record<Field, string | number>>;
-export type Scenario = Record<Field, number>;
+type Scenario = Record<Field, number>;
 export const fieldNames = Object.keys(fields).filter((key): key is Field => key in fields);
 export function ownershipChoices(pkg: OwnershipPackage) {
   const program = pkg.ownership?.program;

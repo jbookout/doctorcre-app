@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium, pausedClock, webkitSkipReason } from './browser-harness.mjs';
+import { componentDocument, chromium, pausedClock, webkitSkipReason } from './browser-harness.mjs';
 
 test('WebKit skips macOS 27 and newer without disabling Linux CI or older Macs', () => {
   for (const version of ['27.0.1', '28.0']) {
@@ -19,7 +19,7 @@ test('WebKit skips macOS 27 and newer without disabling Linux CI or older Macs',
 test('launches share one Chromium while each test keeps its own storage', async () => {
   const [a, b] = await Promise.all([chromium.launch(), chromium.launch()]);
   const [pageA, pageB] = await Promise.all([a.newPage(), b.newPage()]);
-  await Promise.all([pageA, pageB].map(page => page.setContent('<title>x</title>')));
+  await Promise.all([pageA, pageB].map(page => componentDocument(page, 'http://localhost', {html:'<title>x</title>'})));
   assert.equal(pageA.context().browser(), pageB.context().browser());
   assert.notEqual(pageA.context(), pageB.context());
   await a.close();

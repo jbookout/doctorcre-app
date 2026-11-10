@@ -1,3 +1,4 @@
+import { mountWatchControl } from './ui-watches.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
@@ -35,8 +36,7 @@ import {
 import { isClosedDeal, localDeals, needsAttention, overdueLabel, overdueSince } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, prepareDealDetail, PHASE_TRIGGERS } from './local-deals-model.js';
 import { sourceTime } from './email-source-line.js';
-import { renderDealTimeline, renderDealUpdates, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
-import { renderDealChecklist } from './deal-checklist.js';
+import { mountActivityAttribution, renderDealTimeline, renderDealUpdates, renderCriticalDates, dealTimeline, dateCaption, calendarDay } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -347,7 +347,10 @@ function applyBoardSnapshot(board) {
     pageDocContext?.finish(contextRead, board);
     ++panelReadSequence; ++contextReadSequence;
     state.panelDetail = null;
+    disposeChecklist();
+    disposeWatchControl();
     disposeEvidence?.(); disposeEvidence = null;
+    disposeActivityAttribution();
     disposePanelEmailFollowups();
     $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
     $('panelTitle').textContent = 'Deal';
@@ -813,7 +816,15 @@ async function settleConflictChoice(conflictId, result) {
 }
 
 
+let activityAttribution = null;
+function disposeActivityAttribution() { activityAttribution?.dispose(); activityAttribution = null; }
+function mountPanelActivityAttribution() {
+  disposeActivityAttribution();
+  const root = $('panelBody').querySelector('.deal-updates');
+  if (root) activityAttribution = mountActivityAttribution(root, { onDenied: refusePanelDetail });
+}
 let disposeEvidence = null;
+let watchControl = null, watchElement = null, watchSubject = null;
 let panelEmailFollowups = null;
 let emailMountSequence = 0;
 function disposePanelEmailFollowups() {
@@ -861,10 +872,13 @@ function refusePanelDetail(error) {
   ++contextReadSequence;
   clearMarketTermsViews();
   state.panelDetail = null;
+  disposeChecklist();
+  disposeWatchControl();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
   $('contextDrawer').close();
@@ -1070,6 +1084,22 @@ function workspaceEventsHtml(detail) {
   return `<h2>Dated events</h2><label for="timelineType">Filter by type</label><select id="timelineType"><option value="">All types</option>${[...new Set(events.map(e => e.type))].map(type => `<option${type === timelineType ? ' selected' : ''}>${esc(type)}</option>`).join('')}</select><ol class="workspace-events">${events.map(e => `<li data-event-type="${esc(e.type)}"${timelineType && e.type !== timelineType ? ' hidden' : ''}><time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time><small>${esc(e.type)}</small><p class="note-original">${esc(e.text)}</p></li>`).join('')}</ol>${events.length ? '' : '<p>No dated events recorded.</p>'}`;
 }
 let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel;
+let checklistPanel;
+function disposeChecklist() { checklistPanel?.dispose(); checklistPanel = null; }
+function disposeWatchControl() { watchControl?.dispose(); watchControl = null; watchElement = null; watchSubject = null; }
+function mountChecklist(detail) {
+  disposeChecklist();
+  const host = $('panelBody').querySelector('[data-detail-read="checklist"]');
+  let retired = false, mounted, latest = detail;
+  checklistPanel = {
+    update(value) { latest = value; mounted?.update({dealId: value.deal.id, checklist: value.checklist}); },
+    dispose() { retired = true; mounted?.dispose(); },
+  };
+  void import('./ui-checklist.js').then(({mountDealChecklist}) => {
+    if (retired) return;
+    mounted = mountDealChecklist(host, {dealId: latest.deal.id, checklist: latest.checklist});
+  }).catch(() => { if (!retired) host.textContent = 'Checklist unavailable. Reopen the deal to try again.'; });
+}
 // Each deal's comparison is kept for the session and reattached when its tab reopens; an access change discards them all.
 const marketTermsViews = new Map();
 function clearMarketTermsViews() {
@@ -1094,7 +1124,7 @@ function workspaceHtml(detail) {
     </section>
     <section data-detail-read="next-actions" aria-label="Next actions"><h2>Next actions</h2><ul>${(detail.next_actions || []).filter(action => action.status === 'open').map(action => `<li>${esc(noteText(action.description))}${calendarDay(action.due_on) ? ` · <time datetime="${esc(action.due_on)}">${esc(dateCaption(calendarDay(action.due_on)))}</time>` : ''}</li>`).join('') || '<li>No next actions recorded.</li>'}</ul></section>
     <section id="panelTerms" aria-label="Terms"><h2>Terms</h2><button type="button" class="btn" data-open-terms>Show sourced terms</button></section>
-    <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
+    <div data-detail-read="checklist"></div>
     <form id="detailUpdateForm" class="deal-update-form" novalidate><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><label for="dealUpdateStep">Next step</label><input id="dealUpdateStep" name="step" maxlength="10000" autocomplete="off"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date" min="${todayIso()}"${d.next_date && d.next_date < todayIso() ? ' aria-describedby="detailUpdateDateHint"' : ''}>${d.next_date && d.next_date < todayIso() ? '<small id="detailUpdateDateHint">Current next date is overdue.</small>' : ''}<button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
     ${requirementEmailHtml(d)}
@@ -1168,24 +1198,20 @@ async function readPanel(id) {
       for (const fresh of template.querySelectorAll('[data-detail-read]')) {
         const current = $('panelBody').querySelector(`[data-detail-read="${fresh.dataset.detailRead}"]`);
         if (!current) continue;
+        if (fresh.dataset.detailRead === 'checklist') { checklistPanel?.update(detail); continue; }
         if (fresh.dataset.detailRead === 'board-controls' && current.dataset.available === fresh.dataset.available) continue;
         if (fresh.dataset.detailRead === 'parking' && current.dataset.parked === 'false' && fresh.dataset.parked === 'false') continue;
         if (current.innerHTML !== fresh.innerHTML) {
           const expanded = new Set([...current.querySelectorAll('.deal-note details[open]')].map(n => n.closest('.deal-note').dataset.id));
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
           const focusIdentity = focused?.dataset.detailFocus;
-          const wasOpen = current.open || current.querySelector('.deal-checklist')?.open;
-          const checklistOpens = new Set([...current.querySelectorAll('[data-checklist-item] details[open]')].map(n => n.closest('[data-checklist-item]').dataset.checklistItem));
           const historyOpen = current.querySelector('.updates-history')?.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
           const oldScroll = current.scrollLeft;
+          if (fresh.dataset.detailRead === 'updates') disposeActivityAttribution();
           current.replaceWith(fresh);
+          if (fresh.dataset.detailRead === 'updates') mountPanelActivityAttribution();
           fresh.scrollLeft = oldScroll;
-          if (wasOpen) {
-            const disclosure = fresh.querySelector('.deal-checklist') || fresh;
-            disclosure.open = true;
-          }
-          fresh.querySelectorAll('[data-checklist-item]').forEach(n => { if (checklistOpens.has(n.dataset.checklistItem)) n.querySelector('details').open = true; });
           fresh.querySelectorAll('[data-date-id] details').forEach(n => { n.open = dateOpens.has(n.closest('[data-date-id]').dataset.dateId); });
           if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
@@ -1238,9 +1264,16 @@ function paintPanel(detail) {
   renderWorkspaceFacts(detail);
   factReviewPanel?.dispose();
   marketTermsPanel?.dispose();
+  disposeChecklist();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
+  mountChecklist(detail);
+  if (watchSubject !== detail.deal.id) disposeWatchControl();
+  watchElement ||= document.createElement('div');
+  $('workspace-overview').prepend(watchElement);
+  watchSubject = detail.deal.id;
+  watchControl ||= mountWatchControl(watchElement, {subject:{subject_type:'deal',subject_id:detail.deal.id}});
   const terms = $('panelTerms');
   let disposed = false, loading = false, mounted;
   const observer = new IntersectionObserver(entries => {
@@ -1267,6 +1300,7 @@ function paintPanel(detail) {
     dispose() { disposed = true; observer.disconnect(); mounted?.dispose(); },
   };
   disposeEvidence?.(); disposeEvidence = null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
@@ -1343,10 +1377,13 @@ function paintPanel(detail) {
     dispose() { documentsDisposed = true; documentsMounted?.dispose(); },
   };
   selectWorkspaceTab(workspaceTab);
+  mountPanelActivityAttribution();
   void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
+  disposeChecklist();
+  disposeWatchControl();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
@@ -1356,6 +1393,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   setContextOpenVisible(false);
   if (!state.panelDeal) boardScroll = history.state?.boardScroll ?? scrollY;
@@ -1400,6 +1438,8 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
 }
 async function closeWorkspace({ fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
+  disposeChecklist();
+  disposeWatchControl();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
@@ -1413,6 +1453,7 @@ async function closeWorkspace({ fromHistory = false } = {}) {
   $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
+  disposeActivityAttribution();
   disposePanelEmailFollowups();
   if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); writeWorkspaceHistory({},url); }
   $('recordPanel').hidden = true; $('main').hidden = false;

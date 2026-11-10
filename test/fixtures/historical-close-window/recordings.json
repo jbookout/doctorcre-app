@@ -1,0 +1,76 @@
+{
+  "full": {
+    "schema_version": "ideal-client-profile.v1",
+    "coverage": "recorded_closed_won_only",
+    "profiles": [
+      {
+        "vertical": "Dental",
+        "deal_type": "lease",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 3,
+        "clients": 2,
+        "evidence": [
+          {
+            "deal_id": "64700000-0000-4000-8000-000000000000",
+            "closed_on": "2020-02-28",
+            "deal_name": "Dental lease 1"
+          },
+          {
+            "deal_id": "64700000-0000-4000-8000-000000000001",
+            "closed_on": "2020-02-29",
+            "deal_name": "Dental lease 2"
+          },
+          {
+            "deal_id": "64700000-0000-4000-8000-000000000002",
+            "closed_on": "2020-03-01",
+            "deal_name": "Dental lease 3"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      },
+      {
+        "vertical": "Medical",
+        "deal_type": "purchase",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 2,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "64700000-0000-4000-8000-000000000010",
+            "closed_on": "2020-02-29",
+            "deal_name": "Medical purchase 1"
+          },
+          {
+            "deal_id": "64700000-0000-4000-8000-000000000011",
+            "closed_on": "2021-05-01",
+            "deal_name": "Medical purchase 2"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      },
+      {
+        "vertical": "Dental",
+        "deal_type": "purchase",
+        "city": "Synthetic city",
+        "state": "TX",
+        "won_deals": 1,
+        "clients": 1,
+        "evidence": [
+          {
+            "deal_id": "64700000-0000-4000-8000-000000000020",
+            "closed_on": "2022-06-01",
+            "deal_name": "Dental purchase 1"
+          }
+        ],
+        "hypothesis": "Historical fit, not a prediction or qualification rule."
+      }
+    ]
+  },
+  "empty": {
+    "schema_version": "ideal-client-profile.v1",
+    "coverage": "recorded_closed_won_only",
+    "profiles": []
+  }
+}

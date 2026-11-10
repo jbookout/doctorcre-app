@@ -5,6 +5,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium, settles } from './browser-harness.mjs';
 
@@ -13,26 +14,19 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 function closeShareFixture(t, browser, server) {
   t.after(async () => {
     await browser.close();
-    await new Promise(resolve => server.close(resolve));
+    await server.close();
   });
 }
 
 test('S8 fixture cleanup releases an unfinished browser response', async t => {
-  const outDir = await temporaryDirectory('s8-cleanup-');
-  t.after(() => rm(outDir, { recursive: true, force: true }));
-  const { server } = await createQaServer({ buildRoot: outDir });
-  const [serve] = server.listeners('request');
-  server.removeListener('request', serve);
-  server.on('request', (request, response) => {
-    if (request.url !== '/s8-held-response') return serve(request, response);
-    response.writeHead(200, { 'content-type': 'text/html' });
-    response.write('<!doctype html><title>Unfinished response</title>');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const server = await startFixture({routes:new Map([['/s8-held-response',{
+    body:'<!doctype html><title>Unfinished response</title>',contentType:'text/html',hold:'unfinished',partial:true,
+  }]])});
+  t.after(() => server.close());
   const browser = await chromium.launch();
   closeShareFixture(t, browser, server);
   const page = await browser.newPage();
-  await page.goto(`http://127.0.0.1:${server.address().port}/s8-held-response`, { waitUntil: 'commit' });
+  await page.goto(`${server.origin}/s8-held-response`, { waitUntil: 'commit' });
   assert.equal(await page.evaluate(() => document.readyState), 'loading');
 });
 
@@ -42,9 +36,8 @@ test('S8 the share page sits in the V2 shell with a gutter, a compact stepper an
   const outDir = await temporaryDirectory('s8-share-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
-  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  const origin = server.origin;
   const browser = await chromium.launch();
   closeShareFixture(t, browser, server);
 
@@ -85,9 +78,8 @@ test('QA confidential Share exchanges its scrubbed link before showing propertie
   const outDir = await temporaryDirectory('populated-share-');
   t.after(() => rm(outDir, { recursive:true, force:true }));
   await buildArtifact({ root, outDir, commit:'0'.repeat(40) });
-  const { server } = await createQaServer({ buildRoot:join(outDir,'site') });
-  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await (await createQaServer({ buildRoot:join(outDir,'site') })).start();
+  const origin = server.origin;
   const browser = await chromium.launch();
   closeShareFixture(t, browser, server);
   for (const theme of ['dark','light']) await t.test(theme, async () => {
@@ -133,8 +125,7 @@ for (const fonts of ['held', 'available']) test(`Slice A built shared report pai
   const outDir = await temporaryDirectory('share-font-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
-  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
   const browser = await chromium.launch();
   closeShareFixture(t, browser, server);
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -146,7 +137,7 @@ for (const fonts of ['held', 'available']) test(`Slice A built shared report pai
       return route.fulfill({ contentType: 'text/css', body: ':root { --synthetic-report-font-loaded: yes; }' });
     }
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/share`, { waitUntil: 'commit' });
+  await page.goto(`${server.origin}/share`, { waitUntil: 'commit' });
   await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null);
   // Paint and route delivery are independent on a busy runner.
   await settles(() => assert.ok(fontRequests > 0, 'the report font request really started'));

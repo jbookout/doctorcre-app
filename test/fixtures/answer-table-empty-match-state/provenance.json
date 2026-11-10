@@ -1,0 +1,33 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+  "path": "mcp-server/src/answer-blocks.js",
+  "producer": "recordedCompsTable",
+  "producer_sha256": "9795420d0e19e35dd09d4a9603883ff55b28364e3e27540eddb3e94ff672cdec",
+  "method": "Execute unchanged exported producer with synthetic query rows; no production calls.",
+  "query": "with requested as (select distinct unnest($1::uuid[]) as id),\n     missing as (select id from requested except select id from public.deal),\n     comps as (\n       select n.id, n.deal_id, d.name as deal_name, n.proposed_on, n.side, n.rate_norm_sf_yr\n       from public.v_deal_room_negotiation n\n       join public.deal d on d.id = n.deal_id\n       where n.deal_id = any($1::uuid[]) and n.rate_norm_sf_yr is not null\n       order by n.proposed_on desc, n.id limit 200\n     )\n     select exists(select 1 from missing) as missing,\n       coalesce((select jsonb_agg(to_jsonb(comps)) from comps), '[]'::jsonb) as comps",
+  "deal_ids": [
+    "11111111-1111-4111-8111-111111111111"
+  ],
+  "query_rows": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "deal_id": "11111111-1111-4111-8111-111111111111",
+      "deal_name": "Synthetic Alpha",
+      "proposed_on": "2026-11-01",
+      "side": "tenant",
+      "rate_norm_sf_yr": "30"
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "deal_id": "11111111-1111-4111-8111-111111111111",
+      "deal_name": "Synthetic Beta",
+      "proposed_on": "2026-11-02",
+      "side": "landlord",
+      "rate_norm_sf_yr": "20"
+    }
+  ],
+  "empty_query_rows": [],
+  "natural_production": false,
+  "consumer": "parseAnswerBlocks via mountAnswerBlocks"
+}

@@ -171,14 +171,14 @@ function groupLine(group) {
   return `<li class="cr-event cr-event-group"><details><summary><span class="cr-event-label">${escapeHtml(group.label)}</span><span class="cr-event-count">${group.events.length.toLocaleString('en-US')} times</span><time class="cr-event-time">${escapeHtml(clock(first))} to ${escapeHtml(clock(last))}</time></summary><ol class="cr-timeline cr-timeline-nested">${group.events.map(eventLine).join('')}</ol></details></li>`;
 }
 
-export function timelineHtml(item, events, { showAll = false } = {}) {
+function timelineHtml(item, events, { showAll = false } = {}) {
   if (events === null) return `<p class="cr-timeline-empty">${escapeHtml(detailRequest(item) ? NO_HISTORY[item.kind] : NO_READ)}</p>`;
   if (!events.length) return `<p class="cr-timeline-empty">${escapeHtml(NO_HISTORY[item.kind] || NO_READ)}</p>`;
   const { hidden, groups } = visibleTimeline(events, { showAll });
   return `${hidden ? `<button class="cr-older" type="button" data-show-older>Show ${hidden.toLocaleString('en-US')} older ${hidden === 1 ? 'event' : 'events'}</button>` : ''}<ol class="cr-timeline">${groups.map(groupLine).join('')}</ol>`;
 }
 
-export const SKELETON_HTML = `<div class="cr-timeline-skeleton" aria-hidden="true">${'<span class="skeleton-line"></span><span class="skeleton-line short"></span>'.repeat(4)}</div>`;
+const SKELETON_HTML = `<div class="cr-timeline-skeleton" aria-hidden="true">${'<span class="skeleton-line"></span><span class="skeleton-line short"></span>'.repeat(4)}</div>`;
 
 function header(item) {
   return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;

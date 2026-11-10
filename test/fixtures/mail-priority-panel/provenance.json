@@ -1,0 +1,8 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "entry": "mcp-server/src/tool-families/mail-needs-partner.js",
+  "producer_sha256": "89ac0cc3199a310876136993084379cea7b0322b048ef1e548e4d50e630bd0b4",
+  "execution": "Registered family handler with synthetic query rows, verified actor joe, limit 25, fixed clock. Synthetic dependency stub refuses agent authority. Verified human branch never invokes identity dependency. Producer, parser and family source bundled unchanged. No DB or production access.",
+  "recordings_sha256": "041d61d7a4ee3658ce19422e2a1719854548b5b8d4ac2bd6bc22274b2197b30c"
+}

@@ -8,20 +8,22 @@ import { chromium, webkit } from './browser-harness.mjs';
 const properties = JSON.parse(readFileSync('test/fixtures/portal-tour-list.market-study.json')).properties;
 const css = readFileSync('css/tokens.css', 'utf8') + readFileSync('portal/tour-list.css', 'utf8');
 const bundle = await build({ stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {TourList} from './src/ui/portal/tour-list-signout'; import {createTourList} from './src/ui/portal/tour-list-state';
-let snapshot = {version:4, selected:[], notes:{}};
+let snapshot = window.syntheticSnapshot ?? {version:4, selected:[], notes:{}};
 window.requests=[]; window.gates=0; window.cleared=0; window.opened=[];
-window.model=createTourList(${JSON.stringify(properties)}, {
+window.model=createTourList(window.syntheticProperties ?? ${JSON.stringify(properties)}, {
 read:async()=>snapshot,
 save:async request=> {window.requests.push(request); if(window.failure==='conflict') throw {status:409}; if(window.failure==='lost') throw Error(); snapshot={...request,version:request.version+1}; return snapshot;},
 signOut:async()=>{window.logoutCalls=(window.logoutCalls||0)+1; if(window.logoutFailure) throw Error();},
 clearPrivateState:()=>window.cleared++, returnToGate:()=>window.gates++
 });
 createRoot(document.getElementById('root')).render(<TourList model={window.model} openProperty={id=>window.opened.push(id)}/>);`, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, format: 'iife', platform: 'browser' });
-async function open(t, engine, width = 390, theme = 'light') {
+async function open(t, engine, width = 390, theme = 'light', fixture = {}) {
   const browser = await engine.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 950 } });
   await page.route('http://localhost/**', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en" data-theme="${theme}"><head><title>Synthetic Tour List</title><style>body{margin:0}${css}</style></head><body><main id="root"></main></body></html>` }));
-  await page.goto('http://localhost/tour-list-fixture'); await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  await page.goto('http://localhost/tour-list-fixture');
+  await page.evaluate(fixture => Object.assign(window, fixture), fixture);
+  await page.addScriptTag({ content: bundle.outputFiles[0].text });
   await page.locator('[data-state="ready"]').waitFor();
   return page;
 }
@@ -77,4 +79,29 @@ test('DOM conflict, discard confirmation, uncertain retry, drag, expiry and logo
   await page.getByRole('button', { name: 'Sign Out', exact: true }).click();
   await page.waitForFunction(() => window.gates === 1);
   assert.equal(await page.getByRole('region', { name: 'Tour List', exact: true }).count(), 0);
+});
+
+for (const width of [390, 1280]) test(`prototype-name Tour List DOM ${width}`, async t => {
+  const ids = ['constructor', '__proto__', 'toString', 'hasOwnProperty'];
+  const page = await open(t, chromium, width, 'light', {
+    syntheticProperties: ids.map((id, i) => ({ id, number: i + 1, address: `Synthetic ${id}`, role: 'candidate', summary: 'Synthetic' })),
+    syntheticSnapshot: { version: 1, selected: ids, notes: {} },
+  });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  for (const id of ids) {
+    const note = page.getByRole('textbox', { name: `Notes for Synthetic ${id}` });
+    assert.equal(await note.inputValue(), '');
+    await note.fill(`Synthetic ${id} note`);
+  }
+  await page.getByRole('button', { name: 'Save Selections', exact: true }).click();
+  await page.locator('[data-state="ready"]').waitFor();
+  for (const id of ids) {
+    assert.equal(await page.getByRole('textbox', { name: `Notes for Synthetic ${id}` }).inputValue(), `Synthetic ${id} note`);
+    assert.equal(await page.evaluate(id => window.requests[0].notes[id], id), `Synthetic ${id} note`);
+  }
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.deepEqual(errors, []);
+  mkdirSync('out/test-artifacts/portal-tour-list', { recursive: true });
+  await page.screenshot({ path: `out/test-artifacts/portal-tour-list/prototype-${width}.png`, fullPage: true });
 });

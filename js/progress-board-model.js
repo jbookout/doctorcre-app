@@ -5,9 +5,9 @@
 // drift from what the board shows.
 import { orchestratorError } from './progress-orchestrator.js';
 
-export const SNAPSHOT_SCHEMA = "carr-progress-board.v2";
+const SNAPSHOT_SCHEMA = "carr-progress-board.v2";
 export const ALL_REPOS_BOARD = "all-repos";
-export const DEFAULT_REPO = "jbookout/carr-system";
+const DEFAULT_REPO = "jbookout/carr-system";
 export const LIVE_PREVIEW = 5;
 export const LIVE_PREF_KEY = "carr-board:live-expanded";
 
@@ -46,7 +46,7 @@ export const PULSES = [
   { id: "still", speed: null, color: "var(--status-ok)", label: "No pulse", meaning: "Queued or finished" },
 ];
 
-export const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const STUCK_AFTER_MS = 2 * 60 * 60 * 1000;
 const IN_FLIGHT = new Set(["running", "review", "blocked"]);
 
@@ -129,7 +129,7 @@ const PHASE_BLOCKS = {
 };
 
 // Python's naive ISO timestamps are UTC in the CARR producer.
-export function parseTime(raw) {
+function parseTime(raw) {
   if (typeof raw !== "string" || !raw.trim()) return NaN;
   return Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`);
 }

@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "deal-deadline-central-day",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "central-business-day",
+      "predicate": "Run node scripts/prove-deal-deadline-central-day.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. The deployed countdown, renderCriticalDates and updateCountdowns show Due today for November 5 at 2026-11-06T02:00:00Z in UTC, America/Chicago, America/Los_Angeles and Asia/Tokyo, and pass Central midnight and DST cases. Release identity must remain unchanged.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Exit 0 with production release identity, source_commit, asset SHA256 hashes and 332 named passed assertions. Exit 1 on contradiction and 78 on unavailable release, asset or deadline.",
+      "input_class": "Synthetic calendar dates in isolated browser contexts, read-only public release and module assets",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 22,
+    "max_records": 20,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

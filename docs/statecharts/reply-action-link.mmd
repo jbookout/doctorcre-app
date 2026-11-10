@@ -1,0 +1,51 @@
+stateDiagram-v2
+state Link {
+ state Session {
+  [*] --> Active
+  Active --> Retired: Retire session
+ }
+ --
+ state View {
+  [*] --> Opening
+  Opening --> Review: Resolve exact draft
+  Opening --> Unavailable: Refuse or fail read
+  Unavailable --> Opening: Reload manually
+  Review --> Unavailable: Refuse submission [when Active, Submitting]
+  %% when Active, Submitting
+  Opening --> Closed: Retire session
+  Review --> Closed: Retire session
+  Unavailable --> Closed: Retire session
+  Opening --> Closed: Close view
+  Review --> Closed: Close view
+  Unavailable --> Closed: Close view
+ }
+ --
+ state Operation {
+  [*] --> Idle
+  Idle --> Submitting: Submit exact intent [when Active, Review]
+  %% when Active, Review
+  Submitting --> Unconfirmed: Lose or mismatch receipt [when Active, Review]
+  %% when Active, Review
+  Unconfirmed --> Submitting: Retry same intent [when Active, Review]
+  %% when Active, Review
+  Submitting --> Confirmed: Match receipt [when Active, Review]
+  %% when Active, Review
+  Submitting --> Idle: Refuse submission [when Active, Review]
+  %% when Active, Review
+  Idle --> Idle: Retire session
+  Submitting --> Idle: Retire session
+  Unconfirmed --> Idle: Retire session
+  Confirmed --> Idle: Retire session
+  Idle --> Idle: Close view
+  Submitting --> Idle: Close view
+  Unconfirmed --> Idle: Close view
+  Confirmed --> Idle: Close view
+ }
+}
+%% never NoRetiredReview: Retired & Review -- Retired sessions expose no private review.
+%% never NoRetiredWrite: Retired & Submitting -- Retired sessions cannot write.
+%% never NoLateRevival: Retired & Unconfirmed -- Late results cannot revive a retired view.
+%% never NoClosedWrite: Closed & Submitting -- Closing aborts owned requests.
+%% Payload invariants exercised through the parser and request seam in action-link.test.mjs:
+%% Displayed identity equals issued identity. Write identity, version, text and recipients equal review.
+%% One intent uses one key. Replay or expiry never authorizes another effect.

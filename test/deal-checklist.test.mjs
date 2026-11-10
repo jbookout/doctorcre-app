@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { renderDealChecklist } from '../js/deal-checklist.js';
+import { readFile } from 'node:fs/promises';
+import { uiBundle } from '../scripts/ui-bundle.mjs';
+const bundle = await uiBundle(path => readFile(new URL('../' + path, import.meta.url), 'utf8'));
+const { mountDealChecklist } = await import('data:text/javascript;base64,' + bundle.toString('base64'));
+function renderDealChecklist(checklist) {
+  const dom = new JSDOM('<main id="host"></main>');
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  const host = document.querySelector('#host');
+  const mounted = mountDealChecklist(host, {dealId:'test', checklist});
+  const html = host.innerHTML; mounted.dispose(); dom.window.close();
+  return html;
+}
 import { createLiveClient } from '../js/live-client.js';
 import { carrInterface } from "./carr-contract.mjs";
 
@@ -54,10 +65,10 @@ test('live getDeal preserves the runtime checklist without deriving it in the br
   assert.deepEqual((await client.getDeal('demo')).checklist, checklist);
 });
 
-test('absent and empty checklists render nothing', () => {
-  for (const value of [undefined, null, { ...checklist, phases: [] }, { ...checklist, due_items: [], phases: [{ id: 'legal', label: 'Legal', items: [] }] }]) {
-    assert.equal(renderDealChecklist(value), '');
-  }
+test('empty recorded requirements and absent snapshots remain distinct', () => {
+  assert.match(renderDealChecklist(undefined), /Checklist unavailable/);
+  assert.equal(new JSDOM(renderDealChecklist(undefined)).window.document.querySelector('[data-refresh-detail]'), null, 'absent snapshots use the existing workspace refresh');
+  assert.match(renderDealChecklist({...checklist, phases:[]}), /No requirements recorded/);
 });
 
 test('unavailable requirements stay visible without due counts or completion evidence', () => {

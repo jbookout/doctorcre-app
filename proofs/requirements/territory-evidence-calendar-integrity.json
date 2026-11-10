@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "territory-evidence-calendar-integrity",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "territory-evidence-calendar-integrity",
+    "predicate": "Run node scripts/prove-territory-evidence-calendar-integrity.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Observe /app-release and hashed deployed module bytes rejecting impossible dates and contradictory Current status, preserving server authority, recovering, and ignoring stale and disposed responses through mountTerritoryEvidence. This is deployed synthetic resilience, not a signed-in business-data journey.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, exact asset hashes and passing named assertions. Exit 1 for contradictions or timeout and 78 for unavailable release or assets.",
+    "input_class": "Read-only deployed release and module assets with isolated synthetic client ports",
+    "deadline_seconds": 30
+  }],
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 20, "max_records": 1000, "max_runtime_seconds": 30, "max_artifact_bytes": 1048576 }
+}

@@ -1,0 +1,28 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle: Updates with opt-in controls
+  Loading: Loading explanation for one activity
+  Success: Direct credit or review candidates
+  Empty: Unknown activity
+  Refusal: Unavailable explanation with retry
+  Retired: Private explanation cleared
+  Loading --> Loading: Another click ignored
+  Idle --> Loading: Show deal attribution
+  Loading --> Success: Valid recorded attribution
+  Loading --> Empty: Unknown activity
+  Loading --> Refusal: Invalid result or read failure
+  Refusal --> Loading: Explicit retry
+  Success --> Idle: Close explanation and return focus
+  Empty --> Idle: Close explanation and return focus
+  Loading --> Idle: Close explanation
+  Refusal --> Idle: Close explanation
+  Success --> Loading: Select another activity
+  Idle --> Retired: Session invalidated or detail disposed
+  Loading --> Retired: Session invalidated, authorization denied or detail disposed
+  Success --> Retired: Session invalidated or detail disposed
+  Empty --> Retired: Session invalidated or detail disposed
+  Refusal --> Retired: Session invalidated or detail disposed
+  Retired --> Retired: Late import or read ignored
+  Idle --> Idle: Late import or read ignored
+  %% never Credit a candidate or render unparsed data
+  %% never Start more than one attribution read per detail

@@ -16,6 +16,7 @@ jobs:
       tar_sha: ${{ steps.digests.outputs.tar_sha }}
       manifest_sha: ${{ steps.digests.outputs.manifest_sha }}
       sidecar_sha: ${{ steps.digests.outputs.sidecar_sha }}
+      manifest_repository: ${{ steps.digests.outputs.manifest_repository }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -24,7 +25,7 @@ jobs:
       - run: node scripts/check-release-source.mjs
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.4
+          node-version: 26.12.1
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run check
@@ -36,6 +37,13 @@ jobs:
       - id: digests
         name: Bind handoff bytes
         run: |
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync } from "node:fs";
+            import { isAppRepository } from "./js/repository-identity.mjs";
+            const manifest = JSON.parse(readFileSync("dist/doctorcre-app.manifest.json", "utf8"));
+            if (!isAppRepository(manifest.repository)) process.exit(1);
+            appendFileSync(process.env.GITHUB_OUTPUT, `manifest_repository=${manifest.repository}\n`);
+          '
           echo "tar_sha=$(sha256sum dist/doctorcre-app.tar | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "manifest_sha=$(sha256sum dist/doctorcre-app.manifest.json | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "sidecar_sha=$(sha256sum dist/doctorcre-app.tar.sha256 | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -66,6 +74,7 @@ jobs:
           path: dist
       - name: Verify handoff
         env:
+          MANIFEST_REPOSITORY: ${{ needs.build.outputs.manifest_repository }}
           TAR_SHA: ${{ needs.build.outputs.tar_sha }}
           MANIFEST_SHA: ${{ needs.build.outputs.manifest_sha }}
           SIDECAR_SHA: ${{ needs.build.outputs.sidecar_sha }}
@@ -78,7 +87,7 @@ jobs:
             test -f "dist/$file" && test ! -L "dist/$file"
           done
           printf '%s  %s\n' "$TAR_SHA" dist/doctorcre-app.tar "$MANIFEST_SHA" dist/doctorcre-app.manifest.json "$SIDECAR_SHA" dist/doctorcre-app.tar.sha256 | sha256sum -c -
-          jq -e --arg sha "$GITHUB_SHA" '.repository == "jbookout/doctorcre-app" and .source_commit == $sha and .schema == "doctorcre-static-artifact.v1"' dist/doctorcre-app.manifest.json
+          jq -e --arg sha "$GITHUB_SHA" --arg repository "$MANIFEST_REPOSITORY" '.repository == $repository and .source_commit == $sha and .schema == "doctorcre-static-artifact.v1"' dist/doctorcre-app.manifest.json
       - name: Publish content-addressed inputs and digests
         env:
           GH_TOKEN: ${{ github.token }}

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 const bundle = await build({ entryPoints: ['src/ui/portal/tour-list-state.ts'], bundle: true, write: false, platform: 'node', format: 'esm' });
 const { createTourList } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 const properties = JSON.parse(readFileSync('test/fixtures/portal-tour-list.market-study.json')).properties;
@@ -83,4 +84,48 @@ test('whole-list load at tenfold count has no per-property requests and IDs surv
   const model = createTourList(candidates, { read: async () => { reads++; return snapshot; }, save: async request => ({ ...request, version: 5 }), signOut: async () => {}, clearPrivateState() {}, returnToGate() {} });
   await tick(); model.edit('synthetic-9', true); model.note('synthetic-9', 'Only this canonical property'); await model.save();
   assert.equal(reads, 1); assert.deepEqual(model.state.base.selected, ['synthetic-9']); assert.equal(model.state.base.notes['synthetic-9'], 'Only this canonical property'); model.dispose();
+});
+
+const rendering = await build({ stdin: { contents: `
+  import React from 'react';
+  import {renderToStaticMarkup} from 'react-dom/server';
+  import {TourList} from './src/ui/portal/tour-list-signout';
+  export const render = model => renderToStaticMarkup(<TourList model={model} openProperty={() => {}} />);
+`, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external' });
+const rendered = { exports: {} };
+new Function('require', 'module', 'exports', rendering.outputFiles[0].text)(createRequire(import.meta.url), rendered, rendered.exports);
+for (const propertyId of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+  test(`prototype property ${propertyId} renders empty notes and saves only own text`, async () => {
+    const model = createTourList([{ id: propertyId, number: 1, address: 'Synthetic', role: 'candidate', summary: 'Synthetic' }], {
+      read: async () => ({ version: 1, selected: [propertyId], notes: {} }),
+      save: async request => JSON.parse(JSON.stringify({ ...request, version: request.version + 1 })),
+      signOut: async () => {}, clearPrivateState() {}, returnToGate() {},
+    });
+    await tick();
+    try {
+      assert.equal(model.state.kind, 'ready');
+      assert.match(rendered.exports.render(model), /<textarea[^>]*><\/textarea>/);
+      assert.equal(model.state.draft.notes[propertyId], undefined);
+      model.note(propertyId, 'Synthetic note');
+      assert.equal(model.state.kind, 'dirty');
+      await model.save();
+      assert.equal(model.state.kind, 'ready');
+      assert.equal(model.state.draft.notes[propertyId], 'Synthetic note');
+      model.edit(propertyId, false); model.edit(propertyId, true);
+      assert.equal(model.state.draft.notes[propertyId], undefined);
+      assert.match(rendered.exports.render(model), /<textarea[^>]*><\/textarea>/);
+    } finally { model.dispose(); }
+  });
+}
+test('external inherited notes are ignored and object-valued pollution is rejected', async () => {
+  const inherited = setup({ read: async () => ({ ...snapshot, selected: [id], notes: Object.create({ [id]: 'Inherited' }) }) }).model;
+  await tick();
+  assert.equal(inherited.state.kind, 'ready');
+  assert.equal(inherited.state.draft.notes[id], undefined);
+  inherited.dispose();
+  const polluted = createTourList([{ id: '__proto__', number: 1, address: 'Synthetic', role: 'candidate', summary: 'Synthetic' }], {
+    read: async () => JSON.parse('{"version":1,"selected":["__proto__"],"notes":{"__proto__":{"polluted":true}}}'),
+    save: async request => request, signOut: async () => {}, clearPrivateState() {}, returnToGate() {},
+  });
+  await tick(); assert.equal(polluted.state.kind, 'unavailable'); polluted.dispose();
 });

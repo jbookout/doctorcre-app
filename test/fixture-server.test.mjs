@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
@@ -68,6 +69,7 @@ const probe = `
     assert.equal(new URL(server.origin).hostname, '127.0.0.1');
     assert.equal(new URL(server.origin).protocol, 'http:');
     assert.ok(Number(new URL(server.origin).port) > 0);
+    assert.equal((await fetch(server.origin + '/unadmitted.txt')).status,404);
     const response = await fetch(server.origin + '/fixture-root-probe.txt');
     if (expected === null) {
       assert.equal(response.status, 404);
@@ -96,6 +98,13 @@ for (const mode of ['default', 'ambient', 'explicit', 'empty', 'conflicting colo
       writeFile(join(ambient, 'fixture-root-probe.txt'), 'ambient synthetic root'),
       writeFile(join(explicit, 'fixture-root-probe.txt'), 'explicit synthetic root'),
     ]);
+    for (const [root, body] of [[ambient,'ambient synthetic root'],[explicit,'explicit synthetic root']]) {
+      await writeFile(join(root,'artifact-manifest.json'),JSON.stringify({
+        schema:'doctorcre-static-artifact.v1',repository:'jbookout/doctorcre-app',source_commit:'0'.repeat(40),
+        files:[{path:'fixture-root-probe.txt',bytes:Buffer.byteLength(body),sha256:createHash('sha256').update(body).digest('hex')}],
+      }));
+      await writeFile(join(root,'unadmitted.txt'),'not part of this snapshot');
+    }
     const env = { ...process.env };
     delete env.DOCTORCRE_FIXTURE_ROOT;
     if (mode !== 'default' && mode !== 'conflicting colors') env.DOCTORCRE_FIXTURE_ROOT = ambient;

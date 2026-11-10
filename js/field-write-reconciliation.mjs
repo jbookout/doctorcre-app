@@ -133,7 +133,7 @@ function intentArgs(current, { deal, field, value, base, extra }) {
  * is the whole point of it — and every settled answer, including a conflict and
  * including a refusal, drops it so the next intent starts clean.
  */
-export function settleFieldWrite(state, cell, outcome) {
+function settleFieldWrite(state, cell, outcome) {
   const next = settleCommand(state, cell, outcome);
   const entry = next[cell];
   // The kernel's own sentence is the general one; a cell's row says where its
