@@ -14,6 +14,7 @@ const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url
 const checks = await readFile(new URL("../.github/workflows/checks.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
+execFileSync(process.execPath, ["scripts/strict-projects.ts"], { cwd: root });
 
 const workflowDocument = source => parseYaml(source);
 const eventCondition = (expression = 'true', github = {}) => runInNewContext(
