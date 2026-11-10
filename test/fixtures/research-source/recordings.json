@@ -1,0 +1,201 @@
+{
+  "schema_version": "lead-workspace.v1",
+  "generated_at": "2026-10-01T16:00:00Z",
+  "last_search_at": "2026-10-01T14:00:00Z",
+  "leads": [
+    {
+      "id": "30000000-0000-0000-0000-000000000001",
+      "party_id": "30000000-0000-0000-0000-000000000101",
+      "registry_ref": "L-1",
+      "base_version": 1,
+      "doctor_name": "Dr. Example 1",
+      "city": "Pensacola",
+      "state": "FL",
+      "specialty": "Dental",
+      "stage": "new",
+      "score": 79,
+      "suppressed": false,
+      "owner": null,
+      "possible_clients": []
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000002",
+      "party_id": "30000000-0000-0000-0000-000000000102",
+      "registry_ref": "L-2",
+      "base_version": 1,
+      "doctor_name": "Dr. Example 2",
+      "city": "Pensacola",
+      "state": "FL",
+      "specialty": "Dental",
+      "stage": "new",
+      "score": 78,
+      "suppressed": false,
+      "owner": null,
+      "possible_clients": []
+    }
+  ],
+  "detail": {
+    "id": "30000000-0000-0000-0000-000000000001",
+    "party_id": "30000000-0000-0000-0000-000000000101",
+    "registry_ref": "L-1",
+    "base_version": 1,
+    "doctor_name": "Dr. Example 1",
+    "city": "Pensacola",
+    "state": "FL",
+    "specialty": "Dental",
+    "stage": "new",
+    "score": 79,
+    "suppressed": false,
+    "owner": null,
+    "possible_clients": [],
+    "phone": "+1-555-010-0000",
+    "email": "example@example.test",
+    "notes": "Planning a dental relocation.\n\nOriginal synthetic entry with room requirements.",
+    "est_lease_event": "2027-03-01",
+    "correspondence": [
+      {
+        "id": "30000000-0000-0000-0000-000000000600",
+        "kind": "email_in",
+        "occurred_at": "2026-10-01T10:00:00Z",
+        "summary": "Reply confirms interest in a tour.",
+        "detail": "Synthetic original email: please show available dental space."
+      },
+      {
+        "id": "30000000-0000-0000-0000-000000000601",
+        "kind": "meeting",
+        "occurred_at": "2026-09-30T12:00:00Z",
+        "summary": "Space plans discussed.",
+        "detail": "Synthetic calendar entry: 2,000 square feet."
+      }
+    ],
+    "stage_history": [
+      {
+        "event_id": "30000000-0000-0000-0000-000000000500",
+        "prior_stage": "outreach_active",
+        "stage": "engaged",
+        "occurred_at": "2026-10-01T10:00:00Z",
+        "reason": "Reply received"
+      }
+    ],
+    "research": {
+      "state": "needs_review",
+      "evidence": [
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000001",
+          "kind": "address",
+          "found": true,
+          "expired": true,
+          "proposes_correction": false,
+          "source": "https://example.test/source/0",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 0"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000002",
+          "kind": "phone",
+          "found": true,
+          "expired": false,
+          "proposes_correction": true,
+          "source": "https://example.test/source/0",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 1"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000003",
+          "kind": "address",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": " https://example.test/source/0 ",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 2"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000004",
+          "kind": "phone",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 3"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000005",
+          "kind": "address",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "  \t",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 4"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000006",
+          "kind": "phone",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "missing",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 5"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000007",
+          "kind": "address",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "source:missing",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 6"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000008",
+          "kind": "phone",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "all",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 7"
+        },
+        {
+          "flag_id": "40000000-0000-0000-0000-000000000009",
+          "kind": "address",
+          "found": true,
+          "expired": false,
+          "proposes_correction": false,
+          "source": "<img src=x onerror=alert(1)>",
+          "observed_at": "2026-11-06T01:00:00Z",
+          "expires_on": "2028-02-29",
+          "value": "Value 8"
+        }
+      ],
+      "coverage": "recorded_findings_only",
+      "external_search_performed": false,
+      "next_step": "Review discrepancies against original sources before working this record."
+    },
+    "correspondence_page": {
+      "total": 3,
+      "has_more": true,
+      "next_cursor": {
+        "id": "30000000-0000-0000-0000-000000000601",
+        "occurred_at": "2026-09-30T12:00:00Z"
+      }
+    },
+    "stage_history_page": {
+      "total": 1,
+      "has_more": false,
+      "next_cursor": null
+    }
+  }
+}

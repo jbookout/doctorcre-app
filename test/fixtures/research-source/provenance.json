@@ -1,0 +1,7 @@
+{
+  "natural": false,
+  "method": "Synthetic source variants of research-kind-filter/recordings.json, replayed through its pinned researchSummary producer and production validateLeadWorkspace/validateLeadDetail parsers.",
+  "producer_provenance": "../research-kind-filter/provenance.json",
+  "producer_replay": "../research-kind-filter/producer.txt",
+  "clock": "2026-11-07T12:00:00Z"
+}
