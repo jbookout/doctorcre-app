@@ -53,6 +53,8 @@
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
+    "scripts/prove-reply-draft-recipient-race.ts",
+    "test/prove-reply-draft-recipient-race.browser.ts",
     "scripts/prove-call-review-decision-replay-key.ts",
     "test/call-review-decision-replay-key-browser.browser.ts",
     "test/call-review-decision-replay-key.test.ts",

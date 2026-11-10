@@ -95,6 +95,7 @@
     "scripts/prove-quiet-vendor-basis.mjs",
     "scripts/prove-quiet-vendor-owner-filter.mjs",
     "scripts/prove-reasons-evidence-window.mjs",
+    "scripts/prove-reply-draft-recipient-race.ts",
     "scripts/prove-research-attention.mjs",
     "scripts/prove-research-kind-filter.mjs",
     "scripts/prove-task-completion-event-required.mjs",
