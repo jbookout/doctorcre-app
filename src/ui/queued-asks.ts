@@ -86,7 +86,7 @@ export class SavedDraftRecoveryError extends Error {
 export function createAskOutbox(o: Options) {
   if (!o.actor || !uuid(o.conversation)) throw Error("Open a conversation before writing.");
   const prefix = `doctorcre:asks:v1:${encodeURIComponent(o.actor)}:${o.conversation}:`;
-  const draftKey = prefix + "draft";
+  const draftKey = `${prefix}draft`;
   let busy = false,
     stopped = false;
   const retries = new Set<string>();
@@ -205,7 +205,7 @@ export function createAskOutbox(o: Options) {
         const current = o.storage.getItem(draftKey);
         if (current !== draftSnapshot || draft() !== expected)
           throw Error("The draft changed in another tab. Reopen it before inserting.");
-        const text = expected ? expected + "\n\n" + block : block;
+        const text = expected ? `${expected}\n\n${block}` : block;
         if (text.length > 20000) throw Error("The ask would exceed 20,000 characters. Nothing was inserted.");
         const next = JSON.stringify({ text, version: saved.version + 1 });
         o.storage.setItem(draftKey, next);

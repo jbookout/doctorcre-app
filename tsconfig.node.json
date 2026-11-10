@@ -52,7 +52,9 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-queued-asks-corrupt-entry-isolation.ts",
+    "test/prove-queued-asks-corrupt-entry-isolation.test.ts"
   ],
   "compilerOptions": {
     "lib": [

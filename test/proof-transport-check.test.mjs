@@ -55,6 +55,7 @@ for (const environment of ['staging', undefined]) test(`all proof CLIs refuse ${
     await t.test(runner, async () => {
       const args = [`scripts/${runner}`, '--origin', origin];
       if (['prove-asset-manifest-publication.mjs', 'prove-fact-review-pending-status-view.mjs', 'prove-territory-evidence-current-history-view.mjs', 'prove-reply-action-link.ts', 'prove-exact-action-cards.ts'].includes(runner)) args.push('--commit', '1'.repeat(40));
+      if (runner === 'prove-queued-asks-corrupt-entry-isolation.ts') args.push('--revision', '1'.repeat(40));
       if (runner === 'prove-reply-action-link.ts') args.push('--ref', 'synthetic', '--proposal-id', 'synthetic', '--foreign-ref', 'synthetic-foreign');
       if (runner === 'prove-exact-action-cards.ts') args.push('--reply-ref','synthetic','--reply-id','synthetic','--call-ref','synthetic','--call-id','synthetic','--feedback-ref','synthetic','--feedback-id','synthetic','--foreign-ref','foreign');
       args.push('--timeout-ms', '3000');
