@@ -8,6 +8,46 @@ const conversation = '11111111-1111-4111-8111-111111111111';
 const key = '22222222-2222-4222-8222-222222222222';
 function memory() { const data = new Map(); return { get length() { return data.size; }, key: i => [...data.keys()][i], getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,v), removeItem: k => data.delete(k) }; }
 const receipt = request => ({ ok: true, contract: 'doc-request.v1', status: 'accepted', conversation_id: request.conversation_id, request_msg_id: request.idempotency_key, idempotency_key: request.idempotency_key });
+for (const corruptFirst of [true,false]) test(`corrupt entry isolation, corrupt first ${corruptFirst}`, async () => {
+ const storage=memory(), prefix=`doctorcre:asks:v1:joe:${conversation}:`, bad=prefix+'broken';
+ if(corruptFirst) storage.setItem(bad,'{');
+ const s=setup(storage);await s.box.saveDraft('Valid frozen ask');await s.box.enqueue();await s.box.saveDraft('Current draft');
+ if(!corruptFirst) storage.setItem(bad,'{');
+ const reopened=setup(storage);
+ assert.deepEqual(reopened.box.entries().map(r=>r.request.body),['Valid frozen ask']);
+ assert.deepEqual(reopened.box.recovery(),[bad]);
+ reopened.connect();await reopened.box.flush();
+ assert.equal(reopened.box.entries()[0].kind,'accepted');assert.equal(reopened.calls.length,1);
+ assert.equal(reopened.calls[0].body,'Valid frozen ask');assert.equal(reopened.box.draft(),'Current draft');
+ assert.equal(storage.getItem(bad),'{');assert.equal(setup(storage).box.entries()[0].kind,'accepted');
+});
+for (const raw of ['{','','{}']) test(`malformed draft is isolated and retained without overwrite ${JSON.stringify(raw)}`,async()=>{
+ const s=setup(),draftKey=`doctorcre:asks:v1:joe:${conversation}:draft`;
+ await s.box.saveDraft('Valid');await s.box.enqueue();s.storage.setItem(draftKey,raw);
+ const reopened=setup(s.storage);assert.equal(reopened.box.draft(),'');
+ await assert.rejects(()=>reopened.box.saveDraft('Replacement'),/recovery/);
+ await assert.rejects(()=>reopened.box.enqueue('Replacement'),/recovery/);
+ reopened.connect();await reopened.box.flush();assert.equal(reopened.box.entries()[0].kind,'accepted');
+ assert.equal(s.storage.getItem(draftKey),raw);assert.deepEqual(reopened.box.recovery(),[draftKey]);
+});
+test('recovery scan captures storage length once and stops despite new producers',()=>{
+ const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ s.storage.setItem(prefix+'broken','{');
+ let reads=0,keys=0;
+ Object.defineProperty(s.storage,'length',{get(){reads++;return 1;}});
+ const original=s.storage.key;
+ s.storage.key=i=>{keys++;s.storage.setItem(prefix+'new-'+i,'{');return original(i);};
+ assert.deepEqual(s.box.recovery(),[prefix+'broken']);assert.equal(reads,1);assert.equal(keys,1);
+});
+test('invalid shapes stay held, other scopes excluded, access failures throw',()=>{
+ const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ s.storage.setItem(prefix+'bad','{}');
+ s.storage.setItem(prefix+'wrong',JSON.stringify({kind:'queued',request:{body:'Wrong',conversation_id:key,idempotency_key:key}}));
+ s.storage.setItem(`doctorcre:asks:v1:dell:${conversation}:bad`,'{');
+ s.storage.setItem(`doctorcre:asks:v1:joe:${key}:bad`,'{');
+ assert.equal(s.box.entries().length,0);assert.equal(s.box.recovery().length,2);
+ s.storage.getItem=()=>{throw Error('access denied');};assert.throws(()=>s.box.entries(),/access denied/);
+});
 function setup(storage = memory()) {
  let online = false, send = async request => receipt(request);
  const calls = [];
@@ -90,4 +130,60 @@ test('asks queued during a held submission drain without retrying unknown outcom
  assert.deepEqual(box.entries().map(row=>row.kind),['unknown','accepted']);
  assert.equal(calls.length,2);assert.equal(box.draft(),'Third draft');
  assert.equal(calls[1].body,'Second');
+});
+
+for (const failure of ['corrupt', 'conversation', 'idempotency_key', 'storage']) for (const arrival of ['accepted','refused','unknown','rejected']) test(`receipt update isolates ${failure} during ${arrival} arrival`, async () => {
+ const storage=memory(),calls=[],prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ let serial=0,finish;
+ const box=createAskOutbox({storage,actor:'joe',conversation,online:()=>true,
+  uuid:()=>`22222222-2222-4222-8222-${String(++serial).padStart(12,'0')}`,
+  submit:request=>{calls.push(request);return calls.length===1?new Promise((resolve,reject)=>{finish=()=>{
+   if(arrival==='rejected') reject(Error('lost receipt'));
+   else resolve(arrival==='accepted'?receipt(request):arrival==='unknown'?{}:{...receipt(request),ok:false,status:'refused',reason:'not_available'});
+  };}):receipt(request);}});
+ await box.saveDraft('First');const first=await box.enqueue();await box.saveDraft('Second');await box.enqueue();await box.saveDraft('Current draft');
+ const pending=box.flush(),heldKey=prefix+first.idempotency_key;
+ const request={...first};
+ if(failure==='conversation') request.conversation_id=key;
+ if(failure==='idempotency_key') request.idempotency_key=key;
+ const raw=failure==='corrupt'?'{':JSON.stringify({kind:'submitting',request});
+ if(failure==='storage') storage.setItem=()=>{throw Error('access denied');};
+ else {storage.setItem(heldKey,raw);assert.deepEqual(box.recovery(),[heldKey]);}
+ finish();
+ if(failure==='storage') {await assert.rejects(pending,/access denied/);assert.equal(calls.length,1);return;}
+ await pending;
+ assert.equal(storage.getItem(heldKey),raw,'receipt must preserve held bytes');
+ assert.deepEqual(box.recovery(),[heldKey]);
+ assert.deepEqual(calls.map(r=>r.body),['First','Second']);
+ assert.deepEqual(calls[0],first);assert.equal(box.entries()[0].kind,'accepted');assert.equal(box.draft(),'Current draft');
+ const reopened=setup(storage);reopened.connect();await reopened.box.flush();
+ assert.equal(reopened.calls.length,0);assert.deepEqual(reopened.box.recovery(),[heldKey]);
+ assert.equal(storage.getItem(heldKey),raw);
+});
+for (const kind of ['queued','unknown','refused','accepted','corrupt']) test(`stop retires ${kind} without changing saved bytes`,async()=>{
+ const s=setup(),prefix=`doctorcre:asks:v1:joe:${conversation}:`;
+ await s.box.saveDraft('Saved');const request=await s.box.enqueue();await s.box.saveDraft('Current draft');
+ s.storage.setItem(prefix+key,kind==='corrupt'?'{':JSON.stringify({kind,request}));
+ const before=[...Array(s.storage.length)].map((_,i)=>[s.storage.key(i),s.storage.getItem(s.storage.key(i))]);
+ s.box.stop();s.connect();await s.box.flush();await s.box.retry(key);
+ assert.equal(s.calls.length,0);
+ assert.deepEqual([...Array(s.storage.length)].map((_,i)=>[s.storage.key(i),s.storage.getItem(s.storage.key(i))]),before);
+});
+test('stop during submission ignores late acceptance and leaves neighbors saved',async()=>{
+ const s=setup();await s.box.saveDraft('First');await s.box.enqueue();s.connect();
+ let release;s.sender(request=>new Promise(resolve=>{release=()=>resolve(receipt(request));}));
+ const pending=s.box.flush();await s.box.saveDraft('Current draft');
+ const before=s.storage.getItem(`doctorcre:asks:v1:joe:${conversation}:`+key);
+ s.box.stop();release();await pending;await s.box.flush();
+ assert.equal(s.calls.length,1);assert.equal(s.box.entries()[0].kind,'submitting');
+ assert.equal(s.storage.getItem(`doctorcre:asks:v1:joe:${conversation}:`+key),before);
+ assert.equal(s.box.draft(),'Current draft');
+});
+
+for (const operation of ['appendDraft','saveDraft','enqueue']) test(`corrupt draft refuses ${operation} under the draft lock`, async () => {
+ const s=setup(), draftKey=`doctorcre:asks:v1:joe:${conversation}:draft`;
+ s.storage.setItem(draftKey,'{');
+ await assert.rejects(()=>s.box[operation]('Replacement',''),/recovery/);
+ assert.equal(s.storage.getItem(draftKey),'{');
+ assert.equal(s.calls.length,0);
 });
