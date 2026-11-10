@@ -42,6 +42,7 @@
     "src/ui/phone-push.tsx",
     "src/ui/phone-push-model.ts",
     "src/ui/quick-switcher.tsx",
+    "src/ui/quiet-vendors.tsx",
     "src/ui/portal/demographics-core.tsx",
     "src/ui/deal-tours.tsx"
   ]
