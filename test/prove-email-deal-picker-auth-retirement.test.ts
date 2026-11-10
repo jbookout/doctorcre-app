@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
 import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { uiAssets } from "../scripts/ui-bundle.mjs";
 
@@ -12,9 +12,9 @@ let assets: Map<string, Buffer>;
 before(async () => {
   assets = await uiAssets((path) => readFile(path, "utf8"));
 });
-const servers: Server[] = [];
+const servers: Awaited<ReturnType<typeof startWorkerFixture>>[] = [];
 after(async () => {
-  await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await Promise.all(servers.map((server) => server.close()));
 });
 async function fixture(mode: string, sourceCommit = "a".repeat(40)) {
   const release = { service: "doctorcre-app", environment: "production", source_commit: sourceCommit };
@@ -27,34 +27,27 @@ async function fixture(mode: string, sourceCommit = "a".repeat(40)) {
       sha256: createHash("sha256").update(bytes).digest("hex"),
     })),
   };
-  let calls = 0;
-  const server = createServer((req, res) => {
-    calls++;
-    if (mode === "timeout") return;
-    if (req.url === "/app-release") {
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify(release));
-      return;
-    }
-    if (req.url === "/artifact-manifest.json") {
-      res.end(mode === "malformed" ? "{}" : JSON.stringify(manifest));
-      return;
-    }
-    const bytes = assets.get((req.url || "").slice(1));
-    if (!bytes || mode === "unavailable") {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-    res.setHeader("content-type", "text/javascript");
-    res.end(mode === "wrong-asset" ? "wrong" : bytes);
+  const routes = new Map<string, { body: string | Buffer; contentType: string; status?: number; hold?: string }>();
+  routes.set("/app-release", {
+    body: JSON.stringify(release),
+    contentType: "application/json",
+    ...(mode === "timeout" ? { hold: "deadline" } : {}),
   });
+  routes.set("/artifact-manifest.json", {
+    body: mode === "malformed" ? "{}" : JSON.stringify(manifest),
+    contentType: "application/json",
+  });
+  for (const [path, bytes] of assets)
+    routes.set(`/${path}`, {
+      body: mode === "wrong-asset" ? "wrong" : bytes,
+      contentType: "text/javascript",
+      ...(mode === "unavailable" ? { status: 404 } : {}),
+    });
+  const server = await startWorkerFixture({ routes });
   servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  return { origin: `http://127.0.0.1:${address.port}`, calls: () => calls };
+  return { origin: server.origin, calls: () => server.requests.length };
 }
+
 function cli(origin: string, timeout = 30000, commit = "a".repeat(40), cwd = process.cwd()) {
   return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => {
     const child = spawn(
