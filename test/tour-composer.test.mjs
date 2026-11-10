@@ -1,3 +1,4 @@
+import { stripTypeScriptTypes } from "node:module";
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
@@ -14,7 +15,8 @@ const html = await readFile(new URL("../tours/route-editor.html", import.meta.ur
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const tourScript = `${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const cheatHelpers = stripTypeScriptTypes(await readFile(new URL("../src/ui/broker-cheat-sheet.ts", import.meta.url), "utf8")).replace(/^export /gm, "");
+const tourScript = `${cheatHelpers}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const script = `${autoRefreshScript}\n${tourScript}`;
 const uuid = () => webcrypto.randomUUID();
 const fixtureDeal = "11111111-1111-4111-8111-111111111111";
@@ -904,11 +906,11 @@ test("S2 stale rendered sheet is read before save and waits for deliberate revie
   assert.equal(doc.querySelector("#save-sheet").disabled, true); dom.window.close();
 });
 
-for (const value of ["[]", "null", "42", '"text"']) test(`S2 scalar/array sheet ${value} is rejected before send`, async () => {
+for (const value of ["[]", "null", "42", '"text"']) test(`S2 broker notes ${value} save as literal text`, async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc);
   fill(doc, "#cheat-content", value); doc.querySelector("#save-sheet").click(); await settle();
-  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
-  assert.match(doc.querySelector("#sheet-state").textContent, /JSON object|plain text/i); dom.window.close();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 1);
+  assert.deepEqual(store.calls.find(call => call.path === "/api/tours/cheat-sheet/autosave").body.content, { notes: value }); dom.window.close();
 });
 
 test("S2 projection retry reuses its key and as-of timestamp after a committed lost response", async () => {
