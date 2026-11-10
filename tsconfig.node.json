@@ -57,6 +57,9 @@
     "test/brief-queue-menu-malformed-section.test.ts",
     "test/brief-queue-menu-malformed-section-browser.browser.ts",
     "test/prove-brief-queue-menu-malformed-section.browser.ts",
+    "test/quiet-vendors-malformed-snapshot.browser.ts",
+    "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
+    "scripts/prove-quiet-vendors-malformed-snapshot.ts",
     "test/portal-demographics-core.test.ts",
     "test/portal-demographics-core-browser.browser.ts"
   ],
@@ -72,6 +75,9 @@
       ],
       "/js/ui-queue.js": [
         "./src/ui/brief-queues.tsx"
+      ],
+      "/js/ui-quiet-vendors.js": [
+        "./src/ui/quiet-vendors.tsx"
       ]
     },
     "jsx": "react-jsx"
