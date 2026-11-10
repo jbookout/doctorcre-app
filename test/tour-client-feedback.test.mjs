@@ -1,3 +1,4 @@
+import { presentedPacket } from "./packet-presentation.fixture.ts";
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
@@ -151,7 +152,7 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
   dom.window.fetch = async (path, options = {}) => {
     if (!options.method) reads.push(path);
     let data;
-    if (path === "/api/share/report") data = { stops: properties.map((p, i) => ({ route_sequence:i+1,route_label:String(i+1),address:"100 Example Street",...p })) };
+    if (path === "/api/share/report") data = presentedPacket(properties.map((p, i) => ({ route_sequence:i+1,route_label:String(i+1),address:"100 Example Street",...p })));
     else if (path === "/api/share/map") return { ok:false,status:404,json:async()=>({error:"not_found"}) };
     else if (path === "/api/share/feedback") {
       if (feedbackRead) {

@@ -10,13 +10,13 @@ export function assertPublishedPacketText(text: string, packet: ReturnType<typeo
   const expected = [
     normalize(
       [
-        "CARR Healthcare Real Estate",
-        "Your property tour",
-        `${packet.length} ${packet.length === 1 ? "property" : "properties"} in tour order.`,
-        "Tour day at a glance",
+        packet.template.brand,
+        packet.template.title,
+        packet.template.summary,
+        packet.template.overview,
         ...packet.map((stop, index) => `${index + 1}. ${stop.route_label} · ${stop.name} · ${stop.address}`),
-        "Tour map",
-        "Properties",
+        packet.template.map,
+        packet.template.properties,
       ].join(" "),
     ),
     ...packet.map((stop) =>
@@ -26,7 +26,7 @@ export function assertPublishedPacketText(text: string, packet: ReturnType<typeo
           stop.name,
           stop.address,
           ...stop.facts.map((fact) => `${fact.label} ${fact.value}`),
-          "My Notes",
+          stop.notes,
         ].join(" "),
       ),
     ),

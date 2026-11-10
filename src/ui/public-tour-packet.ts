@@ -6,6 +6,7 @@ type PublicStop = {
   name: string;
   address: string;
   facts: Fact[];
+  notes: string;
 };
 type PublicPoint = {
   property_ref: string;
@@ -14,14 +15,6 @@ type PublicPoint = {
   latitude: number;
   longitude: number;
 };
-const fields = [
-  ["suite", "Suite"],
-  ["property_type", "Property type"],
-  ["size", "Size"],
-  ["asking_economics", "Asking economics"],
-  ["availability", "Availability"],
-  ["parking", "Parking"],
-] as const;
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -30,25 +23,9 @@ function record(value: unknown): Record<string, unknown> {
   return value;
 }
 function text(value: unknown): string {
-  if (value == null || value === "") return "Unknown";
-  if (typeof value !== "string" || value.length > 120) throw new Error("Invalid public fact");
-  return value.trim() || "Unknown";
-}
-function metric(value: unknown): string {
-  if (value == null) return "Unknown";
-  const row = record(value);
-  const number = (n: unknown) => (n == null ? "" : typeof n === "number" && Number.isFinite(n) ? String(n) : text(n));
-  const quantity =
-    row.value != null ? number(row.value) : [number(row.min), number(row.max)].filter(Boolean).join(" to ");
-  if (!quantity) return "Unknown";
-  return [
-    row.currency == null ? "" : text(row.currency),
-    quantity,
-    row.unit == null ? "" : text(row.unit),
-    row.period == null ? "" : `per ${text(row.period)}`,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  if (typeof value !== "string" || value.length > 500) throw new Error("Invalid public fact");
+  if (!value.trim()) throw new Error("Missing public fact");
+  return value;
 }
 function identity(row: Record<string, unknown>) {
   if (
@@ -63,21 +40,28 @@ function identity(row: Record<string, unknown>) {
     throw new Error("Invalid public stop");
   return { property_ref: row.property_ref, route_sequence: row.route_sequence, route_label: row.route_label };
 }
-export function parsePublicTourPacket(value: unknown): PublicStop[] {
+export function parsePublicTourPacket(value: unknown) {
   const input = record(value);
   if (!Array.isArray(input.stops) || !input.stops.length || input.stops.length > 50)
     throw new Error("Invalid public packet");
-  const stops = input.stops
+  const presentation = record(input.presentation);
+  if (presentation.version !== "2.0.0" || !Array.isArray(presentation.stops))
+    throw new Error("Unsupported packet template");
+  const stops = presentation.stops
     .map((value) => {
       const row = record(value);
       return {
         ...identity(row),
         name: text(row.name),
         address: text(row.address),
-        facts: fields.map(([key, label]) => ({
-          label,
-          value: key === "size" || key === "asking_economics" ? metric(row[key]) : text(row[key]),
-        })),
+        notes: text(presentation.notes),
+        facts: (() => {
+          if (!Array.isArray(row.facts) || row.facts.length !== 6) throw new Error("Invalid packet facts");
+          return row.facts.map((value) => {
+            const fact = record(value);
+            return { label: text(fact.label), value: text(fact.value) };
+          });
+        })(),
       };
     })
     .sort((a, b) => a.route_sequence - b.route_sequence);
@@ -86,7 +70,29 @@ export function parsePublicTourPacket(value: unknown): PublicStop[] {
     new Set(stops.map((stop) => stop.route_sequence)).size !== stops.length
   )
     throw new Error("Duplicate public stop");
-  return stops;
+  const ordered = input.stops
+    .map((value) => identity(record(value)))
+    .sort((a, b) => a.route_sequence - b.route_sequence);
+  if (
+    stops.length !== ordered.length ||
+    stops.some(
+      (stop, index) =>
+        stop.property_ref !== ordered[index]?.property_ref ||
+        stop.route_label !== ordered[index]?.route_label ||
+        stop.route_sequence !== ordered[index]?.route_sequence,
+    )
+  )
+    throw new Error("Packet presentation differs from membership");
+  return Object.assign(stops, {
+    template: {
+      title: text(presentation.title),
+      summary: text(presentation.summary),
+      overview: text(presentation.overview),
+      properties: text(presentation.properties),
+      brand: text(presentation.brand),
+      map: text(presentation.map),
+    },
+  });
 }
 export function packetMapPoints(stops: PublicStop[] | null, value: unknown): PublicPoint[] {
   const input = record(value);
@@ -143,7 +149,7 @@ export function appendPublicTourFacts(row: HTMLElement, stop: PublicStop) {
   const notes = doc.createElement("section");
   notes.className = "packet-notes";
   const title = doc.createElement("h4");
-  title.textContent = "My Notes";
+  title.textContent = stop.notes;
   notes.append(title);
   notes.append(...Array.from({ length: 6 }, () => doc.createElement("div")));
   row.append(facts, notes);

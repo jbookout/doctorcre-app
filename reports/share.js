@@ -197,8 +197,9 @@ mountNavigation(document, location.pathname, { report: true });
 
   function render(properties) {
     reportProperties = new globalThis.Map(properties.map(item => [item.property_ref, item]));
-    document.querySelector("#report-title").textContent = "Your property tour";
-    summary.textContent = `${properties.length} ${properties.length === 1 ? "property" : "properties"} in tour order.`;
+    document.querySelector("#report-title").textContent = properties.template.title;
+    summary.textContent = properties.template.summary;
+    document.querySelector(".masthead .eyebrow").textContent = properties.template.brand;
     list.replaceChildren();
     for (const item of properties) {
       const row = document.createElement("li");
@@ -214,6 +215,9 @@ mountNavigation(document, location.pathname, { report: true });
     }
     printButton.hidden = false;
     openButton.hidden = true;
+    document.querySelector(".packet-overview h2").textContent = properties.template.overview;
+    document.querySelector("#items-title").textContent = properties.template.properties;
+    document.querySelector("#map-title").textContent = properties.template.map;
     const overview = document.querySelector("#packet-itinerary");
     overview.replaceChildren();
     for (const item of properties) {

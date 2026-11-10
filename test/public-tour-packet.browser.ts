@@ -10,6 +10,7 @@ import { createQaServer } from "../scripts/qa-fixture-server.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
 import { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
 import { chromium } from "./browser-harness.mjs";
+import { presentedPacket } from "./packet-presentation.fixture.ts";
 
 const stops = [3, 1, 2].map((n) => ({
   property_ref: `property:public:synthetic_stop_000${n}`,
@@ -35,7 +36,7 @@ test("public packet renders three stops, map and PDF in the same order at both w
   for (const width of [1440, 390])
     for (const colorScheme of ["light", "dark"] as const) {
       const page = await browser.newPage({ viewport: { width, height: 1000 }, colorScheme });
-      await page.route("**/api/share/report", (route) => route.fulfill({ json: { data: { stops } } }));
+      await page.route("**/api/share/report", (route) => route.fulfill({ json: { data: presentedPacket(stops) } }));
       await page.route("**/api/share/map", (route) =>
         route.fulfill({
           json: {
@@ -64,8 +65,8 @@ test("public packet renders three stops, map and PDF in the same order at both w
       assert.equal(await page.getByText("Unknown", { exact: true }).count(), 12);
       assert.equal(await page.locator("body").evaluate((el) => el.textContent.includes("PRIVATE_SENTINEL")), false);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-      await mkdir("/tmp/WR12.S1.J1-shots", { recursive: true });
-      await page.screenshot({ path: `/tmp/WR12.S1.J1-shots/${width}-${colorScheme}.png`, fullPage: true });
+      await mkdir("/tmp/WR12.S1.J3-shots", { recursive: true });
+      await page.screenshot({ path: `/tmp/WR12.S1.J3-shots/${width}-${colorScheme}.png`, fullPage: true });
       await page.evaluate(axe.source);
       const accessibility = await page.evaluate<AxeResults>("axe.run(document.querySelector('.report-list'))");
       assert.deepEqual(accessibility.violations, []);
@@ -75,9 +76,9 @@ test("public packet renders three stops, map and PDF in the same order at both w
         await page.locator(".report-item h3").allTextContents(),
         [1, 2, 3].map((n) => `Example Medical ${n}`),
       );
-      const pdf = await page.pdf({ path: `/tmp/WR12.S1.J1-shots/${width}-${colorScheme}.pdf`, tagged: true });
+      const pdf = await page.pdf({ path: `/tmp/WR12.S1.J3-shots/${width}-${colorScheme}.pdf`, tagged: true });
       assert.ok(pdf.length > 10000);
-      await assertPublishedPacketPdf(pdf, parsePublicTourPacket({ stops }));
+      await assertPublishedPacketPdf(pdf, parsePublicTourPacket(presentedPacket(stops)));
       assert.equal((pdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 4);
       assert.equal(await page.locator(".packet-notes:visible").count(), 3);
       await page.close();

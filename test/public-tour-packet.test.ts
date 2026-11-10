@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { packetMapPoints, parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
+import { presentedPacket } from "./packet-presentation.fixture.ts";
 
 const stops = [3, 1, 2].map((n) => ({
   property_ref: `property:public:synthetic_stop_000${n}`,
@@ -14,7 +15,7 @@ const stops = [3, 1, 2].map((n) => ({
 }));
 const points = stops.map((stop) => ({ ...stop, latitude: 30, longitude: -87 }));
 test("three properties have one canonical order for web, map and print", () => {
-  const packet = parsePublicTourPacket({ stops });
+  const packet = parsePublicTourPacket(presentedPacket(stops));
   assert.deepEqual(
     packet.map((stop) => stop.name),
     ["Property 1", "Property 2", "Property 3"],
@@ -28,7 +29,7 @@ test("three properties have one canonical order for web, map and print", () => {
   assert.ok(!JSON.stringify(packet).includes("PRIVATE"));
 });
 test("map omissions, extras, changed labels and duplicate stop identities refuse the whole packet", () => {
-  const packet = parsePublicTourPacket({ stops });
+  const packet = parsePublicTourPacket(presentedPacket(stops));
   for (const bad of [points.slice(1), [...points, points[0]], points.map((p) => ({ ...p, route_label: "X" }))]) {
     assert.throws(() => packetMapPoints(packet, { points: bad }));
   }

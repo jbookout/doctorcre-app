@@ -2,16 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assertPublishedPacketText } from "../scripts/public-tour-pdf-proof.ts";
 import { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
+import { presentedPacket } from "./packet-presentation.fixture.ts";
 
-const packet = parsePublicTourPacket({
-  stops: [3, 1, 2].map((n) => ({
-    property_ref: `property:public:synthetic_stop_000${n}`,
-    route_sequence: n,
-    route_label: String(n),
-    name: `Example ${n}`,
-    address: `${n} Example Street`,
-  })),
-});
+const packet = parsePublicTourPacket(
+  presentedPacket(
+    [3, 1, 2].map((n) => ({
+      property_ref: `property:public:synthetic_stop_000${n}`,
+      route_sequence: n,
+      route_label: String(n),
+      name: `Example ${n}`,
+      address: `${n} Example Street`,
+    })),
+  ),
+);
 const pages = packet.map((stop) =>
   [
     `Stop ${stop.route_label}`,

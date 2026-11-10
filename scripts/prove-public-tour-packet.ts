@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { packetMapPoints, parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
+import { presentedPacket } from "../test/packet-presentation.fixture.ts";
 import { proofFetch } from "./app-release-reader.mjs";
 import { prove as runProof } from "./prove-activity-attribution-panel.mjs";
 import { assertPublishedPacketPdf, assertPublishedPacketText } from "./public-tour-pdf-proof.ts";
@@ -39,7 +40,7 @@ export async function proveTourPacket({
       contains: async () => {},
       observe: async (page) => {
         if (fixtureCase === "insufficient") throw unavailable("Published PDF unavailable");
-        const packet = parsePublicTourPacket({ stops });
+        const packet = parsePublicTourPacket(presentedPacket(stops));
         const points = stops.map((stop) => ({ ...stop, latitude: 30, longitude: -87 }));
         packetMapPoints(packet, { points });
         const pages = packet.map((stop) =>
