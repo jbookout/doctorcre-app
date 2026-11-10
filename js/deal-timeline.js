@@ -11,7 +11,7 @@ import { ACTOR_LABEL } from './client.js';
 const DAY = 86400000;
 const esc = escapeText;
 // Wire kinds, never prose matching or dates inferred from lease duration.
-export const DATE_KINDS = Object.freeze([
+const DATE_KINDS = Object.freeze([
   { kind:'loi_expiry', label:'LOI', kinds:['loi_expiry','loi','loi_due'], deadline:true },
   { kind:'due_diligence', label:'Due diligence', kinds:['due_diligence','due_diligence_deadline','dd_deadline'], deadline:true },
   { kind:'lease_commencement', label:'Lease commencement', kinds:['lease_commencement','commencement'] },

@@ -6,6 +6,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { readFile } from "node:fs/promises";
+import { createSystemWorkClient } from '../js/system-work-client.js';
 import { startFixture } from '../scripts/fixture-http.mjs';
 import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
 import { join } from "node:path";
@@ -107,21 +108,32 @@ for (const html of ['<!doctype html><script>throw Error(1)</script>', '<SCRIPT>t
   });
 }
 
-async function serve() {
+async function serve(t) {
   const assets = await appAssetSnapshot();
   const shell = assets.get('/control-room.html');
   assets.set('/progress-board', { ...shell,
     body: Buffer.from(String(shell.body).replace('</body>', '<script type="module" src="/__measure.js"></script></body>')) });
   assets.set('/__measure.js', { body: MEASURE, contentType: 'text/javascript' });
   const session = { body: JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-session'}), contentType:'application/json' };
-  return startFixture({ assets, routes:new Map([['/auth/session',session],['/api/system-work/session',session]]) });
+  const current = { body: JSON.stringify({ok:true,data:{items:[]}}), contentType:'application/json' };
+  const routes = new Map([['/auth/session',session],['/api/system-work/session',session],
+    ['/api/system-work/current',current]]);
+  const server = await startFixture({ assets, routes });
+  t.after(async () => {
+    try {
+      assert.deepEqual(server.requests.filter(r => !['GET', 'HEAD'].includes(r.method)
+        || !(assets.has(r.path) || routes.has(r.path))), [], 'Unexpected application requests');
+    } finally { await server.close(); }
+  });
+  const client = createSystemWorkClient({ fetchImpl: (path, init) => fetch(server.origin + path, init) });
+  assert.deepEqual(await client.current(), {items:[]}, 'Current-work fixture passes the production response contract');
+  return server;
 }
 
 for (const width of [390, 1280]) {
   for (const board of ["demo-project", "all-repos"]) {
     test(`cards and open Key have no clipping or overlap at ${width}px on ${board}`, async t => {
-      const server = await serve();
-      t.after(() => server.close());
+      const server = await serve(t);
       const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 900 } });

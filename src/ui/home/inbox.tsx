@@ -1,8 +1,8 @@
 import { parseReference, parseReview, type ReviewReference, type ReviewRequest } from './review';
 import { parseBatch, type BatchRequest, type BatchResult } from './batch';
 import { completeAction, parseActionReceipt, type TaskReceipt } from './task-done';
-export type WaitingIdentity = Readonly<{ kind: 'party' | 'actor'; id: string; available: boolean; display_name: string | null }>;
-export type Waiting = Readonly<{ identity: WaitingIdentity; reason: string; evidence: string[]; version: number }>;
+type WaitingIdentity = Readonly<{ kind: 'party' | 'actor'; id: string; available: boolean; display_name: string | null }>;
+type Waiting = Readonly<{ identity: WaitingIdentity; reason: string; evidence: string[]; version: number }>;
 type WaitingArgs = Readonly<{ idempotency_key: string; item_id: string; item_version: string; base_version: number; reason: string; evidence: string[] }>;
 export type WaitingCommand = Readonly<{ action: 'set'; args: WaitingArgs & { target: Pick<WaitingIdentity, 'kind' | 'id'> } }> | Readonly<{ action: 'clear'; args: WaitingArgs }>;
 type BaseItem = Readonly<{
@@ -126,7 +126,7 @@ export function parseResults(value: unknown, request: Command): Array<{ item_id:
 }
 export type WaitingChoice = Pick<WaitingIdentity, 'kind' | 'id'> & { name: string };
 export type PartyCursor = Readonly<{ query: string; name: string; id: string }>;
-export type PeoplePage = Readonly<{ choices: WaitingChoice[]; next_cursor: PartyCursor | null }>;
+type PeoplePage = Readonly<{ choices: WaitingChoice[]; next_cursor: PartyCursor | null }>;
 export type InboxClient = { review?: { current(item: InboxItem): Promise<InboxItem>; load(item: InboxItem, signal?: AbortSignal): Promise<ReturnType<typeof parseReview>>; run(item: InboxItem, request: ReviewRequest): Promise<{ item: InboxItem; receipt?: TaskReceipt; saved_version?: number }> }; actors?(): Promise<WaitingChoice[] | null>; search?(query: string, cursor?: PartyCursor): Promise<PeoplePage | null>; choices?(): Promise<WaitingChoice[]>; wait?(request: WaitingCommand): Promise<InboxItem>;  read(signal?: AbortSignal): Promise<Snapshot>; run(request: Command): Promise<ItemResult[]>; batch(request: BatchRequest, expected: readonly string[]): Promise<BatchResult> };
 export function createInboxClient(rpc: (name: string, args: unknown, signal?: AbortSignal) => Promise<unknown>): InboxClient {
   async function read(signal?: AbortSignal): Promise<Snapshot> {

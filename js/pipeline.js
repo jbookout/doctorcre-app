@@ -1,3 +1,4 @@
+import { mountWatchControl } from './ui-watches.js';
 import { workCard } from './work-card.js';
 import { renderDealItems, renderDealSummary, renderOverdueFlag } from './deal-items.js';
 import { mountDealItemSheet } from './deal-item-sheet.js';
@@ -347,6 +348,7 @@ function applyBoardSnapshot(board) {
     ++panelReadSequence; ++contextReadSequence;
     state.panelDetail = null;
     disposeChecklist();
+    disposeWatchControl();
     disposeEvidence?.(); disposeEvidence = null;
     disposeActivityAttribution();
     disposePanelEmailFollowups();
@@ -822,6 +824,7 @@ function mountPanelActivityAttribution() {
   if (root) activityAttribution = mountActivityAttribution(root, { onDenied: refusePanelDetail });
 }
 let disposeEvidence = null;
+let watchControl = null, watchElement = null, watchSubject = null;
 let panelEmailFollowups = null;
 let emailMountSequence = 0;
 function disposePanelEmailFollowups() {
@@ -870,6 +873,7 @@ function refusePanelDetail(error) {
   clearMarketTermsViews();
   state.panelDetail = null;
   disposeChecklist();
+  disposeWatchControl();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   bindDraftActor(null);
@@ -1082,6 +1086,7 @@ function workspaceEventsHtml(detail) {
 let factReviewPanel, marketTermsPanel, dealToursPanel, dealDocumentsPanel;
 let checklistPanel;
 function disposeChecklist() { checklistPanel?.dispose(); checklistPanel = null; }
+function disposeWatchControl() { watchControl?.dispose(); watchControl = null; watchElement = null; watchSubject = null; }
 function mountChecklist(detail) {
   disposeChecklist();
   const host = $('panelBody').querySelector('[data-detail-read="checklist"]');
@@ -1264,6 +1269,11 @@ function paintPanel(detail) {
   dealToursPanel?.dispose();
   $('panelBody').innerHTML = workspaceHtml(detail);
   mountChecklist(detail);
+  if (watchSubject !== detail.deal.id) disposeWatchControl();
+  watchElement ||= document.createElement('div');
+  $('workspace-overview').prepend(watchElement);
+  watchSubject = detail.deal.id;
+  watchControl ||= mountWatchControl(watchElement, {subject:{subject_type:'deal',subject_id:detail.deal.id}});
   const terms = $('panelTerms');
   let disposed = false, loading = false, mounted;
   const observer = new IntersectionObserver(entries => {
@@ -1373,6 +1383,7 @@ function paintPanel(detail) {
 async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
+  disposeWatchControl();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();
@@ -1428,6 +1439,7 @@ async function openWorkspace(dealId, trigger, { fromHistory = false } = {}) {
 async function closeWorkspace({ fromHistory = false } = {}) {
   if (!fromHistory && dealToursPanel && !await dealToursPanel.confirmLeave()) return;
   disposeChecklist();
+  disposeWatchControl();
   dealDocumentsPanel?.dispose(); dealDocumentsPanel = null;
   dealToursPanel?.dispose(); dealToursPanel = null;
   factReviewPanel?.dispose();

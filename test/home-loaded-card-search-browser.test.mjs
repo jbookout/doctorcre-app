@@ -136,6 +136,7 @@ test('literal field matching preserves canonical slices and excludes source payl
     const more = region.getByRole('button', { name: /^See all/ });
     if (await more.count()) await more.click();
   }
+  assert.equal(await page.getByRole('region', { name: 'In motion and waiting', exact: true }).getByRole('button', { name: 'Show less', exact: true }).getAttribute('aria-expanded'), 'true');
   const placements = () => page.locator('[data-inbox-row]').evaluateAll(rows => rows.map(row => [row.dataset.inboxRow, row.closest('.home-slice').getAttribute('aria-label')]));
   const before = await placements();
   await search.fill('Task');
@@ -170,4 +171,47 @@ test('Home card navigation opens the full Inbox and Back restores the search', a
   assert.equal(await page.locator('[data-inbox-row="demo-call"][data-current="true"]').count(), 1);
   await page.goBack();
   assert.equal(await page.getByRole('searchbox').inputValue(), 'pipeline');
+});
+
+for (const destination of ['00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000099', 'bad']) test(`watch Home source selects exact client or visibly refuses ${destination}`, async t => {
+  const { directoryFixture } = await import('./fixtures/vendor-directory.synthetic.mjs');
+  const { page, fixture, update } = await setup(t);
+  const card = { ...fixture.snapshot.items[0], item_id: 'notification:watch', source_id: '00000000-0000-4000-8000-000000000009', source_type: 'notification', kind_label: 'Update', title: 'Demo watched lease changed', source_state: 'needs_attention', disposition: 'inbox', section: 'inbox', open_url: `/clients?record=${destination}`, action_id: null, action_version: null, review_reference: null, due_on: null };
+  const contract = JSON.parse(await (await import('node:fs/promises')).readFile('contracts/carr-interface.v1/home_inbox_contract.json', 'utf8'));
+  assert.equal(fixture.snapshot.schema_version, contract.schema_version);
+  const snapshot = fixture.parseSnapshot({ ...fixture.snapshot, items: [card] });
+  update(snapshot);
+  const reads = [];
+  await page.route('**/api/v1/business/**', route => {
+    const url = new URL(route.request().url());
+    const id = url.pathname.split('/')[5];
+    if (id) reads.push(id);
+    if (id === '00000000-0000-4000-8000-000000000099') return route.fulfill({ status: 404, json: { error: 'RECORD_NOT_FOUND' } });
+    return route.fulfill({ json: directoryFixture(url.href) });
+  });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();
+  await page.getByRole('link', { name: card.title, exact: true }).click();
+  if (destination.endsWith('002')) await page.screenshot({ path: '/tmp/WR617.S1.J109-home.png', fullPage: true });
+  if (destination === 'bad') {
+    await page.getByRole('status').filter({ hasText: 'Source record unavailable.' }).waitFor();
+    assert.equal(await page.getByRole('link', { name: 'Open source record' }).count(), 0);
+    assert.deepEqual(reads, []);
+  } else {
+    const link = page.getByRole('link', { name: 'Open source record' });
+    assert.equal(await link.getAttribute('href'), card.open_url);
+    await link.focus();
+    await Promise.all([page.waitForURL('**/clients?record=*'), page.keyboard.press('Enter')]);
+    assert.equal(new URL(page.url()).searchParams.get('record'), destination);
+    if (destination.endsWith('099')) await page.getByRole('heading', { name: 'Not here', exact: true }).waitFor();
+    else {
+      await page.locator('#recordBody[data-record-id]').waitFor();
+      assert.equal(await page.locator('#recordBody').getAttribute('data-record-id'), destination);
+      assert.equal(await page.locator('#recordTitle').innerText(), 'Demo Practice 02');
+      await page.screenshot({ path: '/tmp/WR617.S1.J109-client.png', fullPage: true });
+    }
+    assert.deepEqual(reads, [destination]);
+  }
+  assert.deepEqual(errors, []);
 });

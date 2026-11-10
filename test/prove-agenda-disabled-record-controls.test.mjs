@@ -98,3 +98,11 @@ test('shared release reader uses the real Worker route and response contract', a
     await assert.rejects(readAppRelease(origin, async () => invalid), { exitCode: 78 });
   }
 });
+
+
+test('fixture POST injection makes the agenda GET-only observation fail', async t => {
+  const f = await fixture(t);
+  const response = await fetch(f.origin + '/api/write', { method: 'POST' });
+  assert.equal(response.status, 405);
+  assert.throws(() => assert.ok(f.requests.every(request => request.method === 'GET')));
+});

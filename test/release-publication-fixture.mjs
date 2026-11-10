@@ -9,7 +9,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const canary = 'synthetic-publication-canary';
 const versionId = '0f1e2d3c-4b5a-4968-8776-655443322110';
 
-export function fixture(t, { installation = 'locked', browser = false } = {}) {
+export function fixture(t, { browser = false } = {}) {
   const parent = temporaryDirectory('release-publication-');
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'app');
@@ -31,7 +31,7 @@ export function fixture(t, { installation = 'locked', browser = false } = {}) {
   }
   const bin = join(root, 'node_modules/.bin');
   mkdirSync(bin, { recursive: true });
-  symlinkSync('../typescript/bin/tsc', join(bin, 'tsc'));
+  for (const name of ['tsc', 'biome', 'knip']) symlinkSync(join(ROOT, 'node_modules/.bin', name), join(bin, name));
   git(['add', ...paths.filter(path => existsSync(join(root, path))), 'package.json']);
   git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Synthetic release source']);
   const commit = git(['rev-parse', 'HEAD']);
@@ -46,21 +46,11 @@ if (args[0] === 'deployments' && args.includes('status')) console.log(JSON.strin
 if (args[0] === 'versions' && args[1] === 'view') console.log(JSON.stringify({ id: args[2], resources: { bindings: [{ name: 'GIT_SHA', type: 'plain_text', text: '0'.repeat(40) }] } }));
 if (args.includes('upload')) console.log('Worker Version ID: ${versionId}');
 `;
-  if (installation === 'missing') {
-    const bin = join(parent, 'node_modules/.bin'); mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, 'wrangler'), entry); chmodSync(join(bin, 'wrangler'), 0o755);
-  } else {
-    const provider = join(root, 'node_modules/wrangler'); mkdirSync(join(provider, 'bin'), { recursive: true });
-    writeFileSync(join(provider, 'package.json'), JSON.stringify({ name: 'wrangler', version: installation === 'mismatch' ? '0.0.0' : pkg.devDependencies.wrangler, bin: { wrangler: './bin/wrangler.js' } }));
-    writeFileSync(join(provider, 'bin/wrangler.js'), entry);
-    mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
-    symlinkSync('../wrangler/bin/wrangler.js', join(root, 'node_modules/.bin/wrangler'));
-    chmodSync(join(provider, 'bin/wrangler.js'), 0o755);
-    if (installation === 'symlink') {
-      const external = join(parent, 'external.js'); writeFileSync(external, entry);
-      rmSync(join(provider, 'bin/wrangler.js')); symlinkSync(external, join(provider, 'bin/wrangler.js'));
-    }
-  }
+  const provider = join(root, 'node_modules/wrangler'); mkdirSync(join(provider, 'bin'), { recursive: true });
+  writeFileSync(join(provider, 'package.json'), JSON.stringify({ name: 'wrangler', version: pkg.devDependencies.wrangler, bin: { wrangler: './bin/wrangler.js' } }));
+  writeFileSync(join(provider, 'bin/wrangler.js'), entry);
+  symlinkSync('../wrangler/bin/wrangler.js', join(root, 'node_modules/.bin/wrangler'));
+  chmodSync(join(provider, 'bin/wrangler.js'), 0o755);
   const env = { ...process.env, CLOUDFLARE_API_TOKEN: canary, NEW_SECRET: canary };
   const run = entrypoint => spawnSync(process.execPath, [`scripts/${entrypoint}.mjs`], { cwd: root, env, encoding: 'utf8' });
   const rows = () => existsSync(trace) ? readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse) : [];

@@ -15,7 +15,7 @@ export function eligibleLead(lead) {
   if (lead.client_id || lead.linked_client || lead.is_client || lead.is_past_client || lead.is_deal || lead.deal_id) return false;
   return !["active_deal", "closed_won"].includes(lead.stage);
 }
-export function cleanTitle(value) {
+function cleanTitle(value) {
   return String(value || "").replace(/\s*\((?:via|referral|referred)[^)]*\)/gi, "").trim();
 }
 export function leadTitle(lead) {

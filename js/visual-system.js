@@ -1,9 +1,9 @@
 // Pure decisions behind the shared visual system (V5-UX-S01). No DOM, no
 // network, no storage: the prototype pages call these and do the wiring.
 
-export const THEMES = Object.freeze(["dark", "light"]);
-export const DENSITIES = Object.freeze(["comfortable", "compact"]);
-export const MOTIONS = Object.freeze(["full", "reduced"]);
+const THEMES = Object.freeze(["dark", "light"]);
+const DENSITIES = Object.freeze(["comfortable", "compact"]);
+const MOTIONS = Object.freeze(["full", "reduced"]);
 
 export const DEFAULT_PREFERENCES = Object.freeze({ theme: "dark", density: "comfortable", motion: "full" });
 
@@ -263,14 +263,14 @@ export function parseQuickAdd(sentence, options = {}) {
  * WCAG 2.x relative luminance and contrast ratio, used by the token audit
  * test so a theme cannot ship a text/ground pair under 4.5:1.
  */
-export function parseHex(hex) {
+function parseHex(hex) {
   const value = String(hex).trim().replace(/^#/, "");
   const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value;
   if (!/^[0-9a-f]{6}$/i.test(full)) throw new TypeError(`not a 6-digit hex colour: ${hex}`);
   return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
 }
 
-export function relativeLuminance(hex) {
+function relativeLuminance(hex) {
   const [r, g, b] = parseHex(hex).map((channel) => {
     const c = channel / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;

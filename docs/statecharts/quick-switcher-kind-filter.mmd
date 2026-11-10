@@ -9,7 +9,10 @@ stateDiagram-v2
   Unavailable --> Loading: Retry
   Ready --> Loading: Retry partial snapshot, discard records
   Loading --> Loading: Change query or kind
-  Ready --> Closed: Enter navigates or Escape closes
+  Ready --> Closed: Escape closes
+  Ready --> TaskCard: Pointer or Enter opens producer item_id
+  TaskCard --> TaskShown: Home snapshot contains exact item_id
+  TaskCard --> TaskUnavailable: Home snapshot omits item_id
   Unavailable --> Closed: Close
   Loading --> Closed: Close before read settles
   Closed --> Closed: Ignore late read completion

@@ -1,11 +1,11 @@
-export type ReviewKind = 'action' | 'reply_draft' | 'fact_review';
+type ReviewKind = 'action' | 'reply_draft' | 'fact_review';
 const supported = {
   action: ['complete-one-action'],
   reply_draft: ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'],
   fact_review: ['resolve-fact-review'],
 } satisfies Record<ReviewKind, string[]>;
 export type ReviewReference = { kind: ReviewKind; item_id: string; source_version: string; operations: string[] };
-export const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(text);
 const version = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -21,7 +21,7 @@ type ActionOperation = { verb: 'complete-one-action'; args: { action_id: string;
 type ReplyOperation = { verb: 'edit-email-draft' | 'dismiss-email-proposal'; args: { proposal_id: string; base_version: number } } | { verb: 'submit-email-draft'; args: { proposal_id: string; base_version: number; subject: string; body: string; to: string[]; cc: string[] } };
 type FactOperation = { verb: 'resolve-fact-review'; args: { entity_ref: string; fact_key: string; base_version: number; review_version: string }; decisions: string[] };
 export type Operation = ActionOperation | ReplyOperation | FactOperation;
-export type Observation = { id: string; value: string; unit: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null } };
+type Observation = { id: string; value: string; unit: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null } };
 type Common = { reference: ReviewReference };
 export type Review = Common & ({ kind: 'action'; operations: ActionOperation[]; title: string } | { kind: 'reply_draft'; operations: ReplyOperation[]; subject: string; body: string; recipients: { to: string[]; cc: string[] } | null; sendUnavailableReason: string | null } | { kind: 'fact_review'; operations: FactOperation[]; observations: Observation[]; canonical: string });
 function unreadable(): never { throw Error('This review is not supported safely. Open its source record.'); }

@@ -11,7 +11,7 @@ export const SECTION_KEYS = Object.freeze(["inbox", "waiting", "triage", "queue"
 // Old `?tab=` keys from the seven-tab layout, plus their older aliases.
 const LEGACY_TABS = Object.freeze({ overview: "boards", dashboard: "boards", attention: "views",
   "model-room": "agents", atlas: "system-map" });
-export const DEFAULT_SECTION = "queue";
+const DEFAULT_SECTION = "queue";
 export const sectionForTab = (key) => SECTION_KEYS.includes(key) ? key : LEGACY_TABS[key] || DEFAULT_SECTION;
 
 const KIND_LABELS = Object.freeze({ work_request: "Work Request", incident: "Incident", defect: "Defect", loop: "Loop",
