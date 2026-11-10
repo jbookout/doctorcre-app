@@ -52,7 +52,12 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-email-deal-picker-auth-retirement.ts",
+    "test/email-deal-picker-auth-retirement-browser.test.ts",
+    "test/prove-email-deal-picker-auth-retirement.test.ts",
+    "scripts/proof-browser.d.mts",
+    "test/proof-browser-harness.d.mts"
   ],
   "compilerOptions": {
     "lib": [
