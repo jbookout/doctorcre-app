@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "invoice-payment-chronology-display",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "invoice-payment-chronology-display",
+    "predicate": "Run node scripts/prove-invoice-payment-chronology-display.ts --origin https://app.doctorcre.com --timeout-ms 30000 --expected-commit $(git rev-parse HEAD) after deployment. Observe stable Worker /app-release identity and hashed deployed model imports rejecting reversed payment chronology while preserving true same-day zero, ordinary paid intervals, unpaid aging and awaiting invoices. This is deployed synthetic module behavior, not a natural signed-in journey.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, exact asset hashes and all named assertions passed. Exit 1 for observed contradiction. Exit 78 for unavailable prerequisites, total timeout or release change.",
+    "input_class": "Contract-checked invoice-tracker.v1 synthetic fixture through deployed production exports",
+    "deadline_seconds": 30
+  }],
+  "safety": { "read_only": true, "no_sends": true, "max_requests": 22, "max_records": 6, "max_runtime_seconds": 30, "max_artifact_bytes": 1048576 }
+}
