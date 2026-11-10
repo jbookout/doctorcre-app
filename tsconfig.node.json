@@ -54,8 +54,8 @@
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
     "scripts/prove-email-deal-picker-auth-retirement.ts",
-    "test/email-deal-picker-auth-retirement-browser.test.ts",
-    "test/prove-email-deal-picker-auth-retirement.test.ts",
+    "test/email-deal-picker-auth-retirement.browser.ts",
+    "test/prove-email-deal-picker-auth-retirement.browser.ts",
     "scripts/proof-browser.d.mts",
     "test/proof-browser-harness.d.mts"
   ],
