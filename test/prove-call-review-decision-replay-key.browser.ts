@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
 import test from "node:test";
 import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { checkResolverFixture, resolverFixture } from "../scripts/prove-call-review-decision-replay-key.ts";
-import { uiAssets } from "../scripts/ui-bundle.mjs";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
 
 const script = "scripts/prove-call-review-decision-replay-key.ts";
 function cli(origin: string, timeout = 30000, commit = "a".repeat(40)) {
@@ -33,22 +31,11 @@ function cli(origin: string, timeout = 30000, commit = "a".repeat(40)) {
   });
 }
 test("exact proof CLI executes manifest-selected bytes and rejects invalid evidence", async () => {
-  const root = resolve(".");
-  const assets = await uiAssets((path) => {
-    const file = resolve(root, path);
-    if (!file.startsWith(root + sep)) throw new Error("Outside fixture root");
-    return readFile(file, "utf8");
-  });
-  for (const dir of ["js"])
-    for (const name of await readdir(resolve(root, dir))) {
-      if (/\.(js|mjs)$/.test(name) && !assets.has(dir + "/" + name))
-        assets.set(dir + "/" + name, await readFile(resolve(root, dir, name)));
-    }
+  const snapshot = await appAssetSnapshot();
+  const assets = new Map([...snapshot].map(([path, asset]) => [path.slice(1), asset.body]));
   const release = { service: "doctorcre-app", environment: "production", source_commit: "a".repeat(40) };
   async function run(mode: string, timeout = 30000, commit = release.source_commit) {
     const selected = new Map(assets);
-    if (mode === "adapter-hash")
-      selected.set("js/live-client.js", Buffer.from("export function createLiveClient() {}"));
     if (mode === "assertion")
       selected.set(
         "js/ui-call.js",
@@ -60,7 +47,7 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
     >();
     for (const [path, bytes] of selected)
       routes.set("/" + path, {
-        body: mode === "hash" ? "wrong asset" : bytes,
+        body: mode === "hash" || (mode === "adapter-hash" && path === "js/live-client.js") ? "wrong asset" : bytes,
         contentType: "text/javascript",
         status: mode === "missing" ? 404 : 200,
       });
@@ -88,7 +75,7 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
     const server = await startWorkerFixture({ routes });
     try {
       const result = await cli(server.origin, timeout, commit);
-      assert.ok(server.requests.length <= 10);
+      assert.ok(server.requests.length <= 64);
       for (const request of server.requests) {
         assert.equal(request.method, "GET");
         assert.equal(request.headers["x-doctorcre-release-reader"], "1");
@@ -110,6 +97,11 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
     assert.ok(receipt.assertions.includes(resolver + ":exact-original-decision-replay"));
   }
   assert.ok(receipt.assets["/js/ui-call.js"]);
+  assert.equal(
+    receipt.assets["/js/live-client.js"],
+    createHash("sha256").update(assets.get("js/live-client.js")!).digest("hex"),
+  );
+  assert.equal(receipt.max_requests, 64);
   for (const [failure, code] of [
     ["manifest", 1],
     ["adapter-hash", 1],
