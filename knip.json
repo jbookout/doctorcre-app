@@ -47,6 +47,7 @@
     "scripts/prove-calendar-coverage-notes-panels.mjs",
     "scripts/prove-calendar-meeting-end-time.mjs",
     "scripts/prove-calendar-panels-offset-order.mjs",
+    "scripts/prove-call-review-decision-replay-key.ts",
     "scripts/prove-checklist-outstanding.mjs",
     "scripts/prove-client-anniversary-panel.mjs",
     "scripts/prove-contact-reasons-own-taxonomy.mjs",
