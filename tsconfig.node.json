@@ -54,7 +54,7 @@
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
     "scripts/prove-queued-asks-corrupt-entry-isolation.ts",
-    "test/prove-queued-asks-corrupt-entry-isolation.test.ts",
+    "test/prove-queued-asks-corrupt-entry-isolation.browser.ts",
     "scripts/proof-browser.d.mts"
   ],
   "compilerOptions": {
