@@ -40,3 +40,22 @@ test("unregistered fallback shapes never become public packet content", () => {
   assert.throws(() => parsePublicTourPacket({ items: stops }));
   assert.throws(() => parsePublicTourPacket({ stops: [] }));
 });
+
+test("web refuses absent or incompatible presentation contracts and different property membership", () => {
+  assert.throws(() => parsePublicTourPacket({ stops }));
+  const wrongVersion = presentedPacket(stops);
+  wrongVersion.presentation.version = "3.0.0";
+  assert.throws(() => parsePublicTourPacket(wrongVersion));
+  const omitted = presentedPacket(stops);
+  omitted.presentation.stops.pop();
+  assert.throws(() => parsePublicTourPacket(omitted));
+});
+
+test("web preserves the producer's exact formatted values without a second formatter", () => {
+  const wire = presentedPacket(stops);
+  const first = wire.presentation.stops[0]?.facts[2];
+  assert.ok(first);
+  first.value = "USD 20 to 25 SF per year";
+  const packet = parsePublicTourPacket(wire);
+  assert.equal(packet.find((stop) => stop.route_sequence === 3)?.facts[2]?.value, first.value);
+});
