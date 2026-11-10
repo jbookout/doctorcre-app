@@ -54,7 +54,7 @@
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
     "scripts/prove-invoice-payment-chronology-display.ts",
-    "test/prove-invoice-payment-chronology-display.test.ts",
+    "test/prove-invoice-payment-chronology-display.browser.ts",
     "scripts/proof-browser.d.mts",
     "test/proof-browser-harness.d.mts",
     "js/invoice-tracker-fixture.d.ts",
