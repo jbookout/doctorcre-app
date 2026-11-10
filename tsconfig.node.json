@@ -53,6 +53,8 @@
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
+    "test/portal-demographics-core.test.ts",
+    "test/portal-demographics-core-browser.browser.ts",
     "scripts/prove-email-deal-picker-auth-retirement.ts",
     "test/email-deal-picker-auth-retirement.browser.ts",
     "test/prove-email-deal-picker-auth-retirement.browser.ts",
