@@ -142,6 +142,7 @@ test("real phone push startup reads authenticated configuration and stops on dis
         await page.addInitScript(() => {
           Object.defineProperty(Notification, "permission", { value: "granted" });
           Notification.requestPermission = async () => "granted";
+          navigator.serviceWorker.register = async () => navigator.serviceWorker.ready;
           Object.defineProperty(navigator.serviceWorker, "ready", {
             value: Promise.resolve({
               pushManager: {
@@ -232,6 +233,89 @@ test("real phone push startup reads authenticated configuration and stops on dis
           await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-offline-session-revoked")));
           await page.getByText("Session ended. Sign in again to manage this installation.", { exact: true }).waitFor();
         }
+      } finally {
+        await page.close();
+      }
+    });
+  }
+});
+
+test("fresh Updates installation activates the root worker before enrollment", async (t) => {
+  const config = JSON.parse(await readFile(new URL("./fixtures/phone-push/config.json", import.meta.url), "utf8"));
+  const server = await startWorkerFixture({
+    assets: await appAssetSnapshot(),
+    env: {
+      APP_ENV: "fixture",
+      CARR: {
+        fetch: async (request: Request) => {
+          if (new URL(request.url).pathname === "/auth/session")
+            return Response.json({ actor: { slug: "joe" }, csrf_token: "synthetic" });
+          const body = await request.json();
+          assert.ok(["read-web-push-config-v1", "read-web-push-subscriptions-v1"].includes(body.params.name));
+          const value =
+            body.params.name === "read-web-push-config-v1"
+              ? config
+              : { ok: true, schema_version: "web-push-registry.v1", subscriptions: [] };
+          return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: value } });
+        },
+      },
+    },
+  });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const outcome of ["active", "failed", "timeout", "retired"] as const) {
+    await t.test(outcome, async () => {
+      const page = await browser.newPage({
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+      });
+      try {
+        await page.addInitScript((outcome) => {
+          const original = window.matchMedia.bind(window);
+          window.matchMedia = (query) => {
+            const result = original(query);
+            if (query === "(display-mode: standalone)") Object.defineProperty(result, "matches", { value: true });
+            return result;
+          };
+          if (outcome === "failed")
+            navigator.serviceWorker.register = async () => {
+              throw Error("Installation failed");
+            };
+          if (outcome === "timeout" || outcome === "retired")
+            navigator.serviceWorker.register = () => new Promise(() => {});
+        }, outcome);
+        await page.route("**/fresh-push.html", (route) =>
+          route.fulfill({
+            contentType: "text/html",
+            body: '<div id="phonePush"></div><script type="module" src="/js/ui-phone-push.js"></script>',
+          }),
+        );
+        await page.goto(`${server.origin}/fresh-push.html`);
+        if (outcome === "retired") {
+          await page.getByText("Preparing phone notifications…", { exact: true }).waitFor();
+          await page.evaluate(() => window.dispatchEvent(new Event("doctorcre-offline-session-revoked")));
+          await page.getByText("Session ended. Sign in again to manage this installation.", { exact: true }).waitFor();
+        } else if (outcome !== "active") {
+          await page
+            .getByText("Phone notification setup failed. Reopen Updates to try again.", { exact: true })
+            .waitFor({ timeout: 15000 });
+        } else {
+          await page
+            .getByText("Phone notifications are off on this installation.", { exact: true })
+            .waitFor({ timeout: 15000 });
+          assert.equal(
+            await page.evaluate(async () => {
+              const registration = await navigator.serviceWorker.getRegistration("/");
+              return (
+                registration?.active?.scriptURL === `${location.origin}/sw.js` &&
+                registration.scope === `${location.origin}/`
+              );
+            }),
+            true,
+            "Updates must activate its worker without visiting Deal Room",
+          );
+        }
+        if (outcome !== "active") assert.equal(await page.getByRole("button").count(), 0);
       } finally {
         await page.close();
       }
