@@ -33,7 +33,3 @@ export function startWorkerFixture(options?: {
   close(): Promise<void>;
   release(token: string): void;
 }>;
-
-export function startFixture(options?: {
-  routes?: Map<string, { contentType: string; body: string }>;
-}): Promise<{ origin: string; close(): Promise<void> }>;
