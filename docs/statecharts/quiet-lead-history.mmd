@@ -1,0 +1,278 @@
+stateDiagram-v2
+  state "Quiet leads" as Quiet {
+    state Availability {
+      state "Quiet leads hidden" as Hidden
+      state "Loading follow-ups" as Loading
+      state "Quiet leads loaded" as Loaded
+      state "Follow-up read refused" as Refused
+      state "Quiet leads retired" as Closed
+      [*] --> Hidden
+      Hidden --> Loading: Open or refresh
+      Loaded --> Loading: Refresh
+      Refused --> Loading: Retry
+      Loading --> Loaded: Read succeeds
+      Loading --> Refused: Read refused
+      Hidden --> Hidden: Session invalidated
+      Hidden --> Closed: Dispose
+      Loading --> Hidden: Session invalidated
+      Loading --> Closed: Dispose
+      Loaded --> Hidden: Session invalidated
+      Loaded --> Closed: Dispose
+      Refused --> Hidden: Session invalidated
+      Refused --> Closed: Dispose
+      Closed --> Closed: Late update
+    }
+    --
+    state History {
+      state "All contact history" as AllHistory
+      state "No contact recorded selected" as NeverContacted
+      state "Contact recorded selected" as Contacted
+      [*] --> AllHistory
+      AllHistory --> AllHistory: Show all history [while the required screen is active]
+      %% when Loaded
+      AllHistory --> NeverContacted: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      AllHistory --> Contacted: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      AllHistory --> AllHistory: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      AllHistory --> AllHistory: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      NeverContacted --> AllHistory: Show all history [while the required screen is active]
+      %% when Loaded
+      NeverContacted --> NeverContacted: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      NeverContacted --> Contacted: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      NeverContacted --> AllHistory: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      NeverContacted --> AllHistory: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      Contacted --> AllHistory: Show all history [while the required screen is active]
+      %% when Loaded
+      Contacted --> NeverContacted: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      Contacted --> Contacted: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      Contacted --> AllHistory: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      Contacted --> AllHistory: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+    }
+    --
+    state Rows {
+      state "No visible rows" as NoRows
+      state "All history matches visible" as AllRows
+      state "Only no-contact matches visible" as NeverRows
+      state "Only contacted matches visible" as ContactedRows
+      [*] --> NoRows
+      NoRows --> AllRows: Read succeeds [while the required screen is active]
+      %% when Loading, AllHistory
+      NoRows --> NeverRows: Read succeeds [while the required screen is active]
+      %% when Loading, NeverContacted
+      NoRows --> ContactedRows: Read succeeds [while the required screen is active]
+      %% when Loading, Contacted
+      AllRows --> AllRows: Show all history [while the required screen is active]
+      %% when Loaded
+      AllRows --> NeverRows: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      AllRows --> ContactedRows: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      AllRows --> AllRows: Change owner [while the required screen is active]
+      %% when Loaded
+      AllRows --> AllRows: Change search [while the required screen is active]
+      %% when Loaded
+      AllRows --> AllRows: Clear search [while the required screen is active]
+      %% when Loaded
+      AllRows --> AllRows: Next page [while the required screen is active]
+      %% when Loaded
+      AllRows --> AllRows: Previous page [while the required screen is active]
+      %% when Loaded
+      AllRows --> NoRows: Refresh [while the required screen is active]
+      %% when Loaded
+      AllRows --> NoRows: Session invalidated [while the required screen is active]
+      %% when Loaded
+      AllRows --> NoRows: Dispose [while the required screen is active]
+      %% when Loaded
+      NeverRows --> AllRows: Show all history [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NeverRows: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      NeverRows --> ContactedRows: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NeverRows: Change owner [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NeverRows: Change search [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NeverRows: Clear search [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NeverRows: Next page [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NeverRows: Previous page [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NoRows: Refresh [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NoRows: Session invalidated [while the required screen is active]
+      %% when Loaded
+      NeverRows --> NoRows: Dispose [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> AllRows: Show all history [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> NeverRows: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> ContactedRows: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> ContactedRows: Change owner [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> ContactedRows: Change search [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> ContactedRows: Clear search [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> ContactedRows: Next page [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> ContactedRows: Previous page [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> NoRows: Refresh [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> NoRows: Session invalidated [while the required screen is active]
+      %% when Loaded
+      ContactedRows --> NoRows: Dispose [while the required screen is active]
+      %% when Loaded
+    }
+    --
+    state Page {
+      state "First page" as FirstPage
+      state "Later page" as LaterPage
+      [*] --> FirstPage
+      FirstPage --> LaterPage: Next page [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Previous page [while the required screen is active]
+      %% when Loaded
+      LaterPage --> LaterPage: Next page [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Show all history [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Change owner [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Change search [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Clear search [while the required screen is active]
+      %% when Loaded
+      FirstPage --> FirstPage: Read succeeds [while the required screen is active]
+      %% when Loading
+      FirstPage --> FirstPage: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      FirstPage --> FirstPage: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      LaterPage --> FirstPage: Show all history [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Change owner [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Change search [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Clear search [while the required screen is active]
+      %% when Loaded
+      LaterPage --> FirstPage: Read succeeds [while the required screen is active]
+      %% when Loading
+      LaterPage --> FirstPage: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      LaterPage --> FirstPage: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+    }
+    --
+    state LastChange {
+      state "Filters or snapshot just changed" as Reset
+      state "Page navigation just occurred" as Paged
+      [*] --> Reset
+      Reset --> Paged: Next page [while the required screen is active]
+      %% when Loaded
+      Reset --> Paged: Previous page [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Show all history [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Change owner [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Change search [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Clear search [while the required screen is active]
+      %% when Loaded
+      Reset --> Reset: Read succeeds [while the required screen is active]
+      %% when Loading
+      Reset --> Reset: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      Reset --> Reset: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      Paged --> Paged: Next page [while the required screen is active]
+      %% when Loaded
+      Paged --> Paged: Previous page [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Show all history [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Show no contact recorded [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Show contact recorded [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Change owner [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Change search [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Clear search [while the required screen is active]
+      %% when Loaded
+      Paged --> Reset: Read succeeds [while the required screen is active]
+      %% when Loading
+      Paged --> Reset: Session invalidated [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+      Paged --> Reset: Dispose [while the required screen is active]
+      %% when Hidden, Loading, Loaded, Refused
+    }
+    --
+    state Proof {
+      state "Release not checked" as Unchecked
+      state "Opening proof session" as Acquiring
+      state "Checking visible results" as Checking
+      state "Proof passed" as Passed
+      state "Visible assertion failed" as Failed
+      state "Evidence unavailable" as Insufficient
+      state "Acquired resources closed" as Cleaned
+      [*] --> Unchecked
+      Unchecked --> Acquiring: Containing release read
+      Unchecked --> Insufficient: Release unavailable
+      Acquiring --> Checking: Registry and subjects available
+      Acquiring --> Insufficient: Session registry or subjects unavailable
+      Checking --> Passed: Exact rows and stable release
+      Checking --> Failed: Visible mismatch
+      Checking --> Insufficient: Deadline or changing release
+      Acquiring --> Cleaned: Acquisition deadline
+      Insufficient --> Cleaned: Close acquired resources
+      Passed --> Cleaned: Close acquired resources
+      Failed --> Cleaned: Close acquired resources
+    }
+  }
+  %% never LoadingRows: Loading follow-ups & All history matches visible -- Loading never exposes old rows.
+  %% never LoadingNeverRows: Loading follow-ups & Only no-contact matches visible -- Loading never exposes never-contacted rows.
+  %% never LoadingContactedRows: Loading follow-ups & Only contacted matches visible -- Loading never exposes contacted rows.
+  %% never RefusedRows: Follow-up read refused & All history matches visible -- Refusal never exposes old rows.
+  %% never RefusedNeverRows: Follow-up read refused & Only no-contact matches visible -- Refusal never exposes never-contacted rows.
+  %% never RefusedContactedRows: Follow-up read refused & Only contacted matches visible -- Refusal never exposes contacted rows.
+  %% never ClosedRows: Quiet leads retired & All history matches visible -- Disposal never permits late rows.
+  %% never ClosedNeverRows: Quiet leads retired & Only no-contact matches visible -- Disposal never permits late never-contacted rows.
+  %% never ClosedContactedRows: Quiet leads retired & Only contacted matches visible -- Disposal never permits late contacted rows.
+  %% never NeverHistoryAll: No contact recorded selected & All history matches visible -- No contact recorded excludes unfiltered rows.
+  %% never NeverHistoryContacted: No contact recorded selected & Only contacted matches visible -- No contact recorded excludes contacted rows.
+  %% never ContactedHistoryAll: Contact recorded selected & All history matches visible -- Contact recorded excludes unfiltered rows.
+  %% never ContactedHistoryNever: Contact recorded selected & Only no-contact matches visible -- Contact recorded excludes never-contacted rows.
+  %% never AllHistoryNever: All contact history & Only no-contact matches visible -- All history does not retain the never-contacted filter.
+  %% never AllHistoryContacted: All contact history & Only contacted matches visible -- All history does not retain the contacted filter.
+  %% never PageReset: Filters or snapshot just changed & Later page -- History owner search clear successful read and invalidation reset the page.
