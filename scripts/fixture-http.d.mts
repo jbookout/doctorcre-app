@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from "node:http";
 
-type Descriptor = {
+export type Descriptor = {
   body?: string | Uint8Array;
   contentType?: string;
   status?: number;
