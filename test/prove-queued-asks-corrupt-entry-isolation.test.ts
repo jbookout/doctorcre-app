@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
-import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import test, { type TestContext } from "node:test";
 import { promisify } from "node:util";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 
 const run = promisify(execFile);
 const revision = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -12,22 +12,38 @@ const cli = new URL("../scripts/prove-queued-asks-corrupt-entry-isolation.ts", i
 const snapshot = appAssetSnapshot();
 async function origin(t: TestContext, mode = "valid") {
   const assets = new Map(await snapshot);
-  assets.delete('/app-release');
-  const routes = new Map([['/app-release', {
-    contentType: 'application/json',
-    status: mode === 'signin' ? 401 : 200,
-    body: JSON.stringify({ service:'doctorcre-app', environment:'production', source_commit:mode === 'stale' ? '0'.repeat(40) : revision }),
-  }]]);
-  if (mode !== 'valid' && mode !== 'stale' && mode !== 'signin') assets.set('/js/ui-host.js', {
-    contentType:'text/javascript',
-    body: Buffer.from(mode === 'missing' ? 'export const absent=true;' : mode === 'timeout' ? 'export async function mountAskComposer(){await new Promise(()=>{});}' : 'export async function mountAskComposer(){throw Error("Wrong result");}'),
-  });
-  if (mode === 'protected') {
-    assets.delete('/js/ui-host.js');
-    routes.set('/js/ui-host.js', { contentType:'text/plain',status:403,body:'protected' });
+  assets.delete("/app-release");
+  const routes = new Map([
+    [
+      "/app-release",
+      {
+        contentType: "application/json",
+        status: mode === "signin" ? 401 : 200,
+        body: JSON.stringify({
+          service: "doctorcre-app",
+          environment: "production",
+          source_commit: mode === "stale" ? "0".repeat(40) : revision,
+        }),
+      },
+    ],
+  ]);
+  if (mode !== "valid" && mode !== "stale" && mode !== "signin")
+    assets.set("/js/ui-host.js", {
+      contentType: "text/javascript",
+      body: Buffer.from(
+        mode === "missing"
+          ? "export const absent=true;"
+          : mode === "timeout"
+            ? "export async function mountAskComposer(){await new Promise(()=>{});}"
+            : 'export async function mountAskComposer(){throw Error("Wrong result");}',
+      ),
+    });
+  if (mode === "protected") {
+    assets.delete("/js/ui-host.js");
+    routes.set("/js/ui-host.js", { contentType: "text/plain", status: 403, body: "protected" });
   }
   const server = await startWorkerFixture({ assets, routes });
-  t.after(()=>server.close());
+  t.after(() => server.close());
   return server.origin;
 }
 
