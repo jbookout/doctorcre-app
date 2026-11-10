@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr227-s12-demographics-core",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "published-demographics-comparison",
+    "predicate": "The deployed release identifies the merged app revision. On a published portal, selecting two available growth and household geographies and an income threshold updates values and sources to match the publication. Units, household denominators, estimate and projection years, method captions and source links remain readable without charts at 390px in both themes. Missing counts remain unknown.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Release-bound read-only observation matches the published package for both geographies and the selected income threshold, including the chart-free text equivalents.",
+    "input_class": "read-only release identity and evidence from an authorized published-portal walk after shell integration",
+    "deadline_seconds": 300
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 10,
+    "max_records": 20,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

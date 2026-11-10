@@ -56,7 +56,9 @@
     "scripts/prove-call-review-decision-replay-key.ts",
     "test/call-review-decision-replay-key-browser.test.ts",
     "test/call-review-decision-replay-key.test.ts",
-    "test/prove-call-review-decision-replay-key.test.ts"
+    "test/prove-call-review-decision-replay-key.test.ts",
+    "test/portal-demographics-core.test.ts",
+    "test/portal-demographics-core-browser.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
