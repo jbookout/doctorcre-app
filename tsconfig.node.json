@@ -60,7 +60,9 @@
     "js/invoice-tracker-fixture.d.ts",
     "js/invoice-tracker-model.d.ts",
     "js/routes.d.ts",
-    "src/worker.d.ts"
+    "src/worker.d.ts",
+    "test/portal-demographics-core.test.ts",
+    "test/portal-demographics-core-browser.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
