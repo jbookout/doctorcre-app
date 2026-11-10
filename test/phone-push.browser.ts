@@ -238,3 +238,34 @@ test("real phone push startup reads authenticated configuration and stops on dis
     });
   }
 });
+
+test("fresh Updates installation activates the root worker before enrollment", async (t) => {
+  const config = JSON.parse(await readFile(new URL("./fixtures/phone-push/config.json", import.meta.url), "utf8"));
+  const server = await startWorkerFixture({
+    assets: await appAssetSnapshot(),
+    env: { APP_ENV: "fixture", CARR: { fetch: async () => new Response("synthetic") } },
+  });
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.route("**/fresh-push.html", (route) => route.fulfill({
+    contentType: "text/html",
+    body: '<div id="phonePush"></div><script type="module" src="/js/ui-phone-push.js"></script>',
+  }));
+  await page.route("**/auth/session", (route) => route.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic" } }));
+  await page.route("**/mcp", (route) => {
+    const request = route.request().postDataJSON();
+    assert.ok(["read-web-push-config-v1", "read-web-push-subscriptions-v1"].includes(request.params.name));
+    const value = request.params.name === "read-web-push-config-v1" ? config
+      : { ok: true, schema_version: "web-push-registry.v1", subscriptions: [] };
+    return route.fulfill({ json: { jsonrpc: "2.0", id: request.id, result: { structuredContent: value } } });
+  });
+  await page.goto(`${server.origin}/fresh-push.html`);
+  await page.getByText("Phone notifications are off on this installation.", { exact: true }).waitFor();
+  assert.equal(await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    return registration?.active?.scriptURL === `${location.origin}/sw.js` && registration.scope === `${location.origin}/`;
+  }), true, "Updates must activate its worker without visiting Deal Room");
+});
