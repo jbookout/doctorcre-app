@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "deal-tours-revoked-controls",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "retired-tour-instance-denies-reentry",
+      "predicate": "Require the deployed release to contain the expected merge commit. Older, unrelated and unknown releases exit 78. Import deployed mountDealTours and its chunks, invalidate its synthetic session, and prove no recreated frame, new client reads or navigation. A separately verified fresh mount works. Run `node scripts/prove-deal-tours-revoked-controls.ts --origin https://app.doctorcre.com --expected-commit <merge-sha> --timeout-ms 30000`.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Exit zero with JSON release identity, module URLs and passing synthetic assertions. This does not prove natural client data.",
+      "input_class": "public-read-only",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 50,
+    "max_records": 1,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 1048576
+  }
+}

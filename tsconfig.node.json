@@ -53,6 +53,10 @@
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
+    "scripts/prove-call-review-decision-replay-key.ts",
+    "test/call-review-decision-replay-key-browser.browser.ts",
+    "test/call-review-decision-replay-key.test.ts",
+    "test/prove-call-review-decision-replay-key.browser.ts",
     "scripts/prove-invoice-payment-chronology-display.ts",
     "test/prove-invoice-payment-chronology-display.browser.ts",
     "scripts/proof-browser.d.mts",
@@ -68,7 +72,11 @@
     "test/portal-demographics-core-browser.browser.ts",
     "scripts/prove-email-deal-picker-auth-retirement.ts",
     "test/email-deal-picker-auth-retirement.browser.ts",
-    "test/prove-email-deal-picker-auth-retirement.browser.ts"
+    "test/prove-email-deal-picker-auth-retirement.browser.ts",
+    "scripts/prove-deal-tours-revoked-controls.ts",
+    "test/deal-tours-revoked-controls.browser.ts",
+    "test/prove-deal-tours-revoked-controls.browser.ts",
+    "test/deal-tours-revoked-controls.d.ts"
   ],
   "compilerOptions": {
     "lib": [
@@ -88,6 +96,9 @@
       ],
       "/js/ui-quiet-vendors.js": [
         "./src/ui/quiet-vendors.tsx"
+      ],
+      "/js/ui-deal-tours.js": [
+        "./src/ui/deal-tours.tsx"
       ]
     },
     "jsx": "react-jsx"
