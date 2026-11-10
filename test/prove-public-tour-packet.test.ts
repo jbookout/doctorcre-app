@@ -5,6 +5,7 @@ import { proveTourPacket } from "../scripts/prove-public-tour-packet.ts";
 for (const [fixtureCase, exitCode] of [
   ["pass", 0],
   ["fail", 1],
+  ["insufficient", 78],
 ] as const)
   test(`packet proof ${fixtureCase} fixture`, async () => {
     const result = await proveTourPacket({

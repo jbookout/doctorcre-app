@@ -5,8 +5,10 @@ import test from "node:test";
 import type { AxeResults } from "axe-core";
 import axe from "axe-core";
 import { buildArtifact } from "../scripts/artifact.mjs";
+import { assertPublishedPacketPdf } from "../scripts/public-tour-pdf-proof.ts";
 import { createQaServer } from "../scripts/qa-fixture-server.mjs";
 import { temporaryDirectory } from "../scripts/temp-directory.mjs";
+import { parsePublicTourPacket } from "../src/ui/public-tour-packet.ts";
 import { chromium } from "./browser-harness.mjs";
 
 const stops = [3, 1, 2].map((n) => ({
@@ -75,6 +77,7 @@ test("public packet renders three stops, map and PDF in the same order at both w
       );
       const pdf = await page.pdf({ path: `/tmp/WR12.S1.J1-shots/${width}-${colorScheme}.pdf`, tagged: true });
       assert.ok(pdf.length > 10000);
+      await assertPublishedPacketPdf(pdf, parsePublicTourPacket({ stops }));
       assert.equal((pdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 4);
       assert.equal(await page.locator(".packet-notes:visible").count(), 3);
       await page.close();
