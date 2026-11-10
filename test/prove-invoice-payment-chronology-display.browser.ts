@@ -184,12 +184,20 @@ for (const width of [390, 1440])
     assert.doesNotMatch((await page.locator("#invoiceRows").textContent()) || "", /No invoices/);
     assert.equal(await page.locator("#invoicePayment").isVisible(), false);
     fail = true;
-    await page.locator("#refreshInvoices").click();
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/mcp") &&
+          response.request().postDataJSON().params.name === "read-invoice-tracker" &&
+          response.status() === 503,
+      ),
+      page.locator("#refreshInvoices").click(),
+    ]);
     await page.getByText("Invoices unavailable", { exact: true }).waitFor();
     assert.equal(await page.locator("[data-invoice]").count(), 0);
     fail = false;
-    await page.locator("#refreshInvoices").focus();
     paid.received_on = validDate;
+    await page.locator("#refreshInvoices").focus();
     await page.keyboard.press("Enter");
     await page.locator("[data-invoice]").first().waitFor();
     assert.equal(await page.locator("#refreshInvoices").evaluate((n) => n === document.activeElement), true);
