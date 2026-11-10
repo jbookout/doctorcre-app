@@ -36,6 +36,16 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
   const release = { service: "doctorcre-app", environment: "production", source_commit: "a".repeat(40) };
   async function run(mode: string, timeout = 30000, commit = release.source_commit) {
     const selected = new Map(assets);
+    if (mode === "near-miss") {
+      const original = selected.get("js/ui-call.js");
+      assert.ok(original);
+      const body = original.toString();
+      assert.ok(body.includes("No longer pending"));
+      selected.set(
+        "js/ui-call.js",
+        Buffer.from(body.replaceAll("No longer pending", "Still pending. No longer pending is false")),
+      );
+    }
     if (mode === "assertion")
       selected.set(
         "js/ui-call.js",
@@ -95,6 +105,7 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
   for (const resolver of ["resolve-candidate", "resolve-post-call-candidate"]) {
     assert.ok(receipt.assertions.includes(resolver + ":http-uncertainty-blocks-new-decisions"));
     assert.ok(receipt.assertions.includes(resolver + ":exact-original-decision-replay"));
+    assert.ok(receipt.assertions.includes(resolver + ":authoritative-resolution"));
   }
   assert.ok(receipt.assets["/js/ui-call.js"]);
   const adapter = assets.get("js/live-client.js");
@@ -102,6 +113,7 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
   assert.equal(receipt.assets["/js/live-client.js"], createHash("sha256").update(adapter).digest("hex"));
   assert.equal(receipt.max_requests, 64);
   for (const [failure, code] of [
+    ["near-miss", 1],
     ["manifest", 1],
     ["adapter-hash", 1],
     ["hash", 1],
@@ -112,6 +124,8 @@ test("exact proof CLI executes manifest-selected bytes and rejects invalid evide
   ] as const) {
     const failed = await run(failure, failure === "timeout" ? 100 : 30000);
     assert.equal(failed.code, code, failure + ": " + failed.stderr);
+    if (failure === "near-miss")
+      assert.match(failed.stderr, /Authoritative readback resolves item: "Still pending\. No longer pending is false"/);
   }
   const wrongRelease = await run("valid", 30000, "f".repeat(40));
   assert.equal(wrongRelease.code, 78, wrongRelease.stderr);

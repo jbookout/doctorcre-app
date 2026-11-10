@@ -112,7 +112,8 @@ export async function exercise({
         "Exact original decision replay",
       );
       assertions.push(resolver + ":exact-original-decision-replay");
-      check(node.textContent.includes("No longer pending"), "Authoritative readback resolves item");
+      const resolution = node.querySelector("[data-review-candidate] h3 + .call-review-meta")?.textContent;
+      check(resolution === "No longer pending", `Authoritative readback resolves item: ${JSON.stringify(resolution)}`);
       assertions.push(resolver + ":authoritative-resolution");
     } finally {
       view.dispose();
