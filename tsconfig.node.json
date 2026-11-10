@@ -24,6 +24,7 @@
         "./src/ui/deal-tours.tsx"
       ]
     },
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "resolveJsonModule": true
   }
 }

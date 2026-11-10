@@ -1,3 +1,5 @@
+export function validateLeadWorkspace<T>(payload: T): T;
+export function validateLeadDetail<T>(detail: T, id: string): T;
 export type QuietProposal = {
   subject_type: string;
   subject_id: string;

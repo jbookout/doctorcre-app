@@ -993,7 +993,6 @@
     "src/ui/index.tsx": "0e70daf75de26296c3039dc7e21000f6322d0a8b425aa9a77c9d19516f826857",
     "src/ui/keyboard-input.ts": "d6bc2b645845eaa27862a16fa612b5b40d726bcb7cf71e744f9277ce7e41d4d1",
     "src/ui/lead-guidance.tsx": "13a4f4e5d19775086e27a2444f50f165b600e56bdca36b051d98cb7329b5bffe",
-    "src/ui/lead-research.tsx": "3908d7dd79205510780f7d2b5bad0b25d53c258ac6812cd61faf7f796a1de543",
     "src/ui/market-terms.tsx": "ec4bdf603efe02080e913109cd2f01423a6ef3682951b1e897045330d9107f26",
     "src/ui/meeting-preparation-lifetime.ts": "a97f188c1e00af6c8d22dafc42c7d8e1e2f012d8e6c5ffee7e107b9911c5563d",
     "src/ui/node-host.tsx": "4fbb985b1b659778d45d8857ce9dd97826e8df648678e42c16ba716bf4dbdc3b",
