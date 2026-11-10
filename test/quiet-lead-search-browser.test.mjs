@@ -22,7 +22,7 @@ for (const width of [390, 1280]) test(`search intersects owner and pages in serv
   await page.goto('http://localhost/leads');
   const section = page.locator('#quietFollowUps'), input = section.getByRole('searchbox', { name: 'Search loaded quiet leads', exact: true });
   await input.waitFor();
-  await section.getByRole('combobox').focus(); await page.keyboard.press('Tab');
+  await section.getByRole('combobox', { name: 'Quiet lead owner', exact: true }).focus(); await page.keyboard.press('Tab');
   assert.equal(await input.evaluate(n => n === document.activeElement), true);
   await page.keyboard.press('Tab');
   assert.equal(await section.getByRole('button', { name: 'Clear search', exact: true }).evaluate(n => n === document.activeElement), true);
@@ -60,7 +60,7 @@ for (const width of [390, 1280]) test(`search intersects owner and pages in serv
   assert.deepEqual(await links.evaluateAll(nodes => nodes.map(n => n.dataset.quietLead)), rows.slice(0, 10).map(row => row.subject_id));
   await input.fill('l-sYnTh-2');
   await check(rows.filter(row => row.ref.toLowerCase().includes('l-synth-2')));
-  await section.getByRole('combobox').selectOption('owner:joe');
+  await section.getByRole('combobox', { name: 'Quiet lead owner', exact: true }).selectOption('owner:joe');
   await check(rows.filter(row => row.owner === 'joe' && row.ref.toLowerCase().includes('l-synth-2')));
   await input.fill('Last contact'); await check([]);
   await section.getByText('No quiet leads match this search and owner.', { exact: true }).waitFor();

@@ -14,6 +14,7 @@ const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url
 const checks = await readFile(new URL("../.github/workflows/checks.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
+execFileSync(process.execPath, ["scripts/strict-projects.ts"], { cwd: root });
 
 const workflowDocument = source => parseYaml(source);
 const eventCondition = (expression = 'true', github = {}) => runInNewContext(
@@ -599,7 +600,7 @@ test('release handoff admits both app identities through the source rule and ref
 
  test('typed watch journeys belong to browser collection and remain typechecked', async () => {
  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
- const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+ const config = JSON.parse(await readFile(new URL('../tsconfig.node.generated.json', import.meta.url), 'utf8'));
  assert.ok(config.files.includes('test/watch-controls.browser.ts'));
  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
@@ -608,7 +609,7 @@ test('release handoff admits both app identities through the source rule and ref
 
 
 test('reply proof browser journeys run after browser installation and remain typechecked', async () => {
-  const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+  const config = JSON.parse(await readFile(new URL('../tsconfig.node.generated.json', import.meta.url), 'utf8'));
   assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
   assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
   const steps = workflowDocument(checks).jobs.checks.steps;
