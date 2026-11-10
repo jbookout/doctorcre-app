@@ -26,7 +26,7 @@ async function setup(t, { width = 1440, theme = 'light', kind = 'reply_draft', r
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; calls.push({ name, args });
     let payload = { items: [] };
-    if (name === 'read-home-inbox-v4') payload = { ok: true, schema_version: 'home-inbox.v4', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [row] };
+    if (name === 'read-home-inbox-v5') payload = { ok: true, schema_version: 'home-inbox.v5', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [row] };
     if (name === 'read-home-review') {
       if (fail && fail !== 'version_conflict' && fail !== 'uncertain' && fail !== 'after_save_change') payload = { error: fail };
       else if (args.source_version !== row.source_version) payload = { error: 'home_review_stale' };

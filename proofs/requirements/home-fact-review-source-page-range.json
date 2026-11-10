@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "home-fact-review-source-page-range",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "home-citation-admission",
+      "predicate": "Run node scripts/prove-home-fact-review-source-page-range.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Read production app release before and after. Boot fetched ui-inbox.js and its generated dependencies with isolated synthetic read-home-inbox-v5 and read-home-review responses. Invalid cited pages never expose approval. Valid boundary ranges and expired excerpts retain their original citations. Observe zero mutation RPC requests.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Exit 0 with stable production identity, exact asset hashes and named assertions passing. Exit 1 on contradiction or 78 on unavailable identity, assets or total deadline.",
+      "input_class": "deployed assets with isolated synthetic registered Home RPC responses",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 22,
+    "max_records": 16,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

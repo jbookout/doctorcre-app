@@ -98,8 +98,8 @@ test('board summaries use the real fixture and live adapters for detail-only act
   assert.equal(board.schema_version, 'local-deals-board.v2');
   const row = board.deals.find(row => row.id === seed.deals[0].id);
   assert.deepEqual(row.open_actions, [
-    { id: 'earlier', owner: 'dell', description: 'Tour the property', due_on: '2026-10-12' },
-    { id: 'later', owner: 'joe', description: 'Call the lender', due_on: '2026-10-30' },
+    { id: 'earlier', item_id: 'next_action:earlier', owner: 'dell', description: 'Tour the property', due_on: '2026-10-12' },
+    { id: 'later', item_id: 'next_action:later', owner: 'joe', description: 'Call the lender', due_on: '2026-10-30' },
   ]);
   assert.deepEqual(row.last_step, { kind: 'note', summary: 'Met the client', occurred_at: '2026-10-22T10:00:00Z' });
   const live = createLiveClient({ fetchImpl: async () => Response.json({ result: { content: [{ text: JSON.stringify(board) }] } }) });

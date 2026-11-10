@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "lead-stage-correspondence-clock",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "deployed-lead-stage-clock",
+      "predicate": "After matching the merged source to /app-release, execute node scripts/prove-lead-stage-correspondence-clock.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Fetch leads-model.js and leads-client.js with their same-origin static import graph. Verify every executed byte against artifact-manifest.json. Execute stageReview and validateLeadDetail on the existing lead-workspace.v1 fixture through production parsers. Impossible and zone-less timestamps are refused in correspondence, stage history and correspondence cursors. Future contact never suppresses the explanation question. Valid email, meeting and connected call evidence retain ordering, offset equivalence and the three-entry limit. Refuse release changes. Retain release identity, asset hashes and named assertion results. This is deployed synthetic behavior, not a natural signed-in journey.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Exit 0 with passed receipt and executed assertions. Contradictions exit 1. Missing release or asset evidence and deadlines exit 78 and leave the unit landed-unproven. Fixture execution alone does not prove production.",
+      "input_class": "Deployed same-origin module bytes and lead-workspace.v1 synthetic fixtures checked through production parsers",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 35,
+    "max_records": 100,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

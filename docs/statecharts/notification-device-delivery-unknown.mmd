@@ -1,0 +1,11 @@
+stateDiagram-v2
+    [*] --> Evidence: Notification arrives or refreshes
+    state Evidence <<choice>>
+    Evidence --> Confirmed: Device row has a known state
+    Evidence --> Off: Valid delivery list has no device row
+    Evidence --> Unavailable: Missing or malformed list or unknown device state
+    Confirmed: Recorded delivery phrase
+    Off: Device push is off for you
+    Unavailable: Delivery status unavailable
+    %% never Infer opt-out from unavailable evidence.
+    %% Each refresh evaluates the same decision without retaining prior delivery state.

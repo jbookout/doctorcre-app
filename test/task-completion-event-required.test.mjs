@@ -36,7 +36,7 @@ test('actual Home client requires event before readback and recovers by exact re
   const writes = [];
   const current = item({ source_state: 'done', action_version: 2 });
   const client = createInboxClient(async (name, value) => {
-    if (name === 'read-home-inbox-v4') return { error: 'unknown_tool' };
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return { error: 'unknown_tool' };
     if (name === 'read-home-inbox-v3') { reads++; return { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [current], working_collapsed: true, auto_settle_enabled: true }; }
     writes.push(structuredClone(value));
     if (name === 'reopen-one-action') { Object.assign(current, { source_state: 'needs_attention', action_version: 3 }); return { ...receipt, version: 3, status: 'open' }; }

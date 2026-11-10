@@ -1,0 +1,59 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+export const canary = 'synthetic-publication-canary';
+const versionId = '0f1e2d3c-4b5a-4968-8776-655443322110';
+
+export function fixture(t, { browser = false } = {}) {
+  const parent = temporaryDirectory('release-publication-');
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'app');
+  const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
+  execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks', ROOT, root], { stdio: 'pipe' });
+  const paths = ['scripts/chromium-safety-args.mjs', 'scripts/prepare-release.mjs', 'scripts/release-production.mjs', 'scripts/release-staging.mjs', 'scripts/release-staging.py', 'scripts/release-command.mjs', 'scripts/release-environment.mjs', 'scripts/provider-release.mjs', 'test/morning-brief-browser.test.mjs'];
+  for (const path of paths) if (existsSync(join(ROOT, path))) copyFileSync(join(ROOT, path), join(root, path));
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
+  // Keep real npm, Git, artifact build/verification and (when requested) an
+  // existing browser capture test. Avoid recursively running this test suite.
+  pkg.scripts.test = browser ? 'node --test --test-name-pattern="live brief opens on request" test/morning-brief-browser.test.mjs' : 'node -e ""';
+  writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
+  mkdirSync(join(root, 'node_modules'), { recursive: true });
+  // Reuse declared dependencies; Wrangler is the simulated provider under test.
+  for (const name of new Set([...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})])) {
+    if (name === 'wrangler') continue;
+    mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
+    symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
+  }
+  const bin = join(root, 'node_modules/.bin');
+  mkdirSync(bin, { recursive: true });
+  for (const name of ['tsc', 'biome', 'knip']) symlinkSync(join(ROOT, 'node_modules/.bin', name), join(bin, name));
+  git(['add', ...paths.filter(path => existsSync(join(root, path))), 'package.json']);
+  git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Synthetic release source']);
+  const commit = git(['rev-parse', 'HEAD']);
+  git(['update-ref', 'refs/remotes/origin/main', commit]);
+  const trace = join(parent, 'provider.jsonl');
+  const entry = `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify({args, deploy: !!process.env.CLOUDFLARE_API_TOKEN, unrelated: !!process.env.NEW_SECRET, color: process.env.NO_COLOR})+'\\n');
+if (args.includes('status') && fs.existsSync(${JSON.stringify(join(parent, 'bootstrap'))})) { fs.unlinkSync(${JSON.stringify(join(parent, 'bootstrap'))}); console.error('code: 10007'); process.exit(1); }
+if (args[0] === 'deployments' && args.includes('status')) console.log(JSON.stringify({ versions: [{ version_id: '${versionId}', percentage: 100 }] }));
+if (args[0] === 'versions' && args[1] === 'view') console.log(JSON.stringify({ id: args[2], resources: { bindings: [{ name: 'GIT_SHA', type: 'plain_text', text: '0'.repeat(40) }] } }));
+if (args.includes('upload')) console.log('Worker Version ID: ${versionId}');
+`;
+  const provider = join(root, 'node_modules/wrangler'); mkdirSync(join(provider, 'bin'), { recursive: true });
+  writeFileSync(join(provider, 'package.json'), JSON.stringify({ name: 'wrangler', version: pkg.devDependencies.wrangler, bin: { wrangler: './bin/wrangler.js' } }));
+  writeFileSync(join(provider, 'bin/wrangler.js'), entry);
+  symlinkSync('../wrangler/bin/wrangler.js', join(root, 'node_modules/.bin/wrangler'));
+  chmodSync(join(provider, 'bin/wrangler.js'), 0o755);
+  const env = { ...process.env, CLOUDFLARE_API_TOKEN: canary, NEW_SECRET: canary };
+  const run = entrypoint => spawnSync(process.execPath, [`scripts/${entrypoint}.mjs`], { cwd: root, env, encoding: 'utf8' });
+  const rows = () => existsSync(trace) ? readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse) : [];
+  return { parent, root, git, run, rows, trace };
+}
+

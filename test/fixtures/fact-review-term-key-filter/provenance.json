@@ -1,0 +1,23 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "5679dc36f01633d65dbe5f80946b6f5660333f7c",
+  "producer": "mcp-server/src/fact-review.ts",
+  "verb": "list-fact-review",
+  "source": "Disposable migrated Postgres synthetic fixtures; registered handler executed directly",
+  "args": {
+    "entity_ref": "00000000-0000-4000-8000-000000000022",
+    "include_resolved": true,
+    "limit": 100
+  },
+  "queries": [
+    "ops.record_fact_observations",
+    "ops.list_fact_review",
+    "public.v_deal_documents"
+  ],
+  "production_calls": 0,
+  "session_producer": "mcp-server/src/dealroom-web.js#systemWorkSession; unchanged function body evaluated with synthetic session inputs",
+  "documents_producer": "mcp-server/src/deal-files.js#list-deal-documents",
+  "removed": "same entity after rollback to no_terms savepoint",
+  "receipt_producer": "factReviewTools resolve-fact-review handler, synthetic reject",
+  "procedure": "producer.txt includes the executed capture recipe"
+}

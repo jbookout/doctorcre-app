@@ -24,7 +24,7 @@ for (const width of [390, 1440]) test(`public Home mount retains missing-event r
     const item = { completed_at: null, auto_settled: false, item_id: 'synthetic', source_type: 'next_action', source_id: action, source_version: 's1', source_state: 'needs_attention', title: 'Synthetic task', activity_at: '2026-10-30T12:00:00Z', hold_until: null, unseen: false, disposition: 'inbox', snoozed_until: null, explicit_unsettle: false, section: 'inbox', base_version: 'opaque:1', context_label: null, due_on: null, open_url: null, kind_label: 'Task', merged_source_ids: [], action_id: action, action_version: 1, deal_id: null };
     window.writes = [];
     const client = createInboxClient(async (name, args) => {
-      if (name === 'read-home-inbox-v4') return { error: 'unknown_tool' };
+      if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return { error: 'unknown_tool' };
       if (name === 'read-home-inbox-v3') return { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items: [item], working_collapsed: true, auto_settle_enabled: true };
       window.writes.push({ name, args: structuredClone(args) });
       const done = name === 'complete-one-action';

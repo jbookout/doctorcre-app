@@ -1,0 +1,28 @@
+stateDiagram-v2
+    [*] --> Loading: mount
+    Loading --> All: current success
+    Loading --> Selected: success retaining stage
+    Loading --> All: success missing stage resets with feedback
+    Loading --> Refused: malformed or rejected read
+    Loading --> Loading: refresh or stale completion
+    All --> Selected: select stage
+    Selected --> Selected: select term or stage
+    Selected --> EmptySubset: AND has no matches
+    EmptySubset --> Selected: change selection to matches
+    Selected --> All: clear stage
+    All --> Loading: compare or refresh
+    Selected --> Loading: compare or refresh
+    EmptySubset --> Loading: compare or refresh
+    Refused --> Loading: explicit retry
+    Selected --> Selected: stale completion
+    Refused --> Refused: stale completion
+    All --> Retired: auth retirement disposes parent
+    Selected --> Retired: auth retirement disposes parent
+    Loading --> Retired: auth retirement disposes parent
+    All --> Disposed: dispose
+    Selected --> Disposed: dispose
+    EmptySubset --> Disposed: dispose
+    Refused --> Disposed: dispose
+    Loading --> Disposed: dispose
+    Retired --> Retired: late completion ignored
+    Disposed --> Disposed: late completion ignored

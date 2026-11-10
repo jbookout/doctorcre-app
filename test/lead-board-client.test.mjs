@@ -151,3 +151,36 @@ for (const stalled of ['headers', 'body']) test(`session identity deadline cover
     ? new Promise(() => {}) : { ok: true, json: () => new Promise(() => {}) } });
   await assert.rejects(client.getActor(), { code: 'read_timeout' });
 });
+
+test('detail clock rejects malformed correspondence, history and cursor and recovers through production parser', async () => {
+ const {validateLeadDetail,validateLeadWorkspace}=await import('../js/leads-client.js');
+ const row=workspace().leads[0];
+ for(const occurred_at of ['2026-02-31T12:00:00Z','2026-03-01T12:00:00','2026-03-01','2026-03-01T24:00:00Z','2026-03-01T12:00:00Z\n',null,0]) {
+  for(const field of ['correspondence','stage_history','cursor']) {
+   const d=detail(row);
+   if(field==='cursor')d.correspondence_page={total:3,has_more:true,next_cursor:{id:'synthetic',occurred_at}};
+   else d[field][0].occurred_at=occurred_at;
+   assert.throws(()=>validateLeadDetail(d,row.id),{code:'invalid_projection'},field+String(occurred_at));
+  }
+  assert.throws(()=>validateLeadWorkspace({...workspace(),generated_at:occurred_at}),{code:'invalid_projection'});
+ }
+ for(const occurred_at of ['2024-02-29T12:00:00.123456Z','2000-02-29T06:00:00-06:00','0099-01-01T00:00:00Z','2026-03-10T12:00:01Z']) {
+  const d=detail(row);d.correspondence[0].occurred_at=occurred_at;d.stage_history[0].occurred_at=occurred_at;
+  d.correspondence_page={total:3,has_more:true,next_cursor:{id:'synthetic',occurred_at}};
+  assert.equal(validateLeadDetail(d,row.id),d);
+ }
+});
+
+test('stage clock leaves the exact reviewed write and retry request frozen', async()=>{
+ const calls=[];
+ const c=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  calls.push(JSON.parse(init.body).params.arguments);
+  if(calls.length===1)throw Error('Synthetic lost reply');
+  return jsonResponse({result:{content:[{type:'text',text:'{"ok":true}'}]}});
+ }});
+ const row=workspace().leads[0],review={reason:'Human confirmed contact',evidence_ids:[],human_quote:'Human confirmed contact'};
+ await assert.rejects(c.recordStage(row,'engaged',review,'frozen-key','example-partner'),{code:'unknown_outcome'});
+ await c.recordStage(row,'engaged',review,'frozen-key','example-partner');
+ assert.deepEqual(calls[0],{lead:row.registry_ref,base_version:row.base_version,expected_actor:'example-partner',fields:{stage:'engaged'},stage_review:review,idempotency_key:'frozen-key'});
+ assert.deepEqual(calls[1],calls[0]);
+});

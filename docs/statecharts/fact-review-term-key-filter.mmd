@@ -1,0 +1,17 @@
+stateDiagram-v2
+  [*] --> All
+  All --> Selected: select loaded key
+  Selected --> All: clear selection
+  Selected --> Empty: refresh removes selected key
+  Empty --> All: clear selection
+  Selected --> Selected: edit draft or refresh adds key
+  Selected --> All: comparison target is hidden
+  All --> Locked: submit review
+  Selected --> Locked: submit review
+  Locked --> Locked: unconfirmed outcome or blocked selection
+  Locked --> All: confirmed retry refreshes
+  All --> Retired: auth retirement or dispose
+  Selected --> Retired: auth retirement or dispose
+  Empty --> Retired: dispose
+  Locked --> Retired: auth retirement or dispose
+  Retired --> Retired: late response ignored

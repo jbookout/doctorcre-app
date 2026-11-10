@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "email-source-clock-validation",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "deployed-email-source-clock",
+    "predicate": "After binding the merged source to /app-release, run node scripts/prove-email-source-clock-validation.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Execute sourceTime, relativeAge and waitingDays from exact fetched same-origin asset bytes in an isolated browser. Require impossible dates, numeric inputs, time-only values and local timestamps to remain unavailable. Preserve leap days, offsets, fractions, Chicago labels, missing messages and future clamps. Retain Worker identity, asset SHA256 hashes and named assertion results. Read release again and refuse a change. This synthetic module observation supplements the registered app release live walk and does not attest a natural signed-in journey.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with passed assertions and unchanged release. Contradictions exit 1. Unavailable identity, assets, auth or deadline exit 78; leave the unit landed-unproven.",
+    "input_class": "Read-only deployed module bytes and contract-checked synthetic activity timestamps",
+    "deadline_seconds": 30
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 22,
+    "max_records": 30,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

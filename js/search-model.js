@@ -30,10 +30,10 @@ import { isCalendarDay } from './calendar-model.js';
 /** `FIND_CATCH_UP_QUERY_MAX` (tools.js:2059) — the input's maxlength, too. */
 export const FIND_QUERY_MAX = 200;
 /** `FIND_CATCH_UP_LIMIT_MAX` (tools.js:2060). */
-export const FIND_CATCH_UP_LIMIT_MAX = 50;
+const FIND_CATCH_UP_LIMIT_MAX = 50;
 export const FIND_CATCH_UP_LIMIT_DEFAULT = 20;
 /** `FIND_CATCH_UP_CANDIDATE_CAP` (tools.js:2061). */
-export const FIND_CATCH_UP_CANDIDATE_CAP = 25;
+const FIND_CATCH_UP_CANDIDATE_CAP = 25;
 
 
 /* --------------------------------------------------------- the frozen sentences */
@@ -55,7 +55,7 @@ export const SCOPE_CHIP_SENTENCE =
   "";
 
 /** §4.4 — most result kinds have no address to open into, and this says so. */
-export const NO_PAGE_SENTENCE = "This record has no page that opens by address yet.";
+const NO_PAGE_SENTENCE = "This record has no page that opens by address yet.";
 
 export const EXPOSURE_STATEMENT =
   "";
@@ -63,7 +63,7 @@ export const EXPOSURE_STATEMENT =
 /* ------------------------------------------------------------------ validation */
 
 /** All seven keys, always, in every captured response. */
-export const SEARCH_PAYLOAD_KEYS = Object.freeze([
+const SEARCH_PAYLOAD_KEYS = Object.freeze([
   "parties", "deals", "connections", "organizations", "lead_client_links", "deals_via_link", "note",
 ]);
 
@@ -72,7 +72,7 @@ const ORGANIZATION_KEYS = ["name", "live_rows", "refs", "retired_aliases", "reti
 const DEAL_KEYS = ["name", "phase", "owner", "client_ref", "invoiced_on", "closed_on", "lane", "outcome"];
 
 /** `kindFromRef` (tools.js:2065-2071) — the six words a candidate kind can be. */
-export const CANDIDATE_KINDS = Object.freeze(["deal", "lead", "client", "vendor", "party", "record"]);
+const CANDIDATE_KINDS = Object.freeze(["deal", "lead", "client", "vendor", "party", "record"]);
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.length > 0;
@@ -110,7 +110,7 @@ function nullableStringArray(value) {
   return Array.isArray(value) && value.every((entry) => nullableString(entry));
 }
 
-export function validSearchParty(row) {
+function validSearchParty(row) {
   if (!exactKeys(row, PARTY_KEYS)) return false;
   if (!nonEmptyString(row.name)) return false;
   // city, specialty, org_name and ref are each nullable in v_ref_index.
@@ -120,7 +120,7 @@ export function validSearchParty(row) {
   return typeof row.merged === "boolean";
 }
 
-export function validSearchOrganization(row) {
+function validSearchOrganization(row) {
   if (!exactKeys(row, ORGANIZATION_KEYS)) return false;
   if (!nonEmptyString(row.name)) return false;
   if (!wholeNumber(row.live_rows) || !wholeNumber(row.retired_aliases) || !wholeNumber(row.live_as_role)) return false;
@@ -129,7 +129,7 @@ export function validSearchOrganization(row) {
   return typeof row.all_retired === "boolean";
 }
 
-export function validSearchDeal(row) {
+function validSearchDeal(row) {
   if (!exactKeys(row, DEAL_KEYS)) return false;
   if (!nonEmptyString(row.name)) return false;
   // owner is lead_owner and was observed null; client_ref is nullable too.
@@ -218,7 +218,7 @@ export function queryIsSendable(query) {
  * producer's own `kind` word so a chip can name Leads rather than "records",
  * and the split preserves each row's position inside its group.
  */
-export const SEARCH_GROUPS = Object.freeze([
+const SEARCH_GROUPS = Object.freeze([
   Object.freeze({ id: "people", label: "People and practices", source: "parties", kind: "party" }),
   Object.freeze({ id: "leads", label: "Leads", source: "parties", kind: "lead" }),
   Object.freeze({ id: "clients", label: "Clients", source: "parties", kind: "client" }),
@@ -240,7 +240,7 @@ export function toggleSearchScope(kinds, id) {
 }
 
 /** Non-null, non-empty strings only. An array of refs is not an array of links. */
-export function refChips(list) {
+function refChips(list) {
   return (Array.isArray(list) ? list : []).filter((entry) => nonEmptyString(entry));
 }
 
@@ -521,7 +521,7 @@ export function searchAddress({ query = "", kinds = [] } = {}) {
  * there is no verb that would store one anywhere else.
  */
 export const SAVED_VIEWS_KEY = "doctorcre.saved-views.v1";
-export const SAVED_VIEWS_MAX = 12;
+const SAVED_VIEWS_MAX = 12;
 
 /** Guard rather than comment: this module may not write the preferences key. */
 function assertNotPreferences(key) {

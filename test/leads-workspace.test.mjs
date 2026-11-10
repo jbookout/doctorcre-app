@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {JSDOM} from 'jsdom';
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
-import {createLeadBoardClient} from '../js/leads-client.js';
+import {createLeadBoardClient,validateLeadDetail} from '../js/leads-client.js';
 import {settles} from './browser-harness.mjs';
 const tick=()=>new Promise(r=>setTimeout(r,10));
 async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}}),configure=()=>{}){
@@ -361,7 +361,8 @@ test('new correspondence preserves the expanded original by identity, not positi
  let rows=detail(s.board.leads[0]).correspondence;
  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:rows}});
  await s.app.readDetail(id(1));const original=s.d.querySelector('.correspondence details');original.open=true;const key=original.dataset.entryKey;
- rows=[{id:id(999),kind:'email_in',occurred_at:'2026-10-01',summary:'Synthetic new entry',detail:'Synthetic original'},...rows];await s.app.refresh();
+ rows=[{id:id(999),kind:'email_in',occurred_at:'2026-10-01T12:00:00Z',summary:'Synthetic new entry',detail:'Synthetic original'},...rows];
+ validateLeadDetail({...detail(s.board.leads[0]),correspondence:rows},id(1));await s.app.refresh();
  assert.equal(s.d.querySelector('.correspondence details').open,false);assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });

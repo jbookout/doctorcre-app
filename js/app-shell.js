@@ -45,7 +45,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
       opening = true;
       const opener = root.activeElement instanceof HTMLElement && root.activeElement !== root.body ? root.activeElement : toggle;
       try {
-        const [{ openQuickSwitcher }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
+        const [{ openQuickSwitcher, readQuickSwitcherSources }, { navigationItems, routeEntries }, { createClient }] = await Promise.all([
           import('./ui-quick-switcher.js'), import('./routes.js'), import('./client.js'),
         ]);
         if (retired) return;
@@ -57,8 +57,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
         }
         openQuickSwitcher({ opener, pages, read: async () => {
           const client = await createClient(boot.mode, boot.options);
-          const [board, network] = await Promise.all([client.getBoard(), client.getRelationshipNetwork()]);
-          return { board, network };
+          return readQuickSwitcherSources(() => client.getBoard(), () => client.getRelationshipNetwork());
         } });
       } catch {
         if (!retired) location.assign('/search');
@@ -324,7 +323,7 @@ if (typeof document !== "undefined") {
   if (actionHost && location.pathname.startsWith('/a/')) {
     const { mountActionLink } = await import("./ui-action.js");
     if (!privateSession()?.revoked) {
-      const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests() });
+      const view = mountActionLink(actionHost, { ref: location.pathname.slice(3), request: createMcpRequests(), principal: async () => (await privateSession()?.verify({ fresh: true }))?.actor.slug || null });
       window.addEventListener('doctorcre-session-invalidated', () => view.dispose(), { once: true });
     }
   }

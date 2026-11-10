@@ -23,8 +23,8 @@ import { REFUSAL_SENTENCE } from "./status-model.js";
 export { REFUSAL_SENTENCE };
 
 /** The ledger's own reference shapes. Neither is widened for convenience. */
-export const INCIDENT_REF = /^INC-\d{8}-\d{2}$/;
-export const WORK_REQUEST_REF = /^WR-\d{1,12}$/;
+const INCIDENT_REF = /^INC-\d{8}-\d{2}$/;
+const WORK_REQUEST_REF = /^WR-\d{1,12}$/;
 
 /** The one sentence a page with no usable reference says. */
 export const REF_REFUSAL = "This page needs an incident reference like INC-20260915-01.";

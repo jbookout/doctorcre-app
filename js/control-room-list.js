@@ -49,13 +49,13 @@ export function listHtml(items, { highlightId = null, openId = null } = {}) {
     + `<ul class="cr-rows" role="presentation">${group.items.map((item) => rowHtml(item, { highlightId, openId })).join('')}</ul></section>`).join('');
 }
 
-export const LIST_SKELETON_HTML = `<div class="cr-list-skeleton" aria-hidden="true">${'<div class="cr-skeleton-row"><span class="skeleton-line short"></span><span class="skeleton-line"></span></div>'.repeat(6)}</div>`;
+const LIST_SKELETON_HTML = `<div class="cr-list-skeleton" aria-hidden="true">${'<div class="cr-skeleton-row"><span class="skeleton-line short"></span><span class="skeleton-line"></span></div>'.repeat(6)}</div>`;
 
 export function emptyHtml({ triage = 0 } = {}) {
   const lead = triage ? `${plural(triage, 'item')} ${triage === 1 ? 'waits' : 'wait'} in Triage. Accepted items join the queue.` : 'New work arrives through Triage and joins the queue once it is accepted.';
   return `<div class="state-block cr-empty" data-state="empty"><h3>Nothing open in the queue</h3><p>${escapeHtml(lead)}</p></div>`;
 }
-export function errorHtml(reason) {
+function errorHtml(reason) {
   return `<div class="state-block" data-state="offline"><h3>The queue could not be read</h3><p>${escapeHtml(reason)}. Nothing is listed rather than a partial guess.</p><button class="btn" type="button" data-queue-retry>Try again</button></div>`;
 }
 

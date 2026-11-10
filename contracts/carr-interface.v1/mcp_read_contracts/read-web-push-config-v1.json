@@ -1,0 +1,29 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "5f88561563424b5f91ddd5c130ab3b993b3d0c02",
+    "module": "mcp-server/src/web-push-config.ts",
+    "contract": "mcp-server/contracts/web-push-config.v1.json",
+    "sha256": "6d3fa8b67ace6afbdbcfad1e9463c0253a67abe6598c017c9c061529f82917c4"
+  },
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "response": {
+    "schema_version": "web-push-config.v1",
+    "required_keys": [
+      "ok",
+      "schema_version",
+      "public_key",
+      "vapid_key_version"
+    ]
+  },
+  "refusals": [
+    "push_not_configured",
+    "push_config_invalid",
+    "push_session_required"
+  ]
+}

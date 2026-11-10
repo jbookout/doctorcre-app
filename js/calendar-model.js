@@ -21,7 +21,7 @@ import { businessDay } from './business-date.js';
 // never slide across midnight on a viewer's clock. "Today" uses America/Chicago.
 
 export const CALENDAR_VIEWS = Object.freeze(["month", "week"]);
-export const READ_CONCURRENCY = 4;
+const READ_CONCURRENCY = 4;
 const UPCOMING_LIMIT = 40;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

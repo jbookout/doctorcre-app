@@ -1,0 +1,24 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+  "producer": "mcp-server/src/lead-follow-up.ts#researchSummary",
+  "source_sha256": "49d2277d79189f1f2bf92ea775c86dccec90abee1446a9b9022ddb02a9bfe419",
+  "method": "Executed actual researchSummary with synthetic evidence; outer lead-workspace.v1 assembled from existing synthetic workspace fixture and checked by production validateLeadWorkspace/validateLeadDetail. Not a live lead-board recording. Replay bundle appends the verbatim calendar-date and tool-error dependencies from the same revision.",
+  "query": {
+    "verb": "lead-board",
+    "arguments": {
+      "workspace": "leads",
+      "lead_id": "30000000-0000-0000-0000-000000000001"
+    }
+  },
+  "clock": "2026-11-07T12:00:00Z",
+  "natural": false,
+  "producer_txt": "Verbatim researchSummary excerpt from the source file identified by source_sha256. Executed the complete original module with its original calendar-date.ts and tool-error.ts dependencies through Node TypeScript support.",
+  "reused_from": "test/fixtures/lead-research-source-dates",
+  "dependencies_sha256": {
+    "mcp-server/src/calendar-date.ts": "8dbfa61a3383062c8d0e13ebe1ccd2e3cd3386279a8f016ddf90cdc3cc94027f",
+    "mcp-server/src/tool-error.ts": "560dd7d6509deb1ebe3cb42dcdb50254dd272383f34436c2558d8f53d9f6b57f"
+  },
+  "producer_bundle_sha256": "91541fc92a74a6020697f9517fd05faf5c6286a07c1554bd63ac807502bcb050",
+  "recordings_sha256": "b2fefdd6c24342977edebb0369a4cdad88ad123a5c77298a12b1b7a1a08ace8c"
+}

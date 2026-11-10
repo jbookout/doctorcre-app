@@ -1,0 +1,34 @@
+%% System design written before implementation.
+%% AnswerTable owns local sort/filter; parseAnswerBlocks owns bounded validation.
+%% Empty state is derived from source and visible row counts, with no extra state.
+%% Capacity: <=8 blocks, <=200 rows/table, <=20 columns. 10x is refused by parser;
+%% first bottleneck is bounded DOM rendering. No distributed load or external calls.
+%% Cache: existing mount fingerprint/WeakMap; replacement resets, disposal evicts.
+%% Availability: invalid blocks show unavailable; text survives. No new dependency.
+%% Postgres/N+1, queues, circuit breakers, rate caps, write idempotency: n/a,
+%% UI uses already-loaded synchronous data, with zero network or writes.
+%% Proof transport is sequential GET-only through app-release-reader: <=20 requests,
+%% <=16 MiB, <=30s, no retries; first failure opens the circuit, exits 78 and emits
+%% a receipt. Assets cache only for the run. Browser closes on every exit, including
+%% late acquisition. No queue, persistence, or production write is introduced.
+%% Consistency: source snapshot stays fixed during local filter/sort; changed answer
+%% or identity retires local state. Each table owns independent controls.
+stateDiagram-v2
+  [*] --> RecordedEmpty: mount empty recorded table
+  [*] --> Matching: mount recorded rows
+  Matching --> NoMatches: absent local filter
+  NoMatches --> Matching: clear filter preserves sort and sources
+  Matching --> Matching: filter or sort
+  NoMatches --> NoMatches: sort with no matches
+  NoMatches --> Matching: reset clears sort and filter
+  Matching --> Matching: reset clears sort and filter
+  RecordedEmpty --> RecordedEmpty: filter or reset
+  NoMatches --> NoMatches: identical mount preserves local state
+  NoMatches --> Matching: replace answer identity or content
+  Matching --> Invalid: invalid block replacement
+  Invalid --> Matching: valid replacement
+  Matching --> Disposed: dispose or retire session
+  NoMatches --> Disposed: dispose
+  RecordedEmpty --> Disposed: dispose
+  Invalid --> Disposed: dispose
+  Disposed --> Matching: remount

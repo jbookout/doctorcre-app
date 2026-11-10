@@ -3,7 +3,7 @@ export { addMonths } from './calendar-model.js';
 
 import { businessDay as radarToday } from './business-date.js';
 export { radarToday };
-export const LEASE_RADAR_SCHEMA = 'lease-radar.v1';
+const LEASE_RADAR_SCHEMA = 'lease-radar.v1';
 const quarterKey = day => `${day.slice(0, 4)}-Q${Math.ceil(Number(day.slice(5, 7)) / 3)}`;
 function leaseUrgency(day, today) {
   return day <= addMonths(today, 6) ? { tone: 'urgent', label: 'Within 6 months' }

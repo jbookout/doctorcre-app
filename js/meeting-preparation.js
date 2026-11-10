@@ -1,3 +1,4 @@
+import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.js';
 import { createCurrentRead } from './current-read.mjs';
 import { onDialogClosed } from './dialog-lifecycle.js';
 import { dealHref } from './home-dashboard-model.js';
@@ -45,36 +46,42 @@ export function mountMeetingPreparation({ document, window, client }) {
   const content = dialog.querySelector('[data-prep-content]');
   const retry = dialog.querySelector('[data-prep-retry]');
   const reads = createCurrentRead({ clock: window });
+  const lifetime = meetingPreparationLifetime(document);
   let trigger = null, timeZone;
   const clear = () => { reads.invalidate(); content.replaceChildren(); retry.disabled = false; };
+  const retire = () => { lifetime.retire(dialog); clear(); };
   const close = onDialogClosed(dialog, () => {
-    clear();
+    retire();
     if (trigger) (trigger.isConnected ? trigger : document.querySelector('[data-prepare-meetings]') || document.getElementById('homePrimaryAction'))?.focus();
     trigger = null;
   });
   const refresh = () => {
+    const interaction = lifetime.capture();
     content.innerHTML = '<p role="status">Loading meeting preparation…</p>';
     retry.disabled = true;
     return reads.run(({ signal }) => client.calendarMeetingPrep({ signal }), {
+      signal: interaction.signal,
       success: value => {
+        if (!interaction.current()) { retire(); return; }
         content.innerHTML = valid(value) ? preparationHtml(value, timeZone) : '<p role="status">Meeting preparation unavailable</p>';
         retry.disabled = false;
       },
       failure: error => {
+        if (!interaction.current()) { retire(); return; }
         if ([401, 403].includes(error?.status)) { invalidate(); return; }
         content.innerHTML = '<p role="status">Meeting preparation unavailable</p>';
         retry.disabled = false;
       },
     });
   };
-  function invalidate() { trigger = null; clear(); dialog.close(); }
-  dialog.querySelector('[data-prep-close]').onclick = () => { clear(); dialog.close(); };
+  function invalidate() { trigger = null; retire(); dialog.close(); }
+  dialog.querySelector('[data-prep-close]').onclick = () => { retire(); dialog.close(); };
   retry.onclick = refresh;
-  dialog.addEventListener('cancel', clear);
+  dialog.addEventListener('cancel', retire);
   window.addEventListener('doctorcre-session-invalidated', invalidate);
   return {
-    open(button, selectedTimeZone) { timeZone = selectedTimeZone; trigger = button; clear(); if (!dialog.open) dialog.showModal(); dialog.querySelector('h2').focus(); return refresh(); },
+    open(button, selectedTimeZone) { timeZone = selectedTimeZone; trigger = button; lifetime.open(dialog); clear(); if (!dialog.open) dialog.showModal(); dialog.querySelector('h2').focus(); return refresh(); },
     clear: invalidate,
-    dispose() { reads.dispose(); close(); window.removeEventListener('doctorcre-session-invalidated', invalidate); dialog.close(); dialog.remove(); },
+    dispose() { retire(); reads.dispose(); close(); window.removeEventListener('doctorcre-session-invalidated', invalidate); dialog.close(); dialog.remove(); },
   };
 }
