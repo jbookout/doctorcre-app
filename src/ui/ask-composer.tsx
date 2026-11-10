@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { type AskRequest, createAskOutbox, type QueuedAsk } from "./queued-asks";
+import { type AskRequest, createAskOutbox, type QueuedAsk, SavedDraftRecoveryError } from "./queued-asks";
 
 export type AskComposerClient = {
   askSession(): Promise<{ actor: string }>;
@@ -51,10 +51,23 @@ function Composer({
   }, [box, isClosed, onReady]);
   const [, update] = useState(0);
   onUpdate(() => update((n) => n + 1));
+  let rows: QueuedAsk[] = [],
+    held: string[] = [],
+    storageUnavailable = false;
+  try {
+    rows = box.entries();
+    held = box.recovery();
+  } catch {
+    storageUnavailable = true;
+  }
   const run = (action: () => void | Promise<void>) => {
     try {
-      Promise.resolve(action()).catch(() =>
-        setNotice("Device storage is unavailable. Your ask has not been confirmed."),
+      Promise.resolve(action()).catch((error) =>
+        setNotice(
+          error instanceof SavedDraftRecoveryError
+            ? error.message
+            : "Device storage is unavailable. Your ask has not been confirmed.",
+        ),
       );
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Your ask could not be saved.");
@@ -97,8 +110,13 @@ function Composer({
                 if (isClosed()) return;
                 setNotice("");
               })
-              .catch(() => {
-                if (!isClosed()) setNotice("This text is only on this page. Device storage is unavailable.");
+              .catch((error) => {
+                if (!isClosed())
+                  setNotice(
+                    error instanceof SavedDraftRecoveryError
+                      ? `This text is only on this page. ${error.message}`
+                      : "This text is only on this page. Device storage is unavailable.",
+                  );
               });
           }}
         />
@@ -112,8 +130,17 @@ function Composer({
       <p id="askNotice" role="status">
         {notice}
       </p>
+      {storageUnavailable && (
+        <p role="status">Device storage is unavailable. Saved asks cannot be read or confirmed.</p>
+      )}
+      {held.length > 0 && (
+        <p role="status">
+          Some saved asks or the saved draft need recovery. Their original bytes are kept on this device and will not be
+          sent. Valid saved asks can still send.
+        </p>
+      )}
       <ul className="work-list" aria-label="Your asks" aria-live="polite">
-        {box.entries().map((row) => (
+        {rows.map((row) => (
           <li key={row.request.idempotency_key}>
             <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{row.request.body}</p>
             <p>{labels[row.kind]}</p>
@@ -142,7 +169,8 @@ export async function mountAskComposer(
 ) {
   let closed = false,
     started = false,
-    starting = false;
+    starting = false,
+    sessionVerified = false;
   const root = createRoot(host);
   let stop = () => {};
   const dispose = () => {
@@ -159,8 +187,10 @@ export async function mountAskComposer(
     starting = true;
     flushSync(() => root.render(<p role="status">Verifying your session to open saved asks…</p>));
     try {
+      sessionVerified = false;
       const { actor } = await client.askSession();
       if (closed) return;
+      sessionVerified = true;
       let redraw = () => {};
       const box = createAskOutbox({
         storage: window.localStorage,
@@ -187,7 +217,7 @@ export async function mountAskComposer(
       started = true;
       window.removeEventListener("online", restart);
       const reconnect = () => {
-        box.flush().catch(() => {});
+        box.flush().catch(() => redraw());
       };
       const storage = () => redraw();
       // eslint-disable-next-line no-restricted-syntax -- Reconnect attempts each saved ask once, with no timer or recursive retry.
@@ -201,7 +231,13 @@ export async function mountAskComposer(
       // eslint-disable-next-line no-restricted-syntax -- Single initial mount attempts one finite snapshot of saved asks.
       reconnect();
     } catch {
-      if (!closed) unavailable();
+      if (!closed) {
+        if (sessionVerified)
+          flushSync(() =>
+            root.render(<p role="status">Device storage is unavailable. Saved asks cannot be read or confirmed.</p>),
+          );
+        else unavailable();
+      }
     } finally {
       starting = false;
     }
