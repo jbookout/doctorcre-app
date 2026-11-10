@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { chromium } from 'playwright';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { createHash } from 'node:crypto';
@@ -126,7 +127,7 @@ export async function prove({ origin, timeoutMs }) {
   const work = async () => {
     const fetchBytes = async path => {
       let response;
-      try { response = await fetch(new URL(path, base), { signal: controller.signal, redirect: 'error' }); }
+      try { response = await proofFetch(new URL(path, base), { signal: controller.signal, redirect: 'error' }); }
       catch (error) { if (controller.signal.aborted) throw error; throw unavailable(`Unavailable ${path}`); }
       if (!response.ok) throw unavailable(`Unavailable ${path}`);
       const reader = response.body.getReader(); const chunks = []; let size = 0;
@@ -140,10 +141,7 @@ export async function prove({ origin, timeoutMs }) {
       hashes.push({ path, sha256: createHash('sha256').update(bytes).digest('hex') });
       return bytes;
     };
-    const releaseBytes = await fetchBytes('/app-release');
-    try { release = JSON.parse(releaseBytes); } catch { throw unavailable('Invalid release identity'); }
-    if (release?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(release.source_commit) ||
-      !['production', 'staging', 'fixture'].includes(release.environment)) throw unavailable('Missing release identity');
+    release = await readAppRelease(base, async url => ({ type: 'application/json', body: await fetchBytes(url.pathname) }));
     await init;
     const queue = ['/js/ui-territory-evidence.js'];
     for (let i = 0; i < queue.length; i++) {
@@ -157,7 +155,7 @@ export async function prove({ origin, timeoutMs }) {
         if (!queue.includes(url.pathname)) queue.push(url.pathname);
       }
     }
-    browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
+    browser = await launchProofBrowser(chromium, { headless: true, args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
     if (controller.signal.aborted) { await browser.close(); throw new Error('Total proof timeout'); }
     const context = await browser.newContext({ serviceWorkers: 'block' });
     await context.route('**/*', route => {

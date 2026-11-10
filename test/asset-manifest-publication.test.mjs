@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { createServer } from 'node:http';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { once } from 'node:events';
-import { spawn } from 'node:child_process';
-import { resolve, sep } from 'node:path';
+import { spawn, execFileSync } from 'node:child_process';
 import { buildArtifact, verifyArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
@@ -22,6 +21,7 @@ test('the public manifest identifies the built commit and every deployed payload
   assert.deepEqual(bytes, await readFile(join(outDir, 'doctorcre-app.manifest.json')));
   const manifest = JSON.parse(bytes);
   assert.equal(manifest.schema, 'doctorcre-static-artifact.v1');
+  assert.equal(manifest.repository, 'DoctorCRE/doctorcre-app');
   assert.equal(manifest.source_commit, commit);
   for (const file of manifest.files) {
     assert.ok(!file.path.endsWith('.map'), 'no source maps in the deployed inventory');
@@ -67,54 +67,113 @@ test('declared production proof follows built and renamed assets and refuses con
   const requirement = JSON.parse(await readFile(join(root, 'proofs/requirements/asset-manifest-publication.json')));
   assert.ok(requirement.assertions[0].predicate.includes('scripts/prove-asset-manifest-publication.mjs'));
   const payload = new Map(await Promise.all(built.manifest.files.map(async row => [row.path, await readFile(join(outDir, 'site', row.path))])));
-  for (const mode of ['built', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
+  const history = temporaryDirectory('doctorcre-manifest-history-', t);
+  const git = (...args) => execFileSync('git', args, { cwd: history, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init');
+  const record = async value => {
+    await writeFile(join(history, 'revision.txt'), value);
+    git('add', 'revision.txt');
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-m', value);
+    return git('rev-parse', 'HEAD');
+  };
+  const ancestor = await record('ancestor');
+  const descendant = await record('descendant');
+  git('checkout', '--orphan', 'unrelated');
+  const unrelated = await record('unrelated');
+  const slowBin = join(history, 'bin');
+  const slowPid = join(history, 'slow-git.pid');
+  await mkdir(slowBin);
+  await writeFile(join(slowBin, 'git'), `#!${process.execPath}
+import { writeFileSync } from 'node:fs';
+writeFileSync(${JSON.stringify(slowPid)}, String(process.pid));
+setTimeout(() => {}, 4000);
+`, { mode: 0o755 });
+  for (const mode of ['ancestry-timeout', 'descendant', 'non-descendant', 'unknown', 'unknown-release', 'descendant-identity', 'built', 'legacy', 'unrelated', 'renamed', 'identity', 'corrupt', 'digest', 'missing', 'redirect', 'cache', 'unsafe', 'timeout']) await t.test(mode, async t => {
     const manifest = structuredClone(built.manifest), files = new Map(payload), seen = [];
+    const required = mode === 'unknown' ? 'f'.repeat(40) : ['ancestry-timeout', 'descendant', 'non-descendant', 'unknown-release', 'descendant-identity'].includes(mode) ? ancestor : commit;
+    const released = mode === 'non-descendant' ? unrelated : mode === 'unknown-release' ? 'f'.repeat(40) : ['ancestry-timeout', 'descendant', 'descendant-identity'].includes(mode) ? descendant : commit;
+    manifest.source_commit = mode === 'descendant-identity' ? ancestor : released;
     if (mode === 'renamed') for (const row of manifest.files.filter(row => row.path.startsWith('js/') && row.path.endsWith('.js'))) {
       const next = row.path.replace('js/', 'js/renamed-');
       files.set(next, files.get(row.path)); files.delete(row.path); row.path = next;
     }
+    if (mode === 'legacy') manifest.repository = 'jbookout/doctorcre-app';
+    if (mode === 'unrelated') manifest.repository = 'DoctorCRE/other';
     if (mode === 'identity') manifest.source_commit = '2'.repeat(40);
     if (mode === 'unsafe') manifest.files[0].path = '../private.js';
-    const siteRoot = resolve(outDir, 'site');
-    const server = createServer(async (req, res) => {
-      seen.push({ method: req.method, path: req.url });
-      let path;
-      try { path = resolve(siteRoot, '.' + decodeURIComponent(req.url.split('?')[0])); } catch { res.writeHead(400); return res.end(); }
-      if (!path.startsWith(siteRoot + sep)) { res.writeHead(403); return res.end(); }
-      if (mode === 'timeout') return;
-      const response = await handleDoctorcreRequest(new Request('https://app.example' + req.url), {
-        GIT_SHA: commit, APP_ENV: 'production',
+    const routes = new Map();
+    for (const name of ['app-release', 'artifact-manifest.json', ...files.keys()]) {
+      const response = await handleDoctorcreRequest(new Request('https://app.example/' + name), {
+        GIT_SHA: released, APP_ENV: 'production',
         ASSETS: { fetch: async request => {
-          const name = new URL(request.url).pathname.slice(1);
-          if (name === 'artifact-manifest.json') return new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } });
+          const key = new URL(request.url).pathname.slice(1);
+          if (key === 'artifact-manifest.json') return new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } });
           if (mode === 'redirect') return new Response(null, { status: 302, headers: { location: '/business' } });
-          const data = files.get(name);
+          const data = files.get(key);
           if (!data || mode === 'missing') return new Response(null, { status: 404 });
           const content = Buffer.from(data);
           if (mode === 'digest') content[0] ^= 1;
           return new Response(mode === 'corrupt' ? Buffer.from('corrupt') : content);
         } },
       });
-      res.writeHead(response.status, mode === 'cache' ? { ...Object.fromEntries(response.headers), 'cache-control': 'public' } : Object.fromEntries(response.headers));
-      res.end(Buffer.from(await response.arrayBuffer()));
-    });
-    server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    t.after(() => { server.closeAllConnections(); server.close(); });
-    const child = spawn(process.execPath, ['scripts/prove-asset-manifest-publication.mjs', '--origin', `http://127.0.0.1:${server.address().port}`, '--commit', commit, '--timeout-ms', mode === 'timeout' ? '100' : '30000'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+      routes.set('/' + name, { status: response.status, body: Buffer.from(await response.arrayBuffer()),
+        contentType: response.headers.get('content-type') || 'application/octet-stream',
+        headers: { ...Object.fromEntries(response.headers), ...(mode === 'cache' ? { 'cache-control': 'public' } : {}) },
+        ...(mode === 'timeout' ? { hold: 'timeout' } : {}),
+        ...(mode === 'ancestry-timeout' ? { delayMs: 1500 } : {}),
+      });
+    }
+    const server = await startFixture({ routes });
+    t.after(() => server.close());
+    if (mode === 'ancestry-timeout') assert.equal((await fetch(server.origin + '/app-release')).status, 403);
+    const started = performance.now();
+    const child = spawn(process.execPath, [join(root, 'scripts/prove-asset-manifest-publication.mjs'), '--origin', server.origin, '--commit', required, '--timeout-ms', mode === 'timeout' ? '100' : mode === 'ancestry-timeout' ? '2000' : '30000'], { cwd: history, env: { ...process.env, ...(mode === 'ancestry-timeout' ? { PATH: slowBin + ':' + process.env.PATH } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const [code] = await once(child, 'close');
-    assert.equal(code, ['built', 'renamed'].includes(mode) ? 0 : 1, stdout + stderr);
+    seen.push(...server.requests.filter(row => row.headers['x-doctorcre-release-reader'] === '1').map(row => ({ method: row.method, path: row.target })));
+    assert.equal(code, ['built', 'legacy', 'renamed', 'descendant'].includes(mode) ? 0 : ['timeout', 'ancestry-timeout', 'unknown', 'unknown-release'].includes(mode) ? 78 : 1, stdout + stderr);
+    if (mode === 'ancestry-timeout') {
+      const elapsed = performance.now() - started;
+      assert.deepEqual(seen.map(row => row.path), ['/app-release']);
+      const pid = Number(await readFile(slowPid, 'utf8'));
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+      assert.ok(elapsed < 3200, `2000 ms total deadline exceeded: ${elapsed} ms`);
+    }
     const receipt = JSON.parse(stdout);
     assert.equal(receipt.status, code === 0 ? 'passed' : 'failed');
     if (!code) {
       assert.equal(receipt.assets.length, 2);
       assert.deepEqual(receipt.assets.map(row => row.path), manifest.files.map(row => row.path).filter(path => /^js\/.*\.js$/.test(path)).sort().slice(0, 2));
-      assert.equal(receipt.release.source_commit, commit);
+      assert.equal(receipt.release.source_commit, released);
       assert.equal(seen.length, requirement.safety.max_requests);
     }
+    if (mode === 'non-descendant') assert.match(receipt.error, /release commit mismatch/);
+    if (['unknown', 'unknown-release'].includes(mode)) assert.match(receipt.error, /ancestry evidence unavailable/);
+    if (mode === 'descendant-identity') assert.match(receipt.error, /manifest commit mismatch/);
     assert.ok(seen.length <= requirement.safety.max_requests);
     assert.ok(seen.every(row => row.method === 'GET' && row.path !== '/business'));
-    if (mode === 'built') assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/%2e%2e%2fprivate`)).status, 403);
+    if (mode === 'built') assert.equal((await fetch(server.origin + '/%2e%2e%2fprivate', { headers: { 'x-doctorcre-release-reader': '1' } })).status, 400);
   });
+});
+
+test('artifact verification preserves alias bytes and digest checks and refuses unrelated repositories', async () => {
+  const { default: tar } = await import('tar-stream');
+  for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app', 'DoctorCRE/other']) {
+    const payload = Buffer.from('export const fixture = true;\n');
+    const manifest = { schema: 'doctorcre-static-artifact.v1', repository, source_commit: commit,
+      files: [{ path: 'js/fixture.js', bytes: payload.length, sha256: createHash('sha256').update(payload).digest('hex') }] };
+    const pack = tar.pack(), chunks = [];
+    const reading = (async () => { for await (const chunk of pack) chunks.push(chunk); })();
+    for (const [name, bytes] of [['artifact-manifest.json', Buffer.from(JSON.stringify(manifest))], ['js/fixture.js', payload]])
+      await new Promise((resolve, reject) => pack.entry({ name, size: bytes.length }, bytes, error => error ? reject(error) : resolve()));
+    pack.finalize(); await reading;
+    const archive = Buffer.concat(chunks), before = Buffer.from(archive), digest = createHash('sha256').update(archive).digest('hex');
+    if (repository === 'DoctorCRE/other') await assert.rejects(verifyArtifact(archive, digest), /identity/);
+    else {
+      assert.deepEqual((await verifyArtifact(archive, digest)).manifest, manifest);
+      await assert.rejects(verifyArtifact(archive, '0'.repeat(64)), /digest|SHA|sha/);
+      assert.deepEqual(archive, before);
+    }
+  }
 });

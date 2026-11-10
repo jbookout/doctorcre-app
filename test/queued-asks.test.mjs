@@ -15,7 +15,7 @@ function setup(storage = memory()) {
  return { box, calls, storage, connect: () => { online = true; }, sender: fn => { send = fn; } };
 }
 test('offline ask persists, reconnect accepts once, reopening never resubmits accepted', async () => {
- const s = setup(); s.box.saveDraft('Ask offline'); s.box.enqueue();
+ const s = setup(); await s.box.saveDraft('Ask offline'); await s.box.enqueue();
  assert.equal(s.box.entries()[0].kind, 'queued'); assert.equal(s.calls.length, 0);
  s.connect(); await s.box.flush(); assert.equal(s.box.entries()[0].kind, 'accepted');
  await s.box.flush(); assert.equal(s.calls.length, 1);
@@ -24,13 +24,13 @@ test('offline ask persists, reconnect accepts once, reopening never resubmits ac
 });
 test('lost or malformed receipts stay unknown and replay the frozen request', async () => {
  for (const fail of [async () => { throw Error('timeout'); }, async () => ({ ok:true }), async r => ({ ...receipt(r), conversation_id:'wrong' })]) {
-  const s = setup(); s.box.saveDraft('Original'); s.box.enqueue(); s.connect(); s.sender(fail); await s.box.flush();
-  assert.equal(s.box.entries()[0].kind,'unknown'); s.box.saveDraft('Newer'); s.sender(receipt); await s.box.flush();
+  const s = setup(); await s.box.saveDraft('Original'); await s.box.enqueue(); s.connect(); s.sender(fail); await s.box.flush();
+  assert.equal(s.box.entries()[0].kind,'unknown'); await s.box.saveDraft('Newer'); s.sender(receipt); await s.box.flush();
   assert.deepEqual(s.calls[0],s.calls[1]); assert.equal(s.box.entries()[0].kind,'accepted'); assert.equal(s.box.draft(),'Newer');
  }
 });
 test('interrupted submission reopens unknown', async () => {
- const s = setup(); s.box.saveDraft('Interrupted'); s.box.enqueue(); s.connect();
+ const s = setup(); await s.box.saveDraft('Interrupted'); await s.box.enqueue(); s.connect();
  let finish; s.sender(r => new Promise(resolve => { finish=()=>resolve(receipt(r)); }));
  const pending = s.box.flush(); await new Promise(resolve=>setImmediate(resolve));
  assert.equal(s.box.entries()[0].kind,'submitting');
@@ -38,36 +38,37 @@ test('interrupted submission reopens unknown', async () => {
  assert.equal(s.box.entries()[0].kind,'accepted');
 });
 test('contract refusals wait for explicit retry', async () => {
- const s=setup(); s.box.saveDraft('Ask'); s.box.enqueue(); s.connect();
+ const s=setup(); await s.box.saveDraft('Ask'); await s.box.enqueue(); s.connect();
  s.sender(r=>({contract:'doc-request.v1',status:'refused',idempotency_key:r.idempotency_key,conversation_id:r.conversation_id,reason:'not_available'}));
  await s.box.flush(); assert.equal(s.box.entries()[0].kind,'refused'); await s.box.flush(); assert.equal(s.calls.length,1);
  s.sender(receipt); await s.box.retry(key); assert.equal(s.box.entries()[0].kind,'accepted');
 });
 test('quota failure never dispatches and stale queue cleanup preserves newer text', async () => {
- const s=setup(); s.box.saveDraft('Newer');
- assert.throws(()=>s.box.enqueue('Old text'),/changed/); assert.equal(s.box.draft(),'Newer');
+ const s=setup(); await s.box.saveDraft('Newer');
+ await assert.rejects(()=>s.box.enqueue('Old text'),/changed/); assert.equal(s.box.draft(),'Newer');
  const broken = { ...memory(), setItem() { throw Error('quota'); } };
- const bad=setup(broken); assert.throws(()=>bad.box.saveDraft('Ask')); assert.throws(()=>bad.box.enqueue('Ask')); bad.connect(); await bad.box.flush(); assert.equal(bad.calls.length,0);
+ const bad=setup(broken); await assert.rejects(()=>bad.box.saveDraft('Ask')); await assert.rejects(()=>bad.box.enqueue('Ask')); bad.connect(); await bad.box.flush(); assert.equal(bad.calls.length,0);
 });
 test('late failure from another tab cannot replace a confirmed acceptance', async () => {
- const s=setup();s.box.saveDraft('Ask');s.box.enqueue();s.connect();
+ const s=setup();await s.box.saveDraft('Ask');await s.box.enqueue();s.connect();
  let finish;s.sender(()=>new Promise(resolve=>{finish=()=>resolve({});}));
  const pending=s.box.flush();await new Promise(resolve=>setImmediate(resolve));
  const other=setup(s.storage);other.connect();await other.box.flush();
  assert.equal(other.box.entries()[0].kind,'accepted');finish();await pending;
  assert.equal(s.box.entries()[0].kind,'accepted');
 });
-test('queue cleanup compares draft version even when another tab writes identical text', () => {
- const storage=memory(), s=setup(storage);s.box.saveDraft('Same text');
+test('queue cleanup serializes a same-text edit requested while enqueue persists', async () => {
+ const storage=memory(), s=setup(storage);await s.box.saveDraft('Same text');
+ let competing;
  const original=storage.setItem;
  storage.setItem=(key,value)=>{
   original(key,value);
-  if (!key.endsWith(':draft')) s.box.saveDraft('Same text');
+  if (!key.endsWith(':draft')) competing=s.box.saveDraft('Same text');
  };
- s.box.enqueue();assert.equal(s.box.draft(),'Same text');assert.equal(s.box.entries()[0].kind,'queued');
+ await s.box.enqueue();await competing;assert.equal(s.box.draft(),'Same text');assert.equal(s.box.entries()[0].kind,'queued');
 });
 test('unknown stays unknown while offline and concurrent flush sends once in one controller', async () => {
- const s=setup();s.box.saveDraft('Ask');s.box.enqueue();s.connect();
+ const s=setup();await s.box.saveDraft('Ask');await s.box.enqueue();s.connect();
  let finish;s.sender(()=>new Promise(resolve=>{finish=()=>resolve({});}));
  const pending=s.box.flush();await new Promise(resolve=>setImmediate(resolve));await s.box.flush();
  assert.equal(s.calls.length,1);finish();await pending;
@@ -81,10 +82,10 @@ test('asks queued during a held submission drain without retrying unknown outcom
  const box=createAskOutbox({storage,actor:'busy',conversation,online:()=>true,
   uuid:()=>`22222222-2222-4222-8222-${String(++serial).padStart(12,'0')}`,
   submit:request=>{calls.push(request);return calls.length===1?new Promise(resolve=>{finish=()=>resolve({});}):receipt(request);}});
- box.saveDraft('First');box.enqueue();const pending=box.flush();
+ await box.saveDraft('First');await box.enqueue();const pending=box.flush();
  assert.equal(box.entries()[0].kind,'submitting');
- box.saveDraft('Second');box.enqueue();await box.flush();
- box.saveDraft('Third draft');
+ await box.saveDraft('Second');await box.enqueue();await box.flush();
+ await box.saveDraft('Third draft');
  finish();await pending;
  assert.deepEqual(box.entries().map(row=>row.kind),['unknown','accepted']);
  assert.equal(calls.length,2);assert.equal(box.draft(),'Third draft');

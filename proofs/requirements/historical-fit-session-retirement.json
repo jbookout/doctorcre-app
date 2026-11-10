@@ -1,0 +1,14 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "historical-fit-session-retirement",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "historical-fit-session-retirement-live",
+    "predicate": "Run node scripts/prove-historical-fit-session-retirement.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Fetch release identity and deployed renderer bytes plus generated chunks. Require idle/loading/ready/error invalidation to clear rows and refuse all former controls, late receipts, clear and repeated events. Require ordinary clear/pagehide recovery and terminal disposal.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, SHA256 asset hashes and all eight named assertions. Exit 1 on contradiction or 78 on unavailable release, assets or deadline; neither is completion.",
+    "input_class": "read-only deployed assets and contract-checked ideal-client-profile.v1 synthetic responses inside an isolated browser",
+    "deadline_seconds": 30
+  }],
+  "safety": {"read_only": true, "no_sends": true, "max_requests": 31, "max_records": 1, "max_runtime_seconds": 30, "max_artifact_bytes": 65536}
+}

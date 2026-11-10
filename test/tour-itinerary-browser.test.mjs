@@ -1,9 +1,9 @@
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { readFile, mkdir } from "node:fs/promises";
-import { extname } from "node:path";
+import { startWorkerFixture } from '../scripts/fixture-http.mjs';
+import { appAssetSnapshot } from '../scripts/fixture-app-assets.mjs';
+import { mkdir } from "node:fs/promises";
 import { chromium } from "./browser-harness.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { route as canonical } from "./fixtures/tour-map.synthetic.mjs";
@@ -15,36 +15,30 @@ const stops = [...canonical.stops].sort((a, b) => a.route_sequence - b.route_seq
 }));
 const detail = { id: tourId, name: "Synthetic itinerary", status: "draft", route_version_id: routeId, route_version_state: "accepted", accepted_route_version: 3,
   canonical_dataset_version: "synthetic-v1", stops, routes: [{ id: routeId, route_version: 3, accepted: true, stops }], projection_status: "missing" };
-const type = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 
-test("rendered composer uses compact fallback, keeps exact stop after reload, and fits phone/iPad/desktop", async () => {
+
+test("rendered composer uses compact fallback, keeps exact stop after reload, and fits phone/iPad/desktop", async t => {
   const asset = await handleDoctorcreRequest(new Request("https://example.test/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"), { ASSETS: { fetch: async () => new Response("fixture") } });
   assert.equal(asset.status, 200);
   const csp = asset.headers.get("content-security-policy");
   const evidenceRequests = [];
-  const server = createServer(async (req, res) => {
-    const url = new URL(req.url, "http://127.0.0.1");
-    try {
-      if (url.pathname.startsWith("/api/")) {
-        if (url.pathname === "/api/tours/property-evidence/v1") evidenceRequests.push(url.searchParams.get("as_of"));
-        const data = url.pathname === "/api/tours/library" ? { tours: [{ id: tourId, name: "Synthetic itinerary" }] }
-          : url.pathname === "/api/tours/detail" ? detail
-          : url.pathname === "/api/tours/property-evidence/v1" ? { schema: "tour-property-evidence.v1", facts: {
-            county: url.searchParams.get("as_of") === "2026-01-15T09:30:45.000Z"
-              ? { status: "reviewed", value: "Bay", as_of: "2026-01-15T09:30:45.000Z", effective_from: "2026-01-15T09:00:00Z" }
-              : { status: "unknown", reason: "no_authorized_evidence" },
-            municipality: { status: "unavailable", reason: "authoritative_coverage_missing" },
-          } } : {};
-        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data, csrf_token: "synthetic-session-csrf" })); return;
-      }
-      const path = url.pathname === "/tours" ? "tours/route-editor.html" : url.pathname.slice(1);
-      if (path.includes("..")) throw new Error("invalid path");
-      const content = await readFile(new URL(`../${path}`, import.meta.url));
-      res.writeHead(200, { "content-type": type[extname(path)] || "application/octet-stream", "content-security-policy": csp }); res.end(content);
-    } catch { res.writeHead(404); res.end(); }
-  });
-  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
+  const assets = await appAssetSnapshot();
+  assets.set('/tours/index.html', assets.get('/tours/route-editor.html'));
+  const server = await startWorkerFixture({ assets, env: { CARR: { fetch: async request => {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/tours/property-evidence/v1') evidenceRequests.push(url.searchParams.get('as_of'));
+    const data = url.pathname === '/api/tours/library' ? { tours: [{ id: tourId, name: 'Synthetic itinerary' }] }
+      : url.pathname === '/api/tours/detail' ? detail
+      : url.pathname === '/api/tours/property-evidence/v1' ? { schema: 'tour-property-evidence.v1', facts: {
+        county: url.searchParams.get('as_of') === '2026-01-15T09:30:45.000Z'
+          ? { status: 'reviewed', value: 'Bay', as_of: '2026-01-15T09:30:45.000Z', effective_from: '2026-01-15T09:00:00Z' }
+          : { status: 'unknown', reason: 'no_authorized_evidence' },
+        municipality: { status: 'unavailable', reason: 'authoritative_coverage_missing' },
+      } } : {};
+    return Response.json({ data, csrf_token: 'synthetic-session-csrf' });
+  } } } });
+  t.after(() => server.close());
+  const base = server.origin;
   const browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS, "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   try {
     for (const [name, width, height] of [["phone", 390, 844], ["ipad", 820, 1180], ["desktop", 1440, 1000]]) {
@@ -144,5 +138,5 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
       assert.equal(await root.locator("[data-itinerary-stop]").count(), 2);
       await page.close();
     }
-  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+  } finally { await browser.close(); }
 });

@@ -1,0 +1,59 @@
+{
+  "producer_commit": "926602dead49619842aa4e617dae08d96fed40c2",
+  "capture": "Registered handler output with an in-memory SQL adapter; response-shape evidence only.",
+  "read_started": {
+    "ok": true,
+    "schema_version": "deal-document-intake.v1",
+    "deliverable": {
+      "id": "b612902d-e54b-4e5c-b86b-2a2d13ab1b84",
+      "deal_id": "2458b273-ee94-459a-ae29-3d83118a94d5",
+      "filename": "Photo.jpg",
+      "mime": "image/jpeg",
+      "bytes": "7",
+      "sha256": "9923793242133ba7d7990d8f9d7934b0d0ef6057cf631d68750bfac7f9d6429b",
+      "state": "started",
+      "visibility": "private",
+      "version": 0,
+      "created_at": "2026-11-08T16:26:29.158Z",
+      "finalized_at": null
+    },
+    "attachment": null
+  },
+  "read_verified": {
+    "ok": true,
+    "schema_version": "deal-document-intake.v1",
+    "deliverable": {
+      "id": "b612902d-e54b-4e5c-b86b-2a2d13ab1b84",
+      "deal_id": "2458b273-ee94-459a-ae29-3d83118a94d5",
+      "filename": "Photo.jpg",
+      "mime": "image/jpeg",
+      "bytes": "7",
+      "sha256": "9923793242133ba7d7990d8f9d7934b0d0ef6057cf631d68750bfac7f9d6429b",
+      "state": "verified",
+      "visibility": "private",
+      "version": 0,
+      "created_at": "2026-11-08T16:26:29.158Z",
+      "finalized_at": null
+    },
+    "attachment": null
+  },
+  "abandon": {
+    "ok": true,
+    "schema_version": "deal-document-intake.v1",
+    "deliverable": {
+      "id": "b612902d-e54b-4e5c-b86b-2a2d13ab1b84",
+      "deal_id": "2458b273-ee94-459a-ae29-3d83118a94d5",
+      "filename": "Photo.jpg",
+      "mime": "image/jpeg",
+      "bytes": "7",
+      "sha256": "9923793242133ba7d7990d8f9d7934b0d0ef6057cf631d68750bfac7f9d6429b",
+      "state": "expired",
+      "visibility": "private",
+      "version": 0,
+      "created_at": "2026-11-08T16:26:29.158Z",
+      "finalized_at": null
+    },
+    "target_collection": "documents",
+    "existing": false
+  }
+}

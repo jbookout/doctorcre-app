@@ -11,14 +11,13 @@ import { assertCoverage } from '../scripts/prove-overdue-reviews-truthful-covera
 test('public mount coverage at phone and desktop widths', async t => {
   const outDir = temporaryDirectory('coverage-browser-', t);
   await buildArtifact({ root: process.cwd(), outDir });
-  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
+  const server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  t.after(() => { server.close(); });
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await page.goto(server.origin);
     const assertions = await page.evaluate(assertCoverage);
     assert.ok(assertions.length > 10); assert.ok(assertions.every(a => a.passed));
     await page.close();

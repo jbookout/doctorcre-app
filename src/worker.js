@@ -8,6 +8,7 @@ const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
 const PROXY_EXACT = new Set(["/mcp", "/pipeline/changes", "/api/call-context", "/api/post-call"]);
 const PROXY_PREFIXES = ["/auth/", "/api/v1/", "/api/room/", "/api/system-work/", "/api/tours/", "/api/post-call/"];
 const STATIC_EXACT = new Map([
+  ["/share-intake.html", "/share-intake.html"],
   ["/artifact-manifest.json", "/artifact-manifest.json"],
   ["/manifest.webmanifest", "/manifest.webmanifest"],
   ["/sw.js", "/public-shell/sw.js"],

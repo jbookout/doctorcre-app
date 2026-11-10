@@ -1,0 +1,22 @@
+stateDiagram-v2
+  [*] --> Loading: Open relationships and restore allowlisted kind
+  Loading --> Ready: Valid fresh snapshot arrives
+  Loading --> Unavailable: Read fails or data is invalid
+  Unavailable --> Loading: Explicit refresh
+  Ready --> Ready: Select kind or intersect filters locally
+  Ready --> Ready: Clear filters and reset visible limit
+  Ready --> Ready: Switch tab and preserve URL
+  Ready --> Refreshing: Refresh existing snapshot
+  Refreshing --> Ready: Fresh snapshot arrives with filters retained
+  Refreshing --> Ready: Transient failure retains unexpired snapshot
+  Refreshing --> Unavailable: Snapshot expires or malformed initial response
+  Ready --> Unavailable: Snapshot expires
+  Ready --> Retired: Authorization denied
+  Refreshing --> Retired: Authorization denied
+  Loading --> Disposed: Leave page
+  Ready --> Disposed: Dispose view
+  Refreshing --> Disposed: Dispose view
+  Disposed --> Disposed: Late completion ignored
+  %% never Show an edge or introduction through a removed node.
+  %% never Read business data when a local filter changes.
+  %% never Repopulate retired or disposed data from a late request.

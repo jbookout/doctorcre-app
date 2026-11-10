@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "home-next-step-touch-date-integrity",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "last-touch-display-integrity",
+      "predicate": "Run node scripts/prove-home-next-step-touch-date-integrity.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Execute deployed mountMissingNextStep bytes and referenced same-origin chunks against contract-checked synthetic Home boards. Impossible dates render unavailable, valid and missing dates differ, links and expansion work, and dispose removes the island. Refuse a changed release identity.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Exit 0 with production identity, SHA256 asset hashes and all named browser assertions passed. Exit 1 for contradiction or 78 for unavailable identity, assets or deadline.",
+      "input_class": "Contract-checked synthetic Home agenda through the production RPC parser; isolated deployed UI bytes; no customer records or writes.",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 22,
+    "max_records": 4,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

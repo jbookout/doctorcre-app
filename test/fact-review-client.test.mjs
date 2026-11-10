@@ -115,3 +115,19 @@ test('live client lists deal document metadata through CARR', async () => {
   assert.equal((await client.listDealDocuments(args)).schema_version, 'deal-documents.v1');
   assert.deepEqual(calls, [{ name: 'list-deal-documents', arguments: args }]);
 });
+
+test('retained text uses the authenticated registered read and parses its recorded response', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { parseDocumentText } = await import('../src/ui/deal-document-text.ts');
+  const recorded = JSON.parse(await readFile(new URL('./fixtures/deal-document-text/produced.json', import.meta.url), 'utf8'));
+  const calls = [];
+  const client = createLiveClient({selfActor:'joe',fetchImpl:async(path,init)=>{
+    if(path === '/auth/session') return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
+    calls.push(JSON.parse(init.body).params);
+    return Response.json({result:{content:[{text:JSON.stringify(recorded)}]}});
+  }});
+  const args = {deal_id:recorded.deal_id,attachment_id:recorded.attachment_id,content_hash:recorded.content_hash};
+  const value = await client.readDealDocumentText(args,{signal:new AbortController().signal});
+  assert.deepEqual(parseDocumentText(value,args),recorded);
+  assert.deepEqual(calls,[{name:'read-deal-document-text',arguments:args}]);
+});

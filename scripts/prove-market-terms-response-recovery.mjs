@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
@@ -22,7 +23,8 @@ export function parseArgs(args) {
 export async function prove({ origin, timeoutMs = 30000 }) {
   let browser, timer, context, stopped = false;
   const work = async () => {
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
+    const release = await readAppRelease(origin, { timeoutMs: timeoutMs });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
     if (stopped) { await browser.close(); throw new Error('Proof timeout'); }
     context = await browser.newContext({ serviceWorkers: 'block' });
     context.setDefaultTimeout(timeoutMs);
@@ -32,20 +34,13 @@ export async function prove({ origin, timeoutMs = 30000 }) {
       const request = route.request(), url = new URL(request.url());
       if (++requests > 40 || request.method() !== 'GET' || url.origin !== origin) return route.abort();
       if (url.pathname === '/__market-terms-proof') return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body><main><h1>Synthetic deal workspace</h1><input id="workspace-note" value="Retained note"><section id="comparison"></section></main></body></html>'});
-      if (url.pathname === '/app-release' || /^\/js\/[\w.-]+\.js$/.test(url.pathname)) return route.continue();
+      if (/^\/js\/[\w.-]+\.js$/.test(url.pathname)) return route.continue();
       return route.abort();
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if (new URL(response.url()).pathname.startsWith('/js/')) urls.push(response.url()); });
     await page.goto(`${origin}/__market-terms-proof`);
-    const release = await page.evaluate(async () => {
-      const response = await fetch('/app-release');
-      if (!response.ok) throw new Error('Release identity unavailable');
-      return response.json();
-    });
-    assert.equal(release.service, 'doctorcre-app', 'release application');
-    assert.match(release.source_commit, /^[a-f0-9]{40}$/, 'release source identity');
     await page.evaluate(async () => {
       const module = await import('/js/ui-market.js');
       if (typeof module.mountMarketTerms !== 'function') throw new Error('Missing mountMarketTerms export');
@@ -87,5 +82,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const options = parseArgs(process.argv.slice(2));
     if (options.help) console.log('Usage: node scripts/prove-market-terms-response-recovery.mjs --origin https://app.doctorcre.com --timeout-ms 30000');
     else console.log(JSON.stringify(await prove(options), null, 2));
-  } catch (error) { console.error(error.message); process.exitCode = 1; }
+  } catch (error) { console.error(error.message); process.exitCode = error.exitCode || 1; }
 }

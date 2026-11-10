@@ -1,7 +1,7 @@
 // Browser boot authority is the reviewed deployment hostname, not query input.
 // Production and staging both use the cookie-authenticated same-origin client.
 // Unknown preview hosts remain fixtures even if a caller asks for `mode=live`.
-export const REVIEWED_DEALROOM_HOSTS = Object.freeze([
+const REVIEWED_DEALROOM_HOSTS = Object.freeze([
   "app.doctorcre.com",
   "carr-mcp-staging.joe-bookout-carr-us.workers.dev",
   "doctorcre-app-staging.joe-bookout-carr-us.workers.dev",

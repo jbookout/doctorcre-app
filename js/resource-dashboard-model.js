@@ -1,6 +1,6 @@
 // Presentation of doctorcre-resource-dashboard.v1. The server owns the
 // observations and the freshness decision; this model preserves both.
-export const RESOURCE_PROVIDERS = Object.freeze([
+const RESOURCE_PROVIDERS = Object.freeze([
   { id: "neon", name: "Neon" },
   { id: "github", name: "GitHub" },
   { id: "cloudflare", name: "Cloudflare" },

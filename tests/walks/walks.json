@@ -1,0 +1,656 @@
+[
+  {
+    "number": 1,
+    "title": "No way to complete a single Home task; complete-action closes every open action on a subject",
+    "work_request": "WR-000581",
+    "steps": "On Home, complete one of two designated test actions on the same test deal. Reload and verify only that action is done and the sibling stays open; Undo using the original event and verify restoration.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2765",
+      "https://github.com/jbookout/doctorcre-app/pull/548"
+    ],
+    "spec": "01-WR-000581.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 2,
+    "title": "Migrate Home to React and TypeScript with the inbox model",
+    "work_request": "WR616.S3",
+    "steps": "Open production Home at 390px and desktop. Verify the typed Home inbox, agenda and brief load, activate a linked test deal, return with Back and reload without losing the selected view.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/559",
+      "https://github.com/jbookout/doctorcre-app/pull/576",
+      "https://github.com/jbookout/doctorcre-app/pull/642",
+      "https://github.com/jbookout/doctorcre-app/pull/644"
+    ],
+    "spec": "02-WR616-S3.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 3,
+    "title": "Home inbox: done, snoozed, settled, auto-settle and working section",
+    "work_request": "WR617.S1",
+    "steps": "On Home, use designated test cards to verify Done, Snoozed, Settled and Working sections. Reload each disposition and verify stored readback; check an already auto-settled card is no longer in attention.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2801",
+      "https://github.com/DoctorCRE/carr-system/pull/2933",
+      "https://github.com/DoctorCRE/carr-system/pull/2940",
+      "https://github.com/jbookout/doctorcre-app/pull/642",
+      "https://github.com/jbookout/doctorcre-app/pull/644"
+    ],
+    "spec": "03-WR617-S1.spec.ts",
+    "coverage": "partial-then-skip",
+    "skip_reason": "Full disposition and auto-settlement evidence is not exposed by Home alone."
+  },
+  {
+    "number": 4,
+    "title": "Guided change tour after each filed call",
+    "work_request": "WR617.S2",
+    "steps": "Open Home's review for an already filed call by ID. Follow every guided change to its deal, verify applied and pending states against stored outcomes, then finish and confirm focus returns to the named Home card.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/586",
+      "https://github.com/jbookout/doctorcre-app/pull/591",
+      "https://github.com/jbookout/doctorcre-app/pull/595",
+      "https://github.com/jbookout/doctorcre-app/pull/602",
+      "https://github.com/jbookout/doctorcre-app/pull/611"
+    ],
+    "spec": "04-WR617-S2.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated filed test call with stored per-change outcomes and named Home return card."
+  },
+  {
+    "number": 5,
+    "title": "One-tap action links",
+    "work_request": "WR617.S5",
+    "steps": "Open an existing authorized test action link from its notification. Verify the linked record and proposed action, approve once on the test item, and reload to verify its exact stored receipt and replay behavior. Do not send mail.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2802",
+      "https://github.com/jbookout/doctorcre-app/pull/572",
+      "https://github.com/jbookout/doctorcre-app/pull/703"
+    ],
+    "spec": "05-WR617-S5.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Approve draft submits email for sending in src/ui/action-link.tsx; forbidden by this brief. No non-send action-link implementation was found."
+  },
+  {
+    "number": 6,
+    "title": "Ask in the background and get notified",
+    "work_request": "WR617.S7",
+    "steps": "Submit a benign test Ask on Home as Joe. Leave the page and return. Verify the request ID persists, its completed answer is linked to the notification, and the same stored answer opens. Do not request an external send.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2803",
+      "https://github.com/DoctorCRE/carr-system/pull/2917",
+      "https://github.com/jbookout/doctorcre-app/pull/637"
+    ],
+    "spec": "06-WR617-S7.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Home has no Ask composer; saved asks require an existing conversation. Needs designated test conversation and completion notification binding."
+  },
+  {
+    "number": 7,
+    "title": "Saved drafts and queued sends",
+    "work_request": "WR617.S8",
+    "steps": "Open a designated test saved draft on Home. Edit and save it, reload and verify the exact saved version and queued schedule. Confirm it remains draft or queued without dispatching or sending.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2942",
+      "https://github.com/jbookout/doctorcre-app/pull/641",
+      "https://github.com/jbookout/doctorcre-app/pull/639"
+    ],
+    "spec": "07-WR617-S8.spec.ts",
+    "coverage": "partial-then-skip",
+    "skip_reason": "Home inline draft review has no queued schedule readback."
+  },
+  {
+    "number": 8,
+    "title": "Answers as interactive pages",
+    "work_request": "WR617.S10",
+    "steps": "Open an existing Doc answer containing a table and chart. At 390px and desktop in light and dark mode, sort the table by keyboard and verify chart focus, source links and table fallback.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2804",
+      "https://github.com/jbookout/doctorcre-app/pull/649"
+    ],
+    "spec": "08-WR617-S10.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 9,
+    "title": "Quick switcher",
+    "work_request": "WR617.S11",
+    "steps": "Open Quick switcher as Joe. Search an accessible test deal and contact, select each with the keyboard, verify matching destinations and bounded recent history, then invalidate the session and verify record destinations retire.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/645"
+    ],
+    "spec": "09-WR617-S11.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 10,
+    "title": "Bulk snooze and settle on Home",
+    "work_request": "WR617.S12",
+    "steps": "On phone Home, select two designated test cards and settle them. Verify both disappear, Undo stays visible for ten seconds and restores both. Repeat with snooze, then Finish and verify named-card focus or the attention heading when empty. Repeat at desktop width.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2955",
+      "https://github.com/jbookout/doctorcre-app/pull/654",
+      "https://github.com/jbookout/doctorcre-app/pull/661"
+    ],
+    "spec": "10-WR617-S12.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 11,
+    "title": "Doc request notifications link to a route the app lacks",
+    "work_request": "WR-000620",
+    "steps": "Open an existing completed Doc request notification by ID. Activate its answer link, verify the authorized answer route loads the same request's stored result, then reload without a missing-route screen.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2917",
+      "https://github.com/jbookout/doctorcre-app/pull/637"
+    ],
+    "spec": "11-WR-000620.spec.ts",
+    "coverage": "partial-then-skip",
+    "skip_reason": "Answer rendering does not independently expose the original notification request ID."
+  },
+  {
+    "number": 12,
+    "title": "inbox reopen action",
+    "work_request": "unit:inbox-reopen-action",
+    "steps": "On Home, complete a designated test action and retain its completion event ID. Use Undo, reload and verify only that action reopened through the original completion receipt.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2919"
+    ],
+    "spec": "12-unit-inbox-reopen-action.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 13,
+    "title": "Review and act on one Home card inline",
+    "work_request": "WR617.S13",
+    "steps": "Open one designated test Home card inline. Resolve it, read back the linked domain record, verify the receipt names only that card and an unrelated card remains unchanged; reload and verify the resolution persists.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2948",
+      "https://github.com/jbookout/doctorcre-app/pull/663"
+    ],
+    "spec": "13-WR617-S13.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 14,
+    "title": "Show work actually completed today",
+    "work_request": "WR617.S14",
+    "steps": "Complete a designated test task on Home. Verify Done today shows its recorded America/Chicago completion time after reload; verify a yesterday completion with newer activity remains outside Done today.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2959",
+      "https://github.com/jbookout/doctorcre-app/pull/660"
+    ],
+    "spec": "14-WR617-S14.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 15,
+    "title": "Name who owes the next move",
+    "work_request": "WR617.S15",
+    "steps": "At phone and desktop widths, set a canonical waiting person and reason on a test Home item, reload, correct and clear it. Complete and Undo the item. Verify Done today placement and no restored waiting person; unknown held, snoozed and processing cards invent no person.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2961",
+      "https://github.com/jbookout/doctorcre-app/pull/664"
+    ],
+    "spec": "15-WR617-S15.spec.ts",
+    "coverage": "partial-then-skip",
+    "skip_reason": "Waiting-person test executes set, clear, completion and Undo when prerequisites exist, then requires unknown-state cohort for full acceptance."
+  },
+  {
+    "number": 16,
+    "title": "Review deal terms with their sources",
+    "work_request": "WR39.S2",
+    "steps": "Open a test deal's Facts panel. Open a cited term and its document/page source, compare its value, and verify conflict or unconfirmed states remain distinct. Record only source IDs and equality.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2739",
+      "https://github.com/DoctorCRE/carr-system/pull/2762",
+      "https://github.com/jbookout/doctorcre-app/pull/540",
+      "https://github.com/jbookout/doctorcre-app/pull/545",
+      "https://github.com/jbookout/doctorcre-app/pull/599"
+    ],
+    "spec": "16-WR39-S2.spec.ts",
+    "coverage": "partial-then-skip",
+    "skip_reason": "Needs independent stored source-value evidence and a document/page viewer for equality."
+  },
+  {
+    "number": 17,
+    "title": "Extract cited terms from deal documents",
+    "work_request": "WR39.S3",
+    "steps": "Open an already completed test-document extraction and its deal Facts panel. Verify each admitted term carries the extraction ID, document/page citation and matching review state. Do not start extraction or reveal document text.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2752",
+      "https://github.com/jbookout/doctorcre-app/pull/547"
+    ],
+    "spec": "17-WR39-S3.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs existing completed test extraction with extraction-ID admission receipt; app document list exposes document IDs, not extraction outcomes."
+  },
+  {
+    "number": 18,
+    "title": "Read scanned pages and rent schedules safely",
+    "work_request": "WR39.S4",
+    "steps": "Open an existing scanned test-document extraction and rent-schedule result. Verify page citations, schedule row counts and explicit unreadable-page warnings. Record only IDs, counts and pass.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2764"
+    ],
+    "spec": "18-WR39-S4.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs existing scanned test extraction, unreadable-page receipt and rent-schedule row-count evidence; no extraction-results app view was found."
+  },
+  {
+    "number": 19,
+    "title": "Draft a terms comparison from confirmed facts",
+    "work_request": "WR39.S5",
+    "steps": "Open an existing test terms-comparison draft on its deal. Verify every included term is confirmed and cited, and missing or conflicted facts remain explicit gaps. Do not generate or send a document.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2799"
+    ],
+    "spec": "19-WR39-S5.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Terms comparison UI prepares a new draft; this brief forbids generation and needs an existing saved test draft."
+  },
+  {
+    "number": 20,
+    "title": "Compare terms across recorded deal history",
+    "work_request": "WR39.S6",
+    "steps": "Open recorded terms history for a test deal. Compare two recorded versions, verify each term's source and date, and verify unknown values remain gaps rather than fabricated comparisons.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2757",
+      "https://github.com/jbookout/doctorcre-app/pull/543",
+      "https://github.com/jbookout/doctorcre-app/pull/598"
+    ],
+    "spec": "20-WR39-S6.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 21,
+    "title": "Collect closing documents against the checklist",
+    "work_request": "WR39.S7",
+    "steps": "Open a test deal's closing checklist. Compare received and complete items with their stored document IDs, verify the phases remain distinct, and inspect an existing missing-document request without sending it.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2744",
+      "https://github.com/DoctorCRE/carr-system/pull/2751",
+      "https://github.com/DoctorCRE/carr-system/pull/2870",
+      "https://github.com/DoctorCRE/carr-system/pull/2878",
+      "https://github.com/jbookout/doctorcre-app/pull/587",
+      "https://github.com/jbookout/doctorcre-app/pull/588"
+    ],
+    "spec": "21-WR39-S7.spec.ts",
+    "coverage": "partial-then-skip",
+    "skip_reason": "Needs existing missing-document request and independent stored document evidence."
+  },
+  {
+    "number": 22,
+    "title": "Show verified reasons to contact a practice",
+    "work_request": "WR39.S8",
+    "steps": "Open a practice's recorded contact reasons from a test deal. Verify the displayed reason has a current cited finding and distinguish expired or missing evidence. Record only finding IDs and counts; do not contact anyone.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2742",
+      "https://github.com/jbookout/doctorcre-app/pull/539"
+    ],
+    "spec": "22-WR39-S8.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Contact reasons UI is a cross-practice list, without a test-deal association and independent current-finding receipt."
+  },
+  {
+    "number": 23,
+    "title": "checklist focus recovery",
+    "work_request": "unit:checklist-focus-recovery",
+    "steps": "Open a test deal checklist using the keyboard. Expand an item, refresh the deal and verify focus returns to a surviving named checklist control; verify the received and complete states remain distinct.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/615"
+    ],
+    "spec": "23-unit-checklist-focus-recovery.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 24,
+    "title": "checklist unavailable",
+    "work_request": "unit:checklist-unavailable",
+    "steps": "Open an existing deal whose checklist source is unavailable. Verify unavailable is explicit with Refresh deal, no fabricated empty success appears, and the remaining deal workspace stays usable. Do not induce a storage failure.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/604"
+    ],
+    "spec": "24-unit-checklist-unavailable.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 25,
+    "title": "invoice owning deal link",
+    "work_request": "unit:invoice-owning-deal-link",
+    "steps": "Open an existing invoice by ID, activate its owning-deal link and verify the destination deal ID equals the invoice's recorded deal. Verify Back restores the invoice view.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/620"
+    ],
+    "spec": "25-unit-invoice-owning-deal-link.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 26,
+    "title": "Email next steps go through partner review, including leads, vendors and clients with no deal, and blocked items age out",
+    "work_request": "WR441.S10",
+    "steps": "Open Home email-next-step review as Joe. Inspect an existing no-deal lead, vendor and client proposal by ID. Verify partner review is required and an already aged blocked item is visibly expired. Do not send or expose message text.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2624",
+      "https://github.com/DoctorCRE/carr-system/pull/2724",
+      "https://github.com/jbookout/doctorcre-app/pull/535"
+    ],
+    "spec": "26-WR441-S10.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated no-deal test lead, vendor and client proposals and an already expired blocked proposal. No seeded test identities are assumed."
+  },
+  {
+    "number": 27,
+    "title": "Flagged-mail to-dos keep date-only due dates, and the drift alarm counts rejected details",
+    "work_request": "WR441.S16",
+    "steps": "Open an existing flagged-mail task by ID. Compare its date-only due date with the native flag and the latest drift-alarm rejection count. Record only date equality and counts.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2712"
+    ],
+    "spec": "27-WR441-S16.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Native flag and drift-alarm receipt are external to the app; cannot establish equality from task due date alone."
+  },
+  {
+    "number": 28,
+    "title": "Record what was sent on the deal: file names, checksums, recipients, copies and time",
+    "work_request": "WR588.S2",
+    "steps": "Open an already sent test-deal email activity by ID. Compare stored attachment checksums, recipient counts, copy counts and sent timestamp with its existing native sent receipt. Do not send a new message.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2738",
+      "https://github.com/DoctorCRE/carr-system/pull/2691"
+    ],
+    "spec": "28-WR588-S2.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Native sent receipt is external to the app; cannot establish checksums and recipient-count equality from activity alone."
+  },
+  {
+    "number": 29,
+    "title": "email action semantics",
+    "work_request": "unit:email-action-semantics",
+    "steps": "On Home, open an existing email review card by ID. Verify each action label describes its actual filing, review or dismissal effect. Use a designated test card for a disposition and verify its stored receipt. Do not send mail.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2914"
+    ],
+    "spec": "29-unit-email-action-semantics.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated test email proposal with recorded action contract and disposition receipt."
+  },
+  {
+    "number": 30,
+    "title": "email summary",
+    "work_request": "unit:email-communicated-summary",
+    "steps": "Open Home and an existing communicated-email card by ID. Compare its summary state with the recorded sent activity and verify no unsent draft is described as sent. Record only pass and IDs.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2922"
+    ],
+    "spec": "30-unit-email-communicated-summary.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated communicated test email and independent sent activity; summary wording alone cannot prove delivery."
+  },
+  {
+    "number": 31,
+    "title": "email home actions",
+    "work_request": "unit:email-file-defer-u1",
+    "steps": "Open a designated test email review card on Home. File it to its test deal, verify the exact filing receipt, defer another test card and confirm its return time. Do not send mail.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/635"
+    ],
+    "spec": "31-unit-email-file-defer-u1.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated test email proposals and test deal with exact filing receipt and deferred-return readback."
+  },
+  {
+    "number": 32,
+    "title": "email filing undo uncertainty",
+    "work_request": "unit:email-filing-undo-uncertainty",
+    "steps": "Open an existing uncertain filing review by ID. Verify Retry retains the exact request, and Undo is unavailable until the original filing receipt is confirmed. On a test filing, verify Undo reads back restoration.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/629"
+    ],
+    "spec": "32-unit-email-filing-undo-uncertainty.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs naturally uncertain test filing with retained request and confirmed undo receipt. Do not induce a failure on real mail."
+  },
+  {
+    "number": 33,
+    "title": "inbox card actions",
+    "work_request": "unit:inbox-card-actions",
+    "steps": "Open Home at phone and desktop widths. On a designated test inbox card, perform the available disposition, confirm only that card changes, and verify the recorded receipt and Undo.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/636"
+    ],
+    "spec": "33-unit-inbox-card-actions.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 34,
+    "title": "inbox card context v2",
+    "work_request": "unit:inbox-card-context",
+    "steps": "Open Home and an existing inbox card by ID. Verify the displayed record context opens the same authorized deal and the card retains that association after refresh. Record IDs only.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/634"
+    ],
+    "spec": "34-unit-inbox-card-context.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 35,
+    "title": "inbox safe refresh",
+    "work_request": "unit:inbox-safe-refresh",
+    "steps": "Open Home with a designated test card expanded. Refresh its data and verify focus and card identity survive; invalidate the session and verify stale action controls retire.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/638"
+    ],
+    "spec": "35-unit-inbox-safe-refresh.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 36,
+    "title": "calendar open deal",
+    "work_request": "unit:calendar-open-deal",
+    "steps": "Open Home calendar, choose a linked meeting by ID and activate Open deal. Verify the matching deal workspace opens and browser Back restores the calendar position.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/606"
+    ],
+    "spec": "36-unit-calendar-open-deal.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Home week meeting dialog exposes attendee count but no Open deal link for meetings in js/home-week-view.js."
+  },
+  {
+    "number": 37,
+    "title": "Call follow-ups carry the contact name",
+    "work_request": "WR572.S11",
+    "steps": "Open an already filed call follow-up by ID on Home and its linked deal. Verify the action names its recorded contact and retains that association on reload. Record only IDs and pass.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2741",
+      "https://github.com/DoctorCRE/carr-system/pull/2716",
+      "https://github.com/jbookout/doctorcre-app/pull/533"
+    ],
+    "spec": "37-WR572-S11.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated filed test call follow-up and independent stored contact ID. A displayed name alone does not establish association."
+  },
+  {
+    "number": 38,
+    "title": "call review labels",
+    "work_request": "unit:call-review-labels",
+    "steps": "Open an already filed Call Mode review by ID. Verify applied, pending and failed changes have distinct labels matching recorded outcomes; verify a pending change is never labelled applied.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/633"
+    ],
+    "spec": "38-unit-call-review-labels.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated filed test call with applied, pending and failed stored outcomes for independent label comparison."
+  },
+  {
+    "number": 39,
+    "title": "transcript recovery call budget",
+    "work_request": "unit:transcript-recovery-call-budget",
+    "steps": "Open Control Room's existing transcript recovery receipt and its call review by ID. Verify exhausted budget holds recovery with zero model calls and an already completed recovery has one bounded attempt receipt. Do not start or retry a job.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2929"
+    ],
+    "spec": "39-unit-transcript-recovery-call-budget.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs existing private transcript recovery receipts and model-call counts; no transcript-recovery receipt app panel was found."
+  },
+  {
+    "number": 40,
+    "title": "Register client portals with a simple password from the deal panel",
+    "work_request": "WR227.S1",
+    "steps": "Open an existing registered test client portal from its deal panel. Joe enters the existing portal password. Verify it opens only that deal's published material and an incorrect password is refused without revealing content.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2525",
+      "https://github.com/DoctorCRE/carr-system/pull/2542",
+      "https://github.com/jbookout/doctorcre-app/pull/453"
+    ],
+    "spec": "40-WR227-S1.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Requires Joe to enter a separate existing test portal password; saved app sign-in does not supply portal credentials. No password is requested or stored by this suite."
+  },
+  {
+    "number": 41,
+    "title": "Reference extractor",
+    "work_request": "WR227.S7",
+    "steps": "Inspect the existing private extractor manifests for both authorized reference sources. Verify source revision/hash, all applicable inventory mappings and a retained canonical extraction receipt. Report only counts, digests and pass; do not rerun extraction or expose client content.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2989"
+    ],
+    "spec": "41-WR227-S7.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Private extractor manifests and canonical extraction receipts are outside the app. This production browser suite does not read disk manifests or rerun extraction."
+  },
+  {
+    "number": 42,
+    "title": "Template: shell, router, Home and Sources",
+    "work_request": "WR227.S10",
+    "steps": "Open an existing published test portal as Joe. Compare Home headline and snapshot and Sources with its publication by ID, exercise browser Back and Forward, and verify internal notes are absent. This also needs S7 and S9 integration evidence.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/665"
+    ],
+    "spec": "42-WR227-S10.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Requires existing published test portal password and independent publication, S7 and S9 integration evidence."
+  },
+  {
+    "number": 43,
+    "title": "D2 Properties & tours tab bound to the deal; Tours page becomes a cross-deal list",
+    "work_request": "WR586.S2",
+    "steps": "Open a test deal's Properties and tours tab. Verify every displayed tour carries that deal ID, then open the cross-deal Tours library and verify its link returns to the owning deal.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2939",
+      "https://github.com/jbookout/doctorcre-app/pull/643"
+    ],
+    "spec": "43-WR586-S2.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 44,
+    "title": "D7 Tours live inside the deal workspace: create, open and edit a tour without leaving the deal; no tour creation outside a deal",
+    "work_request": "WR586.S7",
+    "steps": "Inside a designated test deal workspace, create a test tour, open it and edit one test field. Reload and verify its stored deal link and field. Open Tours library and verify the link returns to that deal and creation is unavailable outside a deal.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/648"
+    ],
+    "spec": "44-WR586-S7.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated TEST WALK 44 deal and test property shortlist for tour creation; no real property is selected implicitly."
+  },
+  {
+    "number": 45,
+    "title": "H03 Show the week as a working calendar",
+    "work_request": "WR591.S7",
+    "steps": "Open Home's working week calendar. Move between weeks, open a linked test meeting/deal and return. Verify Chicago day boundaries, all-day placement and mixed-offset ordering at phone and desktop widths.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/499",
+      "https://github.com/jbookout/doctorcre-app/pull/511",
+      "https://github.com/jbookout/doctorcre-app/pull/642"
+    ],
+    "spec": "45-WR591-S7.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Home week has no week navigation controls and meeting dialog has no deal link. Needs designated mixed-offset/all-day test calendar cohort and source instants."
+  },
+  {
+    "number": 46,
+    "title": "Tours planner fields show their full text on a phone",
+    "work_request": "WR591.S35",
+    "steps": "At 390px, open the Tours planner on an existing test tour. Focus each planner input and verify its full value is readable without clipping; verify the layout at desktop width.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/502"
+    ],
+    "spec": "46-WR591-S35.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 47,
+    "title": "Local Deals view controls pass the phone-width check",
+    "work_request": "WR591.S36",
+    "steps": "At 390px, open Deals and activate every local view control by touch and keyboard. Verify labels and selected state fit the viewport, no horizontal clipping occurs and the matching view persists on return.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/503"
+    ],
+    "spec": "47-WR591-S36.spec.ts",
+    "coverage": "implemented"
+  },
+  {
+    "number": 48,
+    "title": "ideal client profile ui",
+    "work_request": "unit:client-fit-charts",
+    "steps": "Open the ideal client profile panel for an existing test cohort. Verify chart counts against its recorded win IDs, activate a chart item and verify its deal link and accessible table fallback.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/632"
+    ],
+    "spec": "48-unit-client-fit-charts.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Historical client fit consumes the full production cohort. Needs a designated test cohort with independently recorded win IDs."
+  },
+  {
+    "number": 49,
+    "title": "cr U2 action vocabulary",
+    "work_request": "unit:cr-U2-action-vocabulary",
+    "steps": "Open Control Room work details for an existing test request. Verify every displayed action names the registered operation and its current state, and no unavailable operation appears actionable. Do not execute jobs.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2921"
+    ],
+    "spec": "49-unit-cr-U2-action-vocabulary.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated test Control Room request and current registered operation receipt; visible labels alone are insufficient."
+  },
+  {
+    "number": 50,
+    "title": "cr U4 diagnostic questions",
+    "work_request": "unit:cr-U4-diagnostic-questions",
+    "steps": "Open an existing blocked Control Room request by ID. Verify diagnostic questions identify the concrete failed check and required evidence, and distinguish unknown evidence from a proven failure. Do not restart a job.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2928"
+    ],
+    "spec": "50-unit-cr-U4-diagnostic-questions.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated blocked test request with failed-check and evidence receipts."
+  },
+  {
+    "number": 51,
+    "title": "cr U6 chronology",
+    "work_request": "unit:cr-U6-chronology",
+    "steps": "Open an existing Control Room request timeline by ID. Verify event order and timestamps against its recorded job IDs and ensure failed and completed attempts retain distinct outcomes.",
+    "prs": [
+      "https://github.com/DoctorCRE/carr-system/pull/2915"
+    ],
+    "spec": "51-unit-cr-U6-chronology.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Needs designated test request timeline with independent job-event timestamps and outcomes."
+  },
+  {
+    "number": 52,
+    "title": "qa fixture signout",
+    "work_request": "unit:qa-fixture-signout",
+    "steps": "In a designated test browser session, open an authorized page, sign out, then use Back and reload. Verify private test content and stale controls retire and the original return path remains available at sign-in. Do not sign in on behalf of Joe.",
+    "prs": [
+      "https://github.com/jbookout/doctorcre-app/pull/616"
+    ],
+    "spec": "52-unit-qa-fixture-signout.spec.ts",
+    "coverage": "skipped-by-design",
+    "skip_reason": "Sign out revokes the shared saved server session used by the other worker. Needs a separate designated test account/session, not Joe shared sign-in."
+  }
+]

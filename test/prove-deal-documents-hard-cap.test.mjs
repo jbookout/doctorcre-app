@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, request } from 'node:http';
+import { startFixture } from '../scripts/fixture-http.mjs';
+import { loadFixtureAssets } from '../scripts/fixture-assets.mjs';
+import { request } from 'node:http';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -11,34 +13,27 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 test('hard-cap proof CLI executes served bytes and refuses failures and protected assets', async t => {
   const artifact = await temporaryDirectory('documents-proof-', t);
-  await buildArtifact({ root, outDir: artifact, commit: '1'.repeat(40) });
+  const built = await buildArtifact({ root, outDir: artifact, commit: '1'.repeat(40) });
   await writeFile(`${artifact}/sentinel.js`, 'review-owned-sentinel');
   const fixtureRoot = resolve(artifact, 'site');
-  let mode = 'success';
+  const admitted = new Map(built.manifest.files.filter(row => row.path.startsWith('js/')).map(row => ['/' + row.path, row.path]));
+  const snapshot = await loadFixtureAssets({ root: fixtureRoot, manifest: admitted });
   const requests = [];
-  const server = createServer(async (req, res) => {
-    requests.push({ method: req.method, path: req.url });
-    if (mode === 'timeout') return;
-    if (mode === 'protected') { res.writeHead(403); return res.end(); }
-    if (req.url === '/release') {
-      if (mode === 'fallback') { res.writeHead(404); return res.end(); }
-      res.setHeader('Content-Type', 'application/json');
-      return res.end(JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', source_commit: '1'.repeat(40) }));
+  async function fixture(mode) {
+    const responses = new Map(snapshot);
+    for (const path of ['/release', '/app-release']) responses.set(path, { contentType: 'application/json', body: JSON.stringify(mode === 'identity' ? {} : { service: 'doctorcre-app', environment: 'production', source_commit: '1'.repeat(40) }) });
+    for (const [path, response] of responses) {
+      if (mode === 'timeout') responses.set(path, { ...response, hold: 'timeout' });
+      else if (mode === 'protected') responses.set(path, { status: 403 });
+      else if (path === '/release' && mode === 'fallback') responses.set(path, { status: 404 });
+      else if (path.startsWith('/js/') && mode === 'broken' && path === '/js/ui-deal-documents.js') responses.set(path, { contentType: 'text/javascript', body: 'export function mountDealDocuments(){throw Error("Synthetic broken deployment")}' });
+      else if (path.startsWith('/js/') && mode === 'asset-protected' && path !== '/js/ui-deal-documents.js') responses.set(path, { status: 302, headers: { location: '/sign-in' } });
     }
-    if (req.url === '/app-release') return res.end(JSON.stringify(mode === 'fallback' ? { service: 'doctorcre-app', source_commit: '1'.repeat(40) } : {}));
-    try {
-      if (!/^\/js\/[\w/.-]+\.js$/.test(req.url) || /[%\\\0]/.test(req.url) || /(?:^|\/)\.\.?(?:\/|$)/.test(req.url)) throw Error('bad path');
-      const assetPath = resolve(fixtureRoot, `.${req.url}`);
-      if (!assetPath.startsWith(fixtureRoot + sep)) throw Error('bad path');
-      let bytes = await readFile(assetPath);
-      if (mode === 'broken' && req.url === '/js/ui-deal-documents.js') bytes = Buffer.from('export function mountDealDocuments(){throw Error("Synthetic broken deployment")}');
-      if (mode === 'asset-protected' && req.url !== '/js/ui-deal-documents.js') { res.writeHead(302, { location: '/sign-in' }); return res.end(); }
-      res.setHeader('Content-Type', 'text/javascript'); res.end(bytes);
-    } catch { res.writeHead(404); res.end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  const origin = `http://127.0.0.1:${server.address().port}`;
+    return startFixture({ routes: responses });
+  }
+  const server = await fixture('success');
+  t.after(() => server.close());
+  const origin = server.origin;
   for (const path of [
     '/js/../../sentinel.js',
     '/js/../js/ui-deal-documents.js',
@@ -61,19 +56,23 @@ test('hard-cap proof CLI executes served bytes and refuses failures and protecte
         req.on('timeout', () => req.destroy(Error('Fixture request timed out')));
         req.end();
       });
-      assert.equal(response.status, 404, response.body);
+      assert.equal(response.status, 400, response.body);
       assert.equal(response.body, '');
     });
   }
   for (const [scenario, expected] of [['success', 0], ['fallback', 0], ['broken', 1], ['protected', 78], ['identity', 78], ['asset-protected', 78], ['timeout', 1]]) {
     await t.test(scenario, async () => {
-      mode = scenario;
+      const scenarioServer = await fixture(scenario);
+      t.after(() => scenarioServer.close());
+      const origin = scenarioServer.origin;
       const result = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['scripts/prove-deal-documents-hard-cap.mjs', '--origin', origin, '--timeout-ms', scenario === 'timeout' ? '200' : '30000'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], timeout: 40000 });
         let stdout = '', stderr = '';
         child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
         child.on('error', reject); child.on('exit', code => resolve({ code, stdout, stderr }));
       });
+      requests.push(...scenarioServer.requests);
+      await scenarioServer.close();
       assert.equal(result.code, expected, result.stderr);
       if (expected === 0) {
         const receipt = JSON.parse(result.stdout);

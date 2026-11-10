@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -93,7 +94,7 @@ export async function prove({origin, timeoutMs}) {
   const unavailable = message => Object.assign(new Error(message),{exitCode:78});
   const fetchBytes = async path => {
     if (++requests > 20) throw unavailable('asset request cap exceeded');
-    const response = await fetch(new URL(path,origin),{signal:controller.signal,redirect:'error'}).catch(()=>{throw unavailable('asset unavailable');});
+    const response = await proofFetch(new URL(path,origin),{signal:controller.signal,redirect:'error'}).catch(()=>{throw unavailable('asset unavailable');});
     if (!response.ok) throw unavailable('asset unavailable');
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length > 2_000_000) throw unavailable('asset too large');
@@ -102,9 +103,7 @@ export async function prove({origin, timeoutMs}) {
   let timer;
   try {
     return await Promise.race([ (async()=>{
-      releaseBytes = await fetchBytes('/app-release');
-      try { release = JSON.parse(releaseBytes.toString()); } catch { throw unavailable('release unavailable'); }
-      if (release?.service !== 'doctorcre-app' || !/^[0-9a-f]{40}$/.test(release.source_commit ?? '')) throw unavailable('release unavailable');
+      release = await readAppRelease(origin, async url => ({ type: 'application/json', body: releaseBytes = await fetchBytes(url.pathname) }));
       const pending = ['/js/ui-answers.js'];
       while (pending.length) {
         const path = pending.shift();
@@ -117,7 +116,7 @@ export async function prove({origin, timeoutMs}) {
           if (!assets.has(url.pathname)) pending.push(url.pathname);
         }
       }
-      browser = await chromium.launch({headless:true,args: [...CHROMIUM_SAFETY_ARGS],timeout:Math.max(1,deadline-Date.now())});
+      browser = await launchProofBrowser(chromium, {headless:true,args: [...CHROMIUM_SAFETY_ARGS],timeout:Math.max(1,deadline-Date.now())}, { signal: controller.signal });
       if (controller.signal.aborted) {await browser.close();throw unavailable('total deadline exceeded');}
       const page = await browser.newPage({serviceWorkers:'block'});
       page.setDefaultTimeout(Math.max(1,deadline-Date.now()));
@@ -131,7 +130,7 @@ export async function prove({origin, timeoutMs}) {
       await page.goto(origin+'/__answer_gap_proof__');
       const assertions = await assertChartGaps(page);
       return {release,assets:[{path:'/app-release',sha256:createHash('sha256').update(releaseBytes).digest('hex')},...Array.from(assets,([path,bytes])=>({path,sha256:createHash('sha256').update(bytes).digest('hex')}))],requests,assertions};
-    })(), new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(unavailable('total deadline exceeded'));},timeoutMs);}) ]);
+    })(), new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort(unavailable('total deadline exceeded'));reject(controller.signal.reason);},timeoutMs);}) ]);
   } catch (error) {
     error.proof = {release,assets:[...(releaseBytes ? [{path:'/app-release',sha256:createHash('sha256').update(releaseBytes).digest('hex')}] : []),...Array.from(assets,([path,bytes])=>({path,sha256:createHash('sha256').update(bytes).digest('hex')}))],requests,assertions:[{name:error.message,passed:false}]};
     throw error;

@@ -1,0 +1,17 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "f08895ac514770f8ce6eb00a29159a6072da9c46",
+  "producer": "mcp-server/src/lead-follow-up.ts#researchSummary",
+  "source_sha256": "49d2277d79189f1f2bf92ea775c86dccec90abee1446a9b9022ddb02a9bfe419",
+  "method": "Executed actual researchSummary with synthetic evidence; outer lead-workspace.v1 assembled from existing synthetic workspace fixture and checked by production validateLeadWorkspace/validateLeadDetail. Not a live lead-board recording.",
+  "query": {
+    "verb": "lead-board",
+    "arguments": {
+      "workspace": "leads",
+      "lead_id": "30000000-0000-0000-0000-000000000001"
+    }
+  },
+  "clock": "2026-11-07T12:00:00Z",
+  "natural": false,
+  "producer_txt": "Verbatim researchSummary excerpt from the source file identified by source_sha256. Executed the complete original module with its original calendar-date.ts and tool-error.ts dependencies through Node TypeScript support."
+}

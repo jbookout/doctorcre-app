@@ -368,5 +368,3 @@ export function mountSearch({ client: searchClient, storage: storageImpl } = {})
   mountAutoRefresh({ document, window: globalThis.window, refresh: ({ signal }) => view.query ? read({ push: false, signal }) : undefined });
   return { view, address };
 }
-
-export { view };

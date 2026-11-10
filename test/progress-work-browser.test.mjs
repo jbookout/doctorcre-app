@@ -140,7 +140,7 @@ async function open(t,{width=390,reducedMotion='reduce',path=taskPath,empty=fals
     if(url.pathname==='/api/room/queue'){
       state.queueReads++;if(state.authLost)return ({status:401,body:'{}'});if(state.offline)return ({status:503,body:'{}'});
       if(state.queueWait)await state.queueWait;
-      const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
+      const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8,...state.queueCard},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
       return ({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':await page.evaluate(()=>new Date().toISOString()),events})});
     }
     if(url.pathname==='/api/room/turn'){
@@ -612,6 +612,122 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
   await actedEvent.waitFor({state:'visible'});
   assert.equal(await actedEvent.count(),1);
   assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
+});
+
+async function resumeWorkPage(page) {
+  await page.evaluate(() => {
+    Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'}); document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'}); document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+async function deliverQueueProjection(page) {
+  await page.evaluate(async () => {
+    const {queueProjection} = await import('/js/queue-model.mjs');
+    const body = await (await fetch('/api/room/queue')).json();
+    document.dispatchEvent(new CustomEvent('progress-queue', {detail:{...body,cards:queueProjection(body.events).cards,state:'Live'}}));
+  });
+}
+
+for (const outcome of ['success', 'failure']) test(`queue absence during held work refresh converges after ${outcome}`, async t => {
+  const held = fixtureScope(t).hold();
+  let started = false, armed = false;
+  const {page,state,errors} = await open(t, {rpcReply:async (rpc,payload) => {
+    if (rpc.name === 'read-progress-board') return {...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}};
+    if (armed && rpc.name === 'read-session-identity') {
+      started = true;
+      await held.promise;
+      if (outcome === 'failure') return {...payload,sessions:null};
+    }
+    return payload;
+  }});
+  await page.waitForLoadState('networkidle');
+  armed = true;
+  await resumeWorkPage(page);
+  await assertEventually(() => started);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  state.queueEmpty = true;
+  await deliverQueueProjection(page);
+  await deliverQueueProjection(page);
+  held.release();
+  await page.waitForLoadState('networkidle');
+  await page.waitForFunction(() => !document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Demo research/);
+  assert.doesNotMatch(await page.locator('#workTitle').textContent(), /Demo research/);
+  assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
+  assert.deepEqual(errors, []);
+});
+
+test('queue reconciliation rejects an obsolete card before auth retirement and stays retired after release', async t => {
+  const cardRead = fixtureScope(t).hold(), publicationRead = fixtureScope(t).hold();
+  let cardStarted = false, holdPublication = false, publicationStarted = false;
+  const {page,state,calls,errors} = await open(t, {rpcReply:async (rpc,payload) => {
+    if (rpc.name === 'read-progress-board') {
+      if (holdPublication) { publicationStarted = true; await publicationRead.promise; }
+      return {...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}};
+    }
+    if (rpc.name === 'work-request-card') { cardStarted = true; await cardRead.promise; }
+    return payload;
+  }});
+  await page.waitForLoadState('networkidle');
+  state.queueCard = {title:'Retiring projected task',work_request:'WR-900',source_seq:88};
+  await deliverQueueProjection(page);
+  await resumeWorkPage(page);
+  await assertEventually(() => cardStarted);
+  state.queueEmpty = true;
+  holdPublication = true;
+  await deliverQueueProjection(page);
+  await deliverQueueProjection(page);
+  cardRead.release();
+  await settles(() => assert.equal(publicationStarted, true, 'Queue absence must schedule a follow-up publication read'), 3000);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Demo work request/,
+    'The obsolete request card cannot commit while queue absence is being reconciled');
+  state.queueEmpty = false;
+  state.queueCard = {title:'Pending protected task',work_request:'WR-901',source_seq:99};
+  await deliverQueueProjection(page);
+  await page.evaluate(async () => (await import('/js/progress-auth.js')).invalidateAuth());
+  assert.match(await page.locator('#workMetadata').textContent(), /Sign in/);
+  const readsAtRetirement = calls.length;
+  publicationRead.release();
+  await page.waitForLoadState('networkidle');
+  await deliverQueueProjection(page);
+  await page.waitForLoadState('networkidle');
+  assert.equal(calls.length, readsAtRetirement, 'Retirement must discard pending reconciliation and late queue updates');
+  assert.match(await page.locator('#workMetadata').textContent(), /Sign in/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Projected task|Demo work request|Retiring projected task|Pending protected task/);
+  assert.equal(await page.locator('#workTitle').textContent(), 'Work detail');
+  assert.doesNotMatch(await page.locator('#workCanonicalBody').textContent(), /Closure:/);
+  assert.deepEqual(errors, []);
+});
+
+test('queue replacement during held work refresh commits only the latest projection and request binding', async t => {
+  const held = fixtureScope(t).hold(), followup = fixtureScope(t).hold();
+  let started = false, holdBoard = false, followupStarted = false;
+  const {page,state,errors} = await open(t, {rpcReply:async (rpc,payload) => {
+    if (rpc.name === 'read-progress-board') {
+      if (holdBoard) { followupStarted = true; await followup.promise; }
+      return {...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}};
+    }
+    if (rpc.name === 'work-request-card' && rpc.arguments.work_request === 'WR-900') { started = true; await held.promise; }
+    return payload;
+  }});
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  state.queueCard = {title:'Current projected task',work_request:'WR-900',source_seq:88};
+  await deliverQueueProjection(page);
+  await assertEventually(() => started);
+  await page.waitForFunction(() => document.querySelector('#workTitle').textContent === 'Current projected task');
+  state.queueCard = {title:'Latest projected task',source_seq:99};
+  holdBoard = true;
+  await deliverQueueProjection(page);
+  held.release();
+  await assertEventually(() => followupStarted);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Demo work request/, 'An obsolete request card cannot commit before reconciliation');
+  followup.release();
+  await page.waitForLoadState('networkidle');
+  await page.waitForFunction(() => document.querySelector('#workTitle').textContent === 'Latest projected task');
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Current projected task|Demo work request|WR-900/);
+  assert.doesNotMatch(await page.locator('#workCanonicalBody').textContent(), /Closure:/);
+  assert.deepEqual(errors, []);
 });
 
 test('fresh queue absence removes projected task metadata and sequence binding',async t=>{

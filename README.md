@@ -33,6 +33,17 @@ material outside the public repository. Missing or malformed input fails the che
 
 ### End-to-end journeys
 
+The `live` Playwright project runs the app against the CARR checkout pinned by
+`contracts/carr-interface.v1/producer.json`, on disposable PostgreSQL. Install that
+checkout's locked Node and Python dependencies, then install its existing Node
+package into the app with `node scripts/live-producer.mjs`.
+Run `npm run build` and `npx playwright test --project=live` with
+`CARR_PRODUCER_CHECKOUT` naming that checkout. The harness refuses a different
+revision, tracked source edits, or a package resolving outside the declared
+checkout. CI prepares the same package directly from the pinned checkout; this
+is a test dependency and adds no product runtime dependency.
+
+
 The [e2e](https://www.npmjs.com/package/e2e) runner starts the fixture server
 (`npm run serve`) and runs `tests/journeys` on a desktop and a phone viewport.
 The QA regressions use their own fixture server and config.

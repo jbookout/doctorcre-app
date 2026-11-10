@@ -5,6 +5,7 @@ const conditions = ['soft', 'balanced', 'tight', 'unknown', 'conflicting'] as co
 type Condition = typeof conditions[number];
 type Evidence = { flag_id: string; condition: Condition; source: string; observed_at: string; expires_on: string | null; expired: boolean; current: boolean };
 type Market = { city: string; state: string; condition: Condition; evidence: Evidence[] };
+type EvidenceView = 'all' | 'current' | 'historical';
 type Filters = { city?: string; state?: string; vertical?: string };
 type Client = { getTerritoryStateBoard(filters: Filters): Promise<unknown> };
 type View = { kind: 'idle' } | { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; rows: Market[] };
@@ -58,12 +59,18 @@ function parse(value: unknown): Market[] {
 export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuthorizationFailure: (error: unknown) => void) {
   const root = createRoot(host);
   let view: View = { kind: 'idle' }, filters: Filters = {}, epoch = 0, generation = 0, opened = false, disposed = false;
+  let pageOffset = 0;
+  const pageSize = 20;
+  let selectedEvidence: EvidenceView = 'all';
+  let selectedCondition: Condition | 'all' = 'all';
   async function load() {
+    if (disposed) return;
     const request = ++epoch;
     view = { kind: 'loading' }; render();
     try {
       const rows = parse(await client.getTerritoryStateBoard(filters));
       if (disposed || request !== epoch) return;
+      pageOffset = 0;
       view = { kind: 'ready', rows };
     } catch (error) {
       if (disposed || request !== epoch) return;
@@ -78,10 +85,11 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
     render();
   }
   function clear() {
-    ++epoch; ++generation; opened = false; filters = {}; view = { kind: 'idle' }; render();
+    ++epoch; ++generation; pageOffset = 0; opened = false; selectedCondition = 'all'; selectedEvidence = 'all'; filters = {}; view = { kind: 'idle' }; render();
   }
   function render() {
     if (disposed) return;
+    const matching = view.kind === 'ready' ? view.rows.filter(row => selectedCondition === 'all' || row.condition === selectedCondition) : [];
     flushSync(() => root.render(<section className="territory-evidence" aria-label="Recorded territory conditions">
       <details key={generation} onToggle={event => {
         opened = event.currentTarget.open;
@@ -104,21 +112,40 @@ export function mountTerritoryEvidence(host: HTMLElement, client: Client, onAuth
           <button type="submit">Apply filters</button>
           <button type="button" onClick={() => void load()}>Refresh evidence</button>
         </form>
+        <label>Condition<select value={selectedCondition} onChange={event => {
+          selectedCondition = event.currentTarget.value === 'all' ? 'all' : condition(event.currentTarget.value);
+          pageOffset = 0;
+          render();
+        }}><option value="all">All conditions</option>{conditions.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
+        <label>Evidence view<select aria-label="Evidence view" value={selectedEvidence} onChange={event => {
+          const value = event.currentTarget.value;
+          if (value === 'all' || value === 'current' || value === 'historical') selectedEvidence = value;
+          render();
+        }}><option value="all">All evidence</option><option value="current">Current evidence</option><option value="historical">Historical evidence</option></select></label>
         {view.kind === 'loading' && <p role="status">Loading territory evidence…</p>}
         {view.kind === 'error' && <p role="alert">{view.message}</p>}
-        {view.kind === 'ready' && (view.rows.length ? <table><caption>Server-recorded conditions by city and state</caption>
+        {view.kind === 'ready' && <p role="status">Showing {matching.length ? pageOffset + 1 : 0}–{Math.min(pageOffset + pageSize, matching.length)} of {matching.length} matching loaded areas / {view.rows.length} total loaded areas</p>}
+        {view.kind === 'ready' && <nav aria-label="Territory area pages">
+          <button type="button" aria-disabled={pageOffset === 0} onClick={() => { if (pageOffset > 0) { pageOffset -= pageSize; render(); } }}>Previous areas</button>
+          <button type="button" aria-disabled={pageOffset + pageSize >= matching.length} onClick={() => { if (pageOffset + pageSize < matching.length) { pageOffset += pageSize; render(); } }}>Next areas</button>
+        </nav>}
+        {view.kind === 'ready' && (matching.length ? <table><caption>Server-recorded conditions by city and state</caption>
           <thead><tr><th scope="col">Area</th><th scope="col">Condition</th><th scope="col">Sources</th></tr></thead>
-          <tbody>{view.rows.map(row => <tr key={JSON.stringify([row.city, row.state])}>
+          <tbody>{matching.slice(pageOffset, pageOffset + pageSize).map(row => {
+            const evidence = row.evidence.filter(entry => selectedEvidence === 'all' || entry.current === (selectedEvidence === 'current'));
+            return <tr key={JSON.stringify([row.city, row.state])}>
             <th scope="row">{row.city}, {row.state}</th><td>{labels[row.condition]}</td>
-            <td>{row.evidence.length ? <details><summary>Evidence ({row.evidence.length})</summary>
-              <ul>{row.evidence.map(entry => <li key={entry.flag_id}>
+            <td><p role="status">{evidence.length} visible / {row.evidence.length} total evidence</p>
+              {row.evidence.length ? <details><summary>Evidence ({row.evidence.length})</summary>
+              {evidence.length ? <ul>{evidence.map(entry => <li key={entry.flag_id} data-evidence-id={entry.flag_id}>
                 <strong>{labels[entry.condition]} · {entry.current ? 'Current' : entry.expired ? 'Historical · expired' : 'Historical · not current'}</strong>
                 <p>Source: {entry.source}</p><p>Observed: {entry.observed_at}</p><p>Expires: {entry.expires_on || 'Unrecorded'}</p>
-              </li>)}</ul></details> : 'No current evidence recorded.'}</td>
-          </tr>)}</tbody></table> : <p>No recorded areas match these filters. No market condition can be inferred.</p>)}
+              </li>)}</ul> : <p>No matching evidence for this view.</p>}</details> : <p>No current evidence recorded. No matching evidence for this view.</p>}</td>
+          </tr>;
+          })}</tbody></table> : <p>No loaded areas match this condition. No market condition can be inferred.</p>)}
       </details>
     </section>));
   }
   render();
-  return { clear, refresh() { if (opened && view.kind !== 'idle') return load(); }, dispose() { disposed = true; ++epoch; flushSync(() => root.unmount()); } };
+  return { clear, refresh() { if (opened && view.kind !== 'idle') return load(); }, dispose() { disposed = true; pageOffset = 0; selectedCondition = 'all'; selectedEvidence = 'all'; ++epoch; flushSync(() => root.unmount()); } };
 }

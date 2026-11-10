@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
-import { createServer } from 'node:http';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
+import { rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
@@ -9,24 +9,25 @@ import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 
+const mailRecordings = JSON.parse(await readFile(new URL('./fixtures/mail-priority-panel/recordings.json', import.meta.url)));
+
 let outDir, server, browser, origin;
 before(async () => {
   outDir = await temporaryDirectory('home-recorder-');
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
-  ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${server.address().port}`;
+  server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  origin = server.origin;
   browser = await chromium.launch();
 });
 after(async () => {
   await browser?.close();
-  if (server) await new Promise(resolve => server.close(resolve));
+  if (server) await server.close();
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
 for (const deployment of ['fixture', 'deployed-origin']) for (const path of ['/', '/review-workflows']) {
   for (const recorder of ['absent', 'reachable', 'recording', 'slow']) {
-    test(`Home ${path} on ${deployment} with ${recorder} recorder renders quietly before opt-in`, async t => {
+    test(`Home ${path} on ${deployment} with ${recorder} recorder renders quietly before recorder connection`, async t => {
       const page = await browser.newPage({ reducedMotion: 'reduce' });
       t.after(() => page.close());
       assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `recorder-${path === '/' ? 'home' : 'review'}-${recorder}`, viewer: 'joe', reset: true } })).status(), 200);
@@ -44,6 +45,7 @@ for (const deployment of ['fixture', 'deployed-origin']) for (const path of ['/'
         });
         await route.fulfill({ response });
       });
+      await page.route('**/api/v1/intelligence/mail-needs-partner*', route => route.fulfill({ json: mailRecordings.empty }));
       let release;
       const held = new Promise(resolve => { release = resolve; });
       t.after(() => release());
@@ -86,13 +88,12 @@ for (const width of [390, 1440]) for (const transition of ['idle', 'stop', 'stop
     t.after(() => page.close());
     await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `indicator-${width}-${transition}`, viewer: 'joe', reset: true } });
     await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-    const corsServer = createServer((request, reply) => { reply.setHeader('content-type', 'application/json'); reply.end(JSON.stringify({ state: 'idle' })); });
-    await new Promise(resolve => corsServer.listen(0, '127.0.0.1', resolve));
-    t.after(() => new Promise(resolve => corsServer.close(resolve)));
+    const corsServer = await startFixture({ routes: new Map([['/api/state', { contentType: 'application/json', body: JSON.stringify({ state: 'idle' }) }]]) });
+    t.after(() => corsServer.close());
     let response = 'recording';
     await page.route('http://127.0.0.1:4682/**', route => {
       if (transition === 'stop-error' && route.request().url().endsWith('/stop')) return route.abort('connectionrefused');
-      if (response === 'cors') return route.continue({ url: `http://127.0.0.1:${corsServer.address().port}/api/state` });
+      if (response === 'cors') return route.continue({ url: corsServer.origin + '/api/state' });
       if (response === 'disconnect') return route.abort('connectionrefused');
       return route.fulfill({ json: { state: route.request().url().endsWith('/stop') ? 'transcribing' : response, started_at: new Date().toISOString() } });
     });

@@ -1,3 +1,7 @@
+import { createMcpRequests } from './mcp-requests.mjs';
+import { createCurrentRead } from './current-read.mjs';
+
+import { businessDay } from './business-date.js';
 import { COLUMNS, columnBySlug, columnByValue, noteText } from './pipeline-model.js';
 import { escapeText } from './change-receipts.mjs';
 import { sourceTime } from './email-source-line.js';
@@ -7,7 +11,7 @@ import { ACTOR_LABEL } from './client.js';
 const DAY = 86400000;
 const esc = escapeText;
 // Wire kinds, never prose matching or dates inferred from lease duration.
-export const DATE_KINDS = Object.freeze([
+const DATE_KINDS = Object.freeze([
   { kind:'loi_expiry', label:'LOI', kinds:['loi_expiry','loi','loi_due'], deadline:true },
   { kind:'due_diligence', label:'Due diligence', kinds:['due_diligence','due_diligence_deadline','dd_deadline'], deadline:true },
   { kind:'lease_commencement', label:'Lease commencement', kinds:['lease_commencement','commencement'] },
@@ -22,10 +26,7 @@ export function calendarDay(value) {
   const stamp = Date.parse(day + 'T00:00:00Z');
   return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0,10) === day ? day : null;
 }
-const today = now => {
-  const date = new Date(now);
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-};
+const today = now => businessDay(new Date(now));
 export function dateCaption(day) {
   return day ? new Date(day+'T12:00:00Z').toLocaleDateString([], {month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}) : '—';
 }
@@ -91,14 +92,73 @@ export function renderDealUpdates(detail, now = Date.now()) {
   const entries = (detail.entries || []).filter(e => e.source !== 'document' && (e.source !== 'hold' || calendarDay(e.holdUntil) > today(now)))
     .map(e => e.source === 'hold' ? {...e, kind:`Held until ${dateCaption(calendarDay(e.holdUntil))}`} : e);
   if (!entries.length) return '';
+  const activityIds = new Set((detail.activities || []).map(a => a.id).filter(id => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)));
   const overview = concise(entries[0]?.summary, 72);
   const latestDate = new Date(entries[0].when || NaN);
   const latestDay = Number.isFinite(latestDate.getTime()) ? latestDate.toLocaleDateString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric'}) : 'Date not recorded';
-  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<details class="updates-history"><summary data-detail-focus="update-history"><span>${entries.length} update${entries.length === 1 ? '' : 's'} · ${esc(latestDay)} · ${esc(overview)}</span></summary>${(detail.activities || []).length >= 50 ? '<p class="updates-scope">Includes the latest 50 activities; older activities may be omitted.</p>' : ''}${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(sourceTime(e.when, undefined, 'Date not recorded'))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
+  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<details class="updates-history"><summary data-detail-focus="update-history"><span>${entries.length} update${entries.length === 1 ? '' : 's'} · ${esc(latestDay)} · ${esc(overview)}</span></summary>${(detail.activities || []).length >= 50 ? '<p class="updates-scope">Includes the latest 50 activities; older activities may be omitted.</p>' : ''}${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(sourceTime(e.when, undefined, 'Date not recorded'))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${activityIds.has(e.id) ? `<button type="button" class="btn" data-attribution-id="${esc(e.id)}" aria-expanded="false">Show deal attribution</button>` : ''}${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
   for (const node of root.querySelectorAll('[data-countdown]')) {
     const value = countdown({day:node.dataset.countdown,deadline:node.dataset.deadline === 'true',status:node.dataset.dateStatus},now);
     node.textContent = value.text; node.closest('.critical-date').dataset.state = value.state;
   }
+}
+
+export function createActivityAttributionRead(options = {}) {
+  const request = createMcpRequests(options);
+  return async (activityId, signal) => {
+    const result = await request('read-activity-deal-attribution', { activity_id: activityId }, { signal });
+    if (result.kind === 'authorization') throw Object.assign(new Error('Sign in to read attribution'), { status: result.status });
+    if (result.kind !== 'payload' || result.isError) throw new Error('Activity attribution unavailable');
+    return result.payload;
+  };
+}
+export function mountActivityAttribution(root, { read = createActivityAttributionRead(), load = () => import('./ui-activity-attribution.js'), onDenied = () => {} } = {}) {
+  const current = createCurrentRead();
+  let selected = null, view = null, host = null, busy = false, disposed = false;
+  function clear(returnFocus = true) {
+    current.invalidate(); busy = false;
+    view?.dispose(); view = null; host?.remove(); host = null;
+    const trigger = selected; selected = null;
+    root.querySelectorAll('[data-attribution-id]').forEach(button => { button.disabled = false; button.setAttribute('aria-expanded','false'); });
+    if (returnFocus && trigger?.isConnected) trigger.focus();
+  }
+  async function show(trigger) {
+    if (busy || disposed || !root.isConnected) return;
+    clear(false); selected = trigger; busy = true;
+    trigger.setAttribute('aria-expanded','true');
+    root.querySelectorAll('[data-attribution-id]').forEach(button => { button.disabled = button !== trigger; });
+    host = document.createElement('div'); root.append(host);
+    host.setAttribute('role','status'); host.textContent = 'Loading deal attribution…';
+    const container = host;
+    await current.run(async operation => {
+      const module = await operation.read(load());
+      view = module.mountActivityAttributionView(container, () => clear(), () => void show(trigger));
+      view.update({kind:'loading'});
+      const response = await operation.read(read(trigger.dataset.attributionId, operation.signal));
+      return module.parseActivityDealAttribution(response, trigger.dataset.attributionId);
+    }, {
+      success(value) { view.update({kind:'result',value}); },
+      failure(error) {
+        if ([401,403].includes(error?.status)) { retire(); onDenied(error); return; }
+        if (view) view.update({kind:'failure'});
+        else {
+          container.textContent = 'Deal attribution could not be loaded. ';
+          const retry = document.createElement('button'); retry.type='button'; retry.className='btn'; retry.textContent='Retry attribution';
+          retry.onclick=()=>void show(trigger); container.append(retry);
+        }
+      },
+    });
+    if (selected === trigger && host === container) {
+      busy = false;
+      root.querySelectorAll('[data-attribution-id]').forEach(button => { button.disabled = false; });
+    }
+  }
+  const click = event => { const trigger = event.target.closest?.('[data-attribution-id]'); if (trigger && root.contains(trigger)) void show(trigger); };
+  const keydown = event => { if (event.key === 'Escape' && selected) { event.preventDefault(); event.stopPropagation(); clear(); } };
+  root.addEventListener('click',click); window.addEventListener('keydown',keydown,true);
+  const retire = () => { disposed = true; clear(false); current.dispose(); root.removeEventListener('click',click); window.removeEventListener('keydown',keydown,true); window.removeEventListener('doctorcre-session-invalidated',retire); };
+  window.addEventListener('doctorcre-session-invalidated',retire);
+  return {dispose:retire};
 }
