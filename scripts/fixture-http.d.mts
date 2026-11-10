@@ -33,5 +33,3 @@ export function startWorkerFixture(options?: {
   close(): Promise<void>;
   release(token: string): void;
 }>;
-
-export function startFixture(options?: { port?: number }): Promise<{ origin: string; close(): Promise<void> }>;
