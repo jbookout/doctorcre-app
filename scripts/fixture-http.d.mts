@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from "node:http";
 
-type Descriptor = {
+export type Descriptor = {
   body?: string | Uint8Array;
   contentType?: string;
   status?: number;
@@ -33,3 +33,10 @@ export function startWorkerFixture(options?: {
   close(): Promise<void>;
   release(token: string): void;
 }>;
+
+export function startFixture(options?: {
+  routes?: Map<string, Descriptor | { sequence: Descriptor[] }>;
+  limits?: Partial<
+    Record<"bytes" | "entries" | "body" | "requests" | "observations" | "connections" | "delayMs", number>
+  >;
+}): ReturnType<typeof startWorkerFixture>;
