@@ -1,4 +1,4 @@
-export const NETWORK_SCHEMA = "carr-relationship-network.v1";
+const NETWORK_SCHEMA = "carr-relationship-network.v1";
 export const EDGE_LABELS = Object.freeze({
   knows: "Knows",
   works_with: "Works with",
@@ -99,10 +99,11 @@ export function validNetwork(value) {
 }
 export function filterNetwork(
   snapshot,
-  { territory = "", vertical = "", q = "" } = {},
+  { territory = "", vertical = "", q = "", kind = "" } = {},
 ) {
   const nodes = snapshot.nodes.filter(
     (n) =>
+      (!kind || n.kind === kind) &&
       (!territory || n.territory === territory) &&
       (!vertical || n.verticals.includes(vertical)) &&
       (!q ||

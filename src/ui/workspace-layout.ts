@@ -7,7 +7,7 @@ export type LayoutNode = Readonly<{
 export type Layout = Readonly<{
   version: 1; stage: LayoutNode | null;
 }>;
-export type Destination = Readonly<
+type Destination = Readonly<
   { kind: "stage"; group: string } |
   { kind: "tabs"; group: string; index?: number } |
   { kind: "split"; target: string; id: string; group: string; axis: "horizontal" | "vertical"; side: "before" | "after"; ratio: number }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { cellText, parseAnswerBlocks, tableRows } from './answer-block-model';
+import { downloadAnswerTable } from './answer-table-csv';
 import type { Answer, Cell, Chart, Sort, Table } from './answer-block-model';
 
 function SourcedCell({cell}: {cell: Cell | undefined}) {
@@ -11,11 +12,20 @@ function SourcedCell({cell}: {cell: Cell | undefined}) {
 function AnswerTable({table}: {table: Table}) {
   const [sort, setSort] = useState<Sort>(null);
   const [filter, setFilter] = useState('');
+  const [downloadStatus, setDownloadStatus] = useState('');
   const rows = tableRows(table, sort, filter);
   return <section className="answer-table" aria-label={`Answer table ${table.id}`}>
     <label>Filter rows <input type="search" value={filter} onChange={e => setFilter(e.target.value)} /></label>
     <button type="button" onClick={() => {setSort(null); setFilter('');}}>Reset table</button>
+    <button type="button" disabled={rows.length === 0} onClick={() => {
+      try { downloadAnswerTable(table, rows); setDownloadStatus(`Exported ${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`); }
+      catch { setDownloadStatus('Download unavailable. Try again.'); }
+    }}>Download visible rows</button>
     <p role="status">{rows.length} of {table.rows.length} rows</p>
+    <p role="status">{rows.length === 0 ? 'No visible rows to download' : downloadStatus}</p>
+    {rows.length === 0 && <p>{table.rows.length === 0
+      ? 'No recorded rows in this answer'
+      : <>No loaded rows match this filter <button type="button" onClick={() => setFilter('')}>Clear filter</button></>}</p>}
     <div className="answer-scroll" tabIndex={0} role="region" aria-label="Scrollable answer table">
       <table><caption>{table.id === 'comps' ? 'Recorded proposed negotiation rents' : `Recorded answer data: ${table.id}`}</caption>
         <thead><tr>{table.columns.map(column => <th key={column.key} scope="col" aria-sort={sort?.key === column.key ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
@@ -37,11 +47,17 @@ function AnswerChart({chart, table}: {chart: Chart; table: Table}) {
   const y = (value: number) => 180 - (value / scale - min) / (max - min || 1) * 160;
   const x = (index: number) => 30 + index * 540 / Math.max(1, table.rows.length);
   const width = Math.max(1, 440 / Math.max(1, table.rows.length));
+  const segments: typeof points[] = [];
+  for (const point of points) {
+    const segment = segments.at(-1);
+    if (segment?.at(-1)?.index === point.index - 1) segment.push(point);
+    else segments.push([point]);
+  }
   const label = `${table.columns.find(c => c.key === chart.y)?.label ?? chart.y} by ${table.columns.find(c => c.key === chart.x)?.label ?? chart.x}`;
   return <figure className="answer-chart"><figcaption>{label}. Full values and sources are in table {table.id}.</figcaption>
     <svg viewBox="0 0 600 210" role="group" aria-label={label}>
       <line x1="20" x2="580" y1={y(0)} y2={y(0)} stroke="currentColor" />
-      {chart.kind === 'line' && <polyline fill="none" stroke="currentColor" points={points.map(p => `${x(p.index)},${y(p.value)}`).join(' ')} />}
+      {chart.kind === 'line' && segments.map((segment, index) => <polyline key={index} fill="none" stroke="currentColor" points={segment.map(p => `${x(p.index)},${y(p.value)}`).join(' ')} />)}
       {points.map(p => {
         const text = `${p.label}: ${p.value}`;
         const handlers = {tabIndex:0,role:'img','aria-label':text,onFocus:() => setActive(text),onBlur:() => setActive(null),onMouseEnter:() => setActive(text),onMouseLeave:() => setActive(null)};

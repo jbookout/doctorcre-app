@@ -19,7 +19,7 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 function status(error: unknown, code: number) { return record(error) && error.status === code; }
 function freeze(value: Selection): Selection {
-  return Object.freeze({ version: value.version, selected: Object.freeze([...value.selected].sort()), notes: Object.freeze({ ...value.notes }) });
+  return Object.freeze({ version: value.version, selected: Object.freeze([...value.selected].sort()), notes: Object.freeze(Object.setPrototypeOf({ ...value.notes }, null)) });
 }
 function same(a: Selection, b: Selection) {
   return a.selected.length === b.selected.length && a.selected.every((id, i) => id === b.selected[i] && (a.notes[id] ?? '') === (b.notes[id] ?? ''));

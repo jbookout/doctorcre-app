@@ -12,9 +12,8 @@ async function open(t) {
  const outDir=await temporaryDirectory('session-lifecycle-');
  t.after(()=>rm(outDir,{recursive:true,force:true}));
  await buildArtifact({root:root.pathname,outDir,commit:'1'.repeat(40)});
- const {server}=await createQaServer({buildRoot:join(outDir,'site')});
- await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
- const origin=`http://127.0.0.1:${server.address().port}`;
+ const server = await (await createQaServer({buildRoot:join(outDir,'site')})).start();t.after(()=>server.close());
+ const origin=server.origin;
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage(),context=page.context(),errors=[];
  let actor='joe',denied=false,writes=0;

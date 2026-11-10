@@ -1,0 +1,14 @@
+{
+ "schema":"carr-production-proof-plan.v1",
+ "requirement_id":"waiting-editor-canonical-reopen",
+ "targets":["app"],
+ "assertions":[{
+  "id":"waiting-editor-current-canonical-evidence",
+  "predicate":"Run node scripts/prove-waiting-editor-canonical-reopen.mjs --origin https://app.doctorcre.com --timeout-ms 30000 after deployment. Match the release source_commit to the merged revision. Execute fetched inbox entry and chunks through normal inbox boot with isolated synthetic RPC. Assert closed refresh opens current reason and evidence, dirty edits survive background refresh, close and reopen discards the draft, lost replies replay the identical request, and confirmed saves reopen canonical readback.",
+  "runner":"app-release-live-walk.v1",
+  "expected_result":"Exit 0 with release identity, asset SHA256 hashes and all five named assertions. Exit 1 means contradiction; exit 78 means release or assets unavailable. This is deployed synthetic behavior, not a natural business journey.",
+  "input_class":"read-only deployed modules with local contract-checked synthetic inbox and waiting ports",
+  "deadline_seconds":30
+ }],
+ "safety":{"read_only":true,"no_sends":true,"max_requests":31,"max_records":6,"max_runtime_seconds":30,"max_artifact_bytes":65536}
+}

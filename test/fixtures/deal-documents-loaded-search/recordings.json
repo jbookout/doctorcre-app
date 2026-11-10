@@ -1,0 +1,1497 @@
+{
+  "initial": {
+    "request": {
+      "deal_id": "11111111-1111-4111-8111-111111111111",
+      "limit": 50
+    },
+    "rows": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "display_name": "Lease ALPHA",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "display_name": "Synthetic document 2",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "display_name": "Synthetic document 3",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "display_name": "Synthetic document 4",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "display_name": "Synthetic document 5",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "display_name": "Synthetic document 6",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "display_name": "Synthetic document 7",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "display_name": "Synthetic document 8",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "display_name": "Synthetic document 9",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "display_name": "Synthetic document 10",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "display_name": "Synthetic document 11",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "display_name": "Synthetic document 12",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "display_name": "Synthetic document 13",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "display_name": "Synthetic document 14",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "display_name": "Synthetic document 15",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "display_name": "Synthetic document 16",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "display_name": "Synthetic document 17",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "display_name": "Synthetic document 18",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "display_name": "Synthetic document 19",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "display_name": "Synthetic document 20",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "display_name": "Synthetic document 21",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "display_name": "Synthetic document 22",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "display_name": "Synthetic document 23",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "display_name": "Synthetic document 24",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000025",
+        "display_name": "Synthetic document 25",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "display_name": "Synthetic document 26",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "display_name": "Synthetic document 27",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "display_name": "Synthetic document 28",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "display_name": "Synthetic document 29",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "display_name": "Synthetic document 30",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000031",
+        "display_name": "Synthetic document 31",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000032",
+        "display_name": "Synthetic document 32",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000033",
+        "display_name": "Synthetic document 33",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000034",
+        "display_name": "Synthetic document 34",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000035",
+        "display_name": "Synthetic document 35",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000036",
+        "display_name": "Synthetic document 36",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000037",
+        "display_name": "Synthetic document 37",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000038",
+        "display_name": "Synthetic document 38",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000039",
+        "display_name": "Synthetic document 39",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000040",
+        "display_name": "Synthetic document 40",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000041",
+        "display_name": "Synthetic document 41",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000042",
+        "display_name": "Synthetic document 42",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000043",
+        "display_name": "Synthetic document 43",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000044",
+        "display_name": "Synthetic document 44",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000045",
+        "display_name": "Synthetic document 45",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000046",
+        "display_name": "Synthetic document 46",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000047",
+        "display_name": "Synthetic document 47",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000048",
+        "display_name": "Synthetic document 48",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000049",
+        "display_name": "Synthetic document 49",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000050",
+        "display_name": "Synthetic document 50",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000051",
+        "display_name": "Later Lease",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      }
+    ],
+    "response": {
+      "ok": true,
+      "schema_version": "deal-documents.v1",
+      "documents": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "display_name": "Lease ALPHA",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "display_name": "Synthetic document 2",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "display_name": "Synthetic document 3",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000004",
+          "display_name": "Synthetic document 4",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "display_name": "Synthetic document 5",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "display_name": "Synthetic document 6",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "display_name": "Synthetic document 7",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "display_name": "Synthetic document 8",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000009",
+          "display_name": "Synthetic document 9",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "display_name": "Synthetic document 10",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "display_name": "Synthetic document 11",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "display_name": "Synthetic document 12",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "display_name": "Synthetic document 13",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "display_name": "Synthetic document 14",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "display_name": "Synthetic document 15",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000016",
+          "display_name": "Synthetic document 16",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000017",
+          "display_name": "Synthetic document 17",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000018",
+          "display_name": "Synthetic document 18",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000019",
+          "display_name": "Synthetic document 19",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "display_name": "Synthetic document 20",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "display_name": "Synthetic document 21",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000022",
+          "display_name": "Synthetic document 22",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000023",
+          "display_name": "Synthetic document 23",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000024",
+          "display_name": "Synthetic document 24",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000025",
+          "display_name": "Synthetic document 25",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000026",
+          "display_name": "Synthetic document 26",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000027",
+          "display_name": "Synthetic document 27",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000028",
+          "display_name": "Synthetic document 28",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000029",
+          "display_name": "Synthetic document 29",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000030",
+          "display_name": "Synthetic document 30",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000031",
+          "display_name": "Synthetic document 31",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000032",
+          "display_name": "Synthetic document 32",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000033",
+          "display_name": "Synthetic document 33",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000034",
+          "display_name": "Synthetic document 34",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000035",
+          "display_name": "Synthetic document 35",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000036",
+          "display_name": "Synthetic document 36",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000037",
+          "display_name": "Synthetic document 37",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000038",
+          "display_name": "Synthetic document 38",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000039",
+          "display_name": "Synthetic document 39",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000040",
+          "display_name": "Synthetic document 40",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000041",
+          "display_name": "Synthetic document 41",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000042",
+          "display_name": "Synthetic document 42",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000043",
+          "display_name": "Synthetic document 43",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000044",
+          "display_name": "Synthetic document 44",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000045",
+          "display_name": "Synthetic document 45",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000046",
+          "display_name": "Synthetic document 46",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000047",
+          "display_name": "Synthetic document 47",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000048",
+          "display_name": "Synthetic document 48",
+          "document_type": "Unrecorded",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000049",
+          "display_name": "Synthetic document 49",
+          "document_type": null,
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000050",
+          "display_name": "Synthetic document 50",
+          "document_type": "application/pdf",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "has_more": true,
+      "next_cursor": "{\"version\":1,\"tenant\":\"carr-internal\",\"deal\":\"11111111-1111-4111-8111-111111111111\",\"after\":\"00000000-0000-4000-8000-000000000050\"}"
+    }
+  },
+  "second": {
+    "request": {
+      "deal_id": "11111111-1111-4111-8111-111111111111",
+      "limit": 50,
+      "cursor": "{\"version\":1,\"tenant\":\"carr-internal\",\"deal\":\"11111111-1111-4111-8111-111111111111\",\"after\":\"00000000-0000-4000-8000-000000000050\"}"
+    },
+    "rows": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "display_name": "Lease ALPHA",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "display_name": "Synthetic document 2",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "display_name": "Synthetic document 3",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "display_name": "Synthetic document 4",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "display_name": "Synthetic document 5",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "display_name": "Synthetic document 6",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "display_name": "Synthetic document 7",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "display_name": "Synthetic document 8",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "display_name": "Synthetic document 9",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "display_name": "Synthetic document 10",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "display_name": "Synthetic document 11",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "display_name": "Synthetic document 12",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "display_name": "Synthetic document 13",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "display_name": "Synthetic document 14",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "display_name": "Synthetic document 15",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "display_name": "Synthetic document 16",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "display_name": "Synthetic document 17",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "display_name": "Synthetic document 18",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "display_name": "Synthetic document 19",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "display_name": "Synthetic document 20",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "display_name": "Synthetic document 21",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "display_name": "Synthetic document 22",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "display_name": "Synthetic document 23",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "display_name": "Synthetic document 24",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000025",
+        "display_name": "Synthetic document 25",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "display_name": "Synthetic document 26",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "display_name": "Synthetic document 27",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "display_name": "Synthetic document 28",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "display_name": "Synthetic document 29",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "display_name": "Synthetic document 30",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000031",
+        "display_name": "Synthetic document 31",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000032",
+        "display_name": "Synthetic document 32",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000033",
+        "display_name": "Synthetic document 33",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000034",
+        "display_name": "Synthetic document 34",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000035",
+        "display_name": "Synthetic document 35",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000036",
+        "display_name": "Synthetic document 36",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000037",
+        "display_name": "Synthetic document 37",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000038",
+        "display_name": "Synthetic document 38",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000039",
+        "display_name": "Synthetic document 39",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000040",
+        "display_name": "Synthetic document 40",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000041",
+        "display_name": "Synthetic document 41",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000042",
+        "display_name": "Synthetic document 42",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000043",
+        "display_name": "Synthetic document 43",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000044",
+        "display_name": "Synthetic document 44",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000045",
+        "display_name": "Synthetic document 45",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000046",
+        "display_name": "Synthetic document 46",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000047",
+        "display_name": "Synthetic document 47",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000048",
+        "display_name": "Synthetic document 48",
+        "document_type": "Unrecorded",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000049",
+        "display_name": "Synthetic document 49",
+        "document_type": null,
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000050",
+        "display_name": "Synthetic document 50",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000051",
+        "display_name": "Later Lease",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      }
+    ],
+    "response": {
+      "ok": true,
+      "schema_version": "deal-documents.v1",
+      "documents": [
+        {
+          "id": "00000000-0000-4000-8000-000000000051",
+          "display_name": "Later Lease",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "has_more": false,
+      "next_cursor": null
+    }
+  },
+  "replacement": {
+    "request": {
+      "deal_id": "11111111-1111-4111-8111-111111111111",
+      "limit": 50
+    },
+    "rows": [
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "display_name": "Synthetic document 3",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "display_name": "Synthetic document 7",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "display_name": "Synthetic document 11",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "display_name": "Synthetic document 15",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "display_name": "Synthetic document 19",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "display_name": "Synthetic document 23",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "display_name": "Synthetic document 27",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000031",
+        "display_name": "Synthetic document 31",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000035",
+        "display_name": "Synthetic document 35",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000039",
+        "display_name": "Synthetic document 39",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000043",
+        "display_name": "Synthetic document 43",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000047",
+        "display_name": "Synthetic document 47",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000051",
+        "display_name": "Later Lease",
+        "document_type": "text/plain",
+        "page_count": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "stored_at": "2026-01-01T00:00:00Z"
+      }
+    ],
+    "response": {
+      "ok": true,
+      "schema_version": "deal-documents.v1",
+      "documents": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "display_name": "Synthetic document 3",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "display_name": "Synthetic document 7",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "display_name": "Synthetic document 11",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "display_name": "Synthetic document 15",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000019",
+          "display_name": "Synthetic document 19",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000023",
+          "display_name": "Synthetic document 23",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000027",
+          "display_name": "Synthetic document 27",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000031",
+          "display_name": "Synthetic document 31",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000035",
+          "display_name": "Synthetic document 35",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000039",
+          "display_name": "Synthetic document 39",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000043",
+          "display_name": "Synthetic document 43",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000047",
+          "display_name": "Synthetic document 47",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000051",
+          "display_name": "Later Lease",
+          "document_type": "text/plain",
+          "page_count": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stored_at": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "has_more": false,
+      "next_cursor": null
+    }
+  },
+  "empty": {
+    "request": {
+      "deal_id": "11111111-1111-4111-8111-111111111111",
+      "limit": 50
+    },
+    "rows": [],
+    "response": {
+      "ok": true,
+      "schema_version": "deal-documents.v1",
+      "documents": [],
+      "has_more": false,
+      "next_cursor": null
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { componentDocument, chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { calendarAssertions } from '../scripts/prove-historical-fit-calendar-date-integrity.mjs';
@@ -12,13 +12,13 @@ for (const width of [390, 1280]) for (const colorScheme of ['light', 'dark']) {
     const browser = await chromium.launch(); t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, timezoneId: 'America/Los_Angeles' });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), colorScheme);
-    await page.goto(server.url);
+    await componentDocument(page, server.url, { dispose: page => page.evaluate(() => window.integrityPanel?.dispose()) });
     await page.evaluate(() => { document.body.replaceChildren(); });
     assert.equal((await calendarAssertions(page, `${server.url}/js/ui-ideal-client-profile.js`)).length, 7);
     await page.evaluate(async () => {
       const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
       const host = document.createElement('main'); document.body.append(host);
-      mountIdealClientProfile(host, { getIdealClientProfile: async () => ({}) });
+      window.integrityPanel = mountIdealClientProfile(host, { getIdealClientProfile: async () => ({}) });
     });
     const region = page.getByRole('region', { name: 'Historical client fit', exact: true });
     await region.locator('summary').first().click(); await region.getByRole('alert').waitFor();
@@ -55,8 +55,7 @@ for (const action of ['clear', 'dispose']) for (const state of ['idle', 'loading
     const browser = await chromium.launch(); t.after(() => browser.close());
     const page = await browser.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.route(`${server.url}/__lifecycle__`, route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Historical fit lifecycle</title>' }));
-    await page.goto(`${server.url}/__lifecycle__`);
+    await componentDocument(page, server.url, { dispose: page => page.evaluate(() => window.lifecycle?.mount.dispose()) });
     await page.evaluate(async state => {
       document.body.replaceChildren();
       const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');

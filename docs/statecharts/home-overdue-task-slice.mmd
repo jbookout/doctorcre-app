@@ -1,0 +1,16 @@
+stateDiagram-v2
+  [*] --> Collapsed: Parsed snapshot loads
+  Collapsed --> Expanded: See all
+  Expanded --> Collapsed: Show less
+  Collapsed --> Collapsed: Current card stays visible
+  Collapsed --> Collapsed: Pending review keeps its prior placement
+  Collapsed --> Collapsed: Refresh replaces parsed items
+  Expanded --> Expanded: Refresh preserves disclosure
+  Collapsed --> Collapsed: Central midnight regroups dated tasks
+  Expanded --> Expanded: Central midnight regroups dated tasks
+  Collapsed --> Cleared: Session ends or view unmounts
+  Expanded --> Cleared: Session ends or view unmounts
+  Cleared --> [*]: Clock timer removed
+  %% never: A task appears in both Overdue and Needs your attention or Today.
+  %% never: A non-action, failed, held, snoozed, working, settled or done card enters Overdue.
+  %% Filtering is not changed by this unit; sibling search precedes display grouping.

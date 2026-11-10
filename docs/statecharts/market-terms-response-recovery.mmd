@@ -1,0 +1,20 @@
+stateDiagram-v2
+  [*] --> Loading
+  Loading: Loading comparable terms
+  Ready: Confirmed comparison
+  Invalid: Comparison unavailable, filters usable
+  Disposed: Comparison closed
+  Loading --> Ready: Current valid response
+  Loading --> Invalid: Current malformed response or failed read
+  Invalid --> Loading: Submit Compare to retry
+  Ready --> Loading: Submit filters or refresh
+  Loading --> Loading: Submit newer filters
+  Loading --> Loading: Ignore stale response
+  Ready --> Ready: Ignore stale response
+  Invalid --> Invalid: Ignore stale response
+  Loading --> Disposed: Leave workspace
+  Ready --> Disposed: Leave workspace
+  Invalid --> Disposed: Leave workspace
+  Disposed --> Disposed: Ignore pending response
+  %% never Show malformed rows as economic evidence
+  %% never Replace current results with stale replies

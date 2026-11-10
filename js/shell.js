@@ -4,7 +4,7 @@ import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from ".
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 
 export const PREFERENCES_KEY = "doctorcre.visual-preferences";
-export const LEGACY_PREFERENCE_KEYS = Object.freeze(["doctorcre.presentation.v1"]);
+const LEGACY_PREFERENCE_KEYS = Object.freeze(["doctorcre.presentation.v1"]);
 
 const PREF_WORDS = {
   theme: { light: "Light theme", dark: "Dark theme" },
@@ -65,7 +65,7 @@ function systemPreferences() {
 }
 
 /** Each preference is ONE icon button: filled is on, hollow is off, and the only words are the label. */
-export function applyPreferences(preferences) {
+function applyPreferences(preferences) {
   for (const [name, value] of Object.entries(preferenceAttributes(preferences))) document.documentElement.setAttribute(name, value);
   document.querySelectorAll("button[data-pref][data-on]").forEach((button) => {
     const key = button.dataset.pref;

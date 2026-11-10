@@ -274,10 +274,9 @@ for (const { name, path, updated, retry, error } of [
   { name:'Leads', path:'/leads?mode=live', updated:'#boardUpdated', retry:'#refreshBoard', error:'#leadBoardError' },
   { name:'Deals', path:'/deals?mode=live', updated:'#boardAsOf', retry:'#retryRead', error:'#boardStatusLabel' },
 ]) for (const status of [503,401,403]) test(`QA-008 ${name} failure and recovery after ${status}`, async t => {
-  const {server}=await createQaServer({buildRoot:fileURLToPath(root)});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(()=>new Promise(resolve=>server.close(resolve)));
-  const origin=`http://127.0.0.1:${server.address().port}`;
+  const server = await (await createQaServer()).start();
+  t.after(()=>server.close());
+  const origin=server.origin;
   const response=await fetch(origin+'/api/test/seed',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:`freshness-${name.toLowerCase()}-${status}`,viewer:'joe',variant:'realistic'})});
   assert.equal(response.status,200);
   const {cookie}=await response.json();

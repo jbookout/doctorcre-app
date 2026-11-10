@@ -13,14 +13,13 @@ let outDir, server, browser, origin, sequence = 0;
 before(async () => {
   outDir = await temporaryDirectory('v2-s6-');
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
-  ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${server.address().port}`;
+  server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  origin = server.origin;
   browser = await chromium.launch();
 });
 after(async () => {
   await browser?.close();
-  if (server) await new Promise(resolve => server.close(resolve));
+  if (server) await server.close();
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 async function open(t, width, theme) {

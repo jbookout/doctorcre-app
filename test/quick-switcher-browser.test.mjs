@@ -116,7 +116,7 @@ test('loading, retry, access narrowing, outside close and session retirement', a
       openQuickSwitcher({ opener: document.querySelector('.quick-switcher-toggle'), pages: [{ label: 'Calendar', href: '/calendar' }], read: async () => {
         attempt++;
         if (attempt === 1) throw Error('Unavailable');
-        return { board: { deals: [{ id: 'allowed', name: 'Allowed deal', open_actions: [{ id: 'action-1', description: 'Call the lender' }] }], closed_deals: [{ id: 'closed', name: 'Closed deal' }], lost_deals: [{ id: 'closed', name: 'Closed deal' }] }, network: { nodes: [] } };
+        return { board: { deals: [{ id: 'allowed', name: 'Allowed deal', open_actions: [{ id: 'action-1', item_id: 'next_action:33333333-3333-4333-8333-333333333333', description: 'Call the lender' }] }], closed_deals: [{ id: 'closed', name: 'Closed deal' }], lost_deals: [{ id: 'closed', name: 'Closed deal' }] }, network: { nodes: [] } };
       } });
     });
     await page.getByText('Deals and contacts unavailable. Pages are still available.').waitFor();

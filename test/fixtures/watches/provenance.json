@@ -1,0 +1,9 @@
+{
+  "source": "DoctorCRE/carr-system",
+  "revision": "6c6ed9648bc56f7a3479522d48d66fab274e691d",
+  "recorded_fixture": "mcp-server/contracts/subject-watch.v2.fixture.json",
+  "schema": "mcp-server/contracts/subject-watch.v2.js",
+  "parser": "src/ui/watches/model.ts#parseWatch",
+  "schema_sha256": "d9af1a991cffd42379bd4dcefa4e66940f3f985297f10d8da368bf3ed71bac90",
+  "note": "Response schema rederived verbatim from producer; recorded day-only response retained unchanged. Synthetic variants are checked against producer and consumer parsers."
+}

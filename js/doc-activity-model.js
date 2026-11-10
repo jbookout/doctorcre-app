@@ -1,5 +1,5 @@
 import { compareInstants } from './change-receipts.mjs';
-export const ACTIVITY_SCHEMA = 'doc-activity.v1';
+const ACTIVITY_SCHEMA = 'doc-activity.v1';
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const optionalText = value => value === null || value === undefined || typeof value === 'string';
 const date = value => typeof value === 'string' && Number.isFinite(Date.parse(value));

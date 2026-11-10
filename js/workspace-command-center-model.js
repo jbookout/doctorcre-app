@@ -1,11 +1,11 @@
-export const DEAL_ROOM_DESTINATION = "/deals";
+const DEAL_ROOM_DESTINATION = "/deals";
 export const TEAM_ACTIVE_DESTINATION = "/deals?workspace=team";
 export const TEAM_FLAGGED_DESTINATION = "/deals?workspace=team&filter=flagged";
 export const MY_FLAGGED_DESTINATION = "/deals?workspace=team&filter=flagged&owner=me";
 export const NEEDS_JOE_DESTINATION = "/work-requests";
 // Team is the confirmed default; My work is the secondary view of the same read.
-export const SCOPES = ["team", "mine"];
-export const DEFAULT_SCOPE = "team";
+const SCOPES = ["team", "mine"];
+const DEFAULT_SCOPE = "team";
 
 const VIEWERS = new Set(["joe", "dell"]);
 // Only links the Deal Room boot parser already honors may leave Home.
@@ -17,7 +17,7 @@ const SCOPE_DESTINATIONS = {
   team: { active: TEAM_ACTIVE_DESTINATION, flagged: TEAM_FLAGGED_DESTINATION },
   mine: { active: null, flagged: MY_FLAGGED_DESTINATION },
 };
-export const SCOPE_LABEL = { team: "Deals", mine: "My work" };
+const SCOPE_LABEL = { team: "Deals", mine: "My work" };
 const CARD_SOURCES = new Set(["v_deal_room_board", "ops.work_request"]);
 const ALL_SOURCES = new Set(["command_center", ...CARD_SOURCES]);
 
@@ -68,7 +68,7 @@ function emptyContractList(value) {
   return Array.isArray(value) && value.length === 0;
 }
 
-export function sourceIsFresh(source, now = () => Date.now()) {
+function sourceIsFresh(source, now = () => Date.now()) {
   return sourceValid(source, ALL_SOURCES) && source.freshness === "fresh" && Date.parse(source.valid_until) > now();
 }
 

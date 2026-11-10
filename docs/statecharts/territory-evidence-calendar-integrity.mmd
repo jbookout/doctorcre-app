@@ -1,0 +1,17 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Loading: Open territory evidence
+    Loading --> Ready: Valid evidence arrives for current filters
+    Loading --> Error: Invalid evidence or request failure
+    Error --> Loading: Refresh evidence or apply filters
+    Ready --> Loading: Refresh evidence or apply filters
+    Loading --> Loading: New filters invalidate prior request
+    Loading --> Idle: Authorization fails and evidence clears
+    Ready --> Idle: Clear session
+    Loading --> Disposed: Close view
+    Ready --> Disposed: Close view
+    Error --> Disposed: Close view
+    Disposed --> Disposed: Ignore late success or failure
+    Loading --> Loading: Ignore stale success or failure
+    %% never Display Current for an impossible date or contradictory status.
+    %% never Let a stale or disposed response replace the current view.

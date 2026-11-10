@@ -20,7 +20,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   const calls = [];
   await page.route('**/mcp', route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     calls.push({ name, args });
     let payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: rows }
       : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
@@ -47,6 +47,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await page.getByRole('region', { name: 'Needs your attention', exact: true }).locator('[data-inbox-row="0"]').waitFor();
   await card.getByRole('button', { name: 'Snooze', exact: true }).click();
   await page.getByRole('button', { name: /^1 hour/ }).click();
+  await page.getByRole('region', { name: 'In motion and waiting', exact: true }).getByRole('button', { name: 'See all 1', exact: true }).click();
   await page.getByRole('region', { name: 'In motion and waiting', exact: true }).locator('[data-inbox-row="0"]').waitFor();
   await card.getByRole('button', { name: 'Wake', exact: true }).click();
   await card.getByRole('button', { name: 'Hide from inbox', exact: true }).click();
@@ -64,7 +65,7 @@ for (const refusal of ['unknown_tool', 'partner_required', 'malformed']) test(`H
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/mcp', route => {
     const { name } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } }); calls.push(name);
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } }); calls.push(name);
     const payload = name === 'read-home-inbox-v3' ? { error: refusal }
       : name === 'read-home-inbox-v2' ? { ok: true, schema_version: 'home-inbox.v2', auto_settle_enabled: false, working_collapsed: true, truncated: false, limit: 1000, items: [] }
       : name === 'calendar-meeting-prep' ? { state: 'empty', items: [] } : name === 'deal-room-board' ? { actor: 'joe', deals: [] } : { items: [] };
@@ -96,7 +97,7 @@ for (const [transition, before, after] of [
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/mcp', route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     let payload = name === 'read-home-inbox-v3' ? { ok: true, schema_version: 'home-inbox.v3', auto_settle_enabled: true, working_collapsed: true, truncated: false, limit: 1000, items: [item] } : { items: [] };
     if (name === 'settle-home-inbox') {
       Object.assign(item, { section: 'settled', disposition: 'settled', base_version: 'opaque:2' });
@@ -105,6 +106,7 @@ for (const [transition, before, after] of [
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(`${server.origin}/?mode=live`);
+  if (['working', 'snoozed'].includes(before.section)) await page.getByRole('region', { name: 'In motion and waiting', exact: true }).getByRole('button', { name: 'See all 1', exact: true }).click();
   await page.locator('[data-inbox-row="transition"]').waitFor();
   Object.assign(item, after);
   await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();

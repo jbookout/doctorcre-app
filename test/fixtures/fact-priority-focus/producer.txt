@@ -1,0 +1,169 @@
+// Partner review of stored deal terms and their evidence.
+import { authorizationClassForActor, organizationTenantForActor } from './identity.js';
+import { CONTRACTS, humanFactSchema, validateFactObservations } from './fact-observations.ts';
+import { ToolError } from './tool-error.ts';
+import type { Actor, Db, VerbInputs } from './verb-contract.ts';
+
+const uuid = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' };
+const entity = { type: 'string', minLength: 1, maxLength: 200 };
+const fact = { type: 'string', enum: Object.keys(CONTRACTS) };
+const resolutionProperties = {
+  idempotency_key: uuid, entity_ref: entity, fact_key: fact,
+  base_version: { type: 'integer', minimum: 0, maximum: 0x7ffffffe },
+  review_version: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+  decision: { type: 'string', enum: ['approve', 'correct', 'reject'] },
+  observation_id: uuid, correction: humanFactSchema, reason: { type: 'string', minLength: 1, maxLength: 2000 },
+};
+const resolutionRequired = ['idempotency_key', 'entity_ref', 'fact_key', 'base_version', 'review_version', 'decision', 'reason'];
+
+function partner(actor: Actor) {
+  if (authorizationClassForActor(actor) !== 'verified_partner')
+    throw new ToolError({ error: 'human_only_verb_requires_verified_partner' });
+}
+function validateHuman(entity_ref: string, observation: VerbInputs['record-human-fact']['observation']) {
+  validateFactObservations({ entity_ref, observations: [{ ...observation, id: 'human', method: 'text_layer',
+    extractor_version: 'human-entry.v1', confidence_tier: 'human_review' }] });
+}
+function result(out: Record<string, unknown>) {
+  if (!out.ok) throw new ToolError({ error: typeof out.error === 'string' ? out.error : 'fact_review_refused', current_version: out.current_version });
+  return { ...out, schema_version: 'fact-review.v1' };
+}
+export function factReviewTools() {
+  return {
+    'draft-terms-comparison': {
+      write: false,
+      description: 'Draft a comparison of canonical lease terms for two or more entities. Refuses every missing or pending field. Sends and stores nothing.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {
+        entity_refs: { type: 'array', minItems: 2, maxItems: 20, uniqueItems: true, items: entity },
+      }, required: ['entity_refs'] },
+      handler: async (c: Db, actor: Actor, args: { entity_refs: string[] }) => {
+        const rows = (await c.query(`select e.entity_ref, ops.list_fact_review($1,e.entity_ref,100,null,true) result
+          from unnest($2::text[]) with ordinality e(entity_ref,ordinal) order by e.ordinal`,
+          [organizationTenantForActor(actor), args.entity_refs])).rows;
+        const issues: { entity_ref: string; fact_key: string; reason: string }[] = [];
+        const deals = rows.map(({ entity_ref, result }: any) => {
+          const fields = Object.keys(CONTRACTS).map(fact_key => {
+            const item = result.items.find((entry: any) => entry.fact_key === fact_key);
+            const canonical = item?.canonical_fact;
+            if (item?.pending) issues.push({ entity_ref, fact_key, reason: item.reasons.includes('conflict') ? 'open_conflict' : 'pending_review' });
+            if (!canonical || (canonical.normalized_value == null && canonical.normalized_schedule == null))
+              issues.push({ entity_ref, fact_key, reason: 'missing_canonical' });
+            if (!canonical) return null;
+            const citations = item.observations.filter((observation: any) => canonical.observation_ids.includes(observation.id)).map((observation: any) => observation.source);
+            if (citations.length !== canonical.observation_ids.length) {
+              issues.push({ entity_ref, fact_key, reason: 'missing_citation' });
+              return null;
+            }
+            return { fact_key, value: canonical.normalized_schedule ?? canonical.normalized_value,
+              unit: canonical.canonical_unit, expense_basis: canonical.expense_basis,
+              fact_id: canonical.id, version: canonical.version, citations };
+          });
+          return { entity_ref, fields };
+        });
+        if (issues.length) throw new ToolError({ error: 'unresolved_facts', facts: issues });
+        const text = deals.map(({ entity_ref, fields }: any) => [entity_ref, ...fields.map((field: any) =>
+          `${field.fact_key}: ${JSON.stringify(field.value)} ${field.unit}${field.expense_basis ? ` (${field.expense_basis})` : ''} [fact ${field.fact_id} v${field.version}; sources ${JSON.stringify(field.citations)}]`)].join('\n')).join('\n\n');
+        return { ok: true, schema_version: 'terms-comparison-draft.v1', draft: true, text, deals };
+      },
+    },
+    'record-human-fact': {
+      write: true, humanOnly: true,
+      description: 'Record a distinct human-authored term from an existing, undeleted deal attachment. entity_ref is the deal UUID and source.document_ref is its attachment UUID. The server binds the stored hash and author; supplied text is a human transcription, not verified document content. Returns the observation without promotion. The extraction recording verb remains job-only.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {
+        idempotency_key: uuid, entity_ref: entity, observation: humanFactSchema,
+      }, required: ['idempotency_key', 'entity_ref', 'observation'] },
+      handler: async (c: Db, actor: Actor, args: VerbInputs['record-human-fact']) => {
+        partner(actor);
+        validateHuman(args.entity_ref, args.observation);
+        return result((await c.query('select ops.record_human_fact($1,$2,$3,$4,$5::jsonb) r',
+          [organizationTenantForActor(actor), actor.id, args.idempotency_key, args.entity_ref, JSON.stringify(args.observation)])).rows[0].r);
+      },
+    },
+    'list-fact-review': {
+      write: false,
+      description: 'Read one durable review item per entity-field needing review for conflict, verify-band, OCR or human review. Returns all cited observations, canonical history, review history, canonical_version and review_version. include_resolved also returns settled fields for term/history display. Excerpts expire to null with a retained digest. Keyset cursor binds entity filter and include_resolved; concurrent arrivals before the cursor appear on a fresh scan.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {
+        entity_ref: entity, limit: { type: 'integer', minimum: 1, maximum: 100 },
+        cursor: { type: 'string', minLength: 1, maxLength: 2000 }, include_resolved: { type: 'boolean' },
+      } },
+      handler: async (c: Db, actor: Actor, args: VerbInputs['list-fact-review']) => {
+        if (args.cursor) {
+          try { JSON.parse(args.cursor); } catch { throw new ToolError({ error: 'invalid_cursor' }); }
+        }
+        return result((await c.query('select ops.list_fact_review($1,$2,$3,$4::jsonb,$5) r',
+          [organizationTenantForActor(actor), args.entity_ref ?? null, args.limit ?? 50,
+            args.cursor ?? null, args.include_resolved ?? false])).rows[0].r);
+      },
+    },
+    'resolve-fact-review': {
+      write: true, humanOnly: true,
+      description: 'Approve one stored observation, correct with a distinct human-authored observation from a stored deal attachment, or reject the current field review with a reason. Preserves all evidence and append-only decision and canonical histories. Pass both canonical base_version and review_version from list-fact-review; stale evidence or decisions refuse. Reject settles the displayed evidence set without changing canonical. New observations reopen review. Retries reuse the idempotency key.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: resolutionProperties,
+        required: resolutionRequired, anyOf: ['approve', 'correct', 'reject'].map(decision => ({
+          type: 'object', additionalProperties: false, properties: {
+            ...Object.fromEntries(Object.entries(resolutionProperties).filter(([key]) =>
+              key !== 'observation_id' && key !== 'correction'
+              || key === 'observation_id' && decision === 'approve'
+              || key === 'correction' && decision === 'correct')),
+            decision: { type: 'string', enum: [decision] },
+          }, required: [...resolutionRequired, ...(decision === 'approve' ? ['observation_id'] : []),
+            ...(decision === 'correct' ? ['correction'] : [])],
+        })),
+      },
+      handler: async (c: Db, actor: Actor, args: VerbInputs['resolve-fact-review']) => {
+        partner(actor);
+        if (!args.reason.trim()) throw new ToolError({ error: 'validation_error' });
+        if (args.decision === 'correct' && args.correction) {
+          validateHuman(args.entity_ref, args.correction);
+          if (args.correction.fact_key !== args.fact_key) throw new ToolError({ error: 'validation_error' });
+        }
+        return result((await c.query('select ops.resolve_fact_review($1,$2,$3::jsonb) r',
+          [organizationTenantForActor(actor), actor.id, JSON.stringify(args)])).rows[0].r);
+      },
+    },
+  };
+}
+
+===== Executed capture recipe =====
+import { acquireDisposablePostgres } from '/Users/booko/carr-system/mcp-server/test/helpers/disposable-postgres.mjs';
+import pg from '/Users/booko/carr-system/mcp-server/node_modules/pg/lib/index.js';
+import { factReviewTools } from '/tmp/WR39.S24.J1-producer/mcp-server/src/fact-review.ts';
+import { dealFileTools } from '/tmp/WR39.S24.J1-producer/mcp-server/src/deal-files.js';
+import { writeFile,readFile,mkdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+const fixture = await acquireDisposablePostgres({prefix:'wr39-s22-record-',snapshot:true});
+const c = new pg.Client({connectionString:fixture.dsn});
+const entity='00000000-0000-4000-8000-000000000022', actor='00000000-0000-4000-8000-000000000023', doc='00000000-0000-4000-8000-000000000024';
+try {
+ await c.connect(); await c.query('begin');
+ await c.query("insert into public.actor(id,slug,kind,display_name) values($1,'wr39-s22-synthetic','automation','Synthetic extractor')",[actor]);
+ const party='00000000-0000-4000-8000-000000000026', account='00000000-0000-4000-8000-000000000027';
+ await c.query("insert into public.party(id,kind,name,created_by,updated_by) values($1,'org','Synthetic tenant',$2,$2)",[party,actor]);
+ await c.query("insert into public.client(id,party_id,created_by,updated_by) values($1,$2,$3,$3)",[account,party,actor]);
+ await c.query("insert into public.deal(id,client_id,name,deal_type,phase,created_by,updated_by) values($1,$2,'Synthetic term filter',(select slug from public.deal_type_ref order by slug limit 1),(select slug from public.deal_phase order by slug limit 1),$3,$3)",[entity,account,actor]);
+ await c.query("insert into public.attachment(id,subject_type,subject_id,r2_key,filename,mime,sha256,bytes,created_by) values($1,'deal',$2,'synthetic/wr39-s22','Synthetic Lease.pdf','application/pdf',$3,10,$4)",[doc,entity,'b'.repeat(64),actor]);
+ const obs=(key,value,unit)=>({id:key,fact_key:key,value,unit,...(key==='base_rent_per_sf'?{expense_basis:'nnn'}:{}),source:{document_ref:doc,page_start:1,page_end:1,cited_text:'Synthetic recorded term '+key,content_hash:'b'.repeat(64),document_family_id:'wr39-s22'},method:'text_layer',extractor_version:'wr39-s22.v1',confidence_tier:'human_review',extraction:{pass:'synthetic',model:'synthetic'}});
+ const record=async rows=>{ const out=(await c.query('select ops.record_fact_observations($1,$2,$3,$4,$5) r',['carr-internal',actor,crypto.randomUUID(),entity,JSON.stringify(rows)])).rows[0].r; if(!out.ok) throw Error(JSON.stringify(out)); };
+ const read=(args={})=>factReviewTools()['list-fact-review'].handler(c,{id:actor},{entity_ref:entity,include_resolved:true,limit:100,...args});
+ await c.query('savepoint no_terms');
+ await record([obs('base_rent_per_sf','24','USD/SF/year'),obs('term_months','60','months')]);
+ const initial=await read();
+ const page1=await read({limit:1}); const page2=await read({limit:1,cursor:page1.next_cursor});
+ await record([obs('free_rent_months','3','months')]);
+ const added=await read();
+ await c.query("insert into public.actor(id,slug,kind,display_name) values($1,'wr39-s22-reviewer','human','Synthetic reviewer')",['00000000-0000-4000-8000-000000000025']);
+ const item=initial.items[0];
+ const receipt=await factReviewTools()['resolve-fact-review'].handler(c,{id:'00000000-0000-4000-8000-000000000025',human:true,slug:'joe'},{idempotency_key:crypto.randomUUID(),entity_ref:entity,fact_key:item.fact_key,base_version:item.canonical_version,review_version:item.review_version,decision:'reject',reason:'Synthetic recorded review'});
+ const reviewed=await read();
+ await c.query('rollback to savepoint no_terms');
+ const removed=await read();
+ const documents=await dealFileTools({})['list-deal-documents'].handler(c,{id:actor},{deal_id:entity,limit:100});
+ const sessionSource=await readFile('mcp-server/src/dealroom-web.js','utf8');
+ const fn=sessionSource.slice(sessionSource.indexOf('async function systemWorkSession('), sessionSource.indexOf('async function createActionChallenge('));
+ const session=await (new Function('json','REAUTH_TTL','ACTION_CHALLENGE_TTL',fn+';return systemWorkSession;'))(Response.json,600,60)({actor:{slug:'joe',display:'Synthetic reviewer'},csrfToken:'synthetic-only-not-a-credential',reauthAt:1,session:{}},{now:()=>1}).then(r=>r.json());
+ const root='/tmp/wr39-s24-j1/test/fixtures/fact-review-pending-status-view/'; await mkdir(root,{recursive:true});
+ await writeFile(root+'recordings.json',JSON.stringify({entity,initial,added,removed,reviewed,page1,page2,documents,receipt,session},null,2)+'\n');
+ await writeFile(root+'producer.txt',await readFile('mcp-server/src/fact-review.ts','utf8'));
+ await writeFile(root+'provenance.json',JSON.stringify({repository:'DoctorCRE/carr-system',revision:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),producer:'mcp-server/src/fact-review.ts',verb:'list-fact-review',source:'Disposable migrated Postgres synthetic fixtures; registered handler executed directly',args:{entity_ref:entity,include_resolved:true,limit:100},queries:['ops.record_fact_observations','ops.list_fact_review','public.v_deal_documents'],production_calls:0},null,2)+'\n');
+ console.log('Recorded '+initial.items.length+' initial keys and '+added.items.length+' refreshed keys');
+} finally { await c.query('rollback').catch(()=>{}); await c.end(); await fixture.close(); }

@@ -1,0 +1,13 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "962b2e1c6ad7ac644db1214d1ebd5d92d20c54a2",
+  "verb": "territory-state-board",
+  "method": "Registered leadFollowUpTools handler with isolated synthetic Postgres. SQL executed verbatim with pinned query inputs. Production mount parser consumes recordings.",
+  "producer_sha256": "1fef9499568296ab40d24a4118baae8ed1f2b02d84ac3f1275c159701ec4a13e",
+  "recordings_sha256": "a783c8474f6b2176e19b1227768b049f37fb0af83f7e1a274716472d75e1beb1",
+  "source_sha256": "49d2277d79189f1f2bf92ea775c86dccec90abee1446a9b9022ddb02a9bfe419",
+  "query_inputs": {
+    "vertical": "synthetic",
+    "state": "TX"
+  }
+}

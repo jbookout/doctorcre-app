@@ -1,0 +1,73 @@
+# File share intake
+
+The model uses `IntakeState` in `src/ui/share-intake-model.ts`. The controller owns session fencing, frozen operations, write identities and receipt/list confirmation. The service worker owns a single volatile file and its ten-minute expiry. The UI owns rendering only.
+
+| Transition | Behavior test |
+| --- | --- |
+| Receiving → Choosing → Ready → Filing → Filed | receiving choosing ready filing filed requires exact receipt and list readback |
+| Receiving → Refused | offline has no preview or writes; one bounded PDF or photo only |
+| Choosing → Refused | near-match deal choice refuses before writes |
+| Filing → Uncertain → Filing → Filed | lost-reserve reconciles frozen target and reuses write keys; lost-finalize reconciles frozen target and reuses write keys |
+| Choosing/Ready → Retired | discard clears unreserved bytes without creating a reservation |
+| Uncertain → Filing → Retired | discard after lost reserve reconciles then abandons with stable key |
+| Receiving/Choosing/Ready/Filing/Uncertain/Filed/Refused → Retired on session change | session retirement clears receiving/choosing/ready/filing/uncertain/filed/refused and fences later completion (seven behavior tests); sign-out returns no bytes |
+| Pending custody → Retired on expiry; unresolved filing → Uncertain without bytes | expired custody cannot return preview bytes; expired bytes retain unresolved reservation for abandonment |
+| Share POST → Receiving | share POST hands off exact bytes through 303 without shell cache or network POST |
+| Second POST → Refused, first unchanged | second share is refused and cannot replace first |
+| Second live intake page → Refused; closed owner → reconciliation | another live intake page cannot consume the same share; a closed intake page releases custody for reconciliation in a new page |
+| Invalid/oversize/cross-origin POST → Refused | cross-origin visibly refuses without caching; wrong type visibly refuses without caching; oversize visibly refuses without caching |
+| Unknown POST → network | unknown POST remains network-only |
+
+The chart is a behavior inventory. It does not prove server authorization, phone OS registration or browser service-worker lifetime guarantees. Receipt identity and exact deal matching are checked by the contract parser and behavior tests, rather than inferred from a label in the chart.
+
+## System design
+
+The lightest supported path is the OS Web Share Target POST, existing root worker, app-owned intake page and authenticated CARR browser intake. Both manifest sources register the same one-file target. The build serves the root manifest. CARR producer is pinned to `926602dead49619842aa4e617dae08d96fed40c2`. The unmodified contract SHA-256 is `1b3ab41c88d1fc094ef443e7e8d1af87f5690e63145f9ee4efaa40ec41855b4a`; the response fixture is copied from that commit.
+
+A bounded multipart stream limits the entire request before parsing, with 64 KiB for multipart framing. A fixed-capacity byte buffer prevents tiny stream chunks from growing an unbounded list of allocations. Only one file and no additional form fields are admitted. Each file is at most 25 MiB. At ten times usage, the same one-share cap prevents memory growth; a second share is visibly refused. One live intake client owns the handoff; a second page is refused until the first closes, then the new page can reconcile the same keys. The worker holds the file and server CSRF binding only in volatile memory. It never persists auth, file bytes, API replies or POSTs. There is no IndexedDB handoff because the producer exposes no non-secret session identity. Before reserve, worker loss retires with “Share the file again.” Before each write, the controller stores an AES-GCM encrypted recovery record in localStorage. A key derived from the verified CSRF token remains only in memory; neither credentials nor file bytes are persisted. A changed session cannot decrypt the record. This is an app-local recovery binding, not a fabricated CARR session identifier. The record freezes material, write keys and reservation identity across reload and across intake tabs. A fresh worker share cannot replace an unresolved operation. After receipt/list confirmation, cleanup failure cannot prevent Filed. If bytes are lost before upload, reconciliation retains the reservation for explicit abandonment, then the partner shares again.
+
+The file expires after ten minutes. Success and discard clear worker custody. The existing sign-out message clears it. The page clears its preview on session retirement, storage epoch change and expiry. Requests compare the verified session before and after each response. There is no background queue, polling or automatic retry. Every external failure stops the chain and offers manual reconciliation. The maximum list readback is ten pages of fifty documents; there is no per-deal fan-out. The board is one bounded read with local choices; filing re-reads authority and refuses an exact ID no longer present. This selector covers available board rows, not a claim of exhaustive deal access.
+
+A frozen operation has one key for reserve, finalize and abandon. The worker retains them across intake navigation while it lives. Lost reserve replies replay the exact arguments/key. Known reservations reconcile through receipt before upload/finalize. A finalized receipt must parse and match the file's deal, name, MIME, size and SHA-256, then appear in list-deal-documents before the UI says Filed. No object key is constructed. A lost finalize reply cannot re-upload bytes or change the deal. Discard before reservation just clears custody. Discard after an uncertain reserve first recovers that reservation, then abandons it. A finalized receipt is reconciled rather than represented as discarded.
+
+## Design and debt pass
+
+Codebase-design keeps the contract parser and the stateful filing controller behind small interfaces used by real UI and tests. Two custody designs were considered. Durable IndexedDB has no supported session binding; volatile worker custody fails closed without persisting credentials. Zero-tech-debt keeps one filing path and existing worker/cache policy. It introduces no generic upload queue, proxy or fabricated attachment identity. The added code replaces the absent share-to-document path; there was no obsolete implementation to delete.
+
+
+## Throughput checkpoint
+
+- Blocking first steps. Pin the producer contract, inspect both manifests, and reproduce missing intake before implementation.
+- Independent workstreams. Contract parsing, worker custody, UI and proof have distinct files; one worker owns their integration under the no-subagent instruction.
+- Shared mutable state. One pending share stays in the root worker; operation writes freeze the exact target before reserve. Only encrypted recovery metadata is shared across tabs; bytes and credentials remain volatile.
+- Smallest safe decomposition. One app PR owns this vertical slice. No CARR, factory, link-filing or production-write work is included.
+
+## Worker-loss transitions and tests
+
+| Transition | Behavior test |
+| --- | --- |
+| Ready → Retired after worker loss before reserve; Choosing → Retired after loss and reload | worker loss before selection retires explicitly, reload=false/true; installed-worker browser before-selection case |
+| Receiving → Uncertain on recovery; Uncertain → Uncertain after worker loss and reload | worker loss worker-after-reserve preserves recovery, reload=true; worker loss lost-finalize preserves recovery, reload=true |
+| Filing → Uncertain on missing upload bytes; Uncertain → Filing → Retired on abandonment | worker loss worker-after-reserve preserves recovery, reload=true; installed-worker browser after-reserve case |
+| Uncertain → Filing → Filed after authoritative receipt/list despite empty worker | worker loss lost-finalize preserves recovery, reload=false/true; installed-worker browser lost-finalize case |
+| Receiving with fresh worker share → Uncertain with original operation; changed session → no recovery | reload prioritizes unresolved write over fresh worker share and changed session cannot decrypt it |
+
+## Verification limits
+
+The updated chart is compiled with the statechart tool and TLC. See the fix report for its exact output and limits. The chart models visible states and session guards; it does not model encryption, HTTP authorization or phone operating-system lifetimes.
+
+The app edge serves the intake HTML as an explicit public utility shell. It contains no private data. This avoids requiring an unrelated producer page gate before session verification. The root service-worker cache allowlist is unchanged; the intake page, POST and all private reads bypass it.
+
+
+Lookup and abandonment recordings in `test/fixtures/share-intake/receipts.json` were captured by executing the registered handlers from the exact pinned producer source with an in-memory SQL adapter. The generator is retained at `/tmp/j177-capture.mjs`. No database or HTTP transport was supplied; unexpected SQL throws. The producer constructed its own internal key, which is stripped from every public recording. These are response-shape fixtures, not authorization or production-write proof. The copied producer contract and original reserve/upload/finalize/list fixture remain unmodified.
+
+## Recovery byte lifetime
+
+Recovered bytes keep the original worker deadline. Initial intake and recovery use the same expiry path. The upload body is acquired only after session verification and a deadline check, so a delayed timer cannot authorize expired bytes. Expiry drops the file while retaining encrypted operation metadata for receipt reconciliation or explicit abandonment. Timer expiry during an active request does not enable a second filing.
+
+| Transition | Behavior test |
+| --- | --- |
+| Uncertain → Uncertain when recovered bytes expire | reloaded recovery expires bytes and retains abandonment, delayed timer=false |
+| Uncertain → Filing → Uncertain when the deadline passes before the timer runs | reloaded recovery expires bytes and retains abandonment, delayed timer=true |
+
+The chart remains a visible-state inventory. Deadline enforcement is established by the executed controller and real-worker regression, rather than a timed formal model.

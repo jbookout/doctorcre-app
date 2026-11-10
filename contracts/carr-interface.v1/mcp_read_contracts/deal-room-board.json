@@ -1,9 +1,9 @@
 {
   "write": false,
   "producer": {
-    "repository": "jbookout/carr-system",
-    "source_commit": "b281ef8c69dad3c1dab98229074de1b167f06e02",
-    "pull_request": "https://github.com/jbookout/carr-system/pull/2670"
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "4a2463c7fee7d1ea2827325cb849bef6a44a88b2",
+    "pull_request": "https://github.com/DoctorCRE/carr-system/pull/3097"
   },
   "response": {
     "schema_version": "local-deals-board.v2",
@@ -141,6 +141,7 @@
     "open_actions": {
       "item_keys": [
         "id",
+        "item_id",
         "owner",
         "description",
         "due_on"

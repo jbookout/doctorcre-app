@@ -1,0 +1,14 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Loading: Open disclosure
+  Loading --> Ready: Valid board, retain condition
+  Loading --> Error: Invalid board or read failure
+  Ready --> Ready: Select condition, no read
+  Ready --> Loading: Refresh or apply server filters
+  Error --> Loading: Retry
+  Ready --> Ready: Close and reopen disclosure
+  Loading --> Idle: Authorization failure or clear
+  Ready --> Idle: Clear session
+  Loading --> Disposed: Dispose and ignore pending response
+  Idle --> Idle: Ignore retired response
+  Disposed --> [*]
