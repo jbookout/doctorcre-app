@@ -22,6 +22,7 @@ export function ownedBrowserProcesses(root, ownerPid) {
 
 export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeoutMs = 5000, acquisitionDelayMs = 0 }) {
   assert.ok(['late launch', 'stalled evaluation'].includes(mode));
+  const proofTimeoutMs = mode === 'stalled evaluation' ? 30000 : timeoutMs;
   const root = temporaryDirectory('proof-browser-fault-', t);
   const diagnostics = join(root, 'diagnostics.json');
   const preload = `
@@ -31,6 +32,21 @@ export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeout
     const launch = chromium.launch.bind(chromium);
     const state = { acquired: false, disconnected: false, evaluating: false, pids: [] };
     const save = () => { if (state.directory) state.pids = [...new Set([...state.pids, ...ownedBrowserProcesses(state.directory, process.pid)])]; writeFileSync(${JSON.stringify(diagnostics)}, JSON.stringify(state)); };
+    const realSetTimeout = globalThis.setTimeout;
+    let deadline;
+    if (${JSON.stringify(mode)} === 'stalled evaluation') {
+      globalThis.setTimeout = (callback, delay, ...args) => {
+        if (delay !== ${proofTimeoutMs}) return realSetTimeout(callback, delay, ...args);
+        globalThis.setTimeout = realSetTimeout;
+        const timer = realSetTimeout(callback, delay, ...args);
+        deadline = () => {
+          clearTimeout(timer);
+          state.deadlineArmed = true;
+          realSetTimeout(() => { state.deadlineTriggered = true; save(); callback(...args); }, ${timeoutMs});
+        };
+        return timer;
+      };
+    }
     chromium.launch = async options => {
       state.directory = options.env.TMPDIR;
       save();
@@ -44,7 +60,13 @@ export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeout
         browser.newPage = async (...args) => {
           const page = await newPage(...args);
           await new Promise(resolve => setTimeout(resolve, ${acquisitionDelayMs}));
-          page.evaluate = () => { state.evaluating = true; save(); return new Promise(() => {}); };
+          page.evaluate = () => {
+            state.evaluating = true;
+            if (!deadline) throw Error('Proof deadline timer was not captured');
+            deadline();
+            save();
+            return new Promise(() => {});
+          };
           return page;
         };
       }
@@ -56,7 +78,7 @@ export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeout
   let child, watchdog;
   try {
     const result = await new Promise((resolveResult, reject) => {
-      child = spawn(process.execPath, ['--import', preloadPath, resolve(entry), ...args, '--timeout-ms', String(timeoutMs)], { stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(process.execPath, ['--import', preloadPath, resolve(entry), ...args, '--timeout-ms', String(proofTimeoutMs)], { stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '', stderr = '';
       child.stdout.on('data', chunk => stdout += chunk);
       child.stderr.on('data', chunk => stderr += chunk);
@@ -73,7 +95,11 @@ export async function assertProofDeadlineCleanup(t, { entry, args, mode, timeout
     assert.equal(state.acquired, true);
     assert.ok(state.pids.length > 1, 'must observe owned browser process IDs before closure');
     assert.equal(state.disconnected, true);
-    if (mode === 'stalled evaluation') assert.equal(state.evaluating, true);
+    if (mode === 'stalled evaluation') {
+      assert.equal(state.evaluating, true);
+      assert.equal(state.deadlineArmed, true);
+      assert.equal(state.deadlineTriggered, true);
+    }
     assert.deepEqual(survivors, [], 'zero surviving owned browser processes');
     return result;
   } finally {
