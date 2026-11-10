@@ -60,10 +60,8 @@
     "test/quiet-lead-history.browser.ts",
     "test/quiet-lead-history-fixture.ts",
     "js/leads-client.d.ts",
-    "scripts/proof-browser.d.mts",
     "test/leads-workspace-fixture.d.mts",
     "test/leads-browser-fixture.d.mts",
-    "test/proof-browser-harness.d.mts",
     "test/quiet-lead-history-browser.d.ts"
   ],
   "compilerOptions": {
