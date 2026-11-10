@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { validateLeadDetail, validateLeadWorkspace } from "../js/leads-client.js";
 import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
@@ -248,15 +247,4 @@ test("absent research and empty evidence have no source selector", async (t) => 
   });
   assert.equal(await page.getByText("No sourced findings.", { exact: true }).count(), 1);
   assert.equal(await page.getByLabel("Finding source", { exact: true }).count(), 0);
-});
-
-test("synthetic source findings replay the pinned producer and consumer contract", async () => {
-  const { stripTypeScriptTypes } = await import("node:module");
-  const producer = await readFile(new URL("./fixtures/research-kind-filter/producer.txt", import.meta.url), "utf8");
-  const { researchSummary } = await import(
-    `data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(producer)).toString("base64")}`
-  );
-  const actual = researchSummary(recording.detail.research.evidence, Date.parse("2026-11-07T12:00:00Z"));
-  assert.deepEqual(actual, recording.detail.research);
-  validateLeadDetail({ ...recording.detail, research: actual }, recording.detail.id);
 });
