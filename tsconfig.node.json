@@ -58,6 +58,7 @@
     "scripts/prove-quiet-lead-history.ts",
     "test/prove-quiet-lead-history.browser.ts",
     "test/quiet-lead-history.browser.ts",
+    "test/quiet-lead-history-fixture.ts",
     "js/leads-client.d.ts",
     "scripts/proof-browser.d.mts",
     "test/leads-workspace-fixture.d.mts",

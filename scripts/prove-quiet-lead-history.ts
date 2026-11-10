@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import type { Browser, BrowserType, Page } from "playwright";
 import { chromium as cdpChromium } from "playwright";
 import type { QuietProposal } from "../js/leads-client.d.ts";
-import { detail, workspace } from "../test/leads-workspace-fixture.mjs";
 import { launchProofBrowser, readAppRelease } from "./app-release-reader.mjs";
-import { appAssetSnapshot } from "./fixture-app-assets.mjs";
-import { startWorkerFixture } from "./fixture-http.mjs";
 import { chromium } from "./proof-browser.mjs";
 
 type ProofOptions = {
@@ -63,7 +60,7 @@ export async function prove({
   const remaining = () => Math.max(1, deadline - Date.now());
   let browser: Browser | undefined, page: Page | undefined, pendingBrowser: Promise<Browser> | undefined;
   const pendingPages: Promise<Page>[] = [];
-  let fixtureServer: Awaited<ReturnType<typeof startWorkerFixture>> | undefined;
+  let fixtureServer: { origin: string; close(): Promise<void> } | undefined;
   const release = async () => bounded(readRelease(releaseBase, { timeoutMs: remaining() }));
   async function contains(source: string) {
     if (!/^[a-f0-9]{40}$/.test(source || "") || /^0+$/.test(source)) throw unavailable("Unknown release");
@@ -143,45 +140,8 @@ export async function prove({
       throw unavailable(`Browser session unavailable: ${messageOf(error)}`);
     }
     if (fixture) {
-      const assets = await appAssetSnapshot(undefined, fileURLToPath(new URL("../", import.meta.url)));
-      controller.signal.throwIfAborted();
-      fixtureServer = await startWorkerFixture({
-        assets,
-        signal: controller.signal,
-        env: {
-          APP_ENV: "fixture",
-          CARR: {
-            fetch: async (request) => {
-              if (new URL(request.url).pathname !== "/mcp")
-                return Response.json({
-                  actor: { slug: "example-partner" },
-                  csrf_token: "synthetic-test-token",
-                  items: [],
-                  counts: {},
-                });
-              const body = await request.json();
-              const params = body.params;
-              let value: unknown;
-              if (params?.name === "list-verbs") value = fixtureRegistry;
-              else if (params?.name === "quiet-follow-ups") value = recording;
-              else if (params?.name === "lead-board") {
-                const board = workspace();
-                if (params.arguments?.lead_id)
-                  board.detail = detail(board.leads.find((row) => row.id === params.arguments.lead_id));
-                value = board;
-              } else
-                return Response.json({
-                  result: { isError: true, content: [{ type: "text", text: '{"error":"fixture_read_unavailable"}' }] },
-                });
-              return Response.json({
-                jsonrpc: "2.0",
-                id: body.id,
-                result: { content: [{ type: "text", text: JSON.stringify(value) }] },
-              });
-            },
-          },
-        },
-      });
+      const { historyFixture } = await import("../test/quiet-lead-history-fixture.ts");
+      fixtureServer = await historyFixture(recording, fixtureRegistry, controller.signal);
       base = new URL(fixtureServer.origin);
     }
     let rpc = 0,
