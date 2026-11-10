@@ -52,7 +52,11 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-deal-tours-revoked-controls.ts",
+    "test/deal-tours-revoked-controls.browser.ts",
+    "test/prove-deal-tours-revoked-controls.browser.ts",
+    "test/deal-tours-revoked-controls.d.ts"
   ],
   "compilerOptions": {
     "lib": [
@@ -63,6 +67,9 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
+      ],
+      "/js/ui-deal-tours.js": [
+        "./src/ui/deal-tours.tsx"
       ]
     },
     "jsx": "react-jsx"
