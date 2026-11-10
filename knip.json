@@ -138,6 +138,7 @@
     "src/ui/lead-research.tsx",
     "src/ui/market-terms.tsx",
     "src/ui/meeting-preparation-lifetime.ts",
+    "src/ui/portal/demographics-core.tsx",
     "src/ui/portal/documents.tsx",
     "src/ui/portal/microzones-competition.tsx",
     "src/ui/portal/ownership-modeler.tsx",

@@ -55,7 +55,9 @@
     "test/phone-push-worker.test.ts",
     "test/quiet-vendors-malformed-snapshot.browser.ts",
     "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
-    "scripts/prove-quiet-vendors-malformed-snapshot.ts"
+    "scripts/prove-quiet-vendors-malformed-snapshot.ts",
+    "test/portal-demographics-core.test.ts",
+    "test/portal-demographics-core-browser.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
