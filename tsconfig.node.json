@@ -55,7 +55,12 @@
     "test/phone-push-worker.test.ts",
     "scripts/prove-queued-asks-corrupt-entry-isolation.ts",
     "test/prove-queued-asks-corrupt-entry-isolation.browser.ts",
-    "scripts/proof-browser.d.mts"
+    "scripts/proof-browser.d.mts",
+    "test/quiet-vendors-malformed-snapshot.browser.ts",
+    "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
+    "scripts/prove-quiet-vendors-malformed-snapshot.ts",
+    "test/portal-demographics-core.test.ts",
+    "test/portal-demographics-core-browser.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
@@ -66,6 +71,9 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
+      ],
+      "/js/ui-quiet-vendors.js": [
+        "./src/ui/quiet-vendors.tsx"
       ]
     },
     "jsx": "react-jsx"

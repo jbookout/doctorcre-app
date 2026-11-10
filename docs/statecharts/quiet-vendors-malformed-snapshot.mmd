@@ -1,0 +1,28 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle: Show quiet vendors
+  Loading: Loading with Hide available
+  Refused: Unavailable alert with Refresh and Hide
+  Ready: Five vendors per page or valid empty message
+  Hidden: Show quiet vendors with retained result
+  Disposed: Panel removed
+  Idle --> Loading: Show
+  Loading --> Loading: Repeated Show or Refresh ignored
+  Loading --> Ready: Complete valid snapshot
+  Loading --> Refused: Malformed snapshot or rejected read
+  Refused --> Loading: Refresh
+  Ready --> Loading: Refresh
+  Ready --> Ready: Next or Previous bounded page
+  Ready --> Hidden: Hide and focus Show
+  Refused --> Hidden: Hide and focus Show
+  Loading --> Hidden: Hide and focus Show
+  Hidden --> Ready: Reopen retained valid result
+  Hidden --> Refused: Reopen retained refusal
+  Hidden --> Loading: Reopen pending read
+  Loading --> Disposed: Dispose
+  Ready --> Disposed: Dispose
+  Refused --> Disposed: Dispose
+  Disposed --> Disposed: Late read ignored
+  %% never Show an empty-list message for rejected data.
+  %% never Start a second load while one is pending.
+  %% never Render after disposal.
