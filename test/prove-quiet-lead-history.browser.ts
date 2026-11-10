@@ -145,6 +145,16 @@ for (const mode of ["late launch", "stalled evaluation"])
     const fixture = await server(t);
     await assertProofDeadlineCleanup(t, { entry, args: args(fixture.origin).slice(1), mode, timeoutMs: 2000 });
   });
+test("stalled evaluation cleanup waits for slow page acquisition", async (t) => {
+  const fixture = await server(t);
+  await assertProofDeadlineCleanup(t, {
+    entry,
+    args: args(fixture.origin).slice(1),
+    mode: "stalled evaluation",
+    timeoutMs: 2000,
+    acquisitionDelayMs: 2200,
+  });
+});
 test("changing release and stalled release are insufficient evidence", async (t) => {
   const fixture = await server(t);
   let reads = 0;
