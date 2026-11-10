@@ -4,8 +4,12 @@ import test from "node:test";
 import { build } from "esbuild";
 import type { validateQuietFollowUps as QuietParser, QuietProposal } from "../js/leads-client.d.ts";
 import { validateQuietFollowUps } from "../js/leads-client.js";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "./browser-harness.mjs";
-import { routeLeads } from "./leads-browser-fixture.mjs";
+import { workspace } from "./leads-workspace-fixture.mjs";
+
+const assets = await appAssetSnapshot();
 
 const snapshot: ReturnType<typeof QuietParser> = validateQuietFollowUps(
   JSON.parse(await readFile(new URL("./fixtures/quiet-lead-owner-pages/recordings.json", import.meta.url), "utf8")),
@@ -17,7 +21,26 @@ for (const width of [390, 1440])
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     page.setDefaultTimeout(3000);
-    await routeLeads(page);
+    const server = await startWorkerFixture({
+      assets,
+      env: {
+        APP_ENV: "fixture",
+        CARR: {
+          fetch: async (request) => {
+            if (new URL(request.url).pathname !== "/mcp")
+              return Response.json({ actor: { slug: "example-partner" }, csrf_token: "synthetic-test-token" });
+            const body = await request.json();
+            const value = body.params.name === "lead-board" ? workspace() : { error: "fixture_read_unavailable" };
+            return Response.json({
+              jsonrpc: "2.0",
+              id: body.id,
+              result: { content: [{ type: "text", text: JSON.stringify(value) }] },
+            });
+          },
+        },
+      },
+    });
+    t.after(() => server.close());
     let reads = 0,
       refused = false;
     await page.route("**/mcp", (route, request) => {
@@ -31,7 +54,7 @@ for (const width of [390, 1440])
           })
         : route.fulfill({ json: { result: { content: [{ type: "text", text: JSON.stringify(snapshot) }] } } });
     });
-    await page.goto("http://localhost/leads");
+    await page.goto(`${server.origin}/leads`);
     const section = page.locator("#quietFollowUps");
     const history = section.getByRole("combobox", { name: "Contact history", exact: true });
     const owner = section.getByRole("combobox", { name: "Quiet lead owner", exact: true });
