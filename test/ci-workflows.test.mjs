@@ -599,7 +599,7 @@ test('release handoff admits both app identities through the source rule and ref
 
  test('typed watch journeys belong to browser collection and remain typechecked', async () => {
  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
- const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+ const config = JSON.parse(await readFile(new URL('../tsconfig.node.generated.json', import.meta.url), 'utf8'));
  assert.ok(config.files.includes('test/watch-controls.browser.ts'));
  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
@@ -608,7 +608,7 @@ test('release handoff admits both app identities through the source rule and ref
 
 
 test('reply proof browser journeys run after browser installation and remain typechecked', async () => {
-  const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+  const config = JSON.parse(await readFile(new URL('../tsconfig.node.generated.json', import.meta.url), 'utf8'));
   assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
   assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
   const steps = workflowDocument(checks).jobs.checks.steps;

@@ -37,7 +37,8 @@
     "docs:check": "node scripts/check-docs.mjs",
     "copy:check": "node scripts/check-ui-copy.mjs *.html js src/ui css data public-shell reports tours test/fixtures tests/fixtures",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json",
-    "fix": "biome check --write ."
+    "fix": "biome check --write .",
+    "check:shared-lists": "node scripts/check-shared-project-merge.ts"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
