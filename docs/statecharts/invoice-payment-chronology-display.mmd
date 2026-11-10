@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> Loading
+    Loading --> Readable: Valid invoice snapshot
+    Loading --> Unavailable: Impossible payment chronology
+    Loading --> Unavailable: Read fails
+    Readable --> Retained: Impossible chronology or read fails
+    Retained --> Readable: Retry returns valid snapshot
+    Unavailable --> Readable: Retry returns valid snapshot
+    Readable --> Readable: Genuine same-day or ordinary invoice refresh
+    Unavailable: Invoices unavailable and refresh available
+    Readable: Verified invoices and owned deal navigation
+    Retained: Prior verified invoices with unavailable notice
+    %% never show impossible chronology as zero days to payment
+    %% never enable payment from a rejected snapshot
