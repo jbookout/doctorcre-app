@@ -147,6 +147,11 @@ test('deal Tours lists, opens, starts and recovers on the fixture server', async
       assert.equal(write.subject_type,'deal'); assert.equal(write.subject_id,deal);
       await page.evaluate(() => scrollTo(0,0));
       await page.screenshot({path:new URL(`../out/test-artifacts/deal-tours/${width}-${theme}-created.png`,import.meta.url).pathname,fullPage:true});
+      await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+      await page.getByRole('status').filter({hasText:'Your session has changed.'}).waitFor();
+      assert.equal(await page.locator('#workspace-tours iframe').count(),0);
+      assert.equal(await page.locator('#workspace-tours button').count(),0);
+      await page.screenshot({path:new URL(`../out/test-artifacts/deal-tours/${width}-${theme}-retired.png`,import.meta.url).pathname,fullPage:true});
       await page.goto(`${server.url}/tours`);
       await page.locator(`a[href="/deals?deal=${deal}&tab=tours&tour=${tour}"]`).waitFor({state:'attached'});
       assert.equal(await page.locator('#plan-form').count(),0);
