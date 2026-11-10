@@ -12,15 +12,15 @@ Expected exit is 0, every invariant holds, and the spec draws the input back unc
 
 ## Scope and code correspondence
 
-Availability and rows change atomically on a completed current read. The `%% when` guards are executable guards, not display annotations. `js/leads-workspace-app.js:224` and `:227` reject stale success and refusal callbacks. `src/ui/quiet-leads.tsx:79` rejects every update after disposal. Its render at line 24 excludes rows outside ready. Closing retires to a named terminal screen, with a late-update self-loop.
+Availability and rows change atomically on a completed current read. The `%% when` guards are executable guards, not display annotations. `js/leads-workspace-app.js:224` and `:227` reject stale success and refusal callbacks. `src/ui/quiet-leads.tsx` update method rejects every update after disposal. Its render function excludes rows outside ready. Closing retires to a named terminal screen, with a late-update self-loop.
 
-History is one of all, created_at, or last_contact. The predicate at `src/ui/quiet-leads.tsx:29` matches that recorded basis before pagination. Row states abstract the matching collection, including the possibility of an empty collection. Owner and search further narrow that collection without changing its history class. The model distinguishes the first page from later pages. LastChange records whether the latest relevant action resets the page or navigates it. Every filter action and successful read resets both together. Loading may retain an internal offset while hiding rows; the successful refresh resets it.
+History is one of all, created_at, or last_contact. The predicate at `src/ui/quiet-leads.tsx` render predicate matches that recorded basis before pagination. Row states abstract the matching collection, including the possibility of an empty collection. Owner and search further narrow that collection without changing its history class. The model distinguishes the first page from later pages. LastChange records whether the latest relevant action resets the page or navigates it. Every filter action and successful read resets both together. Loading may retain an internal offset while hiding rows; the successful refresh resets it.
 
 The model omits actual row IDs, counts, owner strings, search text, arbitrary page numbers, network payloads, and read epoch numbers. Browser tests assert those values through the production parser and real renderer. Next and previous abstract eligible page navigation; their row-count eligibility is checked by browser tests. The proof region is an independent lifecycle overview. It does not formally prove release ancestry, resource ownership, transport safety, or exit codes. CLI tests check these contracts. This model checks finite safety, not liveness or the application source itself.
 
 ## Invariants and named tests
 
-All test names below are literal names in `test/quiet-lead-history-browser.test.mjs`, except where a file is named explicitly.
+All test names below are literal names in `test/quiet-lead-history.browser.ts`, except where a file is named explicitly.
 
 | Invariants | Named implementation tests |
 | --- | --- |
@@ -48,4 +48,4 @@ Every edge with a repeated action label uses the corresponding test below. Initi
 | Deadline or changing release | changing release and stalled release are insufficient evidence; deadline cleanup stalled evaluation |
 | Acquisition deadline | deadline cleanup late launch; late newPage closes before CDP disconnect and fresh connection sees no added tab |
 
-All proof test names are in `test/prove-quiet-lead-history.test.mjs`.
+All proof test names are in `test/prove-quiet-lead-history.test.ts`.

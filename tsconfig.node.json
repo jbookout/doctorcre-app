@@ -52,7 +52,16 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "scripts/prove-quiet-lead-history.ts",
+    "test/prove-quiet-lead-history.test.ts",
+    "test/quiet-lead-history.browser.ts",
+    "js/leads-client.d.ts",
+    "scripts/proof-browser.d.mts",
+    "test/leads-workspace-fixture.d.mts",
+    "test/leads-browser-fixture.d.mts",
+    "test/proof-browser-harness.d.mts",
+    "test/quiet-lead-history-browser.d.ts"
   ],
   "compilerOptions": {
     "lib": [
