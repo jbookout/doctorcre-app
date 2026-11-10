@@ -57,8 +57,7 @@
     "test/prove-research-source.browser.ts",
     "test/research-source.browser.ts",
     "js/leads-client.d.ts",
-    "scripts/proof-browser.d.mts",
-    "test/leads-browser-fixture.d.mts"
+    "scripts/proof-browser.d.mts"
   ],
   "compilerOptions": {
     "lib": [

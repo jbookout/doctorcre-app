@@ -2,9 +2,61 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { validateLeadDetail, validateLeadWorkspace } from "../js/leads-client.js";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import { chromium } from "./browser-harness.mjs";
 import recording from "./fixtures/research-source/recordings.json" with { type: "json" };
-import { routeLeads } from "./leads-browser-fixture.mjs";
+
+const assets = await appAssetSnapshot();
+async function fixture(onRead = () => {}, onWrite = () => {}) {
+  return startWorkerFixture({
+    assets,
+    env: {
+      APP_ENV: "fixture",
+      CARR: {
+        fetch: async (request) => {
+          if (new URL(request.url).pathname !== "/mcp")
+            return Response.json({ actor: { slug: "example-partner" }, csrf_token: "synthetic-test-token" });
+          const body = await request.json();
+          const { name, arguments: args } = body.params;
+          let value: unknown;
+          if (name === "lead-board") {
+            onRead();
+            value = {
+              ...recording,
+              ...(args.lead_id ? { detail: { ...structuredClone(recording.detail), id: args.lead_id } } : {}),
+            };
+          } else if (name === "list-practice-origination") {
+            value = {
+              ok: true,
+              contract: "practice-origination.v1",
+              cards: [],
+              coverage: [],
+              next_cursor: null,
+              outreach_started: false,
+            };
+          } else if (name === "quiet-follow-ups") {
+            value = {
+              schema_version: "quiet-follow-ups.v1",
+              cadence: { lead_days: 45, vendor_days: 90 },
+              proposals: [],
+              sent: false,
+              tasks_created: false,
+            };
+          } else {
+            onWrite();
+            value = { error: "unexpected_fixture_rpc" };
+          }
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: { content: [{ type: "text", text: JSON.stringify(value) }] },
+          });
+        },
+      },
+    },
+  });
+}
 
 validateLeadWorkspace(recording);
 validateLeadDetail(recording.detail, recording.detail.id);
@@ -20,13 +72,16 @@ for (const width of [390, 1440])
     page.on("request", (request) => {
       if (new URL(request.url()).pathname === "/mcp") rpc++;
     });
-    await routeLeads(page, {
-      getBoard: () => recording,
-      getDetail: (row) => ({ ...structuredClone(recording.detail), id: row.id }),
-      onRead: () => reads++,
-      onWrite: () => writes++,
-    });
-    await page.goto("http://localhost/leads");
+    const server = await fixture(
+      () => {
+        reads++;
+      },
+      () => {
+        writes++;
+      },
+    );
+    t.after(() => server.close());
+    await page.goto(`${server.origin}/leads`);
     await page.locator("[data-open]").first().click();
     const panel = page.locator("#sourcedResearch");
     const selector = panel.getByLabel("Finding source", { exact: true });
@@ -167,8 +222,9 @@ test("absent research and empty evidence have no source selector", async (t) => 
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await routeLeads(page);
-  await page.goto("http://localhost/leads");
+  const server = await fixture();
+  t.after(() => server.close());
+  await page.goto(`${server.origin}/leads`);
   await page.evaluate(async () => {
     const { mountLeadResearch } = await import(String("/js/ui-lead-research.js"));
     const host = document.createElement("div");
