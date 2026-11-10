@@ -31,7 +31,8 @@ export async function prepareClientGrant(options: {
     !scopes.length ||
     new Set(scopes).size !== scopes.length ||
     scopes.some((scope) => !SCOPES.has(scope)) ||
-    (scopes.some((scope) => scope === "comment" || scope === "shortlist") && !scopes.includes("view_packet"))
+    (scopes.some((scope) => scope === "comment" || scope === "shortlist" || scope === "download") &&
+      !scopes.includes("view_packet"))
   )
     throw Error("Choose tour access and a future expiry.");
   const bytes = crypto.getRandomValues(new Uint8Array(32));

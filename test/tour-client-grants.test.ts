@@ -35,9 +35,11 @@ test("rotation binds the predecessor and preserves separate download authority",
     grantId,
   };
   assert.equal((await prepareClientGrant(options)).payload.share_grant_id, grantId);
-  assert.deepEqual((await prepareClientGrant({ ...options, scopes: ["download"] })).payload.permission_scopes, [
-    "download",
-  ]);
+  assert.deepEqual(
+    (await prepareClientGrant({ ...options, scopes: ["view_packet", "download"] })).payload.permission_scopes,
+    ["view_packet", "download"],
+  );
+  await assert.rejects(prepareClientGrant({ ...options, scopes: ["download"] }));
   await assert.rejects(prepareClientGrant({ ...options, scopes: ["comment"] }));
   await assert.rejects(prepareClientGrant({ ...options, scopes: [] }));
   await assert.rejects(prepareClientGrant({ ...options, expiresAt: "2026-11-10T12:00:00Z" }));

@@ -1,4 +1,7 @@
-export function mountTourClientDownload(parent: HTMLElement) {
+export function mountTourClientDownload(
+  parent: HTMLElement,
+  inContext: <T>(operation: () => Promise<T>) => Promise<T>,
+) {
   const button = parent.ownerDocument.createElement("button");
   button.type = "button";
   button.textContent = "Download PDF";
@@ -8,11 +11,13 @@ export function mountTourClientDownload(parent: HTMLElement) {
     button.disabled = true;
     status.textContent = "Preparing your PDF…";
     try {
-      const response = await fetch("/api/share/download", {
-        credentials: "same-origin",
-        cache: "no-store",
-        signal: AbortSignal.timeout(30_000),
-      });
+      const response = await inContext(() =>
+        fetch("/api/share/download", {
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: AbortSignal.timeout(30_000),
+        }),
+      );
       if (!response.ok || response.headers.get("content-type") !== "application/pdf") {
         status.textContent = "This link cannot download a PDF. Ask your broker for access or a reviewed packet.";
         return;
