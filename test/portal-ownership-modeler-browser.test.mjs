@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-import { chromium } from 'playwright';
+import { componentDocument, chromium } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import { readFile } from 'node:fs/promises';
 const publication = JSON.parse(await readFile(new URL('./fixtures/ownership/example-health.market-study.json',import.meta.url)));
@@ -73,7 +73,7 @@ function regression(name, check) {
   const browser=await chromium.launch({headless:true,args:[...CHROMIUM_SAFETY_ARGS]});
   try {
    const page=await browser.newPage();
-   await page.setContent('<div id="root"></div><output id="opened"></output>');
+   await componentDocument(page, 'http://localhost', {html: '<div id="root"></div><output id="opened"></output>'});
    await page.addScriptTag({content:bundle.outputFiles[0].text});
    await page.locator('#ownership-comparison').waitFor();
    await check(page);

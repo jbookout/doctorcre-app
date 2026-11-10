@@ -8,6 +8,7 @@ import { createFixtureClient } from '../js/fixture-client.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 
+const anniversaries = JSON.parse(await readFile(new URL('./fixtures/client-anniversary-panel/recordings.json', import.meta.url),'utf8'));
 const NOW = new Date('2026-10-01T18:00:00Z');
 async function shot(page, name) {
   if (!process.env.W13_SCREENSHOT_DIR) return;
@@ -21,7 +22,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'America/Chicago', reducedMotion: motion });
   await page.clock.install({ time: NOW });
   const payload = leaseRadarFixture('2026-10-01'), errors = [], calls = [];
-  let failure = null, reads = 0;
+  let failure = null, reads = 0, anniversaryReads = 0;
   if (long) payload.leases[0].client_name = `Demo${'Practice'.repeat(30)}`;
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
@@ -46,6 +47,11 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost')
       return route.abort();
+    if (url.pathname === '/api/v1/intelligence/client-anniversary-read') {
+      anniversaryReads++;
+      assert.equal(url.search, '?horizon_days=30&limit=20&offset=0');
+      return route.fulfill({json:anniversaries.ready.output});
+    }
     if (url.pathname === '/api/v1/business/leases') {
       reads++; assert.equal(route.request().method(), 'GET');
       if (failure === 'timeout') return;
@@ -70,7 +76,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     await page.locator('.home-grid').scrollIntoViewIfNeeded();
   }
   await page.locator(home ? '#homePastClients .lease-card' : '#leaseRadar .lease-card').first().waitFor();
-  return { page, errors, calls, payload, fail(value) { failure = value; }, get reads() { return reads; } };
+  return { page, errors, calls, payload, fail(value) { failure = value; }, get reads() { return reads; }, get anniversaryReads() { return anniversaryReads; } };
 }
 const settled = page => page.waitForFunction(() => document.querySelector('#refreshLeases').getAttribute('aria-busy') === 'false');
 const online = page => page.evaluate(() => window.dispatchEvent(new Event('online')));
@@ -105,7 +111,11 @@ test('finding 4: Home projection exceptions enter unavailable and recover', asyn
 
 test('radar uses shared slots, quarter timeline, wide details and gaps at desktop and phone widths', async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
-    const { page, errors } = await open(t, { width });
+    const state = await open(t, { width });
+    const { page, errors } = state;
+    await page.getByText('Synthetic Clinic',{exact:true}).waitFor();
+    assert.equal(state.anniversaryReads,1);
+    assert.equal(await page.getByRole('button',{name:'Hide closing anniversaries'}).getAttribute('aria-expanded'),'true');
     assert.equal(await page.locator('#appTabsSlot [data-lease-view]').count(), 2);
     assert.equal(await page.locator('#appSidebarSlot #leaseSearch').count(), 1);
     assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);

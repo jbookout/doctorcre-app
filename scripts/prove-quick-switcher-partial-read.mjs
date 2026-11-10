@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import { chromium } from 'playwright';
 import { parseArgs } from 'node:util';
 import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
@@ -16,7 +17,8 @@ if (values.help) {
     const receipt = { origin: origin.origin, release: null, module_urls: [], assertions: [], requests: 0 };
     const expired = new Promise((_, reject) => { timer = setTimeout(() => { void browser?.close(); reject(Error('Proof timeout')); }, timeout); });
     const run = async () => {
-      browser = await chromium.launch({ timeout, args: [...CHROMIUM_SAFETY_ARGS] });
+      receipt.release = await readAppRelease(origin, { timeoutMs: timeout });
+      browser = await launchProofBrowser(chromium, { timeout, args: [...CHROMIUM_SAFETY_ARGS] });
       const context = await browser.newContext({ serviceWorkers: 'block' });
       context.setDefaultTimeout(timeout);
       await context.route('**/*', route => {
@@ -24,20 +26,13 @@ if (values.help) {
         const url = new URL(request.url());
         if (++receipt.requests > 64 || request.method() !== 'GET' || url.origin !== origin.origin) return route.abort();
         if (url.pathname === '/__quick-switcher-proof') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Isolated switcher proof</title><button id="opener">Open</button>' });
-        if (url.pathname === '/app-release' || (url.pathname.startsWith('/js/') && url.pathname.endsWith('.js'))) return route.continue();
+        if ((url.pathname.startsWith('/js/') && url.pathname.endsWith('.js'))) return route.continue();
         if (url.pathname === '/deals' && url.search === '?deal=d1') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Selected Valid Deal</title>' });
         return route.abort();
       });
       const page = await context.newPage();
       page.on('response', response => { if (new URL(response.url()).pathname.startsWith('/js/')) receipt.module_urls.push(response.url()); });
       await page.goto(`${origin.origin}/__quick-switcher-proof`);
-      receipt.release = await page.evaluate(async () => {
-        const response = await fetch('/app-release');
-        if (!response.ok) throw Error('Release identity unavailable');
-        return response.json();
-      });
-      if (receipt.release?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(receipt.release?.source_commit)) throw Error('Release identity unavailable');
-      if (receipt.release.source_commit === '0'.repeat(40) && !['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname)) throw Error('Deployed release identity unavailable');
       const open = async () => page.evaluate(async () => {
         const { openQuickSwitcher } = await import('/js/ui-quick-switcher.js');
         if (typeof openQuickSwitcher !== 'function') throw Error('Missing openQuickSwitcher export');
@@ -65,6 +60,6 @@ if (values.help) {
     await Promise.race([run(), expired]);
   } catch (error) {
     console.error(`Quick switcher proof failed: ${error.message}`);
-    process.exitCode = 1;
+    process.exitCode = error.exitCode || 1;
   } finally { clearTimeout(timer); await browser?.close(); }
 }

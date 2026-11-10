@@ -1,0 +1,21 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "overdue-reviews-truthful-coverage",
+  "targets": ["app"],
+  "assertions": [{
+    "id": "deployed-overdue-coverage",
+    "predicate": "Verify manifest source commit against app release and execute its hash-verified ui-deal-reviews asset graph at phone and desktop widths. Rejected proposal and automatic rows never claim empty. Mixed valid rows, retry, receipt recovery, retirement and disposal remain usable. Synthetic browser ports only. Run `node scripts/prove-overdue-reviews-truthful-coverage.mjs --origin https://app.doctorcre.com --timeout-ms 30000`.",
+    "runner": "app-release-live-walk.v1",
+    "expected_result": "Exit 0 with release identity, asset hashes and each passing assertion. Exit 1 on contradiction; 78 when evidence unavailable.",
+    "input_class": "synthetic-read-only-deployed-module",
+    "deadline_seconds": 30
+  }],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 10,
+    "max_records": 4,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

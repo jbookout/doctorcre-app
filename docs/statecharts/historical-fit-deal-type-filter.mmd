@@ -1,0 +1,24 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Loading: open
+    Loading --> ReadyAll: valid initial response
+    ReadyAll --> ReadySelected: choose recorded or unrecorded
+    ReadySelected --> ReadyAll: choose all
+    ReadySelected --> Loading: refresh or apply server filters
+    ReadyAll --> Loading: refresh
+    Loading --> ReadySelected: latest response retains choice
+    Loading --> ReadyAll: latest response loses choice or is empty
+    Loading --> Error: invalid response or read failure
+    Error --> Loading: refresh
+    Loading --> Loading: stale response ignored
+    ReadyAll --> Idle: clear
+    ReadySelected --> Idle: clear
+    Loading --> Idle: clear
+    Idle --> Retired: session invalidated
+    Loading --> Retired: session invalidated
+    ReadySelected --> Retired: session invalidated
+    Retired --> Retired: clear or late response
+    Idle --> Disposed: dispose
+    Loading --> Disposed: dispose
+    ReadySelected --> Disposed: dispose
+    Disposed --> Disposed: late response

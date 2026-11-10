@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import { animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
+import { componentDocument, animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 import axe from "axe-core";
 const root = new URL("../", import.meta.url);
@@ -391,7 +391,7 @@ test("W14 drag stays pending during graph resizing and uses the settled center",
   });
   const page = await browser.newPage();
   await page.clock.install({ time: new Date() });
-  await page.setContent(`
+  await componentDocument(page, 'http://localhost', {html: `
     <style>
       #canvas { width: 820px; transition: width 2s linear; }
       svg { display: block; width: 100%; height: 200px; }
@@ -401,7 +401,7 @@ test("W14 drag stays pending during graph resizing and uses the settled center",
         <rect data-node="party:demo-lender" x="300" y="50" width="100" height="100" />
       </g>
     </svg></div>
-  `);
+  `});
   await page.evaluate(() => {
     window.dragInputs = [];
     document.querySelector('[data-node="party:demo-lender"]').addEventListener("pointerdown", event => {

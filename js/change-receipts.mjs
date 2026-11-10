@@ -23,7 +23,7 @@ import { todayMove } from './today-moves.mjs';
 export const REVERTIBLE_FIELDS = Object.freeze(['phase', 'owner', 'attention', 'next_date', 'operating_state']);
 
 /** How many receipts the session keeps. Oldest fall off first. */
-export const RECEIPT_LIMIT = 25;
+const RECEIPT_LIMIT = 25;
 
 /** Longest value string rendered inline; the deal record holds the full text. */
 const VALUE_MAX = 140;
@@ -103,7 +103,7 @@ export function fieldLabel(field) {
   return FIELD_LABEL[field] || humanizeSlug(field);
 }
 
-export function verbLabel(verb) {
+function verbLabel(verb) {
   if (!verb) return 'Change recorded';
   const spaced = String(verb).replace(/-/g, ' ');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -197,7 +197,7 @@ const TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)(?:\.(\d+))?\
  * @returns {{ms:number, sub:number}|null} sub is nanoseconds past the whole
  *   millisecond; null means the value cannot be placed in time at all.
  */
-export function receiptInstant(recordedAt) {
+function receiptInstant(recordedAt) {
   const text = String(recordedAt ?? '').trim();
   if (!text) return null;
   const parsed = TIMESTAMP.exec(text);
@@ -332,7 +332,7 @@ export function receiptsAnnouncement(previousIds, views) {
 }
 
 /** Clock time for today's changes, dated for anything older. Never "3 minutes ago", which goes stale in a list that is only re-rendered when it changes. */
-export function receiptTimeLabel(recordedAt, now = Date.now()) {
+function receiptTimeLabel(recordedAt, now = Date.now()) {
   const instant = receiptInstant(recordedAt);
   if (!instant) return 'time not recorded';
   const at = new Date(instant.ms);
@@ -350,7 +350,7 @@ export function receiptTimeLabel(recordedAt, now = Date.now()) {
  * idempotency key is minted once per event and REUSED on a later deliberate
  * retry, so one logical undo carries one key however many times it is sent.
  */
-export function beginUndo(state, eventId, newKey) {
+function beginUndo(state, eventId, newKey) {
   const undo = state || {};
   const current = undo[eventId] || null;
   if (current && ['pending', 'succeeded', 'refused'].includes(current.status)) {
@@ -366,7 +366,7 @@ export function beginUndo(state, eventId, newKey) {
 }
 
 /** Record what the server actually said. Nothing else moves the status. */
-export function settleUndo(state, eventId, outcome) {
+function settleUndo(state, eventId, outcome) {
   const undo = state || {};
   const current = undo[eventId];
   if (!current) return undo;
@@ -544,7 +544,7 @@ export function receiptsSignature(views) {
 }
 
 /** One row. Every value from the feed passes through escapeText on the way in. */
-export function receiptRowHtml(view) {
+function receiptRowHtml(view) {
   const badge = view.badge
     ? `<span class="receipt-badge ${escapeText(view.undo_status)}">${escapeText(view.badge)}</span>`
     : '';

@@ -68,14 +68,25 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   };
   let visibleCount = deal ? Infinity : homeListLimit(win);
   let rows = [], rejectedRows = false, loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
+  const disclosures = new Map();
+  const sourceIdentity = row => JSON.stringify([row.source.activity_id, row.source.sender, row.source.subject, row.source.evidence_quote, row.source.occurred_at]);
   const decisions = new Map();
   const actionViews = new Map();
   let actionModule, actionNotice = '';
   const graces = new Map();
   function render() {
     if (disposed) return;
+    for (const article of container.querySelectorAll('[data-email-id]')) {
+      const disclosure = disclosures.get(article.dataset.emailId);
+      if (disclosure) disclosure.open = article.querySelector('details').open;
+    }
+    for (const row of rows) {
+      const source = sourceIdentity(row);
+      if (disclosures.get(row.id)?.source !== source) disclosures.set(row.id, { source, open: false });
+    }
     const active = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
     const selection = active?.matches('textarea, input') ? [active.selectionStart, active.selectionEnd] : null;
+    const focusSummary = active?.matches('summary');
     const focusField = active?.hasAttribute('data-email-subject') ? 'subject' : active?.hasAttribute('data-email-body') ? 'body' : active?.hasAttribute('data-email-deal-name') ? 'deal-name' : active?.hasAttribute('data-email-deal-client') ? 'deal-client' : 'reason';
     const focusId = active?.closest('[data-email-id]')?.dataset.emailId, focusAction = active?.dataset.emailAction;
     container.setAttribute('aria-busy', String(loadState === 'loading'));
@@ -105,7 +116,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         title: E(row.source.subject || 'Subject unavailable'),
         meta: `<p class="email-source"></p><p>${row.deal ? `<a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a>` : row.kind === 'possible_new_deal' ? 'Possible new deal' : `${E(subjectLabel(row.subject_type) || 'Contact')} · ${E(row.subject_name || (row.kind === 'reply_draft' ? row.source.sender || 'Unfiled email' : 'Follow-up'))}`}</p>${filing(row) && preview ? `<p>Sender: ${E(preview.sender.name || preview.sender.email || 'Unknown')} · ${E(preview.sender_role)}</p>` : ''}`,
         status: state.status === 'done' ? 'Reviewed' : '',
-        body: `<p>${E(row.email_summary?.status === 'available' && row.email_summary.text ? row.email_summary.text : 'Summary unavailable.')}</p><details><summary>Review source email</summary><p>Email text is untrusted evidence.</p><q>${E(row.source.evidence_quote)}</q></details>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Review the source email or choose Not now.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or choose Not now.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
+        body: `<p>${E(row.email_summary?.status === 'available' && row.email_summary.text ? row.email_summary.text : 'Summary unavailable.')}</p><details${disclosures.get(row.id)?.open ? ' open' : ''}><summary>Review source email</summary><p>Email text is untrusted evidence.</p><q>${E(row.source.evidence_quote)}</q></details>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview && row.kind !== 'reply_draft' ? '<p>This proposal cannot currently be confirmed. Review the source email or choose Not now.</p>' : ''}${row.kind === 'reply_draft' && row.confirm_verb === null ? '<p>Recipient addresses are unavailable. Refresh to check them before reviewing this reply, or choose Not now.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}${state.receipt ? `<p>To: ${E(state.receipt.to.join(', '))}</p><p>CC: ${E(state.receipt.cc.join(', '))}</p>` : ''}`, actions: `<div class="email-controls">${controls}</div>` });
     }).join('')}${rows.length > visibleCount ? button('show', `Show ${rows.length - visibleCount} more`) : ''}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
     if (actionModule) for (const placeholder of container.querySelectorAll('[data-followup-host]')) {
       const row = rows.find(item => item.id === placeholder.dataset.followupHost);
@@ -126,7 +137,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     if (active) {
       const article = [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === focusId);
-      const replacement = container.contains(active) ? active : (selection && article?.querySelector(`[data-email-${focusField}]`)) || [...(article || container).querySelectorAll('[data-email-action]')].find(node => node.dataset.emailAction === focusAction && !node.disabled)
+      const replacement = container.contains(active) ? active : (focusSummary && article?.querySelector('summary')) || (selection && article?.querySelector(`[data-email-${focusField}]`)) || [...(article || container).querySelectorAll('[data-email-action]')].find(node => node.dataset.emailAction === focusAction && !node.disabled)
         || article?.querySelector('button:not(:disabled), a') || container.querySelector('button:not(:disabled), h2');
       replacement?.focus();
       if (selection && replacement?.matches('textarea, input')) replacement.setSelectionRange(...selection);
@@ -157,7 +168,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const leave = () => { if (!graces.size) return; for (const id of [...graces.keys()]) stopGrace(id, true); render(); };
   function retire() {
     for (const id of [...graces.keys()]) stopGrace(id, false);
-    minute.dispose(); actionNotice = ''; epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; rejectedRows = false; decisions.clear(); for (const view of actionViews.values()) view.dispose(); actionViews.clear(); loaded = false; loadState = 'denied'; render();
+    minute.dispose(); actionNotice = ''; epoch++; disclosures.clear(); rows = []; cursor = null; retryCursor = null; pages = 1; rejectedRows = false; decisions.clear(); for (const view of actionViews.values()) view.dispose(); actionViews.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
@@ -185,6 +196,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         if (!currentCursor) break;
       }
       cursor = currentCursor;
+      const accepted = new Set(next.map(row => row.id));
+      for (const id of disclosures.keys()) if (!accepted.has(id)) disclosures.delete(id);
       for (const row of rows) if (!next.some(item => item.id === row.id) && ['grace', 'submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
       for (const row of rows) if (!next.some(item => item.id === row.id) && actionViews.get(row.id)?.pending()) next.push(row);
       for (const [id, view] of actionViews) if (view.done() && !next.some(row => row.id === id)) { view.dispose(); actionViews.delete(id); }

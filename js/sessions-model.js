@@ -34,7 +34,7 @@ import { sessionOpenTarget } from './open-session-model.js';
 export const SURFACES = Object.freeze(["claude", "codex", "capability", "harvested"]);
 export const ALIAS_SOURCES = Object.freeze(["human", "derived"]);
 export const WORK_STATES = Object.freeze(["working", "idle", "complete_unacknowledged", "disconnected", "unknown"]);
-export const OBSERVATION_SOURCES = Object.freeze(["continuity_event", "checkpoint", "server_session", "harvest"]);
+const OBSERVATION_SOURCES = Object.freeze(["continuity_event", "checkpoint", "server_session", "harvest"]);
 /** WR-000119's dispatch spine gives every stage an evidence-bearing row. */
 export const PROVABLE_STAGES = Object.freeze(["sent", "received", "acknowledged", "acted"]);
 

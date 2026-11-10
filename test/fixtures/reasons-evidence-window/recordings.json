@@ -1,0 +1,189 @@
+{
+  "ok": true,
+  "contract": "practice-origination.v1",
+  "cards": [
+    {
+      "id": "6",
+      "source": "nppes",
+      "record_key": "1234567896",
+      "npi": "1234567896",
+      "name": "Demo New Practice",
+      "city": "Demo City",
+      "state": "FL",
+      "kind": "enumeration",
+      "evidence_date": "2026-10-26",
+      "date_basis": "enumeration",
+      "source_url": "https://npiregistry.cms.hhs.gov/provider-view/1234567896",
+      "facts": {},
+      "published_on": "2026-10-26",
+      "recorded_at": "2026-10-26T12:00:00Z",
+      "route": "research",
+      "client_ids": [],
+      "client_refs": [],
+      "why_now": "NPI enumerated on 2026-10-26"
+    },
+    {
+      "id": "5",
+      "source": "nppes",
+      "record_key": "1234567895",
+      "npi": "1234567895",
+      "name": "Demo Client Practice",
+      "city": "Demo City",
+      "state": "FL",
+      "kind": "registry_update",
+      "evidence_date": "2026-10-25",
+      "date_basis": "registry_update",
+      "source_url": "https://npiregistry.cms.hhs.gov/provider-view/1234567895",
+      "facts": {},
+      "published_on": "2026-10-26",
+      "recorded_at": "2026-10-26T12:00:00Z",
+      "route": "relationship_follow_up",
+      "client_ids": [
+        "demo-client"
+      ],
+      "client_refs": [
+        "DEMO-CLIENT"
+      ],
+      "why_now": "NPPES registry updated on 2026-10-25"
+    },
+    {
+      "id": "4",
+      "source": "pecos",
+      "record_key": "1234567894|DEMO-4",
+      "npi": "1234567894",
+      "name": "Demo Similar Practice",
+      "city": "Demo City",
+      "state": "FL",
+      "kind": "pecos_correction",
+      "evidence_date": "2026-10-24",
+      "date_basis": "publication",
+      "source_url": "https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/medicare-fee-for-service-public-provider-enrollment",
+      "facts": {
+        "enrollment_id": "DEMO-4",
+        "provider_type": "Demo specialty"
+      },
+      "published_on": "2026-10-26",
+      "recorded_at": "2026-10-26T12:00:00Z",
+      "route": "identity_review",
+      "client_ids": [],
+      "client_refs": [],
+      "why_now": "Public PECOS evidence corrected on 2026-10-24"
+    },
+    {
+      "id": "3",
+      "source": "pecos",
+      "record_key": "1234567893|DEMO-3",
+      "npi": "1234567893",
+      "name": "Demo Enrollment Practice",
+      "city": "Demo City",
+      "state": "FL",
+      "kind": "pecos_observation",
+      "evidence_date": "2026-10-23",
+      "date_basis": "publication",
+      "source_url": "https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/medicare-fee-for-service-public-provider-enrollment",
+      "facts": {
+        "enrollment_id": "DEMO-3",
+        "provider_type": "Demo specialty"
+      },
+      "published_on": "2026-10-26",
+      "recorded_at": "2026-10-26T12:00:00Z",
+      "route": "research",
+      "client_ids": [],
+      "client_refs": [],
+      "why_now": "Public PECOS enrollment observed on 2026-10-23"
+    },
+    {
+      "id": "2",
+      "source": "nppes",
+      "record_key": "1234567892",
+      "npi": "1234567892",
+      "name": "Demo Registry Practice",
+      "city": "Demo City",
+      "state": "FL",
+      "kind": "registry_update",
+      "evidence_date": "2026-10-22",
+      "date_basis": "registry_update",
+      "source_url": "https://npiregistry.cms.hhs.gov/provider-view/1234567892",
+      "facts": {},
+      "published_on": "2026-10-26",
+      "recorded_at": "2026-10-26T12:00:00Z",
+      "route": "research",
+      "client_ids": [],
+      "client_refs": [],
+      "why_now": "NPPES registry updated on 2026-10-22"
+    },
+    {
+      "id": "1",
+      "source": "pecos",
+      "record_key": "1234567891|DEMO-1",
+      "npi": "1234567891",
+      "name": "Demo Group Practice",
+      "city": "Demo City",
+      "state": "FL",
+      "kind": "pecos_observation",
+      "evidence_date": "2026-10-21",
+      "date_basis": "publication",
+      "source_url": "https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/medicare-fee-for-service-public-provider-enrollment",
+      "facts": {
+        "enrollment_id": "DEMO-1",
+        "provider_type": "Demo specialty"
+      },
+      "published_on": "2026-10-26",
+      "recorded_at": "2026-10-26T12:00:00Z",
+      "route": "research",
+      "client_ids": [],
+      "client_refs": [],
+      "why_now": "Public PECOS enrollment observed on 2026-10-21"
+    }
+  ],
+  "next_cursor": null,
+  "outreach_started": false,
+  "coverage": [
+    {
+      "source": "nppes",
+      "enabled": true,
+      "status": "available",
+      "coverage": "AL/FL practices in the NPPES territory filter",
+      "checkpoint": "demo-nppes",
+      "published_on": "2026-10-26"
+    },
+    {
+      "source": "pecos",
+      "enabled": true,
+      "status": "available",
+      "coverage": "AL/FL Medicare public provider enrollment observations",
+      "checkpoint": "demo-pecos",
+      "published_on": "2026-10-26"
+    },
+    {
+      "source": "formation-al",
+      "enabled": false,
+      "status": "unavailable",
+      "coverage": "unavailable"
+    },
+    {
+      "source": "formation-fl",
+      "enabled": false,
+      "status": "unavailable",
+      "coverage": "unavailable"
+    },
+    {
+      "source": "recorder-escambia-fl",
+      "enabled": false,
+      "status": "unavailable",
+      "coverage": "unavailable"
+    },
+    {
+      "source": "recorder-baldwin-al",
+      "enabled": false,
+      "status": "unavailable",
+      "coverage": "unavailable"
+    },
+    {
+      "source": "recorder-other",
+      "enabled": false,
+      "status": "uncovered",
+      "coverage": "uncovered"
+    }
+  ]
+}

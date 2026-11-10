@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { applyPhoneProfile, profile } from '../scripts/performance-scenarios.mjs';
@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
+
+describe('test/deal-tours-browser.test.mjs', () => {
 
 const deal = '11111111-1111-4111-8111-111111111111';
 const tour = '33333333-3333-4333-8333-333333333333';
@@ -417,4 +419,6 @@ test('creation and pending-write departures preserve history and saved notes', a
       }
     } finally { release(); await page.close(); }
   });
+});
+
 });

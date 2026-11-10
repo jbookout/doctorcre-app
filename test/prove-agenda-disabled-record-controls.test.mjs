@@ -2,7 +2,7 @@ import { APP_RELEASE_PATH, readAppRelease } from '../scripts/app-release-reader.
 import { handleDoctorcreRequest } from '../src/worker.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { startFixture } from '../scripts/fixture-http.mjs';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -17,32 +17,24 @@ const broken = await uiAssets(async path => {
 });
 
 async function fixture(t, mode = 'success') {
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    requests.push({ url: req.url, method: req.method });
-    if (mode === 'timeout') return;
-    if (req.url === APP_RELEASE_PATH) {
-      if (mode === 'protected-release') { res.writeHead(302, { location: '/auth/login' }); res.end(); return; }
-      res.setHeader('content-type', 'application/json');
-      if (mode === 'invalid-identity') { res.end('null'); return; }
-      const response = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'missing-identity' ? undefined : 'a'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
-      res.end(await response.text());
-      return;
+  const responses = new Map([...(mode === 'broken' ? broken : assets)].map(([path, body]) => ['/' + path, { body, contentType: 'text/javascript' }]));
+  for (const [path, response] of responses) {
+    if (mode === 'protected-asset' || mode === 'protected-chunk' && path.includes('ui-shared')) responses.set(path, { status: 403 });
+    if (mode === 'missing-chunk' && path.includes('ui-shared')) responses.set(path, { status: 404 });
+    if (mode === 'html-asset') responses.set(path, { contentType: 'text/html', body: '<h1>Sign in</h1>' });
+    if (path === '/js/ui-agenda.js') {
+      if (mode === 'request-limit') responses.set(path, { ...response, body: Buffer.concat([Buffer.from('for(let i=0;i<100;i++) await import("./extra-"+i+".js");'), Buffer.from(response.body)]) });
+      if (mode === 'write-attempt') responses.set(path, { ...response, body: Buffer.concat([Buffer.from('await fetch("/api/write", {method:"POST"}).catch(()=>{});'), Buffer.from(response.body)]) });
+      if (mode === 'oversized') responses.set(path, { ...response, body: Buffer.alloc(5 * 1024 * 1024 + 1) });
     }
-    if (mode === 'protected-asset' || (mode === 'protected-chunk' && req.url.includes('ui-shared'))) { res.writeHead(403); res.end(); return; }
-    if (mode === 'missing-chunk' && req.url.includes('ui-shared')) { res.writeHead(404); res.end(); return; }
-    const bytes = req.url.startsWith('/js/extra-') ? Buffer.from('export {};') : (mode === 'broken' ? broken : assets).get(req.url.slice(1));
-    if (!bytes) { res.writeHead(404); res.end(); return; }
-    res.setHeader('content-type', 'text/javascript');
-    if (mode === 'html-asset') { res.setHeader('content-type', 'text/html'); res.end('<h1>Sign in</h1>'); return; }
-    if (mode === 'request-limit' && req.url === '/js/ui-agenda.js') res.write('for(let i=0;i<100;i++) await import("./extra-"+i+".js");');
-    if (mode === 'write-attempt' && req.url === '/js/ui-agenda.js') res.write('await fetch("/api/write", {method:"POST"}).catch(()=>{});');
-    if (mode === 'oversized') res.end(Buffer.alloc(5 * 1024 * 1024 + 1));
-    else res.end(bytes);
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: 'http://127.0.0.1:' + server.address().port, requests };
+  }
+  if (mode === 'request-limit') for (let i = 0; i < 100; i++) responses.set(`/js/extra-${i}.js`, { contentType: 'text/javascript', body: 'export {};' });
+  const release = await handleDoctorcreRequest(new Request('https://fixture.invalid/app-release'), { APP_ENV: 'production', GIT_SHA: mode === 'missing-identity' ? undefined : 'a'.repeat(40), CF_VERSION_METADATA: { id: 'synthetic-provider-version' } });
+  responses.set(APP_RELEASE_PATH, mode === 'protected-release' ? { status: 302, headers: { location: '/auth/login' } } : { contentType: 'application/json', body: mode === 'invalid-identity' ? 'null' : await release.text() });
+  if (mode === 'timeout') for (const [path, response] of responses) responses.set(path, { ...response, hold: 'timeout' });
+  const server = await startFixture({ routes: responses });
+  t.after(() => server.close());
+  return { origin: server.origin, get requests() { return server.requests.map(req => ({ url: req.target, method: req.method })); } };
 }
 
 async function run(origin, timeout = 30000) {
@@ -56,9 +48,9 @@ async function run(origin, timeout = 30000) {
 }
 
 test('CLI imports the real fixture bundle and chunks with production flags', async t => {
-  const { origin, requests } = await fixture(t);
+  const f = await fixture(t), origin = f.origin;
   const { code, receipt } = await run(origin);
-  assert.equal(code, 0);
+  assert.equal(code, 0, JSON.stringify(receipt));
   assert.equal(receipt.ok, true);
   assert.equal(receipt.origin, origin);
   assert.equal(receipt.release.source_commit, 'a'.repeat(40));
@@ -68,15 +60,17 @@ test('CLI imports the real fixture bundle and chunks with production flags', asy
   for (const asset of receipt.assets) {
     assert.equal(asset.sha256, createHash('sha256').update(assets.get(new URL(asset.url).pathname.slice(1))).digest('hex'));
   }
+  const requests = f.requests;
   assert.ok(requests.every(request => request.method === 'GET' && (request.url === APP_RELEASE_PATH || request.url.startsWith('/js/'))));
 });
 
-for (const [mode, code] of [['broken', 1], ['protected-release', 78], ['missing-identity', 78], ['invalid-identity', 78], ['protected-asset', 78], ['protected-chunk', 78], ['html-asset', 78], ['missing-chunk', 1], ['write-attempt', 1], ['oversized', 1], ['request-limit', 1], ['timeout', 1]]) {
+for (const [mode, code] of [['broken', 1], ['protected-release', 78], ['missing-identity', 78], ['invalid-identity', 78], ['protected-asset', 78], ['protected-chunk', 78], ['html-asset', 78], ['missing-chunk', 1], ['write-attempt', 1], ['oversized', 1], ['request-limit', 1], ['timeout', 78]]) {
   test('CLI refuses ' + mode, async t => {
-    const { origin, requests } = await fixture(t, mode);
+    const f = await fixture(t, mode), origin = f.origin;
     const result = await run(origin, mode === 'timeout' ? 100 : 30000);
     assert.equal(result.code, code, result.receipt.error);
     assert.equal(result.receipt.ok, false);
+    const requests = f.requests;
     assert.ok(requests.every(request => request.method === 'GET'));
     if (mode === 'write-attempt') assert.ok(requests.every(request => !request.url.startsWith('/api/')));
     if (mode === 'request-limit') assert.equal(requests.length, 65);
@@ -103,4 +97,12 @@ test('shared release reader uses the real Worker route and response contract', a
   for (const invalid of [{ body: Buffer.from('{'), type }, { body, type: 'text/html' }]) {
     await assert.rejects(readAppRelease(origin, async () => invalid), { exitCode: 78 });
   }
+});
+
+
+test('fixture POST injection makes the agenda GET-only observation fail', async t => {
+  const f = await fixture(t);
+  const response = await fetch(f.origin + '/api/write', { method: 'POST' });
+  assert.equal(response.status, 405);
+  assert.throws(() => assert.ok(f.requests.every(request => request.method === 'GET')));
 });

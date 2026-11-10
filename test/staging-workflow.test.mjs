@@ -1,13 +1,11 @@
+import { parse as parseYaml } from 'yaml';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fixtureProducerCommit, homeFixtureCommit } from '../tests/staging/journey-fixture.mjs';
 
-const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], {
-  input: readFileSync(new URL('../.github/workflows/staging-e2e.yml', import.meta.url), 'utf8'), encoding: 'utf8',
-}));
+const workflow = () => parseYaml(readFileSync(new URL('../.github/workflows/staging-e2e.yml', import.meta.url), 'utf8'));
 
 test('signed-in staging runs only on manual dispatch with the staging environment secret', () => {
   const document = workflow();

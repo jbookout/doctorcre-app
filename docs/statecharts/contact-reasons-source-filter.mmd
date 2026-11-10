@@ -1,0 +1,15 @@
+stateDiagram-v2
+  [*] --> Loading: mount
+  Loading --> Ready: validated response
+  Ready --> Ready: Show more loaded reasons
+  Ready --> Filtered: select source
+  Filtered --> Filtered: query or category changes
+  Filtered --> Ready: Clear resets all filters
+  Filtered --> Filtered: append or refresh retains source
+  Filtered --> Ready: successful refresh removes selected source
+  Filtered --> Retained: malformed refresh
+  Retained --> Filtered: retry succeeds with source
+  Filtered --> Filtered: More reasons with zero matches
+  Filtered --> Retired: session invalidated during read
+  Retired --> Retired: late response or refresh ignored
+  Retired --> Disposed: dispose

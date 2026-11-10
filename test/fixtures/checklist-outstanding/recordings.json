@@ -1,0 +1,559 @@
+{
+  "record": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "type": "lease",
+    "owner": "joe",
+    "invoiced_on": "2026-10-20",
+    "requests": [
+      {
+        "id": "22222222-2222-4222-8222-000000000001",
+        "owner": "joe",
+        "document_type": "representation",
+        "satisfied": false,
+        "receipts": [],
+        "fulfilled_at": "2026-10-20T12:00:00Z",
+        "fulfilled_by": "joe",
+        "evidence_attachment_id": "33333333-3333-4333-8333-333333333333",
+        "row_key": "representation",
+        "status": "fulfilled",
+        "due_on": "2026-10-20",
+        "evidence_filename": "Synthetic agreement.pdf"
+      },
+      {
+        "id": "22222222-2222-4222-8222-000000000002",
+        "owner": "joe",
+        "document_type": "requirements",
+        "satisfied": false,
+        "receipts": [],
+        "fulfilled_at": null,
+        "fulfilled_by": null,
+        "evidence_attachment_id": null,
+        "row_key": "requirements",
+        "status": "open",
+        "due_on": "2026-10-20"
+      },
+      {
+        "id": "22222222-2222-4222-8222-000000000003",
+        "owner": "joe",
+        "document_type": "market_survey",
+        "satisfied": false,
+        "receipts": [],
+        "fulfilled_at": null,
+        "fulfilled_by": null,
+        "evidence_attachment_id": null,
+        "row_key": "market_survey",
+        "status": "open",
+        "due_on": "2026-10-19"
+      },
+      {
+        "id": "22222222-2222-4222-8222-000000000004",
+        "owner": "joe",
+        "document_type": "tour_notes",
+        "satisfied": false,
+        "receipts": [],
+        "fulfilled_at": null,
+        "fulfilled_by": null,
+        "evidence_attachment_id": null,
+        "row_key": "tour_notes",
+        "status": "open",
+        "due_on": "2026-10-21"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+      "status": "active",
+      "body_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+    },
+    {
+      "id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+      "status": "active",
+      "body_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+    },
+    {
+      "id": "6c8354dd-576c-4dfe-8a56-791215172cd4",
+      "status": "active",
+      "body_hash": "656f92cd4c998a1296657d039e471f4811ba135c95b5e2fe22e180b757306f34"
+    },
+    {
+      "id": "13b3a132-36df-433e-b23e-4231ff35c753",
+      "status": "active",
+      "body_hash": "2fbd0c3894eee7c0c32b39d4ff1f4294df0f84fdc62a5b26c991959319155f2a"
+    },
+    {
+      "id": "20689402-d87e-4bb6-a048-4cfc03cf2c70",
+      "status": "active",
+      "body_hash": "86db20b306896890d675190438c6d6a038992a888843645eb349c6f373d78ca3"
+    }
+  ],
+  "today": "2026-10-20",
+  "response": {
+    "schema_version": "deal-checklist.v1",
+    "template_state": "current",
+    "deal_type": "lease",
+    "sources": [
+      {
+        "document": "deal-room-kit",
+        "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+        "version": 1,
+        "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+      },
+      {
+        "document": "deal-room-kit",
+        "section_id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+        "version": 1,
+        "content_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+      },
+      {
+        "document": "diligence-and-valuation",
+        "section_id": "6c8354dd-576c-4dfe-8a56-791215172cd4",
+        "version": 1,
+        "content_hash": "656f92cd4c998a1296657d039e471f4811ba135c95b5e2fe22e180b757306f34"
+      },
+      {
+        "document": "diligence-and-valuation",
+        "section_id": "13b3a132-36df-433e-b23e-4231ff35c753",
+        "version": 1,
+        "content_hash": "2fbd0c3894eee7c0c32b39d4ff1f4294df0f84fdc62a5b26c991959319155f2a"
+      },
+      {
+        "document": "diligence-and-valuation",
+        "section_id": "20689402-d87e-4bb6-a048-4cfc03cf2c70",
+        "version": 1,
+        "content_hash": "86db20b306896890d675190438c6d6a038992a888843645eb349c6f373d78ca3"
+      }
+    ],
+    "observed_on": "2026-10-20",
+    "phases": [
+      {
+        "id": "research",
+        "label": "Research",
+        "items": [
+          {
+            "id": "representation",
+            "label": "Signed representation agreement",
+            "status": "received",
+            "due_on": "2026-10-20",
+            "evidence_ref": "Synthetic agreement.pdf",
+            "owner": "joe",
+            "document_type": "representation",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            },
+            "request": {
+              "id": "22222222-2222-4222-8222-000000000001",
+              "owner": "joe",
+              "document_type": "representation",
+              "satisfied": false,
+              "receipts": [],
+              "fulfilled_at": "2026-10-20T12:00:00Z",
+              "fulfilled_by": "joe",
+              "evidence_attachment_id": "33333333-3333-4333-8333-333333333333",
+              "row_key": "representation",
+              "status": "fulfilled",
+              "due_on": "2026-10-20",
+              "evidence_filename": "Synthetic agreement.pdf"
+            }
+          },
+          {
+            "id": "requirements",
+            "label": "Completed intake and requirements",
+            "status": "due",
+            "due_on": "2026-10-20",
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "requirements",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            },
+            "request": {
+              "id": "22222222-2222-4222-8222-000000000002",
+              "owner": "joe",
+              "document_type": "requirements",
+              "satisfied": false,
+              "receipts": [],
+              "fulfilled_at": null,
+              "fulfilled_by": null,
+              "evidence_attachment_id": null,
+              "row_key": "requirements",
+              "status": "open",
+              "due_on": "2026-10-20"
+            }
+          }
+        ]
+      },
+      {
+        "id": "site_selection",
+        "label": "Site selection",
+        "items": [
+          {
+            "id": "market_survey",
+            "label": "Market survey and alternatives",
+            "status": "overdue",
+            "due_on": "2026-10-19",
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "market_survey",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            },
+            "request": {
+              "id": "22222222-2222-4222-8222-000000000003",
+              "owner": "joe",
+              "document_type": "market_survey",
+              "satisfied": false,
+              "receipts": [],
+              "fulfilled_at": null,
+              "fulfilled_by": null,
+              "evidence_attachment_id": null,
+              "row_key": "market_survey",
+              "status": "open",
+              "due_on": "2026-10-19"
+            }
+          },
+          {
+            "id": "tour_notes",
+            "label": "Tours and tour notes",
+            "status": "upcoming",
+            "due_on": "2026-10-21",
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "tour_notes",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+              "version": 1,
+              "content_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+            },
+            "request": {
+              "id": "22222222-2222-4222-8222-000000000004",
+              "owner": "joe",
+              "document_type": "tour_notes",
+              "satisfied": false,
+              "receipts": [],
+              "fulfilled_at": null,
+              "fulfilled_by": null,
+              "evidence_attachment_id": null,
+              "row_key": "tour_notes",
+              "status": "open",
+              "due_on": "2026-10-21"
+            }
+          }
+        ]
+      },
+      {
+        "id": "negotiation",
+        "label": "Negotiation / LOI",
+        "items": [
+          {
+            "id": "loi_submission",
+            "label": "RFP / LOI versions and submission",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "loi_submission",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+              "version": 1,
+              "content_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+            }
+          },
+          {
+            "id": "loi_grid",
+            "label": "Live terms comparison and counters",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "loi_grid",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "business_terms",
+            "label": "Agreed business terms",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "business_terms",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          }
+        ]
+      },
+      {
+        "id": "legal",
+        "label": "Legal / lease",
+        "items": [
+          {
+            "id": "contract_draft",
+            "label": "Lease / PSA draft to attorney",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "contract_draft",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "attorney_comments",
+            "label": "Attorney review and comments",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "attorney_comments",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+              "version": 1,
+              "content_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+            }
+          },
+          {
+            "id": "legal_review",
+            "label": "Healthcare lease review",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "legal_review",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "ti_scope",
+            "label": "TI scope and bids versus allowance",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "ti_scope",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+              "version": 1,
+              "content_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+            }
+          }
+        ]
+      },
+      {
+        "id": "closing",
+        "label": "Closing",
+        "items": [
+          {
+            "id": "executed_lease",
+            "label": "Executed lease / amendment",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "executed_lease",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "commencement_letter",
+            "label": "Commencement letter and possession dates",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": "commencement_letter",
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "7e263aa0-9823-477b-86e3-bd8cf0c32003",
+              "version": 1,
+              "content_hash": "6d1a03dacdff6d1ae8b5b0ca333f4fd98bcb0f380fa57f99ccaff8cff4a8d14e"
+            }
+          },
+          {
+            "id": "executed_comp",
+            "label": "Executed comp recorded",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": null,
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "expiration_recorded",
+            "label": "Lease expiration recorded for renewal",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": null,
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "move_in",
+            "label": "Move-in",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": null,
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          },
+          {
+            "id": "check_in_90_day",
+            "label": "90-day check-in",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": null,
+            "source": {
+              "document": "deal-room-kit",
+              "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+              "version": 1,
+              "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+            }
+          }
+        ]
+      },
+      {
+        "id": "invoice",
+        "label": "Invoice",
+        "items": [
+          {
+            "id": "invoice_recorded",
+            "label": "Invoice recorded",
+            "status": "complete",
+            "due_on": null,
+            "evidence_ref": "deal:11111111-1111-4111-8111-111111111111:invoiced_on:2026-10-20",
+            "owner": "joe",
+            "document_type": null,
+            "source": {
+              "request": "per-deal standard checklist",
+              "record_verb": "record-deal-invoice"
+            }
+          },
+          {
+            "id": "commission_received",
+            "label": "Commission receipt recorded",
+            "status": "not_recorded",
+            "due_on": null,
+            "evidence_ref": null,
+            "owner": "joe",
+            "document_type": null,
+            "source": {
+              "request": "per-deal standard checklist",
+              "record_verb": "record-commission-receipt"
+            }
+          }
+        ]
+      }
+    ],
+    "due_items": [
+      {
+        "id": "market_survey",
+        "label": "Market survey and alternatives",
+        "status": "overdue",
+        "due_on": "2026-10-19",
+        "evidence_ref": null,
+        "owner": "joe",
+        "document_type": "market_survey",
+        "source": {
+          "document": "deal-room-kit",
+          "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+          "version": 1,
+          "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+        },
+        "request": {
+          "id": "22222222-2222-4222-8222-000000000003",
+          "owner": "joe",
+          "document_type": "market_survey",
+          "satisfied": false,
+          "receipts": [],
+          "fulfilled_at": null,
+          "fulfilled_by": null,
+          "evidence_attachment_id": null,
+          "row_key": "market_survey",
+          "status": "open",
+          "due_on": "2026-10-19"
+        }
+      },
+      {
+        "id": "requirements",
+        "label": "Completed intake and requirements",
+        "status": "due",
+        "due_on": "2026-10-20",
+        "evidence_ref": null,
+        "owner": "joe",
+        "document_type": "requirements",
+        "source": {
+          "document": "deal-room-kit",
+          "section_id": "5f8a3cbd-fe89-4557-b3f4-5b0bbc53276c",
+          "version": 1,
+          "content_hash": "fe11a8c2bf371dcab98a0fba969594df46ee64c6a8be047dba9b6befc3dc6424"
+        },
+        "request": {
+          "id": "22222222-2222-4222-8222-000000000002",
+          "owner": "joe",
+          "document_type": "requirements",
+          "satisfied": false,
+          "receipts": [],
+          "fulfilled_at": null,
+          "fulfilled_by": null,
+          "evidence_attachment_id": null,
+          "row_key": "requirements",
+          "status": "open",
+          "due_on": "2026-10-20"
+        }
+      }
+    ]
+  }
+}

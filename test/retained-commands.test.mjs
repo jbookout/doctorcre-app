@@ -97,3 +97,46 @@ test('an email outcome check joins its observed send when it settles during sess
   assert.equal(sends, 1);
   assert.equal(commands.details('email'), null);
 });
+
+
+test('Home review forwards the displayed source version and retains it after a lost receipt', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { default: Ajv } = await import('ajv');
+  const { contract } = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
+  const validate = new Ajv({ strict: false }).compile(contract.responseSchema);
+  const sent = [];
+  let lost = true;
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic' });
+    const { arguments: args } = JSON.parse(init.body).params;
+    sent.push(args);
+    if (lost) { lost = false; throw new Error('lost receipt'); }
+    const payload = { ...contract.receipt, session_id: args.session_id };
+    assert.equal(validate(payload), true);
+    return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
+  } });
+  const args = { session_id: 'session-1', expected_source_version: 'displayed-v1' };
+  await assert.rejects(client.reviewCallOutcome(args));
+  await client.reviewCallOutcome(args);
+  assert.equal(sent[0].expected_source_version, 'displayed-v1');
+  assert.deepEqual(sent[0], sent[1]);
+  assert.ok(sent[0].idempotency_key);
+});
+
+test('Home call contracts retain the merged producer bytes and fixture', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { createHash } = await import('node:crypto');
+  const contracts = {};
+  for (const [name, digest] of [
+    ['review-call-outcome.v1.json', '3035b88b8ad143541825ee0caf0e68c907137a19e46dd53e4b5457c61bc12cbe'],
+    ['read-call-outcomes.v1.json', '4e86e1102beb38c38ff74e4f1691c41e27c2feba10874658c236b9bc60a6ec8e'],
+  ]) {
+    const bytes = await readFile(new URL(`../contracts/carr-interface.v1/${name}`, import.meta.url));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), digest);
+    contracts[name] = JSON.parse(bytes);
+  }
+  const fixture = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
+  const producer = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/producer.json', import.meta.url)));
+  assert.equal(fixture.producer.source_commit, producer.source_commit);
+  assert.deepEqual(fixture.contract, contracts['review-call-outcome.v1.json']);
+});

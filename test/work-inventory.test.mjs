@@ -1,3 +1,4 @@
+import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
@@ -230,13 +231,12 @@ test("an empty incomplete census is its own state and never the empty one", () =
 
 /* -------------------------------------------------------------- page invariants */
 
-test("the Work Inventory page is a first-class, honest, listed surface", async () => {
+test("the Work Inventory page is a first-class, honest, listed surface", async t => {
   const html = await readFile(`${ROOT}/work-inventory.html`, "utf8");
   const js = withoutComments(await readFile(`${ROOT}/js/work-inventory.js`, "utf8"));
   const model = withoutComments(await readFile(`${ROOT}/js/work-inventory-model.js`, "utf8"));
   const routes = (await import("../js/routes.js")).routeContract;
   const carr = carrInterface;
-  const serveScript = await readFile(`${ROOT}/scripts/serve.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract.
@@ -293,12 +293,14 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   assert.match(js, /updatedLabel\(payload\.source\.observed_at\)/, "the census displays its update timestamp");
   assert.match(js, /Partly available/);
 
-  // Both local servers share the same synthetic census implementation.
-  assert.match(serveScript, /\/api\/v1\/work-inventory/);
-  assert.match(serveScript, /import.*censusResponse.*work-inventory-fixture/);
-  const {censusResponse} = await import('../scripts/work-inventory-fixture.mjs');
-  const first=censusResponse(new URL('http://fixture.local/api/v1/work-inventory'));
-  const second=censusResponse(new URL(`http://fixture.local/api/v1/work-inventory?cursor=${first.next_cursor}`));
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.stop());
+  const response = await fetch(fixture.url + '/api/v1/work-inventory');
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get('cache-control'),'no-store');
+  const first = await response.json();
+  const second = await (await fetch(fixture.url + '/api/v1/work-inventory?cursor=' + encodeURIComponent(first.next_cursor))).json();
+  assert.equal(validWorkInventoryPayload(first),true);
   assert.deepEqual(first.kinds,WORK_INVENTORY_KINDS);
   assert.ok([...first.items,...second.items].every(item=>item.title.startsWith('Demo ')));
   for (const status of ['superseded','dormant']) assert.ok(first.items.some(item=>item.status===status));

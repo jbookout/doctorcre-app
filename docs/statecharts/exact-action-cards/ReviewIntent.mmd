@@ -1,0 +1,39 @@
+stateDiagram-v2
+state "Review command" as Command {
+  state "Access" as Access {
+    [*] --> Authorized
+    state "Authorized session" as Authorized
+    state "Private view retired" as SignedOut
+    Authorized --> SignedOut: session refused or sign out
+    SignedOut --> Authorized: verify session and reopen card
+  }
+  --
+  state "Intent" as Intent {
+    [*] --> Eligible
+    state "Review current card" as Eligible
+    state "Saving exact review" as Sending
+    state "Retry same review" as Unconfirmed
+    state "Review confirmed" as Confirmed
+    state "Open changed source" as Changed
+    state "No private command" as Retired
+    Eligible --> Sending: tap review [authorized]
+    %% when Authorized
+    Unconfirmed --> Sending: retry review [authorized]
+    %% when Authorized
+    Sending --> Unconfirmed: lost reply or retryable error
+    Unconfirmed --> Eligible: reload authorized card
+    Sending --> Confirmed: matching receipt
+    Sending --> Changed: source version changed
+    Changed --> Eligible: open current version
+    Eligible --> Retired: session refused or sign out
+    Sending --> Retired: session refused or sign out
+    Unconfirmed --> Retired: session refused or sign out
+    Confirmed --> Retired: session refused or sign out
+    Changed --> Retired: session refused or sign out
+    Retired --> Eligible: verify session and reopen card
+  }
+}
+[*] --> Command
+%% never PrivateSend: Private view retired & Saving exact review -- A retired session never sends a review.
+%% never PrivateEligible: Private view retired & Review current card -- A retired session never shows a private command.
+%% never PrivateRetry: Private view retired & Retry same review -- A retired session never offers a private retry.

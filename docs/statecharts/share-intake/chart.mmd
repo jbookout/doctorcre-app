@@ -1,0 +1,46 @@
+stateDiagram-v2
+  state ShareFlow {
+    state Session {
+      [*] --> SignedOut
+      SignedOut --> SignedIn: Verified session and valid file
+      SignedOut --> SignedIn: Verified session and unresolved filing
+      SignedIn --> SignedOut: Session ends
+    }
+    --
+    state Intake {
+      [*] --> Receiving
+      Receiving --> Choosing: Verified session and valid file
+      Receiving --> Refused: Unsupported file or unavailable custody
+      Choosing --> Ready: Select exact available deal [signed in]
+      %% when SignedIn
+      Choosing --> Refused: Select unknown deal
+      Ready --> Filing: File document [signed in]
+      %% when SignedIn
+      Filing --> Filed: Parsed receipt and exact document readback
+      Filing --> Uncertain: Reply unavailable
+      Ready --> Retired: Worker lost before reserve
+      Choosing --> Retired: Worker lost then reload
+      Receiving --> Uncertain: Verified session and unresolved filing
+      Filing --> Filed: Finalized receipt and list match despite empty worker
+      Uncertain --> Uncertain: Reload with worker lost and frozen recovery
+      Filing --> Uncertain: Bytes lost before upload
+      Uncertain --> Uncertain: Recovered file expires; reservation retained
+      Filing --> Retired: Abandon after lost bytes
+      Uncertain --> Filing: Reconcile frozen operation [signed in]
+      %% when SignedIn
+      Choosing --> Retired: Discard file
+      Ready --> Retired: Discard file
+      Uncertain --> Filing: Discard after uncertain reservation [signed in]
+      %% when SignedIn
+      Filing --> Retired: Abandon receipt
+      Choosing --> Retired: Session ends
+      Ready --> Retired: Session ends
+      Filing --> Retired: Session ends
+      Uncertain --> Retired: Session ends
+      Filed --> Retired: Session ends
+      Receiving --> Retired: Session ends
+      Refused --> Retired: Session ends
+    }
+  }
+  %% never NoUnauthenticatedPreview: SignedOut & Ready -- Signed-out partners cannot preview private file names.
+  %% never NoUnauthenticatedFiling: SignedOut & Filing -- Signed-out partners cannot file documents.

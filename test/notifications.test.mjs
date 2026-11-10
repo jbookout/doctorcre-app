@@ -784,3 +784,24 @@ test("Updates activity labels come from the app's single actor and change-action
   assert.equal(rows[0].details.verb, "set-next-step");
 
 });
+
+test('device delivery evidence distinguishes absence from unavailable without losing readable rows', async () => {
+  const feed = await (await fixture()).notificationFeed({ limit: 25 });
+  const source = feed.notifications.find(row => row.id === ALREADY_READ);
+  for (const delivery of [null, undefined, {}, 'unknown', [null], [{}], [{ channel: 'device', state: null }], [{ channel: 'device' }], [{ channel: 'device', state: 1 }], [{ channel: 'device', state: {} }], [{ channel: 'device', state: [] }], [{ channel: 'device', state: 'queued' }], [{ channel: 'other', state: 'delivered' }]]) {
+    const card = notificationCards({ ...feed, notifications: [{ ...source, delivery, quiet_suppressed: true }] })[0];
+    assert.ok(card.delivery.some(row => row.phrase === 'Delivery status unavailable'), JSON.stringify(delivery));
+    assert.ok(!card.delivery.some(row => row.phrase === DEVICE_OFF), JSON.stringify(delivery));
+    assert.equal(card.id, source.id);
+    assert.equal(card.read, true);
+    assert.equal(card.quietSuppressed, true);
+    assert.deepEqual(acknowledgeArgs(card.id).args, { notification_id: source.id });
+  }
+  for (const delivery of [[], [{ channel: 'in_app', state: 'delivered' }]]) {
+    assert.ok(deliveryPhrases(delivery).some(row => row.phrase === DEVICE_OFF));
+  }
+  const readable = { channel: 'in_app', state: 'delivered', phrase: 'delivered' };
+  assert.deepEqual(deliveryPhrases([{ channel: 'in_app', state: 'delivered' }, { channel: 'device', state: null }])[0], readable);
+  assert.ok(!deliveryPhrases([{ channel: 'in_app', state: 'future' }]).some(row => row.phrase === DEVICE_OFF));
+  assert.equal(deliveryPhrases([{ channel: 'device', state: 'constructor' }])[0].phrase, 'Delivery status unavailable');
+});

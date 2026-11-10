@@ -1,26 +1,29 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, rm } from 'node:fs/promises';
+import { readFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
+import Ajv from 'ajv/dist/2020.js';
 import { chromium } from './browser-harness.mjs';
+
+const readContract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/read-call-outcomes.v1.json', import.meta.url)));
+const validRead = new Ajv({ strict: false, validateFormats: false }).compile(readContract);
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 let outDir, server, browser, origin;
 before(async () => {
   outDir = await temporaryDirectory('home-call-tasks-');
   await buildArtifact({ root, outDir });
-  ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${server.address().port}`;
+  server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  origin = server.origin;
   browser = await chromium.launch();
 });
 after(async () => {
   await browser?.close();
-  if (server) await new Promise(resolve => server.close(resolve));
+  if (server) await server.close();
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
@@ -283,13 +286,14 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`ca
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Home finishes an older filed call without its companion at ${width}px in ${theme}`, async t => {
   const session = '11111111-1111-4111-8111-111111111111';
-  const call = { session_id: session, call_date: '2026-09-28', recorder: 'joe', open_cards: [], applied: [
+  const call = { session_id: session, source_version: '0123456789abcdef0123456789abcdef', started_at: '2026-09-28T15:00:00Z', call_date: '2026-09-28', recorder: 'joe', open_cards: [], applied: [
     { candidate_id: 'old-step', kind: 'next_step', deal_id: 'qa-deal-1', deal_name: 'Demo coastal purchase', deal_version: 7,
       payload: { text: 'Send the lease draft to the landlord', next_date: '2026-10-02' },
       evidence_quote: 'Send the lease draft on Friday.', undone_at: null },
     { candidate_id: 'old-note', kind: 'note', deal_id: null, deal_name: null, deal_version: 7,
       payload: { text: 'Confirm the walkthrough with Dell' }, evidence_quote: 'Confirm the walkthrough with Dell.', undone_at: null },
   ] };
+  assert.equal(validRead({ schema_version: 'call-outcomes.v1', calls: [call], send: false }), true, JSON.stringify(validRead.errors));
   const { page, writes, companionRequests, errors } = await open(t, { width, theme, viewer: 'dell', candidates: [],
     companion: theme === 'light' ? { unavailable: true } : {},
     outcomes: [{ ...call, session_id: 'newer-call', applied: [{ ...call.applied[0], candidate_id: 'newer-step' }] }, call] });
@@ -312,6 +316,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ho
   assert.deepEqual(writes, []);
   await guide.getByRole('button', { name: 'Complete call review' }).click();
   await page.getByText('Call review complete.', { exact: true }).waitFor();
+  assert.equal(writes[0].expected_source_version, call.source_version);
   assert.deepEqual(writes.map(row => ({ name: row.name, session_id: row.session_id })), [{ name: 'review-call-outcome', session_id: session }]);
   await page.locator(`[data-call-session="${session}"]`).waitFor({ state: 'detached' });
   assert.equal(await page.locator('[data-call-session="newer-call"]').count(), 1);

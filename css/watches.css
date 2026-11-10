@@ -1,0 +1,17 @@
+.watch-control { color: var(--fg); font: var(--font-size-1)/var(--line-height-body) var(--font-text); min-width: 0; }
+.watch-control > summary { min-height: var(--touch); box-sizing: border-box; padding: var(--space-3) 0; cursor: pointer; color: var(--fg-muted); }
+.watch-control .watch-panel { padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); overflow-wrap: anywhere; }
+.watch-control h3 { margin: 0 0 var(--space-2); font: var(--font-weight-strong) var(--font-size-3)/var(--line-height-heading) var(--font-text); }
+.watch-control p { margin: var(--space-2) 0; }
+.watch-control .watch-detail { color: var(--fg-muted); font-size: var(--font-size-1); }
+.watch-control .watch-editor { min-width: 0; margin: var(--space-3) 0 0; padding: 0; border: 0; }
+.watch-control legend { padding: 0; font-weight: var(--font-weight-strong); }
+.watch-control .watch-option { display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch); cursor: pointer; }
+.watch-control .watch-option input { width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--accent); flex: 0 0 16px; }
+.watch-control .watch-days { display: grid; gap: var(--space-1); }
+.watch-control .watch-days input { min-height: var(--touch); width: 100%; padding: var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; }
+.watch-control .watch-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.watch-control button { min-height: var(--touch); padding: var(--space-2) var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; cursor: pointer; }
+.watch-control button.watch-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: var(--font-weight-strong); }
+.watch-control button:disabled { opacity: .55; cursor: default; }
+.watch-control :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

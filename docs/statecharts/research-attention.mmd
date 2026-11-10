@@ -1,0 +1,437 @@
+stateDiagram-v2
+    state Panel {
+        state Attention {
+            [*] --> All
+            state "All findings" as All
+            state "Attention selected" as Focused
+            All --> Focused: select attention [when Current lead authorized]
+            %% when Showing
+            Focused --> Focused: select attention [when Current lead authorized]
+            %% when Showing
+            Focused --> All: clear attention [when Current lead authorized]
+            %% when Showing
+            All --> All: clear attention [when Current lead authorized]
+            %% when Showing
+            All --> All: lead change [when Current lead authorized]
+            %% when Showing
+            Focused --> All: lead change [when Current lead authorized]
+            %% when Showing
+            All --> All: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Focused --> All: authorization retirement [when Current lead authorized]
+            %% when Showing
+            All --> All: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            Focused --> All: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+        }
+        --
+        state Kind {
+            [*] --> AllKinds
+            state "All finding kinds" as AllKinds
+            state "One finding kind" as OneKind
+            AllKinds --> OneKind: select kind [when Current lead authorized]
+            %% when Showing
+            OneKind --> OneKind: select kind [when Current lead authorized]
+            %% when Showing
+            AllKinds --> AllKinds: clear kind [when Current lead authorized]
+            %% when Showing
+            OneKind --> AllKinds: clear kind [when Current lead authorized]
+            %% when Showing
+            AllKinds --> AllKinds: lead change [when Current lead authorized]
+            %% when Showing
+            OneKind --> AllKinds: lead change [when Current lead authorized]
+            %% when Showing
+            AllKinds --> AllKinds: authorization retirement [when Current lead authorized]
+            %% when Showing
+            OneKind --> AllKinds: authorization retirement [when Current lead authorized]
+            %% when Showing
+            AllKinds --> AllKinds: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            OneKind --> AllKinds: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+        }
+        --
+        state Subject {
+            [*] --> Showing
+            state "Current lead authorized" as Showing
+            state "Signed out" as Retired
+            state "Panel disposed" as Disposed
+            Showing --> Showing: lead change
+            Showing --> Retired: authorization retirement
+            Retired --> Showing: authorized reopen
+            Showing --> Disposed: disposal
+            Retired --> Disposed: disposal
+        }
+        --
+        state Evidence {
+            [*] --> Visible
+            state "Current research shown" as Visible
+            state "Research cleared" as Hidden
+            Visible --> Visible: lead change [when Current lead authorized]
+            %% when Showing
+            Hidden --> Visible: lead change [when Current lead authorized]
+            %% when Showing
+            Visible --> Visible: authorized reopen [when Signed out]
+            %% when Retired
+            Hidden --> Visible: authorized reopen [when Signed out]
+            %% when Retired
+            Visible --> Hidden: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Hidden --> Hidden: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Visible --> Hidden: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            Hidden --> Hidden: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+        }
+        --
+        state Activity {
+            [*] --> Ready
+            state "Panel opened" as Ready
+            state "Selected attention refreshed" as RefreshedFocused
+            state "All findings refreshed" as RefreshedAll
+            state "Different lead opened" as ChangedLead
+            state "Authorization retired" as RetiredNow
+            state "Panel closed" as DisposedNow
+            state "Late response ignored" as LateRead
+            state "Selector changed" as Filtered
+            state "No matching findings" as ZeroMatches
+            state "Current lead repainted" as Repainted
+            state "Authorized panel reopened" as Reopened
+            Ready --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            RefreshedFocused --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            RefreshedAll --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            ChangedLead --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            RetiredNow --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            DisposedNow --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            LateRead --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            Filtered --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            ZeroMatches --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            Repainted --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            Reopened --> RefreshedFocused: same lead refresh [when Attention selected, Current lead authorized]
+            %% when Focused, Showing
+            Ready --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            RefreshedFocused --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            RefreshedAll --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            ChangedLead --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            RetiredNow --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            DisposedNow --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            LateRead --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            Filtered --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            ZeroMatches --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            Repainted --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            Reopened --> RefreshedAll: same lead refresh [when All findings, Current lead authorized]
+            %% when All, Showing
+            Ready --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            LateRead --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            Filtered --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            Repainted --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            Reopened --> ChangedLead: lead change [when Current lead authorized]
+            %% when Showing
+            Ready --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            LateRead --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Filtered --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Repainted --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Reopened --> RetiredNow: authorization retirement [when Current lead authorized]
+            %% when Showing
+            Ready --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            RefreshedFocused --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            RefreshedAll --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            ChangedLead --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            RetiredNow --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            DisposedNow --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            LateRead --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            Filtered --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            ZeroMatches --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            Repainted --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            Reopened --> DisposedNow: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            Ready --> LateRead: late read arrival
+            RefreshedFocused --> LateRead: late read arrival
+            RefreshedAll --> LateRead: late read arrival
+            ChangedLead --> LateRead: late read arrival
+            RetiredNow --> LateRead: late read arrival
+            DisposedNow --> LateRead: late read arrival
+            LateRead --> LateRead: late read arrival
+            Filtered --> LateRead: late read arrival
+            ZeroMatches --> LateRead: late read arrival
+            Repainted --> LateRead: late read arrival
+            Reopened --> LateRead: late read arrival
+            Ready --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            LateRead --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            Filtered --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            Repainted --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            Reopened --> Filtered: select attention [when Current lead authorized]
+            %% when Showing
+            Ready --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            LateRead --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            Filtered --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            Repainted --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            Reopened --> Filtered: clear attention [when Current lead authorized]
+            %% when Showing
+            Ready --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            LateRead --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            Filtered --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            Repainted --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            Reopened --> Filtered: select kind [when Current lead authorized]
+            %% when Showing
+            Ready --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            LateRead --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            Filtered --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            Repainted --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            Reopened --> Filtered: clear kind [when Current lead authorized]
+            %% when Showing
+            Ready --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            RefreshedFocused --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            RefreshedAll --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            ChangedLead --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            RetiredNow --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            DisposedNow --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            LateRead --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            Filtered --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            ZeroMatches --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            Repainted --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            Reopened --> ZeroMatches: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            Ready --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            RefreshedFocused --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            RefreshedAll --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            ChangedLead --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            RetiredNow --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            DisposedNow --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            LateRead --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            Filtered --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            ZeroMatches --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            Repainted --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            Reopened --> Repainted: same lead repaint [when Current lead authorized]
+            %% when Showing
+            Ready --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            RefreshedFocused --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            RefreshedAll --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            ChangedLead --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            RetiredNow --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            DisposedNow --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            LateRead --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            Filtered --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            ZeroMatches --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            Repainted --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+            Reopened --> Reopened: authorized reopen [when Signed out]
+            %% when Retired
+        }
+        --
+        state Calls {
+            [*] --> NoAddedRead
+            state "No request added" as NoAddedRead
+            state "Explicit read added" as ExplicitRead
+            NoAddedRead --> ExplicitRead: same lead refresh [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> ExplicitRead: same lead refresh [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> ExplicitRead: lead change [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> ExplicitRead: lead change [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> ExplicitRead: authorized reopen [when Signed out]
+            %% when Retired
+            ExplicitRead --> ExplicitRead: authorized reopen [when Signed out]
+            %% when Retired
+            NoAddedRead --> NoAddedRead: select attention [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> NoAddedRead: select attention [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> NoAddedRead: clear attention [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> NoAddedRead: clear attention [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> NoAddedRead: select kind [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> NoAddedRead: select kind [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> NoAddedRead: clear kind [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> NoAddedRead: clear kind [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> NoAddedRead: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            ExplicitRead --> NoAddedRead: zero match [when Current research shown, Current lead authorized]
+            %% when Visible, Showing
+            NoAddedRead --> NoAddedRead: same lead repaint [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> NoAddedRead: same lead repaint [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> NoAddedRead: authorization retirement [when Current lead authorized]
+            %% when Showing
+            ExplicitRead --> NoAddedRead: authorization retirement [when Current lead authorized]
+            %% when Showing
+            NoAddedRead --> NoAddedRead: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            ExplicitRead --> NoAddedRead: disposal [when Current lead authorized, Signed out]
+            %% when Showing, Retired
+            NoAddedRead --> NoAddedRead: late read arrival
+            ExplicitRead --> NoAddedRead: late read arrival
+        }
+    }
+%% never RetainSameLead: Selected attention refreshed & All findings -- Same-lead refresh retains selected attention.
+%% never ResetLead: Different lead opened & Attention selected -- Lead change resets attention.
+%% never ResetAuthorization: Signed out & Attention selected -- Authorization retirement resets attention.
+%% never ResetDisposal: Panel disposed & Attention selected -- Disposal resets attention.
+%% never LateSubjectBoundary: Late response ignored & Signed out & Current research shown -- Late reads never cross the subject boundary.
+%% never FilteringNoRequest: Selector changed & Explicit read added -- Filtering adds no request.
+%% never ZeroMatchGuidance: No matching findings & Research cleared -- Zero matches preserve recorded state and next_step.

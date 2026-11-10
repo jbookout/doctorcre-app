@@ -1,0 +1,29 @@
+stateDiagram-v2
+  [*] --> Loading: mount
+  Loading --> Loaded: successful parsed response
+  Loading --> Refused: refusal
+  Loaded --> Filtered: edit name or type locally
+  Filtered --> EmptySubset: no loaded matches
+  EmptySubset --> Filtered: edit predicate
+  Filtered --> Loaded: clear and focus search
+  EmptySubset --> Loaded: clear and focus search
+  Loaded --> LoadingMore: load more explicitly
+  EmptySubset --> LoadingMore: load more explicitly
+  LoadingMore --> Filtered: success preserves valid selection
+  Loaded --> Refreshing: refresh
+  Filtered --> Refreshing: refresh
+  Refreshing --> Filtered: success preserves valid selection
+  Refreshing --> Loaded: success removes missing type selection
+  Refreshing --> Refused: refusal retains rows and selection
+  Refused --> Refreshing: retry
+  Refused --> Filtered: edit locally
+  LoadingMore --> Refused: repeated cursor or refusal
+  Loaded --> EmptyLoaded: successful empty refresh
+  Loading --> Expired: authorization refusal or invalidation
+  Filtered --> Expired: authorization refusal or invalidation
+  Refused --> Expired: invalidation
+  Loading --> Disposed: dispose
+  Filtered --> Disposed: dispose
+  Refused --> Disposed: dispose
+  Expired --> Expired: ignore stale completion
+  Disposed --> Disposed: ignore stale completion

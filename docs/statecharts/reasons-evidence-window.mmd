@@ -1,0 +1,24 @@
+stateDiagram-v2
+  [*] --> Loading
+  Loading --> Loaded: First read succeeds
+  Loading --> Unavailable: Read fails
+  Unavailable --> Loading: Try again
+  Loaded --> Loaded: Edit draft dates or other filters
+  Loaded --> Window: Apply valid dates
+  Window --> Window: Apply same day or leap day
+  Window --> Invalid: Apply impossible or reversed dates
+  Invalid --> Window: Correct and apply dates
+  Invalid --> Loaded: Clear and focus search
+  Window --> Loaded: Clear and focus search
+  Window --> Window: More reasons appends or refresh succeeds
+  Window --> LastUpdate: Refresh fails
+  LastUpdate --> Window: Explicit retry succeeds
+  Loaded --> Retired: Session denied or invalidated
+  Window --> Retired: Session denied or invalidated
+  LastUpdate --> Retired: Session denied or invalidated
+  Retired --> Retired: Late read ignored
+  Window --> Disposed: Leave view
+  Disposed --> Disposed: Late read or refresh ignored
+  %% never Invalid dates replace the last valid applied window.
+  %% never Local filter edits start a business request.
+  %% never Session retirement or disposal reveals a stale completion.

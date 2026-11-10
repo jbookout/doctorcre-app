@@ -1,0 +1,17 @@
+stateDiagram-v2
+  [*] --> Unselected
+  Unselected --> Ready: select valid table
+  Ready --> Ready: identical refresh preserves view
+  Ready --> Ready: sort or filter matching rows
+  Ready --> Empty: filter excludes all rows
+  Empty --> Ready: clear or reset
+  Ready --> Downloaded: download / acquire URL and revoke after click
+  Downloaded --> Downloaded: repeated download / independent URL
+  Ready --> Refused: acquisition or click throws / revoke acquired URL
+  Refused --> Downloaded: retry succeeds
+  Ready --> Invalid: invalid refreshed block
+  Invalid --> Ready: valid refresh
+  Ready --> Ready: changed content or selection / reset view
+  Ready --> Unselected: clear or auth retirement / dispose
+  Downloaded --> Unselected: dispose / no URL retained
+  Unselected --> Unselected: stale completion / no async work

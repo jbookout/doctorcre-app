@@ -36,3 +36,21 @@ test('R12 malformed optional rows do not throw or remove valid independent agend
   assert.deepEqual(agenda.entries.map(row => row.key), ['task:demo-task', 'demo-date']);
   assert.deepEqual(agenda.failed, ['demo']);
 });
+
+const bundle = await (await import('esbuild')).build({ entryPoints: ['src/ui/home/review.ts'], bundle: true, write: false, platform: 'node', format: 'esm' });
+const { parseReview } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+const { factCases } = await import('../scripts/prove-home-fact-review-source-page-range.mjs');
+for (const c of factCases()) test(`fact source admission ${c.name}`, () => {
+  const { response } = c;
+  if (c.valid) {
+    const review = parseReview(response, response.reference);
+    assert.deepEqual(review.observations[0].source, response.detail.observations[0].source);
+    assert.deepEqual(review.operations, response.operations);
+  } else assert.throws(() => parseReview(response, response.reference), /not supported safely/);
+});
+test('fact review preserves reference and operation binding', () => {
+  const { response } = factCases()[0];
+  for (const change of [{ item_id: 'another' }, { source_version: 'v2' }, { kind: 'action' }, { operations: ['delete-record'] }]) {
+    assert.throws(() => parseReview({ ...response, reference: { ...response.reference, ...change } }, response.reference), /not supported safely/);
+  }
+});

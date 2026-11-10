@@ -1,10 +1,12 @@
-import test, { before, after } from 'node:test';
+import test, { before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { chromium, fixtureServer } from './browser-harness.mjs';
+
+describe('test/inbox-freshness-feedback-browser.test.mjs', () => {
 
 let outDir;
 before(async () => { outDir = await temporaryDirectory('doctorcre-inbox-'); await buildArtifact({ root: process.cwd(), outDir }); });
@@ -24,7 +26,7 @@ async function open(t, { width = 1440, theme = 'light', clock = false, extra = [
   await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-inbox' } }));
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params;
-    if (name === 'read-home-inbox-v4') return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
+    if (['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name)) return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool' }) }] } } });
     calls.push({ name, args });
     let payload;
     if (name === 'read-home-inbox-v3') payload = { ok: true, schema_version: 'home-inbox.v3', truncated: false, limit: 1000, items, working_collapsed: true, auto_settle_enabled: true };
@@ -182,7 +184,7 @@ test('authentication loss during a refresh retires all private cards', async t =
     await denial;
     await route.fulfill({ status: 401, json: { error: 'authentication_required' } });
   });
-  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v4');
+  const refresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'read-home-inbox-v5');
   await focus(page);
   await refresh;
   refuse();
@@ -203,4 +205,6 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`re
   assert.ok(undo.y + undo.height < bottom);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `/tmp/WR39.S1.J64-evidence/receipt-${width}-${theme}.png` });
+});
+
 });
