@@ -1580,15 +1580,17 @@ test('embedded drag edge scroll moves the deal workspace and keeps property hit 
     const target = await frame.locator('[data-property-id="c"]').boundingBox();
     await page.mouse.move(target.x + 20, 400); await page.mouse.up();
     assert.deepEqual(await frame.evaluate(() => window.moves), [['a', 'c']]);
+    await frame.locator('[data-stop-drag]').first().scrollIntoViewIfNeeded();
+    const cancelStart = await frame.locator('[data-stop-drag]').first().boundingBox();
+    await page.mouse.move(cancelStart.x + 10, cancelStart.y + 10); await page.mouse.down();
+    await page.keyboard.press('Escape'); await page.mouse.up();
+    assert.equal(await frame.locator('.stop-dragging').count(), 0);
+    assert.deepEqual(await frame.evaluate(() => window.moves), [['a', 'c']]);
   } finally { await browser.close(); }
 });
 
 for (const broken of [false, true]) test(`production drag proof CLI fixture ${broken ? 'rejects a cancelled drag' : 'passes exact order and undo'}`, async t => {
-  const { startFixture } = await import('../scripts/fixture-http.mjs');
-  const { temporaryDirectory } = await import('../scripts/temp-directory.mjs');
-  const { writeFile } = await import('node:fs/promises');
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
+  const { runTourDragProofFixture } = await import('./tour-stop-drag-proof-fixture.ts');
   const store = domain(), editing = await open(store);
   await create(editing.doc); await addCart(editing.doc); await saveAndAccept(editing.doc);
   editing.dom.window.close();
@@ -1602,11 +1604,7 @@ for (const broken of [false, true]) test(`production drag proof CLI fixture ${br
   routes.set('/deals', { contentType: 'text/html', body: `<iframe title="Tour shortlist, route and packet" style="border:0;width:100%;height:10000px" src="/tours/route-editor.html?deal=${fixtureDeal}&tour=${tourId}"></iframe>` });
   const content = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '').replace(/<link\b[^>]*>/g, '') + `<script>${script}</script>` + (broken ? '<script>document.addEventListener("pointerup",e=>e.stopImmediatePropagation(),true)</script>' : '');
   routes.set('/tours/route-editor.html', { contentType: 'text/html', body: content });
-  const server = await startFixture({ routes }); t.after(() => server.close());
-  const directory = temporaryDirectory('tour-drag-proof-', t);
-  const storage = `${directory}/state.json`; await writeFile(storage, JSON.stringify({ cookies: [], origins: [] }));
-  const args = ['scripts/prove-tour-stop-drag.ts', '--origin', server.origin, '--expected-commit', '1'.repeat(40), '--tour-url', `${server.origin}/deals?deal=${fixtureDeal}`, '--storage-state', storage, '--timeout-ms', '30000'];
-  const run = promisify(execFile)(process.execPath, args, { timeout: 40000 });
+  const run = runTourDragProofFixture(routes, fixtureDeal, t);
   if (broken) await assert.rejects(run, error => { assert.equal(error.code, 1, error.stderr); return true; });
   else { const { stdout } = await run; const result = JSON.parse(stdout); assert.equal(result.observations.length, 4); assert.equal(result.writes, 0); }
 });

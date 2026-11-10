@@ -43,7 +43,7 @@ export function mountStopDrag(
         gesture.target = targetAt({ clientX: gesture.x - frameOffset.left, clientY: gesture.y - frameOffset.top });
         gesture.target?.classList.add("stop-drop-target");
       }
-      // eslint-disable-next-line no-restricted-syntax -- One frame per active gesture; cancel cancels it on drop, Escape, blur or retirement. No reads.
+      // eslint-disable-next-line no-restricted-syntax -- One frame per active gesture; cancel cancels it on drop, Escape, blur or retirement. No network reads.
       frame = view.requestAnimationFrame(scroll);
     }
   }
@@ -79,8 +79,9 @@ export function mountStopDrag(
         x: event.clientX + offset().left,
         y: event.clientY + offset().top,
       };
-      // eslint-disable-next-line no-restricted-syntax -- A single local gesture frame loop; cancel ends it on every gesture exit. No reads.
+      // eslint-disable-next-line no-restricted-syntax -- A single local gesture frame loop; cancel ends it on every gesture exit. No network reads.
       frame = doc.defaultView?.requestAnimationFrame(scroll) ?? 0;
+      handle.focus({ preventScroll: true });
       source.classList.add("stop-dragging");
       handle.setPointerCapture?.(event.pointerId);
       event.preventDefault();
@@ -126,6 +127,9 @@ export function mountStopDrag(
   );
   doc.defaultView?.addEventListener("blur", cancel, { signal });
   return {
+    active() {
+      return gesture.kind === "dragging";
+    },
     destroy() {
       cancel();
       abort.abort();

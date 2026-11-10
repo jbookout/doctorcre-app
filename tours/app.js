@@ -1329,7 +1329,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
   mountAutoRefresh({ document, window, refresh: async () => {
     await loadLibrary();
-    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || sheetPending || sheetConflict || sheetBusy || tourAction || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
+    const draftOpen = stopDrag?.active() || state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || sheetPending || sheetConflict || sheetBusy || tourAction || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
     if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id, { keepEditorVisible: true });
     else if (id(state.projectionId)) await loadFeedback();
   } });
