@@ -7,7 +7,8 @@ income-band presentation. S10 owns loading, validation, routing and bundling.
 Base main is 28a1a144cc6659b83617a19f06f504332570fe38. The source contract is
 DoctorCRE/carr-system 865fefee26fcbbe50a04c7515c5f3d3bc8913cd1, including the
 standard-site design, market-study.v1 schema, synthetic package and parity probes.
-Current main has no src/ui/portal directory or demographics implementation.
+Main now has the portal shell. This module remains injected and is not registered
+with that shell by this slice.
 
 ## System design
 
@@ -103,3 +104,18 @@ zero-tech-debt reuses the existing theme tokens and leaves router, loader and
 bundling with S10. The diff adds a new module, synthetic fixture and tests;
 there is no existing demographics implementation to delete. No code comments,
 casts, suppressions or compatibility modes were introduced.
+
+## Main resync
+
+WR227.S12.J8 merges main e6e3ad4b without conflicts. The demographics module
+and its two acceptance suites join the current strict TypeScript configurations.
+Knip recognizes the injected module as an entry, like the other portal modules.
+The browser suite is `test/portal-demographics-core-browser.browser.ts`; static
+coverage is `test/portal-demographics-core.test.ts`.
+
+Fixture data enters React through Playwright serialization after page load.
+It is never interpolated into an inline script. A closing-script payload stays
+readable text and cannot set the fixture's execution sentinel.
+Control groups use fieldsets with the existing visual reset. Stateless repeated
+rows use array-owned positional keys, preserving duplicate values without
+requiring stable geographic IDs.

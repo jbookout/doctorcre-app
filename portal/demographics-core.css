@@ -21,3 +21,5 @@
 
 .demographics-core [role=group] { display:flex; flex-wrap:wrap; gap:.5rem; }
 .demographics-core button[aria-pressed=true] { background:var(--surface-3); font-weight:700; border-width:2px; }
+
+.demographics-core fieldset { border: 0; padding: 0; min-inline-size: 0; margin-inline: 0; }
