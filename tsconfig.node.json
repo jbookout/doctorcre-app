@@ -54,7 +54,7 @@
     "test/phone-push.browser.ts",
     "test/phone-push-worker.test.ts",
     "scripts/prove-quiet-lead-history.ts",
-    "test/prove-quiet-lead-history.test.ts",
+    "test/prove-quiet-lead-history.browser.ts",
     "test/quiet-lead-history.browser.ts",
     "js/leads-client.d.ts",
     "scripts/proof-browser.d.mts",

@@ -48,4 +48,4 @@ Every edge with a repeated action label uses the corresponding test below. Initi
 | Deadline or changing release | changing release and stalled release are insufficient evidence; deadline cleanup stalled evaluation |
 | Acquisition deadline | deadline cleanup late launch; late newPage closes before CDP disconnect and fresh connection sees no added tab |
 
-All proof test names are in `test/prove-quiet-lead-history.test.ts`.
+All proof test names are in `test/prove-quiet-lead-history.browser.ts`.
