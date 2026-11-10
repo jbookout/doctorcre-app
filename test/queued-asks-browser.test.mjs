@@ -159,9 +159,11 @@ test('malformed draft reports recovery while typing and sending',async t=>{
   await mountAskComposer(host,{askSession:async()=>({actor:'draft-probe'}),submitDocRequest:async()=>{window.draftProbe.calls++;return {};}},conversation);
  },conversation);
  const host=page.locator('#draftProbe');await host.locator('textarea').fill('New current draft.');
+ await host.locator('#askNotice').filter({hasText:/Saved draft needs recovery/}).waitFor();
  assert.match(await host.locator('#askNotice').textContent(),/Saved draft needs recovery/);
  assert.doesNotMatch(await host.textContent(),/storage is unavailable|changed in another tab/);
  await host.getByRole('button',{name:'Send ask',exact:true}).click();
+ await host.locator('#askNotice').filter({hasText:/^Saved draft needs recovery/}).waitFor();
  assert.match(await host.locator('#askNotice').textContent(),/Saved draft needs recovery/);
  assert.equal(await host.locator('textarea').inputValue(),'New current draft.');
  assert.deepEqual(await page.evaluate(()=>{localStorage.setItem('probe','ok');return [localStorage.getItem(window.draftProbe.key),localStorage.getItem('probe'),window.draftProbe.calls];}),['{','ok',0]);
