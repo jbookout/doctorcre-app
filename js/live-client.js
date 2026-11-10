@@ -13,6 +13,7 @@ import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
+import { parseLinkReceipt } from './ui-introduction-request.js';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
@@ -59,7 +60,7 @@ export function createLiveClient(opts = {}) {
     if (selfActor && selfActor !== session.actor.slug) throw Object.assign(new Error('Session changed. Reopen the record before writing.'), { code: 'session_changed' });
     return `${session.actor.slug}:${session.csrf_token}`;
   } });
-  const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
+  const sessionWrites = new Set(['link-parties', 'set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
     'undo-call-change', 'review-call-outcome', 'review-deal-update', 'confirm-email-filing', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'snooze-email-proposal', 'handle-email-proposal', 'edit-email-draft', 'submit-email-draft', 'register-client-portal', 'record-human-fact', 'resolve-fact-review']);
@@ -134,6 +135,7 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(new Error('Draft save receipt unavailable'));
     if (verb === 'submit-email-draft' && !validEmailDraftReceipt(payload, args))
       throw unknownMcpOutcome(new Error('Reply submission receipt unavailable'));
+    if (verb === 'link-parties') parseLinkReceipt(payload);
     return payload;
   }
 
@@ -212,6 +214,7 @@ export function createLiveClient(opts = {}) {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
     async readAssuranceHealth(args) { const { assuranceHealthRequest } = await import('./assurance-health-model.js'); return rpc('read-assurance-health', assuranceHealthRequest(args)); },
+    async linkParties(args) { return write('link-parties', args); },
     async getRelationshipNetwork({ signal } = {}) {
       const response = await fetchReadImpl('/api/v1/business/relationships?contract=relationship-network.v1', {signal,credentials:'same-origin',cache:'no-store',headers:{accept:'application/json'}});
       if (!response.ok) throw Object.assign(new Error('Relationships unavailable'), {status:response.status});

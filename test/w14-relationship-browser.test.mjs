@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { componentDocument, animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 import axe from "axe-core";
+import { observeIntroduction } from '../scripts/prove-introduction-review.ts';
 const root = new URL("../", import.meta.url);
 async function open(t, width = 1440) {
   const browser = await chromium.launch();
@@ -14,7 +15,8 @@ async function open(t, width = 1440) {
   });
   await page.clock.install({ time: new Date() });
   const errors = [],
-    verbs = [];
+    verbs = [], writes = [];
+  let recorded = null;
   let mode = "ok",
     version = 0;
   page.on("pageerror", (e) => errors.push(e.message));
@@ -35,6 +37,15 @@ async function open(t, width = 1440) {
       const payload = relationshipNetworkFixture(
         await page.evaluate(() => new Date().toISOString()),
       );
+      if (mode.startsWith('intro')) {
+        const mapping = { 'party:demo-lender': 'party:11111111-1111-4111-8111-111111111111', 'party:demo-lead': 'party:22222222-2222-4222-8222-222222222222', 'party:demo-build': 'party:33333333-3333-4333-8333-333333333333' };
+        for (const n of payload.nodes) { n.id = mapping[n.id] || n.id; n.restricted = false; }
+        for (const e of [...payload.edges, ...payload.suggestions]) for (const key of ['from','to','via']) e[key] = mapping[e[key]] || e[key];
+        for (const r of payload.referrals) r.node_id = mapping[r.node_id] || r.node_id;
+        payload.edges[0].via = mapping['party:demo-build'];
+        payload.suggestions[0].via = mapping['party:demo-build'];
+        if (recorded) { payload.edges.push(recorded); payload.suggestions = []; }
+      }
       if (version) payload.nodes[0].summary = "Demo refreshed summary";
       if (mode === "malformed") payload.edges[0].from = "missing";
       if (mode === "territory") payload.nodes[0].territory = 123;
@@ -61,6 +72,13 @@ async function open(t, width = 1440) {
       const verb = r.request().postDataJSON().params.name;
       verbs.push(verb);
       let payload = { ok: true };
+      if (verb === 'link-parties') {
+        const args = r.request().postDataJSON().params.arguments;
+        writes.push(args);
+        recorded = { id: 'link:44444444-4444-4444-8444-444444444444', from: `party:${args.from_party}`, to: `party:${args.to_party}`, via: args.via_party ? `party:${args.via_party}` : null, kind: 'intro_requested', detail: args.note, summary: args.note, when: `${args.occurred_on}T00:00:00Z` };
+        if (mode === 'intro-lost' && writes.length === 1) return r.abort();
+        payload = { ok: true, link_id: '44444444-4444-4444-8444-444444444444', existing: writes.length > 1 };
+      }
       if (verb === "read-home-agenda") payload = { schema_version: "home-agenda.v1", deals: [], actor: "joe" };
       if (verb === "deal-room-board") payload = { deals: [], actor: "joe" };
       if (verb === "today-triage") payload = { items: [] };
@@ -102,6 +120,7 @@ async function open(t, width = 1440) {
     page,
     errors,
     verbs,
+    writes,
     setMode: (v) => {
       mode = v;
     },
@@ -551,4 +570,55 @@ test('Home loads introduction details on keyboard entry', async t => {
   await page.locator('.relationship-dialog[open]').waitFor();
   assert.equal(await page.locator('#relationshipTitle').innerText(), 'Demo Dental Expansion');
   assert.deepEqual(errors, []);
+});
+
+for (const width of [1440,390]) for (const theme of ['light','dark'])
+test(`V03 explicitly reviews and records the exact introduction at ${width} ${theme}`, async t => {
+ const {page,setMode,writes,errors}=await open(t,width);setMode('intro');
+ await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme,walkthroughSeen:{joe:true,dell:true}})),theme);
+ await page.goto('http://localhost/relationships?mode=live');
+ await page.locator('#networkIntroductions [data-node]').click();
+ await page.locator('[data-review-introduction="demo-offer"]').click();
+ const panel=page.locator('.introduction-review');
+ assert.equal(await panel.getAttribute('data-state'),'reviewing');assert.equal(writes.length,0);
+ assert.deepEqual(await panel.locator('[data-identity]').allTextContents(),['Demo Healthcare Lending (11111111-1111-4111-8111-111111111111)','Demo Practice Builders (33333333-3333-4333-8333-333333333333)','Demo Dental Expansion (22222222-2222-4222-8222-222222222222)']);
+ await panel.locator('[name="date"]').fill('2026-11-10');await panel.locator('[name="note"]').fill('Please connect these practices.');
+ await panel.locator('[type="submit"]').click();assert.equal(writes.length,0);
+ await panel.locator('[name="reviewed"]').check();
+ assert.equal(await panel.evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ await page.screenshot({path:`out/test-artifacts/w14/intro-review-${width}-${theme}.png`,animations:'disabled'});
+ await panel.locator('[type="submit"]').click();
+ await page.waitForFunction(()=>document.querySelector('.introduction-review').dataset.state==='confirmed');
+ assert.equal(writes.length,1);assert.equal(writes[0].from_party,'11111111-1111-4111-8111-111111111111');assert.equal(writes[0].to_party,'22222222-2222-4222-8222-222222222222');assert.equal(writes[0].via_party,'33333333-3333-4333-8333-333333333333');assert.equal(writes[0].kind,'intro_requested');
+ await panel.locator('[data-close]').click();
+ await page.waitForFunction(()=>document.querySelector('.relationship-dialog:not(.introduction-review)').textContent.includes('Introduction requested'));
+ assert.deepEqual(errors,[]);
+});
+
+test('V03 lost response survives closing and refresh then replays the same session-bound request',async t=>{
+ const {page,setMode,writes,errors}=await open(t,390);setMode('intro-lost');await page.goto('http://localhost/relationships?mode=live');
+ await page.locator('#networkIntroductions [data-node]').click();await page.locator('[data-review-introduction]').click();
+ const panel=page.locator('.introduction-review');
+ await panel.locator('[name="date"]').fill('2026-11-10');await panel.locator('[name="note"]').fill('Retain this request.');await panel.locator('[name="reviewed"]').check();await panel.locator('[type="submit"]').click();
+ await page.waitForFunction(()=>document.querySelector('.introduction-review').dataset.state==='unknown');
+ await panel.locator('[data-close]').click();await page.keyboard.press('Escape');
+ await page.locator('#networkRefresh').click();
+ await page.getByRole('button',{name:'Check introduction request',exact:true}).click();
+ assert.equal(await panel.locator('[name="note"]').isDisabled(),true);await panel.locator('[data-recover]').click();
+ await page.waitForFunction(()=>document.querySelector('.introduction-review').dataset.state==='confirmed');
+ assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.deepEqual(errors,[]);
+});
+
+for (const mismatch of [false,true]) test(`V03 proof observation ${mismatch ? 'rejects near-miss identity' : 'passes exact identity'}`,async t=>{
+ const {page,setMode,writes}=await open(t);setMode('intro');
+ if(mismatch)await page.addInitScript(()=>{
+  const observer=new MutationObserver(()=>{
+   const node=document.querySelector('.introduction-review dd');
+   if(node && !node.textContent.startsWith('Wrong '))node.textContent=`Wrong ${node.textContent}`;
+  });
+  observer.observe(document,{subtree:true,childList:true});
+ });
+ if(mismatch)await assert.rejects(()=>observeIntroduction(page,'http://localhost'),/Expected values to be strictly deep-equal/);
+ else assert.equal((await observeIntroduction(page,'http://localhost')).status,'passed');
+ assert.equal(writes.length,0);
 });

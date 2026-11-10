@@ -6,7 +6,7 @@ import {
 } from "./relationship-network-model.js";
 const relationshipDate = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
 
-export function mountRelationshipDialog({ document }) {
+export function mountRelationshipDialog({ document, onReviewIntroduction }) {
   const dialog = document.createElement("dialog");
   dialog.className = "relationship-dialog";
   dialog.setAttribute("aria-labelledby", "relationshipTitle");
@@ -39,6 +39,15 @@ export function mountRelationshipDialog({ document }) {
         })
         .join("") || "<p>No connections recorded</p>"
     }</section></div>`;
+    if (onReviewIntroduction) for (const offer of snapshot.suggestions.filter(s => [s.from, s.to, s.via].includes(node.id))) {
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.dataset.reviewIntroduction = offer.id;
+      action.className = 'relationship-review-action';
+      action.textContent = `Review introduction: ${[offer.from, offer.via, offer.to].filter(Boolean).map(id => snapshot.nodes.find(n => n.id === id)?.name).join(' → ')}`;
+      action.onclick = () => onReviewIntroduction(offer.id);
+      dialog.querySelector('.relationship-detail-grid').append(action);
+    }
     dialog.querySelector("[data-close-card]").onclick = () => dialog.close();
     dialog.querySelectorAll("[data-open-node]").forEach(
       (b) =>
