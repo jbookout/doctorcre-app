@@ -56,7 +56,7 @@
     "scripts/prove-brief-queue-menu-malformed-section.ts",
     "test/brief-queue-menu-malformed-section.test.ts",
     "test/brief-queue-menu-malformed-section-browser.browser.ts",
-    "test/prove-brief-queue-menu-malformed-section.test.ts"
+    "test/prove-brief-queue-menu-malformed-section.browser.ts"
   ],
   "compilerOptions": {
     "lib": [
