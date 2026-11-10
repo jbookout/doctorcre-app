@@ -56,6 +56,13 @@
     "scripts/prove-queued-asks-corrupt-entry-isolation.ts",
     "test/prove-queued-asks-corrupt-entry-isolation.browser.ts",
     "scripts/proof-browser.d.mts",
+    "scripts/prove-invoice-payment-chronology-display.ts",
+    "test/prove-invoice-payment-chronology-display.browser.ts",
+    "test/proof-browser-harness.d.mts",
+    "js/invoice-tracker-fixture.d.ts",
+    "js/invoice-tracker-model.d.ts",
+    "js/routes.d.ts",
+    "src/worker.d.ts",
     "test/quiet-vendors-malformed-snapshot.browser.ts",
     "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
     "scripts/prove-quiet-vendors-malformed-snapshot.ts",
@@ -71,6 +78,12 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
+      ],
+      "/js/invoice-tracker-fixture.js": [
+        "./js/invoice-tracker-fixture.d.ts"
+      ],
+      "/js/invoice-tracker-model.js": [
+        "./js/invoice-tracker-model.d.ts"
       ],
       "/js/ui-quiet-vendors.js": [
         "./src/ui/quiet-vendors.tsx"
