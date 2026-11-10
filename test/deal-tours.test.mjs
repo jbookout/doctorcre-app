@@ -10,11 +10,11 @@ const other = '22222222-2222-4222-8222-222222222222';
 const tour = '33333333-3333-4333-8333-333333333333';
 const row = {id:tour,deal_id:deal,name:'Demo tour',status:'draft'};
 const settle = () => new Promise(resolve => setTimeout(resolve, 40));
-function open(client) {
+function open(client, navigate = () => {}) {
   const dom = new JSDOM('<div id="view"></div>');
   globalThis.window = dom.window; globalThis.document = dom.window.document;
   const root = document.querySelector('#view');
-  const panel = ui.mountDealTours(root, {dealId:deal, client, navigate() {}});
+  const panel = ui.mountDealTours(root, {dealId:deal, client, navigate});
   return {root,panel,dom};
 }
 test('TOURS-IN-DEAL lists only the current deal and opens its shortlist, route and packet editor', async () => {
@@ -62,7 +62,7 @@ test('session invalidation clears visible names and discards an in-flight read',
   await settle(); root.querySelector('[data-open-tour]').click(); await settle();
   dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
   finish({...row,stops:[]}); await settle();
-  assert.match(root.textContent,/Tours unavailable/); assert.doesNotMatch(root.textContent,/Demo tour/); panel.dispose();
+  assert.match(root.textContent,/session has changed/); assert.doesNotMatch(root.textContent,/Demo tour/); panel.dispose();
 });
 
 test('Opening to Open ignores an earlier tour reply and Open to List returns without leaving the workspace', async () => {
@@ -91,11 +91,80 @@ test('NotAvailable to Opening retries the same tour and ignores frame messages a
   assert.equal(root.textContent,'');
 });
 
-test('Creating to Unavailable clears the frame when the session changes', async () => {
+test('Creating to Retired clears the frame when the session changes', async () => {
   const {root,panel,dom} = open({library:async () => []});
   await settle(); root.querySelector('[data-start-tour]').click(); await settle();
   assert.ok(root.querySelector('iframe'));
   dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
   assert.equal(Boolean(root.querySelector('iframe')),false);
-  assert.match(root.textContent,/Tours unavailable/); panel.dispose();
+  assert.match(root.textContent,/session has changed/); panel.dispose();
+});
+
+for (const state of ['loading', 'list', 'error', 'opening', 'unavailable', 'creating', 'open', 'leaving']) for (const reason of ['session', 'scope']) {
+  test(`${state} retires on ${reason} and refuses stale controls, reads and navigation`, async () => {
+    let finishLibrary, finishDetail, changed, reads = 0, navigations = 0;
+    const client = {
+      scope: 'actor-a', onScopeChange(listener) { changed = listener; return () => {}; },
+      library: () => { ++reads; if (state === 'loading') return new Promise(done => { finishLibrary = done; }); if (state === 'error') return Promise.reject(Error('outage')); return Promise.resolve([row]); },
+      tour: () => { ++reads; if (state === 'opening') return new Promise(done => { finishDetail = done; }); if (state === 'unavailable') return Promise.reject(Error('outage')); return Promise.resolve({...row, stops: []}); },
+    };
+    const {root,panel,dom} = open(client, () => { ++navigations; });
+    dom.reconfigure({url:'https://fixture.test/deals'});
+    await settle();
+    if (['opening','unavailable','open','leaving'].includes(state)) { root.querySelector('[data-open-tour]').click(); await settle(); }
+    if (state === 'creating') root.querySelector('[data-start-tour]').click();
+    let leave;
+    const frame = root.querySelector('iframe');
+    if (state === 'leaving') {
+      dom.window.HTMLDialogElement.prototype.showModal = function() {};
+      dom.window.HTMLDialogElement.prototype.close = function() {};
+      frame.contentWindow.addEventListener('beforeunload', event => event.preventDefault());
+      root.querySelector('[data-back-tours]').click();
+      leave = panel.confirmLeave();
+      assert.ok(dom.window.document.querySelector('dialog'));
+    }
+    const controls = [...root.querySelectorAll('button')];
+    const count = reads, navigatePanel = navigations;
+    if (reason === 'session') dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+    else { client.scope = 'actor-b'; changed(); }
+    if (leave) assert.equal(await leave, false);
+    assert.equal(dom.window.document.querySelector('dialog'), null);
+    for (const button of controls) button.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
+    await panel.refresh();
+    finishLibrary?.([row]); finishDetail?.({...row,stops:[]});
+    if (frame) dom.window.dispatchEvent(new dom.window.MessageEvent('message',{origin:'https://fixture.test',source:frame.contentWindow,data:{type:'deal-tour-opened',id:tour,generation:1}}));
+    await settle();
+    assert.equal(reads,count);
+    assert.equal(navigations,navigatePanel);
+    assert.equal(root.querySelector('iframe'),null);
+    assert.equal(root.querySelector('button'),null);
+    assert.match(root.textContent,/session has changed/);
+    assert.equal(await panel.confirmLeave(),true);
+    assert.equal(panel.hasUnsavedChanges(),false);
+    panel.dispose();
+    await panel.refresh(); assert.equal(reads,count);
+  });
+}
+test('unchanged scope and initial verification preserve controls; a verified actor change retires', async () => {
+  let changed;
+  const client = { library: async () => [], onScopeChange(listener) { changed = listener; return () => {}; } };
+  const {root,panel} = open(client); await settle();
+  changed(); assert.ok(root.querySelector('[data-start-tour]'));
+  client.scope = 'verified-first-actor'; changed();
+  assert.ok(root.querySelector('[data-start-tour]'));
+  client.scope = 'verified-new-actor'; changed();
+  assert.match(root.textContent,/session has changed/); panel.dispose();
+});
+
+test('current frame invalidation retires the workspace and ignores subsequent frame messages', async () => {
+  const {root,panel,dom} = open({library:async () => []});
+  dom.reconfigure({url:'https://fixture.test/deals'});
+  await settle(); root.querySelector('[data-start-tour]').click();
+  const frame = root.querySelector('iframe');
+  const generation = Number(new URL(frame.src).searchParams.get('generation'));
+  const source = frame.contentWindow;
+  dom.window.dispatchEvent(new dom.window.MessageEvent('message',{origin:'https://fixture.test',source,data:{type:'deal-tour-invalidated',generation}}));
+  assert.match(root.textContent,/session has changed/);
+  dom.window.dispatchEvent(new dom.window.MessageEvent('message',{origin:'https://fixture.test',source,data:{type:'deal-tour-opened',id:tour,generation}}));
+  assert.equal(root.querySelector('iframe'),null); panel.dispose();
 });
