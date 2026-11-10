@@ -109,7 +109,7 @@ export async function prove(options: {
         const before = await observeStopDrag(page);
         await page.reload();
         const refreshed = page.frameLocator('iframe[title="Tour shortlist, route and packet"]');
-        await refreshed.locator("#route-stops > li").first().waitFor();
+        await refreshed.locator("#route-stops > li").first().waitFor({ state: "attached" });
         assert.deepEqual(
           await refreshed
             .locator("#route-stops > li")

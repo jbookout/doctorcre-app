@@ -344,4 +344,4 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 
 .stop-drag-handle { touch-action: none; cursor: grab; user-select: none; min-width: 44px; min-height: 44px; }
 .stop-dragging { opacity: .65; }
-.stop-drop-target { outline: 2px solid var(--accent, #216c70); outline-offset: -2px; }
+.stop-drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
