@@ -22,8 +22,12 @@
       ],
       "/js/ui-deal-tours.js": [
         "./src/ui/deal-tours.tsx"
+      ],
+      "/js/ui-queue.js": [
+        "./src/ui/brief-queues.tsx"
       ]
     },
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "resolveJsonModule": true
   }
 }
