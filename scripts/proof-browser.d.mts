@@ -1,2 +1,2 @@
 import type { Browser, LaunchOptions } from "playwright";
-export const chromium: { launch(options?: LaunchOptions): Promise<Browser> };
+export declare const chromium: { launch(options?: LaunchOptions): Promise<Browser> };

@@ -1,65 +1,36 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { createServer } from "node:http";
+import { appAssetSnapshot } from "../scripts/fixture-app-assets.mjs";
+import { startWorkerFixture } from "../scripts/fixture-http.mjs";
 import test, { type TestContext } from "node:test";
 import { promisify } from "node:util";
-import { fixtureServer } from "./browser-harness.mjs";
 
 const run = promisify(execFile);
 const revision = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const cli = new URL("../scripts/prove-queued-asks-corrupt-entry-isolation.ts", import.meta.url).pathname;
 
+const snapshot = appAssetSnapshot();
 async function origin(t: TestContext, mode = "valid") {
-  const fixture = await fixtureServer();
-  t.after(() => fixture.close());
-  const server = createServer(async (req, res) => {
-    if (req.url === "/app-release") {
-      if (mode === "signin") {
-        res.writeHead(401);
-        res.end("sign in");
-        return;
-      }
-      res.setHeader("content-type", "application/json");
-      res.end(
-        JSON.stringify({
-          service: "doctorcre-app",
-          environment: "production",
-          source_commit: mode === "stale" ? "0".repeat(40) : revision,
-        }),
-      );
-      return;
-    }
-    if (req.url === "/js/ui-host.js" && mode !== "valid" && mode !== "stale") {
-      if (mode === "protected") {
-        res.writeHead(403);
-        res.end("protected");
-        return;
-      }
-      res.setHeader("content-type", "text/javascript");
-      res.end(
-        mode === "missing"
-          ? "export const absent=true;"
-          : mode === "timeout"
-            ? "export async function mountAskComposer(){await new Promise(()=>{});}"
-            : 'export async function mountAskComposer(){throw Error("Wrong result");}',
-      );
-      return;
-    }
-    try {
-      const upstream = await fetch(fixture.origin + req.url);
-      res.writeHead(upstream.status, Object.fromEntries(upstream.headers));
-      res.end(Buffer.from(await upstream.arrayBuffer()));
-    } catch {
-      res.writeHead(500);
-      res.end();
-    }
+  const assets = new Map(await snapshot);
+  assets.delete('/app-release');
+  const routes = new Map([['/app-release', {
+    contentType: 'application/json',
+    status: mode === 'signin' ? 401 : 200,
+    body: JSON.stringify({ service:'doctorcre-app', environment:'production', source_commit:mode === 'stale' ? '0'.repeat(40) : revision }),
+  }]]);
+  if (mode !== 'valid' && mode !== 'stale' && mode !== 'signin') assets.set('/js/ui-host.js', {
+    contentType:'text/javascript',
+    body: Buffer.from(mode === 'missing' ? 'export const absent=true;' : mode === 'timeout' ? 'export async function mountAskComposer(){await new Promise(()=>{});}' : 'export async function mountAskComposer(){throw Error("Wrong result");}'),
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))));
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  return `http://127.0.0.1:${address.port}`;
+  if (mode === 'protected') {
+    assets.delete('/js/ui-host.js');
+    routes.set('/js/ui-host.js', { contentType:'text/plain',status:403,body:'protected' });
+  }
+  const server = await startWorkerFixture({ assets, routes });
+  t.after(()=>server.close());
+  return server.origin;
 }
+
 test("proof CLI imports served modules and proves isolated composer at both widths and themes", async (t) => {
   const base = await origin(t);
   const { stdout } = await run(process.execPath, [
