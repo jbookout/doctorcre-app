@@ -15,7 +15,7 @@ export function validInvoiceTracker(payload) {
         || !['expected','invoiced','received'].includes(row.status) || !Number.isInteger(row.base_version) || row.base_version < 1)) return false;
       if (row.gross_amount !== null && !(typeof row.gross_amount === 'number' || typeof row.gross_amount === 'string')) return false;
       if (row.gross_amount !== null && (!/^\d+(\.\d{1,2})?$/.test(String(row.gross_amount)) || !Number.isFinite(Number(row.gross_amount)))) return false;
-      if (row.status === 'received' && (!date(row.received_on) || !date(row.commission_invoiced_on))) return false;
+      if (row.status === 'received' && (!date(row.received_on) || !date(row.commission_invoiced_on) || row.received_on < row.commission_invoiced_on)) return false;
       if (row.status === 'invoiced' && !date(row.commission_invoiced_on)) return false;
       const key = row.commission_id || `awaiting:${row.deal_id}`;
       if (ids.has(key)) return false;
