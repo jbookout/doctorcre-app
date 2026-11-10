@@ -1,0 +1,22 @@
+stateDiagram-v2
+    [*] --> Loading: Open review
+    Loading --> Ready: Current evidence arrives
+    Loading --> Disposed: Close review
+    Ready --> Editing: Change choices or reason
+    Editing --> Submitting: Save review
+    Ready --> Submitting: Save review
+    Submitting --> Conflict: Card changed
+    Conflict --> Reloading: Review updated card
+    Reloading --> Ready: Fresh evidence reconciles visible choices
+    Reloading --> Conflict: Reload fails
+    Reloading --> Disposed: Leave the page
+    Submitting --> Uncertain: Confirmation unavailable
+    Uncertain --> Submitting: Retry same review request
+    Submitting --> Done: Server confirms
+    Ready --> Disposed: Close review
+    Editing --> Disposed: Close review
+    Done --> Disposed: Close review
+    Disposed --> [*]
+    %% never Submit an observation absent from the current visible evidence.
+    %% never Submit a decision unavailable in the current operation.
+    %% never Retry or submit without an explicit user action.

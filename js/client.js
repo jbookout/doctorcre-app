@@ -47,7 +47,7 @@
  * @property {string} phase
  * @property {Actor|null} owner
  * @property {boolean} attention
- * @property {{id:string, owner:Actor|null, description:string, due_on:string|null}[]} open_actions
+ * @property {{id:string, item_id:string, owner:Actor|null, description:string, due_on:string|null}[]} open_actions
  * @property {{kind:string, summary:string, occurred_at:string}|null} last_step
  * @property {string|null} last_touch
  * @property {string} next_step
@@ -143,7 +143,7 @@
  * @property {(args:{event_id:string,idempotency_key:string}) => Promise<{ok:true,activity_id:string}>} [undoEmailThreadFiling] undo one automatic filing
  * @property {() => Promise<{calls:Object[]}>} [readCallOutcomes] unreviewed pipeline-call outcomes: applied changes with evidence and open cards
  * @property {(args:{candidate_id:string, base_version:number}) => Promise<Object>} [undoCallChange] revert one automatically applied change
- * @property {(args:{session_id:string}) => Promise<Object>} [reviewCallOutcome] take one call's outcome off Home
+ * @property {(args:{session_id:string,expected_source_version:string}) => Promise<Object>} [reviewCallOutcome] take one call's outcome off Home
  * @property {() => Promise<void>} [simulatePartnerCall] fixture-only demo of presence + distill
  * @property {(args:{dataset:'clients'|'vendors', id:string}) => Promise<{record:Object}>} [getPartyRecord] the pinned `/api/v1/business/{dataset}/<id>` single-record read (V5-UX-B04); `id` is that record's own uuid, never a participant's party_id
  * @property {(args:{query?:string, limit?:number, include_closed?:boolean}) => Promise<SessionIdentityResponse>} sessionIdentity

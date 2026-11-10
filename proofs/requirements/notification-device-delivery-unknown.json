@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "notification-device-delivery-unknown",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "deployed-device-delivery-evidence",
+      "predicate": "After binding /app-release to the merged source, run node scripts/prove-notification-device-delivery-unknown.mjs --origin https://app.doctorcre.com --timeout-ms 30000. Fetch /js/notifications-model.js and at most 20 same-origin modules. Execute deliveryPhrases and notificationCards with contract-checked synthetic notification-feed fixtures. Assert missing and malformed evidence renders unavailable, validated absence renders device push off, known delivery phrases and read/ack identity and quiet suppression remain intact. Record all named assertions and exact asset hashes, then refuse a changed release identity. This proves deployed synthetic module behavior only; a natural signed-in journey remains unproven.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Exit 0 with all assertions and matching release identity; 1 for observed contradiction or release change; 78 for unavailable identity, assets, auth or timeout.",
+      "input_class": "Read-only deployed JavaScript with isolated synthetic notification-feed inputs",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 22,
+    "max_records": 20,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

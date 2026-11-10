@@ -1,0 +1,9 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "d2ca440d318e75f85f49c60b83700979cac57d51",
+  "files": {
+    "client-anniversary-read.ts": "bc109e7f7fc7575ab1fed0d0c086b2f93c888c436f2a5738aaaafe9a85ece2dc",
+    "calendar-date.ts": "8dbfa61a3383062c8d0e13ebe1ccd2e3cd3386279a8f016ddf90cdc3cc94027f"
+  },
+  "producer_sha256": "c60dd8eed09bcb406d814145b83cfaa1f516324a6f76246f3efcd03ce3c4a2c8"
+}

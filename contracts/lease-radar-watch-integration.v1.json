@@ -1,0 +1,22 @@
+{
+  "schema_version": "lease-radar-watch-integration.v1",
+  "producer": "DoctorCRE/carr-system",
+  "producer_revision": "60ea5e9b1bbf6582ec9f518f192dd0f6154839c8",
+  "watch_contract": "subject-watch.v2",
+  "recorded_fixture": "test/fixtures/watches/recorded.json",
+  "response_schema": "test/fixtures/watches/producer-schema.ts",
+  "radar_contract": "lease-radar.v1",
+  "lease_identity": "lease-radar.v1 leases[].id",
+  "linked_deal_identity": "lease-radar.v1 leases[].deal_id; null means no linked deal",
+  "home_identity": "home-inbox.v5 items[].item_id",
+  "home_destination": "/leases?lease=<canonical lease UUID>",
+  "authority": "The actor-scoped v2 list supplies direct lease policy and linked deal policy. Linked deal policy is shown as its own source, not a client-created expanded lease subscription.",
+  "pending_slice_4": [
+    "Expand a deal lease_threshold_crossed category to every authorized linked lease server-side, including multiple leases and excluding unlinked leases.",
+    "Coalesce overlapping deal and direct lease watches to one semantic notification per actor and lease change.",
+    "Emit lease notifications into Home with the canonical lease destination and stable item identity, independent of business events or an open browser."
+  ],
+  "pending_slice_3": "Meaningful change receipts and authorized before/after evidence remain producer-owned. This consumer does not invent reason or evidence fields.",
+  "dates": "Only explicit expiration_on and notice_on values are used. Missing dates remain gaps; commencement and term never imply expiration.",
+  "policy_limit": "The current v2 policy has lease_threshold_days. Calendar-month expiration windows and separate notice-field offsets proposed by the design are not fields in this contract and are not inferred."
+}

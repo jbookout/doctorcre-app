@@ -8,7 +8,7 @@ export const QUEUE_COLUMNS = Object.freeze([
   { id: "blocked", label: "Blocked", statuses: ["blocked"] },
   { id: "done", label: "Done", statuses: ["done"] },
 ]);
-export const QUEUE_STALE_MS = 120_000;
+const QUEUE_STALE_MS = 120_000;
 
 export function queueColumnFor(status) {
   return QUEUE_COLUMNS.find((column) => column.statuses.includes(String(status)))?.id || null;

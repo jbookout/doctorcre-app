@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { InboxClient, PartyCursor, WaitingChoice } from './inbox';
 
-type Search = { kind: 'idle' | 'debouncing' | 'loading' | 'failed' } | { kind: 'ready'; cursor: PartyCursor | null };
+type Search = { kind: 'idle' | 'debouncing' | 'loading' } | { kind: 'failed'; query: string; cursor: PartyCursor | undefined } | { kind: 'ready'; cursor: PartyCursor | null };
 export function WaitingPeople({ client, id, selected, select }: { client: InboxClient; id: string; selected: WaitingChoice | null; select: (choice: WaitingChoice | null) => void }) {
   const [actors, setActors] = useState<WaitingChoice[]>([]);
   const [parties, setParties] = useState<WaitingChoice[]>([]);
@@ -41,7 +41,7 @@ export function WaitingPeople({ client, id, selected, select }: { client: InboxC
         if (page == null) { await contacts(); return; }
         setParties(previous => cursor ? [...new Map([...previous, ...page.choices].map(choice => [choice.id, choice])).values()] : page.choices);
         setSearch({ kind: 'ready', cursor: page.next_cursor });
-      } catch { if (mounted.current && token === generation.current) setSearch({ kind: 'failed' }); }
+      } catch { if (mounted.current && token === generation.current) setSearch({ kind: 'failed', query: value, cursor }); }
     });
   }
   useEffect(() => {
@@ -62,7 +62,7 @@ export function WaitingPeople({ client, id, selected, select }: { client: InboxC
       <label htmlFor={`${id}-search`} style={{ display: 'block' }}>Search people by name</label>
       <input id={`${id}-search`} type="search" maxLength={100} value={query} onChange={event => { generation.current++; setQuery(event.target.value); }} style={{ width: '100%', boxSizing: 'border-box', minHeight: 44, font: 'inherit' }} />
       <p role="status">{search.kind === 'loading' ? 'Searching people…' : search.kind === 'debouncing' ? 'Waiting to search…' : search.kind === 'failed' ? 'People search failed. Retry search or enter another name.' : search.kind === 'ready' ? parties.length ? 'Select a recorded person.' : 'No people found for this name prefix.' : 'Enter a name prefix to search CARR people.'}</p>
-      {search.kind === 'failed' && <button type="button" onClick={() => { const token = ++generation.current; request(query.trim(), token); }}>Retry search</button>}
+      {search.kind === 'failed' && <button type="button" onClick={() => { const token = ++generation.current; setSearch({ kind: 'loading' }); request(search.query, token, search.cursor); }}>Retry search</button>}
       {search.kind === 'ready' && search.cursor && <button type="button" onClick={() => { if (search.kind !== 'ready' || !search.cursor) return; const token = ++generation.current; setSearch({ kind: 'loading' }); request(query.trim(), token, search.cursor); }}>More results</button>}
     </>}
     <label htmlFor={id} style={{ display: 'block' }}>Person</label>

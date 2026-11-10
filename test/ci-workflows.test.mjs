@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -13,6 +14,109 @@ const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url
 const checks = await readFile(new URL("../.github/workflows/checks.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
+
+const workflowDocument = source => parseYaml(source);
+const eventCondition = (expression = 'true', github = {}) => runInNewContext(
+  expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ''),
+  { github, always: () => true, cancelled: () => false },
+);
+
+test('merge groups run every required CI job on the group SHA and emit exactly test', async () => {
+  const document = workflowDocument(ci);
+  const events = document.on ?? document.true;
+  assert.deepEqual(events.merge_group, { types: ['checks_requested'] });
+  assert.ok(events.pull_request);
+  assert.deepEqual(events.push, { branches: ['main'] });
+  const github = { event_name: 'merge_group', sha: 'a'.repeat(40), event: {
+    merge_group: { head_sha: 'a'.repeat(40), base_sha: 'b'.repeat(40) },
+  } };
+  const jobs = document.jobs;
+  assert.ok(eventCondition(jobs.test.if, github), 'test must run on merge groups');
+  assert.equal(jobs.test.name ?? 'test', 'test');
+  assert.equal(jobs.test.strategy, undefined, 'required check must not gain a matrix suffix');
+  assert.deepEqual(jobs.test.needs, ['checks', 'shards', 'performance', 'live']);
+  assert.deepEqual(jobs.shards.strategy.matrix.shard, [1, 2, 3, 4]);
+  assert.equal(jobs.checks.uses, './.github/workflows/checks.yml');
+  const reusable = workflowDocument(checks);
+  assert.ok(Object.hasOwn(reusable.on ?? reusable.true, 'workflow_call'));
+  assert.equal((reusable.on ?? reusable.true).merge_group, undefined);
+  for (const [name, job] of [
+    ...jobs.test.needs.map(name => [name, jobs[name]]),
+    ['reusable checks', reusable.jobs.checks],
+  ]) {
+    assert.ok(eventCondition(job.if, github), `${name} must run on merge groups`);
+    if (!job.steps) continue;
+    const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
+    assert.ok(checkout, `${name} needs app source`);
+    assert.equal(checkout.with?.ref ?? '${{ github.sha }}', '${{ github.sha }}', name);
+    for (const step of job.steps.filter(step => step.run && !step.name?.includes('typed surfaces'))) {
+      if (step.if?.includes("github.event_name == 'push'") || step.if?.includes("github.event_name == 'pull_request'")) continue;
+      assert.ok(eventCondition(step.if, github), `${name}: ${step.name ?? step.run}`);
+    }
+  }
+  const aggregate = jobs.test.steps.find(step => step.env?.CHECKS);
+  assert.ok(eventCondition(aggregate.if, github), 'test must enforce dependency results on merge groups');
+  for (const name of jobs.test.needs) {
+    assert.equal(aggregate.env[name.toUpperCase()], `\${{ needs.${name}.result }}`);
+    const env = Object.fromEntries(jobs.test.needs.map(job => [job.toUpperCase(), 'success']));
+    const invoke = overrides => spawnSync('bash', ['-e', '-c', aggregate.run], {
+      encoding: 'utf8', env: { ...env, EVENT: 'merge_group', ...overrides },
+    });
+    assert.equal(invoke({}).status, 0);
+    for (const result of ['failure', 'cancelled', 'skipped']) {
+      assert.notEqual(invoke({ [name.toUpperCase()]: result }).status, 0, `${name} ${result}`);
+    }
+  }
+  assert.equal(eventCondition(jobs.preview.if, github), false);
+  const deploy = workflowDocument(await readFile(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.keys(deploy.on ?? deploy.true), ['workflow_run']);
+  for (const event of ['merge_group', 'pull_request', 'push']) {
+    const context = { repository: 'synthetic/app', event: { workflow_run: {
+      event, head_branch: event === 'merge_group' ? 'gh-readonly-queue/main/pr-1-base' : 'main',
+      head_repository: { full_name: 'synthetic/app' },
+    } } };
+    assert.equal(eventCondition(deploy.jobs.production.if, context), event === 'push');
+  }
+});
+
+test('typed surfaces check the merge group against its base and reject new JavaScript UI', async t => {
+  const step = workflowDocument(checks).jobs.checks.steps.find(step => step.name === 'Require typed surfaces');
+  const directory = await temporaryDirectory('queue-typed-surfaces-');
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: directory, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const commit = () => {
+    git('add', 'src');
+    git('-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', 'commit', '-qm', 'fixture');
+    return git('rev-parse', 'HEAD');
+  };
+  git('init', '-q');
+  await mkdir(join(directory, 'src/ui'), { recursive: true });
+  await writeFile(join(directory, 'src/ui/existing.js'), 'export {};');
+  const base = commit();
+  await writeFile(join(directory, 'src/ui/new.tsx'), 'export {};');
+  commit();
+  for (const event_name of ['pull_request', 'merge_group']) {
+    const github = { event_name, event: event_name === 'merge_group'
+      ? { pull_request: { base: { sha: '' } }, merge_group: { base_sha: base } }
+      : { pull_request: { base: { sha: base } }, merge_group: { base_sha: '' } } };
+    assert.ok(eventCondition(step.if, github), event_name);
+    const baseSha = eventCondition(step.env.BASE_SHA, github);
+    assert.equal(baseSha, base);
+    const invoke = () => spawnSync('bash', ['-e', '-c', step.run.replace('scripts/check-typed-surfaces.mjs', join(root, 'scripts/check-typed-surfaces.mjs'))], {
+      cwd: directory, encoding: 'utf8', env: { ...process.env, BASE_SHA: baseSha },
+    });
+    assert.equal(invoke().status, 0);
+    await writeFile(join(directory, 'src/ui/forbidden.js'), 'export {};');
+    commit();
+    const rejected = invoke();
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /src\/ui\/forbidden.js/);
+    git('reset', '--hard', 'HEAD~1');
+  }
+  for (const event_name of ['push', 'schedule', 'workflow_dispatch']) {
+    assert.equal(eventCondition(step.if, { event_name }), false);
+  }
+});
 
 test('signed-in Calendar CI installs the producer PostgreSQL binaries before its real journey', () => {
   assert.match(ci, /uses: \.\/\.github\/workflows\/checks\.yml/);
@@ -66,6 +170,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
   const archive = join(workspace, "app.tar");
   execFileSync("git", ["archive", "-o", archive, "HEAD"], { cwd: root });
   execFileSync("tar", ["-xf", archive, "-C", app]);
+  execFileSync("git", ["init", "-q"], { cwd: app });
   await symlink(join(root, "node_modules"), join(app, "node_modules"), "dir");
   await mkdir(join(producer, ".github/workflows"), { recursive: true });
   // Synthetic external source reproduces the scanner refusal without reading
@@ -81,7 +186,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
     /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
 });
 
-test('source CI keeps the full required suite and checks privacy before browser downloads', () => {
+test('source CI keeps the full required suite and checks privacy before browser downloads', async t => {
   const steps = checks.split(/^      - /m).slice(1);
   assert.match(ci, /^  test:/m);
   assert.match(ci, /^  checks:\n.*\n    uses: \.\/\.github\/workflows\/checks\.yml\n    secrets: inherit$/m);
@@ -90,11 +195,43 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.doesNotMatch(ci.split(/^jobs:/m)[0], /schedule|workflow_dispatch/);
   assert.match(checks, /^  workflow_call:\n  schedule:\n    - cron: "17 3 \* \* \*"\n  workflow_dispatch:$/m);
   assert.match(ci, /types: \[opened, synchronize, reopened, ready_for_review, edited\]/);
-  assert.doesNotMatch(ci, /continue-on-error:/);
-  assert.match(ci, /browser-results.py run.*--shard \$\{\{ matrix.shard \}\}/);
+  const performance = ci.split(/^  performance:\n/m)[1].split(/^  live:/m)[0];
+  const measurement = performance.split(/^      - /m).find(step => /^run: npm run performance:check$/m.test(step));
+  assert.match(measurement, /^        continue-on-error: true$/m);
+  assert.equal(ci.match(/continue-on-error:/g)?.length, 1,
+    'only the performance measurement is report-only; setup and all other checks still block');
+  assert.match(performance, /path: \|\n            doctorcre-app\/test-artifacts\/performance\/report\.json\n            doctorcre-app\/test-artifacts\/performance\/summary\.md/);
+  const publication = workflowDocument(ci).jobs.performance.steps.find(step => step.name === 'Publish performance summary');
+  assert.equal(publication.if, '${{ !cancelled() }}');
+  const directory = temporaryDirectory('ci-performance-summary-', t);
+  const output = join(directory, 'published summary.md');
+  const existing = 'Previous step summary.\n';
+  const summary = '### Mobile performance budget\n\nSynthetic measurement results.\n';
+  for (const present of [false, true]) {
+    if (present) {
+      await mkdir(join(directory, 'test-artifacts/performance'), { recursive: true });
+      await writeFile(join(directory, 'test-artifacts/performance/summary.md'), summary);
+    }
+    await writeFile(output, existing);
+    const run = spawnSync('bash', ['-e', '-c', publication.run], {
+      cwd: directory, encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: output },
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const published = await readFile(output, 'utf8');
+    if (present) {
+      assert.equal(published, existing + summary, 'publish the complete measurement summary without replacing previous steps');
+    } else {
+      assert.ok(published.startsWith(existing), 'preserve previous steps when measurement output is absent');
+      assert.match(published.slice(existing.length), /Measurement failed\./);
+      assert.match(published.slice(existing.length), /Screen: unavailable/);
+    }
+  }
+  assert.match(ci, /test "\$PERFORMANCE" = success/,
+    'the aggregate consumes the successful job conclusion after a tolerated measurement failure');
+  assert.match(ci, /node --test --test-shard=\$\{\{ matrix.shard \}\}\/4/);
   // A hung test fails by name and file instead of stalling the shard to its job timeout.
-  assert.match(ci, /browser-results.py collect/);
-  assert.match(ci, /needs: \[checks, shards, performance, live, production-proof\]/);
+  assert.match(ci, /browser-results.py out\/browser-results\/junit.xml/);
+  assert.match(ci, /needs: \[checks, shards, performance, live\]/);
   const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
   const browser = steps.findIndex(step => /^run: npx playwright install/m.test(step));
   assert.ok(privacy >= 0 && privacy < browser);
@@ -157,7 +294,7 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
   const hashes=Object.values(files).map(bytes=>createHash('sha256').update(bytes).digest('hex'));
   const gh=join(directory,'bin','gh');
   await writeFile(gh,`#!${process.execPath}\nif (process.argv[2] === 'api') console.log(JSON.stringify({type:'commit',sha:process.env.FIXTURE_TAG_SHA || process.env.GITHUB_SHA})); else if (process.env.FIXTURE_WRITE_DENIED) process.exit(1); else require('node:fs').writeFileSync('published.json',JSON.stringify(process.argv.slice(2)));\n`); await chmod(gh,0o755);
-  const env={...process.env,PATH:`${join(directory,'bin')}:${process.env.PATH}`,GITHUB_SHA:sha,GITHUB_REPOSITORY:'jbookout/doctorcre-app',GITHUB_REF_NAME:'app-v$(touch marker)',TAR_SHA:hashes[0],MANIFEST_SHA:hashes[1],SIDECAR_SHA:hashes[2]};
+  const env={...process.env,PATH:`${join(directory,'bin')}:${process.env.PATH}`,GITHUB_SHA:sha,GITHUB_REPOSITORY:'jbookout/doctorcre-app',GITHUB_REF_NAME:'app-v$(touch marker)',MANIFEST_REPOSITORY:'jbookout/doctorcre-app',TAR_SHA:hashes[0],MANIFEST_SHA:hashes[1],SIDECAR_SHA:hashes[2]};
   const reset=async()=>{
     await rm(join(directory,'published.json'),{force:true});
     for(const [file,bytes] of Object.entries(files)) {await rm(join(directory,'dist',file),{force:true});await writeFile(join(directory,'dist',file),bytes);}
@@ -343,7 +480,7 @@ test('required CI runs the strict no-emit UI typecheck', async () => {
   assert.equal(config.compilerOptions.strict, true);
   assert.equal(config.compilerOptions.noEmit, true);
   assert.ok(config.include.includes('src/ui'));
-  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
+  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json');
   assert.match(pkg.scripts.check, /npm run typecheck/);
   assert.match(checksJob, /run: npm run check/);
 });
@@ -351,25 +488,29 @@ test('required CI runs the strict no-emit UI typecheck', async () => {
 test('main and PR synthetic shards retain first attempts and gate critical execution', () => {
   const shards = ci.split(/^  shards:\n/m)[1].split(/^  performance:/m)[0];
   assert.doesNotMatch(shards, /if: \$\{\{ github.event_name == 'pull_request' \}\}/);
-  assert.match(shards, /python3 scripts\/browser-results.py run/);
+  assert.match(shards, /node --test --test-shard=/);
   assert.match(shards, /--shard \$\{\{ matrix.shard \}\}/);
-  assert.match(shards, /if: \$\{\{ always\(\) \}\}[\s\S]*browser-results.py collect/);
+  assert.match(shards, /if: \$\{\{ always\(\) \}\}[\s\S]*browser-results.py out\/browser-results\/junit.xml/);
   assert.match(shards, /retention-days: 14/);
   assert.match(shards, /browser-results-\$\{\{ github.sha \}\}-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}-\$\{\{ matrix.shard \}\}/);
   const gate = ci.split(/^  test:\n/m)[1].split(/^  preview:/m)[0];
-  assert.match(gate, /browser-results.py verify/);
-  assert.match(gate, /python3 scripts\/browser-results-selftest.py/);
+  assert.doesNotMatch(gate, /download-artifact|browser-results.py|run_attempt/);
+  assert.match(shards, /annotate_only: true/);
+  for (const option of ['fail_on_failure', 'fail_on_parse_error', 'require_tests', 'require_passed_tests']) {
+    assert.ok(shards.includes(`${option}: true`));
+  }
+  assert.match(shards, /check_retries: false/);
+  assert.doesNotMatch(ci, /pull_request_target/);
   const shell = gate.split('        run: |\n')[1].replace(/^          /gm, '');
-  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', ...(event === 'pull_request' ? ['PERFORMANCE', 'PRODUCTION_PROOF'] : [])]) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
+  for (const event of ['push', 'pull_request']) for (const dependency of ['CHECKS', 'LIVE', 'SHARDS', 'PERFORMANCE']) for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = spawnSync('bash', ['-e', '-c', shell], { encoding: 'utf8',
-      env: { ...process.env, CHECKS:'success', LIVE:'success', PRODUCTION_PROOF:'success',
+      env: { ...process.env, CHECKS:'success', LIVE:'success',
         PERFORMANCE:'success', SHARDS:'success', EVENT:event, [dependency]:outcome } });
     assert.equal(result.status === 0, outcome === 'success', `${event} ${dependency} ${outcome}`);
   }
 });
 
-const validationWorkflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
+const validationWorkflow = parseYaml(ci);
 
 function validationPolicy({ eventName = 'pull_request', action = 'opened', changes = {}, number = 7, runId = 1, workflow = validationWorkflow.name } = {}) {
   const github = { workflow, event_name: eventName, run_id: runId,
@@ -425,4 +566,56 @@ test('CI isolates PRs, workflows, main pushes and merge-group runs', () => {
     assert.notEqual(policy.group, active.group);
     assert.notEqual(policy.group, validationPolicy({ eventName, runId: 2 }).group);
   }
+});
+
+
+test('shard deadline admits the recorded main CI workload plus setup headroom', () => {
+  const shard = ci.split(/^  shards:\n/m)[1].split(/^  performance:/m)[0];
+  const deadlineMinutes = Number(shard.match(/timeout-minutes: (\d+)/)[1]);
+  // Main run 42118414420 exhausted 900 seconds with a test still running.
+  const exhaustedSeconds = 900;
+  const setupAndVarianceSeconds = 300;
+  assert.ok(deadlineMinutes * 60 > exhaustedSeconds + setupAndVarianceSeconds,
+    'allow the recorded 15-minute workload plus five minutes of setup and runner variance');
+  assert.ok(deadlineMinutes <= 30, 'keep the shard bounded');
+});
+
+test('release handoff admits both app identities through the source rule and refuses other repositories', async t => {
+  const bind = release.match(/        name: Bind handoff bytes[\s\S]*?        run: \|\n([\s\S]*?)      - id: artifact/)[1].replace(/^          /gm, '');
+  const directory = temporaryDirectory('release-repository-', t);
+  const { mkdir, copyFile } = await import('node:fs/promises');
+  await mkdir(join(directory, 'js')); await mkdir(join(directory, 'dist'));
+  await copyFile(new URL('../js/repository-identity.mjs', import.meta.url), join(directory, 'js/repository-identity.mjs'));
+  for (const repository of ['jbookout/doctorcre-app', 'DoctorCRE/doctorcre-app', 'DoctorCRE/other']) {
+    await writeFile(join(directory, 'dist/doctorcre-app.manifest.json'), JSON.stringify({ repository }));
+    for (const file of ['doctorcre-app.tar', 'doctorcre-app.tar.sha256']) await writeFile(join(directory, 'dist', file), 'fixture');
+    const output = join(directory, 'output'); await writeFile(output, '');
+    const result = spawnSync('bash', ['-e', '-c', bind], { cwd: directory, env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' });
+    assert.equal(result.status === 0, repository !== 'DoctorCRE/other', result.stderr);
+    const text = await readFile(output, 'utf8');
+    assert.equal(text.includes(`manifest_repository=${repository}\n`), repository !== 'DoctorCRE/other');
+  }
+});
+
+ test('typed watch journeys belong to browser collection and remain typechecked', async () => {
+ const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+ const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+ assert.ok(config.files.includes('test/watch-controls.browser.ts'));
+ assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
+ assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
+ assert.match(checks, /node --test test\/\*\.browser\.ts/);
+ });
+
+
+test('reply proof browser journeys run after browser installation and remain typechecked', async () => {
+  const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+  assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
+  assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
+  const steps = workflowDocument(checks).jobs.checks.steps;
+  const install = steps.findIndex(step => step.run === 'npx playwright install --with-deps chromium webkit');
+  const journeys = steps.findIndex(step => step.run === 'node --test test/*.browser.ts');
+  assert.ok(install >= 0 && install < journeys);
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
+  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
 });

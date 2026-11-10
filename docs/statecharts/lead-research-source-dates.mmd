@@ -1,0 +1,9 @@
+stateDiagram-v2
+  [*] --> Empty
+  Empty --> Dated: Valid detail accepted
+  Dated --> Dated: History page or detail repaint
+  Dated --> Empty: Switch lead
+  Dated --> Empty: Rejected detail
+  Dated --> Empty: Session retired
+  Dated --> Disposed: Dispose workspace
+  Disposed --> Disposed: Late response ignored

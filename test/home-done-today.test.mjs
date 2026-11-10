@@ -34,12 +34,12 @@ test('v4 validates evidence and legacy reads discard any unsupported timestamp',
   assert.throws(() => parseSnapshot({ ...snapshot, items: [{ ...snapshot.items[0], completed_at: '2026-11-04T06:10:00Z' }] }));
   for (const version of ['v2', 'v3']) assert.equal(parseSnapshot({ ...snapshot, schema_version: `home-inbox.${version}`, auto_settle_enabled: version === 'v3', items: [completed] }).items[0].completed_at, null);
 });
-test('v4 falls back only for unknown_tool with at most three reads', async () => {
+test('v4 falls back only for unknown_tool with at most four reads', async () => {
   const snapshot = await fixtureInboxRpc()('read-home-inbox-v3');
   const calls = [];
-  const client = createInboxClient(async name => { calls.push(name); return name === 'read-home-inbox-v4' ? { error: 'unknown_tool' } : snapshot; });
+  const client = createInboxClient(async name => { calls.push(name); return ['read-home-inbox-v5', 'read-home-inbox-v4'].includes(name) ? { error: 'unknown_tool' } : snapshot; });
   assert.equal((await client.read()).items.find(x => x.source_state === 'done').completed_at, null);
-  assert.deepEqual(calls, ['read-home-inbox-v4', 'read-home-inbox-v3']);
+  assert.deepEqual(calls, ['read-home-inbox-v5', 'read-home-inbox-v4', 'read-home-inbox-v3']);
   for (const payload of [{ error: 'partner_required' }, { ...snapshot, schema_version: 'home-inbox.v4', items: [{}] }]) {
     let count = 0;
     await assert.rejects(createInboxClient(async () => { count++; return payload; }).read());
@@ -47,7 +47,7 @@ test('v4 falls back only for unknown_tool with at most three reads', async () =>
   }
   let count = 0;
   await assert.rejects(createInboxClient(async () => { count++; return { error: 'unknown_tool' }; }).read());
-  assert.equal(count, 3);
+  assert.equal(count, 4);
 });
 test('reopen then recomplete uses latest source completion, with exact retry identity', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-04T05:30:00Z') });

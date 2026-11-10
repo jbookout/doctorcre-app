@@ -28,13 +28,13 @@ export const STALE_REASON = "plan is stale against the accepted source";
 export const NO_PASSPORT_REASON = "no passport has been read for this record";
 
 /** The work-request states the record layer admits on a card. */
-export const CARD_STATES = Object.freeze(["captured", "triaged", "ready", "declined", "superseded"]);
+const CARD_STATES = Object.freeze(["captured", "triaged", "ready", "declined", "superseded"]);
 /** Shape disposition is a pre-build decision and the record layer says which. */
-export const PREBUILD_STATES = Object.freeze(["captured", "triaged", "ready"]);
+const PREBUILD_STATES = Object.freeze(["captured", "triaged", "ready"]);
 /** Both withdrawals are captured-only at the record layer. */
-export const WITHDRAWAL_STATES = Object.freeze(["captured"]);
+const WITHDRAWAL_STATES = Object.freeze(["captured"]);
 
-export const WORK_REQUEST_REF = /^WR-[0-9]{1,12}$/;
+const WORK_REQUEST_REF = /^WR-[0-9]{1,12}$/;
 
 const SLICE_STATES = ["eligible", "blocked", "claimed", "reopened", "verified_complete"];
 const UNFINISHED_SLICE_STATES = ["eligible", "blocked", "claimed", "reopened"];

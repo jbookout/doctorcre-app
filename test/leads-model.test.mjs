@@ -101,3 +101,39 @@ test('specialty uses the source vertical when needed and keeps unknown specialti
  assert.deepEqual(visibleLeads(rows,{specialty:'Specialty pending'}).map(l=>l.id),[lead(3).id]);
  assert.deepEqual(marketCounts(rows,{specialty:'Veterinary'}).map(g=>[g.key,g.count]),[['Pensacola, FL',1]]);
 });
+
+test('stage clock excludes impossible and unsupported timestamps before asking for explanation', () => {
+ for (const occurred_at of ['2026-02-31T12:00:00Z', '1900-02-29T12:00:00Z', '2026-03-01T12:00:00', '2026-03-01', '2026-03-01T24:00:00Z', '2026-03-01T12:00:00Z\n', 0, null]) {
+  const review = stageReview({correspondence:[{id:'synthetic',kind:'email_in',occurred_at}]}, 'engaged', Date.parse('2026-03-10T12:00:00Z'));
+  assert.deepEqual(review.evidence, [], String(occurred_at));
+  assert.equal(review.question, 'What contact has taken place?');
+ }
+});
+test('stage clock preserves offset equivalence, leap days, ordering, limits and future exclusion', () => {
+ const entries = ['2024-02-29T12:00:00.123456Z','2026-03-10T06:00:00-06:00','2026-03-10T12:00:00Z','2026-03-09T12:00:00+00:00','2026-03-10T12:00:01Z']
+  .map((occurred_at,i)=>({id:String(i),kind:'email_in',occurred_at}));
+ assert.deepEqual(stageReview({correspondence:entries},'engaged',Date.parse('2026-03-10T12:00:00Z')).evidence.map(e=>e.id),['1','2','3']);
+ assert.equal(stageReview({correspondence:[entries[4]]},'engaged',Date.parse('2026-03-10T12:00:00Z')).question,'What contact has taken place?');
+ assert.equal(stageReview({correspondence:[]},'engaged').question,'What contact has taken place?');
+ assert.equal(stageReview({correspondence:entries},'outreach_active').question,'What outreach has started?');
+});
+
+test('stage clock excludes fractional future instants without suppressing explanation', () => {
+ const now = Date.parse('2026-03-10T12:00:00.123Z');
+ for (const occurred_at of ['2026-03-10T12:00:00.123001Z', '2026-03-10T06:00:00.123000000000000000000000000001-06:00']) {
+  const result = stageReview({correspondence:[{id:'future',kind:'email_in',occurred_at}]}, 'engaged', now);
+  assert.deepEqual(result.evidence, [], occurred_at);
+  assert.equal(result.question, 'What contact has taken place?');
+  assert.equal(result.reason, null);
+ }
+});
+test('stage clock orders exact fractional instants before limiting evidence', () => {
+ for (const date of ['2026-03-09', '1969-12-31']) {
+  const entries = ['000001','000002','000003','000004'].map((fraction, i) => ({id:String(i+1),kind:'email_in',occurred_at:`${date}T12:00:00.${fraction}Z`}));
+  const result = stageReview({correspondence:entries}, 'engaged', Date.parse('2026-03-10T12:00:00Z'));
+  assert.deepEqual(result.evidence.map(row => row.id), ['4','3','2']);
+ }
+ const entries = ['2026-03-09T12:00:00.123456789000000000000000000002Z','2026-03-09T06:00:00.123456789000000000000000000003-06:00','2026-03-09T12:00:00.123456789000000000000000000001Z','2026-03-09T12:00:00.123456789000000000000000000003000Z']
+  .map((occurred_at,i)=>({id:String(i),kind:'email_in',occurred_at}));
+ assert.deepEqual(stageReview({correspondence:entries},'engaged').evidence.map(row=>row.id),['1','3','0']);
+});

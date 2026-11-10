@@ -1,0 +1,24 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Loading: open
+  Loading --> Ready: valid response
+  Loading --> Refused: invalid response or refusal
+  Refused --> Loading: refresh retry
+  Ready --> Ready: select all/current/historical or condition
+  Ready --> EmptySubset: select without matching evidence
+  EmptySubset --> Ready: select matching evidence
+  Ready --> Loading: refresh or server filters (retain selection)
+  EmptySubset --> Loading: refresh (retain selection)
+  Loading --> Loading: newer request supersedes old
+  Ready --> Ready: stale completion ignored after newer success
+  Ready --> Idle: clear resets selection
+  Loading --> Idle: clear or authorization failure
+  Idle --> Idle: retired completion ignored
+  Ready --> Disposed: dispose
+  Loading --> Disposed: dispose
+  Disposed --> Disposed: retired completion ignored
+  note right of Ready
+    Area condition and membership are server-owned.
+    Evidence status uses only parsed current.
+    No writes, locks or downloads are introduced.
+  end note

@@ -1,0 +1,28 @@
+%% System design
+%% The existing quiet vendor mount owns a parsed snapshot, owner, history, and five-row offset.
+%% History is all, created_at, or last_contact. Owner and history intersect before slicing in server order.
+%% The alternative of separate history lists duplicates ordering and paging. One projection keeps one snapshot.
+%% Current capacity is the server's 1000-row cap. At 10x, linear filtering remains local but the server cap refuses overflow first.
+%% Load spread, storage access, N+1, queues, circuit breakers, and rate limits are unchanged: controls make no external calls.
+%% One existing read on opening or refresh replaces the snapshot. There is no persistent cache or invalidation service.
+%% Failure refuses current rows; asynchronous reads cannot publish after disposal. Only absent owners reset on refresh.
+%% Scaling needs no infrastructure. Consistency comes from one validated snapshot. No writes or sends need idempotency keys.
+stateDiagram-v2
+  [*] --> Collapsed
+  Collapsed --> Loading: Show for the first time
+  Loading --> Visible: Valid snapshot arrives
+  Loading --> Refused: Read fails or parser refuses
+  Refused --> Loading: Refresh
+  Visible --> Visible: Choose history or owner, reset to first page
+  Visible --> Visible: Next or previous page
+  Visible --> Collapsed: Hide, retain choices
+  Collapsed --> Visible: Show loaded snapshot, retain choices
+  Visible --> Loading: Refresh, retain history
+  Visible --> Record: Open review link
+  Record --> Visible: Close review, return focus
+  Visible --> Retired: Session ends or mount disposed
+  Loading --> Retired: Dispose before read settles
+  Retired --> [*]
+%% never infer history from dates or display values
+%% never read on filter or page changes
+%% never show old rows after refusal or retirement

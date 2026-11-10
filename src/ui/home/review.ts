@@ -1,14 +1,15 @@
-export type ReviewKind = 'action' | 'reply_draft' | 'fact_review';
+type ReviewKind = 'action' | 'reply_draft' | 'fact_review';
 const supported = {
   action: ['complete-one-action'],
   reply_draft: ['edit-email-draft', 'dismiss-email-proposal', 'submit-email-draft'],
   fact_review: ['resolve-fact-review'],
 } satisfies Record<ReviewKind, string[]>;
 export type ReviewReference = { kind: ReviewKind; item_id: string; source_version: string; operations: string[] };
-export const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(text);
 const version = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+const page = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 1 && v <= 100000;
 const uuid = (v: unknown): v is string => text(v) && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v);
 export function parseReference(v: unknown): ReviewReference | null {
   if (!object(v) || (v.kind !== 'action' && v.kind !== 'reply_draft' && v.kind !== 'fact_review') || !text(v.item_id) || !text(v.source_version) || !strings(v.operations) || !v.operations.length || new Set(v.operations).size !== v.operations.length) return null;
@@ -20,7 +21,7 @@ type ActionOperation = { verb: 'complete-one-action'; args: { action_id: string;
 type ReplyOperation = { verb: 'edit-email-draft' | 'dismiss-email-proposal'; args: { proposal_id: string; base_version: number } } | { verb: 'submit-email-draft'; args: { proposal_id: string; base_version: number; subject: string; body: string; to: string[]; cc: string[] } };
 type FactOperation = { verb: 'resolve-fact-review'; args: { entity_ref: string; fact_key: string; base_version: number; review_version: string }; decisions: string[] };
 export type Operation = ActionOperation | ReplyOperation | FactOperation;
-export type Observation = { id: string; value: string; unit: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null } };
+type Observation = { id: string; value: string; unit: string; source: { document_ref: string; page_start: number; page_end: number; cited_text: string | null } };
 type Common = { reference: ReviewReference };
 export type Review = Common & ({ kind: 'action'; operations: ActionOperation[]; title: string } | { kind: 'reply_draft'; operations: ReplyOperation[]; subject: string; body: string; recipients: { to: string[]; cc: string[] } | null; sendUnavailableReason: string | null } | { kind: 'fact_review'; operations: FactOperation[]; observations: Observation[]; canonical: string });
 function unreadable(): never { throw Error('This review is not supported safely. Open its source record.'); }
@@ -56,7 +57,7 @@ export function parseReview(v: unknown, expected: ReviewReference): Review {
   }
   if (reference.kind === 'fact_review' && Array.isArray(d.observations) && operations.every((o): o is FactOperation => o.verb === 'resolve-fact-review')) {
     const observations = d.observations.map((o: unknown): Observation => {
-      if (!object(o) || !uuid(o.id) || !text(o.unit) || !object(o.source) || !uuid(o.source.document_ref) || !version(o.source.page_start) || !version(o.source.page_end) || !(o.source.cited_text === null || typeof o.source.cited_text === 'string')) return unreadable();
+      if (!object(o) || !uuid(o.id) || !text(o.unit) || !object(o.source) || !uuid(o.source.document_ref) || !page(o.source.page_start) || !page(o.source.page_end) || o.source.page_end < o.source.page_start || !(o.source.cited_text === null || typeof o.source.cited_text === 'string')) return unreadable();
       return { id: o.id, value: typeof o.value === 'string' ? o.value : JSON.stringify(o.value), unit: o.unit, source: { document_ref: o.source.document_ref, page_start: o.source.page_start, page_end: o.source.page_end, cited_text: o.source.cited_text } };
     });
     return { kind: 'fact_review', reference, observations, canonical: object(d.canonical_fact) ? `${d.canonical_fact.normalized_value ?? 'Schedule'} ${d.canonical_fact.canonical_unit ?? ''}` : 'No canonical value recorded', operations };

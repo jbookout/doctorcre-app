@@ -1,0 +1,31 @@
+{
+  "repository": "DoctorCRE/carr-system",
+  "revision": "a344bab42fbac3e2457bc4a016e50f8ee98008ec",
+  "producer": "mcp-server/src/fact-review.ts",
+  "verb": "list-fact-review",
+  "source": "Disposable migrated Postgres synthetic fixtures; registered handler executed directly",
+  "args": {
+    "entity_ref": "00000000-0000-4000-8000-000000000022",
+    "include_resolved": true,
+    "limit": 100
+  },
+  "queries": [
+    "ops.record_fact_observations",
+    "ops.list_fact_review",
+    "public.v_deal_documents"
+  ],
+  "production_calls": 0,
+  "producer_sha256": "6fb4a66cdb2d75c2aba31f6eb3f333c53b7aa1d4cbc3e15d9158e62e01a5b7e9",
+  "recordings_sha256": "47d7afb1599c9e2b7f9a339561bdb1bf22378cf7172e2b9560ce1e150129a56d",
+  "pagination_queries": [
+    {
+      "limit": 1
+    },
+    {
+      "limit": 1,
+      "cursor": "recordings.page1.next_cursor"
+    }
+  ],
+  "parser": "createLiveClient rawRpc production fact-review response parser",
+  "procedure": "producer.txt contains exact producer bytes and executed recipe"
+}

@@ -1,0 +1,18 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Loading: open subject
+  Loading --> Success: validated findings
+  Loading --> Empty: missing or empty research
+  Loading --> Refused: malformed or refused read
+  Refused --> Loading: explicit retry
+  Success --> Selected: select exact kind locally
+  Selected --> Success: clear selection
+  Selected --> Selected: same subject refresh keeps available kind
+  Selected --> Success: refreshed kind disappears
+  Success --> Loading: replace subject and reset
+  Loading --> Idle: close retires late completion
+  Success --> Idle: close
+  Selected --> Idle: auth retirement or suspension
+  Loading --> Disposed: dispose retires late completion
+  Success --> Disposed: dispose
+  Disposed --> Disposed: stale completion ignored

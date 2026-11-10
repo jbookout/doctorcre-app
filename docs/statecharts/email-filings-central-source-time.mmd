@@ -1,0 +1,14 @@
+stateDiagram-v2
+  [*] --> Loading: refresh
+  Loading --> Ready: list succeeds
+  Loading --> Error: list fails
+  Error --> Loading: retry
+  Ready --> Loading: refresh or parent filter changes
+  Ready --> Ready: close or reopen disclosure
+  Loading --> Denied: session invalidated
+  Ready --> Denied: session invalidated
+  Error --> Denied: session invalidated
+  Denied --> Denied: late response ignored
+  Loading --> Disposed: dispose
+  Ready --> Disposed: dispose
+  Disposed --> Disposed: late response or refresh ignored

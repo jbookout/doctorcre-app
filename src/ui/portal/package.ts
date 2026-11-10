@@ -1,5 +1,5 @@
-export type Text = string;
-export type Url = string;
+type Text = string;
+type Url = string;
 export type Rich = [
   (
     | {
@@ -18,15 +18,15 @@ export type Rich = [
       }
   )[]
 ];
-export type Date = string;
-export type Basemap =
+type Date = string;
+type Basemap =
   | { kind: 'local-layers'; water: Asset; roads: Asset; attribution: Text }
   | { kind: 'vector-style'; style_url: Url; attribution_link: Link };
-export type LonLat = [number, number];
-export type Id = string;
-export type Count = number;
-export type Page = number;
-export type Percent = number;
+type LonLat = [number, number];
+type Id = string;
+type Count = number;
+type Page = number;
+type Percent = number;
 
 export interface CarrMarketStudyV1 {
   schema: "carr.market-study.v1";
@@ -77,7 +77,7 @@ export interface CarrMarketStudyV1 {
     ];
   };
 }
-export interface Client {
+interface Client {
   display_name: Text;
   wordmark: {
     line1: Text;
@@ -98,20 +98,20 @@ export interface Asset {
   name: string;
   type: string;
 }
-export interface Locator {
+interface Locator {
   lon: number;
   lat: number;
   precision: Text;
 }
-export interface Link {
+interface Link {
   label: Text;
   url: Url;
 }
-export interface Figure {
+interface Figure {
   value: Text;
   label: Text;
 }
-export interface Property {
+interface Property {
   id: Id;
   number: number;
   address: Text;
@@ -147,12 +147,12 @@ export interface Property {
     current_income_annual?: Count;
   };
 }
-export interface Source {
+interface Source {
   date?: Date;
   label: Text;
   url: Url;
 }
-export interface Point {
+interface Point {
   title: Text;
   body: Text;
 }
@@ -179,7 +179,7 @@ export interface Development {
   latest_update?: Text;
   sources: [Source, ...Source[]];
 }
-export interface GeoJSON {
+interface GeoJSON {
   type: "FeatureCollection";
   features: [unknown, ...unknown[]];
   [k: string]: unknown;
@@ -193,7 +193,7 @@ export interface ContextAnchor {
   address_source_url: Url;
   locator_source_url: Url;
 }
-export interface Demographics {
+interface Demographics {
   growth: {
     area_label: Text;
     tiles: [Figure, Figure, Figure, Figure];
@@ -313,7 +313,7 @@ export interface Demographics {
   };
   methodology: Rich;
 }
-export interface IncomeArea {
+interface IncomeArea {
   name: Text;
   group: "county" | "place" | "radius" | "municipal";
   households: Count;
@@ -322,10 +322,10 @@ export interface IncomeArea {
   counts: ThresholdCounts;
   caption: Text;
 }
-export interface ThresholdCounts {
+interface ThresholdCounts {
   [k: string]: Count;
 }
-export interface MicroZones {
+interface MicroZones {
   title: Text;
   description: Text;
   comparison_note: Text;
@@ -347,7 +347,7 @@ export interface MicroZones {
   projection_year: number;
   zones: [MicroZone, ...MicroZone[]];
 }
-export interface MicroZone {
+interface MicroZone {
   id: Id;
   name: Text;
   study_pdf: Asset;
@@ -470,16 +470,16 @@ export interface MicroZone {
     source_page: Page;
   };
 }
-export interface YearValues {
+interface YearValues {
   [k: string]: Count;
 }
-export interface CountShare {
+interface CountShare {
   label: Text;
   count: Count;
   reported_percent?: Percent;
   derived_percent: Percent;
 }
-export interface Ownership {
+interface Ownership {
   program: {
     min_share: number;
     min_sf: Count;

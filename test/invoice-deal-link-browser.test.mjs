@@ -17,10 +17,9 @@ test('invoice details open the owning deal without recording payment', async t =
   const outDir = await temporaryDirectory('invoice-deal-link-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
-  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await (await createQaServer({ buildRoot: join(outDir, 'site') })).start();
+  t.after(() => server.close());
+  const origin = server.origin;
   const browser = await chromium.launch();
   t.after(() => browser.close());
   for (const width of [1280, 390]) for (const theme of ['light', 'dark']) await t.test(`${width} ${theme}`, async () => {

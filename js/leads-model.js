@@ -15,7 +15,7 @@ export function eligibleLead(lead) {
   if (lead.client_id || lead.linked_client || lead.is_client || lead.is_past_client || lead.is_deal || lead.deal_id) return false;
   return !["active_deal", "closed_won"].includes(lead.stage);
 }
-export function cleanTitle(value) {
+function cleanTitle(value) {
   return String(value || "").replace(/\s*\((?:via|referral|referred)[^)]*\)/gi, "").trim();
 }
 export function leadTitle(lead) {
@@ -48,12 +48,27 @@ export function marketCounts(leads, filters = {}, locate = () => null) {
   return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
     .map(group => ({ ...group, locations: [...group.locations.values()] }));
 }
+export function leadTimestamp(value) {
+  if (typeof value !== "string" || value.length > 64) return null;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!parts || parts[0] !== value) return null;
+  const [, year, month, day, hour, minute, second, , offsetHour, offsetMinute] = parts.map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (!(day >= 1 && day <= days[month - 1] && hour < 24 && minute < 60 && second < 60
+    && (Number.isNaN(offsetHour) || offsetHour < 24 && offsetMinute < 60))) return null;
+  return { seconds: Date.parse(value.replace(/\.\d+/, "")) / 1000, fraction: (parts[7] || "").replace(/0+$/, "") };
+}
+function compareInstants(a, b) {
+  return a.seconds - b.seconds || (a.fraction < b.fraction ? -1 : a.fraction > b.fraction ? 1 : 0);
+}
 export function stageReview(detail, target, now = Date.now()) {
   const kinds = target === "engaged" ? ["email_in", "meeting", "call"] : target === "outreach_active" ? ["email_out"] : [];
-  const evidence = (detail.correspondence || []).filter(entry => kinds.includes(entry.kind) &&
-    (entry.kind !== "call" || entry.connected === true) &&
-    Number.isFinite(Date.parse(entry.occurred_at)) && Date.parse(entry.occurred_at) <= now)
-    .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)).slice(0, 3);
+  const current = leadTimestamp(new Date(now).toJSON());
+  const evidence = (detail.correspondence || []).map(entry => ({ entry, instant: leadTimestamp(entry.occurred_at) }))
+    .filter(({ entry, instant }) => kinds.includes(entry.kind) && (entry.kind !== "call" || entry.connected === true) &&
+      instant !== null && current !== null && compareInstants(instant, current) <= 0)
+    .sort((a, b) => compareInstants(b.instant, a.instant)).slice(0, 3).map(({ entry }) => entry);
   const questions = { new: "Why return this lead to New?", qualified: "What makes this lead qualified?",
     outreach_active: "What outreach has started?", engaged: "What contact has taken place?",
     nurture_drip: "What is the follow-up plan?", opportunity: "What space plans are confirmed?",

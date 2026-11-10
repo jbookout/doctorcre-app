@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "wr617-s15-inbox-v5",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "home-inbox-v5-renders",
+      "predicate": "After deployment, verify /app-release identifies the deployed app revision. Read read-home-inbox-v5 through the signed-in app /mcp route and load Home. Observe zero Inbox unavailable alerts, rendered inbox items matching the server snapshot, and waiting names where v5 records them.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Home renders the server inbox with zero Inbox unavailable alerts and displays only recorded waiting names.",
+      "input_class": "read-only deployed app release and signed-in Home walk",
+      "deadline_seconds": 300
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 10,
+    "max_records": 1000,
+    "max_runtime_seconds": 300,
+    "max_artifact_bytes": 65536
+  }
+}

@@ -1,0 +1,14 @@
+stateDiagram-v2
+    [*] --> Closed: accepted source first appears
+    Closed --> Open: partner expands source
+    Open --> Closed: partner closes source
+    Open --> Open: update or refresh returns same source
+    Closed --> Closed: update or refresh returns same source
+    Open --> Open: refresh fails, stale source remains
+    Open --> Closed: accepted source identity or content changes
+    Open --> Absent: accepted row disappears or is filtered out
+    Closed --> Absent: accepted row disappears or is filtered out
+    Absent --> Closed: row returns
+    Open --> Retired: session retires or mount disposes
+    Closed --> Retired: session retires or mount disposes
+    Retired --> [*]

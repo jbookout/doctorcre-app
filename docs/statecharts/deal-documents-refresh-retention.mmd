@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> Loading
+    Loading --> Ready: first read succeeds
+    Loading --> Unavailable: first read fails
+    Ready --> Refreshing: refresh from null cursor
+    Refreshing --> Stale: temporary failure
+    Stale --> Refreshing: retry from null cursor
+    Refreshing --> Ready: replace listing, including empty
+    Ready --> More: load next page
+    More --> Ready: append validated page
+    More --> Unavailable: retain data and cursor
+    Unavailable --> More: retry same cursor
+    Unavailable --> Loading: retry first read
+    Ready --> Ready: toggle identity disclosure
+    Refreshing --> Expired: 401 / 403 / invalidation
+    Stale --> Expired: invalidation
+    More --> Expired: invalidation
+    Ready --> Expired: invalidation
+    Loading --> Disposed: dispose or switch deal
+    Refreshing --> Disposed: dispose or switch deal
+    Stale --> Disposed: dispose or switch deal
+    Disposed --> Disposed: ignore late completion
+    Expired --> Expired: ignore late completion

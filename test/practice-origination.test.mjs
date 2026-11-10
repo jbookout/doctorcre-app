@@ -62,7 +62,7 @@ test('rendered reasons preserve date meaning, relationship routing, review holds
   assert.match(host.textContent,/Alabama formations · Not yet covered/);
   assert.match(host.textContent,/NPPES · Covered/);
   assert.equal(host.querySelectorAll('a[target="_blank"]').length,6);
-  assert.equal(host.querySelectorAll('button').length,0);
+  assert.equal(host.querySelectorAll('button').length,1);
 });
 
 test('Home caps new research reasons at two and links each to Leads', async t => {

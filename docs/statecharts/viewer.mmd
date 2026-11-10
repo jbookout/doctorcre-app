@@ -1,0 +1,63 @@
+stateDiagram-v2
+state Viewer {
+ state Lifecycle {
+  [*] --> Closed
+  Closed --> Loading: Open
+  Loading --> Ready: Produced
+  Loading --> Unavailable: Failed
+  Loading --> NoText: NoTextFound
+  Loading --> SourceChanged: Changed
+  Ready --> Loading: Navigate
+  Unavailable --> Loading: Retry
+  NoText --> Loading: Retry
+  SourceChanged --> Closed: Close
+  Loading --> Closed: Close
+  Ready --> Closed: Close
+  Unavailable --> Closed: Close
+  NoText --> Closed: Close
+  Loading --> Loading: Switch
+  Ready --> Loading: Switch
+  Unavailable --> Loading: Switch
+  NoText --> Loading: Switch
+  SourceChanged --> Loading: Switch
+  Closed --> Expired: Retire
+  Loading --> Expired: Retire
+  Ready --> Expired: Retire
+  Unavailable --> Expired: Retire
+  NoText --> Expired: Retire
+  SourceChanged --> Expired: Retire
+  Expired --> Expired: Late
+  Closed --> Closed: Late
+  Loading --> Loading: Late
+  Ready --> Ready: Late
+  Unavailable --> Unavailable: Late
+  NoText --> NoText: Late
+  SourceChanged --> SourceChanged: Late
+ }
+ --
+ state RequestIdentity {
+  [*] --> Empty
+  Empty --> Pending: Open
+  Pending --> Current: Produced
+  Pending --> Empty: Failed
+  Pending --> Empty: NoTextFound
+  Pending --> Empty: Changed
+  Current --> Pending: Navigate
+  Empty --> Pending: Retry
+  Pending --> Empty: Close
+  Current --> Empty: Close
+  Empty --> Empty: Close
+  Pending --> Pending: Switch
+  Current --> Pending: Switch
+  Empty --> Pending: Switch
+  Empty --> Retired: Retire
+  Pending --> Retired: Retire
+  Current --> Retired: Retire
+  Retired --> Retired: Late
+  Empty --> Empty: Late
+  Pending --> Pending: Late
+  Current --> Current: Late
+ }
+}
+%% never NoCrossIdentity: Ready & Pending -- Text never appears for an outstanding or replaced identity.
+%% never NoPostExpiryText: Expired & Current -- Retiring the session clears all retained text.
