@@ -4,7 +4,7 @@
   "targets": ["app"],
   "assertions": [{
     "id": "deployed-call-review-replay",
-    "predicate": "Run `node scripts/prove-call-review-decision-replay-key.mjs --origin https://app.doctorcre.com --timeout-ms 30000`. Match release identity and manifest hashes, execute the deployed ui-call asset graph and manifest-matched live-client dependencies through public mount with both real live-client resolver adapters and recorded producer receipts over synthetic transport, and assert an ambiguous reply blocks new decisions and Check outcome replays the exact original request before authoritative resolution.",
+    "predicate": "Run `node scripts/prove-call-review-decision-replay-key.ts --origin https://app.doctorcre.com --commit EXPECTED_MERGE_COMMIT --timeout-ms 30000`. Match release identity and manifest hashes, execute the deployed ui-call asset graph and manifest-matched live-client dependencies through public mount with both real live-client resolver adapters and recorded producer receipts over synthetic transport, and assert an ambiguous reply blocks new decisions and Check outcome replays the exact original request before authoritative resolution.",
     "runner": "app-release-live-walk.v1",
     "expected_result": "Exit 0 with release identity, asset hashes and eight executed assertions. Exit 1 on contradiction or 78 when release or asset evidence is unavailable.",
     "input_class": "synthetic-read-only-deployed-module",
