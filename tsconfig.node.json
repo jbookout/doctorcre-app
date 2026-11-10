@@ -52,7 +52,10 @@
     "test/document-quote-next-ask-browser.d.ts",
     "test/phone-push.test.ts",
     "test/phone-push.browser.ts",
-    "test/phone-push-worker.test.ts"
+    "test/phone-push-worker.test.ts",
+    "test/quiet-vendors-malformed-snapshot.browser.ts",
+    "test/prove-quiet-vendors-malformed-snapshot.browser.ts",
+    "scripts/prove-quiet-vendors-malformed-snapshot.ts"
   ],
   "compilerOptions": {
     "lib": [
@@ -63,6 +66,9 @@
     "paths": {
       "/js/ui-phone-push.js": [
         "./src/ui/phone-push.tsx"
+      ],
+      "/js/ui-quiet-vendors.js": [
+        "./src/ui/quiet-vendors.tsx"
       ]
     },
     "jsx": "react-jsx"
