@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 
 async function fixture(t) {
@@ -12,12 +12,8 @@ async function fixture(t) {
     window.cspViolations = [];
     document.addEventListener('securitypolicyviolation', event => window.cspViolations.push(event.violatedDirective));
   });
-  await page.route('**/ideas-events', async route => {
-    const response = await route.fetch();
-    const secured = await handleDoctorcreRequest(new Request(`${server.origin}/ideas-events`), { ASSETS: { fetch: async () => new Response('') } });
-    await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': secured.headers.get('content-security-policy') } });
-  });
-  await page.goto(`${server.origin}/ideas-events`);
+  const secured = await handleDoctorcreRequest(new Request(`${server.origin}/ideas-events`), { ASSETS: { fetch: async () => new Response('') } });
+  await componentDocument(page, server.origin, { headers: { 'content-security-policy': secured.headers.get('content-security-policy') }, dispose: page => page.evaluate(() => window.zoomFixture?.shell.unmount()) });
   await page.evaluate(async () => {
     const { mountZoomableWorkspace } = await import('/js/ui-zoom.js');
     document.body.innerHTML = '<main id="original"><section id="deals"><label>Draft<input id="draft"></label><button id="act">Act</button></section><section id="today">Today content<button id="today-action">Today action</button></section></main><div id="workspace"></div>';

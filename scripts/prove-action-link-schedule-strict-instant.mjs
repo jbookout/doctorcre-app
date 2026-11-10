@@ -1,3 +1,5 @@
+import { isAppRepository } from '../js/repository-identity.mjs';
+import { launchProofBrowser, readAppRelease, proofFetch } from './app-release-reader.mjs';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -105,7 +107,7 @@ export async function prove({ origin, timeoutMs }) {
       const get = async path => {
         if (++receipt.requests > 10) throw unavailable('Ten-request cap exceeded');
         let response;
-        try { response = await fetch(origin + path, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
+        try { response = await proofFetch(origin + path, { signal: controller.signal, redirect: 'error', cache: 'no-store' }); }
         catch { throw unavailable('Evidence fetch unavailable'); }
         if (!response.ok) throw unavailable(`Evidence unavailable ${path}`);
         const chunks = [];
@@ -117,12 +119,10 @@ export async function prove({ origin, timeoutMs }) {
         return Buffer.concat(chunks);
       };
       const json = bytes => { try { return JSON.parse(bytes); } catch { throw unavailable('Malformed evidence JSON'); } };
-      const releaseBytes = await get('/app-release');
-      receipt.release = json(releaseBytes);
-      if (receipt.release?.service !== 'doctorcre-app' || receipt.release.environment !== 'production' || !/^[a-f0-9]{40}$/.test(receipt.release.source_commit || '') || /^0+$/.test(receipt.release.source_commit)) throw unavailable('Release identity unavailable');
+      receipt.release = await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.pathname) }));
       const manifestBytes = await get('/artifact-manifest.json');
       const manifest = json(manifestBytes);
-      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || manifest.repository !== 'jbookout/doctorcre-app' || !Array.isArray(manifest.files)) throw unavailable('Manifest unavailable');
+      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || !isAppRepository(manifest.repository) || !Array.isArray(manifest.files)) throw unavailable('Manifest unavailable');
       if (manifest.source_commit !== receipt.release.source_commit) throw Error('Manifest release mismatch');
       receipt.manifest_sha256 = hash(manifestBytes);
       const rows = new Map();
@@ -150,7 +150,7 @@ export async function prove({ origin, timeoutMs }) {
           if (assets.size + pending.length > 7) throw unavailable('Ten-request graph cap exceeded');
         }
       }
-      browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
+      browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout: timeoutMs });
       if (expired) { await browser.close(); throw unavailable('Total deadline exceeded'); }
       const context = await browser.newContext({ serviceWorkers: 'block' });
       let unexpected = false;
@@ -166,7 +166,7 @@ export async function prove({ origin, timeoutMs }) {
       await page.goto(origin + '/__schedule-proof');
       receipt.assertions = await page.evaluate(observeActionLink, origin + '/js/ui-action.js');
       if (unexpected) throw Error('Unexpected business network request');
-      if (!(await get('/app-release')).equals(releaseBytes)) throw Error('Release changed during proof');
+      if (JSON.stringify(await readAppRelease(origin, async url => ({ type: 'application/json', body: await get(url.pathname) }))) !== JSON.stringify(receipt.release)) throw Error('Release changed during proof');
     })()]);
     return { ...receipt, status: 'passed', exitCode: 0 };
   } catch (error) {
@@ -182,5 +182,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const result = await prove({ origin: url.origin, timeoutMs });
     console.log(JSON.stringify(result));
     process.exitCode = result.exitCode;
-  } catch (error) { console.log(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = 1; }
+  } catch (error) { console.log(JSON.stringify({ status: 'failed', error: error.message })); process.exitCode = error.exitCode || 1; }
 }

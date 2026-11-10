@@ -7,7 +7,7 @@
   "assertions": [
     {
       "id": "deployed-checklist-recovery",
-      "predicate": "After matching release identity to the merged build, import deployed checklist and its dependency modules in isolated storage. Malformed phases and missing source show unavailable with Refresh deal; valid recovery preserves received distinct from complete. Synthetic evidence only. Run `node scripts/prove-deal-checklist-malformed-recovery.mjs --origin https://app.doctorcre.com --timeout-ms 30000`.",
+      "predicate": "After matching release identity to the merged build, import deployed checklist and its dependency modules in isolated storage. Malformed phases and missing source show unavailable with Refresh deal; valid recovery preserves received distinct from complete. Synthetic evidence only. Run `node scripts/prove-deal-checklist-malformed-recovery.mjs --origin https://app.doctorcre.com --expected-commit MERGE_SHA --timeout-ms 30000`.",
       "runner": "app-release-live-walk.v1",
       "expected_result": "Exit zero with release identity, loaded module URLs and passing assertions in JSON.",
       "input_class": "synthetic-read-only-deployed-module",

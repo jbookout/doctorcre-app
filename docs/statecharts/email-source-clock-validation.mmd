@@ -1,0 +1,11 @@
+stateDiagram-v2
+  [*] --> Timestamp
+  Timestamp --> Missing: no source timestamp
+  Timestamp --> Invalid: unsupported type, syntax, date or clock
+  Timestamp --> Valid: RFC3339 calendar instant
+  Missing --> Unavailable: absolute / relative / waiting unavailable
+  Invalid --> Unavailable: absolute / relative / waiting unavailable
+  Valid --> Chicago: absolute Chicago label
+  Valid --> Elapsed: relative age and complete waiting days
+  Valid --> Future: future instant
+  Future --> Clamped: just now / zero days waiting

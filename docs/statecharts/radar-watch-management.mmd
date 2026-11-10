@@ -1,0 +1,29 @@
+stateDiagram-v2
+  state RadarWatch {
+    state Read {
+      Reading: Reading watch states
+      Confirmed: Confirmed watch states
+      Unavailable: Watch states unavailable
+      Hidden: Private watch states hidden
+      [*] --> Reading
+      Reading --> Confirmed: Complete list confirms
+      Reading --> Unavailable: Read fails or exceeds limit
+      Confirmed --> Reading: Refresh
+      Unavailable --> Reading: Refresh
+      Reading --> Reading: Refresh
+      Reading --> Hidden: Sign out
+      Confirmed --> Hidden: Sign out
+      Unavailable --> Hidden: Sign out
+      Hidden --> Hidden: Ignore late read
+    }
+    --
+    state Session {
+      SignedIn: Signed in
+      Retired: Sign in again
+      [*] --> SignedIn
+      SignedIn --> Retired: Sign out
+      Retired --> Retired: Ignore late read
+    }
+  }
+  %% never RetiredConfirmed: Confirmed watch states & Sign in again -- Retired sessions never display private confirmations.
+  %% never RetiredReading: Reading watch states & Sign in again -- Retired sessions never start another read.

@@ -1,3 +1,4 @@
+import { meetingPreparationLifetime } from './ui-meeting-preparation-lifetime.js';
 import { createPageBudget } from './read-budget.mjs';
 import { mountLocalTicker } from './visibility-poll.mjs';
 import { todayMove } from './today-moves.mjs';
@@ -228,7 +229,8 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     if (!pageOwnsMoves && !feed.caught_up) render('#appTodayMoves', unavailable);
     renderReadStatus();
   };
-  win.addEventListener('doctorcre-session-invalidated', () => { void calendarPanels.then(panel => panel?.clear()); });
+  const lifetime = new AbortController();
+  const preparation = meetingPreparationLifetime(root);
   const unavailableRead = () => {
     todayItems = null; todayNeeds = null;
     resetFeed();
@@ -236,20 +238,28 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
     failedRead();
   };
   const refresh = async ({ signal } = {}) => {
+    signal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
+    if (signal.aborted) return;
     if (win.navigator.onLine === false) { failedRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
-    catch { failedRead(); return; }
+    catch { if (!signal.aborted) failedRead(); return; }
+    if (signal.aborted) return;
+    const interaction = preparation.capture();
+    const preparationSignal = AbortSignal.any([signal, interaction.signal]);
     const [board, triage, meetings] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
         const brief = normalizeBrief(await client.morningBrief());
+        if (signal.aborted) return null;
         if (brief) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
-      readWithDeadline(() => client.calendarMeetingPrep({ signal }), { signal }),
+      readWithDeadline(() => client.calendarMeetingPrep({ signal: preparationSignal }), { signal: preparationSignal }),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
-    (await calendarPanels)?.render(meetings.status === 'fulfilled' ? meetings.value : null);
+    const panels = await calendarPanels;
+    if (signal.aborted) return;
+    if (interaction.current()) panels?.render(meetings.status === 'fulfilled' ? meetings.value : null);
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid && !failedReads.length);
@@ -333,7 +343,12 @@ export function mountAppLayout(root, host, pathname, { ready = Promise.resolve()
   void ready.then(() => auto.refresh());
   // Ages are relative to now, so the list repaints each minute; render() skips the DOM when the text is unchanged.
   const ageTick = mountLocalTicker({ document: root, window: win, tick: () => { if (!pageOwnsMoves && feed.caught_up) renderMoves(); }, intervalMs: 60_000 });
+  const invalidateSession = () => {
+    preparation.retire();
+    lifetime.abort(); auto.dispose(); ageTick.dispose(); unavailableRead();
+  };
+  win.addEventListener('doctorcre-session-invalidated', invalidateSession);
   win.addEventListener('pagehide', event => {
-    if (!event.persisted) { ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
+    if (!event.persisted) { lifetime.abort(); preparation.retire(); win.removeEventListener('doctorcre-session-invalidated', invalidateSession); ageTick.dispose(); auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
   });
 }

@@ -1,0 +1,320 @@
+{
+  "entity": "00000000-0000-4000-8000-000000000022",
+  "initial": {
+    "ok": true,
+    "items": [
+      {
+        "pending": true,
+        "reasons": [
+          "human_review"
+        ],
+        "fact_key": "base_rent_per_sf",
+        "priority": "normal",
+        "entity_ref": "00000000-0000-4000-8000-000000000022",
+        "observations": [
+          {
+            "id": "e1dc6ac7-3700-4dd6-89a1-62a17c410c01",
+            "unit": "USD/SF/year",
+            "value": "24",
+            "method": "text_layer",
+            "source": {
+              "page_end": 1,
+              "region_id": null,
+              "cited_text": "Synthetic recorded term base_rent_per_sf",
+              "page_start": 1,
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "document_ref": "00000000-0000-4000-8000-000000000024",
+              "derivation_chain": [],
+              "cited_text_sha256": "04a62b88eda4577e68d38a335b2509a88cdd40a2dfafc136d4aaa600bc0761fb",
+              "document_family_id": "wr39-s22",
+              "cited_text_expires_at": "2027-11-06T11:24:12.625785-05:00"
+            },
+            "fact_key": "base_rent_per_sf",
+            "entity_ref": "00000000-0000-4000-8000-000000000022",
+            "extraction": {
+              "pass": "synthetic",
+              "model": "synthetic"
+            },
+            "observed_at": "2026-11-06T11:24:12.625785-06:00",
+            "expense_basis": "nnn",
+            "confidence_tier": "human_review",
+            "observation_ref": "base_rent_per_sf",
+            "normalized_value": "24",
+            "extractor_version": "wr39-s22.v1",
+            "recorded_by_actor_id": "00000000-0000-4000-8000-000000000023"
+          }
+        ],
+        "canonical_fact": null,
+        "review_history": [],
+        "review_version": "93e2ac109b447863ac0569f0583c2ed9e6cd51c75cab214b26a83b89a791585c",
+        "canonical_history": [],
+        "canonical_version": 0,
+        "extraction_job_ids": [],
+        "extraction_abstentions": []
+      },
+      {
+        "pending": true,
+        "reasons": [
+          "human_review"
+        ],
+        "fact_key": "term_months",
+        "priority": "normal",
+        "entity_ref": "00000000-0000-4000-8000-000000000022",
+        "observations": [
+          {
+            "id": "6e576793-4715-4488-a16e-b0e3b393a0ce",
+            "unit": "months",
+            "value": "60",
+            "method": "text_layer",
+            "source": {
+              "page_end": 1,
+              "region_id": null,
+              "cited_text": "Synthetic recorded term term_months",
+              "page_start": 1,
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "document_ref": "00000000-0000-4000-8000-000000000024",
+              "derivation_chain": [],
+              "cited_text_sha256": "653fe0c1415551b64d2aab4f93f1f33f24480c9b78170266191034da2f3b51a7",
+              "document_family_id": "wr39-s22",
+              "cited_text_expires_at": "2027-11-06T11:24:12.625785-05:00"
+            },
+            "fact_key": "term_months",
+            "entity_ref": "00000000-0000-4000-8000-000000000022",
+            "extraction": {
+              "pass": "synthetic",
+              "model": "synthetic"
+            },
+            "observed_at": "2026-11-06T11:24:12.625785-06:00",
+            "expense_basis": null,
+            "confidence_tier": "human_review",
+            "observation_ref": "term_months",
+            "normalized_value": "60",
+            "extractor_version": "wr39-s22.v1",
+            "recorded_by_actor_id": "00000000-0000-4000-8000-000000000023"
+          }
+        ],
+        "canonical_fact": null,
+        "review_history": [],
+        "review_version": "b5bd1a4fd68a6181ebba058d3249366e963e32f85fa01dd983729e09cfb3b5e8",
+        "canonical_history": [],
+        "canonical_version": 0,
+        "extraction_job_ids": [],
+        "extraction_abstentions": []
+      }
+    ],
+    "has_more": false,
+    "next_cursor": null,
+    "schema_version": "fact-review.v1"
+  },
+  "added": {
+    "ok": true,
+    "items": [
+      {
+        "pending": true,
+        "reasons": [
+          "human_review"
+        ],
+        "fact_key": "base_rent_per_sf",
+        "priority": "normal",
+        "entity_ref": "00000000-0000-4000-8000-000000000022",
+        "observations": [
+          {
+            "id": "e1dc6ac7-3700-4dd6-89a1-62a17c410c01",
+            "unit": "USD/SF/year",
+            "value": "24",
+            "method": "text_layer",
+            "source": {
+              "page_end": 1,
+              "region_id": null,
+              "cited_text": "Synthetic recorded term base_rent_per_sf",
+              "page_start": 1,
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "document_ref": "00000000-0000-4000-8000-000000000024",
+              "derivation_chain": [],
+              "cited_text_sha256": "04a62b88eda4577e68d38a335b2509a88cdd40a2dfafc136d4aaa600bc0761fb",
+              "document_family_id": "wr39-s22",
+              "cited_text_expires_at": "2027-11-06T11:24:12.625785-05:00"
+            },
+            "fact_key": "base_rent_per_sf",
+            "entity_ref": "00000000-0000-4000-8000-000000000022",
+            "extraction": {
+              "pass": "synthetic",
+              "model": "synthetic"
+            },
+            "observed_at": "2026-11-06T11:24:12.625785-06:00",
+            "expense_basis": "nnn",
+            "confidence_tier": "human_review",
+            "observation_ref": "base_rent_per_sf",
+            "normalized_value": "24",
+            "extractor_version": "wr39-s22.v1",
+            "recorded_by_actor_id": "00000000-0000-4000-8000-000000000023"
+          }
+        ],
+        "canonical_fact": null,
+        "review_history": [],
+        "review_version": "93e2ac109b447863ac0569f0583c2ed9e6cd51c75cab214b26a83b89a791585c",
+        "canonical_history": [],
+        "canonical_version": 0,
+        "extraction_job_ids": [],
+        "extraction_abstentions": []
+      },
+      {
+        "pending": true,
+        "reasons": [
+          "human_review"
+        ],
+        "fact_key": "free_rent_months",
+        "priority": "normal",
+        "entity_ref": "00000000-0000-4000-8000-000000000022",
+        "observations": [
+          {
+            "id": "064aa94d-ab83-4dd5-863f-55b6904544ab",
+            "unit": "months",
+            "value": "3",
+            "method": "text_layer",
+            "source": {
+              "page_end": 1,
+              "region_id": null,
+              "cited_text": "Synthetic recorded term free_rent_months",
+              "page_start": 1,
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "document_ref": "00000000-0000-4000-8000-000000000024",
+              "derivation_chain": [],
+              "cited_text_sha256": "b3d4a4d78292e996ccb732c049093e01ad0d94a2c543a64922ed6f9b8342c2cf",
+              "document_family_id": "wr39-s22",
+              "cited_text_expires_at": "2027-11-06T11:24:12.625785-05:00"
+            },
+            "fact_key": "free_rent_months",
+            "entity_ref": "00000000-0000-4000-8000-000000000022",
+            "extraction": {
+              "pass": "synthetic",
+              "model": "synthetic"
+            },
+            "observed_at": "2026-11-06T11:24:12.625785-06:00",
+            "expense_basis": null,
+            "confidence_tier": "human_review",
+            "observation_ref": "free_rent_months",
+            "normalized_value": "3",
+            "extractor_version": "wr39-s22.v1",
+            "recorded_by_actor_id": "00000000-0000-4000-8000-000000000023"
+          }
+        ],
+        "canonical_fact": null,
+        "review_history": [],
+        "review_version": "1aca832916cd812a4168e6a00b236238c5e806a0bca3ef8d1a6b9149f3f623b5",
+        "canonical_history": [],
+        "canonical_version": 0,
+        "extraction_job_ids": [],
+        "extraction_abstentions": []
+      },
+      {
+        "pending": true,
+        "reasons": [
+          "human_review"
+        ],
+        "fact_key": "term_months",
+        "priority": "normal",
+        "entity_ref": "00000000-0000-4000-8000-000000000022",
+        "observations": [
+          {
+            "id": "6e576793-4715-4488-a16e-b0e3b393a0ce",
+            "unit": "months",
+            "value": "60",
+            "method": "text_layer",
+            "source": {
+              "page_end": 1,
+              "region_id": null,
+              "cited_text": "Synthetic recorded term term_months",
+              "page_start": 1,
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "document_ref": "00000000-0000-4000-8000-000000000024",
+              "derivation_chain": [],
+              "cited_text_sha256": "653fe0c1415551b64d2aab4f93f1f33f24480c9b78170266191034da2f3b51a7",
+              "document_family_id": "wr39-s22",
+              "cited_text_expires_at": "2027-11-06T11:24:12.625785-05:00"
+            },
+            "fact_key": "term_months",
+            "entity_ref": "00000000-0000-4000-8000-000000000022",
+            "extraction": {
+              "pass": "synthetic",
+              "model": "synthetic"
+            },
+            "observed_at": "2026-11-06T11:24:12.625785-06:00",
+            "expense_basis": null,
+            "confidence_tier": "human_review",
+            "observation_ref": "term_months",
+            "normalized_value": "60",
+            "extractor_version": "wr39-s22.v1",
+            "recorded_by_actor_id": "00000000-0000-4000-8000-000000000023"
+          }
+        ],
+        "canonical_fact": null,
+        "review_history": [],
+        "review_version": "b5bd1a4fd68a6181ebba058d3249366e963e32f85fa01dd983729e09cfb3b5e8",
+        "canonical_history": [],
+        "canonical_version": 0,
+        "extraction_job_ids": [],
+        "extraction_abstentions": []
+      }
+    ],
+    "has_more": false,
+    "next_cursor": null,
+    "schema_version": "fact-review.v1"
+  },
+  "removed": {
+    "ok": true,
+    "items": [],
+    "has_more": false,
+    "next_cursor": null,
+    "schema_version": "fact-review.v1"
+  },
+  "documents": {
+    "ok": true,
+    "schema_version": "deal-documents.v1",
+    "documents": [
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "display_name": "Synthetic Lease.pdf",
+        "document_type": "application/pdf",
+        "page_count": null,
+        "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "stored_at": "2026-11-06T17:24:12.625Z"
+      }
+    ],
+    "has_more": false,
+    "next_cursor": null
+  },
+  "receipt": {
+    "ok": true,
+    "replayed": false,
+    "canonical_fact": null,
+    "review_receipt": {
+      "id": 1,
+      "reason": "Synthetic recorded review",
+      "actor_id": "00000000-0000-4000-8000-000000000025",
+      "decision": "reject",
+      "fact_key": "base_rent_per_sf",
+      "decided_at": "2026-11-06T11:24:12.625785-06:00",
+      "entity_ref": "00000000-0000-4000-8000-000000000022",
+      "idempotency_key": "73a8c5ae-4605-4f80-baff-9a50c3eb67cf",
+      "observation_ids": [
+        "e1dc6ac7-3700-4dd6-89a1-62a17c410c01"
+      ],
+      "canonical_version": 0,
+      "extraction_job_ids": [],
+      "chosen_observation_id": null,
+      "organization_tenant_id": "carr-internal"
+    },
+    "schema_version": "fact-review.v1"
+  },
+  "session": {
+    "actor": {
+      "slug": "joe",
+      "display": "Synthetic reviewer"
+    },
+    "csrf_token": "synthetic-only-not-a-credential",
+    "reauth_required": false,
+    "reauth_url": "/auth/reauth?return_to=/",
+    "challenge_ttl_seconds": 60
+  }
+}

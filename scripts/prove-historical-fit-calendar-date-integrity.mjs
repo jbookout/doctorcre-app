@@ -1,3 +1,4 @@
+import { launchProofBrowser, readAppRelease } from './app-release-reader.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
@@ -20,7 +21,7 @@ export function options(args) {
 
 export async function calendarAssertions(page, moduleURL) {
   await page.evaluate(async moduleURL => {
-    const { mountIdealClientProfile } = await import(moduleURL);
+    const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
     if (typeof mountIdealClientProfile !== 'function') throw Error('missing mountIdealClientProfile export');
     const host = document.createElement('main'); document.body.append(host);
     const profile = date => ({ schema_version: 'ideal-client-profile.v1', coverage: 'recorded_closed_won_only', profiles: [
@@ -28,21 +29,22 @@ export async function calendarAssertions(page, moduleURL) {
         hypothesis: 'Historical fit, not a prediction or qualification rule.', evidence: [{ deal_id: '00000000-0000-4000-8000-000000000001', closed_on: date }] },
     ] });
     window.calendarProof = { date: '2026-02-31', reads: [], hold: false, pending: [] };
-    window.calendarProof.mount = mountIdealClientProfile(host, { getIdealClientProfile(filters) {
+    window.calendarProof.createMount = () => mountIdealClientProfile(host, { getIdealClientProfile(filters) {
       const state = window.calendarProof;
       state.reads.push(filters);
       const result = profile(state.date);
       if (state.hold) return new Promise(resolve => state.pending.push(() => resolve(result)));
       return Promise.resolve(result);
     } });
+    window.calendarProof.mount = window.calendarProof.createMount();
   }, moduleURL);
   const region = page.getByRole('region', { name: 'Historical client fit', exact: true });
   await region.locator('summary').first().click();
   const refresh = () => region.getByRole('button', { name: 'Refresh history' }).click();
   const unavailable = async () => {
-    await region.getByRole('alert').waitFor();
-    assert.match(await region.getByRole('alert').innerText(), /Historical client fit unavailable/);
+    await region.locator('[role="alert"], table').first().waitFor();
     assert.equal(await region.getByRole('table').count(), 0, 'invalid evidence must not claim a completed win');
+    assert.match(await region.getByRole('alert').innerText(), /Historical client fit unavailable/);
   };
   await unavailable();
   for (const date of ['2025-02-29', '1900-02-29', '2026-13-01', '10000-01-01', '-001-01-01', '2026-04-31', '2026-00-01']) {
@@ -73,26 +75,36 @@ export async function calendarAssertions(page, moduleURL) {
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   await page.evaluate(() => window.calendarProof.pending.splice(0).forEach(resolve => resolve()));
   assert.equal(await region.getByRole('table').count(), 0, 'invalidation clears pending evidence');
-  await page.evaluate(() => { window.calendarProof.hold = false; });
+  await region.getByRole('status').waitFor();
+  assert.match(await region.getByRole('status').innerText(), /Sign in again/);
+  assert.equal(await region.locator('details, form, input, button, a, time').count(), 0, 'retired history exposes no controls or evidence');
+  const retiredReads = await page.evaluate(() => window.calendarProof.reads.length);
+  await page.evaluate(() => {
+    window.calendarProof.mount.clear();
+    window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+  });
+  assert.equal(await page.evaluate(() => window.calendarProof.reads.length), retiredReads, 'retired history never reloads');
+  assert.equal(await region.getByRole('table').count(), 0, 'retired history stays empty');
+  await page.evaluate(() => {
+    window.calendarProof.mount.dispose();
+    window.calendarProof.hold = false;
+    window.calendarProof.mount = window.calendarProof.createMount();
+  });
   await region.locator('summary').first().click(); await region.getByRole('table').waitFor();
   await page.evaluate(() => { window.calendarProof.hold = true; });
   await refresh();
   await page.evaluate(() => { window.calendarProof.mount.dispose(); window.calendarProof.pending.splice(0).forEach(resolve => resolve()); });
   assert.equal(await region.count(), 0, 'dispose prevents late receipts');
-  return ['impossible dates refused without wins', 'valid leap day and supported years unchanged', 'deal links unchanged', 'filters preserved', 'stale receipt ignored', 'invalidation clears history', 'dispose ignores pending receipt'];
+  return ['impossible dates refused without wins', 'valid leap day and supported years unchanged', 'deal links unchanged', 'filters preserved', 'stale receipt ignored', 'invalidation terminally retires history', 'dispose ignores pending receipt'];
 }
 
 export async function prove({ origin, timeout, revision }) {
   let browser, context, timer, expired = false;
   const work = async () => {
-    const response = await fetch(`${origin}/app-release`, { redirect: 'error', signal: AbortSignal.timeout(timeout), cache: 'no-store' });
-    assert.ok(response.ok, 'release unavailable or protected');
-    const release = await response.json();
-    assert.equal(release.service, 'doctorcre-app');
-    assert.match(release.source_commit, /^[0-9a-f]{40}$/);
-    assert.notEqual(release.source_commit, '0'.repeat(40), 'fixture identity cannot prove a deployed release');
+    const release = await readAppRelease(origin, { timeoutMs: timeout });
     if (release.source_commit !== revision) execFileSync('git', ['merge-base', '--is-ancestor', revision, release.source_commit], { timeout: 5000, stdio: 'pipe' });
-    browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS], timeout });
+    browser = await launchProofBrowser(chromium, { args: [...CHROMIUM_SAFETY_ARGS], timeout });
     if (expired) { await browser.close(); throw Error('proof timeout'); }
     context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage(); page.setDefaultTimeout(timeout);
@@ -140,5 +152,5 @@ Verify deployed historical client fit with synthetic calendar evidence.
 Exits 0 on help or a successful proof. Exits 1 on invalid arguments or proof failure.`);
     else console.log(JSON.stringify(await prove(parsed)));
   }
-  catch (error) { console.error(`Historical fit proof failed: ${error.message}`); process.exitCode = 1; }
+  catch (error) { console.error(`Historical fit proof failed: ${error.message}`); process.exitCode = error.exitCode || 1; }
 }

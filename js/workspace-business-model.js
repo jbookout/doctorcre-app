@@ -10,18 +10,18 @@
 // It also never fills a blank. A missing value reads "Not recorded", never 0,
 // never an empty string that reads as "none", and never a guessed label.
 
-export const DATASETS = ["clients", "vendors"];
+const DATASETS = ["clients", "vendors"];
 export const DATASET_ROUTE = { clients: "/clients", vendors: "/vendors" };
 export const DATASET_LABEL = { clients: "Clients", vendors: "Vendors" };
 export const DATASET_SINGULAR = { clients: "Client", vendors: "Vendor" };
 export const SOURCE_LABEL = { clients: "Client records", vendors: "Vendor records" };
-export const API_PREFIX = "/api/v1/business/";
-export const SCOPES = ["team", "mine"];
-export const DEFAULT_SCOPE = "team";
-export const SCOPE_LABEL = { team: "Team", mine: "My work" };
+const API_PREFIX = "/api/v1/business/";
+const SCOPES = ["team", "mine"];
+const DEFAULT_SCOPE = "team";
+const SCOPE_LABEL = { team: "Team", mine: "My work" };
 export const SORTS = ["name", "recent", "vertical", "deal_type", "last_deal_desc", "last_deal_asc", "territory"];
-export const DEFAULT_SORT = "name";
-export const SORT_LABEL = { name: "Alphabetical", recent: "Recently updated", vertical: "Vertical", deal_type: "Deal type", last_deal_desc: "Last deal · most recent", last_deal_asc: "Last deal · least recent", territory: "Territory" };
+const DEFAULT_SORT = "name";
+const SORT_LABEL = { name: "Alphabetical", recent: "Recently updated", vertical: "Vertical", deal_type: "Deal type", last_deal_desc: "Last deal · most recent", last_deal_asc: "Last deal · least recent", territory: "Territory" };
 export const PIPELINE_FILTERS = ["any", "active", "other", "unknown"];
 export const PIPELINE_LABEL = {
   any: "Any pipeline",
@@ -30,10 +30,10 @@ export const PIPELINE_LABEL = {
   unknown: "Pipeline not set",
 };
 export const PAGE_SIZE = 25;
-export const MAX_PAGE = 200;
+const MAX_PAGE = 200;
 export const MAX_QUERY_LENGTH = 80;
 export const NOT_RECORDED = "Not recorded";
-export const SIGNED_OUT_CODE = "AUTHENTICATION_REQUIRED";
+const SIGNED_OUT_CODE = "AUTHENTICATION_REQUIRED";
 
 const VIEWERS = new Set(["joe", "dell"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -317,7 +317,7 @@ function iso(value) {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
-export function sourceValid(source, dataset) {
+function sourceValid(source, dataset) {
   const keys = ["source", "source_ref", "observed_at", "valid_until", "freshness", "correlation_id", "safe_explanation"];
   return Boolean(source) && typeof source === "object" &&
     Object.keys(source).length === keys.length && keys.every((key) => key in source) &&
@@ -502,7 +502,7 @@ export function partyKindText(value) {
  * relationship is whatever the status itself is called — this never renames it,
  * and it never stands in for a countersigned agreement or a written assignment.
  */
-export function clientPipelineTone(row) {
+function clientPipelineTone(row) {
   const flag = row?.recorded_status_active_pipeline;
   if (flag === true) return { tone: "active", label: "In the active pipeline" };
   if (flag === false) return { tone: "warm", label: "Not in the active pipeline" };
@@ -510,7 +510,7 @@ export function clientPipelineTone(row) {
 }
 
 /** Vendors: workable is a property of the disposition on the record, not a judgement. */
-export function vendorDispositionTone(row) {
+function vendorDispositionTone(row) {
   const workable = row?.recorded_disposition_workable;
   if (workable === true) return { tone: "active", label: "Workable" };
   if (workable === false) return { tone: "warm", label: "Not workable" };
@@ -583,7 +583,7 @@ export function emptyCopy(dataset, phase) {
   return { title: `No ${plural} yet`, copy: `There are no ${plural} to show.` };
 }
 
-export const REFUSAL_COPY = {
+const REFUSAL_COPY = {
   AUTHENTICATION_REQUIRED: "Your session has ended. Sign in again to see these records.",
   AUTHORIZATION_REFUSED: "This account is not allowed to see these records.",
   TENANT_SCOPE_REFUSED: "These records are outside this account.",

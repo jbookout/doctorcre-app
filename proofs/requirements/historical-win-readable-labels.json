@@ -1,0 +1,25 @@
+{
+  "schema": "carr-production-proof-plan.v1",
+  "requirement_id": "historical-win-readable-labels",
+  "targets": [
+    "app"
+  ],
+  "assertions": [
+    {
+      "id": "recorded-win-labels-live",
+      "predicate": "Run node scripts/prove-historical-win-readable-labels.mjs --origin https://app.doctorcre.com. Observe stable app identity and deployed module fixture assertions. Separately use the signed-in app client ideal-client-profile {} and CARR shared release reader. Require at least one natural named completed win and match its visible name, date and UUID. Both releases must contain their relevant merged changes.",
+      "runner": "app-release-live-walk.v1",
+      "expected_result": "Fresh-browser CLI exits 78 insufficient_evidence after fixture assertions. Only the separate signed-in natural walk plus both release identities establishes live proof. Assertion failure exits 1. Local --fixture replay exits 0.",
+      "input_class": "read-only deployed assets and recorded registered-handler synthetic ideal-client-profile.v1 responses; authorized auditor supplies separate signed-in natural evidence",
+      "deadline_seconds": 30
+    }
+  ],
+  "safety": {
+    "read_only": true,
+    "no_sends": true,
+    "max_requests": 40,
+    "max_records": 4,
+    "max_runtime_seconds": 30,
+    "max_artifact_bytes": 65536
+  }
+}

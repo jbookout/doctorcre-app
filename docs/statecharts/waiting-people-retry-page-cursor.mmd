@@ -1,0 +1,41 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Waiting: Enter a name
+  Waiting --> Searching: Name unchanged for 300 ms
+  Waiting --> Waiting: Edit the name before 300 ms
+  Searching --> Choices: Page succeeds
+  Choices --> Searching: Ask for more results
+  Searching --> Retry: Page fails, accepted choices stay visible
+  Retry --> Searching: Retry the exact failed page
+  Searching --> Searching: Repeated retry clicks admit one read
+  Retry --> Waiting: Enter another name, retire failed page
+  Searching --> Waiting: Enter another name, ignore late page
+  Searching --> Contacts: Directory verb unavailable
+  Waiting --> Idle: Clear the name
+  Choices --> Waiting: Enter another name
+  Idle --> Closed: Close editor
+  Waiting --> Closed: Close editor
+  Searching --> Closed: Close editor, ignore late page
+  Choices --> Closed: Close editor
+  Retry --> Closed: Close editor
+  Contacts --> Closed: Close editor
+  Closed --> [*]
+  %% never Retry restarts an accepted page.
+  %% never Late pages replace the current name's choices.
+  %% never Retry removes the selected person or duplicates accepted choices.
+
+  state ProofLifecycle {
+    [*] --> Release
+    Release --> Launching: Release retrieved within deadline
+    Launching --> Browser: Browser acquired within deadline
+    Browser --> Witness: Context and page acquired within deadline
+    Witness --> Cleaned: Witness succeeds or fails, close browser
+    Release --> Expired: Deadline expires, abort fetch
+    Launching --> Expired: Deadline expires during launch
+    Browser --> Expired: Deadline expires, close browser
+    Witness --> Expired: Deadline expires, close browser
+    Expired --> Cleaned: Close any late acquired browser without starting work
+    Cleaned --> [*]
+  }
+  %% never An expired proof starts browser context work after late acquisition.
+  %% never A late acquired browser remains open.

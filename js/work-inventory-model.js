@@ -17,7 +17,7 @@ export const WORK_INVENTORY_KINDS = Object.freeze([
 
 export const WORK_INVENTORY_ENDPOINT = "/api/v1/work-inventory";
 export const WORK_INVENTORY_LIMIT_DEFAULT = 100;
-export const WORK_INVENTORY_LIMIT_MAX = 500;
+const WORK_INVENTORY_LIMIT_MAX = 500;
 
 export const KIND_LABEL = Object.freeze({
   work_request: "Work requests",

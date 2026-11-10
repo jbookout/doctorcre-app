@@ -1,6 +1,6 @@
 export const routeEntries = [
   ["/","workspace.html","/"],
-  ["/a/:ref","action-link.html","/leads"],
+  ["/a/:ref","action-link.html","/"],
   ["/all-work","work-inventory.html","/work-inventory"],
   ["/calendar","calendar.html","/business"],
   ["/calls","calls.html","/business"],

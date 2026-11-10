@@ -132,7 +132,7 @@ function validActivationReliability(value) {
 }
 
 /** Parse only the explicit wrapper. Other receipts stay ordinary wire traffic. */
-export function parseJobPassportReceipt(body) {
+function parseJobPassportReceipt(body) {
   if (typeof body !== "string" || !body.trim().startsWith("{")) return { ok: false, reason: "not_json" };
   let outer;
   try { outer = JSON.parse(body); } catch { return { ok: false, reason: "malformed_json" }; }
@@ -655,7 +655,7 @@ export function deriveJobPassports(turns, { now = Date.now() } = {}) {
   return { enabled: passports.length > 0, passports, rejected, typedCounts };
 }
 
-export const JOB_PASSPORT_STATUS_LABEL = {
+const JOB_PASSPORT_STATUS_LABEL = {
   aligned: "Aligned", deviation_candidate: "Deviation candidate", blocked: "Blocked", quiet: "Quiet", stale: "Stale",
   failed: "Failed", unknown_partial: "Unknown / partial", verified_complete: "Independently verified complete",
 };

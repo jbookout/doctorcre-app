@@ -27,6 +27,7 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   await reasons.locator('.work-card').first().waitFor();
   assert.equal(await reasons.getByRole('searchbox',{name:'Search loaded reasons'}).count(),1);
   const search = reasons.getByRole('searchbox',{name:'Search loaded reasons'});
+  const source = reasons.getByRole('combobox',{name:'Source',exact:true});
   const category = reasons.getByRole('combobox',{name:'Action category'});
   assert.equal(await category.count(),1);
   assert.equal(reads.length,1);
@@ -77,7 +78,13 @@ for (const width of [1280,390]) for (const theme of ['light','dark']) test(`load
   await page.keyboard.type('group');
   assert.equal(await search.evaluate(node => node === document.activeElement),true);
   await page.keyboard.press('Tab');
+  assert.equal(await source.evaluate(node => node === document.activeElement),true);
+  await page.keyboard.press('Tab');
   assert.equal(await category.evaluate(node => node === document.activeElement),true);
+  await page.keyboard.press('Tab');
+  assert.equal(await reasons.getByLabel('Evidence from',{exact:true}).evaluate(node=>node===document.activeElement),true);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   assert.equal(await search.inputValue(),'');

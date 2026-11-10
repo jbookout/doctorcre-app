@@ -32,15 +32,18 @@ export function TourList({ model, openProperty }: { model: TourListModel; openPr
   }[state.kind];
   const requestReload = () => { if (model.unsaved) setConfirm('reload'); else void model.reload(); };
   const requestSignout = () => { if (model.unsaved) setConfirm('signout'); else void model.signOut(); };
-  const card = (property: TourProperty, chosen: boolean) => <article className="tour-option" key={property.id} data-property-id={property.id} draggable={!chosen && editable}
+  const card = (property: TourProperty, chosen: boolean) => {
+    const note = draft && Object.hasOwn(draft.notes, property.id) ? draft.notes[property.id] ?? '' : '';
+    return <article className="tour-option" key={property.id} data-property-id={property.id} draggable={!chosen && editable}
     onDragStart={event => { if (editable) event.dataTransfer.setData('text/plain', property.id); }}>
     <span aria-hidden="true">{chosen ? '✓' : '⠿'} {property.number}</span>
     <h3><button type="button" onClick={() => openProperty(property.id)}>{property.address}</button></h3>
     <p>{property.summary}</p>
     <button type="button" data-add={!chosen ? property.id : undefined} data-remove={chosen ? property.id : undefined} disabled={!editable} onClick={() => model.edit(property.id, !chosen)}>{chosen ? 'Remove' : 'Add'}<span className="tour-sr"> {property.address}</span></button>
-    {chosen && <label>Notes for {property.address}<textarea value={draft?.notes[property.id] ?? ''} maxLength={2000} disabled={!editable}
-      onChange={event => model.note(property.id, event.target.value)} /><small>{draft?.notes[property.id]?.length ?? 0} / 2,000 characters</small></label>}
+    {chosen && <label>Notes for {property.address}<textarea value={note} maxLength={2000} disabled={!editable}
+      onChange={event => model.note(property.id, event.target.value)} /><small>{note.length} / 2,000 characters</small></label>}
   </article>;
+  };
   return <section id="tour" className="portal-tour-list" aria-label="Tour List" data-state={state.kind}>
     <header><div><h1>Tour List</h1><p>Choose properties and share notes with your CARR advisor.</p></div><button type="button" disabled={state.kind === 'signing-out'} onClick={requestSignout}>Sign Out</button></header>
     <p id="tour-save-status" role="status" aria-live="polite">{message}</p>

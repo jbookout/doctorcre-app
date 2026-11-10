@@ -10,7 +10,7 @@
 .quick-switcher input { box-sizing: border-box; width: 100%; margin-top: var(--space-3); min-height: 48px; padding: var(--space-3); font: inherit; color: var(--fg); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
 .quick-switcher button { min-height: 44px; padding: var(--space-2) var(--space-3); font: inherit; color: var(--fg); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
 .quick-switcher :focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
-.quick-switcher ul { list-style: none; padding: 0; margin: var(--space-2) 0; max-height: 42dvh; overflow: auto; }
+.quick-switcher [role="listbox"] { list-style: none; padding: 0; margin: var(--space-2) 0; max-height: 42dvh; overflow: auto; }
 .quick-switcher [role="option"] { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3); min-height: 44px; box-sizing: border-box; cursor: pointer; border-radius: var(--radius-2); }
 .quick-switcher [role="option"] span { overflow-wrap: anywhere; }
 .quick-switcher [aria-selected="true"] { background: var(--surface-3); outline: 1px solid var(--hairline-strong); outline-offset: -1px; }

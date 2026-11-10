@@ -249,6 +249,8 @@ export function createLiveClient(opts = {}) {
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
+    async readDealDocumentText(args = {}, { signal } = {}) { return rpc('read-deal-document-text', args, signal); },
+
     async listDealDocuments(args = {}, { signal } = {}) { return rpc('list-deal-documents', args, signal); },
     async prepareTermsComparison(args, { signal } = {}) {
       if (!online()) throw Object.assign(new Error('Offline'), { payload: { error: 'offline' } });
@@ -398,8 +400,8 @@ export function createLiveClient(opts = {}) {
       return write('undo-call-change', { candidate_id, base_version });
     },
 
-    async reviewCallOutcome({ session_id }) {
-      return write('review-call-outcome', { session_id });
+    async reviewCallOutcome({ session_id, expected_source_version }) {
+      return write('review-call-outcome', { session_id, expected_source_version });
     },
 
     async getChanges(cursor, { signal, since } = {}) {
