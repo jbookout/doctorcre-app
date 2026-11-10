@@ -257,3 +257,13 @@ body.record-open { overflow: hidden; }
 }
 
 .quiet-vendors .action { scroll-margin-top: 12rem; }
+
+.vendor-meetings { padding: 20px; margin-block-end: 16px; min-width: 0; overflow-wrap: anywhere; }
+.vendor-meetings [role="tablist"] { display: flex; gap: 8px; margin-block: 16px; }
+.vendor-meetings [role="tab"] { min-height: 44px; padding: 8px 16px; border: 1px solid currentColor; border-radius: 8px; color: inherit; background: transparent; }
+.vendor-meetings [aria-selected="true"] { font-weight: 700; background: var(--surface-raised, rgba(127,127,127,.18)); }
+.vendor-meetings input { width: 100%; box-sizing: border-box; min-height: 44px; }
+.vendor-meetings-list { padding: 0; list-style: none; display: grid; gap: 12px; }
+.vendor-meetings-list > li { border: 1px solid var(--border, rgba(127,127,127,.35)); border-radius: 12px; padding: 16px; }
+.vendor-meetings-list p { margin-block: 8px; }
+.vendor-meetings-list > li > a { font-size: 1.1rem; font-weight: 650; }

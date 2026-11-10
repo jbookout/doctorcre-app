@@ -1,0 +1,14 @@
+{
+  "write": false,
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "9d8242f399eef0269dc0d74773b40ad98ad45685",
+    "path": "mcp-server/src/vendor-meetings.js"
+  },
+  "schema_version": "vendor-meetings.v1",
+  "arguments": { "view": ["suggested", "research"], "q_max_length": 80, "limit": [1, 50], "cursor": "opaque; bound to exact view and q" },
+  "authority": "Authenticated partner session. The app never selects a calendar sponsor.",
+  "membership": "Server-classified Suggested and Research. Missing phone, cell or email does not exclude a person.",
+  "calendar": "Independent ready, empty, partial or unavailable state. Unavailable does not invalidate vendor results.",
+  "consistency": "live_keyset; restart after record changes"
+}

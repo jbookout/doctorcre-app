@@ -1,0 +1,397 @@
+{
+  "suggested": {
+    "schema": "vendor-meetings.v1",
+    "view": "suggested",
+    "total": 6,
+    "items": [
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000001",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000001",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": {
+          "street_address": "1 Synthetic Plaza",
+          "city": "Demo City",
+          "state": "FL",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "source": "https://example.test/office",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "research": {
+          "status": "office_verified",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": "Medical office purchase financing",
+        "missing": [],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000002",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000002",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": {
+          "street_address": "1 Synthetic Plaza",
+          "city": "Demo City",
+          "state": "FL",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "source": "https://example.test/office",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "research": {
+          "status": "office_verified",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": "Medical office purchase financing",
+        "missing": [],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000003",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000003",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": {
+          "street_address": "1 Synthetic Plaza",
+          "city": "Demo City",
+          "state": "FL",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "source": "https://example.test/office",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "research": {
+          "status": "office_verified",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": "Medical office purchase financing",
+        "missing": [],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000004",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000004",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": {
+          "street_address": "1 Synthetic Plaza",
+          "city": "Demo City",
+          "state": "FL",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "source": "https://example.test/office",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "research": {
+          "status": "office_verified",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": "Medical office purchase financing",
+        "missing": [],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000005",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000005",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": {
+          "street_address": "1 Synthetic Plaza",
+          "city": "Demo City",
+          "state": "FL",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "source": "https://example.test/office",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "research": {
+          "status": "office_verified",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": "Medical office purchase financing",
+        "missing": [],
+        "possible_meetings": []
+      }
+    ],
+    "has_more": true,
+    "calendar": {
+      "state": "unavailable",
+      "reason": "source_unavailable",
+      "scheduling": {
+        "window": {
+          "start": "2026-11-10T23:58:05.388Z",
+          "end": "2026-11-11T23:58:05.388Z"
+        },
+        "minimum_duration_minutes": 30,
+        "note": "Candidate openings from stored meetings, not confirmed availability. May include overnight hours. Check Outlook before booking.",
+        "state": "unavailable",
+        "reason": "source_unavailable",
+        "items": []
+      }
+    },
+    "next_cursor": "JTdCJTIydiUyMiUzQTElMkMlMjJ2aWV3JTIyJTNBJTIyc3VnZ2VzdGVkJTIyJTJDJTIycSUyMiUzQSUyMkFkYSUyMiUyQyUyMmFmdGVyJTIyJTNBJTVCJTIyMTAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDA1JTIyJTJDJTIyMjAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDA1JTIyJTVEJTdE",
+    "consistency": "live_keyset; restart after record changes"
+  },
+  "research": {
+    "schema": "vendor-meetings.v1",
+    "view": "research",
+    "total": 6,
+    "items": [
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000001",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000001",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": null,
+        "research": {
+          "status": "needs_review",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": null,
+        "missing": [
+          "verified_office",
+          "meeting_reason"
+        ],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000002",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000002",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": null,
+        "research": {
+          "status": "needs_review",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": null,
+        "missing": [
+          "verified_office",
+          "meeting_reason"
+        ],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000003",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000003",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": null,
+        "research": {
+          "status": "needs_review",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": null,
+        "missing": [
+          "verified_office",
+          "meeting_reason"
+        ],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000004",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000004",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": null,
+        "research": {
+          "status": "needs_review",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": null,
+        "missing": [
+          "verified_office",
+          "meeting_reason"
+        ],
+        "possible_meetings": []
+      },
+      {
+        "vendor_id": "10000000-0000-4000-8000-000000000005",
+        "ref": "V-SYNTHETIC",
+        "party_id": "10000000-0000-4000-8000-000000000002",
+        "company": {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "name": "Synthetic Finance"
+        },
+        "contact": {
+          "id": "20000000-0000-4000-8000-000000000005",
+          "name": "Ada Synthetic",
+          "email": null,
+          "phone": null,
+          "cell": null
+        },
+        "office": null,
+        "research": {
+          "status": "needs_review",
+          "finding_id": "30000000-0000-4000-8000-000000000001",
+          "observed_at": "2026-10-01T12:00:00Z",
+          "expires_on": null
+        },
+        "category": "lender",
+        "category_label": "Lender",
+        "service_coverage": "Demo region",
+        "reason": null,
+        "missing": [
+          "verified_office",
+          "meeting_reason"
+        ],
+        "possible_meetings": []
+      }
+    ],
+    "has_more": true,
+    "calendar": {
+      "state": "unavailable",
+      "reason": "source_unavailable",
+      "scheduling": {
+        "window": {
+          "start": "2026-11-10T23:58:05.389Z",
+          "end": "2026-11-11T23:58:05.389Z"
+        },
+        "minimum_duration_minutes": 30,
+        "note": "Candidate openings from stored meetings, not confirmed availability. May include overnight hours. Check Outlook before booking.",
+        "state": "unavailable",
+        "reason": "source_unavailable",
+        "items": []
+      }
+    },
+    "next_cursor": "JTdCJTIydiUyMiUzQTElMkMlMjJ2aWV3JTIyJTNBJTIycmVzZWFyY2glMjIlMkMlMjJxJTIyJTNBJTIyQWRhJTIyJTJDJTIyYWZ0ZXIlMjIlM0ElNUIlMjIxMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDUlMjIlMkMlMjIyMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDUlMjIlNUQlN0Q=",
+    "consistency": "live_keyset; restart after record changes"
+  }
+}
