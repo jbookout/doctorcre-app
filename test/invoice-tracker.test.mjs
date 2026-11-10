@@ -92,3 +92,13 @@ test('invoice route and deterministic artifact input bind the exact separate CAR
  assert.match(contract.invoice_tracker.producer.source_commit,/^[a-f0-9]{40}$/);assert.equal(contract.invoice_tracker.amount,'commission.gross_amount');
  for(const name of ['read-invoice-tracker','record-commission-receipt'])assert.ok(contract.mcp_operations.includes(name));
 });
+
+test('reversed payment chronology refuses the snapshot while genuine same-day payment remains zero',()=>{
+ const data=payload(),paid=data.entries.find(row=>row.status==='received');
+ paid.received_on=paid.commission_invoiced_on;
+ assert.equal(validInvoiceTracker(data),true);
+ assert.equal(projectInvoices(data,{today}).find(row=>row.key===paid.commission_id).age,0);
+ paid.received_on='2026-03-01';paid.commission_invoiced_on='2026-03-05';
+ assert.equal(validInvoiceTracker(data),false);
+ assert.equal(projectInvoices(data,{today}),null);
+});
