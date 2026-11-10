@@ -166,6 +166,7 @@
     "src/ui/worker/service-worker.ts",
     "js/invoice-tracker-fixture.d.ts",
     "js/invoice-tracker-model.d.ts",
+    "js/leads-client.d.ts",
     "js/routes.d.ts",
     "src/worker.d.ts",
     "scripts/prove-*.{mjs,ts}"
