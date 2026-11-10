@@ -1,3 +1,4 @@
+import { parsePublicTourPacket, packetMapPoints, appendPublicTourFacts } from "../src/ui/public-tour-packet.ts";
 import { mountNavigation } from "../js/navigation.js";
 
 mountNavigation(document, location.pathname, { report: true });
@@ -53,15 +54,19 @@ mountNavigation(document, location.pathname, { report: true });
   let feedback = null;
   const pending = new globalThis.Map();
   let contentStatus = "";
+  const printButton = document.querySelector("#print-packet");
+  printButton.addEventListener("click", () => { if (!invalidated && reportProperties.size) window.print(); });
 
   function setStatus(message) { status.textContent = message; }
 
   function showUnavailable() {
     invalidated = true; projection = null;
+    printButton.hidden = true;
     history.replaceState(null, '', location.pathname + location.search);
     reportProperties.clear(); pending.clear(); feedback = null;
     mapInstance?.remove(); mapInstance = null;
     list.replaceChildren();
+    document.querySelector("#packet-itinerary").replaceChildren();
     document.querySelector('#tour-map').replaceChildren();
     setStatus("This shared report is unavailable.");
     summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
@@ -96,18 +101,7 @@ mountNavigation(document, location.pathname, { report: true });
     return typeof value === "string" && value ? value : fallback;
   }
 
-  function validPropertyRef(value) {
-    return typeof value === "string" && /^property:public:[A-Za-z0-9_-]{16,128}$/.test(value);
-  }
-
-  function routeOrder(item, index) {
-    return Number.isFinite(item?.route_sequence) ? item.route_sequence : index + 1;
-  }
-
-  function propertyAddress(item, fallback) {
-    const parts = [item?.address, item?.suite].filter(value => typeof value === "string" && value.trim());
-    return parts.length ? parts.join(" · ") : fallback;
-  }
+  function propertyAddress(item, fallback) { return text(item?.address, fallback); }
 
   function feedbackFor(propertyRef) {
     return feedback?.items?.find(item => item.property_ref === propertyRef) || null;
@@ -201,44 +195,36 @@ mountNavigation(document, location.pathname, { report: true });
     const line = document.createElement("li"); line.textContent = comment; comments.append(line);
   }
 
-  function render(report) {
-    const items = Array.isArray(report?.stops) ? report.stops :
-      (Array.isArray(report?.items) ? report.items : (Array.isArray(report?.properties) ? report.properties : []));
-    const properties = items.map((item, index) => ({ item, index }))
-      .filter(({ item }) => validPropertyRef(item?.property_ref))
-      .sort((left, right) => routeOrder(left.item, left.index) - routeOrder(right.item, right.index));
-    reportProperties = new globalThis.Map(properties.map(({ item }) => [item.property_ref, item]));
-    document.querySelector("#report-title").textContent = "Tour report";
-    summary.textContent = `${properties.length} ${properties.length === 1 ? "property" : "properties"} in this report.`;
+  function render(properties) {
+    reportProperties = new globalThis.Map(properties.map(item => [item.property_ref, item]));
+    document.querySelector("#report-title").textContent = "Your property tour";
+    summary.textContent = `${properties.length} ${properties.length === 1 ? "property" : "properties"} in tour order.`;
     list.replaceChildren();
-    for (const { item, index } of properties) {
+    for (const item of properties) {
       const row = document.createElement("li");
       row.className = "report-item";
       row.dataset.propertyRef = item.property_ref;
-      const route = document.createElement("p");
-      route.className = "route-label";
-      route.textContent = text(item.route_label, `Stop ${routeOrder(item, index)}`);
-      const heading = document.createElement("h3");
-      heading.textContent = text(item.name, text(item.title, "Tour property"));
-      const detail = document.createElement("p");
-      detail.textContent = text(item.summary, text(item.status, propertyAddress(item, "Details available in the packet.")));
+      const route = document.createElement("p"); route.className = "route-label"; route.textContent = `Stop ${item.route_label}`;
+      const heading = document.createElement("h3"); heading.textContent = item.name;
+      const detail = document.createElement("p"); detail.textContent = item.address;
       row.append(route, heading, detail);
+      appendPublicTourFacts(row, item);
       renderFeedbackControls(row, item);
       list.append(row);
     }
-    if (!properties.length) list.textContent = "No properties are available in this report.";
+    printButton.hidden = false;
+    openButton.hidden = true;
+    const overview = document.querySelector("#packet-itinerary");
+    overview.replaceChildren();
+    for (const item of properties) {
+      const stop = document.createElement("li");
+      stop.textContent = `${item.route_label} · ${item.name} · ${item.address}`;
+      overview.append(stop);
+    }
     list.setAttribute("aria-busy", "false");
   }
 
-  function validMapPoint(point) {
-    return validPropertyRef(point?.property_ref) && Number.isInteger(point?.route_sequence) && point.route_sequence > 0 &&
-      Number.isFinite(point?.latitude) && point.latitude >= -90 && point.latitude <= 90 &&
-      Number.isFinite(point?.longitude) && point.longitude >= -180 && point.longitude <= 180;
-  }
-
-  async function renderMap(payload) {
-    const points = (Array.isArray(payload?.points) ? payload.points : []).filter(validMapPoint)
-      .sort((left, right) => left.route_sequence - right.route_sequence);
+  async function renderMap(points) {
     if (!points.length) return;
     const { LngLatBounds, Map: MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl } =
       await import("/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
@@ -250,7 +236,7 @@ mountNavigation(document, location.pathname, { report: true });
     mapInstance = new MapLibreMap({
       container: "tour-map",
       style: { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#eef4f8" } }] },
-      center: [points[0].longitude, points[0].latitude], zoom: 11, attributionControl: false,
+      center: [points[0].longitude, points[0].latitude], zoom: 11, attributionControl: false, preserveDrawingBuffer: true,
     });
     mapInstance.addControl(new NavigationControl({ showCompass: false }), "top-right");
     const bounds = new LngLatBounds();
@@ -309,14 +295,16 @@ mountNavigation(document, location.pathname, { report: true });
     projection = expected;
     history.replaceState({doctorcreShare:projection,doctorcreShareContext:linkContext}, '', location.pathname + location.search);
     feedback = after;
-    if (reportLoaded) render(reportResult.value);
+    const packet = reportLoaded ? parsePublicTourPacket(reportResult.value) : null;
+    const points = mapLoaded ? packetMapPoints(packet, mapResult.value) : [];
+    if (reportLoaded) render(packet);
     else {
       document.querySelector('#report-title').textContent = 'Shared tour map';
       summary.textContent = 'Verified access points included in this share.';
       list.textContent = 'This link includes the interactive map only.';
       list.setAttribute('aria-busy','false');
     }
-    if (mapLoaded) await renderMap(mapResult.value);
+    if (mapLoaded) await renderMap(points);
     else document.querySelector('#map-section').hidden = true;
     if (invalidated) return;
     contentStatus = reportLoaded && mapLoaded ? 'Report and map loaded.' : reportLoaded ? 'Report loaded.' : 'Map loaded.';

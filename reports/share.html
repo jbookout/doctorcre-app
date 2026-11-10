@@ -23,6 +23,7 @@
         <p id="report-summary" class="summary">Opening your shared report…</p>
       </header>
       <p id="status" class="status" role="status" aria-live="polite"></p>
+      <button id="print-packet" type="button" hidden>Print or save PDF</button>
       <button id="open-tour" type="button" disabled>Open tour</button>
       <figure class="tour-flow" aria-label="This Tour moves from properties to your choices to broker review">
         <svg viewBox="0 0 720 76" role="img" aria-labelledby="flow-title flow-description">
@@ -35,6 +36,7 @@
           <g><circle cx="588" cy="24" r="15"/><text x="588" y="29">3</text><text x="588" y="68">Broker review</text></g>
         </svg>
       </figure>
+      <section class="packet-overview" aria-label="Tour day at a glance"><h2>Tour day at a glance</h2><ol id="packet-itinerary"></ol></section>
       <section id="map-section" aria-labelledby="map-title" hidden>
         <h2 id="map-title">Tour map</h2>
         <p id="map-note" class="status">Ordered markers show only verified entrance, driveway, or parking-access coordinates. No road-route geometry is implied.</p>
