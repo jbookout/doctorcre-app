@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { JSDOM } from 'jsdom';
-import { componentDocument, chromium, fixtureServer } from './browser-harness.mjs';
+import { componentDocument, chromium, fixtureServer, settles } from './browser-harness.mjs';
 import { callChangeText, callOutcomesHtml, mountCallOutcomes, undoRefusal } from '../js/call-outcomes.js';
 
 async function callDocument(page, origin) {
@@ -19,9 +20,12 @@ async function closeCallFixture(page, browser, server) {
   finally { try { await browser.close(); } finally { await server.close(); } }
 }
 
+const readerSchema = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1/read-call-outcomes.v1.json', import.meta.url)));
+const readerValid = new Ajv2020({ strict: false, formats: { uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i } }).compile(readerSchema);
+
 // Synthetic read-call-outcomes rows (CARR call-outcomes.v1).
 const synthetic = () => [{
-  session_id: 'session-1', call_date: '2026-10-26', recorder: 'joe',
+  session_id: 'session-1', started_at: '2026-10-26T14:00:00Z', source_version: 'a'.repeat(32), call_date: '2026-10-26', recorder: 'joe',
   applied: [
     { candidate_id: 'phase-1', kind: 'phase_move', deal_id: 'deal-a', deal_name: 'Demo Bayside relocation', deal_version: 7,
       payload: { deal: 'deal-a', field: 'phase', value: 'negotiation', started_on: '2026-10-20', base_event_id: 'phase-base' },
@@ -155,7 +159,7 @@ test('the call guide orders deals, preserves the outstanding item and acknowledg
     await guide.getByRole('button', { name: 'Complete call review' }).click();
     await page.getByText('Call review complete.', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.guideWrites), [
-      { candidate_id: 'phase-1', base_version: 7 }, { session_id: 'session-1' },
+      { candidate_id: 'phase-1', base_version: 7 }, { session_id: 'session-1', expected_source_version: 'a'.repeat(32) },
     ]);
   } finally { await closeCallFixture(page, browser, server); }
 });
@@ -236,7 +240,7 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
       window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
         readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
         undoCallChange: async args => { window.guideWrites.push(args); rows[0].applied[1].undone_at = '2026-10-26'; return { ok: true }; },
-        resolvePostCallCandidate: async args => { window.guideWrites.push(args); rows[0].open_cards = []; return { ok: true }; },
+        resolvePostCallCandidate: async args => { window.guideWrites.push(args); rows[0].open_cards = []; rows[0].source_version = 'b'.repeat(32); return { ok: true }; },
         reviewCallOutcome: async args => { window.guideWrites.push(args); rows.length = 0; return { ok: true }; },
       }), describe: change => change.payload.text || 'Phase moved', undoRefusal: () => 'Refused', openCandidate: () => { window.companionOpened = true; } });
       await window.guide.refresh();
@@ -255,6 +259,11 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
     assert.equal(await page.evaluate(() => Boolean(window.companionOpened)), false, 'saved-call decisions do not depend on the companion current call');
     await page.getByRole('button', { name: 'Approve item', exact: true }).click();
     await page.getByText('No longer pending', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
+    await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
     assert.equal(await page.getByRole('button', { name: 'Complete call review' }).isEnabled(), true);
     await page.getByRole('button', { name: 'Complete call review' }).click();
     await page.getByRole('status').filter({ hasText: 'Call review complete.' }).waitFor();
@@ -262,7 +271,7 @@ for (const width of [390, 1440]) test(`guide follow-ups at ${width}`, async () =
     const writes = await page.evaluate(() => window.guideWrites);
     assert.equal(writes[1].candidate_id, 'card-1');
     assert.equal(writes[1].accept, true);
-    assert.deepEqual(writes[2], { session_id: 'session-1' });
+    assert.deepEqual(writes[2], { session_id: 'session-1', expected_source_version: 'b'.repeat(32) });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   } finally { await closeCallFixture(page, browser, server); }
 });
@@ -298,7 +307,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
       const node = document.createElement('section'); document.body.replaceChildren(node);
       window.decisions = [];
       let refused = true;
-      const decide = async args => { window.decisions.push(args); if (refused) { refused = false; throw new Error('offline'); } rows[0].open_cards = []; return { ok: true }; };
+      const decide = async args => { window.decisions.push(args); if (refused) { refused = false; throw new Error('offline'); } rows[0].open_cards = []; rows[0].source_version = 'b'.repeat(32); return { ok: true }; };
       window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
         readCallOutcomes: async () => ({ calls: structuredClone(rows) }), resolvePostCallCandidate: decide, resolveConfirm: decide,
       }), describe: () => 'Proposal', dateLabel: dayLabel, undoRefusal: () => '' });
@@ -364,7 +373,7 @@ test('nine filed-call decisions at two seconds each stay within the human reques
     await page.clock.install();
     await page.evaluate(async () => {
       const { mountCallReview, mountCallReviewDialog } = await import('/js/ui-call.js');
-      const rows = [{ session_id: 'budget-call', call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
+      const rows = [{ session_id: 'budget-call', source_version: 'a'.repeat(32), call_date: '2026-11-02', applied: Array.from({ length: 5 }, (_, i) => ({
         candidate_id: `applied-${i}`, kind: 'next_step', deal_id: `deal-${i}`, deal_name: `Synthetic deal ${i}`,
         deal_version: 1, undone_at: null, payload: { text: `Initial step ${i}` },
       })), open_cards: Array.from({ length: 9 }, (_, i) => ({
@@ -379,7 +388,7 @@ test('nine filed-call decisions at two seconds each stay within the human reques
       const client = {
         readCallOutcomes: async () => { count('outcomes'); return { calls: structuredClone(rows) }; },
         getDeal: async id => { count('deal', id); return { history: [] }; },
-        resolvePostCallCandidate: async args => { count('decision'); rows[0].open_cards = rows[0].open_cards.filter(row => row.candidate_id !== args.candidate_id); return { ok: true }; },
+        resolvePostCallCandidate: async args => { count('decision'); rows[0].open_cards = rows[0].open_cards.filter(row => row.candidate_id !== args.candidate_id); rows[0].source_version = rows[0].open_cards.length.toString(16).padStart(32, 'b'); return { ok: true }; },
         reviewCallOutcome: async () => { count('complete'); rows.length = 0; return { ok: true }; },
       };
       const node = document.createElement('section'); document.body.replaceChildren(node);
@@ -392,7 +401,7 @@ test('nine filed-call decisions at two seconds each stay within the human reques
     const guide = page.locator('.call-review-dialog .call-review');
     const perStep = [];
     for (let i = 0; i < 9; i++) {
-      while (await guide.getByRole('button', { name: 'Reviewed', exact: true }).count()) {
+      while (await guide.getByRole('button', { name: 'Reviewed', exact: true }).count() && await guide.getByRole('button', { name: 'Reviewed', exact: true }).isEnabled()) {
         await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
       }
       await page.clock.runFor(2000);
@@ -409,6 +418,12 @@ test('nine filed-call decisions at two seconds each stay within the human reques
       assert.equal(step.filter(row => row.verb === 'outcomes').length, 2);
       assert.equal(await guide.getByText(/Could not check this call/).count(), 0);
       if (i < 8) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    }
+    while (await guide.getByRole('button', { name: 'Back', exact: true }).isEnabled()) {
+      await guide.getByRole('button', { name: 'Back', exact: true }).click();
+    }
+    while (await guide.getByRole('button', { name: 'Reviewed', exact: true }).count() && await guide.getByRole('button', { name: 'Reviewed', exact: true }).isEnabled()) {
+      await guide.getByRole('button', { name: 'Reviewed', exact: true }).click();
     }
     await guide.getByRole('button', { name: 'Complete call review' }).click();
     await guide.getByText('Call review complete.', { exact: true }).waitFor();
@@ -433,7 +448,7 @@ for (const target of ['outcomes', 'deal', 'decision']) test(`guide recovers auto
       window.guide = mountCallReview(node, { sessionId: 'session-1', client: () => ({
         readCallOutcomes: async () => { check('outcomes'); return { calls: structuredClone(rows) }; },
         getDeal: async () => { check('deal'); return { history: [] }; },
-        resolvePostCallCandidate: async () => { window.decisionAttempts++; check('decision'); rows[0].open_cards = []; return { ok: true }; },
+        resolvePostCallCandidate: async () => { window.decisionAttempts++; check('decision'); rows[0].open_cards = []; rows[0].source_version = 'b'.repeat(32); return { ok: true }; },
       }), describe: () => 'Task', undoRefusal: () => '' });
       await window.guide.refresh();
     }, { rows: synthetic(), target });
@@ -550,7 +565,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) for (con
         readCallOutcomes: async () => ({ calls: structuredClone(rows) }),
         resolvePostCallCandidate: async () => {
           if (++window.decisionAttempts === 1) throw Object.assign(new Error('budget'), { status: 429 });
-          rows[0].open_cards = []; return { ok: true };
+          rows[0].open_cards = []; rows[0].source_version = 'b'.repeat(32); return { ok: true };
         },
       }), describe: () => 'Proposal', undoRefusal: () => '' });
       await window.guide.refresh();
@@ -625,7 +640,7 @@ async function mountComparison(page, { comparison, kind = 'assigned_action', fai
     window.guide = mountCallReview(node, { sessionId: 'comparison-call', client: () => ({
       readCallOutcomes: async () => { if (failRead) throw new Error('offline'); return { calls: rows }; },
       getDeal: async () => { if (failDeal) throw new Error('offline'); return { history: [] }; },
-      resolvePostCallCandidate: async args => { window.comparisonWrites.push(args); rows[0].open_cards = []; return { ok: true }; },
+      resolvePostCallCandidate: async args => { window.comparisonWrites.push(args); rows[0].open_cards = []; rows[0].source_version = 'b'.repeat(32); return { ok: true }; },
     }), describe: () => 'Send revised proposal', dateLabel: value => new Date(`${value}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), undoRefusal: () => '' });
     await window.guide.refresh();
   }, { comparison, kind, failRead, failDeal, theme });
@@ -765,3 +780,193 @@ test(`Home source calls at ${width} in ${theme}`, async () => {
     }
   } finally { await closeCallFixture(page, browser, server); }
 });
+
+for (const outcome of ['success', 'stale', 'missing-version', 'changed-before-submit']) {
+  test(`Home versioned completion ${outcome} through the live client`, async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { default: Ajv } = await import('ajv');
+    const { contract } = JSON.parse(await readFile(new URL('./fixtures/home-review-call-contract.json', import.meta.url)));
+    const ajv = new Ajv({ strict: false });
+    const requestValid = ajv.compile(contract.inputSchema), responseValid = ajv.compile(contract.responseSchema), refusalValid = ajv.compile(contract.refusalSchema);
+    const server = await fixtureServer(), browser = await chromium.launch({ headless: true }), page = await browser.newPage();
+    const rows = synthetic(); rows[0].session_id = '00000000-0000-4000-8000-000000000011'; rows[0].open_cards = []; rows[0].applied = [{ ...rows[0].applied[0], deal_id: null }];
+    if (outcome === 'missing-version') delete rows[0].source_version;
+    let writes = [], reads = 0, release;
+    const hold = new Promise(resolve => { release = resolve; });
+    await page.route('**/auth/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+    await page.route('**/mcp', async route => {
+      const { name, arguments: args } = route.request().postDataJSON().params;
+      let payload, isError = false;
+      if (name === 'read-call-outcomes') {
+        reads++;
+        if (outcome === 'changed-before-submit' && reads === 2) rows[0].source_version = 'b'.repeat(32);
+        payload = { schema_version: 'call-outcomes.v1', calls: structuredClone(rows), send: false };
+        if (outcome === 'missing-version') {
+          assert.equal(readerValid(payload), false);
+          assert.deepEqual(readerValid.errors.map(error => [error.keyword, error.params.missingProperty]), [['required', 'source_version']]);
+        } else assert.equal(readerValid(payload), true, JSON.stringify(readerValid.errors));
+      } else if (name === 'review-call-outcome') {
+        assert.equal(requestValid(args), true, JSON.stringify(requestValid.errors));
+        writes.push(args);
+        await hold;
+        if (outcome === 'stale') {
+          rows[0].source_version = 'b'.repeat(32);
+          rows[0].applied[0].evidence_quote = 'The outcome changed elsewhere';
+          payload = { ...contract.refusal, correlation_id: '00000000-0000-4000-8000-000000000001' };
+          assert.equal(refusalValid(payload), true); isError = true;
+        } else {
+          payload = { ...contract.receipt, session_id: args.session_id };
+          assert.equal(responseValid(payload), true); rows.length = 0;
+        }
+      } else throw new Error(`Unexpected verb ${name}`);
+      await route.fulfill({ json: { result: { isError, content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
+    });
+    try {
+      await componentDocument(page, server.origin, {
+        html: '<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/app.css"><link rel="stylesheet" href="/css/call-review.css"></head><body><script type="module">import "/js/doc-context.js";</script></body></html>',
+        dispose: page => page.evaluate(() => window.guide?.dispose()),
+      });
+      await page.evaluate(async sessionId => {
+        const { mountCallReview } = await import('/js/ui-call.js');
+        const { createLiveClient } = await import('/js/live-client.js');
+        const node = document.createElement('section'); document.body.replaceChildren(node);
+        const client = createLiveClient({ docContext: false });
+        window.guide = mountCallReview(node, { sessionId, client: () => client,
+          describe: change => change.payload.value, undoRefusal: () => 'Could not undo' });
+        await window.guide.refresh();
+      }, rows[0].session_id);
+      const complete = page.getByRole('button', { name: 'Complete call review' });
+      await page.getByRole('button', { name: 'Reviewed', exact: true }).click();
+      if (outcome === 'missing-version') {
+        assert.equal(await complete.isDisabled(), true);
+        await page.getByText('This call cannot be completed until its current version is available. Refresh call review to check again.', { exact: true }).waitFor();
+        assert.equal(writes.length, 0);
+        return;
+      }
+      await complete.click();
+      if (outcome !== 'changed-before-submit') {
+        await page.waitForFunction(() => document.querySelector('.call-review progress') && document.querySelector('.call-review nav button.primary').disabled);
+        await settles(() => assert.equal(writes.length, 1));
+        assert.equal(writes[0].expected_source_version, 'a'.repeat(32));
+      }
+      release();
+      if (outcome === 'success') await page.getByText('Call review complete.', { exact: true }).waitFor();
+      else {
+        await page.getByRole('alert').filter({ hasText: 'This call outcome changed elsewhere.' }).waitFor();
+        await page.getByText('0 of 1 reviewed', { exact: true }).waitFor();
+        assert.equal(await complete.isDisabled(), true);
+        assert.equal(writes.length, outcome === 'stale' ? 1 : 0);
+        if (outcome === 'stale') await page.getByText('The outcome changed elsewhere', { exact: true }).waitFor();
+      }
+      await page.screenshot({ path: `/tmp/J227-${outcome}.png` });
+    } finally { release(); await closeCallFixture(page, browser, server); }
+  });
+}
+
+for (const width of [390, 1440])
+  for (const theme of ["light", "dark"])
+    for (const accept of [false, true])
+      test(`Home proposal resolution changes source_version ${accept ? "approve" : "skip"} ${width} ${theme}`, async () => {
+        const server = await fixtureServer(),
+          browser = await chromium.launch({ headless: true }),
+          page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme });
+        let row = {
+          session_id: "00000000-0000-4000-8000-000000000011",
+          recorder: "joe",
+          started_at: "2026-11-01T00:00:00Z",
+          call_date: "2026-11-01",
+          source_version: "a".repeat(32),
+          applied: [
+            {
+              candidate_id: "change-1",
+              kind: "next_step",
+              deal_id: null,
+              payload: { text: "Synthetic applied step" },
+              deal_version: 1,
+              undone_at: null,
+            },
+          ],
+          open_cards: [
+            {
+              candidate_id: "card-1",
+              kind: "email_draft",
+              resolver: "resolve-post-call-candidate",
+              deal_id: null,
+              payload: { subject: "Synthetic email" },
+            },
+          ],
+        };
+        const writes = [];
+        await page.route("**/auth/session", (r) =>
+          r.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic" } }),
+        );
+        await page.route("**/mcp", async (r) => {
+          const { name, arguments: args } = r.request().postDataJSON().params;
+          let payload,
+            isError = false;
+          if (name === "read-call-outcomes") {
+            payload = { schema_version: "call-outcomes.v1", send: false, calls: row ? [structuredClone(row)] : [] };
+            assert.equal(readerValid(payload), true, JSON.stringify(readerValid.errors));
+          } else if (name === "resolve-post-call-candidate") {
+            assert.equal(args.accept, accept);
+            row.open_cards = [];
+            row.source_version = "b".repeat(32);
+            payload = { ok: true };
+          } else if (name === "review-call-outcome") {
+            writes.push(args);
+            if (args.expected_source_version !== row.source_version) {
+              payload = {
+                error: "source_version_changed",
+                correlation_id: "00000000-0000-4000-8000-000000000012",
+                hint: "This call changed. Reopen the card and review the current outcome.",
+              };
+              isError = true;
+            } else {
+              payload = { ok: true, session_id: row.session_id, reviewed: true };
+              row = null;
+            }
+          } else throw new Error(name);
+          await r.fulfill({
+            json: { result: { isError, content: [{ type: "text", text: JSON.stringify(payload) }] } },
+          });
+        });
+        try {
+          await componentDocument(page, server.origin, {
+            html: '<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/app.css"><link rel="stylesheet" href="/css/call-review.css"></head><body><script type="module">import "/js/doc-context.js";</script></body></html>',
+            dispose: (p) => p.evaluate(() => window.guide.dispose()),
+          });
+          await page.evaluate((theme) => {
+            document.documentElement.dataset.theme = theme;
+          }, theme);
+          await page.evaluate(async (sessionId) => {
+            const { mountCallReview } = await import("/js/ui-call.js");
+            const { createLiveClient } = await import("/js/live-client.js");
+            const node = document.createElement("div");
+            document.body.append(node);
+            const client = createLiveClient({ docContext: false });
+            window.guide = mountCallReview(node, {
+              sessionId,
+              client: () => client,
+              describe: (c) => c.payload.subject,
+              undoRefusal: () => "",
+            });
+            await window.guide.refresh();
+          }, row.session_id);
+          await page.getByRole("button", { name: "Next", exact: true }).click();
+          await page.getByRole("button", { name: "Approve or fix this item", exact: true }).click();
+          await page.getByRole("button", { name: accept ? "Approve item" : "Skip item", exact: true }).click();
+          await page.getByText("1 of 2 reviewed", { exact: true }).waitFor();
+          await page.getByRole("button", { name: "Back", exact: true }).click();
+          await page.getByRole("button", { name: "Reviewed", exact: true }).click();
+          await page.getByText("2 of 2 reviewed", { exact: true }).waitFor();
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+          const complete = page.getByRole("button", { name: "Complete call review", exact: true });
+          await complete.click();
+          await page.getByText("Call review complete.", { exact: true }).waitFor({ timeout: 3000 });
+          assert.equal(writes.length, 1);
+          assert.equal(writes[0].expected_source_version, "b".repeat(32));
+          await page.screenshot({ path: `/tmp/j262-resolved-${accept}-${width}-${theme}.png` });
+        } finally {
+          await closeCallFixture(page, browser, server);
+        }
+      });

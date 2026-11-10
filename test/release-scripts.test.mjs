@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -314,9 +315,7 @@ test('staging reports Python initialization failure without printing the runtime
 
 test('three late CI wakes promote the same green source only once', t => {
   const { root, trace, env } = releaseFixture(t);
-  const steps = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e', 'puts JSON.generate(YAML.load(STDIN.read))'], {
-    input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url)), encoding: 'utf8',
-  })).jobs.production.steps;
+  const steps = parseYaml(readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8')).jobs.production.steps;
   copyFileSync(new URL('../scripts/production-candidate.py', import.meta.url), join(root, 'scripts/production-candidate.py'));
   const gh = join(root, 'bin/gh');
   writeFileSync(gh, `#!${process.execPath}\nconsole.log(JSON.stringify([{ headSha: '${'1'.repeat(40)}', status: 'completed', conclusion: 'success' }]));\n`);

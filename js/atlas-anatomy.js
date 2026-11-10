@@ -51,7 +51,7 @@ export const ORGANS = Object.freeze([
 ]);
 
 export const ORGAN_KEYS = Object.freeze(ORGANS.map((organ) => organ.key));
-export const UNPLACED = "unplaced";
+const UNPLACED = "unplaced";
 
 export function organOf(node) {
   return ORGAN_OF_CLASS[node?.class] || UNPLACED;
@@ -72,12 +72,12 @@ export const EVIDENCE_DEPTH = Object.freeze({
   observed: Object.freeze({ z: 1, outline: "solid", core: true, word: "observed", plane: "Front plane · observed running" }),
 });
 
-export function evidenceDepth(evidence) {
+function evidenceDepth(evidence) {
   return EVIDENCE_DEPTH[evidence] || EVIDENCE_DEPTH.declared;
 }
 
 /** Retired and unlinked are MARKS, never a removal and never a pitying word. */
-export function nodeMarks(node) {
+function nodeMarks(node) {
   return Object.freeze({
     retired: typeof node?.retired_at === "string" && node.retired_at !== "",
     unlinked: node?.unlinked === true,
@@ -119,7 +119,7 @@ export const SCENE_NARROW = Object.freeze({
 });
 
 /** The wide profile is the default and the one the tests pin. */
-export const SCENE = SCENE_WIDE;
+const SCENE = SCENE_WIDE;
 
 /** One breakpoint, the same 768 px the stylesheet uses. */
 export const NARROW_BREAKPOINT = 768;
@@ -242,12 +242,12 @@ export function anatomyScene(payload, { rotation = ROTATION_DEFAULT, exploded = 
 
 /* ---------------------------------------------------------------------- naming */
 
-export function classLabel(name) {
+function classLabel(name) {
   return NODE_CLASS_LABEL[name] || name;
 }
 
 /** The singular, because a node is one of them and "Verbs: add a loop" reads wrong. */
-export const CLASS_SINGULAR = Object.freeze({
+const CLASS_SINGULAR = Object.freeze({
   verb: "Verb", mutation: "Mutation", module: "Module", surface: "Surface",
   service: "Service", service_environment: "Service environment", job_definition: "Job definition",
   rule: "Rule", rule_pack: "Rule pack", control: "Control", doctrine_section: "Doctrine section",

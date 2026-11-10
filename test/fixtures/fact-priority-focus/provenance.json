@@ -29,8 +29,8 @@
   "parser": "createLiveClient rawRpc production fact-review response parser",
   "procedure": "producer.txt contains exact producer bytes and executed recipe",
   "reused_from": "test/fixtures/fact-review-pending-status-view",
-  "parser_revision": "350951eb88b486e2d636fe4e22ea2fdf21156794",
-  "parser_sha256": "457218553a93cdd737058111d5acdb9550b02e15ba5f34ea9bb48a6f9192323f",
+  "parser_revision": "559f4e30cbba378720f94d71373847741c5fb6eb",
+  "parser_sha256": "e7053936d9e1209e4bd5b6982a2fa954814c31508c065d6809a9a49559fbd57c",
   "producer_file_sha256": "057ec5840a6b30f6ce6ad1a4e0579d3a4fef93f5f08928a82cd5245dd4b1b768",
   "priority_cases": "Recorded normal values are unchanged. Browser tests vary priority and add a competing observation through createLiveClient rawRpc, the exact production parser. Cases include high, null, omitted, blank and future values. These are parser-contract cases, not producer replays."
 }

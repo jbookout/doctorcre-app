@@ -9,7 +9,7 @@ import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 export function contractFixture() {
   const boardContract = JSON.parse(readFileSync(new URL('../contracts/carr-interface.v1/mcp_read_contracts/deal-room-board.json', import.meta.url)));
   const networkContract = JSON.parse(readFileSync(new URL('../contracts/relationship-network.v1.json', import.meta.url)));
-  const board = { schema_version: 'local-deals-board.v2', deals: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Fixture Deal', open_actions: [{ id: '33333333-3333-4333-8333-333333333333', owner: 'joe', description: 'Fixture Task', due_on: null }] }], closed_deals: [], lost_deals: [] };
+  const board = { schema_version: 'local-deals-board.v2', deals: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Fixture Deal', open_actions: [{ id: '33333333-3333-4333-8333-333333333333', item_id: 'next_action:33333333-3333-4333-8333-333333333333', owner: 'joe', description: 'Fixture Task', due_on: null }] }], closed_deals: [], lost_deals: [] };
   const network = { schema: 'carr-relationship-network.v1', observed_at: '2026-01-01T00:00:00Z', valid_until: '2026-01-01T00:02:00Z', nodes: [{ id: 'party:22222222-2222-4222-8222-222222222222', record_id: '22222222-2222-4222-8222-222222222222', name: 'Fixture Contact', kind: 'contact', contact_state: 'active' }], edges: [], referrals: [], suggestions: [] };
   assert.equal(board.schema_version, boardContract.response.schema_version);
   assert.equal(network.schema, networkContract.schema);

@@ -11,11 +11,11 @@ export function validateTourList(rows) {
   if (!Array.isArray(rows) || !rows.every(row => validRow(row) && validBinding(row))) throw new Error("Invalid tour list");
   return rows;
 }
-export function validateClientRecord(record, id = record?.id) {
+function validateClientRecord(record, id = record?.id) {
   if (!validRow(record) || record.id !== id || !strings(record, ["city", "state", "vertical", "specialty", "notes"])) throw new Error("Invalid client record");
   return record;
 }
-export function validateClientList(rows) {
+function validateClientList(rows) {
   if (!Array.isArray(rows)) throw new Error("Invalid client list");
   rows.forEach(row => validateClientRecord(row)); return rows;
 }

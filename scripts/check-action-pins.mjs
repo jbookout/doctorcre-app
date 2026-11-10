@@ -36,7 +36,7 @@ export async function checkActionPins(root = fileURLToPath(new URL('../', import
     assert.ok(file.startsWith(root + sep), 'local action must stay inside repository');
     if (visited.has(file)) return;
     visited.add(file);
-    const document = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-rdate', '-e',
+    const document = JSON.parse(execFileSync('/usr/bin/ruby', ['-ryaml', '-rjson', '-rdate', '-e',
       'puts JSON.generate(YAML.safe_load(STDIN.read, permitted_classes: [Date, Time], aliases: true))'], {
       input: await readFile(file, 'utf8'), encoding: 'utf8', timeout: 900_000, stdio: ['pipe', 'pipe', 'pipe'],
     }));

@@ -66,3 +66,11 @@ mobile-a11y-evidence/
 /js/ui-relationship-kind-filter.js
 
 /js/ui-meeting-preparation-lifetime.js
+
+/js/ui-watches.js
+
+/js/ui-action-session-return.js
+/js/ui-share-intake.js
+
+/js/ui-phone-push.js
+/public-shell/sw.js

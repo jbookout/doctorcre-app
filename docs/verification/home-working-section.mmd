@@ -1,0 +1,62 @@
+stateDiagram-v2
+  state Home {
+    state Disclosure {
+      [*] --> Closed
+      Closed --> Open: Open section
+      Open --> Closed: Close section
+      Closed --> Closed: Refresh cards
+      Open --> Open: Refresh cards
+      Closed --> Closed: Search cards
+      Open --> Open: Search cards
+      Closed --> Closed: Clear search
+      Open --> Open: Clear search
+      Closed --> Closed: Work needs review
+      Open --> Open: Work needs review
+      Closed --> Closed: Work resolves
+      Open --> Open: Work resolves
+      Closed --> Closed: Select card
+      Open --> Closed: Select card
+      Closed --> Closed: Remount Home
+      Open --> Closed: Remount Home
+      Closed --> Closed: Invalidate session
+      Open --> Closed: Invalidate session
+    }
+    --
+    state Placement {
+      [*] --> Empty
+      Empty --> Working: Refresh cards
+      Working --> Working: Refresh cards
+      Working --> Attention: Work needs review
+      Working --> Done: Work resolves
+      Empty --> Empty: Remount Home
+      Working --> Working: Remount Home
+      Attention --> Attention: Remount Home
+      Done --> Done: Remount Home
+      Empty --> Empty: Invalidate session
+      Working --> Empty: Invalidate session
+      Attention --> Empty: Invalidate session
+      Done --> Empty: Invalidate session
+    }
+    --
+    state Selection {
+      [*] --> Ordinary
+      Ordinary --> Selected: Select card
+      Selected --> Selected: Open section
+      Selected --> Selected: Close section
+      Selected --> Selected: Refresh cards
+      Selected --> Selected: Remount Home
+      Ordinary --> Ordinary: Invalidate session
+      Selected --> Ordinary: Invalidate session
+    }
+    --
+    state Search {
+      [*] --> All
+      All --> Filtered: Search cards
+      Filtered --> All: Clear search
+      Filtered --> All: Select card
+      All --> All: Remount Home
+      Filtered --> All: Remount Home
+      All --> All: Invalidate session
+      Filtered --> All: Invalidate session
+    }
+  }

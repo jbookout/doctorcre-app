@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -14,8 +15,7 @@ const checks = await readFile(new URL("../.github/workflows/checks.yml", import.
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-const workflowDocument = source => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], { input: source, encoding: 'utf8' }));
+const workflowDocument = source => parseYaml(source);
 const eventCondition = (expression = 'true', github = {}) => runInNewContext(
   expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ''),
   { github, always: () => true, cancelled: () => false },
@@ -480,7 +480,7 @@ test('required CI runs the strict no-emit UI typecheck', async () => {
   assert.equal(config.compilerOptions.strict, true);
   assert.equal(config.compilerOptions.noEmit, true);
   assert.ok(config.include.includes('src/ui'));
-  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
+  assert.equal(pkg.scripts.typecheck, 'tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json');
   assert.match(pkg.scripts.check, /npm run typecheck/);
   assert.match(checksJob, /run: npm run check/);
 });
@@ -510,8 +510,7 @@ test('main and PR synthetic shards retain first attempts and gate critical execu
   }
 });
 
-const validationWorkflow = JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], { input: ci, encoding: 'utf8' }));
+const validationWorkflow = parseYaml(ci);
 
 function validationPolicy({ eventName = 'pull_request', action = 'opened', changes = {}, number = 7, runId = 1, workflow = validationWorkflow.name } = {}) {
   const github = { workflow, event_name: eventName, run_id: runId,
@@ -596,4 +595,27 @@ test('release handoff admits both app identities through the source rule and ref
     const text = await readFile(output, 'utf8');
     assert.equal(text.includes(`manifest_repository=${repository}\n`), repository !== 'DoctorCRE/other');
   }
+});
+
+ test('typed watch journeys belong to browser collection and remain typechecked', async () => {
+ const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+ const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+ assert.ok(config.files.includes('test/watch-controls.browser.ts'));
+ assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
+ assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
+ assert.match(checks, /node --test test\/\*\.browser\.ts/);
+ });
+
+
+test('reply proof browser journeys run after browser installation and remain typechecked', async () => {
+  const config = JSON.parse(await readFile(new URL('../tsconfig.node.json', import.meta.url), 'utf8'));
+  assert.ok(config.files.includes('test/prove-reply-action-link.browser.ts'));
+  assert.ok(!config.files.includes('test/prove-reply-action-link.test.ts'));
+  const steps = workflowDocument(checks).jobs.checks.steps;
+  const install = steps.findIndex(step => step.run === 'npx playwright install --with-deps chromium webkit');
+  const journeys = steps.findIndex(step => step.run === 'node --test test/*.browser.ts');
+  assert.ok(install >= 0 && install < journeys);
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.match(pkg.scripts.test, /test\/\*\.browser\.ts/);
+  assert.match(ci, /test\/\*\.test\.mjs test\/\*\.browser\.ts/);
 });

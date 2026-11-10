@@ -2,7 +2,7 @@ import { jobLinks } from './progress-board-model.js';
 import { escapeText as escape } from './change-receipts.mjs';
 import { validCanonicalEngineeringPassport, passportProjectionDigest } from './job-passport.js';
 // Exact reference joins; titles and shared seats never establish task identity.
-export const PROGRESS_WORK_PATH = '/control-room/progress/work';
+const PROGRESS_WORK_PATH = '/control-room/progress/work';
 export function workDetailUrl({ board = 'carr-v5', task, workRequest, session, view } = {}) {
   const query = new URLSearchParams({ board });
   for (const [key, value] of [['task', task], ['work_request', workRequest], ['session', session], ['view', view]]) if (value) query.set(key, value);
@@ -25,7 +25,7 @@ const lineageFields = [
   ['Task', 'task', ['task_ref', 'task_id']],
   ['Job', 'job', ['job_ref', 'job_id']],
 ];
-export function workLineage(task, board = 'carr-v5', taskId = workTaskId(task)) {
+function workLineage(task, board = 'carr-v5', taskId = workTaskId(task)) {
   const workRequest = jobLinks(task).workRequest;
   return lineageFields.map(([label, kind, fields]) => {
     const related = (Array.isArray(task.related) ? task.related : []).filter(row => row?.kind === kind).map(row => row.id);

@@ -1,3 +1,4 @@
+import { guardProofReads } from './proof-verb-registry.mjs';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -51,6 +52,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(insufficient('Proof deadline exceeded')), timeoutMs);
   const remaining = () => { controller.signal.throwIfAborted(); const ms = Math.ceil(deadline-performance.now()); if (ms <= 0) throw insufficient('Proof deadline exceeded'); return ms; };
+  let guard;
   let browser, page, requests = 0, bytes = 0;
   const read = async url => {
     remaining(); assert.equal(url.origin, origin);
@@ -77,12 +79,15 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       page = await browser.newPage();
       await page.route('**/*', async route => {
         const url = new URL(route.request().url());
+        if (url.pathname === '/mcp') return route.continue();
         if (url.origin !== origin || route.request().method() !== 'GET') return route.abort();
         if (url.pathname === '/__window_proof') return route.fulfill({ contentType:'text/html',body:'<!doctype html><title>Window proof</title>' });
-        if (!/^\/js\/[\w.-]+\.js$/.test(url.pathname)) return route.abort();
+        if (!/^\/js\/[\w.-]+\.m?js$/.test(url.pathname)) return route.abort();
         try { const asset = await read(url); return route.fulfill({ contentType:asset.type,body:asset.body }); } catch { return route.abort(); }
       });
+      guard = await guardProofReads(page, origin);
       await page.goto(`${origin}/__window_proof`);
+      await guard.load(remaining());
       payload = JSON.parse(await readFile(new URL('../test/fixtures/historical-close-window/recordings.json',import.meta.url))).full;
       await page.evaluate(async ({ payload }) => {
         const { mountIdealClientProfile } = await import('/js/ui-ideal-client-profile.js');
@@ -112,13 +117,7 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
       } };
       browser = await launchProofBrowser(borrowed,{timeout:remaining()},{signal:controller.signal});
       page = await browser.newPage();
-      await page.route('**/*', route => {
-        const request = route.request();
-        if (new URL(request.url()).origin !== origin) return route.abort();
-        if (request.method() === 'GET') return route.continue();
-        let body; try { body = request.postDataJSON(); } catch { return route.abort(); }
-        return body?.method === 'tools/call' && ['ideal-client-profile','lead-board'].includes(body.params?.name) ? route.continue() : route.abort();
-      });
+      guard = await guardProofReads(page, origin);
       page.on('request', request => {
         if (new URL(request.url()).origin !== origin) return;
         try { if (request.postDataJSON()?.params?.name === 'ideal-client-profile') reads++; } catch {}
@@ -135,7 +134,8 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
         });
         payload.catch(() => {});
       });
-      try { await page.goto(`${origin}/?view=charts`); } catch { throw insufficient('Signed-in page navigation unavailable'); }
+      try { await page.goto(`${origin}/?view=charts`, { waitUntil: "domcontentloaded" }); } catch { throw insufficient('Signed-in page navigation unavailable'); }
+      await guard.load(remaining());
       assert.notEqual(new URL(page.url()).pathname, '/leads', 'Historical client fit belongs on charts');
       const host = page.getByRole('region',{name:'Historical client fit',exact:true});
       if (!await host.count()) throw insufficient('Signed-in Historical client fit unavailable');
@@ -149,14 +149,17 @@ export async function prove({ origin, expectedCommit, cdpUrl, timeoutMs = 30000,
     const observation = await windowAssertions(page,payload);
     if (fixture) assert.equal(await page.evaluate(() => window.closeProofReads),1,'local edits cause no read');
     else assert.equal(reads,beforeReads,'local edits cause no read');
+    guard.assertSafe();
     const after = await readAppRelease(origin,read);
     if (!fixture) assert.equal(reads,beforeReads,'local edits cause no request');
     if (after.source_commit !== release.source_commit) throw insufficient('Release changed during proof');
-    return {status:fixture?'fixture_pass':'passed',release,observation,requests};
+    guard.assertSafe();
+    return {writes: guard.writes, status:fixture?'fixture_pass':'passed',release,observation,requests};
   } catch (error) {
+    guard?.assertSafe();
     if (controller.signal.aborted || error.name === 'TimeoutError') throw insufficient('Proof deadline exceeded');
     throw error;
-  } finally { clearTimeout(timer); await browser?.close(); }
+  } finally { guard?.dispose(); clearTimeout(timer); await browser?.close(); guard?.assertSafe(); }
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

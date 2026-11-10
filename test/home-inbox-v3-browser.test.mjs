@@ -47,6 +47,7 @@ for (const width of [390, 1024, 1280, 1440]) for (const theme of ['light', 'dark
   await page.getByRole('region', { name: 'Needs your attention', exact: true }).locator('[data-inbox-row="0"]').waitFor();
   await card.getByRole('button', { name: 'Snooze', exact: true }).click();
   await page.getByRole('button', { name: /^1 hour/ }).click();
+  await page.getByRole('region', { name: 'In motion and waiting', exact: true }).getByRole('button', { name: 'See all 1', exact: true }).click();
   await page.getByRole('region', { name: 'In motion and waiting', exact: true }).locator('[data-inbox-row="0"]').waitFor();
   await card.getByRole('button', { name: 'Wake', exact: true }).click();
   await card.getByRole('button', { name: 'Hide from inbox', exact: true }).click();
@@ -105,6 +106,7 @@ for (const [transition, before, after] of [
     return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.goto(`${server.origin}/?mode=live`);
+  if (['working', 'snoozed'].includes(before.section)) await page.getByRole('region', { name: 'In motion and waiting', exact: true }).getByRole('button', { name: 'See all 1', exact: true }).click();
   await page.locator('[data-inbox-row="transition"]').waitFor();
   Object.assign(item, after);
   await page.getByRole('button', { name: 'Refresh inbox', exact: true }).click();

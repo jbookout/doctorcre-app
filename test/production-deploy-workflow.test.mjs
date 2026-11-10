@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -7,10 +8,7 @@ import { readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
-  'puts JSON.generate(YAML.load(STDIN.read))'], {
-  input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
-}));
+const workflow = () => parseYaml(readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'));
 
 test('production accepts same-repository main push CI wakes and resolves current main', () => {
   const document = workflow();
@@ -148,7 +146,7 @@ test('queued completion wakes reconcile current main even when older or failed C
   }
   for (const runs of [[], [{ ...green, status: 'in_progress', conclusion: '' }], [{ ...green, conclusion: 'failure' }], [{ ...green, headSha: 'a'.repeat(40) }]]) {
     const result = run(runs);
-    assert.equal(result.status, 0, result.stderr);
+    assert.notEqual(result.status, 0, 'a deployment that cannot select green main must not report success');
     assert.match(result.output, /ready=false/);
   }
   writeFileSync(gh, '#!/bin/sh\nexit 1\n');
